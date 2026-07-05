@@ -538,6 +538,44 @@ post("/api/orders", "api#orders_create");</code></pre>
         </p>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6" id="listing-routes">Listing Routes (<code>soli routes</code>)</h2>
+    <p class="text-gray-400 mb-6">
+        Print the app's full expanded route table from the command line &mdash; every route <code>config/routes.sl</code> (and mounted engines) registers, including each individual route a <code>resources(...)</code> call generates. Rows print in <strong class="text-white">registration order</strong>, which is also the order the server matches requests against.
+    </p>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># App in the current directory
+soli routes
+
+# Explicit app folder
+soli routes path/to/app
+
+# Filter: case-insensitive match on method/path/handler/helper
+soli routes -g posts
+
+# Machine-readable JSON array (tooling, agents)
+soli routes --json</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <pre data-filename="Output"><code class="language-text text-sm">  METHOD  PATH             HANDLER        HELPER          MIDDLEWARE
+  GET     /                home#index     root_path
+  GET     /posts           posts#index    posts_path
+  POST    /posts           posts#create                   auth
+  GET     /posts/:id       posts#show     post_path
+  GET     /posts/:id/edit  posts#edit     edit_post_path
+  WS      /ws/chat         chat#handle
+
+  6 routes (1 websocket)</code></pre>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
+        <li><strong class="text-white">HELPER</strong> is the generated named-route helper (<code>post_path</code> also implies <code>post_url</code>); blank rows have no name.</li>
+        <li><strong class="text-white">MIDDLEWARE</strong> lists middleware applied by route args or a <code>middleware("...", fn() ... end)</code> scope.</li>
+        <li>WebSocket routes appear with the <code>WS</code> method.</li>
+        <li><code>--json</code> emits <code>[{"method", "path", "handler", "name", "middleware"}]</code> objects &mdash; stable input for scripts and coding agents.</li>
+    </ul>
+
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">

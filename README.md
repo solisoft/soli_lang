@@ -256,16 +256,16 @@ fn create(req: Any) -> Any {
 Build reactive UIs without writing JavaScript:
 
 ```html
-<!-- app/views/live/counter.sliv -->
+<!-- app/views/live/counter.html.slv -->
 <div class="counter">
-    <h2>@count</h2>
+    <h2><%= count %></h2>
     <button soli-click="decrement">-</button>
     <button soli-click="increment">+</button>
 </div>
 ```
 
 ```soli
-// app/controllers/live_controller.sl
+# app/controllers/live_controller.sl
 fn counter(event: Any) -> Any {
     let count = event["state"]["count"] ?? 0;
 
@@ -278,6 +278,8 @@ fn counter(event: Any) -> Any {
     return { "state": { "count": count } };
 }
 ```
+
+Live View is early: server-pushed re-renders work, but diffing is line-based (not DOM-aware) and the directive set is a subset of Phoenix's.
 
 ## Testing
 

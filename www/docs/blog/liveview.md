@@ -4,9 +4,9 @@ For years the industry has oscillated between two painful extremes.
 
 On one end: full-page reloads or HTMx-style partial updates feel simple but leave you with stale data the moment anything interesting happens in the background. On the other end: you reach for React, a WebSocket library, client-side state management, and three new packages just to show "three people are currently viewing this ticket."
 
-Soli LiveView sits in the pragmatic middle. You keep your state on the server (where it already lives), you write ordinary Soli code, and the framework ships only the minimal DOM diff over a WebSocket. The client is ~2 KB. There is no client-side framework, no build step, and no second mental model to maintain.
+Soli LiveView sits in the pragmatic middle. You keep your state on the server (where it already lives), you write ordinary Soli code, and the framework ships a patch for the changed region over a WebSocket (a pragmatic line-based diff — not DOM-aware tree diffing). The client is ~5 KB gzipped. There is no client-side framework, no build step, and no second mental model to maintain.
 
-If you've used Phoenix LiveView, this will feel familiar. If you haven't, the mental model is surprisingly simple: a LiveView component is just a function that receives events and returns new state. The framework handles everything else.
+If you've used Phoenix LiveView, the mental model will feel familiar — though Soli's directive set is a smaller subset and its diffing is simpler. If you haven't, the idea is surprisingly simple: a LiveView component is just a function that receives events and returns new state. The framework handles everything else.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
   <img src="/images/blog/liveview-activity.jpg" width="1024" height="576" alt="Live team presence and activity feed widget built with Soli LiveView: color-coded avatars showing currently online teammates on the left, a real-time scrolling activity log in the center, and quick action buttons that trigger server-side state changes with instant DOM updates — all with zero client-side JavaScript." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
@@ -18,10 +18,10 @@ If you've used Phoenix LiveView, this will feel familiar. If you haven't, the me
 A LiveView component consists of three small pieces:
 
 1. **A route registration** — `router_live("component_name", "controller#action")`
-2. **A template** (`.sliv` file) — regular ERB-style HTML with `@state_variables` and a handful of `soli-*` directives
+2. **A template** (`.html.slv` file) — regular ERB HTML where each state key is a plain variable, plus a handful of `soli-*` directives
 3. **A handler function** — receives `{ "event", "params", "state" }` and returns the next state (or `{ "state": ..., "tick_interval": ms }` to enable server-pushed updates)
 
-When the browser connects, Soli renders the initial HTML and sends it down. Every subsequent user action (`click`, `submit`, `input`, etc.) is sent over the socket as a tiny JSON event. Your handler runs, produces new state, the template is re-rendered, and only the changed regions are patched in the DOM.
+When the browser connects, Soli renders the initial HTML and sends it down. Every subsequent user action (`click`, `submit`, `input`, etc.) is sent over the socket as a tiny JSON event. Your handler runs, produces new state, the template is re-rendered, and the changed region — found with a line-based diff — is swapped into the page.
 
 No virtual DOM on the client. No diffing library you have to think about. Just state transitions in Soli.
 
@@ -46,9 +46,9 @@ In `config/routes.sl`:
 router_live("project_activity", "dashboard#project_activity");
 ```
 
-The first argument is the **component name** (used in the `data-live-view` attribute and the WebSocket path). It is not a URL path.
+The first argument is the **component name** (used in the WebSocket path `/live/socket/<component>` and as the template filename). It is not a URL path.
 
-### Step 2: The Template (`app/views/live/project_activity.sliv`)
+### Step 2: The Template (`app/views/live/project_activity.html.slv`)
 
 ```html
 <div class="live-activity-widget border border-white/10 bg-slate-950/60 rounded-2xl overflow-hidden flex flex-col h-[520px] shadow-2xl shadow-black/40">
@@ -58,17 +58,17 @@ The first argument is the **component name** (used in the `data-live-view` attri
       <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
       <span class="text-sm font-semibold text-white tracking-tight">Team Activity</span>
     </div>
-    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-gray-400">@presence.length online</span>
+    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-gray-400"><%= presence.length %> online</span>
   </div>
 
   <!-- Presence row -->
   <div class="px-4 py-3 border-b border-white/10 bg-black/20">
     <div class="flex -space-x-2">
-      <% for person in @presence %>
-        <div class="w-7 h-7 rounded-full ring-2 ring-slate-950 overflow-hidden border border-white/10" title="@person["name"]">
+      <% for person in presence %>
+        <div class="w-7 h-7 rounded-full ring-2 ring-slate-950 overflow-hidden border border-white/10" title="<%= person["name"] %>">
           <div class="w-full h-full flex items-center justify-center text-[10px] font-semibold text-white"
-               style="background: @person["color"]">
-            @person["initials"]
+               style="background: <%= person["color"] %>">
+            <%= person["initials"] %>
           </div>
         </div>
       <% end %>
@@ -77,21 +77,21 @@ The first argument is the **component name** (used in the `data-live-view` attri
 
   <!-- Activity feed -->
   <div class="flex-1 overflow-auto p-3 space-y-px text-sm font-light custom-scrollbar" id="activity-feed">
-    <% if @activities.length == 0 %>
+    <% if activities.length == 0 %>
       <div class="text-gray-500 text-center py-8 text-xs">Waiting for activity…</div>
     <% else %>
-      <% for act in @activities %>
+      <% for act in activities %>
         <div class="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.015] transition-colors">
           <div class="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 mt-2" style="background: <%= act["color"] %>"></div>
           <div class="min-w-0 flex-1 text-gray-300">
-            <span class="font-medium text-gray-200">@act["actor"]</span>
-            <span class="text-gray-400"> @act["action"]</span>
+            <span class="font-medium text-gray-200"><%= act["actor"] %></span>
+            <span class="text-gray-400"> <%= act["action"] %></span>
             <% if act["target"] %>
-              <span class="text-indigo-300"> @act["target"]</span>
+              <span class="text-indigo-300"> <%= act["target"] %></span>
             <% end %>
           </div>
           <div class="flex-shrink-0 text-[10px] font-mono text-gray-500 pt-0.5">
-            @act["time"]
+            <%= act["time"] %>
           </div>
         </div>
       <% end %>
@@ -134,7 +134,7 @@ The first argument is the **component name** (used in the `data-live-view` attri
 A few things worth noting:
 
 - We use normal ERB control flow (`<% for ... %>`, `<% if %>`).
-- State variables are accessed with `@name` (the LiveView convention).
+- Each state key is available as a plain ERB variable (`presence`, `activities`) — no special syntax.
 - All interactivity is declared with `soli-click` + `soli-value-*` attributes. No `onclick`, no inline JavaScript.
 - The feed scrolls naturally because it's a real overflow container.
 
@@ -278,7 +278,7 @@ You already have HTMx in the stack. When should you reach for each?
 | One-off form that updates a small region | Excellent — zero persistent connection | Overkill |
 | Complex multi-step workflow with lots of conditional UI | Possible but gets messy              | Natural fit |
 | Need data to change even when the user is idle (dashboards, monitoring) | Requires polling or external trigger | Built-in `tick_interval` |
-| You want zero JavaScript in the entire app | Ideal                                | Still excellent (the 2 KB client is invisible) |
+| You want zero JavaScript in the entire app | Ideal                                | Still excellent (the ~5 KB client is invisible) |
 | Many concurrent users on the same view | Fine                                 | Slightly heavier (one WebSocket per viewer) |
 
 Most real applications end up using **both**. HTMx for the 80% of interactions that are simple "click → server renders a partial." LiveView for the 20% that truly benefit from long-lived server state and background pushes.
@@ -288,7 +288,9 @@ Most real applications end up using **both**. HTMx for the 80% of interactions t
 A few things worth knowing before you put this in front of customers:
 
 - **Authentication** — The LiveView connection goes through your normal middleware stack. You can (and should) protect the route the same way you protect any other controller action.
-- **Reconnection** — The client automatically reconnects with exponential backoff. On reconnect it sends a fresh `connect` event so you can re-seed state.
+- **Diffing is line-based** — The server compares the old and new render line-by-line and ships one patch for the changed region (small components just get a full re-render). It is not DOM-aware, so client-side widget state held inside a live region does not survive a patch.
+- **The directive set is a subset of Phoenix's** — click, submit, change, keydown/keyup, focus/blur, `soli-value-*`, `soli-target`. No debounce/throttle, window bindings, JS commands, uploads, streams, or nested components yet.
+- **Reconnection** — The client automatically reconnects with exponential backoff. On reconnect it sends a fresh `connect` event so you can re-seed state — but the component restarts from initial state; in-flight state is not restored.
 - **Rate limiting** — Because every action is an explicit event, adding per-user or per-connection rate limits inside the handler is trivial.
 - **Horizontal scaling** — The current implementation is per-process. For multi-instance deployments you will want a small pub/sub layer (SolidB's pub/sub or the `es` event broker both work beautifully here).
 - **Testing** — You can test the handler function in isolation exactly like any other function. The template rendering is deterministic.
@@ -306,8 +308,8 @@ If none of those are true for a particular screen, use HTMx or a plain form post
 
 ## Try It
 
-Drop the three pieces (route + `.sliv` template + handler) into a fresh Soli project, start the server with `--dev`, and open two browser tabs. Perform actions in one and watch the other update in real time.
+Drop the three pieces (route + template + handler) into a fresh Soli project, start the server with `--dev`, and open two browser tabs. Perform actions in one and watch the other update in real time.
 
-The image at the top of this post is a direct rendering of the exact widget you just built. Replace the simulated remote activity with real events coming from background jobs, webhooks, or other LiveView connections. The pattern scales from "demo that feels alive" all the way to production collaboration surfaces.
+The image at the top of this post is a direct rendering of the exact widget you just built. Replace the simulated remote activity with real events coming from background jobs, webhooks, or other LiveView connections. The pattern scales from "demo that feels alive" to real product surfaces — with the production notes above in mind.
 
 The web doesn't have to be a thick client. Sometimes the simplest thing that could possibly work is also the most delightful.

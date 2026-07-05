@@ -497,6 +497,10 @@ soli db:migrate status                # show migration state
 soli test                             # run all tests in tests/
 soli test --coverage --coverage-min 90.0
 soli lint                             # static analysis
+
+soli routes                           # print the expanded route table
+soli routes -g posts                  # only routes matching "posts"
+soli routes --json                    # machine-readable (for scripts/agents)
 ```
 
 ## Conventions to follow

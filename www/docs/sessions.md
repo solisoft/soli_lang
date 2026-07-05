@@ -159,10 +159,63 @@ post("/users", "users#create", ["auth", "role:admin"]);
 
 ## Storage
 
-Sessions are stored in-memory by default. This means:
-- Sessions survive server restarts (data is in memory)
-- Sessions are shared across all server threads
-- For production, consider persistent storage (Redis, database)
+Sessions are stored in-memory by default: fast, but lost on restart and not
+shared between hosts. For production, pick a driver via `SOLI_SESSION_DRIVER`
+(or `session_configure`):
+
+| Driver | Description | Requires |
+|--------|-------------|----------|
+| `in_memory` | Default. Fast, lost on restart. | — |
+| `cookie` | Encrypted client-side sessions — the whole payload travels in the cookie. Survives restarts, works across hosts, zero infrastructure. | `SOLI_SESSION_SECRET` |
+| `disk` | JSON files on disk. | `SOLI_SESSION_PATH` |
+| `solidb` | SolidB HTTP database. | `SOLI_SOLIDB_*` |
+| `solikv` | SoliKV/Redis with TTL. | `SOLI_SOLIKV_*` |
+
+### Encrypted cookie sessions
+
+The `cookie` driver stores the session on the client, Rails-style: the whole
+payload is sealed with AES-256-GCM and shipped in the session cookie. Nothing
+is persisted server-side, so sessions survive restarts and work across
+load-balanced hosts with no session database.
+
+```bash
+export SOLI_SESSION_DRIVER=cookie
+export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ characters, keep stable
+```
+
+Or at runtime:
+
+```soli
+session_configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})
+```
+
+How it works:
+
+- The cookie value is `v1.<base64url(...)>` — an encrypted, authenticated
+  blob. The AES key is derived (HKDF-SHA256) from `SOLI_SESSION_SECRET`.
+- Clients can neither read nor forge session contents. A tampered, expired,
+  or foreign-key blob is silently replaced by a fresh empty session, exactly
+  like an unknown session ID on the server-side drivers.
+- `session_id()` still returns a stable internal UUID (carried inside the
+  payload), not the blob.
+- The cookie is only re-emitted when the session actually changed, so
+  read-only requests stay cacheable.
+
+Trade-offs to be aware of:
+
+- **~4KB ceiling.** Browsers cap cookies at 4096 bytes. An oversized session
+  refuses to seal — the write is dropped with a loud log line and the
+  client keeps its previous cookie. Store identifiers (`user_id`), not
+  records.
+- **No server-side revocation.** `session_destroy` overwrites the client's
+  copy, but a stolen cookie stays valid until its TTL passes. Rotating
+  `SOLI_SESSION_SECRET` is the kill switch — it invalidates every
+  outstanding session at once.
+- **TTL counts from the last write.** Expiry uses a timestamp sealed inside
+  the payload, refreshed each time the session is written.
+
+If you need instant logout-everywhere or sessions bigger than a cookie,
+use a server-side driver (`solidb`, `solikv`, `disk`) instead.
 
 ## Readiness and zero-downtime deploys
 
@@ -174,7 +227,7 @@ a built-in readiness endpoint:
 
 | Endpoint | Behavior |
 |----------|----------|
-| `GET /up` | Returns `503 warming` until the session store's connection has been warmed, then `200 ready`. For in-memory/disk drivers it is ready immediately. |
+| `GET /up` | Returns `503 warming` until the session store's connection has been warmed, then `200 ready`. For in-memory/disk/cookie drivers it is ready immediately. |
 
 The warm-up retries with backoff until the session store is reachable, so a
 session DB that is briefly unavailable at boot does not leave the process

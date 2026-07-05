@@ -282,7 +282,10 @@ fn write_session_fields(
     for (key, value) in fields {
         store.set(&session_id, &key, value);
     }
-    set_cookie_inner("session_id".to_string(), session_id);
+    // Cookie driver: the cookie must carry the sealed payload, not the
+    // internal session ID (which the next request could never open).
+    let cookie_value = store.outgoing_cookie_value().unwrap_or(session_id);
+    set_cookie_inner("session_id".to_string(), cookie_value);
     Ok(())
 }
 

@@ -110,6 +110,7 @@
     --color-stone-300: oklch(86.9% 0.005 56.366);
     --color-stone-400: oklch(70.9% 0.01 56.259);
     --color-stone-500: oklch(55.3% 0.013 58.071);
+    --color-stone-600: oklch(44.4% 0.011 73.639);
     --color-stone-700: oklch(37.4% 0.01 67.558);
     --color-stone-800: oklch(26.8% 0.007 34.298);
     --color-stone-950: oklch(14.7% 0.004 49.25);
@@ -439,6 +440,9 @@
   }
   .z-\[100\] {
     z-index: 100;
+  }
+  .col-span-2 {
+    grid-column: span 2 / span 2;
   }
   .container {
     width: 100%;
@@ -1453,6 +1457,9 @@
   .max-w-\[80\%\] {
     max-width: 80%;
   }
+  .max-w-\[240px\] {
+    max-width: 240px;
+  }
   .max-w-\[calc\(100vw-3rem\)\] {
     max-width: calc(100vw - 3rem);
   }
@@ -1599,6 +1606,9 @@
   }
   .gap-2 {
     gap: calc(var(--spacing) * 2);
+  }
+  .gap-2\.5 {
+    gap: calc(var(--spacing) * 2.5);
   }
   .gap-3 {
     gap: calc(var(--spacing) * 3);
@@ -2439,6 +2449,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-stone-800) 60%, transparent);
     }
+  }
+  .bg-teal-500 {
+    background-color: var(--color-teal-500);
   }
   .bg-teal-500\/5 {
     background-color: color-mix(in srgb, oklch(70.4% 0.14 182.503) 5%, transparent);
@@ -3309,6 +3322,9 @@
   .text-\[\#4ADE80\] {
     color: #4ADE80;
   }
+  .text-\[\#E8552A\] {
+    color: #E8552A;
+  }
   .text-amber-100 {
     color: var(--color-amber-100);
   }
@@ -3566,6 +3582,9 @@
   }
   .text-stone-500 {
     color: var(--color-stone-500);
+  }
+  .text-stone-600 {
+    color: var(--color-stone-600);
   }
   .text-stone-950 {
     color: var(--color-stone-950);
@@ -4853,6 +4872,11 @@
   .sm\:gap-16 {
     @media (width >= 40rem) {
       gap: calc(var(--spacing) * 16);
+    }
+  }
+  .sm\:p-6 {
+    @media (width >= 40rem) {
+      padding: calc(var(--spacing) * 6);
     }
   }
   .sm\:p-8 {

@@ -15,7 +15,8 @@
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 
     <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
-    <script src="/js/live.js"></script>
+    <!-- live.js is not loaded here: pages with live roots lazy-load it on demand -->
+
     <style>
         body { font-family: 'Inter', sans-serif; }
         code, pre { font-family: 'JetBrains Mono', monospace; }

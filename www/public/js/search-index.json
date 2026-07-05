@@ -24,6 +24,25 @@
       ]
     },
     {
+      "title": "content_for / Named Yield",
+      "type": "guide",
+      "category": "Views",
+      "path": "/docs/core-concepts/views",
+      "signature": "<% content_for \"name\" do %> ... <% end %> / <%= yield \"name\" %>",
+      "description": "Capture named content blocks in a view or partial and splice them into the layout with a named yield; content_for?(\"name\") gates conditional layout sections.",
+      "keywords": [
+        "content_for",
+        "yield",
+        "named yield",
+        "provide",
+        "layout",
+        "named content",
+        "head scripts",
+        "sidebar",
+        "capture"
+      ]
+    },
+    {
       "title": "print",
       "type": "function",
       "category": "Core",
@@ -9536,6 +9555,51 @@
       ]
     },
     {
+      "title": "session_configure",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_configure(options)",
+      "description": "Configure session storage at runtime (driver, secret, path, solidb_*, solikv_*)",
+      "keywords": [
+        "session",
+        "configure",
+        "driver",
+        "storage",
+        "backend"
+      ]
+    },
+    {
+      "title": "session_driver",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_driver()",
+      "description": "Get the current session storage driver name",
+      "keywords": [
+        "session",
+        "driver",
+        "storage"
+      ]
+    },
+    {
+      "title": "Encrypted cookie sessions",
+      "type": "guide",
+      "category": "Session",
+      "path": "/docs/security/sessions",
+      "signature": "SOLI_SESSION_DRIVER=cookie",
+      "description": "Client-side sessions sealed with AES-256-GCM — survive restarts, work across hosts, no session database",
+      "keywords": [
+        "session",
+        "cookie",
+        "encrypted",
+        "driver",
+        "client-side",
+        "SOLI_SESSION_SECRET",
+        "stateless"
+      ]
+    },
+    {
       "title": "cookies",
       "type": "variable",
       "category": "Controllers",
@@ -11519,6 +11583,114 @@
       ]
     },
     {
+      "title": "edge",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#graph-models",
+      "signature": "edge from: \"users\", to: \"users\"",
+      "description": "Declare an edge model over a SolidB edge collection (auto-created with hash indexes on _from/_to); endpoints accept instances, \"collection/key\" ids, or bare keys.",
+      "keywords": [
+        "edge",
+        "graph",
+        "edge collection",
+        "_from",
+        "_to",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "traverse",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#traverse",
+      "signature": "record.traverse(EdgeModel, direction?, depth?)",
+      "description": "Graph traversal from a saved record over an edge model — returns a chainable QueryBuilder over the reachable vertices (direction out/in/any, depth n or [min, max]).",
+      "keywords": [
+        "traverse",
+        "traversal",
+        "graph",
+        "outbound",
+        "inbound",
+        "depth",
+        "neighbors",
+        "edge",
+        "orm"
+      ]
+    },
+    {
+      "title": "shortest_path",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#shortest-path",
+      "signature": "record.shortest_path(other, via: EdgeModel, direction?)",
+      "description": "Shortest path between two records through an edge model — executes immediately, returns the vertices along the path ([] when unconnected).",
+      "keywords": [
+        "shortest_path",
+        "shortest path",
+        "graph",
+        "path",
+        "edge",
+        "traversal",
+        "orm"
+      ]
+    },
+    {
+      "title": "timeseries",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#timeseries-models",
+      "signature": "timeseries retention: \"30d\", timestamp: \"recorded_at\"",
+      "description": "Declare an insert-only timeseries model (UUIDv7 keys, SolidB timeseries collection) with time_bucket aggregation and prune retention.",
+      "keywords": [
+        "timeseries",
+        "time series",
+        "metrics",
+        "telemetry",
+        "insert-only",
+        "retention",
+        "uuidv7",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "time_bucket",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#time-bucket",
+      "signature": "Model.time_bucket(interval, { \"avg\": \"field\", ... })",
+      "description": "Bucketed aggregation for timeseries models: group rows into fixed intervals (s/m/h/d) with sum/avg/min/max/count per bucket; chain .all.",
+      "keywords": [
+        "time_bucket",
+        "bucket",
+        "timeseries",
+        "aggregate",
+        "downsample",
+        "interval",
+        "avg",
+        "orm"
+      ]
+    },
+    {
+      "title": "prune",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#timeseries-models",
+      "signature": "Model.prune(cutoff?)",
+      "description": "Delete timeseries rows older than a duration (\"30d\") or RFC3339 cutoff; without an argument uses the declared retention. Returns the number deleted.",
+      "keywords": [
+        "prune",
+        "retention",
+        "timeseries",
+        "cleanup",
+        "delete old",
+        "ttl",
+        "orm"
+      ]
+    },
+    {
       "title": "Mailer",
       "type": "page",
       "category": "Mailer",
@@ -11616,6 +11788,25 @@
         "clear_deliveries",
         "test mode",
         "email testing"
+      ]
+    },
+    {
+      "title": "soli routes",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/routing#listing-routes",
+      "signature": "soli routes [folder] [-g PATTERN] [--json]",
+      "description": "Print the app's expanded route table — every route config/routes.sl and engines register, with named helpers and middleware — without starting the server.",
+      "keywords": [
+        "soli routes",
+        "routes",
+        "route table",
+        "route list",
+        "rails routes",
+        "list routes",
+        "named routes",
+        "route lister",
+        "cli"
       ]
     },
     {
@@ -12494,6 +12685,417 @@
         "deploy",
         "aes-256-gcm",
         "dev/shm"
+      ]
+    },
+    {
+      "title": "aggregate",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.group_by(fields).aggregate({ \"alias\": [\"sum\", \"field\"] })",
+      "description": "Multi-aggregate spec per group (or one row ungrouped): sum/avg/min/max/count/count_distinct/median/stddev/variance; alias: [func, field] or alias: [\"count\"].",
+      "keywords": [
+        "aggregate",
+        "aggregation",
+        "group",
+        "sum",
+        "avg",
+        "count",
+        "collect",
+        "analytics",
+        "orm"
+      ]
+    },
+    {
+      "title": "having",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#having",
+      "signature": "qb.having(\"total > @min\", { \"min\": 1000 })",
+      "description": "Post-COLLECT filter over bare group fields / aggregate aliases. Developer-trusted string like string-form where — never build it from user input.",
+      "keywords": [
+        "having",
+        "group filter",
+        "aggregate filter",
+        "collect",
+        "analytics",
+        "orm"
+      ]
+    },
+    {
+      "title": "group_by (array form)",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.group_by([\"country\", \"plan\"])",
+      "description": "Group on one or more fields; combine with aggregate(spec), or alone for an implicit count per group (n). Legacy 3-arg group_by(field, func, agg_field) is unchanged.",
+      "keywords": [
+        "group_by",
+        "group by",
+        "grouping",
+        "multi-field",
+        "count per group",
+        "analytics",
+        "orm"
+      ]
+    },
+    {
+      "title": "median",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.median(field).first",
+      "description": "Median aggregation terminal — like sum/avg, chain .first. p50 only: SolidB has no PERCENTILE function.",
+      "keywords": [
+        "median",
+        "p50",
+        "percentile",
+        "statistics",
+        "aggregate",
+        "orm"
+      ]
+    },
+    {
+      "title": "stddev",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.stddev(field).first",
+      "description": "Standard-deviation aggregation terminal — chain .first.",
+      "keywords": [
+        "stddev",
+        "standard deviation",
+        "statistics",
+        "aggregate",
+        "orm"
+      ]
+    },
+    {
+      "title": "variance",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.variance(field).first",
+      "description": "Variance aggregation terminal — chain .first.",
+      "keywords": [
+        "variance",
+        "statistics",
+        "aggregate",
+        "orm"
+      ]
+    },
+    {
+      "title": "count_distinct",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#rich-aggregation",
+      "signature": "Model.count_distinct(field).first",
+      "description": "Count of distinct values of a field — aggregation terminal, chain .first; also available as an aggregate() func and a columnar aggregate op.",
+      "keywords": [
+        "count_distinct",
+        "distinct",
+        "unique count",
+        "aggregate",
+        "orm"
+      ]
+    },
+    {
+      "title": "columnar",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "columnar compression: \"lz4\"",
+      "description": "Declare a columnar-store model — a separate column-oriented engine (own HTTP API, no document CRUD, no SDBQL FOR). Compression lz4 (default) or none.",
+      "keywords": [
+        "columnar",
+        "column store",
+        "analytics",
+        "olap",
+        "compression",
+        "lz4",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "column",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "column \"country\", \"string\", indexed: true",
+      "description": "Declare a typed column on a columnar model (int/float/string/bool/timestamp/json families; nullable:, indexed:).",
+      "keywords": [
+        "column",
+        "columnar",
+        "typed column",
+        "schema",
+        "nullable",
+        "indexed",
+        "orm"
+      ]
+    },
+    {
+      "title": "insert_rows",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "Model.insert_rows([{ ... }, ...])",
+      "description": "Batch append rows to a columnar store; returns { \"inserted\": n, \"ids\": [...] }. Auto-creates the store in dev.",
+      "keywords": [
+        "insert_rows",
+        "columnar",
+        "append",
+        "batch insert",
+        "ingest",
+        "orm"
+      ]
+    },
+    {
+      "title": "query (columnar)",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "Model.query({ \"columns\": [...], \"filter\": {...}, \"limit\": n })",
+      "description": "Fetch rows from a columnar store: column projection, at most one filter (eq/ne/gt/gte/lt/lte/in), limit — no sort.",
+      "keywords": [
+        "query",
+        "columnar",
+        "filter",
+        "projection",
+        "scan",
+        "orm"
+      ]
+    },
+    {
+      "title": "add_column_index",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "Model.add_column_index(field, kind?)",
+      "description": "Create a column index on a columnar store: sorted (default), hash, bitmap, minmax, or bloom.",
+      "keywords": [
+        "add_column_index",
+        "columnar",
+        "index",
+        "bitmap",
+        "bloom",
+        "minmax",
+        "orm"
+      ]
+    },
+    {
+      "title": "column_indexes",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "Model.column_indexes",
+      "description": "List the column indexes of a columnar store; drop_column_index(field) removes one.",
+      "keywords": [
+        "column_indexes",
+        "drop_column_index",
+        "columnar",
+        "index",
+        "orm"
+      ]
+    },
+    {
+      "title": "columnar_stats",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/analytics#columnar-models",
+      "signature": "Model.columnar_stats",
+      "description": "Store-level statistics for a columnar model.",
+      "keywords": [
+        "columnar_stats",
+        "columnar",
+        "statistics",
+        "stats",
+        "orm"
+      ]
+    },
+    {
+      "title": "vector_index",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#index-dsl",
+      "signature": "vector_index \"embedding\", dimension: 1536, metric: \"cosine\"",
+      "description": "Declare an HNSW vector index on an embedding field — similar() then pushes down to ANN search. Optional m:, ef_construction:, quantization:, name:.",
+      "keywords": [
+        "vector_index",
+        "vector",
+        "hnsw",
+        "ann",
+        "embedding",
+        "index",
+        "similarity",
+        "orm"
+      ]
+    },
+    {
+      "title": "fulltext_index",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#index-dsl",
+      "signature": "fulltext_index \"title\", \"body\"",
+      "description": "Declare a fulltext index over one or more fields; powers Model.search with ranking, fuzzy matching, and highlighting.",
+      "keywords": [
+        "fulltext_index",
+        "fulltext",
+        "full text",
+        "search index",
+        "text search",
+        "orm"
+      ]
+    },
+    {
+      "title": "geo_index",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#index-dsl",
+      "signature": "geo_index \"location\"",
+      "description": "Declare a geospatial index on a { lat, lon } field; powers near / within queries.",
+      "keywords": [
+        "geo_index",
+        "geo",
+        "geospatial",
+        "lat",
+        "lon",
+        "location",
+        "index",
+        "orm"
+      ]
+    },
+    {
+      "title": "index",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#index-dsl",
+      "signature": "index \"email\", unique: true",
+      "description": "Declare a secondary index in the model body (field or array; unique:, type: persistent default / hash / fulltext / bloom / cuckoo, name:). Synced at dev boot or via soli db:indexes.",
+      "keywords": [
+        "index",
+        "secondary index",
+        "unique",
+        "persistent",
+        "hash",
+        "declaration",
+        "orm"
+      ]
+    },
+    {
+      "title": "search",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#fulltext-search",
+      "signature": "Model.search(query, { \"field\": ..., \"distance\": n, \"limit\": n, \"highlight\": true })",
+      "description": "Fulltext search over a declared fulltext_index — eager, ranked results with _search_score; distance for fuzzy, highlight adds _highlighted.",
+      "keywords": [
+        "search",
+        "fulltext",
+        "full text",
+        "fuzzy",
+        "highlight",
+        "rank",
+        "orm"
+      ]
+    },
+    {
+      "title": "near",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#geo-search",
+      "signature": "Model.near(lat, lon, { \"limit\": n })",
+      "description": "Geo search sorted by distance (requires geo_index); each result carries _distance in meters. Eager — no chaining.",
+      "keywords": [
+        "near",
+        "geo",
+        "distance",
+        "nearby",
+        "location",
+        "orm"
+      ]
+    },
+    {
+      "title": "within",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#geo-search",
+      "signature": "Model.within(lat, lon, radius_meters)",
+      "description": "Geo search returning everything inside a radius in meters (requires geo_index). Eager — no chaining.",
+      "keywords": [
+        "within",
+        "geo",
+        "radius",
+        "geofence",
+        "location",
+        "orm"
+      ]
+    },
+    {
+      "title": "soli db:indexes",
+      "type": "guide",
+      "category": "Database",
+      "path": "/docs/database/search#index-sync",
+      "signature": "soli db:indexes [folder]",
+      "description": "CLI reconciler: create any missing indexes declared with the model index DSL (index / vector_index / fulltext_index / geo_index). Dev creates them at boot; migrations remain the recommended production DDL path.",
+      "keywords": [
+        "db:indexes",
+        "indexes",
+        "sync",
+        "reconcile",
+        "cli",
+        "vector_index",
+        "fulltext_index",
+        "geo_index"
+      ]
+    },
+    {
+      "title": "_search_score",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#fulltext-search",
+      "signature": "results[0]._search_score",
+      "description": "Relevance score attached to each Model.search fulltext result.",
+      "keywords": [
+        "_search_score",
+        "score",
+        "relevance",
+        "fulltext",
+        "search",
+        "orm"
+      ]
+    },
+    {
+      "title": "_distance",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#geo-search",
+      "signature": "nearby[0]._distance",
+      "description": "Distance in meters attached to each Model.near geo result.",
+      "keywords": [
+        "_distance",
+        "distance",
+        "meters",
+        "geo",
+        "near",
+        "orm"
+      ]
+    },
+    {
+      "title": "_similarity_score",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#vector-search",
+      "signature": "results[0]._similarity_score",
+      "description": "Similarity score attached to each .similar() vector-search result (ANN via a declared vector_index, or the client-side cosine path).",
+      "keywords": [
+        "_similarity_score",
+        "score",
+        "similarity",
+        "vector",
+        "similar",
+        "embedding",
+        "orm"
       ]
     }
   ]

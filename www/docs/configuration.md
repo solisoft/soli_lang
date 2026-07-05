@@ -164,7 +164,8 @@ These knobs control how the request edge handles untrusted input. See the
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_SESSION_DRIVER` | Session backend: `in_memory`, `disk`, `solidb`, or `solikv`. | `in_memory` |
+| `SOLI_SESSION_DRIVER` | Session backend: `in_memory`, `cookie`, `disk`, `solidb`, or `solikv`. | `in_memory` |
+| `SOLI_SESSION_SECRET` | Secret for the `cookie` session driver (32+ characters — e.g. `openssl rand -hex 32`). The AES-256-GCM key that seals client-side sessions is HKDF-derived from it; rotating it invalidates every outstanding session. Required when the driver is `cookie`. | unset |
 | `SOLI_SESSION_PATH` | Directory for disk-backed session files. | `./sessions` |
 | `SOLI_SESSION_TTL` | Session timeout in seconds. | `86400` |
 | `SOLI_SESSION_SAMESITE` | `SameSite` attribute on the session cookie: `Lax`, `Strict`, or `None`. `Strict` blocks the cookie on any cross-site navigation; `None` is intended for cross-site embeds and **automatically pairs with `Secure`** — Soli forces the flag on regardless of the detected request scheme so browsers don't silently drop the cookie. Unknown values fall back to `Lax`. | `Lax` |

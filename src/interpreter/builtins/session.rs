@@ -27,6 +27,8 @@ pub enum SessionDriver {
     Disk,
     Solidb,
     Solikv,
+    /// Encrypted client-side cookie store (no server-side storage).
+    Cookie,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -66,6 +68,7 @@ impl std::fmt::Display for SessionDriver {
             SessionDriver::Disk => write!(f, "disk"),
             SessionDriver::Solidb => write!(f, "solidb"),
             SessionDriver::Solikv => write!(f, "solikv"),
+            SessionDriver::Cookie => write!(f, "cookie"),
         }
     }
 }
@@ -78,6 +81,7 @@ impl std::str::FromStr for SessionDriver {
             "disk" | "file" => Ok(SessionDriver::Disk),
             "solidb" | "soliddb" | "db" => Ok(SessionDriver::Solidb),
             "solikv" | "kv" | "redis" => Ok(SessionDriver::Solikv),
+            "cookie" | "encrypted_cookie" => Ok(SessionDriver::Cookie),
             _ => Err(format!("Unknown session driver: {}", s)),
         }
     }
@@ -102,6 +106,14 @@ pub trait SessionStore: Send + Sync {
     /// MUST never write or mutate any session state.
     fn warm_ping(&self) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Cookie-driver only: the sealed outgoing cookie value when the session
+    /// changed during this request (or the incoming blob was replaced), else
+    /// None. ID-based stores never emit a payload-bearing cookie, so the
+    /// default is None.
+    fn outgoing_cookie_value(&self) -> Option<String> {
+        None
     }
 }
 
@@ -308,6 +320,10 @@ pub struct SessionConfig {
     pub solikv_host: Option<String>,
     pub solikv_port: Option<u16>,
     pub solikv_token: Option<String>,
+    /// Operator secret for the encrypted `cookie` driver (min 32 chars).
+    /// Reads `SOLI_SESSION_SECRET`. The AES key is HKDF-derived from it, so
+    /// rotating the secret invalidates every outstanding session cookie.
+    pub secret: Option<String>,
     pub ttl: u64,
     pub same_site: SameSite,
     pub host_prefix: bool,
@@ -345,6 +361,9 @@ impl Default for SessionConfig {
         let solikv_token = std::env::var("SOLI_SOLIKV_TOKEN")
             .ok()
             .filter(|t| !t.is_empty());
+        let secret = std::env::var("SOLI_SESSION_SECRET")
+            .ok()
+            .filter(|t| !t.is_empty());
         let ttl = std::env::var("SOLI_SESSION_TTL")
             .ok()
             .and_then(|t| t.parse().ok())
@@ -370,6 +389,7 @@ impl Default for SessionConfig {
             solikv_host,
             solikv_port,
             solikv_token,
+            secret,
             ttl,
             same_site,
             host_prefix,
@@ -481,6 +501,21 @@ impl SessionConfig {
                 .with_ttl(self.ttl);
                 Ok(Arc::new(store))
             }
+            SessionDriver::Cookie => {
+                let secret = self
+                    .secret
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        "cookie session driver requires a secret: set SOLI_SESSION_SECRET \
+                     (32+ random characters) or pass {\"secret\": ...} to session_configure"
+                            .to_string()
+                    })?;
+                let store = crate::interpreter::builtins::session_cookie::CookieSessionStore::new(
+                    secret, self.ttl,
+                )?;
+                Ok(Arc::new(store))
+            }
         }
     }
 }
@@ -532,7 +567,14 @@ lazy_static! {
     // in-memory store if the configured backend errors at boot.
     static ref CURRENT_STORE: RwLock<Arc<dyn SessionStore>> = {
         let cfg = SessionConfig::default();
-        let store = cfg.create_store().unwrap_or_else(|_| {
+        let store = cfg.create_store().unwrap_or_else(|e| {
+            // Loud, not silent: a misconfigured driver (missing secret, bad
+            // SoliDB host) downgrading to in-memory is exactly the kind of
+            // surprise an operator needs to see in the logs.
+            eprintln!(
+                "[session] falling back to in_memory driver: {} (requested driver: {})",
+                e, cfg.driver
+            );
             Arc::new(InMemorySessionStore::new().with_max_age(Duration::from_secs(cfg.ttl)))
         });
         RwLock::new(store)
@@ -873,6 +915,19 @@ pub fn session_id_from_cookie_pairs(cookies: &HashPairs) -> Option<String> {
 /// implementor.
 pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
     let store = get_current_store();
+    // The cookie driver's "session ID" is the sealed payload itself, which is
+    // never UUID-shaped — it gets its own plausibility guard (length cap +
+    // base64url alphabet) with the same SEC-053 goals.
+    if store.driver_name() == "cookie" {
+        return match cookie_session_id {
+            Some(v)
+                if crate::interpreter::builtins::session_cookie::is_plausible_sealed_value(v) =>
+            {
+                store.get_or_create(v)
+            }
+            _ => store.create_session(),
+        };
+    }
     match cookie_session_id {
         Some(id) if is_valid_session_id(id) => store.get_or_create(id),
         _ => store.create_session(),
@@ -958,6 +1013,29 @@ pub fn session_cookie_if_changed(
         Some(sid) if Some(sid) != cookie => Some(create_session_cookie(sid, secure)),
         _ => None,
     }
+}
+
+/// Driver-aware Set-Cookie decision for the end of a request.
+///
+/// ID-based drivers emit a cookie only when the session ID changed (lazy
+/// creation, expired/invalid replacement, `session_regenerate`) — the
+/// existing `session_cookie_if_changed` rule. The cookie driver instead
+/// carries the whole payload in the cookie, so it emits whenever the session
+/// was written to (or the incoming blob had to be replaced); comparing IDs
+/// would be meaningless there because the resolved ID (an internal UUID)
+/// never equals the sealed cookie value.
+pub fn finalize_session_cookie(
+    current: Option<&str>,
+    cookie: Option<&str>,
+    secure: bool,
+) -> Option<String> {
+    let store = get_current_store();
+    if store.driver_name() == "cookie" {
+        return store
+            .outgoing_cookie_value()
+            .map(|sealed| create_session_cookie(&sealed, secure));
+    }
+    session_cookie_if_changed(current, cookie, secure)
 }
 
 /// Convert a Soli Value to JSON for storage.
@@ -1203,6 +1281,11 @@ pub fn register_session_builtins(env: &mut Environment) {
                             config.solikv_token = Some(s.clone().to_string());
                         }
                     }
+                    "secret" => {
+                        if let Value::String(s) = v {
+                            config.secret = Some(s.clone().to_string());
+                        }
+                    }
                     "ttl" => {
                         if let Value::Int(i) = v {
                             config.ttl = *i as u64;
@@ -1398,6 +1481,7 @@ mod tests {
     /// can emit Set-Cookie.
     #[test]
     fn session_set_lazily_creates_session_when_no_cookie() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         let cookie_session_id: Option<String> = None;
         set_current_session_id(cookie_session_id.clone());
@@ -1427,6 +1511,7 @@ mod tests {
     /// the new ID, or the browser keeps using the deleted cookie.
     #[test]
     fn session_regenerate_migrates_data_and_emits_new_cookie() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
 
         // Prime a session as if an earlier request had created one.
@@ -1475,6 +1560,7 @@ mod tests {
     /// should still produce a usable, cookie-emitted session.
     #[test]
     fn session_regenerate_creates_session_when_none_active() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         set_current_session_id(None);
 
@@ -1490,6 +1576,7 @@ mod tests {
     /// be readable on request #2 when the client echoes the cookie.
     #[test]
     fn session_persists_across_requests_via_cookie() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
 
         // --- Request 1: no cookie, handler writes user_id.
@@ -1532,6 +1619,7 @@ mod tests {
     /// refresh the client's cookie.
     #[test]
     fn unknown_cookie_id_triggers_replacement_and_set_cookie() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let _env = fresh_env();
         let stale = "00000000-0000-0000-0000-000000000000".to_string();
         let cookie_session_id = Some(stale.clone());
@@ -1549,6 +1637,12 @@ mod tests {
     /// Serialize tests that mutate the process-global SESSION_CONFIG /
     /// CURRENT_STORE. Cargo runs tests in a module in parallel by default,
     /// and these globals are read by every other test in this module.
+    /// Taken BOTH by the tests that mutate the globals AND by the lifecycle
+    /// tests above that depend on `get_current_store()` returning the same
+    /// store for their whole duration — without the latter,
+    /// `configure_session_swaps_store_at_runtime` racing a lifecycle test
+    /// makes its session data vanish mid-test (observed as a flaky
+    /// "data must move from old ID to new ID" failure).
     static GLOBAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// SEC-038: SOLI_SESSION_TTL must drive Set-Cookie's Max-Age and the
@@ -1699,6 +1793,64 @@ mod tests {
         configure_session(prev_cfg).expect("restore previous config");
     }
 
+    /// End-to-end flow for the encrypted cookie driver, driving the same
+    /// builtins + finalize path a real request uses: a write on request 1
+    /// emits a sealed Set-Cookie; echoing that value on request 2 restores
+    /// the session with no server-side state and no cookie re-emission.
+    #[test]
+    fn cookie_driver_round_trips_session_through_sealed_cookie() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let env = fresh_env();
+        let prev_cfg = SESSION_CONFIG.read().unwrap().clone();
+        let mut cfg = prev_cfg.clone();
+        cfg.driver = SessionDriver::Cookie;
+        cfg.secret = Some("0123456789abcdef0123456789abcdef".to_string());
+        configure_session(cfg).expect("cookie store must build from a valid secret");
+
+        // --- Request 1: no cookie, handler writes user_id.
+        crate::interpreter::builtins::session_cookie::clear_request_state();
+        set_current_session_id(None);
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("user_id".into()), Value::Int(42)],
+        )
+        .unwrap();
+        let set_cookie = finalize_session_cookie(get_current_session_id().as_deref(), None, false)
+            .expect("a session write must emit a sealed Set-Cookie");
+        let sealed = set_cookie
+            .strip_prefix("session_id=")
+            .and_then(|rest| rest.split(';').next())
+            .expect("session_id cookie in Set-Cookie header")
+            .to_string();
+        assert!(
+            sealed.starts_with("v1."),
+            "cookie must carry the sealed payload, got: {sealed}"
+        );
+        // The thread-local session ID is the internal UUID, never the blob.
+        let internal_id = get_current_session_id().expect("session created lazily");
+        assert!(is_valid_session_id(&internal_id));
+        assert_ne!(internal_id, sealed);
+
+        // --- Request 2: client echoes the sealed cookie back.
+        crate::interpreter::builtins::session_cookie::clear_request_state();
+        let resolved = ensure_session(Some(&sealed));
+        assert_eq!(
+            resolved, internal_id,
+            "opening the sealed cookie must restore the same session identity"
+        );
+        set_current_session_id(Some(resolved.clone()));
+        let got = call_fn(&env, "session_get", vec![Value::String("user_id".into())]).unwrap();
+        match got {
+            Value::Int(n) => assert_eq!(n, 42),
+            other => panic!("expected stored user_id, got {other:?}"),
+        }
+        // Read-only request: nothing changed, so no Set-Cookie re-emission.
+        assert!(finalize_session_cookie(Some(&resolved), Some(&sealed), false).is_none());
+
+        configure_session(prev_cfg).expect("restore previous config");
+    }
+
     #[test]
     fn session_cookie_if_changed_respects_matches_and_absence() {
         assert!(session_cookie_if_changed(None, None, false).is_none());
@@ -1746,6 +1898,7 @@ mod tests {
         // SEC-053: an invalid cookie value must not flow into the
         // backend — ensure_session should treat it as no cookie and
         // mint a fresh ID.
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         set_current_session_id(None);
         let resolved = ensure_session(Some("../etc/passwd\r\n"));
         assert!(
@@ -1800,6 +1953,7 @@ mod tests {
 
     #[test]
     fn session_driver_returns_current_driver() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         let result = call_fn(&env, "session_driver", vec![]).unwrap();
         match result {
@@ -1810,6 +1964,7 @@ mod tests {
 
     #[test]
     fn session_config_returns_hash() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         let result = call_fn(&env, "session_config", vec![]).unwrap();
         match result {
@@ -1820,6 +1975,7 @@ mod tests {
 
     #[test]
     fn session_has_returns_true_for_existing_key() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         set_current_session_id(None);
 
@@ -1850,6 +2006,7 @@ mod tests {
 
     #[test]
     fn session_delete_returns_previous_value() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
         set_current_session_id(None);
 

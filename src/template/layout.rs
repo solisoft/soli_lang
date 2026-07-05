@@ -119,6 +119,7 @@ fn render_layout_inner(
             TemplateNode::CodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreOutput { line, .. } => Some(*line),
+            TemplateNode::ContentFor { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -229,8 +230,32 @@ fn render_layout_inner(
                         }
                     }
                 }
-                TemplateNode::Yield => {
+                TemplateNode::Yield(None) => {
                     output.push_str(content);
+                }
+                TemplateNode::Yield(Some(name)) => {
+                    // Splice raw, exactly like the main content above: the
+                    // captured fragment is already-rendered template output
+                    // (interpolations were escaped at capture time). A name
+                    // nothing captured renders as empty, not an error.
+                    if let Some(html) = crate::template::content_store::get(name) {
+                        output.push_str(&html);
+                    }
+                }
+                TemplateNode::ContentFor { name, body, .. } => {
+                    // A layout can capture too (before a later yield in the
+                    // same layout). Same capture-to-store semantics as views.
+                    let mut captured = String::with_capacity(256);
+                    render_layout_inner(
+                        interpreter,
+                        body,
+                        content,
+                        data,
+                        partial_renderer,
+                        layout_path,
+                        &mut captured,
+                    )?;
+                    crate::template::content_store::append(name, &captured);
                 }
                 TemplateNode::Partial {
                     name,
@@ -430,5 +455,52 @@ mod tests {
 
         let result = render_with_layout(layout, content, &data, None).unwrap();
         assert_eq!(result, "<nav>Nav</nav>Content");
+    }
+
+    #[test]
+    fn test_named_yield_renders_captured_content() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+        content_store::append("head", "<script src=\"/a.js\"></script>");
+
+        let layout = "<head><%= yield \"head\" %></head><body><%= yield %></body>";
+        let result = render_with_layout(layout, "<h1>Hi</h1>", &make_hash(vec![]), None).unwrap();
+        assert_eq!(
+            result,
+            "<head><script src=\"/a.js\"></script></head><body><h1>Hi</h1></body>"
+        );
+    }
+
+    #[test]
+    fn test_named_yield_missing_renders_empty() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        let layout = "<head><%= yield \"head\" %></head><%= yield %>";
+        let result = render_with_layout(layout, "Body", &make_hash(vec![]), None).unwrap();
+        assert_eq!(result, "<head></head>Body");
+    }
+
+    #[test]
+    fn test_named_yield_no_double_escape() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+        // Captured fragments are already-rendered HTML — the escaped `<%= %>`
+        // form must still splice them verbatim, like the main content.
+        content_store::append("head", "<meta content=\"a&b\">");
+
+        let layout = "<%= yield \"head\" %>|<%- yield \"head\" %>";
+        let result = render_with_layout(layout, "", &make_hash(vec![]), None).unwrap();
+        assert_eq!(result, "<meta content=\"a&b\">|<meta content=\"a&b\">");
+    }
+
+    #[test]
+    fn test_layout_side_capture_before_yield() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        let layout = "<% content_for \"foot\" do %><footer></footer><% end %><%= yield \"foot\" %>";
+        let result = render_with_layout(layout, "", &make_hash(vec![]), None).unwrap();
+        assert_eq!(result, "<footer></footer>");
     }
 }

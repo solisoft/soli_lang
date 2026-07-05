@@ -24,6 +24,10 @@ pub fn run() {
         } => commands::run_generate_mailer(name, actions, folder),
         Command::DbMigrate { action, folder } => commands::run_db_migrate(action, folder),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
+        Command::DbIndexes { folder } => commands::run_db_indexes(folder),
+        Command::Routes { folder, grep, json } => {
+            commands::run_routes(folder, grep.as_deref(), *json)
+        }
         Command::Serve {
             folder,
             port,

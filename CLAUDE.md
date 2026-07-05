@@ -378,7 +378,7 @@ session_delete("user_id");        // Remove a key from session
 session_destroy();                // Destroy entire session
 session_regenerate();            // Create new session ID (security after login)
 session_id();                    // Get current session ID
-session_driver();                // Returns current driver: "in_memory", "disk", "solidb", "solikv"
+session_driver();                // Returns current driver: "in_memory", "cookie", "disk", "solidb", "solikv"
 session_config();                // Returns configuration hash
 session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 ```
@@ -388,6 +388,7 @@ session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 | Driver | Description | Configuration |
 |--------|-------------|---------------|
 | `in_memory` | Default. Fast but lost on restart | None |
+| `cookie` | Encrypted client-side sessions (AES-256-GCM, whole payload in the cookie). Survives restarts, multi-host, no infra; ~4KB limit, no server-side revocation | `secret`: 32+ chars (or `SOLI_SESSION_SECRET`) |
 | `disk` | File-based JSON storage | `path`: directory (default: `./sessions`) |
 | `solidb` | SolidB HTTP database | `solidb_host`, `solidb_database`, `solidb_collection` |
 | `solikv` | SoliKV/Redis with TTL | `solikv_host`, `solikv_port`, `solikv_token` |
@@ -397,6 +398,7 @@ session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SOLI_SESSION_DRIVER` | Storage backend | `in_memory` |
+| `SOLI_SESSION_SECRET` | Secret for the `cookie` driver (32+ chars); rotating it invalidates all sessions | unset |
 | `SOLI_SESSION_PATH` | Path for disk storage | `./sessions` |
 | `SOLI_SOLIDB_HOST` | SolidB server | `localhost:8080` |
 | `SOLI_SOLIDB_DATABASE` | SolidB database | `solidb` |

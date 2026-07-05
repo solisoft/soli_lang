@@ -18,6 +18,7 @@ pub mod nav;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
+pub mod route_listing;
 pub mod route_log;
 mod router;
 mod server_constants;
@@ -253,9 +254,9 @@ static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    clear_response_cookies, create_session_cookie, ensure_session, get_current_session_id,
-    parse_cookie_pairs, session_cookie_if_changed, session_id_from_cookie_pairs,
-    set_current_session_id, take_response_cookies,
+    clear_response_cookies, ensure_session, finalize_session_cookie, get_current_session_id,
+    parse_cookie_pairs, session_id_from_cookie_pairs, set_current_session_id,
+    take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs};
@@ -562,6 +563,19 @@ pub fn serve_folder_with_options_and_workers(
         load_models(&mut interpreter, &models_dir)?;
     }
     boot_trace("models loaded");
+
+    // Dev convenience: ensure class-body index declarations (`index`,
+    // `vector_index`, `fulltext_index`, `geo_index`) exist in the DB.
+    // Production deploys run `soli db:indexes` (or migrations) instead.
+    if dev_mode {
+        static INDEX_SYNC_ONCE: std::sync::Once = std::sync::Once::new();
+        INDEX_SYNC_ONCE.call_once(|| {
+            for line in crate::interpreter::builtins::model::index_sync::sync_declared_indexes() {
+                println!("  [indexes] {}", line);
+            }
+        });
+        boot_trace("declared indexes synced");
+    }
 
     // Load services (integration helpers — Stripe, etc.) right after models
     // so controllers can reference them. Same loader as models since the
@@ -5869,6 +5883,12 @@ fn handle_request(
     // header used to be scanned twice per request).
     let cookie_pairs = parse_cookie_pairs(header_str(&data.headers, "cookie"));
 
+    // Drop any cookie-driver session state a previous request left on this
+    // worker thread. Must happen before `ensure_session` installs this
+    // request's state — a no-cookie request would otherwise silently inherit
+    // (and re-emit) the previous visitor's session.
+    crate::interpreter::builtins::session_cookie::clear_request_state();
+
     // Resolve the session ID from the parsed cookies (if any). When no cookie
     // is sent, we leave the thread-local unset — session_set / session_regenerate
     // will create one lazily on first use, and finalize_response emits
@@ -5884,8 +5904,6 @@ fn handle_request(
         set_current_session_id(None);
         None
     };
-    let is_new_session = session_id.as_ref() != cookie_session_id.as_ref();
-
     // Clear response cookies from any previous request on this thread.
     clear_response_cookies();
     // Reset the static-page response cacheability flags so this request
@@ -5932,32 +5950,25 @@ fn handle_request(
             // covering the TLS-without-trust_proxy / TLS-without-XFP-header case.
             let cookie_secure = is_https
                 || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
+            // Driver-aware: ID drivers re-emit only when the resolved ID
+            // differs from the cookie's; the cookie driver re-emits when the
+            // incoming blob was invalid/expired and got replaced. Uses the
+            // explicit locals because the thread-local session ID was cleared
+            // above.
+            let mut headers = vec![(
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            )];
+            if let Some(cookie_value) = finalize_session_cookie(
+                session_id.as_deref(),
+                cookie_session_id.as_deref(),
+                cookie_secure,
+            ) {
+                headers.push(("Set-Cookie".to_string(), cookie_value));
+            }
             return ResponseData {
                 status: 404,
-                headers: if is_new_session {
-                    if let Some(ref sid) = session_id {
-                        vec![
-                            (
-                                "Set-Cookie".to_string(),
-                                create_session_cookie(sid, cookie_secure),
-                            ),
-                            (
-                                "Content-Type".to_string(),
-                                "text/html; charset=utf-8".to_string(),
-                            ),
-                        ]
-                    } else {
-                        vec![(
-                            "Content-Type".to_string(),
-                            "text/html; charset=utf-8".to_string(),
-                        )]
-                    }
-                } else {
-                    vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )]
-                },
+                headers,
                 body: error_html.into_bytes(),
             };
         }
@@ -6132,7 +6143,7 @@ fn handle_request(
         // requests (e.g. from a background timer) errors clearly instead of
         // building a URL with a stale host.
         crate::interpreter::builtins::named_routes::clear_current_request_host();
-        if let Some(cookie_value) = session_cookie_if_changed(
+        if let Some(cookie_value) = finalize_session_cookie(
             get_current_session_id().as_deref(),
             cookie_session_id.as_deref(),
             cookie_secure,

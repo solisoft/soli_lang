@@ -1,24 +1,24 @@
 # Live View
 
-Live View renders components on the server and pushes DOM diffs over a WebSocket. Build interactive UIs without writing JavaScript: state lives on the server, events flow over the wire, and the client applies minimal patches.
+Live View renders components on the server and pushes updates over a WebSocket. Build interactive UIs without writing JavaScript: state lives on the server, events flow over the wire, and the client patches the changed region into the page (a pragmatic line-based diff — see [Current limitations](#current-limitations)).
 
 ## How It Works
 
 1. The browser opens a WebSocket to `/live/socket/<component>`.
 2. The server renders the initial HTML and sends it down.
 3. User interactions (click, submit, change, …) post events back over the socket.
-4. The server invokes your handler, computes new state, re-renders, and ships only the diff.
+4. The server invokes your handler, computes new state, re-renders, and ships a patch for the changed region.
 
 ## Creating a Live View Component
 
 ### Step 1 — Template
 
-Create a `.sliv` file in `app/views/live/`. Use `@variable` to interpolate reactive state.
+Create a template in `app/views/live/` (`.html.slv`; `.slv`, `.sliv`, and `.html.erb` also resolve). State is interpolated with standard ERB tags.
 
 ```html
-<!-- app/views/live/counter.sliv -->
+<!-- app/views/live/counter.html.slv -->
 <div class="counter-component">
-  <h2>Count: @count</h2>
+  <h2>Count: <%= count %></h2>
 
   <button soli-click="decrement">-</button>
   <button soli-click="increment">+</button>
@@ -34,7 +34,7 @@ Register the component with `router_live(component_name, controller#action)`:
 router_live("counter", "live#counter");
 ```
 
-The first argument is the **component name** (used as the `data-live-view` ID and the segment in `/live/socket/<component>`), not a URL path.
+The first argument is the **component name** (the segment in `/live/socket/<component>` and the template filename), not a URL path.
 
 ### Step 3 — Controller
 
@@ -70,41 +70,47 @@ fn counter(event_data: Any) -> Any {
 | `soli-blur` | Element loses focus |
 | `soli-value-*` | Binds input value into state |
 | `soli-target` | Specifies target component for updates |
-| `soli-debounce` | Debounces event by N ms |
 
 ## Template Variables
 
-State is accessed in templates via `@variable`:
+State keys are available in the template as plain ERB variables:
 
 ```html
 <!-- Simple variable -->
-<span>Hello, @username</span>
+<span>Hello, <%= username %></span>
 
 <!-- Conditional rendering -->
-<% if @logged_in %>
+<% if logged_in %>
   <a href="/logout">Sign Out</a>
 <% else %>
   <a href="/login">Sign In</a>
 <% end %>
 
 <!-- Iteration -->
-<% for item in @items %>
+<% for item in items %>
   <li><%= item["name"] %></li>
 <% end %>
 ```
 
 ## Client Setup
 
+Include the client only on pages that mount a live component — it is ~5 KB gzipped (~21 KB raw) and auto-connects every `[data-liveview-url]` element on `DOMContentLoaded`:
+
 ```html
-<!-- Include the Live View client (~2KB gzipped) -->
+<!-- Include the Live View client (~5 KB gzipped) -->
 <script src="/js/live.js"></script>
 
-<!-- Mount a Live View component -->
-<div id="counter" data-live-view="counter"></div>
+<!-- Mount a Live View component (auto-connects on page load) -->
+<div data-live-root data-liveview-url="/live/socket/counter"></div>
+```
+
+To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire `DOMContentLoaded`), add `data-liveview-manual` to skip auto-connect and call `live()` by hand:
+
+```html
+<div data-live-root data-liveview-manual data-liveview-url="/live/socket/counter"></div>
 
 <script>
-  // Initialize Live View
-  SoliLive.connect();
+  window.live("wss://example.com/live/socket/counter", { rootElement: document.querySelector("[data-live-root]") });
 </script>
 ```
 
@@ -174,6 +180,15 @@ If you return the bare form on a tick, the timer keeps running at its previous i
 | `16ms` (60/s) | Animations — use sparingly |
 
 If a tick fires while the previous handler call is still running, the tick is dropped (rather than queued) so a slow handler doesn't snowball. Ticks stop automatically when the WebSocket closes.
+
+## Current limitations
+
+Live View is early. Server-pushed re-renders work well; the edges are still v1-pragmatic:
+
+- **Diffing is line-based, not DOM-aware.** The server compares the old and new render line-by-line and ships one "replace" patch for the changed region; small components simply get a full re-render. There is no tree diffing or keyed reconciliation, so client-side widget state held *inside* a live region (focus, Alpine state, …) does not survive a patch.
+- **The directive set is a subset of Phoenix's.** Click, submit, change, keydown/keyup, focus/blur, `soli-value-*`, and `soli-target` — there is no debounce/throttle, no window-level bindings, no JS commands, no uploads, streams, or nested live components.
+- **Reconnects re-mount.** If the socket drops, the client reconnects with backoff, but the component restarts from its initial state — in-flight state is not restored.
+- **Per-process.** Instances live in server memory; multi-instance deployments need their own pub/sub layer to coordinate.
 
 ## Why Live View?
 

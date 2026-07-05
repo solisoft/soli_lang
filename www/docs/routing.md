@@ -206,6 +206,44 @@ post("/api/orders", "api#orders_create");
 
 The pattern is matched against the request path; `/prefix/*` covers `/prefix` and anything under `/prefix/`. To disable the check globally (API-only deployments where no cookie sessions exist), set `SOLI_DISABLE_CSRF=true` in the environment.
 
+## Listing Routes (`soli routes`)
+
+Print the app's full expanded route table from the command line — every route
+`config/routes.sl` (and mounted engines) registers, including each individual
+route a `resources(...)` call generates:
+
+```bash
+soli routes                 # app in the current directory
+soli routes path/to/app     # explicit app folder
+soli routes -g posts        # filter: case-insensitive match on method/path/handler/helper
+soli routes --json          # machine-readable JSON array (tooling, agents)
+```
+
+Sample output:
+
+```
+  METHOD  PATH             HANDLER        HELPER          MIDDLEWARE
+  GET     /                home#index     root_path
+  GET     /posts           posts#index    posts_path
+  POST    /posts           posts#create                   auth
+  GET     /posts/:id       posts#show     post_path
+  GET     /posts/:id/edit  posts#edit     edit_post_path
+  WS      /ws/chat         chat#handle
+
+  6 routes (1 websocket)
+```
+
+- **Rows print in registration order** — the same order the server matches
+  requests against, so the table reads top-to-bottom as match precedence.
+- **HELPER** is the generated named-route helper (`post_path` also implies
+  `post_url`); blank rows have no name.
+- **MIDDLEWARE** lists the middleware applied by route args or a
+  `middleware("...", fn() ... end)` scope.
+- WebSocket routes appear with the `WS` method.
+
+The `--json` form emits `[{"method", "path", "handler", "name", "middleware"}]`
+objects, one per route — stable input for scripts and coding agents.
+
 ## Best Practices
 
 1. Use RESTful conventions for CRUD operations

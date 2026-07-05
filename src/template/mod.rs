@@ -5,8 +5,10 @@
 //! - `<%- expr %>` - Raw/unescaped output (no HTML escaping)
 //! - `<% if/for/end %>` - Control flow
 //! - `<%= yield %>` - Layout content insertion point
+//! - `<% content_for "name" do %>...<% end %>` / `<%= yield "name" %>` - Named content blocks
 //! - `<%= render 'partial' %>` - Partial rendering
 
+pub mod content_store;
 pub mod core_eval;
 pub mod helpers;
 pub mod layout;
@@ -140,6 +142,11 @@ impl TemplateCache {
         // `flash`, and the scaffolded layout references them directly.
         let _guard = crate::interpreter::executor::enter_template_lenient_vars();
 
+        // content_for store for this render: the view captures named blocks,
+        // the layout reads them back. Dropped at the end of the render so
+        // captures never leak into the next request on this worker thread.
+        let _content_frame = content_store::ensure_frame();
+
         // Per-template span for the dev-bar flamegraph + flat per-template
         // duration log. Both early-out when --dev is off.
         let mut _span = crate::serve::span_log::SpanGuard::start(
@@ -250,6 +257,11 @@ impl TemplateCache {
 
         // Timing for production Prometheus metrics (Phase A), gated on SOLI_METRICS.
         let render_start = crate::metrics::metrics_enabled().then(Instant::now);
+
+        // Join the surrounding render's content_for store so captures inside
+        // the partial reach the layout. A standalone partial render (no view
+        // in progress) owns a throwaway frame instead — captures are dropped.
+        let _content_frame = content_store::ensure_frame();
 
         // Partials start with underscore
         let partial_name = if name.contains('/') {
@@ -1293,6 +1305,107 @@ mod tests {
         // Production HTML must stay clean.
         assert!(!out.contains("solidev:"));
         assert_eq!(out, "<h1>Hi</h1>");
+    }
+
+    #[test]
+    fn content_for_flows_from_view_to_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("layouts")).unwrap();
+        fs::write(
+            views.join("layouts").join("application.html.slv"),
+            "<head><%= yield \"head\" %></head><body><%= yield %></body>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("page.html.slv"),
+            "<% content_for \"head\" do %><script src=\"/chart.js\"></script><% end %><h1>Page</h1>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("page", &Value::Null, None).unwrap();
+        assert_eq!(
+            out,
+            "<head><script src=\"/chart.js\"></script></head><body><h1>Page</h1></body>"
+        );
+    }
+
+    #[test]
+    fn content_for_in_partial_registers_in_same_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("layouts")).unwrap();
+        fs::create_dir_all(views.join("snippets")).unwrap();
+        fs::write(
+            views.join("layouts").join("application.html.slv"),
+            "<head><%= yield \"head\" %></head><%= yield %>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("snippets").join("_head_extra.html.slv"),
+            "<% content_for \"head\" do %><meta name=\"from-partial\"><% end %>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("page.html.slv"),
+            "<%= render 'snippets/head_extra' %>Body",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("page", &Value::Null, None).unwrap();
+        assert_eq!(out, "<head><meta name=\"from-partial\"></head>Body");
+    }
+
+    #[test]
+    fn content_for_does_not_leak_between_renders() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("layouts")).unwrap();
+        fs::write(
+            views.join("layouts").join("application.html.slv"),
+            "[<%= yield \"head\" %>]<%= yield %>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("first.html.slv"),
+            "<% content_for \"head\" do %>CAPTURED<% end %>First",
+        )
+        .unwrap();
+        fs::write(views.join("second.html.slv"), "Second").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let first = cache.render("first", &Value::Null, None).unwrap();
+        assert_eq!(first, "[CAPTURED]First");
+        // The frame guard must have cleared the store: the second render on
+        // this same thread starts with an empty slot.
+        let second = cache.render("second", &Value::Null, None).unwrap();
+        assert_eq!(second, "[]Second");
+    }
+
+    #[test]
+    fn content_for_predicate_in_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("layouts")).unwrap();
+        fs::write(
+            views.join("layouts").join("application.html.slv"),
+            "<% if content_for?(\"head\") %><extra><%= yield \"head\" %></extra><% end %><%= yield %>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("with.html.slv"),
+            "<% content_for \"head\" do %>X<% end %>Body",
+        )
+        .unwrap();
+        fs::write(views.join("without.html.slv"), "Body").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let with = cache.render("with", &Value::Null, None).unwrap();
+        assert_eq!(with, "<extra>X</extra>Body");
+        let without = cache.render("without", &Value::Null, None).unwrap();
+        assert_eq!(without, "Body");
     }
 
     /// Helper to register a fake mounted engine for template resolution tests.

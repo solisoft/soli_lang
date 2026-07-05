@@ -1774,6 +1774,88 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
     }
 }
 
+/// `soli db:indexes [folder]` — load the app's models (so the class-body
+/// index DSL registers), then create any missing declared indexes. The
+/// production counterpart of the dev-boot auto-sync; safe to run repeatedly.
+pub fn run_db_indexes(folder: &str) {
+    let app_path = Path::new(folder);
+
+    if !app_path.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    // Same bootstrap as db:seed: env + DB config, then the model files so
+    // every `index`/`vector_index`/`fulltext_index`/`geo_index` declaration
+    // lands in the model registry.
+    solilang::serve::env_loader::load_env_files(app_path);
+    solilang::interpreter::builtins::model::init_db_config();
+
+    let models_dir = app_path.join("app").join("models");
+    if models_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&models_dir) {
+            let mut sorted: Vec<_> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|ext| ext == "sl"))
+                .collect();
+            sorted.sort();
+            for path in sorted {
+                let Ok(source) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                if let Err(e) = solilang::run_with_options(&source, false) {
+                    eprintln!(
+                        "  \x1b[33mWarning:\x1b[0m {} failed to load: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "  \x1b[33mWarning:\x1b[0m no app/models directory under '{}'",
+            folder
+        );
+    }
+
+    println!();
+    println!("  \x1b[1mSyncing declared indexes...\x1b[0m");
+    println!();
+    let report = solilang::interpreter::builtins::model::index_sync::sync_declared_indexes();
+    if report.is_empty() {
+        println!("  Nothing to do — no index declarations found (or all exist).");
+    } else {
+        for line in &report {
+            println!("  {}", line);
+        }
+    }
+    println!();
+}
+
+/// `soli routes [folder]` — print the app's expanded route table without
+/// starting the server. Routes load in the exact server-boot order
+/// (middleware → engine mounts → routes DSL → config/routes.sl → engine
+/// routes), so the listing and its row order match what production registers.
+pub fn run_routes(folder: &str, grep: Option<&str>, json: bool) {
+    use solilang::serve::route_listing;
+
+    let listing = match route_listing::collect_routes(Path::new(folder)) {
+        Ok(listing) => listing,
+        Err(e) => {
+            eprintln!("\x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    if json {
+        println!("{}", route_listing::format_json(&listing, grep));
+    } else {
+        print!("{}", route_listing::format_table(&listing, grep));
+    }
+}
+
 pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
     let app_path = Path::new(folder);
 

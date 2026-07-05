@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Live View</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Build reactive, real-time interfaces without writing JavaScript. Live View renders components on the server and efficiently updates the DOM over WebSockets.
+            Build reactive, real-time interfaces without writing JavaScript. Live View renders components on the server and pushes updates over WebSockets &mdash; the client patches the changed region into the page.
         </p>
     </div>
 
@@ -26,8 +26,7 @@
 
     <h2 class="text-2xl font-bold text-white mb-6">How It Works</h2>
     <p class="text-gray-400 mb-6">
-        Live View is a server-rendered component system that maintains state on the server. When users interact with the page, events are sent over WebSockets, the server updates the component state, re-renders the template, and sends back only the differences (diffs)
-to update the DOM.
+        Live View is a server-rendered component system that maintains state on the server. When users interact with the page, events are sent over WebSockets, the server updates the component state, re-renders the template, and sends back a patch for the changed region (a pragmatic line-based diff &mdash; see <a href="#current-limitations" class="text-amber-400 hover:text-amber-300">Current Limitations</a>).
     </p>
     <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
@@ -51,8 +50,8 @@ to update the DOM.
                 <div class="w-12 h-12 mx-auto mb-2 rounded-lg bg-orange-500/20 flex items-center justify-center">
                     <svg class="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
                 </div>
-                <div class="text-white font-medium">DOM Update</div>
-                <div class="text-gray-500">Apply Diff Patch</div>
+                <div class="text-white font-medium">Page Update</div>
+                <div class="text-gray-500">Patch Changed Region</div>
             </div>
         </div>
     </div>
@@ -60,13 +59,13 @@ to update the DOM.
     <h2 class="text-2xl font-bold text-white mb-6">Creating a Live View Component</h2>
 
     <h3 class="text-lg font-semibold text-white mb-4">Step 1: Create the Template</h3>
-    <p class="text-gray-400 mb-4">Create a <code>.sliv</code> file in <code>app/views/live/</code>. Use <code>@variable</code> syntax for reactive state.</p>
+    <p class="text-gray-400 mb-4">Create a template in <code>app/views/live/</code> (<code>.html.slv</code>; <code>.slv</code>, <code>.sliv</code>, and <code>.html.erb</code> also resolve). State is interpolated with standard ERB tags.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/counter.sliv</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/counter.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="counter-component"&gt;
-  &lt;h2&gt;Count: @count&lt;/h2&gt;
+  &lt;h2&gt;Count: &lt;%= count %&gt;&lt;/h2&gt;
 
   &lt;button soli-click="decrement"&gt;-&lt;/button&gt;
   &lt;button soli-click="increment"&gt;+&lt;/button&gt;
@@ -147,50 +146,54 @@ fn counter(event_data: Any) -> Any {
             <code class="text-orange-300 font-bold">soli-target</code>
             <p class="text-sm text-gray-400 mt-2">Specifies target component for updates. <code>&lt;div soli-target="results"&gt;</code></p>
         </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-orange-300 font-bold">soli-debounce</code>
-            <p class="text-sm text-gray-400 mt-2">Debounces event by ms. <code>&lt;input soli-keyup="search" soli-debounce="300"&gt;</code></p>
-        </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">State Management</h2>
-    <p class="text-gray-400 mb-6">State is stored on the server and accessed in templates using <code>@variable</code> syntax. The server maintains state between events.</p>
+    <p class="text-gray-400 mb-6">State is stored on the server, and each state key is available in the template as a plain ERB variable. The server maintains state between events.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Template Variables</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;!-- Simple variable --&gt;
-&lt;span&gt;Hello, @username&lt;/span&gt;
+&lt;span&gt;Hello, &lt;%= username %&gt;&lt;/span&gt;
 
 &lt;!-- Conditional rendering --&gt;
-&lt;% if @logged_in %&gt;
+&lt;% if logged_in %&gt;
   &lt;a href="/logout"&gt;Sign Out&lt;/a&gt;
 &lt;% else %&gt;
   &lt;a href="/login"&gt;Sign In&lt;/a&gt;
 &lt;% end %&gt;
 
 &lt;!-- Iteration --&gt;
-&lt;% for item in @items %&gt;
+&lt;% for item in items %&gt;
   &lt;li&gt;&lt;%= item["name"] %&gt;&lt;/li&gt;
 &lt;% end %&gt;</code></pre>
         </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Client Setup</h2>
-    <p class="text-gray-400 mb-6">Include the Live View client library and mount your component.</p>
+    <p class="text-gray-400 mb-6">Include the Live View client only on pages that mount a live component &mdash; it is ~5&nbsp;KB gzipped (~21&nbsp;KB raw) and auto-connects every <code>[data-liveview-url]</code> element on <code>DOMContentLoaded</code>.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~2KB gzipped) --&gt;
+<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~5 KB gzipped) --&gt;
 &lt;script src="/js/live.js"&gt;&lt;/script&gt;
 
-&lt;!-- Mount a Live View component --&gt;
-&lt;div id="counter" data-live-view="counter"&gt;&lt;/div&gt;
+&lt;!-- Mount a Live View component (auto-connects on page load) --&gt;
+&lt;div data-live-root data-liveview-url="/live/socket/counter"&gt;&lt;/div&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire <code>DOMContentLoaded</code>), add <code>data-liveview-manual</code> to skip auto-connect and call <code>live()</code> by hand:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-html text-sm">&lt;div data-live-root data-liveview-manual data-liveview-url="/live/socket/counter"&gt;&lt;/div&gt;
 
 &lt;script&gt;
-  // Initialize Live View
-  SoliLive.connect();
+  window.live("wss://example.com/live/socket/counter", { rootElement: document.querySelector("[data-live-root]") });
 &lt;/script&gt;</code></pre>
         </div>
     </div>
@@ -253,24 +256,24 @@ router_live("counter", "live#counter");</code></pre>
     </div>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/metrics.sliv</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/metrics.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="dashboard"&gt;
   &lt;div class="metric"&gt;
     &lt;span class="label"&gt;Server Time&lt;/span&gt;
-    &lt;span class="value"&gt;@time&lt;/span&gt;
+    &lt;span class="value"&gt;&lt;%= time %&gt;&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class="metric"&gt;
     &lt;span class="label"&gt;CPU&lt;/span&gt;
-    &lt;span class="value"&gt;@cpu%&lt;/span&gt;
+    &lt;span class="value"&gt;&lt;%= cpu %&gt;%&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class="metric"&gt;
     &lt;span class="label"&gt;Memory&lt;/span&gt;
-    &lt;span class="value"&gt;@memory MB&lt;/span&gt;
+    &lt;span class="value"&gt;&lt;%= memory %&gt; MB&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class="metric"&gt;
     &lt;span class="label"&gt;Requests/sec&lt;/span&gt;
-    &lt;span class="value"&gt;@requests&lt;/span&gt;
+    &lt;span class="value"&gt;&lt;%= requests %&gt;&lt;/span&gt;
   &lt;/div&gt;
 &lt;/div&gt;</code></pre>
         </div>
@@ -279,7 +282,7 @@ router_live("counter", "live#counter");</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Live Demo: Server Clock</h3>
     <p class="text-gray-400 mb-4">
         This is a tick-driven component running live against this site's <code>live#metrics</code> handler.
-        The client sends a <code>tick</code> event every 50ms; the server recomputes the time and pushes back a diff.
+        The server fires a <code>tick</code> event every 50ms, recomputes the time, and pushes back a patch.
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-4 border border-white/10">
         <div class="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/5">
@@ -354,7 +357,7 @@ router_live("counter", "live#counter");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Performance</h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-3xl font-bold text-white mb-1">~2KB</div>
+            <div class="text-3xl font-bold text-white mb-1">~5KB</div>
             <div class="text-sm text-amber-400 font-medium">Client Size (gzipped)</div>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
@@ -362,9 +365,20 @@ router_live("counter", "live#counter");</code></pre>
             <div class="text-sm text-orange-400 font-medium">Round-trip Latency</div>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-3xl font-bold text-white mb-1">Diff</div>
-            <div class="text-sm text-orange-400 font-medium">Minimal Updates</div>
+            <div class="text-3xl font-bold text-white mb-1">Line diff</div>
+            <div class="text-sm text-orange-400 font-medium">Updates</div>
         </div>
+    </div>
+
+    <h2 id="current-limitations" class="text-2xl font-bold text-white mb-6">Current Limitations</h2>
+    <p class="text-gray-400 mb-6">Live View is early. Server-pushed re-renders work well; the edges are still v1-pragmatic:</p>
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Diffing is line-based, not DOM-aware.</strong> The server compares the old and new render line-by-line and ships one "replace" patch for the changed region; small components simply get a full re-render. There is no tree diffing or keyed reconciliation, so client-side widget state held <em>inside</em> a live region (focus, Alpine state, &hellip;) does not survive a patch.</li>
+            <li><strong class="text-white">The directive set is a subset of Phoenix's.</strong> Click, submit, change, keydown/keyup, focus/blur, <code>soli-value-*</code>, and <code>soli-target</code> &mdash; there is no debounce/throttle, no window-level bindings, no JS commands, no uploads, streams, or nested live components.</li>
+            <li><strong class="text-white">Reconnects re-mount.</strong> If the socket drops, the client reconnects with backoff, but the component restarts from its initial state &mdash; in-flight state is not restored.</li>
+            <li><strong class="text-white">Per-process.</strong> Instances live in server memory; multi-instance deployments need their own pub/sub layer to coordinate.</li>
+        </ul>
     </div>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">

@@ -166,8 +166,17 @@ pub enum TemplateNode {
         body: Vec<TemplateNode>,
         line: usize,
     },
-    /// Layout content insertion point
-    Yield,
+    /// Layout content insertion point. `None` is the plain `<%= yield %>`
+    /// (the whole rendered view); `Some(name)` is `<%= yield "name" %>` /
+    /// `<%= content_for "name" %>`, spliced from the content_for store.
+    Yield(Option<String>),
+    /// Named content capture: `<% content_for "name" do %> ... <% end %>`.
+    /// The body renders into the content_for store instead of the output.
+    ContentFor {
+        name: String,
+        body: Vec<TemplateNode>,
+        line: usize,
+    },
     /// Render a partial template
     Partial {
         name: String,
@@ -329,13 +338,29 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
     for token in &tokens {
         let (snippet, line) = match token {
             Token::Literal(..) => continue,
-            Token::Code(code, line) => (code.trim(), *line),
+            Token::Code(code, line) => {
+                let code = code.trim();
+                if content_for_block_open(code).is_some() {
+                    // A capture-open tag isn't Soli, but its `end` is still
+                    // consumed by the core parser — synthesize `if true` so
+                    // the block stays balanced in the extracted source.
+                    ("if true", *line)
+                } else if is_content_for_code(code) {
+                    // Malformed capture (missing `do`); the template parser
+                    // reports the friendly error, nothing to lint here.
+                    continue;
+                } else {
+                    (code, *line)
+                }
+            }
             Token::OutputEscaped(expr, line)
             | Token::OutputRaw(expr, line)
             | Token::OutputUnescape(expr, line) => {
                 let expr = expr.trim();
-                // `yield` is a layout directive, not lintable Soli.
-                if expr == "yield" {
+                // `yield` / `yield "name"` / the `content_for "name"`
+                // read-form are layout directives, not lintable Soli.
+                // (`content_for?(...)` is a real call and stays lintable.)
+                if parse_yield_directive(expr, *line).is_some() {
                     continue;
                 }
                 (expr, *line)
@@ -382,6 +407,11 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     // Parse for loop
                     let (for_node, consumed) = parse_for_block(&tokens[i..], *line)?;
                     nodes.push(for_node);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    // Parse content_for capture block
+                    let (cf_node, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    nodes.push(cf_node);
                     i += consumed;
                 } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
@@ -473,6 +503,15 @@ fn parse_if_block(
                         body.push(nested_for);
                     }
                     i += consumed;
+                } else if is_content_for_code(code) {
+                    // Nested content_for
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    if in_else {
+                        else_body.as_mut().unwrap().push(nested_cf);
+                    } else {
+                        body.push(nested_cf);
+                    }
+                    i += consumed;
                 } else {
                     // Other code block - parse through core parser
                     let stmts = parse_core_code(code, *line)?;
@@ -547,6 +586,11 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     // Nested for
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     body.push(nested_for);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    // Nested content_for
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    body.push(nested_cf);
                     i += consumed;
                 } else {
                     // Other code block - parse through core parser
@@ -703,6 +747,162 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
     })
 }
 
+/// Strip a directive keyword (`yield` / `content_for`) from the start of an
+/// expression, requiring a word boundary: the next char must be a space or
+/// `(`. This keeps `content_for?("head")` (the predicate builtin) and
+/// identifiers like `yield_count` out of the directive path.
+fn strip_directive_keyword<'a>(expr: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = expr.strip_prefix(keyword)?;
+    match rest.chars().next() {
+        Some(c) if c == '(' || c.is_whitespace() => Some(rest),
+        _ => None,
+    }
+}
+
+/// Parse the name argument of a `yield` / `content_for` directive. Only a
+/// string literal is accepted — `"head"`, `'head'`, or the parenthesized
+/// forms — so the layout/store lookup key is known at parse time.
+fn parse_directive_name(args: &str, directive: &str, line: usize) -> Result<String, String> {
+    let mut args = args.trim();
+    if let Some(inner) = args.strip_prefix('(') {
+        if let Some(inner) = inner.strip_suffix(')') {
+            args = inner.trim();
+        }
+    }
+    let bad = || {
+        Err(format!(
+            "{} name must be a string literal (e.g. {} \"head\") at line {}",
+            directive, directive, line
+        ))
+    };
+    let mut chars = args.chars();
+    let quote = match chars.next() {
+        Some(q @ ('"' | '\'')) => q,
+        _ => return bad(),
+    };
+    let Some(name) = args
+        .strip_prefix(quote)
+        .and_then(|rest| rest.strip_suffix(quote))
+    else {
+        return bad();
+    };
+    if name.is_empty() || name.contains(quote) {
+        return bad();
+    }
+    Ok(name.to_string())
+}
+
+/// Recognize a `yield` / named-`yield` / `content_for`-read output directive.
+/// Returns `None` when the expression isn't a directive at all (falls through
+/// to the core parser), `Some(Err)` when it is one but the name is malformed.
+fn parse_yield_directive(expr: &str, line: usize) -> Option<Result<TemplateNode, String>> {
+    let expr = expr.trim();
+    if expr == "yield" {
+        return Some(Ok(TemplateNode::Yield(None)));
+    }
+    let (args, directive) = if let Some(rest) = strip_directive_keyword(expr, "yield") {
+        (rest, "yield")
+    } else if let Some(rest) = strip_directive_keyword(expr, "content_for") {
+        (rest, "content_for")
+    } else {
+        return None;
+    };
+    Some(parse_directive_name(args, directive, line).map(|name| TemplateNode::Yield(Some(name))))
+}
+
+/// Whether a code-tag starts a `content_for` statement (well-formed or not).
+/// Used by the block parsers to dispatch; `parse_content_for_block` reports
+/// the friendly error when the trailing `do` is missing.
+fn is_content_for_code(code: &str) -> bool {
+    strip_directive_keyword(code, "content_for").is_some()
+}
+
+/// Extract the name-args portion of a `content_for ... do` open tag,
+/// or `None` when the trailing `do` is missing.
+fn content_for_block_open(code: &str) -> Option<&str> {
+    let rest = strip_directive_keyword(code, "content_for")?;
+    let inner = rest.trim_end().strip_suffix("do")?;
+    // `do` must be its own word, not the tail of the name args.
+    if !inner.is_empty() && !inner.ends_with(char::is_whitespace) {
+        return None;
+    }
+    Some(inner.trim())
+}
+
+/// Parse a `<% content_for "name" do %> ... <% end %>` block starting at the
+/// given position. Returns the ContentFor node and the tokens consumed.
+/// Mirrors `parse_for_block`.
+fn parse_content_for_block(
+    tokens: &[Token],
+    cf_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    let name = match &tokens[0] {
+        Token::Code(code, _line) => match content_for_block_open(code.trim()) {
+            Some(args) => parse_directive_name(args, "content_for", cf_line)?,
+            None => {
+                return Err(format!(
+                    "content_for requires a block: <% content_for \"name\" do %> ... <% end %> at line {}",
+                    cf_line
+                ))
+            }
+        },
+        _ => {
+            return Err(format!(
+                "Expected 'content_for' statement at line {}",
+                cf_line
+            ))
+        }
+    };
+
+    let mut body = Vec::new();
+    let mut i = 1; // Skip the initial `content_for` token
+
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::Code(code, line) => {
+                let code = code.trim();
+
+                if code == "end" {
+                    return Ok((
+                        TemplateNode::ContentFor {
+                            name,
+                            body,
+                            line: cf_line,
+                        },
+                        i + 1,
+                    ));
+                } else if let Some(rest) = code.strip_prefix("if ") {
+                    let condition = parse_core_expr(rest.trim(), *line)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
+                    body.push(nested_if);
+                    i += consumed;
+                } else if code.starts_with("for ") {
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
+                    body.push(nested_for);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    body.push(nested_cf);
+                    i += consumed;
+                } else {
+                    let stmts = parse_core_code(code, *line)?;
+                    body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
+                    i += 1;
+                }
+            }
+            token => {
+                body.push(parse_output_token(token)?);
+                i += 1;
+            }
+        }
+    }
+
+    Err(format!(
+        "Unclosed content_for block at line {} - missing 'end'",
+        cf_line
+    ))
+}
+
 /// Convert a non-Code token (Literal, OutputEscaped, OutputRaw, OutputUnescape)
 /// into the corresponding TemplateNode. Used to avoid duplicating output handling
 /// across parse_tokens, parse_if_block, and parse_for_block.
@@ -710,8 +910,8 @@ fn parse_output_token(token: &Token) -> Result<TemplateNode, String> {
     match token {
         Token::Literal(s, _line) => Ok(TemplateNode::Literal(s.clone())),
         Token::OutputEscaped(expr, line) => {
-            if expr == "yield" {
-                Ok(TemplateNode::Yield)
+            if let Some(directive) = parse_yield_directive(expr, *line) {
+                directive
             } else if expr.starts_with("render ") && !expr.starts_with("render (") {
                 // Rails-style DSL form: `render "foo"` / `render "foo", ctx`.
                 // Paren-form `render(...)` is a regular function call —
@@ -728,8 +928,8 @@ fn parse_output_token(token: &Token) -> Result<TemplateNode, String> {
             }
         }
         Token::OutputRaw(expr, line) => {
-            if expr == "yield" {
-                Ok(TemplateNode::Yield)
+            if let Some(directive) = parse_yield_directive(expr, *line) {
+                directive
             } else {
                 let core_expr = parse_core_expr(expr, *line)?;
                 Ok(TemplateNode::CoreOutput {
@@ -1573,7 +1773,165 @@ mod tests {
     #[test]
     fn test_parse_yield() {
         let nodes = parse_template("<%= yield %>").unwrap();
-        assert_eq!(nodes, vec![TemplateNode::Yield]);
+        assert_eq!(nodes, vec![TemplateNode::Yield(None)]);
+    }
+
+    #[test]
+    fn test_parse_yield_named() {
+        for src in [
+            "<%= yield \"head\" %>",
+            "<%= yield 'head' %>",
+            "<%= yield(\"head\") %>",
+            "<%- yield \"head\" %>",
+        ] {
+            let nodes = parse_template(src).unwrap();
+            assert_eq!(
+                nodes,
+                vec![TemplateNode::Yield(Some("head".to_string()))],
+                "source: {}",
+                src
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_content_for_read_form() {
+        for src in [
+            "<%= content_for \"head\" %>",
+            "<%= content_for(\"head\") %>",
+        ] {
+            let nodes = parse_template(src).unwrap();
+            assert_eq!(
+                nodes,
+                vec![TemplateNode::Yield(Some("head".to_string()))],
+                "source: {}",
+                src
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_yield_non_literal_name_rejected() {
+        let err = parse_template("<%= yield section %>").unwrap_err();
+        assert!(
+            err.contains("string literal") && err.contains("line 1"),
+            "expected string-literal diagnostic, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_content_for_block() {
+        let nodes =
+            parse_template("<% content_for \"head\" do %><script></script><% end %>").unwrap();
+        assert_eq!(
+            nodes,
+            vec![TemplateNode::ContentFor {
+                name: "head".to_string(),
+                body: vec![TemplateNode::Literal("<script></script>".to_string())],
+                line: 1,
+            }]
+        );
+        // Paren form parses too.
+        let nodes = parse_template("<% content_for(\"head\") do %>x<% end %>").unwrap();
+        assert!(matches!(
+            &nodes[0],
+            TemplateNode::ContentFor { name, .. } if name == "head"
+        ));
+    }
+
+    #[test]
+    fn test_parse_content_for_nested_in_if_and_for() {
+        let nodes = parse_template("<% if show %><% content_for \"head\" do %>a<% end %><% end %>")
+            .unwrap();
+        match &nodes[0] {
+            TemplateNode::If { body, .. } => {
+                assert!(matches!(&body[0], TemplateNode::ContentFor { name, .. } if name == "head"))
+            }
+            other => panic!("Expected If node, got {:?}", other),
+        }
+
+        let nodes = parse_template(
+            "<% for item in items %><% content_for \"list\" do %><%= item %><% end %><% end %>",
+        )
+        .unwrap();
+        match &nodes[0] {
+            TemplateNode::For { body, .. } => {
+                assert!(matches!(&body[0], TemplateNode::ContentFor { name, .. } if name == "list"))
+            }
+            other => panic!("Expected For node, got {:?}", other),
+        }
+
+        // And control flow nests inside a capture block.
+        let nodes = parse_template(
+            "<% content_for \"head\" do %><% if debug %><script></script><% end %><% end %>",
+        )
+        .unwrap();
+        match &nodes[0] {
+            TemplateNode::ContentFor { body, .. } => {
+                assert!(matches!(&body[0], TemplateNode::If { .. }))
+            }
+            other => panic!("Expected ContentFor node, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_content_for_unclosed() {
+        let err = parse_template("<% content_for \"head\" do %>never closed").unwrap_err();
+        assert!(
+            err.contains("Unclosed content_for") && err.contains("line 1"),
+            "expected unclosed diagnostic, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_content_for_non_literal_name_rejected() {
+        let err = parse_template("<% content_for section do %>x<% end %>").unwrap_err();
+        assert!(
+            err.contains("string literal"),
+            "expected string-literal diagnostic, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_content_for_without_do_rejected() {
+        let err = parse_template("<% content_for \"head\" %>x<% end %>").unwrap_err();
+        assert!(
+            err.contains("content_for requires a block"),
+            "expected missing-do diagnostic, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_content_for_predicate_not_swallowed() {
+        // `content_for?(...)` is the predicate builtin, not a directive —
+        // it must reach the core parser as a normal escaped output call.
+        let nodes = parse_template("<%= content_for?(\"head\") %>").unwrap();
+        assert!(
+            matches!(&nodes[0], TemplateNode::CoreOutput { escaped: true, .. }),
+            "expected CoreOutput, got {:?}",
+            nodes[0]
+        );
+    }
+
+    #[test]
+    fn test_extract_lintable_code_skips_content_for_directives() {
+        let src = "<% content_for \"head\" do %>\n<script></script>\n<% end %>\n<%= yield \"head\" %>\n<%= content_for(\"other\") %>";
+        let extracted = extract_lintable_code(src).unwrap();
+        // The capture-open becomes `if true` so its `end` stays balanced,
+        // and the yield/read-form directives are dropped entirely.
+        assert!(extracted.contains("if true"));
+        assert!(extracted.contains("end"));
+        assert!(!extracted.contains("content_for"));
+        assert!(!extracted.contains("yield"));
+        // The synthesized source must be parseable Soli.
+        let tokens = crate::lexer::Scanner::new(&extracted)
+            .scan_tokens()
+            .unwrap();
+        crate::parser::Parser::new(tokens).parse().unwrap();
     }
 
     #[test]

@@ -85,6 +85,7 @@ fn render_inner(
             TemplateNode::CodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreOutput { line, .. } => Some(*line),
+            TemplateNode::ContentFor { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -192,8 +193,23 @@ fn render_inner(
                         }
                     }
                 }
-                TemplateNode::Yield => {
+                TemplateNode::Yield(_) => {
                     return Err("yield encountered outside of layout context".to_string());
+                }
+                TemplateNode::ContentFor { name, body, .. } => {
+                    // Capture into the content_for store, not the page output.
+                    // Same recursion as the main body: locals/loop vars stay in
+                    // scope and interpolations are escaped once, at capture time.
+                    let mut captured = String::with_capacity(256);
+                    render_inner(
+                        interpreter,
+                        body,
+                        data,
+                        partial_renderer,
+                        template_path,
+                        &mut captured,
+                    )?;
+                    crate::template::content_store::append(name, &captured);
                 }
                 TemplateNode::Partial {
                     name,
@@ -618,5 +634,84 @@ mod tests {
         let data = make_hash(vec![("items", items)]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "012");
+    }
+
+    #[test]
+    fn test_content_for_captures_to_store_not_output() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        let nodes = parse_template(
+            "before<% content_for \"head\" do %><script src=\"/a.js\"></script><% end %>after",
+        )
+        .unwrap();
+        let result = render_nodes(&nodes, &make_hash(vec![]), None).unwrap();
+        assert_eq!(result, "beforeafter");
+        assert_eq!(
+            content_store::get("head").as_deref(),
+            Some("<script src=\"/a.js\"></script>")
+        );
+    }
+
+    #[test]
+    fn test_content_for_appends_on_multiple_calls() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        let nodes = parse_template(
+            "<% content_for \"head\" do %>one<% end %><% content_for \"head\" do %>two<% end %>",
+        )
+        .unwrap();
+        render_nodes(&nodes, &make_hash(vec![]), None).unwrap();
+        assert_eq!(content_store::get("head").as_deref(), Some("onetwo"));
+    }
+
+    #[test]
+    fn test_content_for_interpolation_escaped_once() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        // `<%= %>` inside a capture escapes at capture time; the literal
+        // markup around it stays raw.
+        let nodes =
+            parse_template("<% content_for \"head\" do %><b><%= label %></b><% end %>").unwrap();
+        let data = make_hash(vec![("label", Value::String("<xss>".into()))]);
+        render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(
+            content_store::get("head").as_deref(),
+            Some("<b>&lt;xss&gt;</b>")
+        );
+    }
+
+    #[test]
+    fn test_content_for_sees_view_locals_and_loop_vars() {
+        use crate::template::content_store;
+        let _frame = content_store::ensure_frame();
+
+        let nodes = parse_template(
+            "<% for item in items %><% content_for \"list\" do %>[<%= item %>]<% end %><% end %>",
+        )
+        .unwrap();
+        let items = Value::Array(Rc::new(RefCell::new(vec![
+            Value::String("a".into()),
+            Value::String("b".into()),
+        ])));
+        let data = make_hash(vec![("items", items)]);
+        render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(content_store::get("list").as_deref(), Some("[a][b]"));
+    }
+
+    #[test]
+    fn test_yield_in_view_still_errors() {
+        for src in ["<%= yield %>", "<%= yield \"head\" %>"] {
+            let nodes = parse_template(src).unwrap();
+            let err = render_nodes(&nodes, &make_hash(vec![]), None).unwrap_err();
+            assert!(
+                err.contains("outside of layout context"),
+                "source {}: got {}",
+                src,
+                err
+            );
+        }
     }
 }

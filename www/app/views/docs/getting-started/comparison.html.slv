@@ -54,11 +54,11 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Views</td>
-                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
+                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, <code>content_for</code>/named <code>yield</code>, markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">ORM</td>
-                        <td class="py-3 px-4 text-gray-400">Query builder, associations (<code>belongs_to</code>, <code>has_many</code>, <code>has_one</code>, HABTM, polymorphic), eager <code>includes</code> in one round-trip, <code>grouped()</code> read-coalescing, scopes, callbacks, validations, soft delete, encrypted attributes, transactions, state machines</td>
+                        <td class="py-3 px-4 text-gray-400">Query builder, associations (<code>belongs_to</code>, <code>has_many</code>, <code>has_one</code>, HABTM, polymorphic), eager <code>includes</code> in one round-trip, <code>grouped()</code> read-coalescing, scopes, callbacks, validations, soft delete, encrypted attributes, transactions, state machines, native graph edges with traversal/shortest-path queries, insert-only timeseries collections with <code>time_bucket</code> aggregation and <code>prune</code> retention, grouped multi-aggregate analytics (<code>group_by</code>/<code>aggregate</code>/<code>having</code>), columnar stores for append-and-aggregate data, and declared-index search: vector ANN (<code>similar</code>), fulltext (<code>search</code>), geo (<code>near</code>/<code>within</code>)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Realtime</td>
@@ -78,7 +78,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Tooling</td>
-                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, TUI REPL, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code></td>
+                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, app-aware TUI REPL (<code>soli</code> in an app dir loads your models + DB &mdash; a <code>rails console</code>), <code>soli routes</code> route lister, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code></td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Long tail</td>
@@ -123,8 +123,8 @@
         <li><strong class="text-white">No auto-generated admin panel</strong> &mdash; a deliberate choice in 2026: every new app ships agent-ready (<code>CLAUDE.md</code>/<code>AGENTS.md</code>, permission presets, <code>/soli-resource</code>), so the bet is that a coding agent plus <code>soli generate scaffold</code> builds you a <em>bespoke</em> admin faster than you'd customize a generic one. If you want a Django-admin-style CRUD UI with zero building, it isn't here.</li>
         <li><strong class="text-white">No form builders.</strong> Forms are hand-written HTML &mdash; no <code>form_with</code>-style helpers, and no per-form CSRF tokens (CSRF protection is Origin/Referer-based).</li>
         <li><strong class="text-white">No built-in CORS</strong> &mdash; you hand-roll it as middleware.</li>
-        <li><strong class="text-white">No signed/encrypted client cookies</strong> &mdash; sessions are server-side by design; <code>set_cookie</code> writes bare cookies.</li>
-        <li><strong class="text-white">View composition is minimal</strong> &mdash; partials with locals, single <code>yield</code>; no components/slots, no <code>content_for</code>.</li>
+        <li><strong class="text-white">No signed/encrypted cookie <em>jar</em></strong> &mdash; <code>set_cookie</code> writes bare cookies (no Rails-style <code>cookies.encrypted[...]</code> for arbitrary values). Sessions themselves can be client-side and encrypted: the <code>cookie</code> session driver seals the whole session with AES-256-GCM, Rails-cookie-store-style.</li>
+        <li><strong class="text-white">View composition is lean</strong> &mdash; layouts, partials with locals, and Rails-style <code>content_for</code>/named <code>yield</code> blocks; no component/slot system (ViewComponent, Phoenix components).</li>
         <li><strong class="text-white">LiveView is early.</strong> Server-pushed re-renders work, but diffing is line-based (not DOM-aware) and the directive set is a subset of Phoenix's.</li>
     </ul>
 
@@ -153,7 +153,6 @@
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No TLS in-process</strong> &mdash; you front Soli with a reverse proxy (HTTP/2 is cleartext-only behind it). Deliberate, but different from Phoenix.</li>
         <li><strong class="text-white">Jobs require a SolidB server</strong> &mdash; there is no standalone worker daemon and no dashboard (no Sidekiq/Horizon equivalent). The opt-in in-process pool for long jobs is fire-and-forget.</li>
-        <li><strong class="text-white">No app console</strong> (<code>rails console</code> equivalent &mdash; the REPL is language-level) and no <code>soli routes</code> route lister.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Ecosystem</h3>

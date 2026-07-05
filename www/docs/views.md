@@ -12,6 +12,8 @@ SoliLang uses ERB-style templates. Tag types:
 | `<%- expr %>` | Raw, unescaped | Trusted HTML you've already produced — partials, `Markdown.to_safe_html(...)` output, `partial(...)` results. |
 | `<% stmt %>` | No output | Statements, control flow, `let` bindings. |
 | `<%= yield %>` | Layout insertion | Only valid inside a layout — marks where rendered content is spliced in. |
+| `<%= yield "name" %>` | Named content | Splices content captured by a `content_for "name"` block. Empty when nothing was captured. |
+| `<% content_for "name" do %> … <% end %>` | Nothing (captured) | Push a named block from a view/partial into the layout — per-page `<head>` scripts, sidebars, etc. |
 | `<%# comment %>` | Nothing (stripped) | Developer comments — never sent to the browser. Single-line and multi-line both work. |
 
 > `<%== expr %>` was removed (SEC-023). It decoded HTML entities and emitted the result raw, which silently re-created `<script>` from `&lt;script&gt;` whenever a value had been round-tripped through escape-encoded storage. Use `<%= html_unescape(expr) %>` for entity-decoded but escaped output, or `<%- expr %>` for trusted raw HTML.
@@ -806,6 +808,70 @@ fn index
   }, "layouts/application")
 end
 ```
+
+## Named Content with `content_for`
+
+A plain `<%= yield %>` gives the layout exactly one insertion point. When a
+page needs to inject content *elsewhere* in the layout — a page-specific
+`<script>` in the `<head>`, a sidebar, extra meta tags — capture it in the
+view with `content_for` and read it back in the layout with a named `yield`:
+
+```erb
+<!-- app/views/reports/show.html.slv -->
+<% content_for "head" do %>
+  <script src="/js/chart.js"></script>
+<% end %>
+
+<h1><%= report.title %></h1>
+```
+
+```erb
+<!-- app/views/layouts/application.html.slv -->
+<html>
+<head>
+  <title><%= title %></title>
+  <%= yield "head" %>
+</head>
+<body>
+  <%= yield %>
+</body>
+</html>
+```
+
+Semantics:
+
+- **Views and partials can capture.** A `content_for` block inside a partial
+  registers into the same store as the view that rendered it.
+- **Repeated captures append.** Two `content_for "head"` blocks concatenate
+  in document order (Rails semantics).
+- **Missing names render empty.** `<%= yield "head" %>` emits nothing when no
+  view captured `"head"` — no guard needed, no error.
+- **No double-escaping.** The captured fragment is already-rendered template
+  output: interpolations inside the block were escaped at capture time, and
+  the named `yield` splices the result raw — exactly like the main `yield`.
+- **Names are string literals** (`"head"` or `'head'`), so the layout's
+  insertion points are known at parse time.
+
+`content_for("name")` also works as a read-form in the layout, equivalent to
+`yield "name"`:
+
+```erb
+<%= content_for("head") %>
+```
+
+To wrap a section in markup only when something was captured, use the
+`content_for?` predicate:
+
+```erb
+<% if content_for?("sidebar") %>
+  <aside class="sidebar">
+    <%= yield "sidebar" %>
+  </aside>
+<% end %>
+```
+
+`content_for?("name")` returns `true` only when a non-empty capture exists
+for that name.
 
 ## Partials
 

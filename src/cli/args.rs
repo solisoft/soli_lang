@@ -65,6 +65,23 @@ pub enum Command {
         action: DbSeedAction,
         folder: String,
     },
+    /// `soli db:indexes [folder]` — create any missing indexes declared with
+    /// the class-body DSL (`index`, `vector_index`, `fulltext_index`,
+    /// `geo_index`). Idempotent; the production counterpart of the dev-boot
+    /// auto-sync.
+    DbIndexes {
+        folder: String,
+    },
+    /// `soli routes [folder]` — print the app's expanded route table
+    /// (everything `config/routes.sl` + engines register) without starting
+    /// the server.
+    Routes {
+        folder: String,
+        /// Case-insensitive substring filter over method/path/handler/helper.
+        grep: Option<String>,
+        /// Emit a machine-readable JSON array instead of the table.
+        json: bool,
+    },
     Lint {
         paths: Vec<String>,
     },
@@ -181,6 +198,8 @@ pub fn print_usage() {
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
     eprintln!("  soli db:seed generate <name> [folder]");
+    eprintln!("  soli db:indexes [folder]");
+    eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -218,6 +237,7 @@ pub fn print_usage() {
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
+    eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -269,6 +289,8 @@ pub fn print_usage() {
     eprintln!("  soli db:seed                  Run db/seeds.sl and db/seeds/*.sl");
     eprintln!("  soli db:seed db/seeds/demo.sl  Run a single seed file");
     eprintln!("  soli db:seed generate demo_users  Generate new seed file");
+    eprintln!("  soli routes                   Print the route table of the app in .");
+    eprintln!("  soli routes -g posts          Only routes matching 'posts'");
     eprintln!("  soli engine create shop       Create a new engine named 'shop'");
     eprintln!("  soli engine db:migrate        Run all engine migrations");
     eprintln!("  soli engine db:migrate shop   Run migrations for 'shop' engine only");
@@ -454,6 +476,51 @@ pub fn parse_args() -> Options {
                     ".".to_string()
                 };
                 options.command = Command::DbMigrate { action, folder };
+                return options;
+            }
+            "db:indexes" => {
+                i += 1;
+                let folder = if i < args.len() && !args[i].starts_with('-') {
+                    args[i].clone()
+                } else {
+                    ".".to_string()
+                };
+                options.command = Command::DbIndexes { folder };
+                return options;
+            }
+            "routes" => {
+                i += 1;
+                let mut folder = ".".to_string();
+                let mut folder_set = false;
+                let mut grep: Option<String> = None;
+                let mut json = false;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "-g" | "--grep" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("routes: {} requires a pattern", args[i - 1]);
+                                process::exit(64);
+                            }
+                            grep = Some(args[i].clone());
+                        }
+                        arg if arg.starts_with("--grep=") => {
+                            grep = Some(arg["--grep=".len()..].to_string());
+                        }
+                        "--json" => json = true,
+                        arg if !arg.starts_with('-') && !folder_set => {
+                            folder = arg.to_string();
+                            folder_set = true;
+                        }
+                        other => {
+                            eprintln!("Unknown option for routes: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::Routes { folder, grep, json };
                 return options;
             }
             "db:seed" => {

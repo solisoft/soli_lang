@@ -47,15 +47,50 @@
                 </div>
                 <p class="text-sm text-gray-400">Redis-compatible key-value store with TTL.</p>
             </div>
+            <div class="bg-white/5 border border-white/10 rounded-xl p-4 col-span-2">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="w-3 h-3 rounded-full bg-teal-500"></span>
+                    <h4 class="font-semibold text-white">Cookie <span class="text-xs font-normal text-gray-500">(encrypted, client-side)</span></h4>
+                </div>
+                <p class="text-sm text-gray-400">The whole session travels in the cookie, sealed with AES-256-GCM. Survives restarts and works across hosts with zero infrastructure. Requires <code class="text-emerald-400">SOLI_SESSION_SECRET</code>.</p>
+            </div>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Configuration Methods</h3>
             <p class="text-gray-400 mb-4">Sessions can be configured via code, environment variables, or config files:</p>
             <pre data-filename="Runtime Configuration"><code class="language-soli text-sm"># Change storage backend at runtime
-session_configure({"driver": "solidb", "solidb_host": "db.example.com"})</code></pre>
+session_configure({"driver": "solidb", "solidb_host": "db.example.com"})
+
+# Encrypted client-side sessions (no session database)
+session_configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})</code></pre>
             <pre data-filename="Environment Variables"><code class="language-bash text-sm">export SOLI_SESSION_DRIVER=solidb
-export SOLI_SOLIDB_HOST=db.example.com</code></pre>
+export SOLI_SOLIDB_HOST=db.example.com
+
+# Or: encrypted cookie sessions
+export SOLI_SESSION_DRIVER=cookie
+export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ chars, keep stable</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Encrypted Cookie Sessions</h3>
+            <p class="text-gray-400 mb-4">
+                The <code class="text-emerald-400">cookie</code> driver stores the session on the client, Rails-style:
+                the payload is sealed with AES-256-GCM (key HKDF-derived from
+                <code class="text-emerald-400">SOLI_SESSION_SECRET</code>), so clients can neither read nor forge it.
+                A tampered or expired blob is silently replaced by a fresh empty session, and the cookie is only
+                re-emitted when the session actually changed.
+            </p>
+            <ul class="space-y-2 text-gray-400 text-sm list-disc list-inside">
+                <li><strong class="text-white">~4KB ceiling</strong> — browsers cap cookies at 4096 bytes. An oversized session refuses to seal (loud log line, previous cookie kept). Store identifiers, not records.</li>
+                <li><strong class="text-white">No server-side revocation</strong> — <code class="text-emerald-400">session_destroy()</code> overwrites the client's copy, but a stolen cookie stays valid until its TTL passes. Rotating the secret invalidates every outstanding session at once.</li>
+                <li><strong class="text-white">TTL counts from the last write</strong> — expiry uses a timestamp sealed inside the payload, refreshed on each write.</li>
+            </ul>
+            <p class="text-gray-400 mt-4 text-sm">
+                Need instant logout-everywhere or sessions bigger than a cookie? Use a server-side driver
+                (<code class="text-emerald-400">solidb</code>, <code class="text-emerald-400">solikv</code>,
+                <code class="text-emerald-400">disk</code>) instead.
+            </p>
         </div>
     </section>
 

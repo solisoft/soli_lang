@@ -1033,6 +1033,20 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             Ok(Value::Bool(path == expected))
         })),
     );
+    env.define(
+        "content_for?".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "content_for?",
+            Some(1),
+            |args| match &args[0] {
+                Value::String(name) => Ok(Value::Bool(crate::template::content_store::has(name))),
+                other => Err(format!(
+                    "content_for?() expects string name, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
+    );
 
     let render_partial_fn = NativeFunction::new("render_partial", None, |args| {
         if args.is_empty() {

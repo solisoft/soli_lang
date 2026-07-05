@@ -91,6 +91,7 @@ pub mod secure_cookies;
 pub mod security_headers;
 pub mod server;
 pub mod session;
+pub mod session_cookie;
 pub mod session_disk;
 pub mod session_helpers;
 pub mod session_solidb;

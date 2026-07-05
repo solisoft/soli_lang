@@ -2,7 +2,7 @@
  * SoliLang LiveView Client
  * 
  * Minimal client-side library for LiveView communication.
- * ~2KB uncompressed
+ * ~21 KB raw, ~5 KB gzipped
  */
 
 (function(global) {
