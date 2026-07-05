@@ -63,6 +63,10 @@ pub struct RelationOptions {
     pub through: Option<String>,
     pub source: Option<String>,
     pub counter_cache: Option<CounterCacheOption>,
+    /// belongs_to `polymorphic: true` — the child stores `{name}_id` + `{name}_type`.
+    pub polymorphic: bool,
+    /// has_many/has_one `as: "commentable"` — the inverse of a polymorphic belongs_to.
+    pub as_name: Option<String>,
 }
 
 /// Definition of a single relationship.
@@ -182,6 +186,31 @@ pub fn parse_relation_options(
                     },
                 };
             }
+            "polymorphic" => {
+                if !matches!(kind, RelationType::BelongsTo) {
+                    return Err(
+                        "`polymorphic:` is only supported on belongs_to relations".to_string()
+                    );
+                }
+                options.polymorphic = match v {
+                    Value::Bool(b) => *b,
+                    _ => return Err("`polymorphic:` expects true or false".to_string()),
+                };
+            }
+            "as" => {
+                if !matches!(kind, RelationType::HasMany | RelationType::HasOne) {
+                    return Err(
+                        "`as:` is only supported on has_many/has_one relations (the inverse of a polymorphic belongs_to)"
+                            .to_string(),
+                    );
+                }
+                options.as_name = option_string(v);
+                if options.as_name.is_none() {
+                    return Err(
+                        "`as:` expects the polymorphic name (e.g. \"commentable\")".to_string()
+                    );
+                }
+            }
             _ => {}
         }
     }
@@ -194,6 +223,15 @@ pub fn parse_relation_options(
     }
     if options.source.is_some() && options.through.is_none() {
         return Err("`source:` requires `through:`".to_string());
+    }
+    if options.polymorphic && options.class_name.is_some() {
+        return Err(
+            "`polymorphic: true` cannot be combined with `class_name:` — the target type is read from the record at runtime"
+                .to_string(),
+        );
+    }
+    if options.as_name.is_some() && options.through.is_some() {
+        return Err("`as:` cannot be combined with `through:`".to_string());
     }
 
     Ok(options)
@@ -210,6 +248,15 @@ pub fn build_relation(
     relation_type: RelationType,
     options: &RelationOptions,
 ) -> RelationDef {
+    // belongs_to + polymorphic: true → the child stores `{name}_id` +
+    // `{name}_type`; the target class/collection are resolved at runtime
+    // from the type field, so the derived class_name/collection are unused.
+    let relation_type = if options.polymorphic && relation_type == RelationType::BelongsTo {
+        RelationType::Polymorphic
+    } else {
+        relation_type
+    };
+
     let class_name = options.class_name.clone().unwrap_or_else(|| classify(name));
 
     let collection = if let Some(cn) = &options.class_name {
@@ -218,27 +265,45 @@ pub fn build_relation(
         // For has_many, name is already plural (e.g. "posts")
         // For belongs_to/has_one, name is singular → pluralize
         match relation_type {
-            RelationType::HasMany
-            | RelationType::Polymorphic
-            | RelationType::HasAndBelongsToMany => name.to_string(),
-            RelationType::HasOne | RelationType::BelongsTo => pluralize(name),
+            RelationType::HasMany | RelationType::HasAndBelongsToMany => name.to_string(),
+            RelationType::HasOne | RelationType::BelongsTo | RelationType::Polymorphic => {
+                pluralize(name)
+            }
         }
     };
 
     let foreign_key = options.foreign_key.clone().unwrap_or_else(|| {
         match relation_type {
-            // has_many/has_one: FK is on the related model, named after the owner
-            RelationType::HasMany | RelationType::HasOne | RelationType::Polymorphic => {
-                format!("{}_id", to_snake_case(owner_class))
-            }
-            // belongs_to: FK is on the owner model, named after the relation
-            RelationType::BelongsTo => format!("{}_id", name),
+            // has_many/has_one: FK is on the related model. Named after the
+            // owner — or after the `as:` name for polymorphic inverses.
+            RelationType::HasMany | RelationType::HasOne => match &options.as_name {
+                Some(as_name) => format!("{}_id", as_name),
+                None => format!("{}_id", to_snake_case(owner_class)),
+            },
+            // belongs_to (plain or polymorphic): FK is on the owner model,
+            // named after the relation
+            RelationType::BelongsTo | RelationType::Polymorphic => format!("{}_id", name),
             // habtm uses build_habtm_relation; not built here
             RelationType::HasAndBelongsToMany => {
                 format!("{}_id", to_snake_case(owner_class))
             }
         }
     });
+
+    // Type discriminator fields:
+    // - child side (Polymorphic): `{name}_type`, value read per-record.
+    // - parent side (`as:`): `{as}_type` must equal this owner's class name.
+    let (polymorphic_type_field, polymorphic_type_value) =
+        if relation_type == RelationType::Polymorphic {
+            (Some(format!("{}_type", name)), None)
+        } else if let Some(as_name) = &options.as_name {
+            (
+                Some(format!("{}_type", as_name)),
+                Some(owner_class.to_string()),
+            )
+        } else {
+            (None, None)
+        };
 
     // belongs_to counter_cache: true derives the parent column from the
     // owner's (child's) collection: Comment.belongs_to("post") → comments_count.
@@ -257,8 +322,8 @@ pub fn build_relation(
         class_name,
         collection,
         foreign_key,
-        polymorphic_type_field: None,
-        polymorphic_type_value: None,
+        polymorphic_type_field,
+        polymorphic_type_value,
         join_table: None,
         association_foreign_key: None,
         dependent: options.dependent,
@@ -414,6 +479,20 @@ pub fn reject_through_relation(op: &str, relation: &RelationDef) -> Result<(), S
     if relation.through.is_some() {
         return Err(format!(
             "{}(\"{}\"): through: relations can't be eager-loaded or join-filtered yet — query the accessor (e.g. record.{}) instead",
+            op, relation.name, relation.name
+        ));
+    }
+    Ok(())
+}
+
+/// A polymorphic belongs_to can't be eager-loaded or join-filtered: the
+/// target collection varies per row, which doesn't fit a single LET
+/// subquery/join. (The parent-side `as:` inverse eager-loads fine — it has
+/// a fixed collection.) Call alongside `reject_through_relation`.
+pub fn reject_polymorphic_relation(op: &str, relation: &RelationDef) -> Result<(), String> {
+    if relation.relation_type == RelationType::Polymorphic {
+        return Err(format!(
+            "{}(\"{}\"): a polymorphic belongs_to can't be eager-loaded or join-filtered (the target collection varies per row) — access record.{} directly",
             op, relation.name, relation.name
         ));
     }
@@ -741,9 +820,94 @@ mod tests {
 
     #[test]
     fn parse_unknown_keys_stay_ignored() {
-        let hash = options_hash(&[("polymorphic", Value::Bool(true))]);
+        let hash = options_hash(&[("some_future_option", Value::Bool(true))]);
         let options = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap();
         assert!(options.class_name.is_none());
+    }
+
+    #[test]
+    fn polymorphic_belongs_to_builds_child_side() {
+        let hash = options_hash(&[("polymorphic", Value::Bool(true))]);
+        let options = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap();
+        let rel = build_relation("Comment", "commentable", RelationType::BelongsTo, &options);
+        assert_eq!(rel.relation_type, RelationType::Polymorphic);
+        assert_eq!(rel.foreign_key, "commentable_id");
+        assert_eq!(
+            rel.polymorphic_type_field.as_deref(),
+            Some("commentable_type")
+        );
+        assert_eq!(rel.polymorphic_type_value, None);
+    }
+
+    #[test]
+    fn as_option_builds_parent_side() {
+        let hash = options_hash(&[("as", Value::String("commentable".into()))]);
+        let options = parse_relation_options(Some(&hash), &RelationType::HasMany).unwrap();
+        let rel = build_relation("Post", "comments", RelationType::HasMany, &options);
+        assert_eq!(rel.relation_type, RelationType::HasMany);
+        assert_eq!(rel.class_name, "Comment");
+        assert_eq!(rel.collection, "comments");
+        assert_eq!(rel.foreign_key, "commentable_id");
+        assert_eq!(
+            rel.polymorphic_type_field.as_deref(),
+            Some("commentable_type")
+        );
+        assert_eq!(rel.polymorphic_type_value.as_deref(), Some("Post"));
+    }
+
+    #[test]
+    fn as_option_on_has_one() {
+        let hash = options_hash(&[("as", Value::Symbol("imageable".into()))]);
+        let options = parse_relation_options(Some(&hash), &RelationType::HasOne).unwrap();
+        let rel = build_relation("Product", "image", RelationType::HasOne, &options);
+        assert_eq!(rel.foreign_key, "imageable_id");
+        assert_eq!(rel.polymorphic_type_value.as_deref(), Some("Product"));
+    }
+
+    #[test]
+    fn polymorphic_option_rejections() {
+        // polymorphic: on has_many
+        let hash = options_hash(&[("polymorphic", Value::Bool(true))]);
+        let err = parse_relation_options(Some(&hash), &RelationType::HasMany).unwrap_err();
+        assert!(err.contains("belongs_to"), "got: {err}");
+
+        // non-bool value
+        let hash = options_hash(&[("polymorphic", Value::String("yes".into()))]);
+        let err = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap_err();
+        assert!(err.contains("true or false"), "got: {err}");
+
+        // polymorphic + class_name
+        let hash = options_hash(&[
+            ("polymorphic", Value::Bool(true)),
+            ("class_name", Value::String("Post".into())),
+        ]);
+        let err = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap_err();
+        assert!(err.contains("class_name"), "got: {err}");
+
+        // as: on belongs_to
+        let hash = options_hash(&[("as", Value::String("commentable".into()))]);
+        let err = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap_err();
+        assert!(err.contains("has_many/has_one"), "got: {err}");
+
+        // as: + through:
+        let hash = options_hash(&[
+            ("as", Value::String("commentable".into())),
+            ("through", Value::String("memberships".into())),
+        ]);
+        let err = parse_relation_options(Some(&hash), &RelationType::HasMany).unwrap_err();
+        assert!(err.contains("through"), "got: {err}");
+    }
+
+    #[test]
+    fn counter_cache_allowed_on_polymorphic_belongs_to() {
+        let hash = options_hash(&[
+            ("polymorphic", Value::Bool(true)),
+            ("counter_cache", Value::Bool(true)),
+        ]);
+        let options = parse_relation_options(Some(&hash), &RelationType::BelongsTo).unwrap();
+        let rel = build_relation("Comment", "commentable", RelationType::BelongsTo, &options);
+        assert_eq!(rel.relation_type, RelationType::Polymorphic);
+        assert_eq!(rel.counter_cache.as_deref(), Some("comments_count"));
     }
 
     #[test]

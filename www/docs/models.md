@@ -235,6 +235,8 @@ class load with an actionable message):
 | `through:` | has_many | Traverse an intermediate relation (`has_many "teams", through: "memberships"`). See [Through Associations](#through-associations). |
 | `source:` | has_many + through | Relation name on the through model when it differs from the singularized name |
 | `counter_cache:` | belongs_to | Maintain a `<children>_count` column on the parent (`true` or a custom column name). See [Counter Caches](#counter-caches). |
+| `polymorphic:` | belongs_to | The record belongs to any of several models: stores `{name}_id` + `{name}_type`, resolved at runtime. See [Polymorphic Relations](#polymorphic-relations). |
+| `as:` | has_many, has_one | Declare the inverse of a polymorphic belongs_to (`has_many "comments", as: "commentable"`) — queries are type-guarded to this class. |
 
 ## Storage & Index DSL
 
@@ -1034,6 +1036,59 @@ Semantics:
   already-committed primary write. Counters are eventually consistent under
   failures — `Model.reset_counters(id, relation)` is the repair tool (it
   recounts minus soft-deleted children and returns the fresh count).
+
+### Polymorphic Relations
+
+A polymorphic `belongs_to` lets one model belong to any of several others on
+a single association — comments on posts *and* photos, images on anything:
+
+```soli
+class Comment < Model
+  belongs_to "commentable", polymorphic: true
+end
+
+class Post < Model
+  has_many "comments", as: "commentable"
+end
+
+class Photo < Model
+  has_many "comments", as: "commentable"
+end
+
+# The child stores both halves of the reference:
+Comment.create({
+  "body": "Nice shot!",
+  "commentable_id": photo._key,
+  "commentable_type": "Photo"
+})
+
+comment.commentable    # → the Photo instance (class resolved from commentable_type)
+post.comments          # → chainable QB, type-guarded: commentable_type == "Post"
+```
+
+Semantics:
+
+- The child stores `{name}_id` **and** `{name}_type` (the model class name).
+  The accessor reads both at runtime, resolves the class and collection from
+  the type string, and returns the correctly-typed instance — `null` when
+  either field is missing, an error naming the type when it doesn't match a
+  known model class.
+- The `as:` inverse is a normal `has_many`/`has_one` whose every query —
+  accessor, `includes`, `includes_count`, `join`, cascades — carries the
+  `{as}_type == "<OwnerClass>"` guard, so two parents with colliding keys
+  never see each other's children.
+- **`counter_cache:` works** on a polymorphic belongs_to: the parent
+  collection is resolved from the type at bump time, so each parent type
+  maintains its own count, and a reassignment across *types* moves the count
+  between collections. `reset_counters` recounts with the type guard.
+- **`dependent:` works** on `as:` relations — only the owner's typed
+  children cascade; `"nullify"` clears both the FK **and** the type field.
+- **Eager-loading a polymorphic belongs_to raises** (`includes`/`join` — the
+  target collection varies per row, which doesn't fit one query; Rails has
+  the same restriction). Access `record.commentable` directly. The `as:`
+  inverse eager-loads normally.
+- `polymorphic: true` combined with `class_name:` raises at class load (the
+  target type comes from the record, not the declaration).
 
 ### Manual Relationships
 

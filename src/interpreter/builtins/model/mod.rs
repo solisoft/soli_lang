@@ -224,17 +224,27 @@
 //!
 //! # Polymorphic Relations
 //!
-//! Define polymorphic associations where a model can belong to multiple types:
+//! One model belongs to any of several others on a single association. The
+//! child stores `{name}_id` + `{name}_type`; parents declare the inverse
+//! with `as:` (all their queries are type-guarded):
 //!
 //! ```soli
 //! class Comment extends Model
 //!     belongs_to("commentable", { "polymorphic": true })
 //! end
 //!
-//! // Access polymorphically
+//! class Post extends Model
+//!     has_many("comments", { "as": "commentable" })
+//! end
+//!
+//! // Access polymorphically — class resolved from commentable_type at runtime
 //! let comment = Comment.find("id");
 //! let item = comment.commentable;  // Returns Post, Photo, etc.
+//! let comments = post.comments;    // Only rows with commentable_type == "Post"
 //! ```
+//!
+//! Eager-loading a polymorphic belongs_to raises (per-row dynamic target
+//! collections); the `as:` inverse eager-loads normally.
 //!
 //! # Transactions
 //!

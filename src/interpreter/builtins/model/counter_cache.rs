@@ -9,9 +9,13 @@
 //! and `Model.reset_counters(id, relation)` repairs drift. Bulk writes
 //! (`delete_all`, `update_all`, `upsert`, `import`, `prune`) skip bumps by
 //! design.
+//!
+//! Polymorphic belongs_to relations are supported: the parent *collection*
+//! is resolved at bump time from the record's `{name}_type` field, and a
+//! reassignment treats the (type, id) pair as the parent identity.
 
-use super::relations::RelationDef;
-use crate::interpreter::value::Value;
+use super::relations::{RelationDef, RelationType};
+use crate::interpreter::value::{Instance, Value};
 
 /// The owner class's belongs_to relations that maintain a parent counter.
 pub fn counter_cached_relations(class_name: &str) -> Vec<RelationDef> {
@@ -42,24 +46,72 @@ fn fk_key_json(value: &serde_json::Value) -> Option<String> {
     }
 }
 
+fn type_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) if !s.is_empty() => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+fn type_string_json(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// The parent's collection for one bump: fixed for a plain belongs_to,
+/// resolved from the record's type string for a polymorphic one.
+fn parent_collection(rel: &RelationDef, type_value: Option<&str>) -> Option<String> {
+    if rel.relation_type == RelationType::Polymorphic {
+        type_value.map(super::core::class_name_to_collection)
+    } else {
+        Some(rel.collection.clone())
+    }
+}
+
 /// Bump one parent's counter column. Best-effort by contract.
-fn bump_parent(rel: &RelationDef, parent_key: &str, delta: i64) {
+fn bump_parent(rel: &RelationDef, collection: &str, parent_key: &str, delta: i64) {
     let column = match &rel.counter_cache {
         Some(column) => column,
         None => return,
     };
     // Swallow failures: the primary write is already committed, and
     // reset_counters is the documented repair tool.
-    let _ = super::crud::cas_field_delta(&rel.collection, parent_key, column, delta);
+    let _ = super::crud::cas_field_delta(collection, parent_key, column, delta);
+}
+
+/// The (collection, key) parent identity a relation points at on an instance.
+fn parent_target_from_instance(rel: &RelationDef, inst: &Instance) -> Option<(String, String)> {
+    let key = inst.fields.get(&rel.foreign_key).and_then(fk_key)?;
+    let type_value = rel
+        .polymorphic_type_field
+        .as_ref()
+        .and_then(|field| inst.fields.get(field))
+        .and_then(type_string);
+    let collection = parent_collection(rel, type_value.as_deref())?;
+    Some((collection, key))
+}
+
+/// Same as [`parent_target_from_instance`] for a raw JSON document.
+fn parent_target_from_json(rel: &RelationDef, doc: &serde_json::Value) -> Option<(String, String)> {
+    let key = doc.get(&rel.foreign_key).and_then(fk_key_json)?;
+    let type_value = rel
+        .polymorphic_type_field
+        .as_ref()
+        .and_then(|field| doc.get(field))
+        .and_then(type_string_json);
+    let collection = parent_collection(rel, type_value.as_deref())?;
+    Some((collection, key))
 }
 
 /// Bump every counter-cached parent referenced by the instance's FK fields
 /// (`+1` after insert/restore, `-1` after delete/soft-delete).
-pub fn bump_for_instance(inst: &crate::interpreter::value::Instance, delta: i64) {
+pub fn bump_for_instance(inst: &Instance, delta: i64) {
     let class_name = inst.class.name.clone();
     for rel in counter_cached_relations(&class_name) {
-        if let Some(parent_key) = inst.fields.get(&rel.foreign_key).and_then(fk_key) {
-            bump_parent(&rel, &parent_key, delta);
+        if let Some((collection, key)) = parent_target_from_instance(&rel, inst) {
+            bump_parent(&rel, &collection, &key, delta);
         }
     }
 }
@@ -68,66 +120,124 @@ pub fn bump_for_instance(inst: &crate::interpreter::value::Instance, delta: i64)
 /// that never hydrate an instance).
 pub fn bump_for_json(class_name: &str, doc: &serde_json::Value, delta: i64) {
     for rel in counter_cached_relations(class_name) {
-        if let Some(parent_key) = doc.get(&rel.foreign_key).and_then(fk_key_json) {
-            bump_parent(&rel, &parent_key, delta);
+        if let Some((collection, key)) = parent_target_from_json(&rel, doc) {
+            bump_parent(&rel, &collection, &key, delta);
         }
     }
 }
 
-/// Handle FK reassignment: consume the `(name, old, new)` changes a
+/// Handle parent reassignment: consume the `(name, old, new)` changes a
 /// successful update persisted (dirty-tracking's `finalize_persist` return)
-/// and move the count from the old parent to the new one.
-pub fn bump_for_changes(class_name: &str, changes: &[(String, Value, Value)]) {
+/// and move the count from the old parent to the new one. The parent
+/// identity is the (collection, key) pair — for polymorphic relations a
+/// type-only change moves the count too. `inst` supplies the unchanged
+/// component of the pair (its fields hold the post-update values).
+pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
     if changes.is_empty() {
         return;
     }
-    for rel in counter_cached_relations(class_name) {
-        if let Some((_, old, new)) = changes.iter().find(|(name, _, _)| *name == rel.foreign_key) {
-            let old_key = fk_key(old);
-            let new_key = fk_key(new);
-            if old_key == new_key {
-                continue;
-            }
-            if let Some(key) = old_key {
-                bump_parent(&rel, &key, -1);
-            }
-            if let Some(key) = new_key {
-                bump_parent(&rel, &key, 1);
-            }
+    let class_name = inst.class.name.clone();
+    for rel in counter_cached_relations(&class_name) {
+        let changed = |field: &str| changes.iter().find(|(name, _, _)| name == field);
+
+        let fk_change = changed(&rel.foreign_key);
+        let type_change = rel
+            .polymorphic_type_field
+            .as_deref()
+            .and_then(|field| changed(field));
+        if fk_change.is_none() && type_change.is_none() {
+            continue;
+        }
+
+        let new_key = inst.fields.get(&rel.foreign_key).and_then(fk_key);
+        let old_key = match fk_change {
+            Some((_, old, _)) => fk_key(old),
+            None => new_key.clone(),
+        };
+        let new_type = rel
+            .polymorphic_type_field
+            .as_ref()
+            .and_then(|field| inst.fields.get(field))
+            .and_then(type_string);
+        let old_type = match type_change {
+            Some((_, old, _)) => type_string(old),
+            None => new_type.clone(),
+        };
+
+        let old_target =
+            old_key.and_then(|key| parent_collection(&rel, old_type.as_deref()).map(|c| (c, key)));
+        let new_target =
+            new_key.and_then(|key| parent_collection(&rel, new_type.as_deref()).map(|c| (c, key)));
+        if old_target == new_target {
+            continue;
+        }
+        if let Some((collection, key)) = old_target {
+            bump_parent(&rel, &collection, &key, -1);
+        }
+        if let Some((collection, key)) = new_target {
+            bump_parent(&rel, &collection, &key, 1);
         }
     }
 }
 
 /// JSON-diff variant for the class form `Model.update(id, data)`: compare
-/// the pre-update document with the patch and move counts on FK change.
+/// the pre-update document with the patch and move counts when the parent
+/// (collection, key) identity changed.
 pub fn bump_for_json_change(
     class_name: &str,
     old_doc: &serde_json::Value,
     patch: &serde_json::Value,
 ) {
     for rel in counter_cached_relations(class_name) {
-        let Some(new_value) = patch.get(&rel.foreign_key) else {
-            continue; // patch doesn't touch this FK
-        };
-        let old_key = old_doc.get(&rel.foreign_key).and_then(fk_key_json);
-        let new_key = fk_key_json(new_value);
-        if old_key == new_key {
+        let touches_fk = patch.get(&rel.foreign_key).is_some();
+        let touches_type = rel
+            .polymorphic_type_field
+            .as_deref()
+            .is_some_and(|field| patch.get(field).is_some());
+        if !touches_fk && !touches_type {
             continue;
         }
-        if let Some(key) = old_key {
-            bump_parent(&rel, &key, -1);
+
+        let field_value = |doc: &serde_json::Value, field: &str| {
+            patch
+                .get(field)
+                .or_else(|| doc.get(field))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        };
+
+        let old_key = old_doc.get(&rel.foreign_key).and_then(fk_key_json);
+        let new_key = fk_key_json(&field_value(old_doc, &rel.foreign_key));
+        let (old_type, new_type) = match rel.polymorphic_type_field.as_deref() {
+            Some(field) => (
+                old_doc.get(field).and_then(type_string_json),
+                type_string_json(&field_value(old_doc, field)),
+            ),
+            None => (None, None),
+        };
+
+        let old_target =
+            old_key.and_then(|key| parent_collection(&rel, old_type.as_deref()).map(|c| (c, key)));
+        let new_target =
+            new_key.and_then(|key| parent_collection(&rel, new_type.as_deref()).map(|c| (c, key)));
+        if old_target == new_target {
+            continue;
         }
-        if let Some(key) = new_key {
-            bump_parent(&rel, &key, 1);
+        if let Some((collection, key)) = old_target {
+            bump_parent(&rel, &collection, &key, -1);
+        }
+        if let Some((collection, key)) = new_target {
+            bump_parent(&rel, &collection, &key, 1);
         }
     }
 }
 
 /// Recount a parent's children and write the counter column. Returns the
-/// fresh count. `relation_name` is a has_many on the parent class.
+/// fresh count. `relation_name` is a has_many on the parent class; an `as:`
+/// relation counts with its polymorphic type guard.
 pub fn reset_counters(
     parent_class: &str,
-    parent_collection: &str,
+    parent_collection_name: &str,
     parent_key: &str,
     relation_name: &str,
 ) -> Result<i64, String> {
@@ -138,8 +248,7 @@ pub fn reset_counters(
                 .filter(|r| {
                     matches!(
                         r.relation_type,
-                        super::relations::RelationType::HasMany
-                            | super::relations::RelationType::HasOne
+                        RelationType::HasMany | RelationType::HasOne
                     )
                 })
                 .map(|r| r.name)
@@ -153,21 +262,36 @@ pub fn reset_counters(
         })?;
 
     // The counter column: the child class's counter-cached belongs_to
-    // pointing back at this collection when declared, else the default name.
+    // pointing back at this parent. For an `as:` relation the child side is
+    // Polymorphic — match on the shared type field; otherwise match the
+    // child relation whose target collection is this parent's collection.
     let column = counter_cached_relations(&relation.class_name)
         .into_iter()
-        .find(|rel| rel.collection == parent_collection)
+        .find(|rel| match &relation.polymorphic_type_field {
+            Some(type_field) => {
+                rel.relation_type == RelationType::Polymorphic
+                    && rel.polymorphic_type_field.as_ref() == Some(type_field)
+            }
+            None => rel.collection == parent_collection_name,
+        })
         .and_then(|rel| rel.counter_cache)
         .unwrap_or_else(|| format!("{}_count", relation.collection));
 
+    let type_guard = match (
+        &relation.polymorphic_type_field,
+        &relation.polymorphic_type_value,
+    ) {
+        (Some(field), Some(value)) => format!(" AND d.{} == \"{}\"", field, value),
+        _ => String::new(),
+    };
     let soft_guard = if super::registry::is_soft_delete(&relation.class_name) {
         " AND d.deleted_at == null"
     } else {
         ""
     };
     let query = format!(
-        "RETURN LENGTH(FOR d IN {} FILTER d.{} == @k{} RETURN 1)",
-        relation.collection, relation.foreign_key, soft_guard
+        "RETURN LENGTH(FOR d IN {} FILTER d.{} == @k{}{} RETURN 1)",
+        relation.collection, relation.foreign_key, type_guard, soft_guard
     );
     let mut binds = std::collections::HashMap::new();
     binds.insert(
@@ -184,7 +308,7 @@ pub fn reset_counters(
         serde_json::Value::Number(serde_json::Number::from(count)),
     );
     super::crud::exec_update(
-        parent_collection,
+        parent_collection_name,
         parent_key,
         serde_json::Value::Object(patch),
         true,

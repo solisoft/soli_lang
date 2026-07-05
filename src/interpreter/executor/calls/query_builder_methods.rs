@@ -328,6 +328,10 @@ impl Interpreter {
                         "includes", &rel,
                     )
                     .map_err(|message| RuntimeError::General { message, span })?;
+                    crate::interpreter::builtins::model::relations::reject_polymorphic_relation(
+                        "includes", &rel,
+                    )
+                    .map_err(|message| RuntimeError::General { message, span })?;
                     let fields = match v {
                         Value::Array(arr) => {
                             let field_names: Vec<String> = arr
@@ -375,6 +379,10 @@ impl Interpreter {
                     span,
                 })?;
             crate::interpreter::builtins::model::relations::reject_through_relation(
+                "includes", &rel,
+            )
+            .map_err(|message| RuntimeError::General { message, span })?;
+            crate::interpreter::builtins::model::relations::reject_polymorphic_relation(
                 "includes", &rel,
             )
             .map_err(|message| RuntimeError::General { message, span })?;
@@ -444,6 +452,10 @@ impl Interpreter {
                         span,
                     })?;
                 crate::interpreter::builtins::model::relations::reject_through_relation(
+                    "includes", &rel,
+                )
+                .map_err(|message| RuntimeError::General { message, span })?;
+                crate::interpreter::builtins::model::relations::reject_polymorphic_relation(
                     "includes", &rel,
                 )
                 .map_err(|message| RuntimeError::General { message, span })?;
@@ -570,6 +582,8 @@ impl Interpreter {
                 span,
             })?;
         crate::interpreter::builtins::model::relations::reject_through_relation("join", &rel)
+            .map_err(|message| RuntimeError::General { message, span })?;
+        crate::interpreter::builtins::model::relations::reject_polymorphic_relation("join", &rel)
             .map_err(|message| RuntimeError::General { message, span })?;
 
         let filter = match arguments.get(1) {

@@ -679,25 +679,22 @@ impl QueryBuilder {
 
         let fk_condition = match rel.relation_type {
             RelationType::HasMany | RelationType::HasOne => {
-                format!("rel.{} == doc._key", rel.foreign_key)
+                // `as:` inverse of a polymorphic belongs_to needs the type
+                // guard so only rows pointing at THIS class match.
+                match (&rel.polymorphic_type_field, &rel.polymorphic_type_value) {
+                    (Some(field), Some(value)) => format!(
+                        "rel.{} == doc._key AND rel.{} == \"{}\"",
+                        rel.foreign_key, field, value
+                    ),
+                    _ => format!("rel.{} == doc._key", rel.foreign_key),
+                }
             }
             RelationType::BelongsTo => {
                 format!("doc.{} == rel._key", rel.foreign_key)
             }
-            RelationType::Polymorphic => {
-                let type_field = rel
-                    .polymorphic_type_field
-                    .clone()
-                    .unwrap_or_else(|| format!("{}_type", rel.name));
-                let type_value = rel
-                    .polymorphic_type_value
-                    .clone()
-                    .unwrap_or_else(|| rel.class_name.clone());
-                format!(
-                    "rel.{} == doc._key AND rel.{} == \"{}\"",
-                    rel.foreign_key, type_field, type_value
-                )
-            }
+            // Child-side polymorphic joins are rejected at registration
+            // (reject_polymorphic_relation); unreachable here.
+            RelationType::Polymorphic => unreachable!(),
             RelationType::HasAndBelongsToMany => unreachable!(),
         };
 
@@ -732,12 +729,17 @@ impl QueryBuilder {
             );
         }
 
-        // HasMany
+        // HasMany — with the polymorphic type guard for `as:` inverses.
+        let type_guard = match (&rel.polymorphic_type_field, &rel.polymorphic_type_value) {
+            (Some(field), Some(value)) => format!(" AND rel.{} == \"{}\"", field, value),
+            _ => String::new(),
+        };
         format!(
-            " LET {var} = LENGTH(FOR rel IN {coll} FILTER rel.{fk} == doc._key RETURN 1)",
+            " LET {var} = LENGTH(FOR rel IN {coll} FILTER rel.{fk} == doc._key{guard} RETURN 1)",
             var = var_name,
             coll = rel.collection,
             fk = rel.foreign_key,
+            guard = type_guard,
         )
     }
 
@@ -781,25 +783,21 @@ impl QueryBuilder {
 
         let fk_condition = match rel.relation_type {
             RelationType::HasMany | RelationType::HasOne => {
-                format!("rel.{} == doc._key", rel.foreign_key)
+                // `as:` inverse of a polymorphic belongs_to: type-guarded.
+                match (&rel.polymorphic_type_field, &rel.polymorphic_type_value) {
+                    (Some(field), Some(value)) => format!(
+                        "rel.{} == doc._key AND rel.{} == \"{}\"",
+                        rel.foreign_key, field, value
+                    ),
+                    _ => format!("rel.{} == doc._key", rel.foreign_key),
+                }
             }
             RelationType::BelongsTo => {
                 format!("rel._key == doc.{}", rel.foreign_key)
             }
-            RelationType::Polymorphic => {
-                let type_field = rel
-                    .polymorphic_type_field
-                    .clone()
-                    .unwrap_or_else(|| format!("{}_type", rel.name));
-                let type_value = rel
-                    .polymorphic_type_value
-                    .clone()
-                    .unwrap_or_else(|| rel.class_name.clone());
-                format!(
-                    "rel._key == doc.{} AND rel.{} == \"{}\"",
-                    rel.foreign_key, type_field, type_value
-                )
-            }
+            // Child-side polymorphic includes are rejected at registration
+            // (reject_polymorphic_relation); unreachable here.
+            RelationType::Polymorphic => unreachable!(),
             RelationType::HasAndBelongsToMany => unreachable!(),
         };
 

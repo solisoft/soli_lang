@@ -1293,6 +1293,7 @@ impl Model {
                                 format!("No relation '{}' defined on {}", rel_name, class_name)
                             })?;
                             super::relations::reject_through_relation("includes", &rel)?;
+                            super::relations::reject_polymorphic_relation("includes", &rel)?;
                             let fields = match v {
                                 Value::Array(arr) => {
                                     let names: Vec<String> = arr
@@ -1338,6 +1339,7 @@ impl Model {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
                     super::relations::reject_through_relation("includes", &rel)?;
+                    super::relations::reject_polymorphic_relation("includes", &rel)?;
 
                     let filter = if arguments.len() >= 3 {
                         match &arguments[1] {
@@ -1401,6 +1403,7 @@ impl Model {
                             format!("No relation '{}' defined on {}", rel_name, class_name)
                         })?;
                         super::relations::reject_through_relation("includes", &rel)?;
+                        super::relations::reject_polymorphic_relation("includes", &rel)?;
                         qb.add_include(
                             rel_name.to_string(),
                             rel,
@@ -1446,6 +1449,7 @@ impl Model {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
                     super::relations::reject_through_relation("includes", &rel)?;
+                    super::relations::reject_polymorphic_relation("includes", &rel)?;
                     qb.add_include_count(rel_name.to_string(), rel)?;
                 }
 
@@ -1504,6 +1508,7 @@ impl Model {
                     format!("No relation '{}' defined on {}", rel_name, class_name)
                 })?;
                 super::relations::reject_through_relation("join", &rel)?;
+                super::relations::reject_polymorphic_relation("join", &rel)?;
 
                 let filter = match args.get(2) {
                     Some(Value::String(s)) => Some(s.to_string()),
@@ -3877,7 +3882,7 @@ impl Model {
                                 Value::Array(Rc::new(RefCell::new(vec![]))),
                             );
                             let changes = super::dirty::finalize_persist(&mut inst_mut);
-                            super::counter_cache::bump_for_changes(&class_name, &changes);
+                            super::counter_cache::bump_for_changes(&inst_mut, &changes);
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
@@ -4105,7 +4110,7 @@ impl Model {
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
                                 let changes = super::dirty::finalize_persist(&mut inst_mut);
-                                super::counter_cache::bump_for_changes(&class_name, &changes);
+                                super::counter_cache::bump_for_changes(&inst_mut, &changes);
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {

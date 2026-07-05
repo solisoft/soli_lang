@@ -372,6 +372,77 @@ impl Interpreter {
         }
     }
 
+    /// Fetch the target of a polymorphic belongs_to: read `{name}_type` +
+    /// `{name}_id` off the record, resolve the model class and collection
+    /// from the type string at runtime, and hydrate the row (which resolves
+    /// its concrete class from `_id`). Either field missing/null → null,
+    /// matching a plain belongs_to with a null FK.
+    fn fetch_polymorphic_target(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        relation: &crate::interpreter::builtins::model::RelationDef,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let type_field = relation
+            .polymorphic_type_field
+            .clone()
+            .unwrap_or_else(|| format!("{}_type", name));
+
+        let (type_value, fk) = {
+            let inst_ref = inst.borrow();
+            let type_value = match inst_ref.get(&type_field) {
+                Some(Value::String(s)) if !s.is_empty() => s.to_string(),
+                _ => return Ok(Value::Null),
+            };
+            let fk = match inst_ref.get(&relation.foreign_key) {
+                Some(Value::String(s)) if !s.is_empty() => s.to_string(),
+                Some(Value::Int(n)) => n.to_string(),
+                _ => return Ok(Value::Null),
+            };
+            (type_value, fk)
+        };
+
+        let target_class = crate::interpreter::builtins::model::get_model_class(&type_value)
+            .ok_or_else(|| {
+                RuntimeError::new(
+                    format!(
+                        "polymorphic relation \"{}\": {} == \"{}\" does not name a known model class",
+                        name, type_field, type_value
+                    ),
+                    span,
+                )
+            })?;
+        let collection = crate::interpreter::builtins::model::class_name_to_collection(&type_value);
+
+        let sdbql = format!(
+            "FOR doc IN {} FILTER doc._key == @fk LIMIT 1 RETURN doc",
+            collection
+        );
+        let mut bind_vars = std::collections::HashMap::new();
+        bind_vars.insert("fk".to_string(), serde_json::Value::String(fk));
+
+        use crate::interpreter::builtins::model::crud::exec_with_auto_collection;
+        match exec_with_auto_collection(sdbql, Some(bind_vars), &collection) {
+            Ok(results) => {
+                if results.is_empty() {
+                    Ok(Value::Null)
+                } else {
+                    Ok(
+                        crate::interpreter::builtins::model::crud::json_doc_to_instance(
+                            &target_class,
+                            &results[0],
+                        ),
+                    )
+                }
+            }
+            Err(e) => Err(RuntimeError::new(
+                format!("Error fetching polymorphic relation \"{}\": {}", name, e),
+                span,
+            )),
+        }
+    }
+
     #[allow(clippy::collapsible_match)]
     fn instance_member_access(
         &mut self,
@@ -934,11 +1005,19 @@ impl Interpreter {
                                     Ok(j) => j,
                                     Err(_) => break 'fast,
                                 };
+                                // For Polymorphic the registered class_name is a
+                                // placeholder — rely on json_doc_to_instance's
+                                // `_id`-based resolution (owner class is only the
+                                // last-resort fallback).
                                 let target_class =
-                                    crate::interpreter::builtins::model::get_model_class(
-                                        &relation.class_name,
-                                    )
-                                    .unwrap_or_else(|| inst_ref.class.clone());
+                                    if relation.relation_type == RelationType::Polymorphic {
+                                        inst_ref.class.clone()
+                                    } else {
+                                        crate::interpreter::builtins::model::get_model_class(
+                                            &relation.class_name,
+                                        )
+                                        .unwrap_or_else(|| inst_ref.class.clone())
+                                    };
                                 drop(inst_ref);
                                 let converted = json_doc_to_instance(&target_class, &json);
                                 inst.borrow_mut().set(name.to_string(), converted.clone());
@@ -981,6 +1060,12 @@ impl Interpreter {
                 }
                 drop(inst_ref);
 
+                // Polymorphic belongs_to: the target class/collection are read
+                // off the record at runtime (`{name}_type` + `{name}_id`).
+                if relation.relation_type == RelationType::Polymorphic {
+                    return self.fetch_polymorphic_target(&inst, &relation, name, span);
+                }
+
                 // Get the foreign key value based on relation type
                 let inst_ref = inst.borrow();
                 let fk_value = match relation.relation_type {
@@ -1009,20 +1094,41 @@ impl Interpreter {
                         related_class,
                     );
                     let mut binds = std::collections::HashMap::new();
+                    // `as:` inverse of a polymorphic belongs_to — only rows
+                    // pointing back at THIS owner type belong to the relation.
+                    let type_guard = match (
+                        &relation.polymorphic_type_field,
+                        &relation.polymorphic_type_value,
+                    ) {
+                        (Some(field), Some(value)) => {
+                            binds.insert(
+                                "__rel_type".to_string(),
+                                serde_json::Value::String(value.clone()),
+                            );
+                            format!(" AND {} == @__rel_type", field)
+                        }
+                        _ => String::new(),
+                    };
                     match fk_value {
                         Some(Value::String(s)) => {
                             binds.insert(
                                 "__rel_fk".to_string(),
                                 serde_json::Value::String(s.to_string()),
                             );
-                            qb.set_filter(format!("{} == @__rel_fk", relation.foreign_key), binds);
+                            qb.set_filter(
+                                format!("{} == @__rel_fk{}", relation.foreign_key, type_guard),
+                                binds,
+                            );
                         }
                         Some(Value::Int(n)) => {
                             binds.insert(
                                 "__rel_fk".to_string(),
                                 serde_json::Value::String(n.to_string()),
                             );
-                            qb.set_filter(format!("{} == @__rel_fk", relation.foreign_key), binds);
+                            qb.set_filter(
+                                format!("{} == @__rel_fk{}", relation.foreign_key, type_guard),
+                                binds,
+                            );
                         }
                         // Owner not yet persisted (or FK missing): build a
                         // QueryBuilder that yields no rows. Chaining still
@@ -1058,9 +1164,19 @@ impl Interpreter {
                         unreachable!()
                     }
                     RelationType::HasOne => {
+                        // `as:` inverse: guard on the polymorphic type field.
+                        let type_guard = match (
+                            &relation.polymorphic_type_field,
+                            &relation.polymorphic_type_value,
+                        ) {
+                            (Some(field), Some(value)) => {
+                                format!(" AND doc.{} == \"{}\"", field, value)
+                            }
+                            _ => String::new(),
+                        };
                         format!(
-                            "FOR doc IN {} FILTER doc.{} == @fk LIMIT 1 RETURN doc",
-                            related_collection, relation.foreign_key
+                            "FOR doc IN {} FILTER doc.{} == @fk{} LIMIT 1 RETURN doc",
+                            related_collection, relation.foreign_key, type_guard
                         )
                     }
                     RelationType::BelongsTo => {
@@ -1069,20 +1185,8 @@ impl Interpreter {
                             related_collection
                         )
                     }
-                    RelationType::Polymorphic => {
-                        let type_field = relation
-                            .polymorphic_type_field
-                            .clone()
-                            .unwrap_or_else(|| format!("{}_type", relation.name));
-                        let type_value = relation
-                            .polymorphic_type_value
-                            .clone()
-                            .unwrap_or_else(|| relation.class_name.clone());
-                        format!(
-                            "FOR doc IN {} FILTER doc.{} == @fk AND doc.{} == \"{}\" RETURN doc",
-                            related_collection, relation.foreign_key, type_field, type_value
-                        )
-                    }
+                    // Handled by fetch_polymorphic_target above; unreachable.
+                    RelationType::Polymorphic => unreachable!(),
                     RelationType::HasAndBelongsToMany => {
                         let join_table = relation.join_table.as_deref().unwrap_or("");
                         let assoc_fk = relation.association_foreign_key.as_deref().unwrap_or("");

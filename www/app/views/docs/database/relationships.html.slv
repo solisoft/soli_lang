@@ -35,7 +35,11 @@
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">belongs_to(name, { "polymorphic": true })</code></td>
-                    <td class="py-3 px-4 text-gray-400">Declare a polymorphic relationship</td>
+                    <td class="py-3 px-4 text-gray-400">Belong to any of several models: stores <code>{name}_id</code> + <code>{name}_type</code>, resolved at runtime. See <a href="#polymorphic" class="text-amber-400 hover:underline">Polymorphic Relationships</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">has_many(name, { "as": "commentable" })</code></td>
+                    <td class="py-3 px-4 text-gray-400">The inverse of a polymorphic belongs_to &mdash; queries are type-guarded to this class (also on <code>has_one</code>).</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">has_and_belongs_to_many(name)</code></td>
@@ -140,18 +144,44 @@ end</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Polymorphic Relationships</h2>
+    <h2 id="polymorphic" class="text-2xl font-bold text-white mb-6">Polymorphic Relationships</h2>
     <p class="text-gray-400 mb-4">
-        A polymorphic <code>belongs_to</code> allows a model to belong to more than one other model on a single association.
-        The related type and ID are stored in <code>commentable_type</code> and <code>commentable_id</code> fields:
+        A polymorphic <code>belongs_to</code> lets one model belong to any of several others on a single association &mdash; comments on posts <em>and</em> photos. The child stores <code>commentable_id</code> + <code>commentable_type</code>; the parent declares the inverse with <code>as:</code>:
     </p>
 
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Comment < Model
-  belongs_to("commentable", { "polymorphic": true })
-end</code></pre>
+  belongs_to "commentable", polymorphic: true
+end
+
+class Post < Model
+  has_many "comments", as: "commentable"
+end
+
+class Photo < Model
+  has_many "comments", as: "commentable"
+end
+
+Comment.create({
+  "body": "Nice shot!",
+  "commentable_id": photo._key,
+  "commentable_type": "Photo"
+})
+
+comment.commentable    # → the Photo instance (class resolved from commentable_type)
+post.comments          # → chainable QB, type-guarded: commentable_type == "Post"</code></pre>
         </div>
+    </div>
+
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Runtime resolution.</strong> The accessor reads both fields, resolves the class and collection from the type string, and returns the correctly-typed instance &mdash; <code>null</code> when either field is missing, an error naming the type when it isn't a known model class.</li>
+            <li><strong class="text-white">The <code>as:</code> inverse is type-guarded everywhere</strong> &mdash; accessor, <code>includes</code>, <code>includes_count</code>, <code>join</code>, and cascades all carry <code>{as}_type == "&lt;OwnerClass&gt;"</code>, so parents with colliding keys never see each other's children.</li>
+            <li><strong class="text-white"><code>counter_cache:</code> works</strong> on a polymorphic belongs_to: the parent collection resolves from the type at bump time (each parent type keeps its own count; cross-type reassignment moves it), and <code>reset_counters</code> recounts with the guard. <strong class="text-white"><code>dependent:</code> works</strong> on <code>as:</code> relations; <code>"nullify"</code> clears both the FK and the type field.</li>
+            <li><strong class="text-white">Eager-loading a polymorphic belongs_to raises</strong> (<code>includes</code>/<code>join</code> &mdash; the target collection varies per row; same restriction as Rails). Access <code>record.commentable</code> directly. The <code>as:</code> inverse eager-loads normally.</li>
+            <li><code>polymorphic: true</code> + <code>class_name:</code> raises at class load.</li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Relationship Accessors</h2>

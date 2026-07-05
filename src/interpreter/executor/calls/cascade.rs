@@ -85,7 +85,22 @@ fn relation_query_builder(
         "__rel_fk".to_string(),
         serde_json::Value::String(owner_key.to_string()),
     );
-    qb.set_filter(format!("{} == @__rel_fk", rel.foreign_key), binds);
+    // `as:` inverse of a polymorphic belongs_to: only rows pointing back at
+    // THIS owner type belong to the relation.
+    let type_guard = match (&rel.polymorphic_type_field, &rel.polymorphic_type_value) {
+        (Some(field), Some(value)) => {
+            binds.insert(
+                "__rel_type".to_string(),
+                serde_json::Value::String(value.clone()),
+            );
+            format!(" AND {} == @__rel_type", field)
+        }
+        _ => String::new(),
+    };
+    qb.set_filter(
+        format!("{} == @__rel_fk{}", rel.foreign_key, type_guard),
+        binds,
+    );
     qb
 }
 
@@ -146,6 +161,11 @@ impl Interpreter {
                     let qb = relation_query_builder(&rel, &owner_key, &fallback_class);
                     let mut patch = serde_json::Map::new();
                     patch.insert(rel.foreign_key.clone(), serde_json::Value::Null);
+                    // Polymorphic inverse: clear the type discriminator too,
+                    // so the orphan doesn't keep a dangling half-reference.
+                    if let Some(type_field) = &rel.polymorphic_type_field {
+                        patch.insert(type_field.clone(), serde_json::Value::Null);
+                    }
                     let result =
                         crate::interpreter::builtins::model::execute_query_builder_update_all(
                             &qb,
@@ -207,14 +227,26 @@ impl Interpreter {
             } else {
                 ""
             };
-        let query = format!(
-            "FOR doc IN {} FILTER doc.{} == @fk{}{} RETURN doc",
-            rel.collection, rel.foreign_key, soft_guard, limit
-        );
         let mut binds = HashMap::new();
         binds.insert(
             "fk".to_string(),
             serde_json::Value::String(owner_key.to_string()),
+        );
+        // `as:` inverse of a polymorphic belongs_to: only this owner type's
+        // children cascade.
+        let type_guard = match (&rel.polymorphic_type_field, &rel.polymorphic_type_value) {
+            (Some(field), Some(value)) => {
+                binds.insert(
+                    "rel_type".to_string(),
+                    serde_json::Value::String(value.clone()),
+                );
+                format!(" AND doc.{} == @rel_type", field)
+            }
+            _ => String::new(),
+        };
+        let query = format!(
+            "FOR doc IN {} FILTER doc.{} == @fk{}{}{} RETURN doc",
+            rel.collection, rel.foreign_key, type_guard, soft_guard, limit
         );
 
         let docs =
