@@ -1075,6 +1075,8 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, spec: &SimilarSpec
                             crate::interpreter::value::Instance {
                                 class: inst.borrow().class.clone(),
                                 fields,
+                                original_fields: inst.borrow().original_fields.clone(),
+                                previous_changes: inst.borrow().previous_changes.clone(),
                             },
                         )))
                     }

@@ -1714,6 +1714,7 @@ impl Model {
                             }
                         }
                         inst_mut.set("id".to_string(), json_to_value(&id));
+                        super::dirty::finalize_persist(&mut inst_mut);
                         drop(inst_mut);
                         Ok(Value::Instance(instance))
                     }
@@ -3859,6 +3860,7 @@ impl Model {
                                 "_errors".to_string(),
                                 Value::Array(Rc::new(RefCell::new(vec![]))),
                             );
+                            super::dirty::finalize_persist(&mut inst_mut);
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
@@ -4085,6 +4087,7 @@ impl Model {
                                     "_errors".to_string(),
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
+                                super::dirty::finalize_persist(&mut inst_mut);
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -4114,6 +4117,7 @@ impl Model {
                                     "_errors".to_string(),
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
+                                super::dirty::finalize_persist(&mut inst_mut);
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -4162,9 +4166,9 @@ impl Model {
                     );
                     match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                         Ok(_) => {
-                            instance
-                                .borrow_mut()
-                                .set("deleted_at".to_string(), Value::String(now.into()));
+                            let mut inst_mut = instance.borrow_mut();
+                            inst_mut.set("deleted_at".to_string(), Value::String(now.into()));
+                            super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
                             Ok(Value::Bool(true))
                         }
                         Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
@@ -4203,9 +4207,9 @@ impl Model {
                 map.insert("deleted_at".to_string(), serde_json::Value::Null);
                 match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
-                        instance
-                            .borrow_mut()
-                            .set("deleted_at".to_string(), Value::Null);
+                        let mut inst_mut = instance.borrow_mut();
+                        inst_mut.set("deleted_at".to_string(), Value::Null);
+                        super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
                         Ok(Value::Bool(true))
                     }
                     Err(e) => Err(format!("restore failed: {}", e)),
@@ -4310,12 +4314,131 @@ impl Model {
                             for (k, v) in map {
                                 inst_mut.set(k.clone(), json_to_value(v));
                             }
+                            super::dirty::seed_snapshot(&mut inst_mut);
+                            inst_mut.previous_changes = None;
                         }
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("reload failed: {}", e)),
                 }
             })),
+        );
+
+        // Dirty tracking. The baseline snapshot is seeded on DB load /
+        // successful persist (see model::dirty); these natives compare the
+        // live fields against it lazily. All are auto-invocable so bare
+        // `record.changed?` works.
+        native_methods.insert(
+            "changed?".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model#changed?",
+                Some(0),
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    Ok(Value::Bool(
+                        !super::dirty::compute_changes(&inst_ref).is_empty(),
+                    ))
+                },
+            )),
+        );
+
+        // instance.changed - array of changed attribute names, sorted.
+        native_methods.insert(
+            "changed".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model#changed",
+                Some(0),
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    let names: Vec<Value> = super::dirty::compute_changes(&inst_ref)
+                        .into_iter()
+                        .map(|(name, _, _)| Value::String(name.into()))
+                        .collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(names))))
+                },
+            )),
+        );
+
+        // instance.changes - { "name": [old, new] } for unsaved changes.
+        native_methods.insert(
+            "changes".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model#changes",
+                Some(0),
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    Ok(super::dirty::changes_to_hash(
+                        &super::dirty::compute_changes(&inst_ref),
+                    ))
+                },
+            )),
+        );
+
+        // instance.previous_changes - what the last successful save/update/
+        // create persisted, as { "name": [old, new] }. Empty hash when the
+        // record has never been persisted by this instance.
+        native_methods.insert(
+            "previous_changes".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model#previous_changes",
+                Some(0),
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    let changes = inst_ref
+                        .previous_changes
+                        .as_deref()
+                        .cloned()
+                        .unwrap_or_default();
+                    Ok(super::dirty::changes_to_hash(&changes))
+                },
+            )),
+        );
+
+        // instance.attribute_was("name") - the baseline value of one
+        // attribute (null on a new record or unknown attribute).
+        native_methods.insert(
+            "attribute_was".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model#attribute_was",
+                Some(1),
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let name = match args.get(1) {
+                        Some(Value::String(s)) => s.to_string(),
+                        _ => {
+                            return Err(
+                                "attribute_was() expects a string attribute name".to_string()
+                            )
+                        }
+                    };
+                    let inst_ref = instance.borrow();
+                    let value = inst_ref
+                        .original_fields
+                        .as_deref()
+                        .and_then(|original| original.get(&name).cloned())
+                        .unwrap_or(Value::Null);
+                    Ok(value)
+                },
+            )),
         );
 
         // instance.traverse(EdgeModel[, {direction:, depth:}]) — graph
@@ -4561,6 +4684,7 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
             let mut inst_mut = instance.borrow_mut();
             inst_mut.set(field.to_string(), Value::Int(new_value));
             inst_mut.set("_rev".to_string(), Value::String(new_rev.into()));
+            super::dirty::sync_snapshot_field(&mut inst_mut, &field);
             drop(inst_mut);
             Ok(Value::Instance(instance))
         }

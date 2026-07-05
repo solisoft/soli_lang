@@ -1450,6 +1450,12 @@ impl Class {
 pub struct Instance {
     pub class: Rc<Class>,
     pub fields: HashMap<String, Value, AHasher>,
+    /// Dirty-tracking baseline: the non-`_` fields as last loaded from or
+    /// persisted to the database. `None` = new (never-loaded) record.
+    pub original_fields: Option<Box<HashMap<String, Value, AHasher>>>,
+    /// Changes applied by the last successful create/save/update, as
+    /// `(name, old, new)` sorted by name. `None` = never persisted.
+    pub previous_changes: Option<Box<Vec<(String, Value, Value)>>>,
 }
 
 impl Instance {
@@ -1457,6 +1463,8 @@ impl Instance {
         Self {
             class,
             fields: HashMap::default(),
+            original_fields: None,
+            previous_changes: None,
         }
     }
 

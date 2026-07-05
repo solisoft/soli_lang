@@ -264,6 +264,7 @@ pub mod columnar;
 pub mod core;
 pub mod crud;
 pub mod db_config;
+pub mod dirty;
 mod engine_context;
 pub mod graph;
 pub mod habtm;

@@ -338,6 +338,10 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
             instance.set(field, enum_value);
         }
     }
+    // Dirty-tracking baseline: what this record looked like in the database.
+    if target_class.is_model_subclass() {
+        super::dirty::seed_snapshot(&mut instance);
+    }
     Value::Instance(Rc::new(RefCell::new(instance)))
 }
 

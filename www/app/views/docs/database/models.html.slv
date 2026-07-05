@@ -238,8 +238,48 @@ user.delete()</code></pre>
                     <td class="py-3 px-4"><code class="text-amber-300">instance.errors</code></td>
                     <td class="py-3 px-4 text-gray-400">Return validation errors from last save/update.</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.changed?</code></td>
+                    <td class="py-3 px-4 text-gray-400">True when any attribute differs from the loaded/persisted baseline. New records report every attribute as changed.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.changed</code></td>
+                    <td class="py-3 px-4 text-gray-400">Sorted array of changed attribute names.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.changes</code></td>
+                    <td class="py-3 px-4 text-gray-400">Hash of unsaved changes: <code>{ "name": [old, new] }</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.previous_changes</code></td>
+                    <td class="py-3 px-4 text-gray-400">What the last successful <code>save</code>/<code>update</code>/<code>create</code> persisted, same shape as <code>changes</code>. Failed persists leave it untouched.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.attribute_was(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Baseline value of one attribute (<code>null</code> on a new record). No dynamic <code>name_was</code> methods.</td>
+                </tr>
             </tbody>
         </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Dirty Tracking</h3>
+    <p class="text-gray-400 mb-4">
+        The baseline resets on load (<code>find</code>/<code>where</code>), successful persist, and <code>reload()</code>; atomic <code>increment</code>/<code>decrement</code> and soft <code>delete()</code>/<code>restore()</code> keep their written field clean. Tracking is <strong>value-based</strong>: reassigning an equal value is not a change, and mutating a nested Hash/Array <em>in place</em> is invisible &mdash; reassign the attribute to record it.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">user = User.find(id)
+user.name = "New Name"
+
+user.changed?                 # true
+user.changed                  # ["name"]
+user.changes                  # { "name": ["Old Name", "New Name"] }
+user.attribute_was("name")    # "Old Name"
+
+user.save()
+user.changed?                 # false
+user.previous_changes         # { "name": ["Old Name", "New Name"] }</code></pre>
+        </div>
     </div>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">

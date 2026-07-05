@@ -1197,6 +1197,45 @@ user.touch();  # Updates _updated_at
 user.reload();
 ```
 
+### Dirty tracking
+
+Model instances track which attributes changed since they were loaded from
+(or last persisted to) the database:
+
+```soli
+user = User.find(id)
+user.changed?                 # false — freshly loaded
+user.name = "New Name"
+
+user.changed?                 # true
+user.changed                  # ["name"]  (sorted attribute names)
+user.changes                  # { "name": ["Old Name", "New Name"] }
+user.attribute_was("name")    # "Old Name"
+
+user.save()
+user.changed?                 # false — baseline reset
+user.previous_changes         # { "name": ["Old Name", "New Name"] }
+```
+
+Semantics worth knowing:
+
+- **New records report every attribute as changed** — `User.new({"name": "A"})`
+  has `changes == { "name": [null, "A"] }`, and after `create` the record's
+  `previous_changes` covers all inserted attributes (including `id`), matching
+  Rails.
+- **Failed persists keep the record dirty.** A validation or DB error on
+  `save`/`update` leaves `changed?` true and `previous_changes` untouched.
+- `reload()` resets the baseline and clears `previous_changes`; atomic
+  `increment`/`decrement`, soft `delete()`, and `restore()` keep their written
+  field clean.
+- **Tracking is value-based.** Reassigning an attribute to an equal value is
+  not a change. Conversely, mutating a nested Hash/Array *in place*
+  (`user.tags.push("x")`) is invisible to tracking — reassign the attribute
+  (`user.tags = updated_tags`) to record it.
+- There are no dynamic per-attribute methods (`name_was`); use
+  `attribute_was("name")`. A database column literally named `changed`
+  shadows the method (field reads win), like any other field/method collision.
+
 ### How `increment` / `decrement` stay atomic under concurrency
 
 `increment` and `decrement` are **not** plain read-modify-writes on the in-memory
