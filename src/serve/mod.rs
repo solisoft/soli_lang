@@ -6199,10 +6199,10 @@ fn handle_request(
             resp.headers.push(("Set-Cookie".to_string(), cookie_value));
         }
         // Emit any response cookies accumulated via set_cookie()
-        for (name, value) in take_response_cookies() {
+        for (name, value, attrs) in take_response_cookies() {
             resp.headers.push((
                 "Set-Cookie".to_string(),
-                format!("{}={}; Path=/", name, value),
+                format!("{}={}{}", name, value, attrs),
             ));
         }
         // Add security headers if enabled

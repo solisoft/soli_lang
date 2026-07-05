@@ -26,7 +26,7 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
 
     // (relative path, contents) — written only if absent so re-running never
     // clobbers a User model or policy you've already customized.
-    let files: [(&str, &str); 9] = [
+    let files: [(&str, &str); 17] = [
         ("app/models/user.sl", auth::USER_MODEL),
         (
             "app/policies/application_policy.sl",
@@ -47,7 +47,33 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
             "app/controllers/registrations_controller.sl",
             auth::REGISTRATIONS_CONTROLLER,
         ),
+        (
+            "app/controllers/passwords_controller.sl",
+            auth::PASSWORDS_CONTROLLER,
+        ),
+        (
+            "app/controllers/confirmations_controller.sl",
+            auth::CONFIRMATIONS_CONTROLLER,
+        ),
+        ("app/mailers/auth_mailer.sl", auth::AUTH_MAILER),
         ("app/views/sessions/new.html.slv", auth::SESSIONS_NEW_VIEW),
+        ("app/views/passwords/new.html.slv", auth::PASSWORDS_NEW_VIEW),
+        (
+            "app/views/passwords/edit.html.slv",
+            auth::PASSWORDS_EDIT_VIEW,
+        ),
+        (
+            "app/views/confirmations/new.html.slv",
+            auth::CONFIRMATIONS_NEW_VIEW,
+        ),
+        (
+            "app/views/auth_mailer/reset_password.html.slv",
+            auth::MAILER_RESET_PASSWORD_VIEW,
+        ),
+        (
+            "app/views/auth_mailer/confirm_email.html.slv",
+            auth::MAILER_CONFIRM_EMAIL_VIEW,
+        ),
     ];
 
     for (rel, contents) in files {
@@ -60,6 +86,7 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
     )?;
 
     write_migration(app_path)?;
+    write_token_indexes_migration(app_path)?;
     add_routes(app_path)?;
 
     Ok(())
@@ -71,9 +98,13 @@ fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
         "app/policies",
         "app/controllers",
         "app/helpers",
+        "app/mailers",
         "app/middleware",
         "app/views/sessions",
         "app/views/registrations",
+        "app/views/passwords",
+        "app/views/confirmations",
+        "app/views/auth_mailer",
         "config",
         "db/migrations",
     ];
@@ -125,24 +156,75 @@ fn write_migration(app_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Append the auth routes to `config/routes.sl` (idempotent — skips if the
-/// login route is already declared).
+/// Write the token-index migration (skips if already present). Separate from
+/// `create_users` so apps generated before the Devise-style flows pick it up
+/// on a re-run.
+fn write_token_indexes_migration(app_path: &Path) -> Result<(), String> {
+    let migrations_dir = app_path.join("db/migrations");
+    if let Ok(entries) = fs::read_dir(&migrations_dir) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .contains("add_auth_token_indexes")
+            {
+                println!(
+                    "  \x1b[33mskip\x1b[0m   db/migrations (add_auth_token_indexes migration already exists)"
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get timestamp: {}", e))?
+        .as_secs();
+    // +1 keeps it ordered after a create_users migration written this second.
+    let filename = format!(
+        "{}add_auth_token_indexes_{}.sl",
+        timestamp + 1,
+        timestamp + 1
+    );
+    let path = migrations_dir.join(&filename);
+    write_file(&path, &auth::auth_token_indexes_migration())?;
+    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
+    Ok(())
+}
+
+/// Append the auth routes to `config/routes.sl` (idempotent — the base and
+/// flow snippets carry their own markers, so an app generated before the
+/// Devise-style flows gains just the new routes on a re-run).
 fn add_routes(app_path: &Path) -> Result<(), String> {
     let routes_file = app_path.join("config/routes.sl");
 
-    if routes_file.exists() {
-        let mut content = fs::read_to_string(&routes_file)
-            .map_err(|e| format!("Failed to read routes file: {}", e))?;
-        if content.contains("\"sessions#new\"") {
-            println!("  \x1b[33mskip\x1b[0m   config/routes.sl (auth routes already present)");
-            return Ok(());
-        }
+    let mut content = if routes_file.exists() {
+        fs::read_to_string(&routes_file)
+            .map_err(|e| format!("Failed to read routes file: {}", e))?
+    } else {
+        String::new()
+    };
+    let existed = routes_file.exists();
+
+    let mut changed = false;
+    if !content.contains("\"sessions#new\"") {
         content.push_str(auth::ROUTES_SNIPPET);
-        fs::write(&routes_file, content)
-            .map_err(|e| format!("Failed to write routes file: {}", e))?;
+        changed = true;
+    }
+    if !content.contains("\"passwords#new\"") {
+        content.push_str(auth::FLOWS_ROUTES_SNIPPET);
+        changed = true;
+    }
+
+    if !changed {
+        println!("  \x1b[33mskip\x1b[0m   config/routes.sl (auth routes already present)");
+        return Ok(());
+    }
+
+    fs::write(&routes_file, content).map_err(|e| format!("Failed to write routes file: {}", e))?;
+    if existed {
         println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
     } else {
-        write_file(&routes_file, auth::ROUTES_SNIPPET)?;
         println!("  \x1b[32mcreate\x1b[0m config/routes.sl");
     }
     Ok(())
@@ -154,10 +236,18 @@ pub fn print_auth_success_message() {
     println!("  \x1b[32m\x1b[1mSuccess!\x1b[0m Scaffolded authentication + policies.");
     println!();
     println!("  \x1b[2mNext steps:\x1b[0m");
-    println!("    1. Run the migration:   \x1b[36msoli db:migrate up\x1b[0m");
+    println!("    1. Run the migrations:  \x1b[36msoli db:migrate up\x1b[0m");
     println!("    2. Start the server:    \x1b[36msoli serve . --dev\x1b[0m");
     println!(
         "    3. Visit \x1b[36m/signup\x1b[0m to create an account, then \x1b[36m/login\x1b[0m."
+    );
+    println!();
+    println!("  \x1b[2mIncluded flows:\x1b[0m password reset (/password/reset), email");
+    println!("  confirmation (/confirmation/resend), remember-me, account lockout.");
+    println!("  Configure SMTP (SOLI_SMTP_* env vars) so the emails go out, set your");
+    println!("  production URL in \x1b[36mauth_base_url\x1b[0m, and tune the knobs at the top of");
+    println!(
+        "  \x1b[36mapp/models/user.sl\x1b[0m (lockout threshold, token TTLs, confirmation gate)."
     );
     println!();
     println!("  \x1b[2mAuthorize in a controller:\x1b[0m");

@@ -3,10 +3,32 @@
 #
 # Passwords are never stored in plaintext: assign through `set_password`,
 # which hashes with Argon2id (the built-in Crypto module), and verify with
-# `authenticate`.
+# `authenticate`. Reset/confirmation/remember tokens are random UUIDs whose
+# SHA-256 digest is stored — a database leak can't be replayed as a live link.
+
+# --- Auth flow tuning --------------------------------------------------------
+const AUTH_RESET_TOKEN_TTL = 7200      # password-reset links live 2 hours
+const AUTH_MAX_FAILED_ATTEMPTS = 10    # failed logins before lockout
+const AUTH_LOCKOUT_SECONDS = 1800      # auto-unlock after 30 minutes
+const AUTH_REMEMBER_DAYS = 30          # remember-me cookie lifetime
+
+# Base URL used in password-reset / confirmation emails.
+fn auth_base_url {
+  return "http://localhost:5011"  # TODO: set your production URL
+}
+
+# Require a confirmed email before sign-in. Flip to true once SMTP is
+# configured (SOLI_SMTP_* env vars — see the mailer docs) so users can
+# actually receive the confirmation link.
+fn auth_require_confirmed_email {
+  return false
+}
 
 class User < Model
-  # Fields: email, password_digest, role
+  # Fields: email, password_digest, role, plus the auth-flow fields:
+  # reset_token_digest, reset_sent_at, confirmation_token_digest,
+  # confirmation_sent_at, confirmed_at, remember_token_digest,
+  # failed_attempts, locked_at.
   # (Model stores fields dynamically — no need to declare them.)
 
   validates("email", { "presence": true, "uniqueness": true, "format": "email" })
@@ -35,5 +57,105 @@ class User < Model
 
   def admin?
     return this.role == "admin"
+  end
+
+  # --- Password reset ---------------------------------------------------------
+
+  # Issue a reset token: returns the plaintext token (goes into the email);
+  # only its digest is stored.
+  def start_password_reset
+    token = uuid_v4()
+    this.reset_token_digest = Crypto.sha256(token)
+    this.reset_sent_at = DateTime.utc().to_unix()
+    this.update()
+    return token
+  end
+
+  def reset_token_expired?
+    return true if this.reset_sent_at.nil?
+
+    return DateTime.utc().to_unix() - this.reset_sent_at > AUTH_RESET_TOKEN_TTL
+  end
+
+  # Set the new password, burn the token, and clear any lockout.
+  def finish_password_reset(plaintext)
+    this.set_password(plaintext)
+    this.reset_token_digest = null
+    this.reset_sent_at = null
+    this.failed_attempts = 0
+    this.locked_at = null
+    return this.update()
+  end
+
+  # --- Email confirmation -----------------------------------------------------
+
+  def start_email_confirmation
+    token = uuid_v4()
+    this.confirmation_token_digest = Crypto.sha256(token)
+    this.confirmation_sent_at = DateTime.utc().to_unix()
+    this.update()
+    return token
+  end
+
+  def confirm_email
+    this.confirmed_at = DateTime.utc().to_unix()
+    this.confirmation_token_digest = null
+    return this.update()
+  end
+
+  def confirmed?
+    return !this.confirmed_at.nil?
+  end
+
+  # --- Remember me ------------------------------------------------------------
+
+  def start_remember_me
+    token = uuid_v4()
+    this.remember_token_digest = Crypto.sha256(token)
+    this.update()
+    return token
+  end
+
+  def forget_me
+    return true if this.remember_token_digest.blank?
+
+    this.remember_token_digest = null
+    return this.update()
+  end
+
+  def remembered_by?(token)
+    return false if this.remember_token_digest.blank?
+
+    return Crypto.secure_compare(Crypto.sha256(token.to_s), this.remember_token_digest)
+  end
+
+  # --- Account lockout --------------------------------------------------------
+
+  def locked?
+    return false if this.locked_at.nil?
+
+    if DateTime.utc().to_unix() - this.locked_at > AUTH_LOCKOUT_SECONDS
+      # The lockout window has passed — auto-unlock.
+      this.locked_at = null
+      this.failed_attempts = 0
+      this.update()
+      return false
+    end
+    return true
+  end
+
+  def register_failed_attempt
+    this.failed_attempts = (this.failed_attempts ?? 0) + 1
+    this.locked_at = DateTime.utc().to_unix() if this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
+    this.update()
+  end
+
+  def clear_failed_attempts
+    attempts = this.failed_attempts ?? 0
+    return if attempts == 0 && this.locked_at.nil?
+
+    this.failed_attempts = 0
+    this.locked_at = null
+    this.update()
   end
 end

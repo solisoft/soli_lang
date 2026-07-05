@@ -20,6 +20,14 @@
         <input id="password" name="password" type="password" required
                class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
       </div>
+      <div class="flex items-center justify-between text-sm">
+        <label class="flex items-center gap-2 text-slate-400">
+          <input type="checkbox" name="remember_me" value="1"
+                 class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500">
+          Remember me
+        </label>
+        <a href="/password/reset" class="text-indigo-400 hover:text-indigo-300">Forgot password?</a>
+      </div>
       <button type="submit"
               class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
         Sign in

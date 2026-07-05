@@ -38,7 +38,7 @@
             Generate it
         </h2>
         <p class="text-gray-400 mb-6">
-            <code class="text-amber-300">soli generate auth</code> scaffolds session-based authentication and the policy layer together.
+            <code class="text-amber-300">soli generate auth</code> scaffolds the full Devise-style auth suite &mdash; login/signup, password reset (hashed one-time tokens, 2h expiry), email confirmation with resend, remember-me (HttpOnly persistent cookie), account lockout with auto-unlock &mdash; and the policy layer together. Thresholds and the confirmation gate are constants/toggles at the top of the generated <code>app/models/user.sl</code>; configure SMTP (<code>SOLI_SMTP_*</code>) so the emails go out.
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">

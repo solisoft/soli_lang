@@ -257,14 +257,23 @@ session_id = cookies.session_id</code></pre>
             <section id="fn-http-set-cookie" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-http-set-cookie" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">set_cookie(name, value)</code>
+                        <code class="text-lg font-mono text-amber-400">set_cookie(name, value, options?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 text-sm mb-3">Set a response cookie sent as a <code>Set-Cookie</code> header with <code>Path=/</code>.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("session_id", "abc123")
-set_cookie("theme", "dark")</code></pre>
+                    <p class="text-gray-400 text-sm mb-3">Set a response cookie sent as a <code>Set-Cookie</code> header. Without options only <code>Path=/</code> is set. The options hash accepts <code>max_age</code> (seconds; <code>0</code> expires the cookie immediately), <code>expires</code>, <code>http_only</code>, <code>secure</code>, <code>same_site</code> (<code>"Lax"</code>/<code>"Strict"</code>/<code>"None"</code>), <code>path</code>, and <code>domain</code>. Unknown keys raise so a typo can't silently weaken a cookie.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("theme", "dark")
+
+# Persistent remember-me cookie (what `soli generate auth` scaffolds):
+set_cookie("remember_token", user["_key"] + ":" + token, {
+  "max_age": 30 * 86400,
+  "http_only": true,
+  "same_site": "Lax"
+})
+
+# Expire it on logout:
+set_cookie("remember_token", "", { "max_age": 0, "http_only": true })</code></pre>
                 </div>
             </section>
         </div>

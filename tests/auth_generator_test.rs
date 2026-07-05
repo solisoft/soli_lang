@@ -30,18 +30,48 @@ fn create_auth_writes_all_files() {
         "app/middleware/current_user.sl",
         "app/controllers/sessions_controller.sl",
         "app/controllers/registrations_controller.sl",
+        "app/controllers/passwords_controller.sl",
+        "app/controllers/confirmations_controller.sl",
+        "app/mailers/auth_mailer.sl",
         "app/views/sessions/new.html.slv",
         "app/views/registrations/new.html.slv",
+        "app/views/passwords/new.html.slv",
+        "app/views/passwords/edit.html.slv",
+        "app/views/confirmations/new.html.slv",
+        "app/views/auth_mailer/reset_password.html.slv",
+        "app/views/auth_mailer/confirm_email.html.slv",
     ] {
         assert!(dir.path().join(rel).exists(), "{rel} not created");
     }
 
-    // A timestamped users migration is generated.
-    let has_migration = fs::read_dir(dir.path().join("db/migrations"))
+    // Timestamped migrations are generated: users + token indexes.
+    let migration_names: Vec<String> = fs::read_dir(dir.path().join("db/migrations"))
         .unwrap()
         .filter_map(Result::ok)
-        .any(|e| e.file_name().to_string_lossy().contains("create_users"));
-    assert!(has_migration, "no create_users migration generated");
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(
+        migration_names.iter().any(|n| n.contains("create_users")),
+        "no create_users migration generated"
+    );
+    assert!(
+        migration_names
+            .iter()
+            .any(|n| n.contains("add_auth_token_indexes")),
+        "no add_auth_token_indexes migration generated"
+    );
+
+    // The User model ships the Devise-style flow methods.
+    let user_model = fs::read_to_string(dir.path().join("app/models/user.sl")).unwrap();
+    for needle in [
+        "start_password_reset",
+        "start_email_confirmation",
+        "start_remember_me",
+        "register_failed_attempt",
+        "AUTH_MAX_FAILED_ATTEMPTS",
+    ] {
+        assert!(user_model.contains(needle), "user model missing {needle}");
+    }
 }
 
 #[test]
@@ -56,6 +86,41 @@ fn create_auth_appends_routes() {
     assert!(
         routes.contains("\"registrations#create\""),
         "signup route missing"
+    );
+    assert!(
+        routes.contains("\"passwords#create\""),
+        "password reset route missing"
+    );
+    assert!(
+        routes.contains("\"confirmations#show\""),
+        "email confirmation route missing"
+    );
+}
+
+#[test]
+fn create_auth_backfills_flow_routes_on_older_apps() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_skeleton(dir.path());
+
+    // Simulate an app generated before the Devise-style flows: base auth
+    // routes present, flow routes absent.
+    fs::write(
+        dir.path().join("config/routes.sl"),
+        "# routes\nget(\"/login\", \"sessions#new\", name: \"login\")\n",
+    )
+    .unwrap();
+
+    create_auth(dir.path().to_str().unwrap()).expect("generate auth ok");
+
+    let routes = fs::read_to_string(dir.path().join("config/routes.sl")).unwrap();
+    assert_eq!(
+        routes.matches("\"sessions#new\"").count(),
+        1,
+        "base auth routes duplicated"
+    );
+    assert!(
+        routes.contains("\"passwords#new\""),
+        "flow routes not backfilled"
     );
 }
 

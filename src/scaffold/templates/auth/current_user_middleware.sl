@@ -2,9 +2,11 @@
 #
 # Runs on every request (low order so it lands before app middleware). Reads
 # the signed-in user id from the session and loads the User record into
-# `req["current_user"]`, which `current_user()` / `authorize()` read. Guests
-# leave it nil. This never blocks the request — gating is the job of policies
-# and the `require_login` pattern, not this loader.
+# `req["current_user"]`, which `current_user()` / `authorize()` read. When no
+# session exists, a valid remember-me cookie (set at login when the user
+# ticked "Remember me") is promoted to a fresh session. Guests leave it nil.
+# This never blocks the request — gating is the job of policies and the
+# `require_login` pattern, not this loader.
 
 # order: 5
 
@@ -12,6 +14,20 @@ def load_current_user(req)
   user_id = session_get("user_id")
   if !user_id.blank?
     req["current_user"] = User.find_by("_key", user_id) rescue null
+    return { "continue": true, "request": req }
+  end
+
+  # Remember-me: the cookie carries "<user key>:<token>"; only the token's
+  # digest is stored, and the comparison is constant-time.
+  remember = cookies["remember_token"] rescue null
+  if !remember.blank? && remember.includes?(":")
+    parts = remember.split(":")
+    user = User.find_by("_key", parts[0]) rescue null
+    if !user.nil? && user.remembered_by?(parts[1])
+      session_regenerate()
+      session_set("user_id", user["_key"])
+      req["current_user"] = user
+    end
   end
   return { "continue": true, "request": req }
 end

@@ -11,13 +11,30 @@ record?*
 soli generate auth
 ```
 
-This writes a `User` model, login/signup/logout controllers and views, a
-`load_current_user` middleware, and the policy layer:
+This writes a `User` model, the full Devise-style auth suite, and the policy
+layer:
 
+- Login/signup/logout controllers and views, plus a `load_current_user`
+  middleware (which also honors remember-me cookies).
+- **Password reset** (`/password/reset`): hashed one-time tokens, 2-hour
+  expiry, no account enumeration, emailed via the scaffolded `AuthMailer`.
+- **Email confirmation** (`/confirm_email`, `/confirmation/resend`): sent on
+  signup; enforcement is a one-line toggle (`auth_require_confirmed_email`
+  in `app/models/user.sl`, off by default so the flow works before SMTP is
+  configured).
+- **Remember-me**: an HttpOnly persistent cookie carrying a digest-stored
+  token, promoted to a fresh session by the middleware.
+- **Account lockout**: 10 failed logins lock the account for 30 minutes
+  (auto-unlock); thresholds are constants at the top of the User model.
 - `app/policies/application_policy.sl` — the `ApplicationPolicy` base class plus
   the global `authorize` / `policy_for` / `current_user` / `signed_in?` helpers.
 - `app/policies/user_policy.sl` — a worked example policy.
 - `app/helpers/auth_helper.sl` — `current_user` / `signed_in?` for views.
+
+Configure SMTP (`SOLI_SMTP_*` env vars) so the reset/confirmation emails go
+out — or `SOLI_MAIL_DELIVERY_METHOD=logger` in dev to print them to the
+console — and set your production URL in `auth_base_url`
+(`app/models/user.sl`).
 
 Files in `app/policies/` are auto-loaded into the global scope at boot, like
 models. **Restart the server after adding a new policy.**

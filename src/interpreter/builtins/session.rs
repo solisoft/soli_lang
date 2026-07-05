@@ -792,8 +792,11 @@ pub fn get_current_session_id() -> Option<String> {
 }
 
 // Response cookies accumulated during request handling via set_cookie().
+// Tuple: (name, value, attribute suffix like "; Path=/; HttpOnly") — the
+// attributes are validated and rendered at set time, emitted verbatim.
 thread_local! {
-    static RESPONSE_COOKIES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+    static RESPONSE_COOKIES: RefCell<Vec<(String, String, String)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 /// Clear any response cookies accumulated from a previous request.
@@ -827,14 +830,22 @@ fn validate_cookie_pair(name: &str, value: &str) -> Result<(), String> {
 
 /// Store a response cookie to be emitted as a Set-Cookie header.
 pub fn set_response_cookie(name: &str, value: &str) {
+    set_response_cookie_with_attrs(name, value, "; Path=/");
+}
+
+/// Store a response cookie with a pre-validated attribute suffix.
+pub fn set_response_cookie_with_attrs(name: &str, value: &str, attrs: &str) {
     // Trip the response cache dirty flag so a stale cached body
     // can't be returned without the new Set-Cookie header.
     crate::template::response_cache::mark_response_dirty();
-    RESPONSE_COOKIES.with(|c| c.borrow_mut().push((name.to_string(), value.to_string())));
+    RESPONSE_COOKIES.with(|c| {
+        c.borrow_mut()
+            .push((name.to_string(), value.to_string(), attrs.to_string()))
+    });
 }
 
 /// Drain all accumulated response cookies (called in finalize_response).
-pub fn take_response_cookies() -> Vec<(String, String)> {
+pub fn take_response_cookies() -> Vec<(String, String, String)> {
     RESPONSE_COOKIES.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
@@ -1370,30 +1381,129 @@ pub fn register_cookie_builtins(env: &mut Environment) {
     // set_cookie(name, value) -> Null
     env.define(
         "set_cookie".to_string(),
-        Value::NativeFunction(NativeFunction::new("set_cookie", Some(2), |args| {
-            let name = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
+        Value::NativeFunction(NativeFunction::new("set_cookie", None, |args| {
+            let name = match args.first() {
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => {
                     return Err(format!(
                         "set_cookie() expects string name, got {}",
                         other.type_name()
                     ))
                 }
+                None => return Err("set_cookie() requires a name".to_string()),
             };
-            let value = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
+            let value = match args.get(1) {
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => {
                     return Err(format!(
                         "set_cookie() expects string value, got {}",
                         other.type_name()
                     ))
                 }
+                None => return Err("set_cookie() requires a value".to_string()),
             };
             validate_cookie_pair(&name, &value)?;
-            set_response_cookie(&name, &value);
+            let attrs = match args.get(2) {
+                None => "; Path=/".to_string(),
+                Some(Value::Hash(options)) => build_cookie_attributes(&options.borrow())?,
+                Some(other) => {
+                    return Err(format!(
+                        "set_cookie() options must be a hash, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            set_response_cookie_with_attrs(&name, &value, &attrs);
             Ok(Value::Null)
         })),
     );
+}
+
+/// Render `set_cookie`'s options hash into a validated Set-Cookie attribute
+/// suffix. Supported keys: `path` (default "/"), `max_age` (seconds; 0
+/// expires the cookie immediately), `expires` (RFC-1123 date string),
+/// `http_only`, `secure` (booleans), `same_site` ("Lax"/"Strict"/"None"),
+/// `domain`. Unknown keys raise so typos can't silently weaken a cookie.
+fn build_cookie_attributes(
+    options: &crate::interpreter::value::HashPairs,
+) -> Result<String, String> {
+    use crate::interpreter::value::HashKey;
+
+    let string_attr = |v: &Value, key: &str| -> Result<String, String> {
+        match v {
+            Value::String(s) => {
+                let has_ctl_or_semi = s.bytes().any(|b| b < 0x20 || b == 0x7f || b == b';');
+                if has_ctl_or_semi {
+                    return Err(format!(
+                        "set_cookie() {} contains a forbidden character (control char or ';')",
+                        key
+                    ));
+                }
+                Ok(s.to_string())
+            }
+            other => Err(format!(
+                "set_cookie() {} must be a string, got {}",
+                key,
+                other.type_name()
+            )),
+        }
+    };
+
+    let mut path = "/".to_string();
+    let mut attrs = String::new();
+
+    for (k, v) in options.iter() {
+        let HashKey::String(key) = k else {
+            return Err("set_cookie() option keys must be strings".to_string());
+        };
+        match key.as_ref() {
+            "path" => path = string_attr(v, "path")?,
+            "max_age" => match v {
+                Value::Int(n) if *n >= 0 => attrs.push_str(&format!("; Max-Age={}", n)),
+                _ => {
+                    return Err(
+                        "set_cookie() max_age must be a non-negative integer (seconds)"
+                            .to_string(),
+                    )
+                }
+            },
+            "expires" => attrs.push_str(&format!("; Expires={}", string_attr(v, "expires")?)),
+            "http_only" => {
+                if matches!(v, Value::Bool(true)) {
+                    attrs.push_str("; HttpOnly");
+                }
+            }
+            "secure" => {
+                if matches!(v, Value::Bool(true)) {
+                    attrs.push_str("; Secure");
+                }
+            }
+            "same_site" => {
+                let raw = string_attr(v, "same_site")?;
+                let normalized = match raw.to_ascii_lowercase().as_str() {
+                    "lax" => "Lax",
+                    "strict" => "Strict",
+                    "none" => "None",
+                    _ => {
+                        return Err(format!(
+                            "set_cookie() same_site must be \"Lax\", \"Strict\" or \"None\", got \"{}\"",
+                            raw
+                        ))
+                    }
+                };
+                attrs.push_str(&format!("; SameSite={}", normalized));
+            }
+            "domain" => attrs.push_str(&format!("; Domain={}", string_attr(v, "domain")?)),
+            other => {
+                return Err(format!(
+                    "set_cookie() unknown option \"{}\" (path, max_age, expires, http_only, secure, same_site, domain)",
+                    other
+                ))
+            }
+        }
+    }
+
+    Ok(format!("; Path={}{}", path, attrs))
 }
 
 #[cfg(test)]
@@ -1429,6 +1539,69 @@ mod tests {
         let mut env = Environment::new();
         register_session_builtins(&mut env);
         env
+    }
+
+    fn options_hash(pairs: &[(&str, Value)]) -> crate::interpreter::value::HashPairs {
+        use crate::interpreter::value::HashKey;
+        let mut map = crate::interpreter::value::HashPairs::default();
+        for (k, v) in pairs {
+            map.insert(HashKey::String((*k).into()), v.clone());
+        }
+        map
+    }
+
+    /// set_cookie's options hash renders into a validated attribute suffix
+    /// (remember-me cookies need Max-Age + HttpOnly + SameSite).
+    #[test]
+    fn cookie_attributes_render_and_validate() {
+        let attrs = build_cookie_attributes(&options_hash(&[
+            ("max_age", Value::Int(2_592_000)),
+            ("http_only", Value::Bool(true)),
+            ("same_site", Value::String("lax".into())),
+        ]))
+        .unwrap();
+        assert!(attrs.starts_with("; Path=/"));
+        assert!(attrs.contains("; Max-Age=2592000"));
+        assert!(attrs.contains("; HttpOnly"));
+        assert!(attrs.contains("; SameSite=Lax"));
+
+        // max_age 0 expires immediately (logout path).
+        let attrs = build_cookie_attributes(&options_hash(&[("max_age", Value::Int(0))])).unwrap();
+        assert!(attrs.contains("; Max-Age=0"));
+
+        // Injection through an attribute value is rejected.
+        let err = build_cookie_attributes(&options_hash(&[(
+            "path",
+            Value::String("/; Secure".into()),
+        )]))
+        .unwrap_err();
+        assert!(err.contains("forbidden character"), "got: {err}");
+
+        // Unknown keys raise instead of silently weakening the cookie.
+        let err =
+            build_cookie_attributes(&options_hash(&[("httponly", Value::Bool(true))])).unwrap_err();
+        assert!(err.contains("unknown option"), "got: {err}");
+
+        // Bad SameSite value raises.
+        let err = build_cookie_attributes(&options_hash(&[(
+            "same_site",
+            Value::String("sideways".into()),
+        )]))
+        .unwrap_err();
+        assert!(err.contains("same_site"), "got: {err}");
+    }
+
+    /// The attribute suffix survives the store → drain round-trip that the
+    /// response writer consumes.
+    #[test]
+    fn response_cookies_carry_attributes() {
+        clear_response_cookies();
+        set_response_cookie("plain", "v");
+        set_response_cookie_with_attrs("remember", "abc", "; Path=/; Max-Age=60; HttpOnly");
+        let drained = take_response_cookies();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].2, "; Path=/");
+        assert_eq!(drained[1].2, "; Path=/; Max-Age=60; HttpOnly");
     }
 
     /// SEC-025: loopback host detection accepts the names that

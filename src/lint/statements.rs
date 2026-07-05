@@ -24,7 +24,7 @@ impl Linter {
                 type_annotation: _,
                 initializer,
             } => {
-                rules::naming::check_variable_name(name, stmt.span, &mut self.diagnostics);
+                rules::naming::check_constant_name(name, stmt.span, &mut self.diagnostics);
                 self.lint_expr(initializer);
             }
 

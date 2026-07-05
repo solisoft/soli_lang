@@ -16,6 +16,26 @@ pub fn check_variable_name(name: &str, span: Span, diagnostics: &mut Vec<LintDia
     }
 }
 
+/// `const` declarations conventionally use SCREAMING_SNAKE_CASE (`MAX_SIZE`),
+/// though plain snake_case is tolerated. Only mixed casing (camelCase /
+/// PascalCase) is flagged.
+pub fn check_constant_name(name: &str, span: Span, diagnostics: &mut Vec<LintDiagnostic>) {
+    let is_screaming = name
+        .chars()
+        .all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_');
+    if has_uppercase(name) && !is_screaming {
+        diagnostics.push(LintDiagnostic {
+            rule: "naming/snake-case",
+            message: format!(
+                "constant '{}' should use SCREAMING_SNAKE_CASE (or snake_case)",
+                name
+            ),
+            span,
+            severity: Severity::Warning,
+        });
+    }
+}
+
 pub fn check_function_name(name: &str, span: Span, diagnostics: &mut Vec<LintDiagnostic>) {
     if has_uppercase(name) {
         diagnostics.push(LintDiagnostic {

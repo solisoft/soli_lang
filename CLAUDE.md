@@ -363,7 +363,7 @@ cookies.theme;                   // Read a cookie (dot access)
 set_cookie("name", "value");     // Set a response cookie (Set-Cookie header)
 ```
 
-Use `set_cookie` in controllers and middleware to write response cookies. The cookie is emitted with `Path=/`.
+Use `set_cookie` in controllers and middleware to write response cookies. An optional third options hash controls attributes: `set_cookie("name", "value", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax", "path": "/", "expires": "...", "domain": "..."})`. Without options the cookie is emitted with `Path=/` only; `max_age: 0` expires it immediately. Unknown option keys raise.
 
 ## Session Storage
 

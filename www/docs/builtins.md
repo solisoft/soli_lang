@@ -3184,20 +3184,34 @@ theme = cookies["theme"] or "light"
 session_id = cookies.session_id
 ```
 
-### set_cookie(name, value)
+### set_cookie(name, value, options?)
 
-Sets a response cookie that is sent to the client as a `Set-Cookie` header with `Path=/`.
+Sets a response cookie sent to the client as a `Set-Cookie` header. Without
+options only `Path=/` is set. The options hash accepts `max_age` (seconds;
+`0` expires the cookie immediately), `expires`, `http_only`, `secure`,
+`same_site` (`"Lax"`/`"Strict"`/`"None"`), `path`, and `domain`. Unknown
+keys raise so a typo can't silently weaken a cookie.
 
 **Parameters:**
 - `name` (String) - Cookie name
 - `value` (String) - Cookie value
+- `options` (Hash, optional) - Cookie attributes
 
 **Returns:** null
 
 **Example:**
 ```soli
-set_cookie("session_id", "abc123")
 set_cookie("theme", "dark")
+
+# Persistent remember-me cookie (what `soli generate auth` scaffolds):
+set_cookie("remember_token", user["_key"] + ":" + token, {
+  "max_age": 30 * 86400,
+  "http_only": true,
+  "same_site": "Lax"
+})
+
+# Expire it on logout:
+set_cookie("remember_token", "", { "max_age": 0, "http_only": true })
 ```
 
 ---

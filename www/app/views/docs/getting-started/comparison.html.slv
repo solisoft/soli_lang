@@ -66,7 +66,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Auth &amp; security</td>
-                        <td class="py-3 px-4 text-gray-400"><code>soli generate auth</code> (Argon2id, session-fixation defense), Pundit-style policies (deny by default), <code>attr_accessible</code> mass-assignment whitelist, schema-based input validation (<code>V</code>, with type coercion), security headers on by default in prod, Origin-based CSRF checks, SSRF-hardened HTTP client, encrypted app bundles</td>
+                        <td class="py-3 px-4 text-gray-400"><code>soli generate auth</code> (Argon2id, session-fixation defense, password reset, email confirmation, remember-me, account lockout), Pundit-style policies (deny by default), <code>attr_accessible</code> mass-assignment whitelist, schema-based input validation (<code>V</code>, with type coercion), security headers on by default in prod, Origin-based CSRF checks, SSRF-hardened HTTP client, encrypted app bundles</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Jobs &amp; mail</td>
@@ -133,7 +133,7 @@
         The primitives are all here, with no third-party packages: session auth (<code>soli generate auth</code>, Argon2id), JWT API auth (<code>jwt_sign</code>/<code>jwt_verify</code>), native TOTP 2FA (<code>Crypto.totp_generate/verify/uri</code>), and OAuth built on the SSRF-hardened HTTP client &mdash; with official step-by-step guides for <a href="/docs/blog/github-oauth" class="text-amber-400 hover:text-amber-300">GitHub</a> and <a href="/docs/blog/google-oauth" class="text-amber-400 hover:text-amber-300">Google</a> sign-in and <a href="/docs/blog/totp-authentication" class="text-amber-400 hover:text-amber-300">TOTP</a>.
     </p>
     <p class="text-gray-400 mb-8">
-        What's missing is the <strong class="text-white">pre-wired, Devise-style suite</strong>: the generator scaffolds login/signup, but password reset, email confirmation, remember-me and account lockout are flows you assemble from the primitives rather than generate with one command.
+        <code>soli generate auth</code> is now a <strong class="text-white">one-command, Devise-style suite</strong>: login/signup plus password reset (hashed one-time tokens, 2h expiry, no account enumeration), email confirmation with resend, remember-me (HttpOnly persistent cookie, digest-stored token), and account lockout with auto-unlock &mdash; all as readable scaffolded code you own, with the thresholds as constants at the top of the generated User model. What's still assembled by hand: unlock emails and a change-email flow.
     </p>
 
     <h3 class="text-xl font-semibold text-white mb-4">Data layer</h3>
@@ -204,7 +204,6 @@
             <h3 class="text-lg font-semibold text-red-400 mb-3">Reach for something else if you need</h3>
             <ul class="list-disc pl-5 text-red-200/80 text-sm space-y-2">
                 <li>SQL, or any existing relational database &mdash; today Soli means SoliDB</li>
-                <li>A one-command, Devise-style auth suite &mdash; OAuth, JWT and TOTP are built-in with official guides, but reset/confirmation flows are assembled, not generated</li>
                 <li>A generic, zero-build admin UI (Django-style) &mdash; Soli's bet is agents + scaffolding for bespoke admins instead</li>
                 <li>Phoenix-LiveView-depth realtime UI, or a rich SPA toolchain</li>
                 <li>A large third-party package ecosystem</li>
@@ -215,7 +214,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">Bottom Line</h2>
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-200/80 text-sm">
-            Soli's core loop &mdash; route, controller, model, view, test, deploy &mdash; is real, fast, and safer by default than most of its inspirations. Its standout edges (performance, dev tooling, documents, single-binary ops) are genuine and hard to replicate. Its gaps (pre-wired auth flows, form builders, SQL, ecosystem) are equally genuine, and some absences &mdash; the generic admin, the JS toolchain &mdash; are deliberate bets rather than debt. It is best understood as a young, opinionated, vertically-integrated Rails &mdash; already excellent inside its lane, and honest about the lane's current width.
+            Soli's core loop &mdash; route, controller, model, view, test, deploy &mdash; is real, fast, and safer by default than most of its inspirations. Its standout edges (performance, dev tooling, documents, single-binary ops) are genuine and hard to replicate. Its gaps (form builders, SQL, ecosystem) are equally genuine, and some absences &mdash; the generic admin, the JS toolchain &mdash; are deliberate bets rather than debt. It is best understood as a young, opinionated, vertically-integrated Rails &mdash; already excellent inside its lane, and honest about the lane's current width.
         </p>
     </div>
 </div>
