@@ -14,5 +14,18 @@
             <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
         </button>
     </div>
+    <div class="mt-8 max-w-sm mx-auto text-left space-y-3">
+        <input type="text" id="live-counter-input"
+            soli-change="set_text"
+            placeholder="Type here — every keystroke round-trips the server"
+            class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-amber-400/50">
+        <p class="text-xs text-stone-500">Server echo: <span class="text-stone-300"><%= typed %></span></p>
+        <div soli-ignore>
+            <details class="text-sm text-stone-400">
+                <summary class="cursor-pointer select-none text-xs text-stone-500 hover:text-stone-300">Client-owned island (soli-ignore) &mdash; open me, then click +</summary>
+                <p class="mt-2 text-xs">This subtree is never morphed: its open/closed state &mdash; or any Alpine widget or chart in here &mdash; is untouched by server patches.</p>
+            </details>
+        </div>
+    </div>
     <p class="mt-6 text-sm text-gray-500">Real WebSocket connection - check your browser console</p>
 </div>

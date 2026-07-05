@@ -2388,6 +2388,36 @@ async fn handle_hyper_request(
             .unwrap());
     }
 
+    // Built-in LiveView client, embedded in the binary so the client is
+    // always in sync with the server's patch protocol (no vendored copy to
+    // go stale). `no-cache` + version ETag: browsers revalidate and get a
+    // 304 until the binary changes.
+    if path == crate::live::LIVE_CLIENT_PATH && (method == "GET" || method == "HEAD") {
+        const ETAG: &str = concat!("\"soli-live-", env!("CARGO_PKG_VERSION"), "\"");
+        let not_modified = req
+            .headers()
+            .get("if-none-match")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.contains(ETAG));
+        if not_modified {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_MODIFIED)
+                .header("ETag", ETAG)
+                .header("Cache-Control", "no-cache")
+                .body(full(Bytes::new()))
+                .unwrap());
+        }
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/javascript; charset=utf-8")
+            .header("Cache-Control", "no-cache")
+            .header("ETag", ETAG)
+            .body(full(Bytes::from_static(
+                crate::live::LIVE_CLIENT_JS.as_bytes(),
+            )))
+            .unwrap());
+    }
+
     // SEC-014: same-origin gate for state-changing requests. Runs before
     // routing so a cross-origin POST is rejected before any controller
     // sees it. WebSocket upgrades have their own check (`websocket_origin_allowed`)
@@ -2589,6 +2619,24 @@ async fn handle_hyper_request(
                                             let _ = tx_arc.send(Ok(tungstenite::Message::Text(
                                                 ack.to_string(),
                                             )));
+                                        } else if event_type == "resync" {
+                                            // The client lost its shadow copy (or a splice
+                                            // failed to apply): replay the last full render
+                                            // so it can rebuild without resetting server state.
+                                            if let Some(id) = liveview_id {
+                                                use crate::live::view::{
+                                                    ServerMessage, LIVE_REGISTRY,
+                                                };
+                                                if let Some(instance) = LIVE_REGISTRY.get(&id) {
+                                                    let _ = LIVE_REGISTRY.send(
+                                                        &id,
+                                                        ServerMessage::Render {
+                                                            html: instance.last_html,
+                                                            liveview_id: id.clone(),
+                                                        },
+                                                    );
+                                                }
+                                            }
                                         }
                                     }
                                 }

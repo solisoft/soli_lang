@@ -7,25 +7,37 @@
 //
 # Handlers should return the new state as a hash.
 
-# Counter component handler
+# Counter component handler.
+# NOTE: the handler's return REPLACES the component state (only `id` is
+# preserved), so every branch must return the complete state hash.
 fn counter(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
-    let count = state["count"]
-
-    if (count == null)
-        count = 0
-    end
+    let params = event_data["params"]
+    let count = state["count"] || 0
+    let typed = state["typed"] || ""
 
     if (event == "increment")
         return {
-            "count": count + 1
+            "count": count + 1,
+            "typed": typed
         }
     end
 
     if (event == "decrement")
         return {
-            "count": count - 1
+            "count": count - 1,
+            "typed": typed
+        }
+    end
+
+    # Echo the input field through the server: every keystroke round-trips
+    # and the patch lands while the field is focused — the DOM morph is what
+    # keeps the caret and focus intact.
+    if (event == "set_text")
+        return {
+            "count": count,
+            "typed": params["value"] || ""
         }
     end
 

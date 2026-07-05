@@ -6,11 +6,13 @@
     "build:css": "tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css",
     "watch:css": "tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css --watch",
     "dev": "concurrently \"npm run watch:css\" \"soli serve .\"",
-    "start": "soli serve ."
+    "start": "soli serve .",
+    "test:js": "node --test \"test/*_test.js\""
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.1",
     "@tailwindcss/typography": "^0.5.20",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "jsdom": "^24.1.0"
   }
 }

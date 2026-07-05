@@ -154,7 +154,7 @@ def rate_limit_middleware
   end
 
   { "continue": true, "request": req }
-end</code></pre></code></pre>
+end</code></pre>
         </div>
     </section>
 </div>

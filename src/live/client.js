@@ -1,8 +1,15 @@
 /**
  * SoliLang LiveView Client
- * 
- * Minimal client-side library for LiveView communication.
- * ~21 KB raw, ~5 KB gzipped
+ *
+ * Served by the soli binary at /live/client.js so the client always matches
+ * the server's patch protocol (shadow line-splices + DOM morphing).
+ * ~30 KB raw, ~7 KB gzipped.
+ *
+ * The server ships positional line splices against the exact HTML string it
+ * last sent. The client applies them to a shadow copy of that string, then
+ * morphs the live DOM to match — updating nodes in place instead of
+ * replacing them, so focus, caret position, and client-side widget state
+ * (Alpine, charts, ...) survive patches.
  */
 
 (function(global) {
@@ -17,6 +24,313 @@
         CONNECTED: 2,
         RECONNECTING: 3
     };
+
+    // ------------------------------------------------------------------
+    // Shadow splice
+    // ------------------------------------------------------------------
+
+    /**
+     * Apply a positional line splice to the shadow HTML string: replace
+     * `del` lines starting at line `at` with the lines in `ins`.
+     * Returns the new string, or null when the patch is malformed or out
+     * of bounds (caller should resync with the server).
+     */
+    function spliceLines(shadow, at, del, ins) {
+        if (!Number.isInteger(at) || !Number.isInteger(del) || !Array.isArray(ins)) {
+            return null;
+        }
+        const lines = shadow.split('\n');
+        if (at < 0 || del < 0 || at + del > lines.length) {
+            return null;
+        }
+        lines.splice(at, del, ...ins);
+        return lines.join('\n');
+    }
+
+    // ------------------------------------------------------------------
+    // DOM morphing
+    // ------------------------------------------------------------------
+
+    /**
+     * Identity key for keyed reconciliation: soli-key attribute, else id.
+     */
+    function nodeKey(el) {
+        return el.getAttribute('soli-key') ||
+               el.getAttribute('data-soli-key') ||
+               el.id ||
+               null;
+    }
+
+    /**
+     * soli-ignore marks a subtree as client-owned: the morph keeps the
+     * element's own attributes in sync but never touches its children.
+     */
+    function isIgnored(el) {
+        return el.hasAttribute('soli-ignore') || el.hasAttribute('data-soli-ignore');
+    }
+
+    /**
+     * Scripts inside live regions never execute on patch (same contract as
+     * the historical innerHTML-based client). Template-parsed scripts WOULD
+     * run when inserted into the document, so incoming ones are swapped for
+     * inert copies (innerHTML-parsed scripts carry the "already started"
+     * flag and stay dormant).
+     */
+    function inertScript(script) {
+        const holder = document.createElement('div');
+        holder.innerHTML = script.outerHTML;
+        return holder.firstChild;
+    }
+
+    /**
+     * Prepare a template-parsed node for insertion into the document:
+     * neutralize any scripts in the subtree.
+     */
+    function prepareIncoming(node) {
+        if (node.nodeType !== 1) return node;
+        if (node.localName === 'script') return inertScript(node);
+        const scripts = node.querySelectorAll('script');
+        for (const s of scripts) {
+            s.parentNode.replaceChild(inertScript(s), s);
+        }
+        return node;
+    }
+
+    /**
+     * Reposition a live node, preserving its state where the browser can.
+     * Node.moveBefore (newer Chromium) keeps focus, selection, and iframe
+     * state across the move; insertBefore is the universal fallback.
+     */
+    function moveBefore(parent, node, before) {
+        if (typeof parent.moveBefore === 'function') {
+            try {
+                parent.moveBefore(node, before);
+                return;
+            } catch (_) { /* fall through to insertBefore */ }
+        }
+        parent.insertBefore(node, before);
+    }
+
+    /**
+     * Sync attributes from `to` onto the live element `from`.
+     * Namespaced attributes (xlink:href, ...) go through the NS API.
+     */
+    function syncAttributes(from, to) {
+        // Remove attributes no longer present (backwards: live NamedNodeMap).
+        const fromAttrs = from.attributes;
+        for (let i = fromAttrs.length - 1; i >= 0; i--) {
+            const attr = fromAttrs[i];
+            if (attr.namespaceURI) {
+                if (!to.hasAttributeNS(attr.namespaceURI, attr.localName)) {
+                    from.removeAttributeNS(attr.namespaceURI, attr.localName);
+                }
+            } else if (!to.hasAttribute(attr.name)) {
+                from.removeAttribute(attr.name);
+            }
+        }
+        // Add and update.
+        const toAttrs = to.attributes;
+        for (let i = 0; i < toAttrs.length; i++) {
+            const attr = toAttrs[i];
+            if (attr.namespaceURI) {
+                if (from.getAttributeNS(attr.namespaceURI, attr.localName) !== attr.value) {
+                    from.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+                }
+            } else if (from.getAttribute(attr.name) !== attr.value) {
+                from.setAttribute(attr.name, attr.value);
+            }
+        }
+    }
+
+    /**
+     * Input state: the value/checked ATTRIBUTES are what the server renders;
+     * the PROPERTIES are what the user sees and edits. The user wins: a
+     * focused field is never clobbered (so typing that round-trips through
+     * soli-change can't lose in-flight keystrokes), and an unfocused field
+     * only changes when the server actually changes the rendered attribute.
+     */
+    function syncInputState(input, to, oldValueAttr, oldCheckedAttr) {
+        if (input === document.activeElement) return;
+
+        const newValueAttr = to.getAttribute('value');
+        if (newValueAttr !== null && newValueAttr !== oldValueAttr) {
+            input.value = newValueAttr;
+        }
+
+        const newCheckedAttr = to.hasAttribute('checked');
+        if (newCheckedAttr !== oldCheckedAttr) {
+            input.checked = newCheckedAttr;
+        }
+    }
+
+    /**
+     * Textarea state: the server renders the value as child text, and the
+     * value property detaches from child text once the user types. Same
+     * user-wins rule as inputs: never touch the value while focused.
+     */
+    function syncTextareaState(textarea, to) {
+        const newText = to.textContent;
+        if (textarea.defaultValue !== newText) {
+            textarea.defaultValue = newText;
+            if (textarea !== document.activeElement) {
+                textarea.value = newText;
+            }
+        }
+    }
+
+    /**
+     * Option selectedness follows the same attribute-vs-property rule as
+     * inputs; skipped entirely while the parent select is focused (open).
+     */
+    function syncOptionState(option, to, oldSelectedAttr) {
+        const newSelectedAttr = to.hasAttribute('selected');
+        if (newSelectedAttr === oldSelectedAttr) return;
+        const select = option.closest('select');
+        if (select && select === document.activeElement) return;
+        option.selected = newSelectedAttr;
+    }
+
+    /**
+     * Morph a live element to match `to`. Caller guarantees same localName.
+     */
+    function morphElement(from, to) {
+        const tag = from.localName;
+
+        // Scripts: keep identical ones untouched, swap changed ones for an
+        // inert copy — never re-execute in place.
+        if (tag === 'script') {
+            if (from.getAttribute('src') !== to.getAttribute('src') ||
+                from.textContent !== to.textContent) {
+                from.replaceWith(inertScript(to));
+            }
+            return;
+        }
+
+        // Snapshot server-rendered form attributes BEFORE syncing, so a
+        // genuine server change is distinguishable from user edits.
+        let oldValueAttr = null;
+        let oldCheckedAttr = false;
+        let oldSelectedAttr = false;
+        if (tag === 'input') {
+            oldValueAttr = from.getAttribute('value');
+            oldCheckedAttr = from.hasAttribute('checked');
+        } else if (tag === 'option') {
+            oldSelectedAttr = from.hasAttribute('selected');
+        }
+
+        const ignored = isIgnored(from) || isIgnored(to);
+
+        syncAttributes(from, to);
+
+        if (tag === 'input') {
+            syncInputState(from, to, oldValueAttr, oldCheckedAttr);
+            return;
+        }
+        if (tag === 'textarea') {
+            syncTextareaState(from, to);
+            return;
+        }
+        if (tag === 'iframe') {
+            // src changes arrive via syncAttributes (a reload is inherent);
+            // never recurse into the frame.
+            return;
+        }
+        if (ignored) {
+            // Children are client-owned; attributes stay server-driven.
+            return;
+        }
+
+        morphChildren(from, to);
+
+        if (tag === 'option') {
+            syncOptionState(from, to, oldSelectedAttr);
+        }
+    }
+
+    /**
+     * Morph the children of `fromParent` to match `toParent`'s children.
+     * Elements match by key (soli-key attribute, else id), falling back to
+     * same-tag-at-same-position; matched nodes are mutated in place so DOM
+     * identity — and with it focus and widget state — survives.
+     */
+    function morphChildren(fromParent, toParent) {
+        // Snapshot: adopting nodes out of the template mutates its child list.
+        const toKids = Array.from(toParent.childNodes);
+
+        // Index keyed old children so reordered items keep their DOM nodes.
+        let oldKeyed = null;
+        for (let el = fromParent.firstElementChild; el; el = el.nextElementSibling) {
+            const k = nodeKey(el);
+            if (k === null || k === '') continue;
+            if (oldKeyed === null) oldKeyed = new Map();
+            if (oldKeyed.has(k)) {
+                console.warn('[LiveView] duplicate soli-key/id in live region:', k);
+            } else {
+                oldKeyed.set(k, el);
+            }
+        }
+
+        let cur = fromParent.firstChild;
+
+        for (const toNode of toKids) {
+            if (toNode.nodeType === 1) {
+                const k = nodeKey(toNode);
+                const keyedMatch = (k && oldKeyed) ? oldKeyed.get(k) : undefined;
+
+                if (keyedMatch && keyedMatch.localName === toNode.localName) {
+                    oldKeyed.delete(k);
+                    if (keyedMatch === cur) {
+                        cur = cur.nextSibling;
+                    } else {
+                        moveBefore(fromParent, keyedMatch, cur);
+                    }
+                    morphElement(keyedMatch, toNode);
+                    continue;
+                }
+
+                // Positional match: same tag and same (possibly absent) key.
+                if (cur && cur.nodeType === 1 &&
+                    cur.localName === toNode.localName &&
+                    nodeKey(cur) === k) {
+                    const el = cur;
+                    cur = cur.nextSibling;
+                    morphElement(el, toNode);
+                    continue;
+                }
+
+                fromParent.insertBefore(prepareIncoming(toNode), cur);
+                continue;
+            }
+
+            // Text and comment nodes.
+            if (cur && cur.nodeType === toNode.nodeType) {
+                if (cur.nodeValue !== toNode.nodeValue) {
+                    cur.nodeValue = toNode.nodeValue;
+                }
+                cur = cur.nextSibling;
+            } else {
+                fromParent.insertBefore(toNode, cur);
+            }
+        }
+
+        // Whatever old content remains was never matched — remove it.
+        while (cur) {
+            const next = cur.nextSibling;
+            fromParent.removeChild(cur);
+            cur = next;
+        }
+    }
+
+    /**
+     * Morph the live region under `root` to match `newHtml`.
+     * Both the live DOM and the <template>-parsed target go through the
+     * same browser parser, so structure and whitespace align exactly.
+     */
+    function morph(root, newHtml) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = newHtml;
+        morphChildren(root, tpl.content);
+    }
 
     /**
      * Main LiveView class
@@ -38,6 +352,11 @@
             this.heartbeatInterval = null;
             this.liveviewId = null;
             this.eventsBound = false;
+
+            // Shadow copy of the exact HTML string last received from the
+            // server; splice patches apply to this, then the DOM is morphed
+            // to match it.
+            this.lastHtml = null;
 
             // Root element for this LiveView instance
             // Can be set via params.rootElement or params.rootSelector
@@ -129,6 +448,8 @@
         handleClose(event) {
             this.state = State.DISCONNECTED;
             this.stopHeartbeat();
+            // The shadow is only valid for the connection that produced it.
+            this.lastHtml = null;
             this.emit('stateChanged', State.DISCONNECTED);
             this.emit('close', event);
 
@@ -155,6 +476,7 @@
             switch (type) {
                 case 'render':
                     this.liveviewId = msg.liveview_id;
+                    this.lastHtml = msg.html;
                     this.applyRender(msg.html);
                     this.emit('render', msg.html);
                     break;
@@ -184,179 +506,80 @@
         }
 
         /**
-         * Apply a full render
+         * Apply a full render by morphing the live region — node identity
+         * (and with it focus and widget state) survives even full renders.
          */
         applyRender(html) {
-            // Find the root element for this LiveView instance
             const root = this.getRoot();
-            root.innerHTML = html;
-
-            // Re-bind event handlers
+            if (!root) return;
+            morph(root, html);
+            this.emit('morphed', root);
             this.bindEvents();
         }
 
         /**
-         * Apply a patch (quick-diff output)
-         * Now handles granular line-based patches from the improved server diff.
+         * Apply a patch: splice the shadow HTML string, then morph the DOM
+         * to match. Any inconsistency falls back to a server resync.
          */
         applyPatch(patches) {
-            // Parse JSON string if needed
             if (typeof patches === 'string') {
                 try {
                     patches = JSON.parse(patches);
                 } catch (e) {
-                    // If not valid JSON, treat as full HTML replacement
-                    this.applyRender(patches);
+                    console.error('[LiveView] invalid patch payload:', e);
+                    this.resync();
                     return;
                 }
             }
 
             if (!Array.isArray(patches)) {
-                // Full replacement
-                this.applyRender(patches);
+                this.resync();
                 return;
             }
+            if (patches.length === 0) return;
 
-            let appliedGranular = false;
-
-            patches.forEach(patch => {
-                switch (patch.type) {
-                    case 'replace':
-                        if (patch.old && patch.new) {
-                            if (this.replaceElement(patch.old, patch.new)) {
-                                appliedGranular = true;
-                            } else {
-                                // Could not apply granularly — fall back to full for safety
-                                this.applyRender(patch.new);
-                            }
-                        } else if (patch.new) {
-                            this.applyRender(patch.new);
-                        }
-                        break;
-
-                    case 'add':
-                        if (patch.new) {
-                            this.applyRender(patch.new);
-                        }
-                        break;
-
-                    case 'remove':
-                        // For removals, we typically receive a full replacement
-                        break;
+            for (const patch of patches) {
+                if (patch.type === 'splice') {
+                    if (this.lastHtml === null) {
+                        this.resync();
+                        return;
+                    }
+                    const next = spliceLines(this.lastHtml, patch.at, patch.del, patch.ins);
+                    if (next === null) {
+                        console.warn('[LiveView] splice did not apply, resyncing');
+                        this.resync();
+                        return;
+                    }
+                    this.lastHtml = next;
+                } else if (patch.type === 'replace' && typeof patch.new === 'string' && !patch.old) {
+                    this.lastHtml = patch.new;
+                } else {
+                    // Unknown patch shape (e.g. a legacy anchored replace
+                    // from an older server) — recover via full render.
+                    console.warn('[LiveView] unsupported patch, resyncing:', patch.type);
+                    this.resync();
+                    return;
                 }
-            });
-
-            // Only re-bind if we actually touched the DOM with patches
-            if (appliedGranular || patches.length > 0) {
-                this.bindEvents();
             }
-        }
 
-        /**
-         * Replace an element / region by its content.
-         * Returns true if a targeted replacement was performed, false if caller should fall back.
-         */
-        replaceElement(oldContent, newContent) {
             const root = this.getRoot();
-            if (!root) return false;
-
-            // Fast path 1: exact match on a direct child with data-live-id (very common in Soli LiveView)
-            try {
-                const oldTemp = document.createElement('div');
-                oldTemp.innerHTML = oldContent.trim();
-                const oldEl = oldTemp.firstElementChild;
-
-                if (oldEl) {
-                    const liveId = oldEl.getAttribute && oldEl.getAttribute('data-live-id');
-                    if (liveId) {
-                        const target = root.querySelector(`[data-live-id="${liveId}"]`);
-                        if (target) {
-                            target.outerHTML = newContent;
-                            return true;
-                        }
-                    }
-                }
-            } catch (_) {}
-
-            // Fast path 2: the old content appears exactly once inside the current root HTML.
-            // This is pragmatic and very effective for small text / bit / counter updates.
-            const currentHTML = root.innerHTML;
-            if (oldContent && currentHTML.includes(oldContent)) {
-                // Only do the replacement if it appears exactly once (safety)
-                const first = currentHTML.indexOf(oldContent);
-                const last = currentHTML.lastIndexOf(oldContent);
-                if (first !== -1 && first === last) {
-                    root.innerHTML = currentHTML.replace(oldContent, newContent);
-                    return true;
-                }
+            if (root) {
+                morph(root, this.lastHtml);
+                this.emit('morphed', root);
             }
-
-            // Existing selector-based logic (kept for backward compatibility with richer patches)
-            try {
-                const oldTemp = document.createElement('div');
-                oldTemp.innerHTML = oldContent;
-                const oldEl = oldTemp.firstElementChild;
-
-                if (oldEl) {
-                    const selector = this.getSelectorForElement(oldEl);
-                    const existingEl = root.querySelector(selector); // scoped to this LiveView root
-
-                    if (existingEl) {
-                        existingEl.outerHTML = newContent;
-                        return true;
-                    }
-
-                    // Fallback: replace by data-live-id anywhere in this LiveView
-                    const liveId = oldEl.getAttribute && oldEl.getAttribute('data-live-id');
-                    if (liveId) {
-                        const el = root.querySelector(`[data-live-id="${liveId}"]`);
-                        if (el) {
-                            el.outerHTML = newContent;
-                            return true;
-                        }
-                    }
-                }
-            } catch (_) {}
-
-            // Could not apply granularly
-            return false;
+            this.bindEvents();
         }
 
         /**
-         * Get a CSS selector for an element
+         * Ask the server to replay the last full render (recovery path when
+         * the shadow copy is missing or a splice cannot apply).
          */
-        getSelectorForElement(el) {
-            if (el.id) {
-                return '#' + el.id;
-            }
-
-            const path = [];
-            let current = el;
-
-            while (current && current !== document.body) {
-                let selector = current.tagName.toLowerCase();
-
-                if (current.className && typeof current.className === 'string') {
-                    const classes = current.className.split(/\s+/).filter(c => c).join('.');
-                    if (classes) {
-                        selector += '.' + classes;
-                    }
-                }
-
-                const parent = current.parentElement;
-                if (parent) {
-                    const siblings = parent.querySelectorAll(':scope > ' + selector);
-                    if (siblings.length > 1) {
-                        const index = Array.from(siblings).indexOf(current);
-                        selector += ':nth-of-type(' + (index + 1) + ')';
-                    }
-                }
-
-                path.unshift(selector);
-                current = parent;
-            }
-
-            return path.join(' > ');
+        resync() {
+            this.lastHtml = null;
+            this.send({
+                type: 'resync',
+                liveview_id: this.liveviewId
+            });
         }
 
         /**
@@ -573,7 +796,11 @@
 
     // Export
     global.SoliLiveView = SoliLiveView;
-    
+
+    // Expose the pure pieces for testing.
+    global.SoliLiveView.morph = morph;
+    global.SoliLiveView.spliceLines = spliceLines;
+
     // Track all LiveView instances
     global.SoliLiveView.instances = [];
 
@@ -589,7 +816,6 @@
     if (typeof document !== 'undefined') {
         document.addEventListener('DOMContentLoaded', function() {
             const elements = document.querySelectorAll('[data-liveview-url]');
-            console.log('Found', elements.length, 'LiveView elements');
             elements.forEach(function(el) {
                 if (el.hasAttribute('data-liveview-manual')) return;
                 let url = el.getAttribute('data-liveview-url');
@@ -598,7 +824,6 @@
                     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                     url = protocol + '//' + location.host + url;
                 }
-                console.log('Auto-connecting LiveView:', url);
                 global.live(url, { rootElement: el });
             });
         });

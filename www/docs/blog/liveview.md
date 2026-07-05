@@ -4,9 +4,9 @@ For years the industry has oscillated between two painful extremes.
 
 On one end: full-page reloads or HTMx-style partial updates feel simple but leave you with stale data the moment anything interesting happens in the background. On the other end: you reach for React, a WebSocket library, client-side state management, and three new packages just to show "three people are currently viewing this ticket."
 
-Soli LiveView sits in the pragmatic middle. You keep your state on the server (where it already lives), you write ordinary Soli code, and the framework ships a patch for the changed region over a WebSocket (a pragmatic line-based diff — not DOM-aware tree diffing). The client is ~5 KB gzipped. There is no client-side framework, no build step, and no second mental model to maintain.
+Soli LiveView sits in the pragmatic middle. You keep your state on the server (where it already lives), you write ordinary Soli code, and the framework ships a compact patch for the changed region over a WebSocket. The client — ~7 KB gzipped, served by the soli binary itself at `/live/client.js` — morphs the DOM in place to match, so focus, caret position, and client-side widget state survive updates. There is no client-side framework, no build step, and no second mental model to maintain.
 
-If you've used Phoenix LiveView, the mental model will feel familiar — though Soli's directive set is a smaller subset and its diffing is simpler. If you haven't, the idea is surprisingly simple: a LiveView component is just a function that receives events and returns new state. The framework handles everything else.
+If you've used Phoenix LiveView, the mental model will feel familiar — though Soli's directive set is a smaller subset. If you haven't, the idea is surprisingly simple: a LiveView component is just a function that receives events and returns new state. The framework handles everything else.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
   <img src="/images/blog/liveview-activity.jpg" width="1024" height="576" alt="Live team presence and activity feed widget built with Soli LiveView: color-coded avatars showing currently online teammates on the left, a real-time scrolling activity log in the center, and quick action buttons that trigger server-side state changes with instant DOM updates — all with zero client-side JavaScript." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
@@ -21,9 +21,9 @@ A LiveView component consists of three small pieces:
 2. **A template** (`.html.slv` file) — regular ERB HTML where each state key is a plain variable, plus a handful of `soli-*` directives
 3. **A handler function** — receives `{ "event", "params", "state" }` and returns the next state (or `{ "state": ..., "tick_interval": ms }` to enable server-pushed updates)
 
-When the browser connects, Soli renders the initial HTML and sends it down. Every subsequent user action (`click`, `submit`, `input`, etc.) is sent over the socket as a tiny JSON event. Your handler runs, produces new state, the template is re-rendered, and the changed region — found with a line-based diff — is swapped into the page.
+When the browser connects, Soli renders the initial HTML and sends it down. Every subsequent user action (`click`, `submit`, `input`, etc.) is sent over the socket as a tiny JSON event. Your handler runs, produces new state, the template is re-rendered, and just the changed lines travel down the wire — the client then morphs the live region's DOM to match, mutating nodes in place instead of replacing them.
 
-No virtual DOM on the client. No diffing library you have to think about. Just state transitions in Soli.
+No virtual DOM to manage, no diffing library to configure. Just state transitions in Soli.
 
 ## A Real, Useful Widget: Live Team Presence + Activity Feed
 
@@ -278,7 +278,7 @@ You already have HTMx in the stack. When should you reach for each?
 | One-off form that updates a small region | Excellent — zero persistent connection | Overkill |
 | Complex multi-step workflow with lots of conditional UI | Possible but gets messy              | Natural fit |
 | Need data to change even when the user is idle (dashboards, monitoring) | Requires polling or external trigger | Built-in `tick_interval` |
-| You want zero JavaScript in the entire app | Ideal                                | Still excellent (the ~5 KB client is invisible) |
+| You want zero JavaScript in the entire app | Ideal                                | Still excellent (the ~7 KB client is invisible) |
 | Many concurrent users on the same view | Fine                                 | Slightly heavier (one WebSocket per viewer) |
 
 Most real applications end up using **both**. HTMx for the 80% of interactions that are simple "click → server renders a partial." LiveView for the 20% that truly benefit from long-lived server state and background pushes.
@@ -288,7 +288,7 @@ Most real applications end up using **both**. HTMx for the 80% of interactions t
 A few things worth knowing before you put this in front of customers:
 
 - **Authentication** — The LiveView connection goes through your normal middleware stack. You can (and should) protect the route the same way you protect any other controller action.
-- **Diffing is line-based** — The server compares the old and new render line-by-line and ships one patch for the changed region (small components just get a full re-render). It is not DOM-aware, so client-side widget state held inside a live region does not survive a patch.
+- **Patches are DOM-aware** — The server ships the changed lines of the render; the client morphs the DOM in place with keyed reconciliation, so focus and widget state inside a live region survive patches. Use `soli-key` for list-item identity and wrap client-owned widgets (Alpine islands, charts) in `soli-ignore` — outside it, the server owns the tree. `<script>` tags patched into a live region never execute.
 - **The directive set is a subset of Phoenix's** — click, submit, change, keydown/keyup, focus/blur, `soli-value-*`, `soli-target`. No debounce/throttle, window bindings, JS commands, uploads, streams, or nested components yet.
 - **Reconnection** — The client automatically reconnects with exponential backoff. On reconnect it sends a fresh `connect` event so you can re-seed state — but the component restarts from initial state; in-flight state is not restored.
 - **Rate limiting** — Because every action is an explicit event, adding per-user or per-connection rate limits inside the handler is trivial.

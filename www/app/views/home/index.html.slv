@@ -478,7 +478,9 @@
             <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">This counter is live, right now</h2>
             <p class="mt-5 text-lg text-stone-400 max-w-3xl">
                 A server-rendered reactive component over a WebSocket &mdash; no JavaScript written,
-                a ~5&nbsp;KB (gzipped) client loaded only on pages that use it. Click it.
+                a ~7&nbsp;KB (gzipped) client served by the binary itself and loaded only on pages
+                that use it. Type in the field: every keystroke round-trips the server and the
+                patch lands without stealing your focus or caret.
             </p>
         </div>
 
@@ -505,7 +507,7 @@
                         <div class="text-xs text-stone-500">State</div>
                     </div>
                     <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                        <div class="text-lg font-bold text-amber-400">~5KB</div>
+                        <div class="text-lg font-bold text-amber-400">~7KB</div>
                         <div class="text-xs text-stone-500">Client (gzipped)</div>
                     </div>
                 </div>
@@ -526,7 +528,8 @@
                     </div>
                 </div>
                 <div class="mt-6 text-sm text-stone-500">
-                    The server holds the state; the client swaps the changed lines into the page.
+                    The server holds the state; the client morphs the DOM in place, so focus and
+                    widget state inside the region survive every update.
                     A second live demo &mdash; a server clock pushing 20 updates a second &mdash; runs in the
                     <a href="/docs/core-concepts/liveview" class="text-amber-400 hover:text-amber-300 transition-colors">LiveView docs</a>.
                 </div>
@@ -722,10 +725,11 @@
         }
     })();
 
-    // Connect LiveView roots. live.js only auto-connects on DOMContentLoaded,
-    // which never re-fires after an instant-nav <body> swap — so roots are
-    // marked data-liveview-manual and connected by hand here. No layout ships
-    // live.js; this loader fetches it on demand for the pages that need it.
+    // Connect LiveView roots. The LiveView client only auto-connects on
+    // DOMContentLoaded, which never re-fires after an instant-nav <body>
+    // swap — so roots are marked data-liveview-manual and connected by hand
+    // here. No layout ships the client; this loader fetches the binary's
+    // built-in /live/client.js on demand for the pages that need it.
     (function () {
         function connectLiveRoots() {
             document.querySelectorAll('[data-liveview-url][data-liveview-manual]').forEach(function (el) {
@@ -748,7 +752,7 @@
         if (!loader) {
             loader = document.createElement('script');
             loader.id = '__livejs-loader';
-            loader.src = '/js/live.js';
+            loader.src = '/live/client.js';
             document.head.appendChild(loader);
         }
         loader.addEventListener('load', connectLiveRoots, { once: true });

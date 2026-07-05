@@ -279,7 +279,7 @@ fn counter(event: Any) -> Any {
 }
 ```
 
-Live View is early: server-pushed re-renders work, but diffing is line-based (not DOM-aware) and the directive set is a subset of Phoenix's.
+Live View patches are DOM-aware: the client (served by the binary at `/live/client.js`) morphs nodes in place with keyed reconciliation (`soli-key`, `soli-ignore`), so focus and client-side widget state survive updates. The directive set is still a subset of Phoenix's (no uploads, streams, or nested live components).
 
 ## Testing
 

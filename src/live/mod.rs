@@ -16,6 +16,13 @@ pub use view::{LiveRegistry, LiveViewId, LiveViewInstance, ServerMessage};
 /// LiveView socket path
 pub const LIVE_SOCKET_PATH: &str = "/live/socket";
 
+/// Path where the embedded LiveView client script is served.
+pub const LIVE_CLIENT_PATH: &str = "/live/client.js";
+
+/// The LiveView client, embedded at compile time so the client protocol
+/// (shadow splices + DOM morphing) always matches the server that serves it.
+pub const LIVE_CLIENT_JS: &str = include_str!("client.js");
+
 /// Maximum time between heartbeats (seconds)
 pub const HEARTBEAT_INTERVAL: u64 = 30;
 

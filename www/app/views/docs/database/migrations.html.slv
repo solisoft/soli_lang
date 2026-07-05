@@ -33,7 +33,7 @@ end
 def down(db: Any)
   db.drop_index("users", "idx_email")
   db.drop_collection("users")
-end</code></pre></code></pre>
+end</code></pre>
         </div>
     </div>
 
@@ -166,7 +166,7 @@ def down(db: Any)
   db.drop_collection("comments")
   db.drop_collection("posts")
   db.drop_collection("users")
-end</code></pre></code></pre>
+end</code></pre>
         </div>
     </div>
 
@@ -225,7 +225,7 @@ def down(db: Any)
   db.drop_index("users", "idx_age")
   db.drop_index("users", "idx_username")
   db.drop_index("users", "idx_email")
-end</code></pre></code></pre>
+end</code></pre>
         </div>
     </div>
 
@@ -251,7 +251,7 @@ end</code></pre></code></pre>
     "FOR doc IN users FILTER doc.status == @status RETURN doc",
     { "status": "active" }
   )
-end</code></pre></code></pre>
+end</code></pre>
         </div>
     </div>
 

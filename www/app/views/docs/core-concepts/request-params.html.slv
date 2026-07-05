@@ -114,7 +114,7 @@ def update_item(req: Any)    # Unified access to all parameters
   print("Quantity:", all["quantity"]); # "5"
 
   {"status": 200, "body": "Updated"}
-end</code></pre></code></pre>
+end</code></pre>
             </div>
         </div>
     </section>
@@ -266,7 +266,7 @@ end</code></pre>
   all = req["all"]
 
   {"status": 200, "body": "OK"}
-end</code></pre></code></pre>
+end</code></pre>
             </div>
         </div>
     </section>
@@ -318,7 +318,7 @@ def search(req: Any)
       "limit": limit
     })
   }
-end</code></pre></code></pre>
+end</code></pre>
             </div>
         </div>
     </section>

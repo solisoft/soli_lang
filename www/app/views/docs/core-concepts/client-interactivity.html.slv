@@ -221,7 +221,7 @@ end</code></pre>
     <h2 class="text-2xl font-bold text-white mb-4">Coexistence Notes</h2>
     <ul class="text-gray-400 space-y-2 mb-12 list-disc list-inside">
         <li><strong class="text-white">HTMx + Alpine</strong> share the same DOM and work together cleanly. HTMx uses <code class="text-amber-400">hx-*</code>, Alpine uses <code class="text-amber-400">x-*</code> &mdash; no namespace collision.</li>
-        <li><strong class="text-white">Live View</strong> containers re-render the DOM and reset any Alpine state held inside on each push. Keep local widget state outside Live View regions; for state that must survive a re-render, lift it into Live View.</li>
+        <li><strong class="text-white">Live View</strong> containers morph the DOM in place, so Alpine state attached to surviving nodes carries across patches. The safe home for an Alpine island inside a live region is a <code class="text-amber-400">soli-ignore</code> subtree: the morph never touches its children, so Alpine-inserted DOM (<code class="text-amber-400">x-if</code>/<code class="text-amber-400">x-for</code>) and <code class="text-amber-400">x-show</code> style toggles are preserved too. Outside <code class="text-amber-400">soli-ignore</code>, the server owns the tree and reverts client-inserted DOM on the next patch.</li>
         <li><strong class="text-white">The dev bar</strong> automatically skips itself on HTMx partial responses (reads the <code class="text-amber-400">HX-Request</code> header) so swaps don't accumulate stacked dev bars on the page. No configuration needed.</li>
     </ul>
 

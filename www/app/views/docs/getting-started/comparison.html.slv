@@ -62,7 +62,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Realtime</td>
-                        <td class="py-3 px-4 text-gray-400">WebSocket rooms + presence tracking, SSE (handler-driven <code>sse(req)</code> <em>and</em> async pub/sub <code>sse_broadcast</code>), LiveView (early), live reload in dev</td>
+                        <td class="py-3 px-4 text-gray-400">WebSocket rooms + presence tracking, SSE (handler-driven <code>sse(req)</code> <em>and</em> async pub/sub <code>sse_broadcast</code>), LiveView (early; DOM-morphing patches), live reload in dev</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Auth &amp; security</td>
@@ -125,7 +125,7 @@
         <li><strong class="text-white">No built-in CORS</strong> &mdash; you hand-roll it as middleware.</li>
         <li><strong class="text-white">No signed/encrypted cookie <em>jar</em></strong> &mdash; <code>set_cookie</code> writes bare cookies (no Rails-style <code>cookies.encrypted[...]</code> for arbitrary values). Sessions themselves can be client-side and encrypted: the <code>cookie</code> session driver seals the whole session with AES-256-GCM, Rails-cookie-store-style.</li>
         <li><strong class="text-white">View composition is lean</strong> &mdash; layouts, partials with locals, and Rails-style <code>content_for</code>/named <code>yield</code> blocks; no component/slot system (ViewComponent, Phoenix components).</li>
-        <li><strong class="text-white">LiveView is early.</strong> Server-pushed re-renders work, but diffing is line-based (not DOM-aware) and the directive set is a subset of Phoenix's.</li>
+        <li><strong class="text-white">LiveView is young.</strong> Patching is DOM-aware &mdash; the client morphs nodes in place with keyed reconciliation (<code>soli-key</code>/<code>soli-ignore</code>), so focus and widget state survive updates &mdash; but the directive set is a subset of Phoenix's: no debounce/throttle, JS commands, uploads, streams, or nested live components.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Auth</h3>
@@ -175,7 +175,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">vs Phoenix</h3>
-            <p class="text-gray-400 text-sm mb-3">Phoenix is the closest performance peer, and its LiveView is years ahead of Soli's &mdash; deeply diffed, form-aware, with uploads and navigation. Elixir's OTP supervision and distribution have no Soli equivalent.</p>
+            <p class="text-gray-400 text-sm mb-3">Phoenix is the closest performance peer, and its LiveView remains well ahead of Soli's &mdash; node-granular diffs, forms, uploads, streams, nested components, and navigation. Soli's LiveView now morphs the DOM in place with keyed reconciliation (widget state survives patches), but its directive set is still a Phoenix subset. Elixir's OTP supervision and distribution have no Soli equivalent.</p>
             <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> familiarity (Ruby-like syntax vs functional Elixir + the BEAM learning curve), the document/PDF suite, integrated dev tooling, and encrypted bundle distribution. If your product <em>is</em> realtime UI, choose Phoenix; if realtime is a feature, Soli's WebSockets/SSE cover it.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">

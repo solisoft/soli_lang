@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Live View</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Build reactive, real-time interfaces without writing JavaScript. Live View renders components on the server and pushes updates over WebSockets &mdash; the client patches the changed region into the page.
+            Build reactive, real-time interfaces without writing JavaScript. Live View renders components on the server and pushes updates over WebSockets &mdash; the client morphs the DOM in place, so focus and widget state survive every update.
         </p>
     </div>
 
@@ -26,7 +26,7 @@
 
     <h2 class="text-2xl font-bold text-white mb-6">How It Works</h2>
     <p class="text-gray-400 mb-6">
-        Live View is a server-rendered component system that maintains state on the server. When users interact with the page, events are sent over WebSockets, the server updates the component state, re-renders the template, and sends back a patch for the changed region (a pragmatic line-based diff &mdash; see <a href="#current-limitations" class="text-amber-400 hover:text-amber-300">Current Limitations</a>).
+        Live View is a server-rendered component system that maintains state on the server. When users interact with the page, events are sent over WebSockets, the server updates the component state, re-renders the template, and sends back a compact patch with just the changed lines. The client then <strong class="text-white">morphs the live region's DOM to match</strong> &mdash; nodes are updated in place, not replaced (see <a href="#dom-morphing" class="text-amber-400 hover:text-amber-300">How Patches Reach the DOM</a>).
     </p>
     <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
@@ -51,7 +51,7 @@
                     <svg class="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
                 </div>
                 <div class="text-white font-medium">Page Update</div>
-                <div class="text-gray-500">Patch Changed Region</div>
+                <div class="text-gray-500">Morph DOM In Place</div>
             </div>
         </div>
     </div>
@@ -148,6 +148,18 @@ fn counter(event_data: Any) -> Any {
         </div>
     </div>
 
+    <p class="text-gray-400 mb-4">Two more attributes control how the DOM morph treats an element (they trigger nothing on the server):</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-key</code>
+            <p class="text-sm text-gray-400 mt-2">Identity for list items: a reordered element with the same key keeps its DOM node (and its focus/widget state) instead of being rebuilt. Falls back to <code>id</code>. <code>&lt;li soli-key="&lt;%= item["id"] %&gt;"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-ignore</code>
+            <p class="text-sm text-gray-400 mt-2">Marks a subtree as client-owned: its attributes stay server-driven, but its children are never touched by a patch. Put Alpine islands, charts, and other widgets here. <code>&lt;div soli-ignore&gt;</code></p>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">State Management</h2>
     <p class="text-gray-400 mb-6">State is stored on the server, and each state key is available in the template as a plain ERB variable. The server maintains state between events.</p>
 
@@ -172,13 +184,13 @@ fn counter(event_data: Any) -> Any {
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Client Setup</h2>
-    <p class="text-gray-400 mb-6">Include the Live View client only on pages that mount a live component &mdash; it is ~5&nbsp;KB gzipped (~21&nbsp;KB raw) and auto-connects every <code>[data-liveview-url]</code> element on <code>DOMContentLoaded</code>.</p>
+    <p class="text-gray-400 mb-6">The client is served by the soli binary itself at <code>/live/client.js</code> &mdash; no file to vendor, always in sync with the server's patch protocol. Include it only on pages that mount a live component &mdash; it is ~7&nbsp;KB gzipped (~30&nbsp;KB raw) and auto-connects every <code>[data-liveview-url]</code> element on <code>DOMContentLoaded</code>.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~5 KB gzipped) --&gt;
-&lt;script src="/js/live.js"&gt;&lt;/script&gt;
+<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (built into the binary, ~7 KB gzipped) --&gt;
+&lt;script src="/live/client.js"&gt;&lt;/script&gt;
 
 &lt;!-- Mount a Live View component (auto-connects on page load) --&gt;
 &lt;div data-live-root data-liveview-url="/live/socket/counter"&gt;&lt;/div&gt;</code></pre>
@@ -197,6 +209,23 @@ fn counter(event_data: Any) -> Any {
 &lt;/script&gt;</code></pre>
         </div>
     </div>
+
+    <h2 id="dom-morphing" class="text-2xl font-bold text-white mb-6">How Patches Reach the DOM</h2>
+    <p class="text-gray-400 mb-6">
+        When state changes, the server re-renders the template, diffs the result against the previous render, and ships just the changed lines over the socket. The client keeps a shadow copy of the exact HTML it last received, applies the patch to it, then <strong class="text-white">morphs</strong> the live region's real DOM to match:
+    </p>
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Nodes are mutated in place</strong> &mdash; attributes synced, text updated &mdash; instead of torn down and rebuilt, so <code>document.activeElement</code>, caret/selection position, and scroll state survive.</li>
+            <li><strong class="text-white">Form fields follow a "user wins" rule.</strong> A focused field is never clobbered (typing that round-trips through <code>soli-change</code> can't lose in-flight keystrokes), and an unfocused field only changes when the server <em>actually changes</em> the rendered <code>value</code> attribute (checkboxes and selects behave the same for <code>checked</code>/<code>selected</code>).</li>
+            <li><strong class="text-white">Keyed lists keep identity.</strong> Items with <code>soli-key</code> (or an <code>id</code>) keep their DOM node across reorders.</li>
+            <li><strong class="text-white"><code>soli-ignore</code> subtrees are never touched</strong> &mdash; the home for Alpine widgets, charts, maps.</li>
+            <li><strong class="text-white">The server owns everything else.</strong> DOM your own JS inserts <em>outside</em> a <code>soli-ignore</code> subtree is removed on the next patch, and <code>&lt;script&gt;</code> tags patched into a live region never execute.</li>
+        </ul>
+    </div>
+    <p class="text-gray-400 mb-12">
+        If the client ever fails to apply a patch (lost shadow, version skew), it asks the server to replay the last full render &mdash; recovery is automatic and keeps server-side state intact.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Route Configuration</h2>
     <p class="text-gray-400 mb-6">Register the Live View WebSocket endpoint in your routes.</p>
@@ -357,7 +386,7 @@ router_live("counter", "live#counter");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Performance</h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-3xl font-bold text-white mb-1">~5KB</div>
+            <div class="text-3xl font-bold text-white mb-1">~7KB</div>
             <div class="text-sm text-amber-400 font-medium">Client Size (gzipped)</div>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
@@ -365,17 +394,18 @@ router_live("counter", "live#counter");</code></pre>
             <div class="text-sm text-orange-400 font-medium">Round-trip Latency</div>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-3xl font-bold text-white mb-1">Line diff</div>
+            <div class="text-3xl font-bold text-white mb-1">DOM morph</div>
             <div class="text-sm text-orange-400 font-medium">Updates</div>
         </div>
     </div>
 
     <h2 id="current-limitations" class="text-2xl font-bold text-white mb-6">Current Limitations</h2>
-    <p class="text-gray-400 mb-6">Live View is early. Server-pushed re-renders work well; the edges are still v1-pragmatic:</p>
+    <p class="text-gray-400 mb-6">Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:</p>
     <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
         <ul class="text-gray-300 text-sm space-y-3">
-            <li><strong class="text-white">Diffing is line-based, not DOM-aware.</strong> The server compares the old and new render line-by-line and ships one "replace" patch for the changed region; small components simply get a full re-render. There is no tree diffing or keyed reconciliation, so client-side widget state held <em>inside</em> a live region (focus, Alpine state, &hellip;) does not survive a patch.</li>
+            <li><strong class="text-white">The wire format is line-granular, not node-granular.</strong> The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed <em>values</em>, is not implemented. Fine in practice &mdash; renders are compared server-side and only the delta travels.</li>
             <li><strong class="text-white">The directive set is a subset of Phoenix's.</strong> Click, submit, change, keydown/keyup, focus/blur, <code>soli-value-*</code>, and <code>soli-target</code> &mdash; there is no debounce/throttle, no window-level bindings, no JS commands, no uploads, streams, or nested live components.</li>
+            <li><strong class="text-white">Scripts don't run on patch.</strong> <code>&lt;script&gt;</code> tags inside a live region never execute when patched in; put behavior in external JS or an Alpine island under <code>soli-ignore</code>.</li>
             <li><strong class="text-white">Reconnects re-mount.</strong> If the socket drops, the client reconnects with backoff, but the component restarts from its initial state &mdash; in-flight state is not restored.</li>
             <li><strong class="text-white">Per-process.</strong> Instances live in server memory; multi-instance deployments need their own pub/sub layer to coordinate.</li>
         </ul>
@@ -398,8 +428,8 @@ router_live("counter", "live#counter");</code></pre>
 </div>
 
 <script>
-// Live clock demo. live.js only auto-connects on DOMContentLoaded, which
-// (a) isn't loaded by the docs layout and (b) never re-fires after an
+// Live clock demo. The LiveView client only auto-connects on DOMContentLoaded,
+// which (a) isn't loaded by the docs layout and (b) never re-fires after an
 // instant-nav <body> swap — so load it on demand and connect manually.
 (function () {
     function startClockDemo() {
@@ -463,7 +493,7 @@ router_live("counter", "live#counter");</code></pre>
     if (!loader) {
         loader = document.createElement('script');
         loader.id = '__livejs-loader';
-        loader.src = '/js/live.js';
+        loader.src = '/live/client.js';
         document.head.appendChild(loader);
     }
     loader.addEventListener('load', startClockDemo, { once: true });

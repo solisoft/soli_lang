@@ -102,7 +102,8 @@ pub fn handle_live_connection(
     let initial_state = match component.as_str() {
         "counter" => json!({
             "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap()),
-            "count": 0
+            "count": 0,
+            "typed": ""
         }),
         "metrics" => json!({
             "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap()),
