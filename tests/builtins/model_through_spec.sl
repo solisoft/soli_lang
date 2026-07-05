@@ -209,6 +209,55 @@ describe("through: live queries", fn() {
     end
   })
 
+  test("shovel creates the join record", fn() {
+    if __db_available
+      let user = ThrUser.create({"name": "pusher"})
+      let team = ThrTeam.create({"name": "Pushed Team"})
+
+      user.thr_teams << team
+      assert_eq(user.thr_teams.count(), 1)
+
+      # Pushing a raw key works too.
+      let team_two = ThrTeam.create({"name": "Keyed Team"})
+      user.thr_teams << team_two._key
+      assert_eq(user.thr_teams.count(), 2)
+
+      ThrMembership.where("thr_user_id == @k", {"k": user._key}).delete_all()
+      team.delete(); team_two.delete()
+      user.delete()
+    end
+  })
+
+  test("shovel on an unpersisted owner raises", fn() {
+    if __db_available
+      let team = ThrTeam.create({"name": "Orphaned"})
+      let raised = false
+      try
+        ThrUser.new({}).thr_teams << team
+      catch e
+        raised = true
+        assert(str(e).includes?("save the owner"))
+      end
+      assert(raised)
+      team.delete()
+    end
+  })
+
+  test("shovel on a has_many-source through raises", fn() {
+    if __db_available
+      let blog_user = ThrBlogUser.create({"name": "writer"})
+      let raised = false
+      try
+        blog_user.thr_comments << ThrComment.new({})
+      catch e
+        raised = true
+        assert(str(e).includes?("has_many"))
+      end
+      assert(raised)
+      blog_user.delete()
+    end
+  })
+
   test("soft-deleted join rows drop out of the association", fn() {
     if __db_available
       let user = ThrSdUser.create({"name": "sd"})

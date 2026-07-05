@@ -94,6 +94,61 @@ fn collect_keys(args: &[Value]) -> Result<Vec<String>, String> {
     Ok(keys)
 }
 
+/// `owner.teams << team` on a `has_many through:` relation: insert a row in
+/// the through collection linking the owner to each provided target.
+/// Mirrors `habtm_add` semantics — a raw join-row insert (the through
+/// model's validations and callbacks are skipped, documented), plus counter
+/// bumps for any counter-cached belongs_to the through model declares.
+/// Only belongs_to sources are writable; distant-children (has_many source)
+/// pushes raise with a pointer at creating the child directly.
+pub fn through_add(
+    inst: &std::rc::Rc<std::cell::RefCell<Instance>>,
+    owner_class: &str,
+    rel: &RelationDef,
+    args: &[Value],
+) -> Result<Value, String> {
+    let resolution = super::relations::resolve_through(owner_class, rel)?;
+
+    // BelongsTo source ⇔ the membership subquery matches target _keys.
+    if resolution.target_field != "_key" {
+        return Err(format!(
+            "cannot push to \"{}\": its through source is a has_many — create the {} record with its foreign key instead",
+            rel.name, resolution.target_class_name
+        ));
+    }
+
+    let owner_key = match inst.borrow().get("_key") {
+        Some(Value::String(s)) => s,
+        Some(Value::Int(n)) => n.to_string().into(),
+        _ => {
+            return Err(format!(
+                "cannot push to \"{}\": save the owner record first",
+                rel.name
+            ))
+        }
+    };
+
+    let through_class =
+        super::relations::get_relation(owner_class, rel.through.as_deref().unwrap_or(""))
+            .map(|r| r.class_name)
+            .unwrap_or_default();
+
+    let target_keys = collect_keys(args)?;
+    let mut inserted = 0i64;
+    for target_key in target_keys {
+        let doc = serde_json::json!({
+            resolution.owner_fk.clone(): owner_key,
+            resolution.select_field.clone(): target_key,
+        });
+        exec_insert(&resolution.join_collection, None, doc.clone())
+            .map_err(|e| format!("through add failed: {}", e))?;
+        // Keep any counter caches the through model declares in sync.
+        super::counter_cache::bump_for_json(&through_class, &doc, 1);
+        inserted += 1;
+    }
+    Ok(Value::Int(inserted))
+}
+
 /// Insert join-table rows linking the owner to each provided related key.
 /// Returns the number of rows inserted.
 pub fn habtm_add(

@@ -54,7 +54,8 @@ impl Interpreter {
             habtm_add, match_habtm_method, to_singular_method_name,
         };
 
-        // Special case: `<instance>.<relation> << <value>` for HABTM.
+        // Special case: `<instance>.<relation> << <value>` for HABTM and
+        // has_many through: associations.
         if let ExprKind::Member { object, name } = &left.kind {
             let obj_val = self.evaluate(object)?;
             let obj_val = obj_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
@@ -70,6 +71,28 @@ impl Interpreter {
                         .map_err(|e| RuntimeError::new(e, span))?;
                     // Re-fetch the relation so the returned value reflects the new state.
                     return self.evaluate(left);
+                }
+                // `user.teams << team` on a through relation inserts the
+                // join record (raw row like HABTM; counter caches bumped).
+                if inst.borrow().class.is_model_subclass() {
+                    if let Some(relation) =
+                        crate::interpreter::builtins::model::get_relation(&class_name, name)
+                    {
+                        if relation.through.is_some() {
+                            let right_val = self.evaluate(right)?;
+                            let right_val = right_val
+                                .resolve()
+                                .map_err(|e| RuntimeError::new(e, span))?;
+                            crate::interpreter::builtins::model::habtm::through_add(
+                                inst,
+                                &class_name,
+                                &relation,
+                                std::slice::from_ref(&right_val),
+                            )
+                            .map_err(|e| RuntimeError::new(e, span))?;
+                            return self.evaluate(left);
+                        }
+                    }
                 }
             }
             // Fall through: evaluate LHS via member access, then push.

@@ -993,11 +993,16 @@ How it works and what to know:
 - Resolution happens lazily at first access (the through model may be defined
   later); a missing through or source relation raises naming exactly what was
   searched and suggesting `source:`.
-- **Read-only in v1**: `delete_all`/`update_all` on a through association
-  raise (they would hit *target* rows, not join rows — operate on the through
-  relation's records instead), eager-loading (`includes`, `join`,
-  `includes_count`) of a through relation raises, and `user.teams << team`
-  writes are not supported — create the join record explicitly.
+- **Pushing creates the join record**: `user.teams << team` (or `<< key`)
+  inserts a row in the through collection, HABTM-style — a raw join-row write
+  (the through model's validations and callbacks are skipped; its counter
+  caches are bumped). Only `belongs_to` sources are writable; a
+  `has_many`-source push raises with a pointer at creating the child
+  directly, and an unpersisted owner raises.
+- **Bulk writes and eager-loading stay off**: `delete_all`/`update_all` on a
+  through association raise (they would hit *target* rows, not join rows —
+  operate on the through relation's records instead), and eager-loading
+  (`includes`, `join`, `includes_count`) of a through relation raises.
 
 ### Counter Caches
 

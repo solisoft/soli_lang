@@ -484,7 +484,8 @@ user.teams.where("active == @a", {"a": true}).order("name").count()</code></pre>
             <li><strong class="text-white">Source inference.</strong> The relation on the through model is found by singularizing the name (<code>"teams"</code> &rarr; <code>"team"</code>); override with <code>source:</code>. Both <code>belongs_to</code> sources (join model) and <code>has_many</code> sources (distant children: <code>has_many "comments", through: "posts"</code>) work.</li>
             <li><strong class="text-white">Soft-deleting through models</strong> automatically exclude soft-deleted join rows.</li>
             <li><strong class="text-white">Lazy resolution.</strong> The chain resolves at first access; a missing through/source relation raises naming exactly what was searched and suggesting <code>source:</code>.</li>
-            <li><strong class="text-white">Read-only in v1.</strong> <code>delete_all</code>/<code>update_all</code> raise (they would hit <em>target</em> rows, not join rows), eager-loading a through relation raises, and <code>&lt;&lt;</code> writes aren't supported &mdash; create the join record explicitly.</li>
+            <li><strong class="text-white">Pushing creates the join record.</strong> <code>user.teams &lt;&lt; team</code> (or <code>&lt;&lt; key</code>) inserts a through-collection row, HABTM-style &mdash; a raw join-row write (through-model validations/callbacks skipped, its counter caches bumped). Only <code>belongs_to</code> sources are writable; <code>has_many</code>-source pushes and unpersisted owners raise.</li>
+            <li><strong class="text-white">Bulk writes and eager-loading stay off.</strong> <code>delete_all</code>/<code>update_all</code> raise (they would hit <em>target</em> rows, not join rows), and eager-loading a through relation raises.</li>
         </ul>
     </div>
 
