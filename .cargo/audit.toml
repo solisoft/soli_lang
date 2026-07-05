@@ -1,11 +1,17 @@
 # cargo-audit configuration.
 #
-# Vulnerabilities (RUSTSEC "vulnerability" advisories) are NEVER ignored here —
-# they must be fixed by bumping the dependency. This list is only for
+# Default policy: a RUSTSEC "vulnerability" advisory is fixed by bumping the
+# dependency, NOT ignored. The bulk of this list is therefore only for
 # *informational* advisories (unmaintained / unsound) that we have reviewed and
 # consciously accept because the fix requires a disruptive major upgrade or the
-# crate has no maintained drop-in replacement. Each entry records why and what
-# unblocks removing it.
+# crate has no maintained drop-in replacement.
+#
+# A vulnerability advisory is waived here ONLY when every one of these holds:
+# the crate is reached transitively (not a direct dependency), there is no
+# released upstream version that clears it, and the reachable surface is narrow
+# and documented. Each such entry states the scope and the exact condition that
+# unblocks its removal. Each entry — vulnerability or informational — records
+# why it is here and what unblocks removing it.
 
 [advisories]
 ignore = [
@@ -28,4 +34,21 @@ ignore = [
     # daemonize — unmaintained. Used only for `soli serve -d` (Unix daemonize).
     # Small, stable surface; revisit if a maintained equivalent appears.
     "RUSTSEC-2025-0069",
+
+    # quick-xml <0.41 DoS (RUSTSEC-2026-0194 quadratic duplicate-attr scan;
+    # RUSTSEC-2026-0195 unbounded namespace-decl allocation). These are the only
+    # *vulnerability* (not informational) advisories waived here — see the
+    # narrow-exception criteria at the top of this file. quick-xml 0.31 is pulled
+    # transitively by calamine and umya-spreadsheet (Excel/ODS parsing only);
+    # there is no upstream fix path yet — as of Jul 2026 the latest calamine
+    # (0.35) requires quick-xml ^0.39 and the latest umya-spreadsheet (3.0)
+    # requires ^0.37.1, neither of which resolves to the >=0.41 that clears them.
+    # Scope: DoS only, reachable solely via `Spreadsheet.excel*` on an *untrusted*
+    # .xlsx/.ods — treat those inputs as trusted until upstream ships. The direct
+    # quick-xml dep (the remotely-reachable SOAP / SAML XML surface) is already
+    # on 0.41 and unaffected.
+    # Remove both once calamine and umya-spreadsheet accept quick-xml >=0.41
+    # (then `cargo update -p calamine -p umya-spreadsheet && cargo audit`).
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]

@@ -203,9 +203,10 @@ webp = "0.3"
 # transitively (even their latest releases — calamine 0.35 / umya 3.0 — resolve
 # to quick-xml 0.37/0.39 as of Jul 2026), so the quick-xml DoS advisories
 # RUSTSEC-2026-0194 / -0195 (>=0.41 required) CANNOT be cleared by bumping these
-# yet. Per `.cargo/audit.toml` policy we do NOT ignore vulnerability advisories,
-# so this stays visible until upstream ships. Scope: DoS only, reachable solely
-# via `Spreadsheet.excel*` on an *untrusted* .xlsx/.ods — treat those inputs as
+# yet. They are waived in `.cargo/audit.toml` as a narrow, documented exception
+# (transitive-only, no upstream fix, DoS-only) — remove that waiver once upstream
+# accepts quick-xml >=0.41. Scope: DoS only, reachable solely via
+# `Spreadsheet.excel*` on an *untrusted* .xlsx/.ods — treat those inputs as
 # trusted until upstream updates. The *direct* quick-xml dep (SOAP / SAML XML,
 # the remotely-reachable surface) is already fixed on 0.41.
 calamine = "0.26"
