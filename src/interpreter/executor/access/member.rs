@@ -1109,6 +1109,19 @@ impl Interpreter {
                         }
                         _ => String::new(),
                     };
+                    // Association write seed for `.create(hash)` / `<<`: the
+                    // FK (plus the polymorphic type pair on `as:` relations)
+                    // stamped onto new children.
+                    let build_seed = |owner_key: String| {
+                        let mut seed = vec![(relation.foreign_key.clone(), owner_key)];
+                        if let (Some(field), Some(value)) = (
+                            &relation.polymorphic_type_field,
+                            &relation.polymorphic_type_value,
+                        ) {
+                            seed.push((field.clone(), value.clone()));
+                        }
+                        seed
+                    };
                     match fk_value {
                         Some(Value::String(s)) => {
                             binds.insert(
@@ -1119,6 +1132,7 @@ impl Interpreter {
                                 format!("{} == @__rel_fk{}", relation.foreign_key, type_guard),
                                 binds,
                             );
+                            qb.assoc_seed = Some(build_seed(s.to_string()));
                         }
                         Some(Value::Int(n)) => {
                             binds.insert(
@@ -1129,6 +1143,7 @@ impl Interpreter {
                                 format!("{} == @__rel_fk{}", relation.foreign_key, type_guard),
                                 binds,
                             );
+                            qb.assoc_seed = Some(build_seed(n.to_string()));
                         }
                         // Owner not yet persisted (or FK missing): build a
                         // QueryBuilder that yields no rows. Chaining still
@@ -2124,7 +2139,7 @@ impl Interpreter {
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"
-            | "all" | "first" | "count" | "paginate" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
+            | "all" | "first" | "count" | "paginate" | "create" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
             | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"
             // Enumerable-style array passthrough — materializes on call.

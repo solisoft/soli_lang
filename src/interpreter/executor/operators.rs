@@ -74,6 +74,9 @@ impl Interpreter {
                 }
                 // `user.teams << team` on a through relation inserts the
                 // join record (raw row like HABTM; counter caches bumped).
+                // `user.posts << post` / `post.comments << comment` on a
+                // has_many (incl. `as:` inverses) stamps the FK — plus the
+                // polymorphic type pair — onto the record and saves it.
                 if inst.borrow().class.is_model_subclass() {
                     if let Some(relation) =
                         crate::interpreter::builtins::model::get_relation(&class_name, name)
@@ -90,6 +93,16 @@ impl Interpreter {
                                 std::slice::from_ref(&right_val),
                             )
                             .map_err(|e| RuntimeError::new(e, span))?;
+                            return self.evaluate(left);
+                        }
+                        if relation.relation_type
+                            == crate::interpreter::builtins::model::RelationType::HasMany
+                        {
+                            let right_val = self.evaluate(right)?;
+                            let right_val = right_val
+                                .resolve()
+                                .map_err(|e| RuntimeError::new(e, span))?;
+                            self.push_to_has_many(inst, &relation, &right_val, span)?;
                             return self.evaluate(left);
                         }
                     }
@@ -112,6 +125,78 @@ impl Interpreter {
             .resolve()
             .map_err(|e| RuntimeError::new(e, span))?;
         self.shovel_array_push(&left_val, right_val, span)
+    }
+
+    /// `owner.posts << post` (has_many, incl. `as:` inverses): stamp the FK
+    /// — plus the polymorphic type pair — onto each pushed record and save
+    /// it through the regular persist path (validations, callbacks, counter
+    /// caches, dirty tracking). Accepts a model instance or an array of
+    /// them; a save that fails (validation veto) raises so the push can't
+    /// silently no-op.
+    fn push_to_has_many(
+        &mut self,
+        owner: &std::rc::Rc<std::cell::RefCell<crate::interpreter::value::Instance>>,
+        relation: &crate::interpreter::builtins::model::RelationDef,
+        right: &Value,
+        span: Span,
+    ) -> RuntimeResult<()> {
+        let owner_key = match owner.borrow().get("_key") {
+            Some(Value::String(s)) => s.to_string(),
+            Some(Value::Int(n)) => n.to_string(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "cannot push to \"{}\": save the owner record first",
+                        relation.name
+                    ),
+                    span,
+                ))
+            }
+        };
+
+        let children: Vec<Value> = match right {
+            Value::Array(arr) => arr.borrow().clone(),
+            other => vec![other.clone()],
+        };
+
+        for child in children {
+            let Value::Instance(child_inst) = &child else {
+                return Err(RuntimeError::new(
+                    format!(
+                        "\"{}\" << expects a model instance (or an array of them), got {} — \
+create the record first, or use {}.create({{...}})",
+                        relation.name,
+                        child.type_name(),
+                        relation.name
+                    ),
+                    span,
+                ));
+            };
+            {
+                let mut child_mut = child_inst.borrow_mut();
+                child_mut.set(
+                    relation.foreign_key.clone(),
+                    Value::String(owner_key.as_str().into()),
+                );
+                if let (Some(field), Some(value)) = (
+                    &relation.polymorphic_type_field,
+                    &relation.polymorphic_type_value,
+                ) {
+                    child_mut.set(field.clone(), Value::String(value.as_str().into()));
+                }
+            }
+            let result = self.save_model_instance(&child, span)?;
+            if matches!(result, Value::Bool(false)) {
+                return Err(RuntimeError::new(
+                    format!(
+                        "\"{}\" << failed: the record did not save (check its _errors)",
+                        relation.name
+                    ),
+                    span,
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn shovel_array_push(&self, left: &Value, right: Value, span: Span) -> RuntimeResult<Value> {

@@ -1003,7 +1003,7 @@ impl Interpreter {
     ///   (cheap path — keeps the existing native dispatch fast).
     /// - Any argument is non-positional (named args / blocks fall
     ///   through to the regular dispatcher).
-    fn try_run_model_persist_callbacks(
+    pub(crate) fn try_run_model_persist_callbacks(
         &mut self,
         obj_val: &Value,
         method_name: &str,

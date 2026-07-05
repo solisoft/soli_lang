@@ -296,4 +296,24 @@ impl Interpreter {
         let callee = self.evaluate_member_on_value(instance_value.clone(), "delete", span)?;
         self.call_value(callee, Vec::new(), span)
     }
+
+    /// Save a model instance through the same path a user-level
+    /// `record.save()` takes: the persist-callback interceptor when the
+    /// class registers callbacks (new records run the create chain), else
+    /// the plain native method. Validations, counter caches, and dirty
+    /// tracking all apply either way. Used by the association writers
+    /// (`owner.rel << record`, `owner.rel.create(hash)`).
+    pub(crate) fn save_model_instance(
+        &mut self,
+        instance_value: &Value,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if let Some(result) =
+            self.try_run_model_persist_callbacks(instance_value, "save", &[], span)?
+        {
+            return Ok(result);
+        }
+        let callee = self.evaluate_member_on_value(instance_value.clone(), "save", span)?;
+        self.call_value(callee, Vec::new(), span)
+    }
 }

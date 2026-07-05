@@ -137,6 +137,11 @@ pub struct QueryBuilder {
     /// Emitted with the FOR-head so it survives chained `.where()` calls;
     /// the owner key rides in bind_vars as @__soli_through_fk.
     pub through: Option<ThroughClause>,
+    /// Association write seed — set by the has_many accessor on a persisted
+    /// owner: the (field, value) pairs (`fk` → owner key, plus the
+    /// polymorphic type pair for `as:` relations) that `.create(hash)` and
+    /// `owner.rel << record` stamp onto new children.
+    pub assoc_seed: Option<Vec<(String, String)>>,
 }
 
 /// The join-subquery filter a `through:` accessor seeds:
@@ -186,6 +191,7 @@ impl QueryBuilder {
             aggregate_specs: Vec::new(),
             having: None,
             through: None,
+            assoc_seed: None,
         }
     }
 
@@ -219,6 +225,7 @@ impl QueryBuilder {
             aggregate_specs: Vec::new(),
             having: None,
             through: None,
+            assoc_seed: None,
         }
     }
 

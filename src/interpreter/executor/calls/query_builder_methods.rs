@@ -47,6 +47,7 @@ impl Interpreter {
         }
 
         match method_name {
+            "create" => self.qb_create(qb, arguments, span),
             "where" => self.qb_where(qb, arguments, span),
             "order" => self.qb_order(qb, arguments, span),
             "limit" => self.qb_limit(qb, arguments, span),
@@ -101,6 +102,91 @@ impl Interpreter {
                 span,
             }),
         }
+    }
+
+    /// `owner.comments.create({...})` — create a child through the relation
+    /// accessor: the association seed (FK, plus the polymorphic type pair on
+    /// `as:` relations) is stamped over the given attributes, then the child
+    /// persists through the regular save path (validations, callbacks,
+    /// counter caches, dirty tracking). Returns the instance — carrying
+    /// `_errors` on validation failure, like `Model.create`.
+    fn qb_create(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let (seed, class, class_name) = {
+            let qb_ref = qb.borrow();
+            if qb_ref.through.is_some() {
+                return Err(RuntimeError::General {
+                    message: "create() on a through: relation is not supported — create the \
+record and push it (`owner.rel << record`) or create the join record directly"
+                        .to_string(),
+                    span,
+                });
+            }
+            let Some(seed) = qb_ref.assoc_seed.clone() else {
+                return Err(RuntimeError::General {
+                    message: "create() is only available on a has_many relation accessor of a \
+persisted record (e.g. user.posts.create({...})) — use Model.create for plain inserts"
+                        .to_string(),
+                    span,
+                });
+            };
+            let Some(class) = qb_ref.class.clone() else {
+                return Err(RuntimeError::General {
+                    message: "create(): the relation's model class is not loaded".to_string(),
+                    span,
+                });
+            };
+            let class_name = crate::interpreter::symbol_string(qb_ref.class_name)
+                .unwrap_or("unknown")
+                .to_string();
+            (seed, class, class_name)
+        };
+
+        let attrs = match arguments.first() {
+            None => None,
+            Some(Value::Hash(h)) => Some(h.clone()),
+            Some(other) => {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "{}.create() expects an attribute hash, got {}",
+                        class_name,
+                        other.type_name()
+                    ),
+                    span,
+                })
+            }
+        };
+
+        let mut child = crate::interpreter::value::Instance::new(class);
+        if let Some(attrs) = attrs {
+            use crate::interpreter::value::HashKey;
+            for (k, v) in attrs.borrow().iter() {
+                if let HashKey::String(key) = k {
+                    if !key.starts_with('_') {
+                        child.set(key.to_string(), v.clone());
+                    }
+                }
+            }
+        }
+        // The association seed wins over caller-supplied values.
+        for (field, value) in &seed {
+            child.set(field.clone(), Value::String(value.as_str().into()));
+        }
+
+        let child_value = Value::Instance(Rc::new(RefCell::new(child)));
+        let result = self.save_model_instance(&child_value, span)?;
+        // Match Model.create's contract: `_errors` is null on success (the
+        // save path stamps an empty array) and an error array on failure.
+        if matches!(result, Value::Bool(true)) {
+            if let Value::Instance(inst) = &child_value {
+                inst.borrow_mut().set("_errors".to_string(), Value::Null);
+            }
+        }
+        Ok(child_value)
     }
 
     fn qb_where(

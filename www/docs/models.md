@@ -1077,6 +1077,10 @@ Semantics:
   accessor, `includes`, `includes_count`, `join`, cascades — carries the
   `{as}_type == "<OwnerClass>"` guard, so two parents with colliding keys
   never see each other's children.
+- **Association writers auto-set both fields**: `customer.comments <<
+  Comment.create({...})` and `customer.comments.create({...})` stamp
+  `commentable_id` *and* `commentable_type` — see
+  [Writing through associations](#writing-through-associations).
 - **`counter_cache:` works** on a polymorphic belongs_to: the parent
   collection is resolved from the type at bump time, so each parent type
   maintains its own count, and a reassignment across *types* moves the count
@@ -1693,6 +1697,43 @@ profile = user.profile;
 # Access belongs_to relation
 author = post.user;
 ```
+
+### Writing through associations
+
+`has_many` accessors (including polymorphic `as:` inverses) accept writes —
+the foreign key, and the polymorphic type when applicable, are stamped
+automatically:
+
+```soli
+# Create a child through the relation — FK (and type) auto-set:
+post = author.posts.create({"title": "seeded"})
+post._errors                # null on success, error array on validation failure
+
+# Adopt an existing (or unpersisted) record — sets the FK and saves:
+author.posts << loose_post
+author.posts << [draft_a, draft_b]
+
+# Polymorphic inverses stamp both halves of the reference:
+customer.comments << Comment.create({"message": "bla"})
+comment = customer.comments.create({"message": "bla"})
+comment.commentable_id      # customer._key
+comment.commentable_type    # "Customer"
+```
+
+Semantics:
+
+- Both writers persist through the **regular save path** — validations,
+  `before_/after_save`/`create`/`update` callbacks, counter caches, and dirty
+  tracking all apply. `.create` returns the instance (`_errors` carries
+  validation failures, like `Model.create`); a failing `<<` raises so the
+  push can't silently no-op.
+- The association seed **wins over caller-supplied values** — passing a
+  different `commentable_id` to `customer.comments.create` is overridden.
+- The owner must be persisted (`<<`/`.create` on an unpersisted owner
+  raises); `<<` expects model instances (or an array of them), not raw keys.
+- On HABTM relations `<<` inserts a join row, and on `through:` relations it
+  creates the join record — both documented in their sections. `.create` on
+  a `through:` relation raises (create the record and push it instead).
 
 ### has_many is Enumerable AND chainable
 
