@@ -97,6 +97,13 @@ fn parse_csv_file(path: &str) -> Result<Value, String> {
 }
 
 fn parse_excel_file(path: &str) -> Result<Value, String> {
+    // SECURITY: calamine parses the ZIP-embedded XML with a transitive
+    // quick-xml < 0.41, which carries the DoS advisories RUSTSEC-2026-0194 /
+    // -0195 (quadratic attribute scan, unbounded namespace allocation). No
+    // upstream release reaches quick-xml >= 0.41 yet, so treat `path` as
+    // trusted input — do not parse attacker-supplied spreadsheets on a request
+    // path without an out-of-band size/timeout sandbox. Tracked in
+    // tasks/todo/transitive-quick-xml-dos-spreadsheets.md.
     let mut workbook: Xlsx<_> = open_workbook(path)
         .map_err(|e| format!("Spreadsheet.excel() cannot open {}: {}", path, e))?;
 
