@@ -182,6 +182,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.delete(id)` | Delete a document |
 | `Model.delete_all` | Wipe every document in the collection (primarily for test setup/teardown). Use `Model.where(...).delete_all` for filtered bulk deletes. |
 | `Model.count` | Count all documents |
+| `Model.reset_counters(id, relation)` | Recount a `has_many` relation's children (minus soft-deleted) and write the [counter cache](#counter-caches) column; returns the fresh count |
 | `Model.transaction do … end` | Run a block in a transaction — commit on success, roll back on throw |
 | `Model.transaction("aql")` | Execute a single AQL statement transactionally |
 | `Model.transaction()` | Get transaction handle for manual control |
@@ -997,6 +998,37 @@ How it works and what to know:
   relation's records instead), eager-loading (`includes`, `join`,
   `includes_count`) of a through relation raises, and `user.teams << team`
   writes are not supported — create the join record explicitly.
+
+### Counter Caches
+
+`belongs_to ..., counter_cache:` keeps a children count on the parent row up
+to date, so lists render without a COUNT query per row:
+
+```soli
+class Comment < Model
+  belongs_to "post", counter_cache: true            # maintains posts.comments_count
+  belongs_to("author", {"class_name": "User", "counter_cache": "authored_count"})
+end
+
+post.comments_count                    # plain field read (0/missing until first bump)
+Post.reset_counters(post._key, "comments")  # recount → write → returns Int
+```
+
+Semantics:
+
+- `counter_cache: true` derives the column from the child collection
+  (`comments` → `comments_count`); a string picks a custom column. The parent
+  needs no schema preparation — a missing column reads as 0.
+- Bumps ride the same If-Match CAS loop as `increment`/`decrement` and fire on
+  child `create`/`save`, hard `delete` (instance and class form),
+  FK reassignment on `update`/`save`/`Model.update(id, ...)` (−1 old parent,
+  +1 new), and — for soft-deleting children — soft `delete` (−1) and
+  `restore` (+1), so counters track default-scope-visible children.
+- **Bulk writes never bump** (`delete_all`, `update_all`, `upsert`, `import`,
+  `prune`) and bumps are **best-effort**: a failing bump never fails the
+  already-committed primary write. Counters are eventually consistent under
+  failures — `Model.reset_counters(id, relation)` is the repair tool (it
+  recounts minus soft-deleted children and returns the fresh count).
 
 ### Manual Relationships
 

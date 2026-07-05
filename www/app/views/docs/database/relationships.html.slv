@@ -69,7 +69,7 @@
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">counter_cache:</code></td>
                     <td class="py-3 px-4 text-gray-400">belongs_to</td>
-                    <td class="py-3 px-4 text-gray-400">Maintain a <code>&lt;children&gt;_count</code> column on the parent (<code>true</code> or a custom column name).</td>
+                    <td class="py-3 px-4 text-gray-400">Maintain a <code>&lt;children&gt;_count</code> column on the parent (<code>true</code> or a custom column name). See <a href="#counter-cache" class="text-amber-400 hover:underline">Counter Caches</a>.</td>
                 </tr>
             </tbody>
         </table>
@@ -485,6 +485,31 @@ user.teams.where("active == @a", {"a": true}).order("name").count()</code></pre>
             <li><strong class="text-white">Soft-deleting through models</strong> automatically exclude soft-deleted join rows.</li>
             <li><strong class="text-white">Lazy resolution.</strong> The chain resolves at first access; a missing through/source relation raises naming exactly what was searched and suggesting <code>source:</code>.</li>
             <li><strong class="text-white">Read-only in v1.</strong> <code>delete_all</code>/<code>update_all</code> raise (they would hit <em>target</em> rows, not join rows), eager-loading a through relation raises, and <code>&lt;&lt;</code> writes aren't supported &mdash; create the join record explicitly.</li>
+        </ul>
+    </div>
+
+    <h2 id="counter-cache" class="text-2xl font-bold text-white mb-6">Counter Caches (counter_cache:)</h2>
+    <p class="text-gray-400 mb-4">
+        <code>belongs_to ..., counter_cache:</code> keeps a children count on the parent row up to date, so lists render without a COUNT query per row:
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Comment < Model
+  belongs_to "post", counter_cache: true            # maintains posts.comments_count
+  belongs_to("author", {"class_name": "User", "counter_cache": "authored_count"})
+end
+
+post.comments_count                          # plain field read
+Post.reset_counters(post._key, "comments")   # recount → write → returns Int</code></pre>
+        </div>
+    </div>
+
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">No schema prep.</strong> <code>true</code> derives the column from the child collection (<code>comments_count</code>); a string picks a custom column; a missing column reads as 0.</li>
+            <li><strong class="text-white">Bumps ride the CAS loop</strong> (like <code>increment</code>) and fire on child create/save, hard delete (instance and class form), FK reassignment (&minus;1 old parent, +1 new), and soft delete/restore for soft-deleting children &mdash; counters track default-scope-visible children.</li>
+            <li><strong class="text-white">Bulk writes never bump</strong> (<code>delete_all</code>/<code>update_all</code>/<code>upsert</code>/<code>prune</code>) and bumps are <strong>best-effort</strong> &mdash; a failing bump never fails the committed primary write. <code>Model.reset_counters(id, relation)</code> is the repair tool.</li>
         </ul>
     </div>
 

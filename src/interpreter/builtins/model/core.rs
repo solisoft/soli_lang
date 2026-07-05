@@ -1667,6 +1667,7 @@ impl Model {
                         }
                         inst_mut.set("id".to_string(), json_to_value(&id));
                         super::dirty::finalize_persist(&mut inst_mut);
+                        super::counter_cache::bump_for_instance(&inst_mut, 1);
                         drop(inst_mut);
                         Ok(Value::Instance(instance))
                     }
@@ -2038,8 +2039,26 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                match exec_update(&collection, &id, data_value, true) {
-                    Ok(result) => Ok(json_to_value(&result)),
+                // Counter caches: pre-read the old document (only when this
+                // class declares counter-cached belongs_to) so an FK change
+                // can move the parent counts after the write commits.
+                let old_doc = if super::counter_cache::class_has_counter_caches(&class_name) {
+                    super::crud::exec_get(&collection, &id).ok()
+                } else {
+                    None
+                };
+
+                match exec_update(&collection, &id, data_value.clone(), true) {
+                    Ok(result) => {
+                        if let Some(old_doc) = &old_doc {
+                            super::counter_cache::bump_for_json_change(
+                                &class_name,
+                                old_doc,
+                                &data_value,
+                            );
+                        }
+                        Ok(json_to_value(&result))
+                    }
                     Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             })),
@@ -2063,11 +2082,56 @@ impl Model {
                     None => return Err("Model.delete() requires id argument".to_string()),
                 };
 
+                let class_name = get_class_name_from_class(&args)?;
+                let old_doc = if super::counter_cache::class_has_counter_caches(&class_name) {
+                    super::crud::exec_get(&collection, &id).ok()
+                } else {
+                    None
+                };
+
                 match exec_delete(&collection, &id) {
-                    Ok(result) => Ok(json_to_value(&result)),
+                    Ok(result) => {
+                        if let Some(old_doc) = &old_doc {
+                            super::counter_cache::bump_for_json(&class_name, old_doc, -1);
+                        }
+                        Ok(json_to_value(&result))
+                    }
                     Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             })),
+        );
+
+        // Model.reset_counters(id, relation) - Recount a has_many relation's
+        // children and write the counter column on the parent row. The
+        // repair tool for counter drift (bulk writes skip bumps by design).
+        native_static_methods.insert(
+            "reset_counters".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.reset_counters",
+                Some(3),
+                |args| {
+                    let class_name = get_class_name_from_class(&args)?;
+                    let collection = class_name_to_collection(&class_name);
+                    let id = match args.get(1) {
+                        Some(Value::String(s)) => s.to_string(),
+                        _ => return Err("Model.reset_counters() expects a string id".to_string()),
+                    };
+                    let relation_name = match args.get(2) {
+                        Some(Value::String(s)) => s.to_string(),
+                        Some(Value::Symbol(s)) => s.to_string(),
+                        _ => {
+                            return Err("Model.reset_counters() expects a relation name".to_string())
+                        }
+                    };
+                    let count = super::counter_cache::reset_counters(
+                        &class_name,
+                        &collection,
+                        &id,
+                        &relation_name,
+                    )?;
+                    Ok(Value::Int(count))
+                },
+            )),
         );
 
         // Model.delete_all() - Remove every document in the collection.
@@ -3812,7 +3876,8 @@ impl Model {
                                 "_errors".to_string(),
                                 Value::Array(Rc::new(RefCell::new(vec![]))),
                             );
-                            super::dirty::finalize_persist(&mut inst_mut);
+                            let changes = super::dirty::finalize_persist(&mut inst_mut);
+                            super::counter_cache::bump_for_changes(&class_name, &changes);
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
@@ -4039,7 +4104,8 @@ impl Model {
                                     "_errors".to_string(),
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
-                                super::dirty::finalize_persist(&mut inst_mut);
+                                let changes = super::dirty::finalize_persist(&mut inst_mut);
+                                super::counter_cache::bump_for_changes(&class_name, &changes);
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -4070,6 +4136,7 @@ impl Model {
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
                                 super::dirty::finalize_persist(&mut inst_mut);
+                                super::counter_cache::bump_for_instance(&inst_mut, 1);
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -4110,6 +4177,10 @@ impl Model {
 
                 if is_soft_delete(&class_name) {
                     // Soft delete: set deleted_at timestamp
+                    let was_active = matches!(
+                        instance.borrow().get("deleted_at"),
+                        None | Some(Value::Null)
+                    );
                     let now = chrono::Utc::now().to_rfc3339();
                     let mut map = serde_json::Map::new();
                     map.insert(
@@ -4121,6 +4192,11 @@ impl Model {
                             let mut inst_mut = instance.borrow_mut();
                             inst_mut.set("deleted_at".to_string(), Value::String(now.into()));
                             super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
+                            // Counters track default-scope-visible children:
+                            // vanishing from the scope decrements the parent.
+                            if was_active {
+                                super::counter_cache::bump_for_instance(&inst_mut, -1);
+                            }
                             Ok(Value::Bool(true))
                         }
                         Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
@@ -4128,7 +4204,10 @@ impl Model {
                 } else {
                     // Hard delete: remove document
                     match exec_delete(&collection, &key_str) {
-                        Ok(result) => Ok(json_to_value(&result)),
+                        Ok(result) => {
+                            super::counter_cache::bump_for_instance(&instance.borrow(), -1);
+                            Ok(json_to_value(&result))
+                        }
                         Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                     }
                 }
@@ -4155,6 +4234,10 @@ impl Model {
                 };
                 drop(inst_ref);
 
+                let was_deleted = !matches!(
+                    instance.borrow().get("deleted_at"),
+                    None | Some(Value::Null)
+                );
                 let mut map = serde_json::Map::new();
                 map.insert("deleted_at".to_string(), serde_json::Value::Null);
                 match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
@@ -4162,6 +4245,10 @@ impl Model {
                         let mut inst_mut = instance.borrow_mut();
                         inst_mut.set("deleted_at".to_string(), Value::Null);
                         super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
+                        // Re-entering the default scope re-increments the parent.
+                        if was_deleted {
+                            super::counter_cache::bump_for_instance(&inst_mut, 1);
+                        }
                         Ok(Value::Bool(true))
                     }
                     Err(e) => Err(format!("restore failed: {}", e)),

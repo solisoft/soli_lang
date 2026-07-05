@@ -262,6 +262,7 @@ pub mod batch;
 pub mod callbacks;
 pub mod columnar;
 pub mod core;
+pub mod counter_cache;
 pub mod crud;
 pub mod db_config;
 pub mod dirty;
