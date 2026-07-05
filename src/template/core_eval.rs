@@ -42,7 +42,14 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             // `admin_path()` in a `.html.slv` template fall through to the
             // lenient-undefined path and crash as "not callable".
             crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
-            *opt = Some(Rc::new(RefCell::new(env)));
+            let env_rc = Rc::new(RefCell::new(env));
+            // Form builder layer (form_with / csrf_field / button_to) is
+            // pure Soli evaluated into the shared env — its class methods
+            // close over env_rc, which is why it registers after wrapping.
+            if let Err(e) = crate::interpreter::builtins::template::register_form_builder(&env_rc) {
+                eprintln!("[WARN] template form builder failed to load: {}", e);
+            }
+            *opt = Some(env_rc);
         }
         opt.as_ref().unwrap().clone()
     })

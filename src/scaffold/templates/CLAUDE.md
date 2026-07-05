@@ -335,6 +335,38 @@ search, analytics, and migrations — see `docs/solidb-reference.md`.
 
 Always use `h()` to escape user-supplied content — XSS is the default risk.
 
+### Forms
+
+Use the built-in form builder — it derives the URL and verb from the record
+(new → `POST /posts`, persisted → `PATCH /posts/<key>` via a hidden `_method`
+field the server honors) and embeds the CSRF token. Builder calls return
+HTML, so output them with `<%-` (raw), never `<%=`:
+
+```erb
+<% f = form_with(post) %>
+<%- f.open() %>
+  <%- f.error_summary() %>
+  <%- f.label("title") %>
+  <%- f.text_field("title", {"placeholder": "Title"}) %>
+  <%- f.errors_for("title") %>
+  <%- f.submit("Save") %>
+<%- f.close() %>
+```
+
+- Field helpers: `text_field`, `email_field`, `password_field`, `number_field`,
+  `date_field`, `datetime_field`, `hidden_field`, `file_field` (+
+  `"multipart": true` on the form), `text_area`, `check_box`, `radio_button`,
+  `select`, `label`, `submit`. Options become HTML attributes; values prefill
+  from the record and are escaped; errored fields get a `field-error` class.
+- Field names are **flat** (`name="title"`) — read `params["title"]` in the
+  controller. An unchecked `check_box` submits nothing; read it as
+  `params["published"] == "true"`.
+- Delete/logout links: `button_to("Delete", "/posts/" + post["_key"].to_s,
+  {"method": "delete", "confirm": "Are you sure?"})` — never a bare `<a>`.
+- Hand-written `<form method="POST">`? Add `<%- csrf_field() %>` inside it.
+- Partials render in a fresh scope — pass the builder along:
+  `<%- partial("posts/form", { "post": post, "f": f }) %>`.
+
 ## Middleware
 
 A middleware file declares one function. Per-file directive comments at the top configure how the framework wires it up:

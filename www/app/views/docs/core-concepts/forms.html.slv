@@ -1,0 +1,219 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                Forms
+            </span>
+            <span class="text-white">&amp; CSRF Protection</span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            A Rails-style form builder that derives URLs and verbs from your records, prefills values, renders validation errors, and carries a verified per-session CSRF token.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section>
+        <div class="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-amber-500/20 rounded-lg text-amber-400">
+                    <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Forms that know your records</h2>
+                    <p class="text-gray-300 leading-relaxed mb-0">
+                        <code class="text-amber-300">form_with(post)</code> POSTs a new record to <code class="text-amber-300">/posts</code> and PATCHes a persisted one to <code class="text-amber-300">/posts/&lt;key&gt;</code> — through the hidden <code class="text-amber-300">_method</code> field the server honors, since HTML forms can only express GET and POST. Every non-GET form embeds a per-session CSRF token that the server verifies with a constant-time compare.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 1. Quick start -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            Quick start
+        </h2>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">app/views/posts/new.html.slv</span>
+            </div>
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;% f = form_with(post) %&gt;
+&lt;%- f.open() %&gt;
+  &lt;%- f.error_summary() %&gt;
+
+  &lt;%- f.label("title") %&gt;
+  &lt;%- f.text_field("title", {"placeholder": "Title"}) %&gt;
+  &lt;%- f.errors_for("title") %&gt;
+
+  &lt;%- f.text_area("body") %&gt;
+  &lt;%- f.check_box("published") %&gt;
+  &lt;%- f.submit("Save") %&gt;
+&lt;%- f.close() %&gt;</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mt-6">
+            Use <code class="text-amber-300">&lt;%-</code> (raw output) for every builder call — the helpers return HTML, and <code class="text-amber-300">&lt;%=</code> would escape it into visible text. Field <em>values</em> are always escaped by the builder itself.
+        </p>
+    </section>
+
+    <!-- 2. form_with options -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
+            form_with
+        </h2>
+        <p class="text-gray-400 mb-6">
+            Both arguments are optional. With no record, pass <code class="text-amber-300">"url"</code>: <code class="text-amber-300">form_with(null, {"url": "/search", "method": "get"})</code>. GET forms skip both the CSRF token and the <code class="text-amber-300">_method</code> field.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Option</th>
+                        <th class="px-4 py-3 font-semibold">Effect</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">"url"</code></td><td class="px-4 py-3">Override the derived action URL (required with no record)</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">"method"</code></td><td class="px-4 py-3"><code>"post"</code> / <code>"patch"</code> / <code>"put"</code> / <code>"delete"</code> / <code>"get"</code> — overrides the derived verb</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">"multipart": true</code></td><td class="px-4 py-3">Adds <code>enctype="multipart/form-data"</code> (required for <code>file_field</code>)</td></tr>
+                    <tr><td class="px-4 py-3">anything else</td><td class="px-4 py-3">Becomes an attribute on the <code>&lt;form&gt;</code> tag (<code>"class"</code>, <code>"id"</code>, <code>data-*</code>, …)</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 3. Field helpers -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
+            Field helpers
+        </h2>
+        <p class="text-gray-400 mb-6">
+            Every helper takes <code class="text-amber-300">(field, options)</code>. Options become HTML attributes (<code>true</code> renders a bare attribute, <code>false</code>/<code>nil</code> skips it). Values prefill from <code class="text-amber-300">record[field]</code>; an errored field gains a <code class="text-amber-300">field-error</code> class and <code class="text-amber-300">aria-invalid="true"</code>.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Helper</th>
+                        <th class="px-4 py-3 font-semibold">Renders</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.text_field / f.email_field / f.number_field</code></td><td class="px-4 py-3">the matching <code>&lt;input&gt;</code> type</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.password_field("password")</code></td><td class="px-4 py-3"><code>&lt;input type="password"&gt;</code> — never prefills</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.date_field / f.datetime_field</code></td><td class="px-4 py-3"><code>date</code> / <code>datetime-local</code> inputs</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.hidden_field / f.file_field</code></td><td class="px-4 py-3">hidden input / file input (pair with <code>"multipart": true</code>)</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.text_area("body")</code></td><td class="px-4 py-3"><code>&lt;textarea&gt;</code> with the escaped value as content</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.check_box("published")</code></td><td class="px-4 py-3">checkbox, <code>value="true"</code>, checked when the field is <code>true</code>/<code>"true"</code></td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.radio_button("size", "xl")</code></td><td class="px-4 py-3">radio, checked when the field equals the value</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.select("status", choices)</code></td><td class="px-4 py-3"><code>&lt;select&gt;</code> — strings or <code>[label, value]</code> pairs, current value <code>selected</code></td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.label("title", text?, opts?)</code></td><td class="px-4 py-3"><code>&lt;label&gt;</code> — text defaults to a humanized field name</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.submit("Save", opts?)</code></td><td class="px-4 py-3"><code>&lt;button type="submit"&gt;</code></td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.error_summary(opts?) / f.errors_for(field)</code></td><td class="px-4 py-3">validation-error list / inline per-field messages (empty when valid)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mt-6">
+            Field names are <strong class="text-white">flat</strong> (<code class="text-amber-300">name="title"</code>), matching Soli's flat <code>params</code> model — controllers read <code class="text-amber-300">params["title"]</code> exactly as before. An unchecked <code>check_box</code> submits nothing; read it as <code class="text-amber-300">params["published"] == "true"</code>. For <code>select</code> pairs, build the choices in a <code>&lt;% %&gt;</code> code block and put a space between the brackets — a leading <code class="text-amber-300">[[</code> lexes as a Lua-style raw string, not a nested array:
+        </p>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mt-4">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;% choices = [ ["On time", "up"], ["Late", "late"] ] %&gt;
+&lt;%- f.select("status", choices) %&gt;</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. button_to + method override -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">4</span>
+            button_to &amp; method override
+        </h2>
+        <p class="text-gray-400 mb-6">
+            State-changing links belong in forms, not <code>&lt;a&gt;</code> tags. <code class="text-amber-300">button_to</code> renders a one-button form with the CSRF token and <code class="text-amber-300">_method</code> override built in:
+        </p>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- button_to("Delete", "/posts/" + post["_key"].to_s, {
+  "method": "delete", "confirm": "Are you sure?",
+  "class": "btn-danger", "form_class": "inline"
+}) %&gt;</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mt-6">
+            A POST whose form body carries <code class="text-amber-300">_method=PUT|PATCH|DELETE</code> is routed — and dispatched to your controller — as that verb, so <code class="text-amber-300">resources("posts")</code> update/destroy routes work from plain HTML forms. Only those three verbs are honored, only on POST, and only for form content types — JSON APIs are never affected.
+        </p>
+    </section>
+
+    <!-- 5. CSRF tokens -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">5</span>
+            CSRF tokens
+        </h2>
+        <p class="text-gray-400 mb-6">
+            The baseline protection is the Origin/Referer same-site gate (<a href="/docs/core-concepts/routing" class="text-amber-400 hover:text-amber-300">Routing — CSRF</a>). Forms add a second, Rails-style layer: any state-changing request that <strong class="text-white">carries</strong> a token — the <code class="text-amber-300">_csrf_token</code> field or the <code class="text-amber-300">X-CSRF-Token</code> header — must match the session's token (constant-time compare) or the request is rejected with <code>403</code>. Requests without a token keep the Origin/Referer posture, so existing apps and JSON APIs are unaffected.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Helper</th>
+                        <th class="px-4 py-3 font-semibold">Use</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">csrf_token()</code></td><td class="px-4 py-3">the per-session token — builtin, controllers and views, created on first use</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">csrf_field()</code></td><td class="px-4 py-3">hidden input — <code>f.open()</code> and <code>button_to</code> embed it automatically</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">csrf_meta_tag()</code></td><td class="px-4 py-3"><code>&lt;meta name="csrf-token"&gt;</code> for layouts, so fetch/htmx can send the header</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            To make tokens mandatory for browser form posts, set <code class="text-amber-300">SOLI_CSRF_TOKENS=require</code> — form posts without a valid token get a <code>403</code>. JSON traffic is never token-gated; <code class="text-amber-300">skip_csrf("/path")</code> and <code class="text-amber-300">SOLI_DISABLE_CSRF</code> opt-outs apply to both layers. For htmx, wire the header once:
+        </p>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;body hx-headers='{"X-CSRF-Token": "&lt;%= csrf_token() %&gt;"}'&gt;</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. Errors + partials -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">6</span>
+            Validation errors &amp; partials
+        </h2>
+        <p class="text-gray-400 mb-6">
+            A failed <code class="text-amber-300">create</code>/<code class="text-amber-300">save</code> leaves <code class="text-amber-300">_errors</code> on the record — re-render the form and the builder does the rest: <code class="text-amber-300">f.error_summary()</code> lists every message, <code class="text-amber-300">f.errors_for("title")</code> renders inline spans, and errored fields get the <code class="text-amber-300">field-error</code> class. Partials render in a fresh scope, so pass the builder explicitly:
+        </p>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;% f = form_with(post) %&gt;
+&lt;%- f.open() %&gt;
+  &lt;%- partial("posts/form", { "post": post, "f": f }) %&gt;
+&lt;%- f.close() %&gt;</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Next -->
+    <section>
+        <div class="flex flex-wrap gap-4">
+            <a href="/docs/core-concepts/views" class="text-amber-400 hover:text-amber-300">← Views</a>
+            <a href="/docs/core-concepts/routing" class="text-amber-400 hover:text-amber-300">Routing →</a>
+        </div>
+    </section>
+</div>

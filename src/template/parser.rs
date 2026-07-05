@@ -217,6 +217,32 @@ pub fn parse_template(source: &str) -> Result<Vec<TemplateNode>, String> {
     parse_tokens(&tokens)
 }
 
+/// Rewrite a Ruby-style block-iteration opener — `xs.each do |x|` or
+/// `xs.each do |x, i|` — into the engine's `for` form (`for x in xs` /
+/// `for x, i in xs`). Returns `None` when the code isn't that shape (a
+/// complete inline statement ends with `end`, not `|param|`, so only
+/// multi-tag block openers match).
+fn rewrite_each_opener(code: &str) -> Option<String> {
+    let rest = code.trim().strip_suffix('|')?;
+    let bar = rest.rfind('|')?;
+    let params = rest[bar + 1..].trim();
+    let head = rest[..bar].trim_end().strip_suffix("do")?.trim_end();
+    let iterable = head.strip_suffix(".each")?.trim_end();
+    if iterable.is_empty() || params.is_empty() {
+        return None;
+    }
+    let idents: Vec<&str> = params.split(',').map(str::trim).collect();
+    let valid_ident = |s: &str| {
+        !s.is_empty()
+            && !s.starts_with(|c: char| c.is_ascii_digit())
+            && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+    };
+    if idents.len() > 2 || !idents.iter().all(|p| valid_ident(p)) {
+        return None;
+    }
+    Some(format!("for {} in {}", idents.join(", "), iterable))
+}
+
 /// Tokenize the template source into a sequence of tokens.
 fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
@@ -289,6 +315,12 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 } else if is_output {
                     tokens.push(Token::OutputEscaped(tag_content, tag_line));
                 } else {
+                    // Ruby-style iteration: `<% xs.each do |x| %>` (and the
+                    // `|x, i|` form) is sugar for `<% for x in xs %>` —
+                    // normalize here so every block-dispatch site (top
+                    // level, if/for bodies) resolves it via the same For
+                    // node machinery.
+                    let tag_content = rewrite_each_opener(&tag_content).unwrap_or(tag_content);
                     tokens.push(Token::Code(tag_content, tag_line));
                 }
             }

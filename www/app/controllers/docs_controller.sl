@@ -56,6 +56,10 @@ def core_concepts_views
     render_docs("docs/core-concepts/views", "Views", "core_concepts", "views")
 end
 
+def core_concepts_forms
+    render_docs("docs/core-concepts/forms", "Forms & CSRF", "core_concepts", "forms")
+end
+
 def core_concepts_websockets
     render_docs("docs/core-concepts/websockets", "WebSockets", "core_concepts", "websockets")
 end

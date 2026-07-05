@@ -624,6 +624,26 @@ mod tests {
     }
 
     #[test]
+    fn each_do_block_renders_like_for() {
+        // `<% xs.each do |x| %>` is tokenizer sugar for `<% for x in xs %>`.
+        let items = || {
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ])))
+        };
+        let nodes = parse_template("<% items.each do |item| %>[<%= item %>]<% end %>").unwrap();
+        let result = render_nodes(&nodes, &make_hash(vec![("items", items())]), None).unwrap();
+        assert_eq!(result, "[a][b]");
+
+        // Two-param form carries the index, mirroring `for item, i in items`.
+        let nodes =
+            parse_template("<% items.each do |item, i| %><%= i %>:<%= item %>;<% end %>").unwrap();
+        let result = render_nodes(&nodes, &make_hash(vec![("items", items())]), None).unwrap();
+        assert_eq!(result, "0:a;1:b;");
+    }
+
+    #[test]
     fn test_render_for_loop_with_index() {
         let nodes = parse_template("<% for item, i in items %><%= i %><% end %>").unwrap();
         let items = Value::Array(Rc::new(RefCell::new(vec![
@@ -713,5 +733,228 @@ mod tests {
                 err
             );
         }
+    }
+
+    // --- form builder (form_with / csrf_field / button_to) ---------------
+
+    fn render_form(src: &str, data: Vec<(&str, Value)>) -> String {
+        let nodes = parse_template(src).unwrap();
+        render_nodes(&nodes, &make_hash(data), None).unwrap()
+    }
+
+    fn record_with_errors(pairs: Vec<(&str, Value)>, errors: Vec<(&str, &str)>) -> Value {
+        let errs: Vec<Value> = errors
+            .into_iter()
+            .map(|(field, message)| {
+                make_hash(vec![
+                    ("field", Value::String(field.into())),
+                    ("message", Value::String(message.into())),
+                ])
+            })
+            .collect();
+        let mut all = pairs;
+        all.push(("_errors", Value::Array(Rc::new(RefCell::new(errs)))));
+        make_hash(all)
+    }
+
+    #[test]
+    fn form_with_get_form_has_no_csrf_or_method_override() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) %><%- f.open() %><%- f.close() %>",
+            vec![],
+        );
+        assert_eq!(html, "<form action=\"/search\" method=\"GET\"></form>");
+    }
+
+    #[test]
+    fn form_with_post_embeds_csrf_token() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/posts\"}) %><%- f.open() %>",
+            vec![],
+        );
+        assert!(html.starts_with("<form action=\"/posts\" method=\"POST\">"));
+        assert!(
+            html.contains("name=\"_csrf_token\" value=\""),
+            "missing csrf field: {}",
+            html
+        );
+    }
+
+    #[test]
+    fn form_with_patch_emits_method_override_field() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/posts/7\", \"method\": \"patch\"}) %><%- f.open() %>",
+            vec![],
+        );
+        assert!(
+            html.contains("<input type=\"hidden\" name=\"_method\" value=\"PATCH\">"),
+            "missing _method override: {}",
+            html
+        );
+    }
+
+    #[test]
+    fn form_with_extra_options_become_form_attributes() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/x\", \"multipart\": true, \"class\": \"stack\"}) %><%- f.open() %>",
+            vec![],
+        );
+        assert!(html.contains("enctype=\"multipart/form-data\""), "{}", html);
+        assert!(html.contains("class=\"stack\""), "{}", html);
+    }
+
+    #[test]
+    fn text_field_prefills_value_and_escapes_it() {
+        let record = make_hash(vec![("title", Value::String("a \"b\" <c>".into()))]);
+        let html = render_form(
+            "<% f = form_with(post, {\"url\": \"/posts\"}) %><%- f.text_field(\"title\") %>",
+            vec![("post", record)],
+        );
+        assert!(
+            html.contains(
+                "type=\"text\" id=\"title\" name=\"title\" value=\"a &quot;b&quot; &lt;c&gt;\""
+            ),
+            "unexpected input html: {}",
+            html
+        );
+    }
+
+    #[test]
+    fn password_field_never_prefills() {
+        let record = make_hash(vec![("password", Value::String("secret".into()))]);
+        let html = render_form(
+            "<% f = form_with(user, {\"url\": \"/login\"}) %><%- f.password_field(\"password\") %>",
+            vec![("user", record)],
+        );
+        assert!(!html.contains("secret"), "password leaked: {}", html);
+        assert!(html.contains("type=\"password\""), "{}", html);
+    }
+
+    #[test]
+    fn field_with_errors_gets_error_class_and_aria() {
+        let record = record_with_errors(vec![], vec![("title", "cant be blank")]);
+        let html = render_form(
+            "<% f = form_with(post, {\"url\": \"/posts\"}) %><%- f.text_field(\"title\", {\"class\": \"input\"}) %><%- f.errors_for(\"title\") %>",
+            vec![("post", record)],
+        );
+        assert!(html.contains("class=\"input field-error\""), "{}", html);
+        assert!(html.contains("aria-invalid=\"true\""), "{}", html);
+        assert!(
+            html.contains("<span class=\"field-error-message\">cant be blank</span>"),
+            "missing inline error: {}",
+            html
+        );
+    }
+
+    #[test]
+    fn error_summary_lists_all_messages() {
+        let record = record_with_errors(
+            vec![],
+            vec![("title", "can be blank"), ("body", "too short")],
+        );
+        let html = render_form(
+            "<% f = form_with(post, {\"url\": \"/posts\"}) %><%- f.error_summary() %>",
+            vec![("post", record)],
+        );
+        assert!(
+            html.starts_with("<div class=\"form-errors\"><ul>"),
+            "{}",
+            html
+        );
+        assert!(html.contains("<li>can be blank</li>"), "{}", html);
+        assert!(html.contains("<li>too short</li>"), "{}", html);
+    }
+
+    #[test]
+    fn error_summary_empty_for_clean_record() {
+        let record = make_hash(vec![("title", Value::String("ok".into()))]);
+        let html = render_form(
+            "<% f = form_with(post, {\"url\": \"/posts\"}) %>[<%- f.error_summary() %>]",
+            vec![("post", record)],
+        );
+        assert_eq!(html, "[]");
+    }
+
+    #[test]
+    fn select_marks_current_value_selected_and_supports_pairs() {
+        // `[ [` with a space — a leading `[[` would lex as a Lua-style raw
+        // string, not a nested array literal.
+        let record = make_hash(vec![("status", Value::String("late".into()))]);
+        let html = render_form(
+            "<% f = form_with(rec, {\"url\": \"/x\"}) %><% choices = [ [\"On time\", \"up\"], [\"Late\", \"late\"] ] %><%- f.select(\"status\", choices) %>",
+            vec![("rec", record)],
+        );
+        assert!(
+            html.contains("<option value=\"up\">On time</option>"),
+            "{}",
+            html
+        );
+        assert!(
+            html.contains("<option value=\"late\" selected>Late</option>"),
+            "{}",
+            html
+        );
+    }
+
+    #[test]
+    fn check_box_checked_from_bool_value() {
+        let record = make_hash(vec![("published", Value::Bool(true))]);
+        let html = render_form(
+            "<% f = form_with(rec, {\"url\": \"/x\"}) %><%- f.check_box(\"published\") %>",
+            vec![("rec", record)],
+        );
+        assert!(
+            html.contains("name=\"published\" value=\"true\" checked"),
+            "{}",
+            html
+        );
+    }
+
+    #[test]
+    fn label_humanizes_field_name() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/x\"}) %><%- f.label(\"first_name\") %>",
+            vec![],
+        );
+        assert_eq!(html, "<label for=\"first_name\">First name</label>");
+    }
+
+    #[test]
+    fn button_to_delete_emits_override_csrf_and_confirm() {
+        let html = render_form(
+            "<%- button_to(\"Delete\", \"/posts/7\", {\"method\": \"delete\", \"confirm\": \"Sure?\"}) %>",
+            vec![],
+        );
+        assert!(
+            html.starts_with("<form action=\"/posts/7\" method=\"POST\">"),
+            "{}",
+            html
+        );
+        assert!(
+            html.contains("<input type=\"hidden\" name=\"_method\" value=\"DELETE\">"),
+            "{}",
+            html
+        );
+        assert!(html.contains("name=\"_csrf_token\""), "{}", html);
+        assert!(
+            html.ends_with(
+                "<button type=\"submit\" onclick=\"return confirm('Sure?')\">Delete</button></form>"
+            ),
+            "{}",
+            html
+        );
+    }
+
+    #[test]
+    fn csrf_meta_tag_and_field_share_the_session_token() {
+        let html = render_form("<%- csrf_meta_tag() %>|<%- csrf_field() %>", vec![]);
+        let token_of = |marker: &str| {
+            let start = html.find(marker).unwrap() + marker.len();
+            html[start..start + 32].to_string()
+        };
+        let meta_token = token_of("content=\"");
+        let field_token = token_of("value=\"");
+        assert_eq!(meta_token, field_token);
+        assert_eq!(meta_token.len(), 32);
     }
 }

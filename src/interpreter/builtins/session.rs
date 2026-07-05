@@ -1373,6 +1373,54 @@ pub fn register_session_builtins(env: &mut Environment) {
             Ok(Value::Hash(Rc::new(RefCell::new(hash))))
         })),
     );
+
+    // csrf_token() -> String — the per-session CSRF token, created on first
+    // use. `csrf_field()` / `csrf_meta_tag()` in views and the scaffolded
+    // forms embed it; the server verifies it on state-changing requests
+    // whenever the client sends one (`_csrf_token` param / `X-CSRF-Token`
+    // header).
+    env.define(
+        "csrf_token".to_string(),
+        Value::NativeFunction(NativeFunction::new("csrf_token", Some(0), |_args| {
+            Ok(Value::String(ensure_csrf_token().into()))
+        })),
+    );
+}
+
+/// Session key holding the per-session CSRF token.
+pub const CSRF_SESSION_KEY: &str = "_csrf_token";
+
+/// Read the current session's CSRF token without creating one. Used by the
+/// server's verification path: a request that never embedded a token has
+/// nothing to verify against.
+pub fn current_csrf_token() -> Option<String> {
+    let id = get_current_session_id()?;
+    get_current_store()
+        .get(&id, CSRF_SESSION_KEY)
+        .and_then(|json| json.as_str().map(str::to_string))
+}
+
+/// Get-or-create the current session's CSRF token (lazily creating the
+/// session itself, like `session_set`, so a first-time visitor's form still
+/// round-trips).
+pub fn ensure_csrf_token() -> String {
+    // The token makes the rendered page per-session: never serve it from the
+    // static-response cache.
+    crate::template::response_cache::mark_response_dirty();
+    if let Some(existing) = current_csrf_token() {
+        return existing;
+    }
+    let token = Uuid::new_v4().simple().to_string();
+    let id = match get_current_session_id() {
+        Some(id) => id,
+        None => {
+            let id = get_current_store().create_session();
+            set_current_session_id(Some(id.clone()));
+            id
+        }
+    };
+    get_current_store().set(&id, CSRF_SESSION_KEY, JsonValue::String(token.clone()));
+    token
 }
 
 /// Register cookie-related builtins (set_cookie) that are available in all

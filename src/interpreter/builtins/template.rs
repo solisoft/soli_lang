@@ -610,10 +610,58 @@ pub fn inject_controller_instance_vars(data: &Value) {
     }
 }
 
+/// Pure-Soli form-builder layer (`form_with` / `FormBuilder` / `csrf_field`
+/// / `csrf_meta_tag` / `button_to`), evaluated into the shared template
+/// builtins environment at seed time (see `core_eval::get_builtins_rc`).
+const FORM_BUILDER_SOURCE: &str = include_str!("form_builder.sl");
+
+/// Evaluate the embedded form-builder Soli source into the template builtins
+/// environment so `form_with(...)` and friends resolve in every view.
+pub fn register_form_builder(env: &Rc<RefCell<Environment>>) -> Result<(), String> {
+    let tokens = crate::lexer::Scanner::new(FORM_BUILDER_SOURCE)
+        .scan_tokens()
+        .map_err(|e| format!("form builder lexer error: {}", e))?;
+    let program = crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| format!("form builder parser error: {}", e))?;
+    let mut interpreter = crate::interpreter::Interpreter::with_environment(env.clone());
+    for stmt in &program.statements {
+        interpreter
+            .execute(stmt)
+            .map_err(|e| format!("form builder eval error: {}", e))?;
+    }
+    Ok(())
+}
+
 /// Register static template helpers into an Environment (called once per thread).
 /// These helpers (range, public_path, html_escape, etc.) are created once and
 /// shared via the thread-local builtins Rc, avoiding ~20 NativeFunction allocations per render.
 pub fn register_static_template_helpers(env: &mut Environment) {
+    // __soli_form_names(record) — internal support for `form_with`: a class
+    // instance yields {"collection": <derived collection name>, "key": <_key
+    // or null>} so the builder can derive RESTful URLs; anything else yields
+    // null (the caller must then pass an explicit "url" option).
+    env.define(
+        "__soli_form_names".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_form_names", Some(1), |args| {
+            let Value::Instance(inst) = &args[0] else {
+                return Ok(Value::Null);
+            };
+            let inst_ref = inst.borrow();
+            let collection = crate::interpreter::builtins::model::core::class_name_to_collection(
+                &inst_ref.class.name,
+            );
+            let key = inst_ref.get("_key").unwrap_or(Value::Null);
+            let mut names = HashPairs::default();
+            names.insert(
+                HashKey::String("collection".into()),
+                Value::String(collection.into()),
+            );
+            names.insert(HashKey::String("key".into()), key);
+            Ok(Value::Hash(Rc::new(RefCell::new(names))))
+        })),
+    );
+
     env.define(
         "range".to_string(),
         Value::NativeFunction(NativeFunction::new("range", None, |args| {

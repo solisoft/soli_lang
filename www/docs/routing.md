@@ -206,6 +206,10 @@ post("/api/orders", "api#orders_create");
 
 The pattern is matched against the request path; `/prefix/*` covers `/prefix` and anything under `/prefix/`. To disable the check globally (API-only deployments where no cookie sessions exist), set `SOLI_DISABLE_CSRF=true` in the environment.
 
+On top of the origin gate, Soli verifies **per-form CSRF tokens**: any state-changing request that carries a token — the `_csrf_token` field that `form_with` / `csrf_field()` embed, or the `X-CSRF-Token` header fed by `csrf_meta_tag()` — must match the session's token (constant-time compare) or it is rejected with 403 even when the Origin check passed. Requests without a token keep the origin posture; set `SOLI_CSRF_TOKENS=require` to make tokens mandatory for browser form posts. Both `skip_csrf` and `SOLI_DISABLE_CSRF` opt out of both layers. See [Forms & CSRF](/docs/core-concepts/forms) for the form builder that wires all of this up.
+
+HTML forms can only express GET and POST — a POST whose form body carries `_method=PUT|PATCH|DELETE` is routed as that verb (the builder emits the hidden field), which is how `resources(...)` update/destroy routes work from plain forms.
+
 ## Listing Routes (`soli routes`)
 
 Print the app's full expanded route table from the command line — every route

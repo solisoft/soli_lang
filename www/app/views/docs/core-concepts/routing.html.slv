@@ -536,6 +536,9 @@ post("/api/orders", "api#orders_create");</code></pre>
         <p class="text-gray-300 text-sm mt-3">
             The pattern is matched against the request path; <code class="text-amber-400">/prefix/*</code> covers <code class="text-amber-400">/prefix</code> and anything under <code class="text-amber-400">/prefix/</code>. To disable the check globally (API-only deployments where no cookie sessions exist), set <code class="text-amber-400">SOLI_DISABLE_CSRF=true</code> in the environment.
         </p>
+        <p class="text-gray-400 mb-6">
+            On top of the origin gate, Soli verifies <strong>per-form CSRF tokens</strong>: any state-changing request that carries a token &mdash; the <code class="text-amber-400">_csrf_token</code> field that <code class="text-amber-400">form_with</code> / <code class="text-amber-400">csrf_field()</code> embed, or the <code class="text-amber-400">X-CSRF-Token</code> header fed by <code class="text-amber-400">csrf_meta_tag()</code> &mdash; must match the session&#39;s token (constant-time compare) or it is rejected with 403 even when the Origin check passed. Requests without a token keep the origin posture; set <code class="text-amber-400">SOLI_CSRF_TOKENS=require</code> to make tokens mandatory for browser form posts. Both <code class="text-amber-400">skip_csrf</code> and <code class="text-amber-400">SOLI_DISABLE_CSRF</code> opt out of both layers. A POST carrying <code class="text-amber-400">_method=PUT|PATCH|DELETE</code> in its form body is routed as that verb, which is how <code class="text-amber-400">resources(...)</code> update/destroy routes work from plain HTML forms. See <a href="/docs/core-concepts/forms" class="text-amber-400 hover:text-amber-300">Forms &amp; CSRF</a> for the form builder that wires all of this up.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6" id="listing-routes">Listing Routes (<code>soli routes</code>)</h2>

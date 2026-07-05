@@ -133,12 +133,13 @@ fn create_form_view(
         format!("Edit {}", to_title_case(model_var))
     };
 
+    // A Soli expression evaluated inside the view's form_with code block.
     let form_action = if action == "new" {
-        format!("/ {}", resource_name)
+        format!("\"/{}\"", resource_name)
     } else {
-        format!("/{}/<%= {}[\"id\"] %>", resource_name, model_var)
+        format!("\"/{}/\" + {}[\"_key\"].to_s", resource_name, model_var)
     };
-    let method = if action == "new" { "POST" } else { "PUT" };
+    let method = if action == "new" { "post" } else { "put" };
 
     let content = view::form_view_template(
         resource_name,
@@ -172,40 +173,37 @@ pub fn create_form_partial(
         .map(|f| {
             let label = f.to_title_case();
             let field_name = f.to_snake_case();
-            let input_type = match f.field_type.as_str() {
-                "email" => "email",
-                "password" => "password",
-                "text" | "string" | "url" => "text",
-                "number" | "integer" | "float" => "number",
-                "boolean" | "bool" => "checkbox",
-                "date" => "date",
-                "datetime" => "datetime-local",
-                _ => "text",
+            let builder_method = match f.field_type.as_str() {
+                "email" => "email_field",
+                "password" => "password_field",
+                "text" | "string" | "url" => "text_field",
+                "number" | "integer" | "float" => "number_field",
+                "boolean" | "bool" => "check_box",
+                "date" => "date_field",
+                "datetime" => "datetime_field",
+                _ => "text_field",
             };
             let placeholder = format!("Enter {}", label.to_ascii_lowercase());
 
-            if input_type == "checkbox" {
+            if builder_method == "check_box" {
                 format!(
                     r#"            <div class="flex items-center">
-                <input type="checkbox" id="{field_name}" name="{field_name}" value="true"
-                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-600 rounded bg-slate-700"
-                    <% if {model_var}["{field_name}"] == true %>checked<% end %>>
-                <label for="{field_name}" class="ml-2 block text-sm text-slate-300">{label}</label>
+                <%- f.check_box("{field_name}", {{
+                    "class": "h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-600 rounded bg-slate-700"
+                }}) %>
+                <%- f.label("{field_name}", "{label}", {{"class": "ml-2 block text-sm text-slate-300"}}) %>
             </div>"#
                 )
             } else {
                 format!(
                     r#"            <div>
-                <label for="{field_name}" class="block text-sm font-medium text-slate-300 mb-2">{label}</label>
-                <input type="{input_type}" id="{field_name}" name="{field_name}" value="<%= {model_var}["{field_name}"] %>"
-                    class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="{placeholder}">
-            </div>"#,
-                    field_name = field_name,
-                    input_type = input_type,
-                    label = label,
-                    placeholder = placeholder,
-                    model_var = model_var
+                <%- f.label("{field_name}", "{label}", {{"class": "block text-sm font-medium text-slate-300 mb-2"}}) %>
+                <%- f.{builder_method}("{field_name}", {{
+                    "class": "w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent",
+                    "placeholder": "{placeholder}"
+                }}) %>
+                <%- f.errors_for("{field_name}") %>
+            </div>"#
                 )
             }
         })
@@ -213,13 +211,12 @@ pub fn create_form_partial(
         .join("\n");
 
     let field_inputs = if field_inputs.is_empty() {
-        view::DEFAULT_FIELD_INPUT.replace("{model_var}", &model_var)
+        view::DEFAULT_FIELD_INPUT.to_string()
     } else {
         field_inputs
     };
 
-    let content =
-        view::form_partial_template(&model_var, &resource_name, &model_title, &field_inputs);
+    let content = view::form_partial_template(&resource_name, &model_title, &field_inputs);
 
     let partial_path = view_dir.join("_form.html.slv");
     write_file(&partial_path, &content)?;

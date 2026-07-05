@@ -352,6 +352,30 @@ describe("Feature Name", fn() {
 });
 ```
 
+## Forms
+
+Views have a Rails-style form builder (engine-embedded, available in every `.html.slv`). Builder calls emit HTML, so output them with `<%-` (raw), not `<%=`:
+
+```erb
+<% f = form_with(post) %>
+<%- f.open() %>
+  <%- f.error_summary() %>
+  <%- f.label("title") %>
+  <%- f.text_field("title", {"placeholder": "Title"}) %>
+  <%- f.errors_for("title") %>
+  <%- f.submit("Save") %>
+<%- f.close() %>
+```
+
+`form_with(record)` derives the action: a new record POSTs to `/<collection>`, a persisted one PATCHes `/<collection>/<key>` via the hidden `_method` field the server honors. `f.open()` embeds the per-session CSRF token; the server verifies supplied tokens (403 on mismatch) on top of the Origin/Referer gate — `SOLI_CSRF_TOKENS=require` makes them mandatory for browser form posts.
+
+- Field helpers: `text_field`, `email_field`, `password_field` (never prefills), `number_field`, `date_field`, `datetime_field`, `hidden_field`, `file_field` (pair with `"multipart": true`), `text_area`, `check_box`, `radio_button`, `select`, `label`, `submit`. Options become HTML attributes; values prefill from the record and are escaped; errored fields get `field-error` + `aria-invalid="true"`.
+- Field names are **flat** (`name="title"`) — controllers read `params["title"]` as usual. An unchecked `check_box` submits nothing; read it as `params["published"] == "true"`.
+- `button_to(text, url, {"method": "delete", "confirm": "..."})` for state-changing links; `csrf_field()` for hand-written forms; `csrf_meta_tag()` in layouts so fetch/htmx clients can send `X-CSRF-Token`.
+- Partials render in a fresh scope — pass the builder: `<%- partial("posts/form", { "post": post, "f": f }) %>`.
+
+Docs: `www/docs/forms.md` / `/docs/core-concepts/forms`.
+
 ## Cookies
 
 Soli exposes parsed cookies from the `Cookie` header as a global `cookies` hash, defaulting to `{}`.

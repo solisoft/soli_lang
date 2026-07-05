@@ -3214,6 +3214,25 @@ set_cookie("remember_token", user["_key"] + ":" + token, {
 set_cookie("remember_token", "", { "max_age": 0, "http_only": true })
 ```
 
+### csrf_token()
+
+Returns the per-session CSRF token, creating it (and the session) on first
+use. Views usually don't call this directly — `form_with(...).open()`,
+`button_to`, and `csrf_field()` embed it as a hidden `_csrf_token` input, and
+`csrf_meta_tag()` exposes it to JS clients that send the `X-CSRF-Token`
+header. The server verifies a supplied token against the session with a
+constant-time compare and rejects mismatches with 403. See
+[Forms & CSRF](/docs/core-concepts/forms).
+
+**Returns:** String — a 32-hex-char token
+
+**Example:**
+```soli
+# In a layout, for fetch/htmx clients:
+# <body hx-headers='{"X-CSRF-Token": "<%= csrf_token() %>"}'>
+token = csrf_token()
+```
+
 ---
 
 ## Background Jobs and Cron

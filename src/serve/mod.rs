@@ -3111,6 +3111,18 @@ async fn handle_hyper_request(
             }
         };
 
+    // HTML forms can only express GET and POST. Rails-style method override:
+    // a POST whose form body carries `_method=PUT|PATCH|DELETE` (the hidden
+    // input `form_with` / `button_to` and the scaffold emit) is routed and
+    // dispatched to the app as that verb. Applied after the CSRF origin gate
+    // above — the overridden verbs are state-changing either way.
+    let method = apply_form_method_override(
+        method,
+        &body,
+        req_content_type.as_deref(),
+        multipart_form.as_ref(),
+    );
+
     // Create oneshot channel for response
     let (response_tx, response_rx) = oneshot::channel();
 
@@ -3399,6 +3411,127 @@ fn csrf_skipped_by_app(path: &str) -> bool {
     })
 }
 
+/// `SOLI_DISABLE_CSRF` operator kill switch — turns off both the
+/// Origin/Referer gate and per-form token verification.
+fn csrf_disabled_by_env() -> bool {
+    std::env::var("SOLI_DISABLE_CSRF")
+        .ok()
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+}
+
+/// `SOLI_CSRF_TOKENS=require` strict mode: browser form posts
+/// (urlencoded/multipart bodies) MUST carry a valid per-form token.
+fn csrf_tokens_required() -> bool {
+    std::env::var("SOLI_CSRF_TOKENS")
+        .ok()
+        .map(|v| v.trim().eq_ignore_ascii_case("require"))
+        .unwrap_or(false)
+}
+
+/// Does this content type mark a browser form submission?
+fn is_form_content_type(content_type: &str) -> bool {
+    content_type.starts_with("application/x-www-form-urlencoded")
+        || content_type.starts_with("multipart/form-data")
+}
+
+/// Extract a single field from an `application/x-www-form-urlencoded` body
+/// (percent-decoded via the shared query-string parser; form bodies are
+/// small, so the full parse is cheap).
+fn form_body_param(body: &str, name: &str) -> Option<String> {
+    if body.is_empty() {
+        return None;
+    }
+    parse_query_string(body).remove(name)
+}
+
+/// Rails-style method override: HTML forms can only express GET/POST, so a
+/// POST whose form body carries `_method` is treated as that verb. Only the
+/// three verbs a form can't express are honored — anything else (including
+/// an attempt to downgrade to GET and dodge CSRF checks) is ignored.
+fn apply_form_method_override(
+    method: Cow<'static, str>,
+    body: &str,
+    content_type: Option<&str>,
+    multipart_form: Option<&HashMap<String, String>>,
+) -> Cow<'static, str> {
+    if method != "POST" {
+        return method;
+    }
+    let requested = match content_type {
+        Some(ct) if ct.starts_with("application/x-www-form-urlencoded") => {
+            form_body_param(body, "_method")
+        }
+        Some(ct) if ct.starts_with("multipart/form-data") => {
+            multipart_form.and_then(|form| form.get("_method").cloned())
+        }
+        _ => None,
+    };
+    match requested.as_deref().map(str::trim) {
+        Some(v) if v.eq_ignore_ascii_case("PUT") => Cow::Borrowed("PUT"),
+        Some(v) if v.eq_ignore_ascii_case("PATCH") => Cow::Borrowed("PATCH"),
+        Some(v) if v.eq_ignore_ascii_case("DELETE") => Cow::Borrowed("DELETE"),
+        _ => method,
+    }
+}
+
+/// Per-form CSRF token verification, run on the worker (where the session
+/// lives) after the session ID is resolved. Complements the Origin/Referer
+/// gate that already ran in the hyper layer:
+///
+/// - A request that **carries** a token (`_csrf_token` form field from
+///   `csrf_field()` / `X-CSRF-Token` header from `csrf_meta_tag()`) must
+///   present the session's token — a mismatch or a token-less session is a
+///   403 even when Origin passed.
+/// - A request with **no** token stays on the Origin/Referer posture,
+///   unless `SOLI_CSRF_TOKENS=require` makes tokens mandatory for browser
+///   form posts (JSON/API traffic is never token-gated; use `skip_csrf`
+///   or the header for API clients that opt in).
+fn verify_csrf_token(data: &RequestData, method: &str, path: &str) -> Result<(), String> {
+    if matches!(method, "GET" | "HEAD" | "OPTIONS") {
+        return Ok(());
+    }
+    if path.starts_with("/_") || csrf_skipped_by_app(path) || csrf_disabled_by_env() {
+        return Ok(());
+    }
+
+    let content_type = header_str(&data.headers, "content-type").unwrap_or("");
+    let supplied = header_str(&data.headers, "x-csrf-token")
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            if content_type.starts_with("application/x-www-form-urlencoded") {
+                form_body_param(&data.body, "_csrf_token")
+            } else if content_type.starts_with("multipart/form-data") {
+                data.multipart_form
+                    .as_ref()
+                    .and_then(|form| form.get("_csrf_token").cloned())
+            } else {
+                None
+            }
+        });
+
+    match supplied {
+        Some(token) => match crate::interpreter::builtins::session::current_csrf_token() {
+            Some(expected)
+                if crate::interpreter::builtins::crypto::do_secure_compare(&expected, &token) =>
+            {
+                Ok(())
+            }
+            Some(_) => Err("CSRF token does not match the session's".to_string()),
+            None => Err(
+                "CSRF token supplied but the session holds none (expired or new session)"
+                    .to_string(),
+            ),
+        },
+        None if csrf_tokens_required() && is_form_content_type(content_type) => {
+            Err("missing CSRF token (SOLI_CSRF_TOKENS=require)".to_string())
+        }
+        None => Ok(()),
+    }
+}
+
 /// SEC-014: reject state-changing browser requests that can't prove they
 /// originate from the same site. Returns `Ok(())` to continue, `Err(reason)`
 /// to reject with 403.
@@ -3440,11 +3573,7 @@ fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Re
     if csrf_skipped_by_app(path) {
         return Ok(());
     }
-    if std::env::var("SOLI_DISABLE_CSRF")
-        .ok()
-        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-        .unwrap_or(false)
-    {
+    if csrf_disabled_by_env() {
         return Ok(());
     }
 
@@ -5961,6 +6090,32 @@ fn handle_request(
     // and short-circuits to a cache hit only when neither is set.
     crate::template::response_cache::reset_for_new_request();
 
+    // Per-form CSRF token verification. The hyper layer's Origin/Referer
+    // gate ran before the body was read; this second gate runs where the
+    // session lives, so a request that carries a token (scaffolded forms and
+    // `csrf_field()` embed one) must present this session's token.
+    if let Err(reason) = verify_csrf_token(data, method, path) {
+        set_current_session_id(None);
+        let request_id = Uuid::new_v4().to_string();
+        eprintln!(
+            "[WARN] request_id={} {} {} - 403 CSRF: {}",
+            request_id, method, path, reason
+        );
+        let error_html = error_pages::render_production_error_page(
+            403,
+            "CSRF verification failed. Reload the page and resubmit the form.",
+            &request_id,
+        );
+        return ResponseData {
+            status: 403,
+            headers: vec![(
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            )],
+            body: error_html.into_bytes(),
+        };
+    }
+
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
         Some(found) => found,
@@ -8029,5 +8184,136 @@ mod tests {
         // Restore.
         crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
             .store(prev_trust, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // --- form method override + CSRF token verification -------------------
+
+    fn make_request_data(
+        headers: &[(&str, &str)],
+        body: &str,
+        multipart_form: Option<HashMap<String, String>>,
+    ) -> RequestData {
+        // _rx is dropped: verify_csrf_token never sends a response.
+        let (tx, _rx) = oneshot::channel();
+        RequestData {
+            method: Cow::Borrowed("POST"),
+            path: "/posts".to_string(),
+            query: HashMap::new(),
+            headers: make_headers(headers),
+            body: body.to_string(),
+            body_bytes: None,
+            multipart_form,
+            multipart_files: None,
+            peer_ip: "127.0.0.1".to_string(),
+            enqueued_at: None,
+            response_tx: tx,
+        }
+    }
+
+    #[test]
+    fn method_override_honors_form_verbs_only() {
+        let ct = Some("application/x-www-form-urlencoded");
+        assert_eq!(
+            apply_form_method_override(Cow::Borrowed("POST"), "_method=DELETE&id=7", ct, None),
+            "DELETE"
+        );
+        assert_eq!(
+            apply_form_method_override(Cow::Borrowed("POST"), "_method=patch", ct, None),
+            "PATCH"
+        );
+        // No downgrade to safe verbs, no arbitrary verbs.
+        assert_eq!(
+            apply_form_method_override(Cow::Borrowed("POST"), "_method=GET", ct, None),
+            "POST"
+        );
+        assert_eq!(
+            apply_form_method_override(Cow::Borrowed("POST"), "_method=TRACE", ct, None),
+            "POST"
+        );
+        // Only POST is overridable, and only for form content types.
+        assert_eq!(
+            apply_form_method_override(Cow::Borrowed("GET"), "_method=DELETE", ct, None),
+            "GET"
+        );
+        assert_eq!(
+            apply_form_method_override(
+                Cow::Borrowed("POST"),
+                "{\"_method\":\"DELETE\"}",
+                Some("application/json"),
+                None
+            ),
+            "POST"
+        );
+        // Multipart reads the pre-parsed form map.
+        let mut multipart = HashMap::new();
+        multipart.insert("_method".to_string(), "put".to_string());
+        assert_eq!(
+            apply_form_method_override(
+                Cow::Borrowed("POST"),
+                "",
+                Some("multipart/form-data; boundary=x"),
+                Some(&multipart)
+            ),
+            "PUT"
+        );
+    }
+
+    #[test]
+    fn csrf_token_verification_paths() {
+        use crate::interpreter::builtins::session::{ensure_csrf_token, set_current_session_id};
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
+        set_current_session_id(None);
+
+        // Safe methods and token-less requests pass (Origin gate covers them).
+        let data = make_request_data(&[], "", None);
+        assert!(verify_csrf_token(&data, "GET", "/posts").is_ok());
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_ok());
+
+        // A supplied token with no session token behind it is rejected.
+        let data = make_request_data(&[("x-csrf-token", "forged")], "", None);
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_err());
+
+        // Matching session token passes — header and form-body variants.
+        let token = ensure_csrf_token();
+        let data = make_request_data(&[("x-csrf-token", token.as_str())], "", None);
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_ok());
+        let body = format!("_csrf_token={}&title=hi", token);
+        let data = make_request_data(
+            &[("content-type", "application/x-www-form-urlencoded")],
+            &body,
+            None,
+        );
+        assert!(verify_csrf_token(&data, "DELETE", "/posts/7").is_ok());
+
+        // Wrong token is rejected even though a session token exists.
+        let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_err());
+
+        // `/_` paths are exempt.
+        let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
+        assert!(verify_csrf_token(&data, "POST", "/_jobs/run/x").is_ok());
+
+        set_current_session_id(None);
+    }
+
+    #[test]
+    fn csrf_strict_mode_requires_token_for_form_posts() {
+        use crate::interpreter::builtins::session::set_current_session_id;
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
+        set_current_session_id(None);
+        std::env::set_var("SOLI_CSRF_TOKENS", "require");
+
+        // Form post without a token is rejected...
+        let data = make_request_data(
+            &[("content-type", "application/x-www-form-urlencoded")],
+            "title=hi",
+            None,
+        );
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_err());
+        // ...but JSON/API traffic is never token-gated.
+        let data = make_request_data(&[("content-type", "application/json")], "{}", None);
+        assert!(verify_csrf_token(&data, "POST", "/posts").is_ok());
+
+        std::env::remove_var("SOLI_CSRF_TOKENS");
     }
 }

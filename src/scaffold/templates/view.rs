@@ -38,16 +38,16 @@ pub fn index_view_template(
                 <% end %>
                 <% {model_var}s.each do |{model_var}| %>
                 <tr class="hover:bg-slate-700/50 transition-colors">
-                    <td class="px-6 py-4 whitespace-nowrap text-slate-300"><%= {model_var}["id"] %></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-300"><%= {model_var}["_key"] %></td>
 {table_cells}
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex gap-2">
-                            <a href="/{resource}/<%= {model_var}["id"] %>" class="text-indigo-400 hover:text-indigo-300">Show</a>
-                            <a href="/{resource}/<%= {model_var}["id"] %>/edit" class="text-yellow-400 hover:text-yellow-300">Edit</a>
-                            <form action="/{resource}/<%= {model_var}["id"] %>" method="POST" class="inline">
-                                <input type="hidden" name="_method" value="DELETE">
-                                <button type="submit" class="text-red-400 hover:text-red-300" onclick="return confirm('Are you sure?')">Delete</button>
-                            </form>
+                            <a href="/{resource}/<%= {model_var}["_key"] %>" class="text-indigo-400 hover:text-indigo-300">Show</a>
+                            <a href="/{resource}/<%= {model_var}["_key"] %>/edit" class="text-yellow-400 hover:text-yellow-300">Edit</a>
+                            <%- button_to("Delete", "/{resource}/" + {model_var}["_key"].to_s, {{
+                                "method": "delete", "confirm": "Are you sure?",
+                                "class": "text-red-400 hover:text-red-300", "form_class": "inline"
+                            }}) %>
                         </div>
                     </td>
                 </tr>
@@ -85,18 +85,19 @@ pub fn show_view_template(
         <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
             <h1 class="text-xl font-bold">{model_title} Details</h1>
             <div class="flex gap-2">
-                <a href="/{resource}/<%= {model_var}["id"] %>/edit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded transition-colors">Edit</a>
-                <form action="/{resource}/<%= {model_var}["id"] %>" method="POST" class="inline">
-                    <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-colors" onclick="return confirm('Are you sure?')">Delete</button>
-                </form>
+                <a href="/{resource}/<%= {model_var}["_key"] %>/edit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded transition-colors">Edit</a>
+                <%- button_to("Delete", "/{resource}/" + {model_var}["_key"].to_s, {{
+                    "method": "delete", "confirm": "Are you sure?",
+                    "class": "bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-colors",
+                    "form_class": "inline"
+                }}) %>
             </div>
         </div>
         <div class="p-6">
             <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                 <div>
                     <dt class="text-sm font-medium text-slate-400">ID</dt>
-                    <dd class="mt-1 text-sm text-white"><%= {model_var}["id"] %></dd>
+                    <dd class="mt-1 text-sm text-white"><%= {model_var}["_key"] %></dd>
                 </div>
 {detail_rows}
             </dl>
@@ -112,7 +113,9 @@ pub fn show_view_template(
     )
 }
 
-/// Form view template (new/edit)
+/// Form view template (new/edit). `form_action` is a Soli expression (e.g.
+/// `"/posts"` or `"/posts/" + post["_key"].to_s`) evaluated inside the
+/// `form_with` code block; `method` is the lowercase verb.
 pub fn form_view_template(
     resource_name: &str,
     resource_title: &str,
@@ -130,10 +133,10 @@ pub fn form_view_template(
     <div class="max-w-2xl">
         <h1 class="text-2xl font-bold mb-6">{title}</h1>
 
-        <form action="{form_action}" method="POST" class="space-y-6">
-            <input type="hidden" name="_method" value="{method}">
-            <%= render("{resource}/_form", {{ "{model_var}": {model_var} }}) %>
-        </form>
+        <% f = form_with({model_var}, {{"url": {form_action}, "method": "{method}", "class": "space-y-6"}}) %>
+        <%- f.open() %>
+            <%- partial("{resource}/form", {{ "{model_var}": {model_var}, "f": f }}) %>
+        <%- f.close() %>
     </div>
 </div>
 "#,
@@ -146,37 +149,24 @@ pub fn form_view_template(
     )
 }
 
-/// Form partial template
-pub fn form_partial_template(
-    model_var: &str,
-    resource_name: &str,
-    model_title: &str,
-    field_inputs: &str,
-) -> String {
+/// Form partial template. Receives the record and the `f` FormBuilder from
+/// the enclosing new/edit view (partials get a fresh scope, so `f` rides in
+/// through the render locals).
+pub fn form_partial_template(resource_name: &str, model_title: &str, field_inputs: &str) -> String {
     format!(
-        r#"<% if {model_var}["valid"] == false %>
-<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
-    <h3 class="text-red-400 font-medium mb-2">Errors:</h3>
-    <ul class="list-disc list-inside text-red-300 text-sm">
-        <% {model_var}["errors"].each do |error| %>
-        <li><%= error["message"] %></li>
-        <% end %>
-    </ul>
-</div>
-<% end %>
+        r#"<%- f.error_summary({{"class": "bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6 text-red-300 text-sm"}}) %>
 
 {field_inputs}
 
 <div class="flex gap-4">
-    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg transition-colors">
-        Submit {model_title}
-    </button>
+    <%- f.submit("Submit {model_title}", {{
+        "class": "bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg transition-colors"
+    }}) %>
     <a href="/{resource}" class="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-colors text-center">
         Cancel
     </a>
 </div>
 "#,
-        model_var = model_var,
         resource = resource_name,
         model_title = model_title,
         field_inputs = field_inputs
@@ -185,8 +175,10 @@ pub fn form_partial_template(
 
 /// Default field input when no fields defined
 pub const DEFAULT_FIELD_INPUT: &str = r#"            <div>
-                <label for="name" class="block text-sm font-medium text-slate-300 mb-2">Name</label>
-                <input type="text" id="name" name="name" value="<%= {model_var}["name"] %>"
-                    class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Enter name">
+                <%- f.label("name", "Name", {"class": "block text-sm font-medium text-slate-300 mb-2"}) %>
+                <%- f.text_field("name", {
+                    "class": "w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent",
+                    "placeholder": "Enter name"
+                }) %>
+                <%- f.errors_for("name") %>
             </div>"#;

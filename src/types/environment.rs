@@ -448,6 +448,15 @@ impl TypeEnvironment {
             },
         );
 
+        // csrf_token() -> String
+        self.functions.insert(
+            "csrf_token".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // ulid() -> String
         self.functions.insert(
             "ulid".to_string(),
