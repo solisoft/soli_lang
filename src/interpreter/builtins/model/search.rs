@@ -198,6 +198,7 @@ pub fn exec_hybrid_search(
 /// Geo near/within. `endpoint` is "near" or "within"; the third body key is
 /// `limit` (near) or `radius` (within). Results become instances with a
 /// `_distance` field (meters), mirroring the `_similarity_score` precedent.
+#[allow(clippy::too_many_arguments)]
 pub fn exec_geo_query(
     collection: &str,
     class: &Rc<Class>,

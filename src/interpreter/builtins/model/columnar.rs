@@ -303,6 +303,7 @@ pub fn stats(collection: &str) -> Result<Value, String> {
 /// Parse the `{ "columns": [...], "filter": {...}, "limit": n }` argument of
 /// `Model.query` into wire pieces, enforcing the endpoint's contract
 /// client-side (single filter, known ops, `in` takes an array).
+#[allow(clippy::type_complexity)]
 pub fn parse_query_options(
     options: &Value,
 ) -> Result<(Vec<String>, Option<serde_json::Value>, Option<usize>), String> {

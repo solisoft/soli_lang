@@ -141,10 +141,7 @@ pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
         let changed = |field: &str| changes.iter().find(|(name, _, _)| name == field);
 
         let fk_change = changed(&rel.foreign_key);
-        let type_change = rel
-            .polymorphic_type_field
-            .as_deref()
-            .and_then(|field| changed(field));
+        let type_change = rel.polymorphic_type_field.as_deref().and_then(changed);
         if fk_change.is_none() && type_change.is_none() {
             continue;
         }
@@ -164,10 +161,8 @@ pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
             None => new_type.clone(),
         };
 
-        let old_target =
-            old_key.and_then(|key| parent_collection(&rel, old_type.as_deref()).map(|c| (c, key)));
-        let new_target =
-            new_key.and_then(|key| parent_collection(&rel, new_type.as_deref()).map(|c| (c, key)));
+        let old_target = parent_collection(&rel, old_type.as_deref()).zip(old_key);
+        let new_target = parent_collection(&rel, new_type.as_deref()).zip(new_key);
         if old_target == new_target {
             continue;
         }
@@ -216,10 +211,8 @@ pub fn bump_for_json_change(
             None => (None, None),
         };
 
-        let old_target =
-            old_key.and_then(|key| parent_collection(&rel, old_type.as_deref()).map(|c| (c, key)));
-        let new_target =
-            new_key.and_then(|key| parent_collection(&rel, new_type.as_deref()).map(|c| (c, key)));
+        let old_target = parent_collection(&rel, old_type.as_deref()).zip(old_key);
+        let new_target = parent_collection(&rel, new_type.as_deref()).zip(new_key);
         if old_target == new_target {
             continue;
         }
