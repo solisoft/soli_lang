@@ -187,8 +187,13 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
 /// - "CustomerModel" → "customers" (strips _model suffix before pluralizing)
 ///
 /// If engine context is set, collection name is prefixed: "User" + engine "shop" → "shop_users"
+///
+/// STI: a model inheriting from another model shares its base's collection
+/// ("Admin" < "User" → "users"), so the name is resolved to the hierarchy
+/// root before deriving the collection.
 pub fn class_name_to_collection(name: &str) -> String {
-    class_name_to_collection_with_engine(name, get_model_engine_context().as_deref())
+    let base = super::registry::sti_base(name);
+    class_name_to_collection_with_engine(&base, get_model_engine_context().as_deref())
 }
 
 pub fn class_name_to_collection_with_engine(name: &str, engine: Option<&str>) -> String {
@@ -198,6 +203,37 @@ pub fn class_name_to_collection_with_engine(name: &str, engine: Option<&str>) ->
         Some(e) => format!("{}_{}", e, base),
         None => base,
     }
+}
+
+/// STI: the FILTER clause scoping a raw (non-QueryBuilder) query on an STI
+/// subclass to its own type + descendants. Empty for non-STI classes (the
+/// base class deliberately matches every row, Rails-style).
+pub(crate) fn sti_scope_clause(class_name: &str) -> String {
+    if !super::registry::is_sti_subclass(class_name) {
+        return String::new();
+    }
+    let quoted: Vec<String> = super::registry::sti_type_names(class_name)
+        .into_iter()
+        .map(|t| format!("\"{}\"", t))
+        .collect();
+    format!(" FILTER doc.type IN [{}]", quoted.join(", "))
+}
+
+/// STI: does a fetched row belong to `class_name`'s hierarchy? Non-STI
+/// classes match everything; subclass matches require the row's `type` to
+/// name the class or one of its descendants.
+pub(crate) fn sti_row_matches(class_name: &str, doc: &serde_json::Value) -> bool {
+    if !super::registry::is_sti_subclass(class_name) {
+        return true;
+    }
+    doc.get("type")
+        .and_then(|v| v.as_str())
+        .map(|t| {
+            super::registry::sti_type_names(class_name)
+                .iter()
+                .any(|n| n == t)
+        })
+        .unwrap_or(false)
 }
 
 fn compute_base_collection_name(name: &str) -> String {
@@ -1658,7 +1694,22 @@ impl Model {
                         other.type_name()
                     )),
                 };
-                let data_value = data_value?;
+                let mut data_value = data_value?;
+
+                // STI subclasses stamp their discriminator so rows in the
+                // shared base collection hydrate as the right class.
+                if super::registry::is_sti_subclass(&class_name) {
+                    if let serde_json::Value::Object(ref mut map) = data_value {
+                        map.insert(
+                            "type".to_string(),
+                            serde_json::Value::String(class_name.clone()),
+                        );
+                    }
+                    instance.borrow_mut().set(
+                        "type".to_string(),
+                        Value::String(class_name.as_str().into()),
+                    );
+                }
 
                 match exec_insert(&collection, None, data_value) {
                     Ok(id) => {
@@ -1725,8 +1776,10 @@ impl Model {
                         sdbql,
                         binds,
                         Box::new(move |rows| match rows.first() {
-                            Some(doc) => Ok(json_doc_to_instance(&class2, doc)),
-                            None => Err(format!(
+                            Some(doc) if sti_row_matches(&class_name, doc) => {
+                                Ok(json_doc_to_instance(&class2, doc))
+                            }
+                            _ => Err(format!(
                                 "{}{} with id '{}' not found",
                                 crate::error::RuntimeError::RECORD_NOT_FOUND_MARKER,
                                 class_name,
@@ -1737,12 +1790,17 @@ impl Model {
                 }
 
                 match exec_get(&collection, &id) {
-                    Ok(doc) => Ok(json_doc_to_instance(&class, &doc)),
+                    // STI: a subclass find only matches rows of its own
+                    // hierarchy — a base-class row raises RecordNotFound
+                    // exactly like a missing key (Rails semantics).
+                    Ok(doc) if sti_row_matches(&class.name, &doc) => {
+                        Ok(json_doc_to_instance(&class, &doc))
+                    }
                     // Not found → raise with the RecordNotFound marker so the
                     // HTTP request handler converts it into a 404 response.
                     // Callers that want the "or null" shape should use
                     // find_by / first_by, or wrap in try/catch.
-                    Err(_) => Err(format!(
+                    _ => Err(format!(
                         "{}{} with id '{}' not found",
                         crate::error::RuntimeError::RECORD_NOT_FOUND_MARKER,
                         class.name,
@@ -1882,7 +1940,11 @@ impl Model {
                 |args| {
                     let class = get_class_rc_from_args(&args)?;
                     let collection = class_name_to_collection(&class.name);
-                    let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                    let sdbql = format!(
+                        "FOR doc IN {}{} RETURN doc",
+                        collection,
+                        sti_scope_clause(&class.name)
+                    );
                     if super::batch::is_active() {
                         let class2 = class.clone();
                         return Ok(super::batch::register(
@@ -1914,8 +1976,13 @@ impl Model {
                 "Model.all_json",
                 Some(1),
                 |args| {
-                    let collection = get_collection_from_class(&args)?;
-                    let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                    let class_name = get_class_name_from_class(&args)?;
+                    let collection = class_name_to_collection(&class_name);
+                    let sdbql = format!(
+                        "FOR doc IN {}{} RETURN doc",
+                        collection,
+                        sti_scope_clause(&class_name)
+                    );
                     Ok(exec_async_query_raw(sdbql))
                 },
             )),
@@ -2044,14 +2111,26 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                // Counter caches: pre-read the old document (only when this
-                // class declares counter-cached belongs_to) so an FK change
-                // can move the parent counts after the write commits.
-                let old_doc = if super::counter_cache::class_has_counter_caches(&class_name) {
+                // Counter caches / STI: pre-read the old document (only when
+                // this class declares counter-cached belongs_to or is an STI
+                // subclass) so an FK change can move parent counts and a
+                // subclass can refuse rows outside its hierarchy.
+                let needs_preread = super::counter_cache::class_has_counter_caches(&class_name)
+                    || super::registry::is_sti_subclass(&class_name);
+                let old_doc = if needs_preread {
                     super::crud::exec_get(&collection, &id).ok()
                 } else {
                     None
                 };
+                if super::registry::is_sti_subclass(&class_name)
+                    && !old_doc
+                        .as_ref()
+                        .is_some_and(|doc| sti_row_matches(&class_name, doc))
+                {
+                    return Ok(Value::String(
+                        format!("Error: {} with id '{}' not found", class_name, id).into(),
+                    ));
+                }
 
                 match exec_update(&collection, &id, data_value.clone(), true) {
                     Ok(result) => {
@@ -2088,11 +2167,22 @@ impl Model {
                 };
 
                 let class_name = get_class_name_from_class(&args)?;
-                let old_doc = if super::counter_cache::class_has_counter_caches(&class_name) {
+                let needs_preread = super::counter_cache::class_has_counter_caches(&class_name)
+                    || super::registry::is_sti_subclass(&class_name);
+                let old_doc = if needs_preread {
                     super::crud::exec_get(&collection, &id).ok()
                 } else {
                     None
                 };
+                if super::registry::is_sti_subclass(&class_name)
+                    && !old_doc
+                        .as_ref()
+                        .is_some_and(|doc| sti_row_matches(&class_name, doc))
+                {
+                    return Ok(Value::String(
+                        format!("Error: {} with id '{}' not found", class_name, id).into(),
+                    ));
+                }
 
                 match exec_delete(&collection, &id) {
                     Ok(result) => {
@@ -2146,8 +2236,13 @@ impl Model {
         native_static_methods.insert(
             "delete_all".to_string(),
             Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
-                let collection = get_collection_from_class(&args)?;
-                let sdbql = format!("FOR doc IN {} RETURN doc._key", collection);
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
+                let sdbql = format!(
+                    "FOR doc IN {}{} RETURN doc._key",
+                    collection,
+                    sti_scope_clause(&class_name)
+                );
                 let results = match super::crud::exec_query(&collection, sdbql) {
                     Ok(r) => r,
                     Err(e) => return Err(format!("Model.delete_all() failed: {}", e)),
@@ -2235,7 +2330,17 @@ impl Model {
                         }
                     }
 
-                    let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
+                    let sti_clause = get_class_name_from_class(&args)
+                        .map(|n| sti_scope_clause(&n))
+                        .unwrap_or_default();
+                    let sdbql = if sti_clause.is_empty() {
+                        format!("RETURN COLLECTION_COUNT(\"{}\")", collection)
+                    } else {
+                        format!(
+                            "RETURN LENGTH(FOR doc IN {}{} RETURN 1)",
+                            collection, sti_clause
+                        )
+                    };
 
                     // Inside a `grouped {}` block, defer this count so it
                     // coalesces with the other reads into one round-trip
@@ -2402,8 +2507,10 @@ impl Model {
                     None => return Err("find_by() requires a value".to_string()),
                 };
                 let sdbql = format!(
-                    "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
-                    collection, field
+                    "FOR doc IN {} FILTER doc.{} == @val{} LIMIT 1 RETURN doc",
+                    collection,
+                    field,
+                    sti_scope_clause(&class.name)
                 );
                 let mut binds = std::collections::HashMap::new();
                 binds.insert("val".to_string(), value);
@@ -2446,8 +2553,10 @@ impl Model {
                     None => return Err("first_by() requires a value".to_string()),
                 };
                 let sdbql = format!(
-                    "FOR doc IN {} FILTER doc.{} == @val SORT doc._key ASC LIMIT 1 RETURN doc",
-                    collection, field
+                    "FOR doc IN {} FILTER doc.{} == @val{} SORT doc._key ASC LIMIT 1 RETURN doc",
+                    collection,
+                    field,
+                    sti_scope_clause(&class_name)
                 );
                 let mut binds = std::collections::HashMap::new();
                 binds.insert("val".to_string(), value);
@@ -2497,8 +2606,10 @@ impl Model {
 
                     // Try to find existing
                     let sdbql = format!(
-                        "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
-                        collection, field
+                        "FOR doc IN {} FILTER doc.{} == @val{} LIMIT 1 RETURN doc",
+                        collection,
+                        field,
+                        sti_scope_clause(&class_name)
                     );
                     let mut binds = std::collections::HashMap::new();
                     binds.insert("val".to_string(), json_val.clone());
@@ -2535,6 +2646,12 @@ impl Model {
                     };
                     let mut doc = defaults;
                     doc.insert(field.clone().to_string(), json_val.clone());
+                    if super::registry::is_sti_subclass(&class_name) {
+                        doc.insert(
+                            "type".to_string(),
+                            serde_json::Value::String(class_name.clone()),
+                        );
+                    }
                     match super::crud::exec_insert(
                         &collection,
                         None,
@@ -2551,8 +2668,10 @@ impl Model {
                             // of bubbling a 409 back to the caller.
                             if super::validation::is_unique_violation(&e) {
                                 let retry_sdbql = format!(
-                                    "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
-                                    collection, field
+                                    "FOR doc IN {} FILTER doc.{} == @val{} LIMIT 1 RETURN doc",
+                                    collection,
+                                    field,
+                                    sti_scope_clause(&class_name)
                                 );
                                 let mut retry_binds = std::collections::HashMap::new();
                                 retry_binds.insert("val".to_string(), json_val);
@@ -4124,6 +4243,19 @@ impl Model {
                         }
                     } else {
                         // Insert new document
+                        let mut map = map;
+                        // STI subclasses stamp their discriminator so rows in
+                        // the shared base collection hydrate as the right class.
+                        if super::registry::is_sti_subclass(&class_name) {
+                            map.insert(
+                                "type".to_string(),
+                                serde_json::Value::String(class_name.clone()),
+                            );
+                            instance.borrow_mut().set(
+                                "type".to_string(),
+                                Value::String(class_name.as_str().into()),
+                            );
+                        }
                         match exec_insert(&collection, None, serde_json::Value::Object(map)) {
                             Ok(result) => {
                                 let mut inst_mut = instance.borrow_mut();

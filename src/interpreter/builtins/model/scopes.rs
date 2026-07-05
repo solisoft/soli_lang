@@ -36,6 +36,23 @@ pub fn lookup_scope(class_name: &str, scope_name: &str) -> Option<Rc<Function>> 
     })
 }
 
+/// STI copy-down: register every scope of `parent` under `child` too, so
+/// `Admin.recent` resolves when `recent` was declared on `User`. The child's
+/// own `scope(...)` calls run afterward and overwrite same-named entries.
+pub fn copy_scopes(parent: &str, child: &str) {
+    SCOPES.with(|s| {
+        let mut map = s.borrow_mut();
+        let inherited: Vec<(String, Rc<Function>)> = map
+            .iter()
+            .filter(|((class, _), _)| class == parent)
+            .map(|((_, scope), func)| (scope.clone(), func.clone()))
+            .collect();
+        for (scope, func) in inherited {
+            map.insert((child.to_string(), scope), func);
+        }
+    });
+}
+
 /// All registered scope names for a class, used by REPL completion and
 /// reflection.
 pub fn scopes_for(class_name: &str) -> Vec<String> {

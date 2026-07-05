@@ -539,6 +539,30 @@ pub fn lookup_after(class_name: &str, to_tag: &str) -> Vec<Rc<Function>> {
     })
 }
 
+/// STI copy-down: mirror the parent's guard/before/after closures under the
+/// child's class key (the plain-data `StateMachineDef`s ride along in the
+/// copied `ModelMetadata`). Replaces any previous copy for the child.
+pub fn copy_closures(parent: &str, child: &str) {
+    fn copy_keyed<V: Clone>(
+        map: &mut std::collections::HashMap<(String, String), V>,
+        parent: &str,
+        child: &str,
+    ) {
+        let inherited: Vec<(String, V)> = map
+            .iter()
+            .filter(|((class, _), _)| class == parent)
+            .map(|((_, key), value)| (key.clone(), value.clone()))
+            .collect();
+        map.retain(|(class, _), _| class != child);
+        for (key, value) in inherited {
+            map.insert((child.to_string(), key), value);
+        }
+    }
+    SM_GUARDS.with(|m| copy_keyed(&mut m.borrow_mut(), parent, child));
+    SM_BEFORE.with(|m| copy_keyed(&mut m.borrow_mut(), parent, child));
+    SM_AFTER.with(|m| copy_keyed(&mut m.borrow_mut(), parent, child));
+}
+
 /// All state machines registered on a class (from the global registry).
 pub fn machines_for(class_name: &str) -> Vec<StateMachineDef> {
     get_state_machines(class_name)

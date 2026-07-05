@@ -298,12 +298,20 @@ pub fn encode_key_for_url(key: &str) -> String {
     urlencoding::encode(normalize_key(key)).into_owned()
 }
 
+/// Extract the collection from an _id: "default:organisations/UUID" → "organisations"
+fn collection_from_id(id: &str) -> String {
+    let parts: Vec<&str> = id.split('/').collect();
+    parts[0]
+        .split(':')
+        .next_back()
+        .unwrap_or(parts[0])
+        .to_string()
+}
+
 /// Extract class name from _id field: "default:organisations/UUID" → "Organisation"
 fn class_name_from_id(id: &str) -> String {
-    let parts: Vec<&str> = id.split('/').collect();
-    if parts.len() >= 2 {
-        let collection = parts[0].split(':').nth(1).unwrap_or(parts[0]);
-        super::relations::classify(collection)
+    if id.contains('/') {
+        super::relations::classify(&collection_from_id(id))
     } else {
         "Instance".to_string()
     }
@@ -345,10 +353,28 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
     Value::Instance(Rc::new(RefCell::new(instance)))
 }
 
-/// Resolve the correct class for a JSON document based on its _id field.
-/// Falls back to the given class if no _id or can't determine class.
+/// Resolve the correct class for a JSON document based on its `type`
+/// discriminator (STI) or, failing that, its _id collection prefix.
+/// Falls back to the given class when neither resolves.
 fn resolve_instance_class(default_class: &Rc<Class>, json: &serde_json::Value) -> Rc<Class> {
     if let serde_json::Value::Object(map) = json {
+        // STI: a `type` field naming a model class whose hierarchy actually
+        // lives in this row's collection wins. The collection guard keeps a
+        // user-data field that happens to be called `type` (e.g. an events
+        // row with `type: "click"` — or even one naming an unrelated model)
+        // from hijacking hydration.
+        if let Some(serde_json::Value::String(type_name)) = map.get("type") {
+            if let Some(class) = super::registry::get_model_class(type_name) {
+                let row_collection = map
+                    .get("_id")
+                    .and_then(|v| v.as_str())
+                    .map(collection_from_id);
+                let sti_collection = super::core::class_name_to_collection(&class.name);
+                if row_collection.is_none_or(|c| c == sti_collection) {
+                    return class;
+                }
+            }
+        }
         if let Some(serde_json::Value::String(id)) = map.get("_id") {
             let class_name = class_name_from_id(id);
             if let Some(class) = super::registry::get_model_class(&class_name) {

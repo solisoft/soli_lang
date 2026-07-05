@@ -142,6 +142,10 @@ pub struct QueryBuilder {
     /// polymorphic type pair for `as:` relations) that `.create(hash)` and
     /// `owner.rel << record` stamp onto new children.
     pub assoc_seed: Option<Vec<(String, String)>>,
+    /// STI: the `type` discriminator values this query matches (the class
+    /// plus its descendants). Set for STI subclasses; emitted with the
+    /// FOR-head so it composes with every mode and chained `.where()`.
+    pub sti_types: Option<Vec<String>>,
 }
 
 /// The join-subquery filter a `through:` accessor seeds:
@@ -192,11 +196,17 @@ impl QueryBuilder {
             having: None,
             through: None,
             assoc_seed: None,
+            sti_types: None,
         }
     }
 
     pub fn new_with_class(class_name: String, collection: String, class: Rc<Class>) -> Self {
         let is_sd = super::core::is_soft_delete(&class_name);
+        let sti_types = if super::registry::is_sti_subclass(&class_name) {
+            Some(super::registry::sti_type_names(&class_name))
+        } else {
+            None
+        };
         let class_id = crate::interpreter::get_symbol(&class_name);
         let collection_id = crate::interpreter::get_symbol(&collection);
         Self {
@@ -226,6 +236,7 @@ impl QueryBuilder {
             having: None,
             through: None,
             assoc_seed: None,
+            sti_types,
         }
     }
 
@@ -264,6 +275,10 @@ impl QueryBuilder {
                 join_guard,
                 through.select_field
             ));
+        }
+        if let Some(types) = &self.sti_types {
+            let quoted: Vec<String> = types.iter().map(|t| format!("\"{}\"", t)).collect();
+            head.push_str(&format!(" FILTER doc.type IN [{}]", quoted.join(", ")));
         }
         head
     }
@@ -1338,6 +1353,7 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         && qb.filter.is_none()
         && qb.traversal.is_none()
         && qb.through.is_none()
+        && qb.sti_types.is_none()
     {
         format!("RETURN COLLECTION_COUNT(\"{}\")", collection)
     } else {

@@ -1094,6 +1094,53 @@ Semantics:
 - `polymorphic: true` combined with `class_name:` raises at class load (the
   target type comes from the record, not the declaration).
 
+### Single-Collection Inheritance (STI)
+
+A model inheriting from another model shares its base's collection, with a
+`type` discriminator — Rails single-table inheritance, per-collection:
+
+```soli
+class User < Model
+  validates("email", {"presence": true})
+  has_many "posts"
+  scope("recent", fn() { this.order("_created_at", "desc") })
+end
+
+class Admin < User
+  def badge
+    "admin"
+  end
+end
+
+Admin.create({"email": "a@x.co"})   # stored in `users` with type: "Admin"
+User.all()                           # every row — admins hydrate AS Admin
+Admin.all()                          # only Admin rows (and Admin's descendants)
+User.find(admin._key).badge()        # "admin" — hydration follows the type
+```
+
+Semantics:
+
+- **Subclass writes stamp `type`** (`create`, `save`, `find_or_create_by`);
+  rows **hydrate as their stored type** everywhere (`find`, `where`, `all`,
+  relation accessors) — a guard ignores a `type` value that doesn't name a
+  model class belonging to the row's collection, so unrelated data fields
+  called `type` can't hijack hydration.
+- **Subclass queries are type-scoped** — `Admin.where/all/count/find_by/
+  first_by/delete_all` and every chained QueryBuilder filter
+  `type IN ["Admin", ...descendants]`. The **base class matches every row**
+  (no filter), Rails-style. `Admin.find(user_key)` on a base-class row raises
+  `RecordNotFound`, and class-form `update(id)`/`delete(id)` refuse rows
+  outside the hierarchy.
+- **Metadata copies down at class definition**: validations, callbacks (named
+  and closure), relations (with the base's foreign key, e.g. `user_id`),
+  scopes, soft-delete, `attr_accessible`, `encrypts`, enums, and state
+  machines all apply to subclasses; the subclass's own declarations run after
+  the copy and append/override. Declare the parent before its subclasses
+  (file order already guarantees this) — parent DSL added *after* a subclass
+  is defined does not propagate.
+- The discriminator column is always `type`; avoid a user field of that name
+  on STI hierarchies.
+
 ### Manual Relationships
 
 You can also implement relationships as custom methods for more control:

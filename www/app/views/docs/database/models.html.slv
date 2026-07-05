@@ -39,6 +39,40 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         </p>
     </div>
 
+    <h2 id="sti" class="text-2xl font-bold text-white mb-6">Single-Collection Inheritance (STI)</h2>
+    <p class="text-gray-400 mb-4">
+        A model inheriting from another model shares its base's collection with a <code>type</code> discriminator &mdash; Rails single-table inheritance, per-collection:
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+  validates("email", {"presence": true})
+  has_many "posts"
+end
+
+class Admin < User
+  def badge
+    "admin"
+  end
+end
+
+Admin.create({"email": "a@x.co"})   # stored in `users` with type: "Admin"
+User.all()                           # every row — admins hydrate AS Admin
+Admin.all()                          # only Admin rows (and Admin's descendants)
+User.find(admin._key).badge()        # "admin" — hydration follows the type</code></pre>
+        </div>
+    </div>
+
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Subclass writes stamp <code>type</code></strong>; rows hydrate as their stored type everywhere (<code>find</code>, <code>where</code>, relation accessors). A guard ignores <code>type</code> values that don't name a model class of the row's collection.</li>
+            <li><strong class="text-white">Subclass queries are type-scoped</strong> (including descendants); the base class matches every row, Rails-style. <code>Admin.find(user_key)</code> on a base row raises <code>RecordNotFound</code>; class-form <code>update(id)</code>/<code>delete(id)</code> refuse rows outside the hierarchy; <code>Admin.delete_all</code> only removes its own rows.</li>
+            <li><strong class="text-white">Metadata copies down at class definition</strong>: validations, callbacks, relations (with the base's foreign key), scopes, soft-delete, <code>attr_accessible</code>, <code>encrypts</code>, enums, and state machines. Declare the parent before its subclasses; parent DSL added <em>after</em> a subclass is defined does not propagate.</li>
+            <li>The discriminator column is always <code>type</code> &mdash; avoid a user field of that name on STI hierarchies.</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Auto-Loading</h2>
     <p class="text-gray-400 mb-4">
         Every <code>.sl</code> file under <code>app/models/</code> is loaded automatically at startup &mdash; by <code>soli serve</code> (in each worker) and by the REPL. Model classes are therefore available everywhere (controllers, views, other models, the REPL) without an <code>import</code> statement.

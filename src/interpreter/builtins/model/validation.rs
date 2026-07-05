@@ -49,6 +49,21 @@ fn custom_validators_for(class_name: &str) -> Vec<CustomValidator> {
     CUSTOM_VALIDATORS.with(|c| c.borrow().get(class_name).cloned().unwrap_or_default())
 }
 
+/// STI copy-down: seed the child's closure validators with the parent's
+/// (replacing any previous copy, so hot reloads don't stack). The child's
+/// own `validate(fn...)` calls register afterward and append.
+pub fn copy_custom_validators(parent: &str, child: &str) {
+    CUSTOM_VALIDATORS.with(|c| {
+        let mut map = c.borrow_mut();
+        let inherited = map.get(parent).cloned().unwrap_or_default();
+        if inherited.is_empty() {
+            map.remove(child);
+        } else {
+            map.insert(child.to_string(), inherited);
+        }
+    });
+}
+
 /// `if:` / `unless:` condition closures attached to one `validates(...)` call.
 /// Stored thread-local for the same reason as [`CustomValidator`]: closures
 /// are `Rc<Function>` (`!Send`) and each worker registers its own copies when
@@ -87,6 +102,20 @@ fn conditions_for(class_name: &str, rule: &ValidationRule) -> RuleConditions {
             .cloned()
             .unwrap_or_default()
     })
+}
+
+/// STI copy-down: rule conditions are keyed by `class::rule` identity, so
+/// the parent's rules copied into the child's metadata need their `if:` /
+/// `unless:` closures mirrored under the child's key.
+pub fn copy_rule_conditions(parent: &str, child: &str, rules: &[ValidationRule]) {
+    RULE_CONDITIONS.with(|c| {
+        let mut map = c.borrow_mut();
+        for rule in rules {
+            if let Some(conditions) = map.get(&rule_condition_key(parent, rule)).cloned() {
+                map.insert(rule_condition_key(child, rule), conditions);
+            }
+        }
+    });
 }
 
 /// Invoke a user closure as a validator. Receives the field value and the

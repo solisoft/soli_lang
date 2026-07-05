@@ -465,9 +465,90 @@ pub fn is_timeseries_model(class_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+thread_local! {
+    /// STI: child model class name → its model superclass name (a user model,
+    /// never `Model` itself). Populated at class registration; a model that
+    /// inherits from another model shares its base's collection and copies
+    /// its metadata down (Rails single-table inheritance, per-collection).
+    static STI_PARENTS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// The STI parent of a class, when it has one.
+pub fn sti_parent(class_name: &str) -> Option<String> {
+    STI_PARENTS.with(|m| m.borrow().get(class_name).cloned())
+}
+
+/// Is this class an STI subclass (a model inheriting from another model)?
+pub fn is_sti_subclass(class_name: &str) -> bool {
+    STI_PARENTS.with(|m| m.borrow().contains_key(class_name))
+}
+
+/// The root of a class's STI hierarchy: the ancestor whose superclass is
+/// `Model` itself. Non-STI classes are their own base.
+pub fn sti_base(class_name: &str) -> String {
+    let mut current = class_name.to_string();
+    loop {
+        match sti_parent(&current) {
+            Some(parent) => current = parent,
+            None => return current,
+        }
+    }
+}
+
+/// The `type` discriminator values a query on `class_name` matches: the
+/// class itself plus every transitive STI descendant.
+pub fn sti_type_names(class_name: &str) -> Vec<String> {
+    let mut names = vec![class_name.to_string()];
+    let mut i = 0;
+    STI_PARENTS.with(|m| {
+        let map = m.borrow();
+        while i < names.len() {
+            for (child, parent) in map.iter() {
+                if *parent == names[i] && !names.contains(child) {
+                    names.push(child.clone());
+                }
+            }
+            i += 1;
+        }
+    });
+    names
+}
+
 /// Register a model class for lazy relation conversion.
 /// Called when model classes are set up.
 pub fn register_model_class(class_name: &str, class: Rc<Class>) {
+    // STI: a model inheriting from another user model. Record the parent
+    // link and copy the parent's metadata down — the child's own class-body
+    // DSL runs *after* this registration and appends on top, so declaration
+    // order gives Rails semantics (parent rules first, child refinements
+    // after). Re-registration (hot reload) re-copies, so the child never
+    // stacks duplicates.
+    if let Some(parent) = class
+        .superclass
+        .as_ref()
+        .filter(|sc| sc.name != "Model" && sc.is_model_subclass())
+    {
+        STI_PARENTS.with(|m| {
+            m.borrow_mut()
+                .insert(class_name.to_string(), parent.name.clone());
+        });
+
+        let parent_meta = MODEL_REGISTRY.read().unwrap().get(&parent.name).cloned();
+        if let Some(meta) = parent_meta {
+            super::validation::copy_rule_conditions(&parent.name, class_name, &meta.validations);
+            MODEL_REGISTRY
+                .write()
+                .unwrap()
+                .insert(class_name.to_string(), meta);
+        } else {
+            MODEL_REGISTRY.write().unwrap().remove(class_name);
+        }
+        super::scopes::copy_scopes(&parent.name, class_name);
+        super::callbacks::copy_closure_callbacks(&parent.name, class_name);
+        super::validation::copy_custom_validators(&parent.name, class_name);
+        super::state_machine::copy_closures(&parent.name, class_name);
+    }
+
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().insert(class_name.to_string(), class);
     });
@@ -485,6 +566,7 @@ pub fn clear_model_classes() {
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });
+    STI_PARENTS.with(|m| m.borrow_mut().clear());
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
     super::state_machine::clear();
 }
@@ -494,6 +576,7 @@ pub fn clear_all_model_registries() {
     MODEL_REGISTRY.write().unwrap().clear();
     COLLECTION_TYPES.write().unwrap().clear();
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
+    STI_PARENTS.with(|m| m.borrow_mut().clear());
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });
