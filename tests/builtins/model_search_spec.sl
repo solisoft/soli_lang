@@ -116,6 +116,48 @@ describe("Search declaration guards (no DB)", fn() {
     });
 });
 
+describe("Hybrid declaration guards (no DB)", fn() {
+    test("hybrid on a model without vector_index raises", fn() {
+        let msg = "";
+        try
+            SearchPlainDoc.hybrid("anything", { "vector": [1.0] });
+        catch e
+            msg = str(e);
+        end
+        assert(msg.contains("vector_index"));
+    });
+
+    test("hybrid fulltext field not covered raises", fn() {
+        let msg = "";
+        try
+            SearchTestDoc.hybrid("database", { "vector": [1.0, 0.0, 0.0, 0.0], "field": "nope" });
+        catch e
+            msg = str(e);
+        end
+        assert(msg.contains("not covered"));
+    });
+
+    test("hybrid invalid fusion raises", fn() {
+        let msg = "";
+        try
+            SearchTestDoc.hybrid("database", { "vector": [1.0, 0.0, 0.0, 0.0], "fusion": "bogus" });
+        catch e
+            msg = str(e);
+        end
+        assert(msg.contains("fusion"));
+    });
+
+    test("hybrid unknown option raises", fn() {
+        let msg = "";
+        try
+            SearchTestDoc.hybrid("database", { "vector": [1.0, 0.0, 0.0, 0.0], "nope": 1 });
+        catch e
+            msg = str(e);
+        end
+        assert(msg.contains("unknown"));
+    });
+});
+
 # ============================================================================
 # Tests that REQUIRE a DB connection.
 #
@@ -217,6 +259,65 @@ describe("Fulltext search (DB)", fn() {
         let results = SearchTestDoc.search("database", { "highlight": true });
         assert(len(results) >= 1);
         assert_not_null(results[0]._highlighted);
+    });
+});
+
+describe("Hybrid search (DB)", fn() {
+    test("hybrid with a vector literal fuses both legs", fn() {
+        if !__db_available
+            return;
+        end
+        # Vector leg favors "Database systems" ([1,0,0,0] exact); text leg
+        # matches both database docs; "Cooking pasta" is vector-only.
+        let results = SearchTestDoc.hybrid("database", { "vector": [1.0, 0.0, 0.0, 0.0] });
+        assert_eq(len(results), 3);
+        assert_eq(results[0].title, "Database systems");
+        assert_eq(results[1].title, "Database handbook");
+        assert(results[0]._hybrid_score >= results[1]._hybrid_score);
+        assert(results[1]._hybrid_score >= results[2]._hybrid_score);
+        assert(results[0]._sources.includes?("vector"));
+        assert(results[0]._sources.includes?("fulltext"));
+    });
+
+    test("vector-only matches carry only the vector source", fn() {
+        if !__db_available
+            return;
+        end
+        let results = SearchTestDoc.hybrid("database", { "vector": [1.0, 0.0, 0.0, 0.0] });
+        let pasta = results.filter(fn(r) r.title == "Cooking pasta");
+        assert_eq(len(pasta), 1);
+        assert(pasta[0]._sources.includes?("vector"));
+        assert(!pasta[0]._sources.includes?("fulltext"));
+    });
+
+    test("text weighting overrides a hostile query vector", fn() {
+        if !__db_available
+            return;
+        end
+        # Query vector points at "Cooking pasta", but with text_weight 1.0
+        # the two fulltext matches must still rank on top.
+        let results = SearchTestDoc.hybrid("database", {
+            "vector": [0.0, 1.0, 0.0, 0.0],
+            "vector_weight": 0.0,
+            "text_weight": 1.0
+        });
+        assert(len(results) >= 2);
+        let top2 = [results[0].title, results[1].title];
+        assert(top2.includes?("Database systems"));
+        assert(top2.includes?("Database handbook"));
+    });
+
+    test("rrf fusion and limit are honored", fn() {
+        if !__db_available
+            return;
+        end
+        let results = SearchTestDoc.hybrid("database", {
+            "vector": [1.0, 0.0, 0.0, 0.0],
+            "fusion": "rrf",
+            "limit": 2
+        });
+        assert_eq(len(results), 2);
+        assert(results[0]._hybrid_score >= results[1]._hybrid_score);
     });
 });
 

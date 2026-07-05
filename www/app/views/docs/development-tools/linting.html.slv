@@ -302,9 +302,9 @@ vsce package
         <p class="text-gray-400 mb-4">For editors that support custom LSP servers directly (Neovim, Emacs, etc.):</p>
         <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <pre data-filename="Neovim (lspconfig)"><code class="language-lua text-sm">require('lspconfig').soli.setup({
- cmd = {"soli", "lsp"},
- filetypes = {"soli"},
- root_dir = lspconfig.util.root_pattern("soli.toml", ".git"),
+  cmd = {"soli", "lsp"},
+  filetypes = {"soli"},
+  root_dir = lspconfig.util.root_pattern("soli.toml", ".git"),
 })</code></pre>
         </div>
 

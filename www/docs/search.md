@@ -2,7 +2,7 @@
 
 Models can declare **search indexes** in the class body — vector (HNSW ANN),
 fulltext, geospatial, and plain secondary indexes — and query them with
-`similar`, `search`, `near`, and `within`.
+`similar`, `search`, `hybrid`, `near`, and `within`.
 
 ## Index DSL
 
@@ -118,23 +118,61 @@ nearby = Store.near(48.85, 2.35, { "limit": 5 })   # each result has ._distance
 inside = Store.within(48.85, 2.35, 2000.0)         # radius: 2 km
 ```
 
-## Pipeline notes (fulltext / geo)
+## Hybrid Search (`hybrid`)
 
-`search`, `near`, and `within` bypass the SDBQL query pipeline:
+Combined vector + fulltext ranking in one call. Requires **both** a
+`vector_index` and a `fulltext_index` declaration. The query text is
+embedded client-side for the vector leg (same embedding env vars as
+`similar`) and used raw for the fulltext leg; the database fuses the two
+ranked lists server-side:
+
+```soli
+class Article < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+  fulltext_index "content"
+end
+
+results = Article.hybrid("kubernetes deployment")
+results[0]._hybrid_score      # combined score (sorted descending)
+results[0]._vector_score      # raw vector similarity (when that leg matched)
+results[0]._text_score        # raw fulltext score (when that leg matched)
+results[0]._sources           # ["vector", "fulltext"]
+
+# Tuning: favor semantics 70/30, RRF fusion, bigger page
+Article.hybrid("error 500 handler", {
+  "vector_weight": 0.7, "text_weight": 0.3,
+  "fusion": "rrf", "limit": 20
+})
+
+# Pass a vector literal to skip the embedding call
+Article.hybrid("exact keywords", { "vector": [0.1, 0.2, ...] })
+```
+
+| Option | Description |
+|--------|-------------|
+| `vector` | Query vector literal — skips the client-side embedding call |
+| `vector_field` | Picks the `vector_index` by field (needed when several are declared) |
+| `field` | Fulltext field to search (must be covered by a `fulltext_index`; default: first declared field) |
+| `vector_weight` | Weight for the vector leg (default 0.5) |
+| `text_weight` | Weight for the fulltext leg (default 0.5) |
+| `fusion` | `"weighted"` (default) or `"rrf"` (Reciprocal Rank Fusion) |
+| `limit` | Maximum results (default 10) |
+
+Documents matching **both** legs rank highest; documents matching only one
+still appear. See the
+[SolidB Hybrid Search docs](https://solidb.solisoft.net/docs/hybrid-search)
+for fusion-method details and tuning guidance. The raw-SDBQL escape hatch
+remains SolidB's `HYBRID_SEARCH` function via `db.query(...)` / `@sdbql{}`.
+
+## Pipeline notes (fulltext / hybrid / geo)
+
+`search`, `hybrid`, `near`, and `within` bypass the SDBQL query pipeline:
 
 - They are **eager** — they return an array of model instances immediately;
   there is no chaining (`.where(...)`, `.order(...)` don't compose with
   them).
 - On soft-delete models, deleted rows are dropped **client-side** after the
   index lookup — which can shrink a `limit`-ed result set.
-
-## Hybrid Search (not exposed yet)
-
-Combined vector + fulltext ranking is **not** exposed through the ORM — the
-database's HTTP endpoint for it is still a stub. The raw-SDBQL escape hatch
-is SolidB's `HYBRID_SEARCH` function via `db.query(...)` / `@sdbql{}`; see
-the [SolidB Hybrid Search docs](https://solidb.solisoft.net/docs/hybrid-search)
-for its signature and tuning.
 
 ## See Also
 

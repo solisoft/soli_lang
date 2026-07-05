@@ -317,20 +317,20 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-4">The <code class="text-cyan-400">SOAP.call()</code> returns a Hash with the following structure:</p>
             <pre data-filename="Response Hash"><code class="language-soli text-sm">{
- "status": 200,           # HTTP status code
- "status_text": "OK",      # HTTP status text
- "body": "&lt;?xml ...&gt;",  # Raw XML response string
- "headers": {...},         # Response headers Hash
- "parsed": {              # Parsed XML as nested Hash
-  "soap:Envelope": {
-   "soap:Body": {
-    "ResponseElement": {
-     "Field1": "value",
-     "Field2": "value"
+  "status": 200,           # HTTP status code
+  "status_text": "OK",      # HTTP status text
+  "body": "&lt;?xml ...&gt;",  # Raw XML response string
+  "headers": {...},         # Response headers Hash
+  "parsed": {              # Parsed XML as nested Hash
+    "soap:Envelope": {
+      "soap:Body": {
+        "ResponseElement": {
+          "Field1": "value",
+          "Field2": "value"
+        }
+      }
     }
-   }
   }
- }
 }</code></pre>
         </div>
     </section>

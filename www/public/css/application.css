@@ -1256,6 +1256,9 @@
   .inline-flex {
     display: inline-flex;
   }
+  .list-item {
+    display: list-item;
+  }
   .table {
     display: table;
   }
@@ -1468,6 +1471,9 @@
   }
   .max-w-none {
     max-width: none;
+  }
+  .max-w-sm {
+    max-width: var(--container-sm);
   }
   .min-w-0 {
     min-width: 0;
@@ -3661,6 +3667,11 @@
       color: var(--color-gray-600);
     }
   }
+  .placeholder-stone-500 {
+    &::placeholder {
+      color: var(--color-stone-500);
+    }
+  }
   .opacity-0 {
     opacity: 0%;
   }
@@ -4634,6 +4645,13 @@
       }
     }
   }
+  .hover\:text-stone-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-stone-300);
+      }
+    }
+  }
   .hover\:text-teal-300 {
     &:hover {
       @media (hover: hover) {
@@ -4742,6 +4760,14 @@
         @supports (color: color-mix(in lab, red, red)) {
           --tw-ring-color: color-mix(in oklab, var(--color-white) 40%, transparent);
         }
+      }
+    }
+  }
+  .focus\:border-amber-400\/50 {
+    &:focus {
+      border-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 50%, transparent);
+      @supports (color: color-mix(in lab, red, red)) {
+        border-color: color-mix(in oklab, var(--color-amber-400) 50%, transparent);
       }
     }
   }

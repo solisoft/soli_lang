@@ -3334,6 +3334,184 @@ impl Model {
             })),
         );
 
+        // Model.hybrid("query"[, options]) — combined vector + fulltext
+        // search over the declared `vector_index` and `fulltext_index`.
+        // The query text is embedded client-side for the vector leg (pass
+        // vector: to skip) and used raw for the fulltext leg. Eager, like
+        // search(): returns ranked instances carrying _hybrid_score,
+        // _vector_score, _text_score and _sources. Options: vector:,
+        // vector_field:, field:, vector_weight:, text_weight:, fusion:
+        // ("weighted" | "rrf"), limit:.
+        native_static_methods.insert(
+            "hybrid".to_string(),
+            Rc::new(NativeFunction::new("Model.hybrid", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let query_text = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err(format!("{}.hybrid expects a query string", class_name)),
+                };
+
+                let mut explicit_vector: Option<Vec<f64>> = None;
+                let mut vector_field: Option<String> = None;
+                let mut fulltext_field_opt: Option<String> = None;
+                let mut vector_weight: Option<f64> = None;
+                let mut text_weight: Option<f64> = None;
+                let mut fusion: Option<String> = None;
+                let mut limit: Option<usize> = None;
+                if let Some(Value::Hash(opts)) = args.get(2) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in opts.borrow().iter() {
+                        let key = match k {
+                            HashKey::String(s) => s.to_string(),
+                            _ => continue,
+                        };
+                        match (key.as_str(), v) {
+                            ("vector", Value::Array(arr)) => {
+                                let vec: Vec<f64> = arr
+                                    .borrow()
+                                    .iter()
+                                    .map(|v| match v {
+                                        Value::Int(n) => Ok(*n as f64),
+                                        Value::Float(f) => Ok(*f),
+                                        other => Err(format!(
+                                            "hybrid() vector entries must be numbers, got {}",
+                                            other.type_name()
+                                        )),
+                                    })
+                                    .collect::<Result<_, _>>()?;
+                                if vec.is_empty() {
+                                    return Err("hybrid() vector is empty".to_string());
+                                }
+                                explicit_vector = Some(vec);
+                            }
+                            ("vector_field", Value::String(s)) => {
+                                vector_field = Some(s.to_string())
+                            }
+                            ("field", Value::String(s)) => fulltext_field_opt = Some(s.to_string()),
+                            ("vector_weight", Value::Float(f)) => vector_weight = Some(*f),
+                            ("vector_weight", Value::Int(n)) => vector_weight = Some(*n as f64),
+                            ("text_weight", Value::Float(f)) => text_weight = Some(*f),
+                            ("text_weight", Value::Int(n)) => text_weight = Some(*n as f64),
+                            ("fusion", Value::String(s)) => {
+                                let s = s.to_string();
+                                if s != "weighted" && s != "rrf" {
+                                    return Err(format!(
+                                        "hybrid() fusion must be \"weighted\" or \"rrf\", \
+                                         got \"{}\"",
+                                        s
+                                    ));
+                                }
+                                fusion = Some(s);
+                            }
+                            ("limit", Value::Int(n)) if *n > 0 => limit = Some(*n as usize),
+                            (other, _) => {
+                                return Err(format!(
+                                    "hybrid() unknown/invalid option '{}': expected vector:, \
+                                     vector_field:, field:, vector_weight:, text_weight:, \
+                                     fusion:, or limit:",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                }
+
+                // Resolve the vector index from the class declarations.
+                let vindex = match &vector_field {
+                    Some(f) => super::registry::get_vector_index_for_field(&class_name, f)
+                        .ok_or_else(|| {
+                            format!(
+                                "{}.hybrid: no vector_index declared on field '{}'",
+                                class_name, f
+                            )
+                        })?,
+                    None => {
+                        let mut declared = super::registry::get_vector_indexes(&class_name);
+                        match declared.len() {
+                            0 => {
+                                return Err(format!(
+                                    "{}.hybrid requires a `vector_index` declaration in the \
+                                     class body, e.g. vector_index \"embedding\", dimension: 1536",
+                                    class_name
+                                ))
+                            }
+                            1 => declared.remove(0),
+                            _ => {
+                                return Err(format!(
+                                    "{}.hybrid: several vector indexes declared; pass \
+                                     vector_field: to pick one",
+                                    class_name
+                                ))
+                            }
+                        }
+                    }
+                };
+
+                // Resolve the fulltext field from the class declarations.
+                let ft_indexes = super::registry::get_fulltext_indexes(&class_name);
+                let declared_ft = ft_indexes.first().ok_or_else(|| {
+                    format!(
+                        "{}.hybrid requires a `fulltext_index` declaration in the class body, \
+                         e.g. fulltext_index \"title\", \"body\"",
+                        class_name
+                    )
+                })?;
+                let fulltext_field = match fulltext_field_opt {
+                    Some(f) => {
+                        if !ft_indexes
+                            .iter()
+                            .any(|idx| idx.fields.iter().any(|x| x == &f))
+                        {
+                            return Err(format!(
+                                "{}.hybrid field '{}' is not covered by a fulltext_index \
+                                 (declared: {})",
+                                class_name,
+                                f,
+                                ft_indexes
+                                    .iter()
+                                    .flat_map(|i| i.fields.iter().cloned())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ));
+                        }
+                        f
+                    }
+                    None => declared_ft.fields.first().cloned().unwrap_or_default(),
+                };
+
+                // Resolve the query vector: explicit literal, or embed the
+                // query text client-side (same path as similar()).
+                let query_vector = match explicit_vector {
+                    Some(v) => v,
+                    None => crate::embedding::generate_embedding(&query_text).ok_or_else(|| {
+                        format!(
+                            "{}.hybrid could not embed the query text: set \
+                             SOLI_EMBEDDING_API_KEY (and optionally SOLI_EMBEDDING_URL / \
+                             SOLI_EMBEDDING_MODEL) or pass vector: with a query vector",
+                            class_name
+                        )
+                    })?,
+                };
+
+                super::search::exec_hybrid_search(
+                    &collection,
+                    &class,
+                    &vindex.name,
+                    &fulltext_field,
+                    &query_vector,
+                    &query_text,
+                    vector_weight,
+                    text_weight,
+                    fusion,
+                    limit,
+                    is_soft_delete(&class_name),
+                )
+            })),
+        );
+
         // Model.near(lat, lon[, options]) / Model.within(lat, lon, radius) —
         // geo queries over the declared `geo_index` field. Results carry
         // `_distance` (meters).

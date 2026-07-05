@@ -85,7 +85,7 @@ get("/users/:id?", "users#show");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show(req: Any)
-user_id = req["params"]["id"]
+  user_id = req["params"]["id"]
   post_id = req["params"]["post_id"]
 
   {
@@ -117,7 +117,7 @@ get("/*path", "catchall#handle");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/files_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def serve(req: Any)
-filepath = req["params"]["filepath"]
+  filepath = req["params"]["filepath"]
 
   # /files/docs/report.pdf -> filepath = "/docs/report.pdf"
   # /files/images/photo.jpg -> filepath = "/images/photo.jpg"
@@ -195,12 +195,12 @@ get("/files/*filepath", "files#serve");</code></pre>
   end
 
   def routing(req: Any)
-path = req["params"]["path"];  # "/routing"
+    path = req["params"]["path"];  # "/routing"
     render("docs/routing", {"active_page": "routing"})
   end
 
   def installation(req: Any)
-render("docs/installation", {"active_page": "installation"})
+    render("docs/installation", {"active_page": "installation"})
   end
 end</code></pre>
         </div>
@@ -249,7 +249,7 @@ end</code></pre>
 <pre><code class="language-soli text-sm"># URL: /search?q=solilang&page=1
 
 def search(req: Any)
-query = req["query"]["q"];      # "solilang"
+  query = req["query"]["q"];      # "solilang"
   page = req["query"]["page"];    # "1"
 
   {

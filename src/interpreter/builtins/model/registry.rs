@@ -367,6 +367,15 @@ pub fn get_vector_index_for_field(class_name: &str, field: &str) -> Option<Vecto
         .and_then(|m| m.vector_indexes.iter().find(|d| d.field == field).cloned())
 }
 
+/// All declared vector indexes for a class.
+pub fn get_vector_indexes(class_name: &str) -> Vec<VectorIndexDef> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.vector_indexes.clone())
+        .unwrap_or_default()
+}
+
 pub fn add_fulltext_index(class_name: &str, def: FulltextIndexDef) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();

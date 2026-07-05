@@ -108,6 +108,7 @@ pub fn is_document_api_method(name: &str) -> bool {
             | "prune"
             | "similar"
             | "search"
+            | "hybrid"
             | "near"
             | "within"
     )

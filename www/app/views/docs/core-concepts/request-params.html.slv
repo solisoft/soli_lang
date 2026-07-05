@@ -290,7 +290,7 @@ end</code></pre></code></pre>
 # orrust&page= POST /api/search with body {"q": "rust", "filters": "recent"}
 
 def search(req: Any)
-all = req["all"]
+  all = req["all"]
 
   # Unified params allow flexible API design
   query = all["q"] or ""

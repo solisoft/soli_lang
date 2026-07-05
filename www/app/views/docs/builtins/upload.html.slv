@@ -65,7 +65,7 @@ set_solidb_address("http://localhost:8529")</code></pre>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let files = parse_multipart(req)
 for file in files {
-    println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
+  println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
 }</code></pre>
         </div>
     </section>
@@ -89,8 +89,8 @@ for file in files {
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let result = upload_to_solidb(req, "uploads", "avatar")
 if has_key(result, "blob_id")
-    println("Uploaded: " + result["filename"])
-    println("Blob ID: " + result["blob_id"])
+  println("Uploaded: " + result["filename"])
+  println("Blob ID: " + result["blob_id"])
 end</code></pre>
         </div>
     </section>
@@ -113,11 +113,11 @@ end</code></pre>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let results = upload_all_to_solidb(req, "uploads")
 for result in results
-    if has_key(result, "blob_id")
-        println("Uploaded: " + result["filename"])
-    else
-        println("Failed: " + result["error"])
-    end
+  if has_key(result, "blob_id")
+    println("Uploaded: " + result["filename"])
+  else
+    println("Failed: " + result["error"])
+  end
 end</code></pre>
         </div>
     </section>
@@ -202,53 +202,53 @@ set_solidb_address("http://localhost:8529")
 
 # Upload controller
 def upload_avatar
-    let collection = "avatars"
+  let collection = "avatars"
 
-    let result = upload_to_solidb(req, collection, "avatar")
+  let result = upload_to_solidb(req, collection, "avatar")
 
-    if has_key(result, "error")
-        return {
-            "status": 400,
-            "body": json_stringify({ "error": result["error"] })
-        }
-    end
-
-    let blob_url = get_blob_url(collection, result["blob_id"])
-
-    {
-        "status": 201,
-        "body": json_stringify({
-            "message": "File uploaded successfully",
-            "blob_id": result["blob_id"],
-            "filename": result["filename"],
-            "size": result["size"],
-            "content_type": result["content_type"],
-            "url": blob_url
-        })
+  if has_key(result, "error")
+    return {
+      "status": 400,
+      "body": json_stringify({ "error": result["error"] })
     }
+  end
+
+  let blob_url = get_blob_url(collection, result["blob_id"])
+
+  {
+    "status": 201,
+    "body": json_stringify({
+      "message": "File uploaded successfully",
+      "blob_id": result["blob_id"],
+      "filename": result["filename"],
+      "size": result["size"],
+      "content_type": result["content_type"],
+      "url": blob_url
+    })
+  }
 end
 
 # Get file controller
 def get_file
-    let blob_id = req["params"]["id"]
-    let db = Solidb("localhost:8529", "myapp")
+  let blob_id = req["params"]["id"]
+  let db = Solidb("localhost:8529", "myapp")
 
-    let metadata = db.get_blob_metadata("avatars", blob_id)
-    if metadata["_key"] == null
-        return { "status": 404, "body": "Not found" }
-    end
+  let metadata = db.get_blob_metadata("avatars", blob_id)
+  if metadata["_key"] == null
+    return { "status": 404, "body": "Not found" }
+  end
 
-    let data = db.get_blob("avatars", blob_id)
+  let data = db.get_blob("avatars", blob_id)
 
-    {
-        "status": 200,
-        "headers": {
-            "Content-Type": metadata["content_type"],
-            "Content-Length": str(metadata["size"]),
-            "Content-Disposition": "attachment; filename=\"" + metadata["filename"] + "\""
-        },
-        "body": data
-    }
+  {
+    "status": 200,
+    "headers": {
+      "Content-Type": metadata["content_type"],
+      "Content-Length": str(metadata["size"]),
+      "Content-Disposition": "attachment; filename=\"" + metadata["filename"] + "\""
+    },
+    "body": data
+  }
 end</code></pre>
         </div>
 
@@ -256,11 +256,11 @@ end</code></pre>
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># app/models/user.sl
 class User &lt; Model
-    uploader("avatar", {
-        "multiple":      false,
-        "content_types": ["image/jpeg", "image/png"],
-        "max_size":      2_000_000
-    })
+  uploader("avatar", {
+    "multiple":      false,
+    "content_types": ["image/jpeg", "image/png"],
+    "max_size":      2_000_000
+  })
 end
 
 # config/routes.sl
@@ -268,13 +268,13 @@ uploads("users", "avatar")  # auto-mounts GET/POST/DELETE /users/:id/avatar
 
 # app/controllers/users_controller.sl — upload from a regular edit form
 def update
-    @user = User.find(params.id)
-    if @user.update(this._permit(params))
-        file = find_uploaded_file(req, "avatar")
-        @user.attach_avatar(file) unless file.nil?
-        return redirect("/users/#{@user._key}")
-    end
-    render("users/edit")
+  @user = User.find(params.id)
+  if @user.update(this._permit(params))
+    file = find_uploaded_file(req, "avatar")
+    @user.attach_avatar(file) unless file.nil?
+    return redirect("/users/#{@user._key}")
+  end
+  render("users/edit")
 end</code></pre>
         </div>
         <p class="text-gray-400 mt-4 text-sm">

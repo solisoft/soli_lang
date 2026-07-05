@@ -238,9 +238,9 @@ dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
                 </div>
                 <p class="text-gray-400 mt-3 mb-3">Returns the same table, so you can return it inline.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def locale_table(locale)
-    cached = I18n.cached_table(locale)
-    return cached unless cached.nil?
-    return I18n.cache_table(locale, build_table(locale))  # built once per thread
+  cached = I18n.cached_table(locale)
+  return cached unless cached.nil?
+  return I18n.cache_table(locale, build_table(locale))  # built once per thread
 end</code></pre>
             </div>
         </section>

@@ -110,7 +110,7 @@ arr = [1, 2, 3, 4, 5]
 match arr
   [first, second, ...rest]
     print("First two: " + str(first) + ", " + str(second))
-print("Remaining: " + str(rest));  # [3, 4, 5]
+    print("Remaining: " + str(rest));  # [3, 4, 5]
   end
 end</code></pre>
             </div>

@@ -331,12 +331,12 @@ result = validate(data, schema)
             </section>
 
             <pre data-filename="Example"><code class="language-soli text-sm">password_rules = V.string()
-    .min_length(12)
-    .max_length(64)
-    .mixed_case()
-    .numbers()
-    .symbols()
-    .to_password_rules_string();
+  .min_length(12)
+  .max_length(64)
+  .mixed_case()
+  .numbers()
+  .symbols()
+  .to_password_rules_string();
 
 # password_rules → "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;"
 

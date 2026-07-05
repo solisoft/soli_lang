@@ -105,7 +105,7 @@ missing = KV.get("nope")    # => null</code></pre>
                 </a>
                 <p class="text-gray-400">Check if a key exists. Returns <code class="text-orange-400">Bool</code>.</p>
                 <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">if KV.exists("user:1")
-    println("User exists")
+  println("User exists")
 end</code></pre>
             </div>
         </section>
@@ -160,7 +160,7 @@ users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Set a key only if it does not already exist. Returns <code class="text-orange-400">true</code> if it was set. Handy for locks and "first writer wins".</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if KV.setnx("lock:job", "held")
-    run_job()
+  run_job()
 end</code></pre>
             </div>
         </section>
@@ -424,7 +424,7 @@ KV.srem("tags", "redis")</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Check if a value is a member of a set. Returns <code class="text-orange-400">Bool</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if KV.sismember("beta-users", user_id)
-    render("beta/feature")
+  render("beta/feature")
 end</code></pre>
             </div>
         </section>
@@ -802,10 +802,10 @@ SCRIPT  EVAL  EVALSHA  FUNCTION</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-2">Rate limiting with counters</h3>
             <pre data-filename="app/controllers/application_controller.sl"><code class="language-soli text-sm">def check_rate_limit(ip)
-    key = "rate:" + ip
-    count = KV.incr(key)
-    KV.expire(key, 60) if count == 1
-    return count <= 100
+  key = "rate:" + ip
+  count = KV.incr(key)
+  KV.expire(key, 60) if count == 1
+  return count <= 100
 end</code></pre>
         </div>
 
@@ -814,8 +814,8 @@ end</code></pre>
             <pre data-filename="Producer"><code class="language-soli text-sm">KV.rpush("jobs", JSON.stringify({"type": "email", "to": "alice@example.com"}))</code></pre>
             <pre data-filename="Worker" class="mt-3"><code class="language-soli text-sm">raw = KV.lpop("jobs")
 if raw != null
-    job = JSON.parse(raw)
-    process_job(job)
+  job = JSON.parse(raw)
+  process_job(job)
 end</code></pre>
         </div>
 
@@ -835,9 +835,9 @@ println("User ID: " + session["user_id"])</code></pre>
             <pre data-filename="Beta rollout"><code class="language-soli text-sm">KV.sadd("features:beta", "user:1", "user:2")
 
 if KV.sismember("features:beta", "user:" + str(user.id))
-    render("beta/feature")
+  render("beta/feature")
 else
-    render("stable/feature")
+  render("stable/feature")
 end</code></pre>
         </div>
     </section>

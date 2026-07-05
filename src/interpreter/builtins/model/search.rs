@@ -102,6 +102,99 @@ pub fn exec_fulltext_search(
     Ok(Value::Array(Rc::new(RefCell::new(instances))))
 }
 
+/// POST /_api/database/{db}/hybrid/{coll}/search — combined vector +
+/// fulltext search with score fusion. Results become instances carrying
+/// `_hybrid_score` (combined), `_vector_score`, `_text_score` and
+/// `_sources`, mirroring the `_similarity_score` precedent. The endpoint
+/// returns the full document per hit, so no per-result re-fetch is needed.
+#[allow(clippy::too_many_arguments)]
+pub fn exec_hybrid_search(
+    collection: &str,
+    class: &Rc<Class>,
+    vector_index: &str,
+    fulltext_field: &str,
+    query_vector: &[f64],
+    text_query: &str,
+    vector_weight: Option<f64>,
+    text_weight: Option<f64>,
+    fusion: Option<String>,
+    limit: Option<usize>,
+    drop_soft_deleted: bool,
+) -> Result<Value, String> {
+    let mut body = serde_json::json!({
+        "vector": query_vector,
+        "text_query": text_query,
+        "vector_index": vector_index,
+        "fulltext_field": fulltext_field,
+    });
+    if let Some(w) = vector_weight {
+        body["vector_weight"] = serde_json::json!(w);
+    }
+    if let Some(w) = text_weight {
+        body["text_weight"] = serde_json::json!(w);
+    }
+    if let Some(f) = fusion {
+        body["fusion"] = serde_json::json!(f);
+    }
+    if let Some(l) = limit {
+        body["limit"] = serde_json::json!(l as u64);
+    }
+
+    let resp = exec_db_api_request(
+        reqwest::Method::POST,
+        &format!("/hybrid/{}/search", collection),
+        Some(body),
+    )?;
+
+    let results = resp
+        .get("results")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let instances: Vec<Value> = results
+        .iter()
+        .filter_map(|hit| {
+            let doc = hit.get("document")?;
+            if !doc.is_object() {
+                return None;
+            }
+            // Hybrid search bypasses the FILTER pipeline, so soft-deleted
+            // rows are dropped client-side for soft-delete models.
+            if drop_soft_deleted && doc.get("deleted_at").map(|v| !v.is_null()).unwrap_or(false) {
+                return None;
+            }
+            let inst = json_doc_to_instance(class, doc);
+            if let Value::Instance(ref i) = inst {
+                let mut borrowed = i.borrow_mut();
+                let score = hit.get("score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                borrowed.set("_hybrid_score".to_string(), Value::Float(score));
+                if let Some(vs) = hit.get("vector_score").and_then(|s| s.as_f64()) {
+                    borrowed.set("_vector_score".to_string(), Value::Float(vs));
+                }
+                if let Some(ts) = hit.get("text_score").and_then(|s| s.as_f64()) {
+                    borrowed.set("_text_score".to_string(), Value::Float(ts));
+                }
+                let sources: Vec<Value> = hit
+                    .get("sources")
+                    .and_then(|s| s.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| Value::String(s.into()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                borrowed.set(
+                    "_sources".to_string(),
+                    Value::Array(Rc::new(RefCell::new(sources))),
+                );
+            }
+            Some(inst)
+        })
+        .collect();
+    Ok(Value::Array(Rc::new(RefCell::new(instances))))
+}
+
 /// Geo near/within. `endpoint` is "near" or "within"; the third body key is
 /// `limit` (near) or `radius` (within). Results become instances with a
 /// `_distance` field (meters), mirroring the `_similarity_score` precedent.

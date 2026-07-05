@@ -44,7 +44,7 @@ let limiter = RateLimiter("api:user123", 100, 60)</code></pre>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># Limit API calls to 100 per minute per IP
 let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
 if !limiter.allowed()
-    return { "status": 429, "body": "Too Many Requests" }
+  return { "status": 429, "body": "Too Many Requests" }
 end</code></pre>
         </div>
     </section>
@@ -132,28 +132,28 @@ println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># API middleware with rate limiting
 def rate_limit_middleware
-    let ip = req["headers"]["X-Forwarded-For"] || req["headers"]["Remote-Addr"]
-    let limiter = RateLimiter("api:" + ip, 100, 60)
-    
-    # Check rate limit (100 requests per minute)
-    if !limiter.allowed()
-        let status = limiter.status
-        let headers = limiter.headers
-        
-        return {
-            "continue": false,
-            "response": {
-                "status": 429,
-                "headers": headers,
-                "body": json_stringify({
-                    "error": "Rate limit exceeded",
-                    "retry_after": status["reset_in"]
-                })
-            }
-        }
-    end
-    
-    { "continue": true, "request": req }
+  let ip = req["headers"]["X-Forwarded-For"] || req["headers"]["Remote-Addr"]
+  let limiter = RateLimiter("api:" + ip, 100, 60)
+
+  # Check rate limit (100 requests per minute)
+  if !limiter.allowed()
+    let status = limiter.status
+    let headers = limiter.headers
+
+    return {
+      "continue": false,
+      "response": {
+        "status": 429,
+        "headers": headers,
+        "body": json_stringify({
+          "error": "Rate limit exceeded",
+          "retry_after": status["reset_in"]
+        })
+      }
+    }
+  end
+
+  { "continue": true, "request": req }
 end</code></pre></code></pre>
         </div>
     </section>
