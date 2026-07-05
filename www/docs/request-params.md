@@ -20,7 +20,7 @@ Use `req["all"]` to access all parameters unified:
 # Request: POST /users/123/profile?name=alice&age=30
 # Body: {"bio": "Developer", "age": "25"}
 
-fn update_profile
+def update_profile
   # Unified access to all params
   all = req["all"];
 
@@ -41,7 +41,7 @@ For convenience, the server sets a global `params` variable to the same value as
 # Request: POST /users/123/profile?name=alice
 # Body: {"bio": "Developer"}
 
-fn update_profile
+def update_profile
   print("User ID:", params.id);       # "123" (from route)
   print("Name:", params.name);        # "alice" (from query)
   print("Bio:", params.bio);          # "Developer" (from JSON body)
@@ -57,7 +57,7 @@ end
 For convenience, the server also sets a global `cookies` variable to the same value as `req["cookies"]`. This hash contains all cookies parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:
 
 ```soli
-fn show
+def show
   # Read cookies directly (no req prefix needed)
   theme = cookies["theme"] or "light";
   session_id = cookies.session_id;
@@ -78,7 +78,7 @@ When the same parameter exists in multiple sources, values are merged with this 
 # Request: PUT /items/42?status=active
 # Body: {"status": "urgent", "quantity": "5"}
 
-fn update_item
+def update_item
   all = req["all"];
 
   # "status" appears in both query and body
@@ -100,7 +100,7 @@ end
 You can still access individual parameter sources separately:
 
 ```soli
-fn handler
+def handler
   # Route parameters only
   id = req["params"]["id"];
 
@@ -123,7 +123,7 @@ end
 ## Complete Example: Search with Pagination
 
 ```soli
-fn search
+def search
   all = req["all"];
 
   # Unified params allow flexible API design

@@ -98,11 +98,11 @@ print("After clear:", temp);
 print("");
 print("=== Pipeline with Hash ===");
 
-fn get_keys(h: Any) -> Any {
+def get_keys(h: Any) -> Any {
     return keys(h);
 }
 
-fn first(arr: Any) -> Any {
+def first(arr: Any) -> Any {
     return arr[0];
 }
 

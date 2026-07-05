@@ -11,7 +11,7 @@ Sessions are automatically available in your controllers. The session cookie is 
 ### Reading Session Data
 
 ```soli
-fn profile
+def profile
   # Check if user is logged in
   if session_get("authenticated") != true
     return {"status": 401, "body": "Please log in"};
@@ -30,7 +30,7 @@ end
 ### Writing Session Data
 
 ```soli
-fn login
+def login
   data = req["json"];
   username = data["username"];
 
@@ -49,7 +49,7 @@ end
 ### Checking Session State
 
 ```soli
-fn is_logged_in() -> Bool
+def is_logged_in() -> Bool
   session_has("authenticated") && session_get("authenticated") == true
 end
 ```
@@ -57,7 +57,7 @@ end
 ### Deleting Session Data
 
 ```soli
-fn remove_item
+def remove_item
   removed = session_delete("temporary_data");
   print("Removed:", removed);
   {"status": 200}
@@ -71,7 +71,7 @@ end
 Always regenerate the session ID after successful authentication to prevent session fixation:
 
 ```soli
-fn login
+def login
   data = req["json"];
 
   if verify_credentials(data["username"], data["password"])
@@ -92,7 +92,7 @@ end
 ### Destroy Session on Logout
 
 ```soli
-fn logout
+def logout
   session_destroy();
 
   {
@@ -108,7 +108,7 @@ Create a reusable authentication middleware:
 
 ```soli
 # app/middleware/auth.sl
-fn require_auth
+def require_auth
   if !session_has("authenticated") || session_get("authenticated") != true
     return {
       "status": 401,
@@ -118,7 +118,7 @@ fn require_auth
   null  # Allow request to continue
 end
 
-fn require_role(req, required_role: String)
+def require_role(req, required_role: String)
   result = require_auth(req);
   if result != null
     return result;  # Return auth error

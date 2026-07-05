@@ -311,11 +311,11 @@ No restart needed!
 1. Create `app/controllers/name_controller.sl`:
 
 ```soli
-fn index(req: Any) {
+def index(req: Any) {
   return {"status": 200, "body": "Hello!"};
 }
 
-fn show(req: Any) {
+def show(req: Any) {
   id = req["params"]["id"];
   return {"status": 200, "body": "User " + id};
 }

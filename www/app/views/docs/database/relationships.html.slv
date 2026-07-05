@@ -45,6 +45,36 @@
         </table>
     </div>
 
+    <p class="text-gray-400 mb-4">Beyond <code>class_name:</code> and <code>foreign_key:</code> overrides, three behavioral options are available (a bad option raises at class load):</p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Option</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">On</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">dependent:</code></td>
+                    <td class="py-3 px-4 text-gray-400">has_many, has_one</td>
+                    <td class="py-3 px-4 text-gray-400">Cascade strategy on hard owner delete: <code>"delete"</code>, <code>"delete_all"</code>, <code>"nullify"</code>. See <a href="#dependent" class="text-amber-400 hover:underline">Cascade Deletes</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">through:</code> / <code class="text-amber-300">source:</code></td>
+                    <td class="py-3 px-4 text-gray-400">has_many</td>
+                    <td class="py-3 px-4 text-gray-400">Traverse an intermediate relation. See <a href="#through" class="text-amber-400 hover:underline">Through Associations</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">counter_cache:</code></td>
+                    <td class="py-3 px-4 text-gray-400">belongs_to</td>
+                    <td class="py-3 px-4 text-gray-400">Maintain a <code>&lt;children&gt;_count</code> column on the parent (<code>true</code> or a custom column name).</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Defining Relationships</h2>
     <p class="text-gray-400 mb-4">Add relationship declarations at the top of your model class body. Names accept strings or symbols:</p>
 
@@ -397,6 +427,33 @@ tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all</code></pre>
   })
 end</code></pre>
         </div>
+    </div>
+
+    <h2 id="dependent" class="text-2xl font-bold text-white mb-6">Cascade Deletes (dependent:)</h2>
+    <p class="text-gray-400 mb-4">
+        Declare what happens to associated records when their owner is <strong class="text-white">hard-deleted</strong>:
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+  has_many "posts", dependent: "delete"       # per-row: callbacks, nested cascades
+  has_many "events", dependent: "delete_all"  # one bulk REMOVE: no callbacks
+  has_many "drafts", dependent: "nullify"     # one bulk UPDATE: fk → null
+  has_one  "profile", dependent: "delete"
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Ordering mirrors Rails.</strong> <code>before_delete</code> runs first (a <code>false</code> veto aborts the cascades too), then each <code>dependent:</code> relation in declaration order, then the owner row is removed, then <code>after_delete</code>.</li>
+            <li><strong class="text-white"><code>"delete"</code></strong> (alias <code>"destroy"</code>) loads each child and deletes it through the interpreter &mdash; child callbacks, nested cascades, the child's own soft-delete semantics, and counter-cache decrements all apply. A child veto or error aborts the remaining cascade <em>and</em> the owner delete.</li>
+            <li><strong class="text-white"><code>"delete_all"</code></strong> issues one bulk REMOVE: no callbacks, hard delete even for soft-delete child models, no nesting. <strong class="text-white"><code>"nullify"</code></strong> issues one bulk UPDATE setting the FK to null.</li>
+            <li><strong class="text-white">Soft-delete owners never cascade</strong> &mdash; a soft <code>delete()</code> keeps children, so <code>restore()</code> has nothing to un-do.</li>
+            <li><strong class="text-white"><code>Model.delete(id)</code> cascades too</strong> on classes that declare <code>dependent:</code> (routing through the instance flow, so delete callbacks fire as a side effect). Bulk writes (<code>delete_all</code>, <code>update_all</code>, <code>prune</code>) <strong>never</strong> cascade, matching Rails.</li>
+            <li><strong class="text-white">Cycles terminate</strong>: an in-flight document is skipped and recursion caps at 32 levels. No per-operation rollback &mdash; wrap in <code>Model.transaction</code> for atomicity.</li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Manual Relationships</h2>

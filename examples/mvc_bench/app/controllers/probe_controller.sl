@@ -3,7 +3,7 @@
 // call_class_method (they never attempt the VM) — this route makes that
 // behavior observable in benchmarks.
 class ProbeController {
-    fn zero() -> Any {
+    def zero() -> Any {
         return {
             "status": 200,
             "headers": {"Content-Type": "text/plain"},

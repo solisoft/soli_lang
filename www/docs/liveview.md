@@ -42,7 +42,7 @@ A Live View handler takes one argument — an event hash with `event`, `params`,
 
 ```soli
 # app/controllers/live_controller.sl
-fn counter(event_data: Any) -> Any {
+def counter(event_data: Any) -> Any {
   event = event_data["event"]   # e.g. "increment", "connect", "tick"
   state = event_data["state"]   # current component state
   count = state["count"] || 0
@@ -148,7 +148,7 @@ For real-time dashboards, monitoring, and live data feeds, a handler can opt int
 
 ```soli
 # app/controllers/live_controller.sl
-fn metrics_dashboard(event_data: Any) -> Any {
+def metrics_dashboard(event_data: Any) -> Any {
   event = event_data["event"]
 
   if event == "connect"

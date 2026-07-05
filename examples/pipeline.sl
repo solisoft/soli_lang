@@ -1,14 +1,14 @@
 // Pipeline operator demonstration in Solilang
 
-fn double(x: Int) -> Int {
+def double(x: Int) -> Int {
     return x * 2;
 }
 
-fn addOne(x: Int) -> Int {
+def addOne(x: Int) -> Int {
     return x + 1;
 }
 
-fn square(x: Int) -> Int {
+def square(x: Int) -> Int {
     return x * x;
 }
 
@@ -21,11 +21,11 @@ let result2 = 3 |> double() |> square() |> addOne();
 print("3 |> double() |> square() |> addOne() =", result2);
 
 // Pipeline with multiple arguments
-fn add(x: Int, y: Int) -> Int {
+def add(x: Int, y: Int) -> Int {
     return x + y;
 }
 
-fn multiply(x: Int, y: Int) -> Int {
+def multiply(x: Int, y: Int) -> Int {
     return x * y;
 }
 

@@ -22,7 +22,8 @@ pub use super::registry::{
 
 use super::callbacks::register_callback;
 use super::relations::{
-    build_habtm_relation, build_relation, get_relation, register_relation, RelationType,
+    build_habtm_relation, build_relation, get_relation, parse_relation_options, register_relation,
+    RelationType,
 };
 use super::uploaders::{default_collection, get_uploader, register_uploader, UploaderConfig};
 use super::validation::{parse_validates_options, register_validation_with_conditions};
@@ -1170,39 +1171,12 @@ impl Model {
                         None => return Err("relation requires a name argument".to_string()),
                     };
 
-                    // Optional config hash for overrides
-                    let mut class_override: Option<String> = None;
-                    let mut fk_override: Option<String> = None;
-                    if let Some(Value::Hash(hash)) = args.get(2) {
-                        use crate::interpreter::value::HashKey;
-                        for (k, v) in hash.borrow().iter() {
-                            if let HashKey::String(key) = k {
-                                match key.as_ref() {
-                                    "class_name" => {
-                                        if let Value::String(s) = v {
-                                            class_override = Some(s.clone().to_string());
-                                        }
-                                    }
-                                    "foreign_key" => {
-                                        if let Value::String(s) = v {
-                                            fk_override = Some(s.clone().to_string());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
+                    // Optional config hash: class_name/foreign_key overrides
+                    // plus dependent:/through:/source:/counter_cache: (validated
+                    // per relation kind — a bad option raises at class load).
+                    let options = parse_relation_options(args.get(2), &rel_type)?;
 
-                    let relation = build_relation(
-                        &class_name,
-                        &name,
-                        rel_type.clone(),
-                        class_override.as_deref(),
-                        fk_override.as_deref(),
-                        None,
-                        None,
-                    );
+                    let relation = build_relation(&class_name, &name, rel_type.clone(), &options);
                     register_relation(&class_name, relation);
                     Ok(Value::Null)
                 })),
@@ -1233,37 +1207,10 @@ impl Model {
                         }
                     };
 
-                    let mut class_override: Option<String> = None;
-                    let mut fk_override: Option<String> = None;
-                    let mut assoc_fk_override: Option<String> = None;
-                    let mut join_table_override: Option<String> = None;
-                    if let Some(Value::Hash(hash)) = args.get(2) {
-                        use crate::interpreter::value::HashKey;
-                        for (k, v) in hash.borrow().iter() {
-                            if let (HashKey::String(key), Value::String(s)) = (k, v) {
-                                match key.as_ref() {
-                                    "class_name" => class_override = Some(s.clone().to_string()),
-                                    "foreign_key" => fk_override = Some(s.clone().to_string()),
-                                    "association_foreign_key" => {
-                                        assoc_fk_override = Some(s.clone().to_string())
-                                    }
-                                    "join_table" => {
-                                        join_table_override = Some(s.clone().to_string())
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
+                    let options =
+                        parse_relation_options(args.get(2), &RelationType::HasAndBelongsToMany)?;
 
-                    let relation = build_habtm_relation(
-                        &class_name,
-                        &name,
-                        class_override.as_deref(),
-                        fk_override.as_deref(),
-                        assoc_fk_override.as_deref(),
-                        join_table_override.as_deref(),
-                    );
+                    let relation = build_habtm_relation(&class_name, &name, &options);
                     register_relation(&class_name, relation);
                     Ok(Value::Null)
                 },
@@ -5669,38 +5616,9 @@ pub fn register_model_builtins(env: &mut Environment) {
                     None => return Err("relation requires a name argument".to_string()),
                 };
 
-                let mut class_override: Option<String> = None;
-                let mut fk_override: Option<String> = None;
-                if let Some(Value::Hash(hash)) = args.get(2) {
-                    use crate::interpreter::value::HashKey;
-                    for (k, v) in hash.borrow().iter() {
-                        if let HashKey::String(key) = k {
-                            match key.as_ref() {
-                                "class_name" => {
-                                    if let Value::String(s) = v {
-                                        class_override = Some(s.clone().to_string());
-                                    }
-                                }
-                                "foreign_key" => {
-                                    if let Value::String(s) = v {
-                                        fk_override = Some(s.clone().to_string());
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
+                let options = parse_relation_options(args.get(2), &rel_type)?;
 
-                let relation = build_relation(
-                    &class_name,
-                    &name,
-                    rel_type.clone(),
-                    class_override.as_deref(),
-                    fk_override.as_deref(),
-                    None,
-                    None,
-                );
+                let relation = build_relation(&class_name, &name, rel_type.clone(), &options);
                 register_relation(&class_name, relation);
                 Ok(Value::Null)
             })),
@@ -5729,35 +5647,10 @@ pub fn register_model_builtins(env: &mut Environment) {
                     }
                 };
 
-                let mut class_override: Option<String> = None;
-                let mut fk_override: Option<String> = None;
-                let mut assoc_fk_override: Option<String> = None;
-                let mut join_table_override: Option<String> = None;
-                if let Some(Value::Hash(hash)) = args.get(2) {
-                    use crate::interpreter::value::HashKey;
-                    for (k, v) in hash.borrow().iter() {
-                        if let (HashKey::String(key), Value::String(s)) = (k, v) {
-                            match key.as_ref() {
-                                "class_name" => class_override = Some(s.clone().to_string()),
-                                "foreign_key" => fk_override = Some(s.clone().to_string()),
-                                "association_foreign_key" => {
-                                    assoc_fk_override = Some(s.clone().to_string())
-                                }
-                                "join_table" => join_table_override = Some(s.clone().to_string()),
-                                _ => {}
-                            }
-                        }
-                    }
-                }
+                let options =
+                    parse_relation_options(args.get(2), &RelationType::HasAndBelongsToMany)?;
 
-                let relation = build_habtm_relation(
-                    &class_name,
-                    &name,
-                    class_override.as_deref(),
-                    fk_override.as_deref(),
-                    assoc_fk_override.as_deref(),
-                    join_table_override.as_deref(),
-                );
+                let relation = build_habtm_relation(&class_name, &name, &options);
                 register_relation(&class_name, relation);
                 Ok(Value::Null)
             },

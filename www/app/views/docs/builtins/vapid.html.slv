@@ -168,7 +168,7 @@ end</code></pre>
 let keys = vapid_generate_keys()
 println("VAPID_PUBLIC_KEY=" + keys["public_key"])
 println("VAPID_PRIVATE_KEY=" + keys["private_key"])</code></pre>
-            <pre data-filename="app/controllers/notifications_controller.sl"><code class="language-soli text-sm">fn notify
+            <pre data-filename="app/controllers/notifications_controller.sl"><code class="language-soli text-sm">def notify
   let subscription = PushSubscription.find(req["json"]["sub_id"])
   let result = vapid_send(
     {

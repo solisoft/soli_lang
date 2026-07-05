@@ -4,16 +4,16 @@
 let i18n_locale = "en";
 let i18n_translations = {};
 
-fn i18n_set_locale(locale) {
+def i18n_set_locale(locale) {
     i18n_locale = locale;
 }
 
-fn i18n_get_locale() -> String {
+def i18n_get_locale() -> String {
     return i18n_locale;
 }
 
 // Flatten nested hash into dot notation keys
-fn flatten_dict(dict, prefix) -> Hash {
+def flatten_dict(dict, prefix) -> Hash {
     let result = {};
     let pairs = entries(dict);
     for (pair in pairs) {
@@ -35,7 +35,7 @@ fn flatten_dict(dict, prefix) -> Hash {
     return result;
 }
 
-fn i18n_load_translations(locale, dict) {
+def i18n_load_translations(locale, dict) {
     let flat = flatten_dict(dict, locale);
     let pairs = entries(flat);
     for (pair in pairs) {
@@ -43,7 +43,7 @@ fn i18n_load_translations(locale, dict) {
     }
 }
 
-fn i18n_t(key) -> String {
+def i18n_t(key) -> String {
     let locale_key = i18n_locale + "." + key;
     if (has_key(i18n_translations, locale_key)) {
         return i18n_translations[locale_key];

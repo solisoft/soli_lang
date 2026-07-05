@@ -456,7 +456,7 @@ result = validate(input, schema)
   "newsletter": V.bool().default(false)
 }
 
-fn register(params: Hash) -> Hash
+def register(params: Hash) -> Hash
   result = validate(params, user_schema)
   if !result["valid"]
     return { "status": 422, "body": json_stringify({ "errors": result["errors"] }) }

@@ -1,5 +1,5 @@
 // Benchmark controller - minimal routing
-fn health(req: Any) -> Any {
+def health(req: Any) -> Any {
     return {
         "status": 200,
         "headers": {"Content-Type": "text/plain"},
@@ -7,7 +7,7 @@ fn health(req: Any) -> Any {
     };
 }
 
-fn hello(req: Any) -> Any {
+def hello(req: Any) -> Any {
     return {
         "status": 200,
         "headers": {"Content-Type": "application/json"},

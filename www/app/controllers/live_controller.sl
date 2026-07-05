@@ -10,7 +10,7 @@
 # Counter component handler.
 # NOTE: the handler's return REPLACES the component state (only `id` is
 # preserved), so every branch must return the complete state hash.
-fn counter(event_data)
+def counter(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
     let params = event_data["params"]
@@ -50,7 +50,7 @@ end
 # (mount, no `tick` event yet) has every `ms*`/`s*`/`m*`/`h*` variable
 # defined in template scope. Without this, the initial paint errored with
 # "Undefined variable 'ms9'" until JS sent the first tick.
-fn metrics(event_data)
+def metrics(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
 

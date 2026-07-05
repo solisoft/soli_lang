@@ -1,6 +1,6 @@
 // FizzBuzz in Solilang
 
-fn fizzbuzz(n: Int) -> String {
+def fizzbuzz(n: Int) -> String {
     if (n % 15 == 0) {
         return "FizzBuzz";
     }

@@ -1,26 +1,26 @@
 // Math module - provides basic math functions
 
-export fn add(a: Int, b: Int) -> Int {
+export def add(a: Int, b: Int) -> Int {
     return a + b;
 }
 
-export fn subtract(a: Int, b: Int) -> Int {
+export def subtract(a: Int, b: Int) -> Int {
     return a - b;
 }
 
-export fn multiply(a: Int, b: Int) -> Int {
+export def multiply(a: Int, b: Int) -> Int {
     return a * b;
 }
 
-export fn divide(a: Int, b: Int) -> Int {
+export def divide(a: Int, b: Int) -> Int {
     return a / b;
 }
 
-export fn square(n: Int) -> Int {
+export def square(n: Int) -> Int {
     return n * n;
 }
 
-export fn abs(n: Int) -> Int {
+export def abs(n: Int) -> Int {
     if (n < 0) {
         return -n;
     }
@@ -28,6 +28,6 @@ export fn abs(n: Int) -> Int {
 }
 
 // Private helper function (not exported)
-fn internal_helper(x: Int) -> Int {
+def internal_helper(x: Int) -> Int {
     return x * 2;
 }

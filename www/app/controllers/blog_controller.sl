@@ -1,7 +1,7 @@
 # Blog Controller
 # Handles displaying blog posts (markdown content)
 
-fn index
+def index
     let posts = get_blog_posts()
     
     render("blog/index", {
@@ -12,7 +12,7 @@ fn index
     })
 end
 
-fn tag_chip_class(tag)
+def tag_chip_class(tag)
     return "bg-sky-500/15 text-sky-300 border-sky-500/20"             if tag == "Tutorial"
     return "bg-purple-500/15 text-purple-300 border-purple-500/20"    if tag == "Architecture"
     return "bg-rose-500/15 text-rose-300 border-rose-500/20"          if tag == "Security"
@@ -23,7 +23,7 @@ fn tag_chip_class(tag)
     "bg-white/5 text-gray-400 border-white/10"
 end
 
-fn tag_gradient_class(tag)
+def tag_gradient_class(tag)
     return "from-sky-500/30 via-sky-600/10 to-slate-950"        if tag == "Tutorial"
     return "from-purple-500/30 via-purple-600/10 to-slate-950"  if tag == "Architecture"
     return "from-rose-500/30 via-rose-600/10 to-slate-950"      if tag == "Security"
@@ -34,7 +34,7 @@ fn tag_gradient_class(tag)
     "from-indigo-500/25 via-indigo-600/10 to-slate-950"
 end
 
-fn get_blog_posts()
+def get_blog_posts()
     let posts = []
 
     # Simple list - ordered manually (newest first)
@@ -90,7 +90,7 @@ fn get_blog_posts()
     posts
 end
 
-fn extract_title(markdown)
+def extract_title(markdown)
     let lines = markdown.split("\n")
     for line in lines
         if len(line) > 2
@@ -102,7 +102,7 @@ fn extract_title(markdown)
     "Blog Post"
 end
 
-fn show
+def show
     let slug = req["params"]["slug"]
     
     if slug == nil or slug == ""

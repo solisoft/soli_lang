@@ -1,6 +1,6 @@
 // Fibonacci sequence in Solilang
 
-fn fibonacci(n: Int) -> Int {
+def fibonacci(n: Int) -> Int {
     if (n <= 1) {
         return n;
     }
@@ -15,7 +15,7 @@ fn fibonacci(n: Int) -> Int {
 //    i = i + 1;
 //}
 
-fn fibonacci_fast(n: Int) -> Int {
+def fibonacci_fast(n: Int) -> Int {
       if (n <= 1) { return n; }
       let a = 0;
       let b = 1;

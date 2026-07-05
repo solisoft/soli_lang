@@ -8,7 +8,7 @@ Create a file in `app/middleware/`:
 
 ```soli
 # app/middleware/auth.sl
-fn authenticate
+def authenticate
   token = req.headers["Authorization"];
 
   if token == null || token == ""
@@ -28,7 +28,7 @@ Log all incoming requests:
 
 ```soli
 # app/middleware/logging.sl
-fn log_request
+def log_request
   timestamp = datetime::now();
   println(timestamp + " " + req.method + " " + req.path);
   req
@@ -41,7 +41,7 @@ Handle Cross-Origin Resource Sharing:
 
 ```soli
 # app/middleware/cors.sl
-fn cors
+def cors
   response = req;
   response.headers["Access-Control-Allow-Origin"] = "*";
   response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
@@ -54,7 +54,7 @@ end
 
 ```soli
 # app/middleware/auth.sl
-fn auth
+def auth
   session = req.cookies["session"];
 
   if session == null
@@ -101,7 +101,7 @@ Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
 ### Modify Request
 
 ```soli
-fn add_locale
+def add_locale
   lang = req.query["lang"] ?? "en";
   req.locale = lang;
   req
@@ -111,7 +111,7 @@ end
 ### Modify Response
 
 ```soli
-fn add_headers(req, response)
+def add_headers(req, response)
   response.headers["X-Frame-Options"] = "SAMEORIGIN";
   response.headers["X-Content-Type-Options"] = "nosniff";
   response
@@ -121,7 +121,7 @@ end
 ## Error Handling Middleware
 
 ```soli
-fn handle_errors(req, error)
+def handle_errors(req, error)
   error(500, "Internal Server Error")
 end
 ```

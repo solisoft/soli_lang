@@ -1,5 +1,5 @@
 // Test default parameters
-fn greet(name: String = "World") -> String {
+def greet(name: String = "World") -> String {
     return "Hello \(name)!";
 }
 
@@ -7,14 +7,14 @@ print("Testing default parameters:");
 print(greet());           // Hello World!
 print(greet("Alice"));    // Hello Alice!
 
-fn add(a: Int, b: Int = 10) -> Int {
+def add(a: Int, b: Int = 10) -> Int {
     return a + b;
 }
 
 print(add(5));     // 15
 print(add(5, 3));  // 8
 
-fn configure(debug: Bool = false, port: Int = 3000, host: String = "localhost") -> String {
+def configure(debug: Bool = false, port: Int = 3000, host: String = "localhost") -> String {
     return "debug=\(debug), port=\(port), host=\(host)";
 }
 

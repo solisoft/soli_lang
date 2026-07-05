@@ -87,7 +87,7 @@ The browser needs the public key in raw byte form to call `pushManager.subscribe
 ```soli
 # app/controllers/push_controller.sl
 
-fn vapid_public_key
+def vapid_public_key
   {"status": 200, "json": {"public_key": getenv("VAPID_PUBLIC_KEY")}}
 end
 ```
@@ -150,7 +150,7 @@ end
 
 ```soli
 # app/controllers/push_controller.sl
-fn subscribe
+def subscribe
   let json = req["json"]
 
   PushSubscription.create({
@@ -173,7 +173,7 @@ This is the line that replaces `web-push`. Look up the subscription, hand it to 
 ```soli
 # app/controllers/notifications_controller.sl
 
-fn notify
+def notify
   let sub = PushSubscription.find(req["json"]["sub_id"])
 
   let result = vapid_send(
@@ -206,7 +206,7 @@ A `201` means delivered to the push service. `404` and `410` mean the subscripti
 Push from a controller usually means "ring all of this user's devices":
 
 ```soli
-fn broadcast(user_id, payload)
+def broadcast(user_id, payload)
   let subs = PushSubscription.where({"user_id": user_id})
   let body = json_stringify(payload)
   let dead = []

@@ -38,48 +38,48 @@ class HooksTestController extends ParentController
         }
     }
 
-    fn index(req)
+    def index(req)
         render("hooks_test/index")
     end
 
-    fn locked(req)
+    def locked(req)
         render("hooks_test/index")    # never reached — 403 short-circuits above
     end
 
-    fn empty_hook(req)
+    def empty_hook(req)
         render("hooks_test/index")
     end
 
     # Returns a halt() response from an action body (not a before_action hook).
-    fn halt_in_action(req)
+    def halt_in_action(req)
         return halt(404, "Not Here")
     end
 
     # Sets @title on the instance, then passes an explicit data hash to render().
     # Explicit render data must win over the @-auto-injected field.
-    fn render_with_data(req)
+    def render_with_data(req)
         @title = "from_instance";
         render("hooks_test/render_with_data", {"title": "from_render"})
     end
 
     # Redirect to /after_redirect.
-    fn redirect_elsewhere(req)
+    def redirect_elsewhere(req)
         redirect("/after_redirect")
     end
 
     # Destination for the redirect test.
-    fn after_redirect(req)
+    def after_redirect(req)
         render("hooks_test/index")
     end
 
     # Action exercising after_action filter — the marker appears in the body.
-    fn after_marked(req)
+    def after_marked(req)
         render("hooks_test/index")
     end
 
     # Used by the param-shadowing test. The view asserts `params` is still a
     # hash (not the string the before_action wrote to `@params`).
-    fn param_shadow(req)
+    def param_shadow(req)
         render("hooks_test/param_shadow")
     end
 
@@ -88,7 +88,7 @@ class HooksTestController extends ParentController
     # `render(...)` call through a Rails-style DSL parser that choked on the
     # `"class"` hash key. Now paren-form render() goes through the normal
     # expression parser. The wrapper view itself does the render().
-    fn render_with_hash_arg(req)
+    def render_with_hash_arg(req)
         render("hooks_test/render_with_hash_arg")
     end
 
@@ -96,7 +96,7 @@ class HooksTestController extends ParentController
     # style `local_assigns`). Non-reserved keys stay readable as bare
     # identifiers (`<%= title %>`); reserved words (`class`) and builtin-
     # colliding names (`type`) are read via `locals["..."]`.
-    fn locals_access(req)
+    def locals_access(req)
         render("hooks_test/locals_access")
     end
 end

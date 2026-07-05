@@ -308,7 +308,7 @@ let posts = Post.published.where("author_id = @id", { "id": 42 }).all</code></pr
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Foo {
-  fn greet(name) {
+  def greet(name) {
     return "Hello, " + name + "!";
   }
 }
@@ -341,13 +341,13 @@ class.all_methods_cache.borrow_mut().take();</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            Called automatically when a class inherits from another class. Define <code class="text-orange-400">static fn inherited(child)</code> on a class to be notified when subclasses are created.
+            Called automatically when a class inherits from another class. Define <code class="text-orange-400">static def inherited(child)</code> on a class to be notified when subclasses are created.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Parent {
-  static fn inherited(child) {
+  static def inherited(child) {
     print("Child class created: " + child.to_string)
   }
 }

@@ -1,17 +1,17 @@
 # String manipulation helpers
 
-fn truncate(text: String, length: Int, suffix: String) -> String
+def truncate(text: String, length: Int, suffix: String) -> String
     if (len(text) <= length) {
         return text;
     }
     substring(text, 0, length - len(suffix)) + suffix
 end
 
-fn truncate_default(text: String, length: Int) -> String
+def truncate_default(text: String, length: Int) -> String
     truncate(text, length, "...")
 end
 
-fn slugify(text: String) -> String
+def slugify(text: String) -> String
     let lower = downcase(text);
     let with_spaces = replace(lower, "_", "-");
     let with_dashes = replace(with_spaces, " ", "-");
@@ -19,7 +19,7 @@ fn slugify(text: String) -> String
     cleaned
 end
 
-fn titleize(text: String) -> String
+def titleize(text: String) -> String
     let words = split(text, " ");
     let titleized = map(words, fn(w)
         if (len(w) > 0) {

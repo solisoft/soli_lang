@@ -19,21 +19,21 @@ class LayoutTestController extends Controller
     # GET /layout_test/default
     # Render without an explicit layout — expect the registered
     # "custom_layout_e2e" layout to wrap the view.
-    fn default(req)
+    def default(req)
         render("layout_test/default_view")
     end
 
     # GET /layout_test/print_doc
     # Render without an explicit layout — the per-action rule must select
     # "print_layout_e2e" instead of the controller default.
-    fn print_doc(req)
+    def print_doc(req)
         render("layout_test/default_view")
     end
 
     # GET /layout_test/explicit_none
     # Explicit `"layout": false` must win over the registered layout —
     # body should be just the view with no layout wrapping.
-    fn explicit_none(req)
+    def explicit_none(req)
         render("layout_test/default_view", {"layout": false})
     end
 
@@ -41,7 +41,7 @@ class LayoutTestController extends Controller
     # No explicit `render(...)` call — the action relies on auto-rendering the
     # matching `layout_test/auto_render` view. The registered layout must still
     # be applied on this path (regression: it used to fall back to "application").
-    fn auto_render(req)
+    def auto_render(req)
         @marker = "auto"
     end
 end

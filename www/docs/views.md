@@ -240,7 +240,7 @@ On the actual click, the browser sends `If-None-Match: W/"<etag>"`. If the rende
 **Override per response** when the defaults don't fit. Set your own `Cache-Control` (and optionally `ETag`) in the response headers and the framework defaults step aside:
 
 ```soli
-fn downloads
+def downloads
   # One-shot download — never reuse; always re-fetch.
   return {
     "status": 200,
@@ -752,7 +752,7 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 # ... existing helpers ...
 
 # Custom helper: Format a phone number
-fn format_phone(number)
+def format_phone(number)
   digits = replace(number, "[^0-9]", "")
   if len(digits) == 10
     return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
@@ -761,7 +761,7 @@ fn format_phone(number)
 end
 
 # Custom helper: Generate a mailto link
-fn mail_to(email, text = null)
+def mail_to(email, text = null)
   if text == null
     text = email
   end
@@ -802,7 +802,7 @@ Wrap views in a common layout:
 Use layout with render:
 
 ```soli
-fn index
+def index
   render("home/index", {
     "title": "Welcome"
   }, "layouts/application")
@@ -944,7 +944,7 @@ and returns `null`.
 Controllers pass data to views:
 
 ```soli
-fn show
+def show
   render("posts/show", {
     "title": "My Post",
     "post": post,

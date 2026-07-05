@@ -2177,7 +2177,9 @@ pub fn execute_query_builder_time_bucket(qb: &QueryBuilder) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::builtins::model::relations::{build_relation, RelationType};
+    use crate::interpreter::builtins::model::relations::{
+        build_relation, RelationOptions, RelationType,
+    };
 
     fn make_qb(class: &str, collection: &str) -> QueryBuilder {
         QueryBuilder::new(class.to_string(), collection.to_string())
@@ -2198,10 +2200,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
@@ -2218,10 +2217,7 @@ mod tests {
             "User",
             "profile",
             RelationType::HasOne,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("profile".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
@@ -2238,10 +2234,7 @@ mod tests {
             "Post",
             "user",
             RelationType::BelongsTo,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("user".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
@@ -2258,19 +2251,13 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let profile_rel = build_relation(
             "User",
             "profile",
             RelationType::HasOne,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("posts".to_string(), posts_rel, None, HashMap::new(), None);
         qb.add_include(
@@ -2296,10 +2283,7 @@ mod tests {
                 "Contact",
                 "organisation",
                 RelationType::BelongsTo,
-                None,
-                None,
-                None,
-                None,
+                &RelationOptions::default(),
             )
         };
         qb.add_include(
@@ -2334,10 +2318,7 @@ mod tests {
                 "User",
                 "posts",
                 RelationType::HasMany,
-                None,
-                None,
-                None,
-                None,
+                &RelationOptions::default(),
             )
         };
         qb.add_include(
@@ -2368,10 +2349,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_join("posts".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
@@ -2388,10 +2366,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
@@ -2413,10 +2388,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let mut bind_vars = HashMap::new();
@@ -2436,10 +2408,7 @@ mod tests {
             "Post",
             "user",
             RelationType::BelongsTo,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_join("user".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
@@ -2453,10 +2422,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
@@ -2480,10 +2446,7 @@ mod tests {
             "User",
             "profile",
             RelationType::HasOne,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
@@ -2507,10 +2470,7 @@ mod tests {
             "Post",
             "user",
             RelationType::BelongsTo,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
@@ -2534,10 +2494,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include(
             "posts".to_string(),
@@ -2557,10 +2514,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
@@ -2592,7 +2546,9 @@ mod tests {
     fn test_includes_habtm() {
         let mut qb = make_qb("Post", "posts");
         let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
-            "Post", "tags", None, None, None, None,
+            "Post",
+            "tags",
+            &RelationOptions::default(),
         );
         qb.add_include("tags".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
@@ -2606,7 +2562,9 @@ mod tests {
     fn test_join_habtm() {
         let mut qb = make_qb("Post", "posts");
         let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
-            "Post", "tags", None, None, None, None,
+            "Post",
+            "tags",
+            &RelationOptions::default(),
         );
         qb.add_join("tags".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
@@ -2620,7 +2578,9 @@ mod tests {
     fn test_filtered_include_habtm() {
         let mut qb = make_qb("Post", "posts");
         let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
-            "Post", "tags", None, None, None, None,
+            "Post",
+            "tags",
+            &RelationOptions::default(),
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
@@ -2645,10 +2605,7 @@ mod tests {
             "User",
             "posts",
             RelationType::HasMany,
-            None,
-            None,
-            None,
-            None,
+            &RelationOptions::default(),
         );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();

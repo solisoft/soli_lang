@@ -10,7 +10,7 @@ You can add methods to any class after it's defined. This works on user-defined 
 
 ```soli
 class Greeter
-  fn say
+  def say
     "hello"
   end
 end

@@ -37,7 +37,7 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 ```soli
 # app/controllers/users_controller.sl — no import needed
 class UsersController < Controller
-  fn index
+  def index
     render("users/index", { "users": User.all })
   end
 end
@@ -223,6 +223,18 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `belongs_to(name)` | Declare an inverse relationship |
 | `edge from:, to:` | Declare an edge model over a SolidB edge collection. See [Graph Models](#graph-models-edges-and-traversal). |
 
+Options accepted by `has_many`/`has_one`/`belongs_to` (a bad option raises at
+class load with an actionable message):
+
+| Option | On | Description |
+|--------|----|-------------|
+| `class_name:` | all | Override the related class (`has_many "posts", class_name: "Article"`) |
+| `foreign_key:` | all | Override the FK field name |
+| `dependent:` | has_many, has_one | Cascade strategy on hard owner delete: `"delete"` (per-row, callbacks + nested cascades; `"destroy"` is an alias), `"delete_all"` (one bulk REMOVE, no callbacks), `"nullify"` (bulk FK → null). See [Cascade Deletes](#cascade-deletes). |
+| `through:` | has_many | Traverse an intermediate relation (`has_many "teams", through: "memberships"`). See [Through Associations](#through-associations). |
+| `source:` | has_many + through | Relation name on the through model when it differs from the singularized name |
+| `counter_cache:` | belongs_to | Maintain a `<children>_count` column on the parent (`true` or a custom column name). See [Counter Caches](#counter-caches). |
+
 ## Storage & Index DSL
 
 Class-body declarations for the multi-model and search features:
@@ -363,7 +375,7 @@ Filtering applies to every mass-assign path: `Model.create(hash)`, `Model.update
 For controller-side filtering (when you'd rather hand-pick keys at the boundary), the existing `hash.slice(["a", "b"])` returns a new hash with only the listed keys — handy when you need different whitelists per action:
 
 ```soli
-fn update
+def update
   let user = User.find(req["params"]["id"]);
   let safe = req["json"].slice(["name", "bio"]);
   user.update(safe);
@@ -482,10 +494,10 @@ class User < Model
   before_update("log_changes")
   after_delete("cleanup_related")
 
-  fn normalize_email()        this.email = this.email.downcase;
+  def normalize_email()        this.email = this.email.downcase;
   end
 
-  fn send_welcome_email()        # Send email logic
+  def send_welcome_email()        # Send email logic
   end
 end
 ```
@@ -521,6 +533,10 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 | `instance.delete()` (soft + hard) | `before_delete` | UPDATE / DELETE | `after_delete` |
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
+
+On hard deletes, [`dependent:` cascades](#cascade-deletes) run between
+`before_delete` and the owner row's removal — a `before_delete` veto skips
+them, and a failing cascade aborts the owner delete before `after_delete`.
 
 ### Vetoing persistence from a `before_*` callback
 
@@ -902,13 +918,50 @@ class Article < Model
 end
 ```
 
+### Cascade Deletes
+
+Declare what happens to associated records when their owner is **hard-deleted**
+with `dependent:` on `has_many`/`has_one`:
+
+```soli
+class User < Model
+  has_many "posts", dependent: "delete"       # per-row: callbacks, nested cascades
+  has_many "events", dependent: "delete_all"  # one bulk REMOVE: no callbacks
+  has_many "drafts", dependent: "nullify"     # one bulk UPDATE: fk → null
+  has_one  "profile", dependent: "delete"
+end
+```
+
+Semantics:
+
+- **Ordering** mirrors Rails: `before_delete` runs first (a `false` veto aborts
+  the cascades too), then each `dependent:` relation in declaration order, then
+  the owner row is removed, then `after_delete`.
+- **`"delete"`** (alias `"destroy"`) loads each child and deletes it through
+  the interpreter — child callbacks, nested cascades, the child's own
+  soft-delete semantics, and counter-cache decrements all apply. A child veto
+  or error aborts the remaining cascade *and* the owner delete.
+- **`"delete_all"`** issues one bulk `REMOVE`: no callbacks, hard delete even
+  for soft-delete child models, no nesting.
+- **`"nullify"`** issues one bulk `UPDATE` setting the FK to `null`.
+- **Soft-delete owners never cascade** — a soft `delete()` keeps children, so
+  `restore()` has nothing to un-do.
+- `Model.delete(id)` on a class that declares `dependent:` routes through the
+  full instance flow (cascades — and, as a side effect, delete callbacks —
+  fire). Bulk writes (`Model.delete_all`, `Model.where(...).delete_all`,
+  `update_all`, `prune`) **never** cascade, matching Rails.
+- Cycles terminate: a document already being deleted higher up the chain is
+  skipped, and recursion is capped at 32 levels.
+- There is no per-operation rollback; wrap the delete in `Model.transaction`
+  when the cascade must be atomic (every document write inside participates).
+
 ### Manual Relationships
 
 You can also implement relationships as custom methods for more control:
 
 ```soli
 class Post < Model
-  fn author()
+  def author()
     User.find(this.author_id)
   end
 end
@@ -1346,6 +1399,12 @@ all = Post.with_deleted.all;
 deleted = Post.only_deleted.all;
 ```
 
+Interactions with other features: a soft `delete()` **does not run
+[`dependent:` cascades](#cascade-deletes)** (children survive, so `restore()`
+has nothing to un-do), and it keeps dirty tracking clean for `deleted_at`. A
+soft-deleting child with a [`counter_cache:`](#counter-caches) decrements its
+parent's counter, and `restore()` increments it back.
+
 ## Timeseries Models
 
 Declare a model as timeseries with the `timeseries` DSL. The collection is
@@ -1712,7 +1771,7 @@ tx.commit();
 All operations within the transaction either all succeed or all fail together.
 
 class User < Model
-    fn posts()
+    def posts()
         Post.where("doc.author_id == @id", { "id": this.id })
     end
 end
@@ -1724,11 +1783,11 @@ Add custom methods to your models:
 
 ```soli
 class User < Model
-  fn is_admin() -> Bool
+  def is_admin() -> Bool
     this.role == "admin"
   end
 
-  fn full_name() -> String
+  def full_name() -> String
     this.first_name + " " + this.last_name
   end
 end
@@ -1779,11 +1838,11 @@ class User < Model
   before_save("normalize_email")   # strings and symbols both work
   before_save(:normalize_email)    # Ruby-style symbol shorthand
 
-  fn normalize_email()
+  def normalize_email()
     this.email = this.email.downcase;
   end
 
-  fn is_adult() -> Bool
+  def is_adult() -> Bool
     this.age >= 18
   end
 end
@@ -1803,19 +1862,19 @@ end
 
 # Usage in controller
 class UsersController < Controller
-  fn index
+  def index
     # Eager load posts and profiles to avoid N+1 queries
     users = User.includes("posts", "profile").all;
     render("users/index", { "users": users })
   end
 
-  fn show
+  def show
     id = req["params"]["id"];
     user = User.includes("posts").find(id);
     render("users/show", { "user": user })
   end
 
-  fn active
+  def active
     # Find active users who have at least one post
     users = User.join("posts")
       .where("active = @a", { "a": true })
@@ -1825,7 +1884,7 @@ class UsersController < Controller
     render("users/active", { "users": users })
   end
 
-  fn create
+  def create
     user = User.create({
       "name": req["params"]["name"],
       "email": req["params"]["email"],
@@ -1964,7 +2023,7 @@ In production (without `--dev`), `dev_queries()` always returns an empty array �
 ### Example: Controller
 
 ```soli
-fn index
+def index
   users = User.where("doc.active == true").all;
   posts = Post.includes("author").all;
 

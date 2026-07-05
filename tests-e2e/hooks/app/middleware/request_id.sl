@@ -6,7 +6,7 @@
 
 # order: 10
 
-fn tag_request(req: Any)
+def tag_request(req: Any)
     req["middleware_stamp"] = "middleware_saw_request";
     return {
         "continue": true,

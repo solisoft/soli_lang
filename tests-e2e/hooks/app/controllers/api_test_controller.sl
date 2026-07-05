@@ -2,13 +2,13 @@
 
 class ApiTestController extends Controller
     # JSON echo: POST body → parsed → same keys returned as JSON.
-    fn echo_json(req)
+    def echo_json(req)
         let body = req["json"];
         render_json(body)
     end
 
     # Static JSON response with a known shape.
-    fn thing(req)
+    def thing(req)
         render_json({
             "id": 42,
             "name": "answer",
@@ -17,21 +17,21 @@ class ApiTestController extends Controller
     end
 
     # Form echo: URL-encoded body → params → echoed as JSON.
-    fn form_echo(req)
+    def form_echo(req)
         let name = req["form"]["name"] ?? "";
         let email = req["form"]["email"] ?? "";
         render_json({"name": name, "email": email})
     end
 
     # Session: store user_id, respond with the generated session cookie.
-    fn login(req)
+    def login(req)
         let user_id = req["json"]["user_id"];
         session_set("user_id", user_id);
         render_json({"ok": true, "session": session_id()})
     end
 
     # Session: read back who we are.
-    fn me(req)
+    def me(req)
         let uid = session_get("user_id");
         if uid.nil?
             return halt(401, "Not logged in");
@@ -40,13 +40,13 @@ class ApiTestController extends Controller
     end
 
     # Session: wipe the session.
-    fn logout(req)
+    def logout(req)
         session_destroy();
         render_json({"ok": true})
     end
 
     # Deliberately throws to exercise the 500 error path.
-    fn boom(req)
+    def boom(req)
         let x = null;
         # Accessing a property on null raises at runtime — perfect test driver.
         return x.definitely_not_a_method;
@@ -54,7 +54,7 @@ class ApiTestController extends Controller
 
     # Echoes back the field a global middleware stamped on the request, so the
     # e2e test can verify the middleware actually ran.
-    fn echo_middleware_stamp(req)
+    def echo_middleware_stamp(req)
         render_json({"stamp": req["middleware_stamp"] ?? "missing"})
     end
 end

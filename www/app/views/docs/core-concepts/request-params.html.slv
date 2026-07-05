@@ -140,7 +140,7 @@ end</code></pre>
 <pre><code class="language-soli text-sm"># Request: POST /users/123/profile?name=alice
 # Body: {"bio": "Developer"}
 
-fn update_profile(req: Any) -> Any
+def update_profile(req: Any) -> Any
   # Dot access works on the global params hash
   print("User ID:", params.id);       # "123" (from route)
   print("Name:", params.name);        # "alice" (from query)
@@ -179,7 +179,7 @@ end</code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/profile_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn show(req: Any) -> Any
+<pre><code class="language-soli text-sm">def show(req: Any) -> Any
   # Read cookies directly (no req prefix needed)
   theme = cookies["theme"] or "light";
 

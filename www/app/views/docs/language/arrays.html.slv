@@ -234,7 +234,7 @@ print(fruits - to_remove);  # ["apple", "cherry"]
 # Instance comparison uses identity (pointer equality)
 class Person {
   name: String;
-  fn new(n) { this.name = n; }
+  def new(n) { this.name = n; }
 }
 p1 = Person.new({"name": "Alice"})
 p2 = Person.new({"name": "Bob"})

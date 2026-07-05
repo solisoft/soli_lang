@@ -12,16 +12,16 @@
 // 
 // Error pages render WITHOUT layouts to avoid potential cascading errors.
 
-fn index(req: Any) -> Any {
+def index(req: Any) -> Any {
     return render("home/index.html.erb", { "title": "Welcome" });
 }
 
-fn not_found(req: Any) -> Any {
+def not_found(req: Any) -> Any {
     // This will use app/views/errors/404.html.erb in production
     return { "status": 404, "body": "Custom 404 page" };
 }
 
-fn cause_error(req: Any) -> Any {
+def cause_error(req: Any) -> Any {
     // This will use app/views/errors/500.html.erb in production
     let x = null;
     return x["nonexistent"]; // This will cause a runtime error

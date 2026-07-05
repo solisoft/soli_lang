@@ -21,7 +21,7 @@
 // order: 5
 // global_only: false - This middleware cannot be scoped
 
-fn add_cors_headers(req: Any) -> Any {
+def add_cors_headers(req: Any) -> Any {
     // For OPTIONS preflight requests, return immediately with CORS headers
     if (req["method"] == "OPTIONS") {
         return {

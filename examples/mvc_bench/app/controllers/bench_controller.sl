@@ -1,4 +1,4 @@
-fn health(req: Any) -> Any {
+def health(req: Any) -> Any {
     return {
         "status": 200,
         "headers": {"Content-Type": "text/plain"},
@@ -6,7 +6,7 @@ fn health(req: Any) -> Any {
     };
 }
 
-fn hello(req: Any) -> Any {
+def hello(req: Any) -> Any {
     return {
         "status": 200,
         "headers": {"Content-Type": "application/json"},
@@ -18,11 +18,11 @@ fn hello(req: Any) -> Any {
 // soli_vm_handler_demotions_total on /_metrics — if the VM can't execute
 // named-argument calls, this whole handler demotes to the tree-walking
 // interpreter on its first request.
-fn format_greeting(name: String = "world", punct: String = "!") -> String {
+def format_greeting(name: String = "world", punct: String = "!") -> String {
     return "Hello, " + name + punct;
 }
 
-fn named(req: Any) -> Any {
+def named(req: Any) -> Any {
     let message = format_greeting(punct: "?", name: "bench");
     return {
         "status": 200,
@@ -36,7 +36,7 @@ fn named(req: Any) -> Any {
 // demotes the whole handler to the tree-walking interpreter. The throughput
 // delta between the two routes is the real cost of an engine demotion on a
 // handler that actually computes something.
-fn checksum(limit: Int) -> Int {
+def checksum(limit: Int) -> Int {
     let total = 0;
     for i in 1..limit {
         total = total + i * 7 % 13;
@@ -44,7 +44,7 @@ fn checksum(limit: Int) -> Int {
     return total;
 }
 
-fn compute(req: Any) -> Any {
+def compute(req: Any) -> Any {
     let total = checksum(2000);
     return {
         "status": 200,
@@ -53,7 +53,7 @@ fn compute(req: Any) -> Any {
     };
 }
 
-fn compute_named(req: Any) -> Any {
+def compute_named(req: Any) -> Any {
     let message = format_greeting(name: "engine");
     let total = checksum(2000);
     return {

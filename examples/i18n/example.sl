@@ -5,15 +5,15 @@
 let i18n_locale = "en";
 let i18n_translations = {};
 
-fn i18n_set_locale(locale) {
+def i18n_set_locale(locale) {
     i18n_locale = locale;
 }
 
-fn i18n_get_locale() -> String {
+def i18n_get_locale() -> String {
     return i18n_locale;
 }
 
-fn i18n_load_translations(locale, dict) {
+def i18n_load_translations(locale, dict) {
     let pairs = entries(dict);
     for (pair in pairs) {
         let key = pair[0];
@@ -23,7 +23,7 @@ fn i18n_load_translations(locale, dict) {
     }
 }
 
-fn i18n_t(key) -> String {
+def i18n_t(key) -> String {
     let locale_key = i18n_locale + "." + key;
     if (has_key(i18n_translations, locale_key)) {
         return i18n_translations[locale_key];
@@ -35,12 +35,12 @@ fn i18n_t(key) -> String {
     return key;
 }
 
-fn i18n_tn(singular, plural, count) -> String {
+def i18n_tn(singular, plural, count) -> String {
     let key = count == 1 ? singular : plural;
     return i18n_t(key);
 }
 
-fn i18n_format_number(n, locale) -> String {
+def i18n_format_number(n, locale) -> String {
     let n_float = float(n);
     let int_part = int(n_float);
     let frac_part = int((n_float - float(int_part)) * 100.0);
@@ -54,7 +54,7 @@ fn i18n_format_number(n, locale) -> String {
     return int_str;
 }
 
-fn i18n_format_currency(amount, currency, locale) -> String {
+def i18n_format_currency(amount, currency, locale) -> String {
     let num_str = i18n_format_number(amount, locale);
     let symbol = currency == "USD" ? "$" :
                  currency == "EUR" ? "€" :
@@ -63,7 +63,7 @@ fn i18n_format_currency(amount, currency, locale) -> String {
     return num_str + " " + symbol;
 }
 
-fn i18n_format_date_simple(day, month, year, locale) -> String {
+def i18n_format_date_simple(day, month, year, locale) -> String {
     let date_str = locale == "fr" ? str(day) + "/" + str(month) + "/" + str(year) :
                    locale == "de" ? str(day) + "." + str(month) + "." + str(year) :
                    str(month) + "/" + str(day) + "/" + str(year);
@@ -160,7 +160,7 @@ let products = [
     {"name" => "Bread", "price" => 2.49, "category" => "bakery"},
 ];
 
-fn display_product_list(products, locale) {
+def display_product_list(products, locale) {
     i18n_set_locale(locale);
     print("Products (" + i18n_get_locale() + "):");
     for (product in products) {

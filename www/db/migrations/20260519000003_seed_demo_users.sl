@@ -1,4 +1,4 @@
-fn up(db: Any) -> Any {
+def up(db: Any) -> Any {
   let first_names = ["Alice","Bob","Charlie","Diana","Edward","Fiona","George","Hannah","Ivan","Julia","Kevin","Laura","Michael","Nina","Oscar","Penny","Quinn","Rachel","Sam","Tina","Uma","Victor","Wendy","Xander","Yara","Zack"]
   let last_names = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez","Anderson","Taylor","Thomas","Jackson","White","Harris","Clark","Lewis","Walker","Hall"]
   let roles = ["Admin","Editor","Viewer","Contributor"]
@@ -33,6 +33,6 @@ fn up(db: Any) -> Any {
   end
 }
 
-fn down(db: Any) -> Any {
+def down(db: Any) -> Any {
   solidb_query(_db, "FOR doc IN demo_users FILTER CONTAINS(doc.email, '@demo.soli') REMOVE doc IN demo_users")
 }

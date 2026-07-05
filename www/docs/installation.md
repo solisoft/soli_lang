@@ -151,7 +151,7 @@ post("/contact", "home#contact");
 Create controllers in `app/controllers/`:
 
 ```soli
-fn index
+def index
   return render("home/index", {
     "title": "Welcome"
   })

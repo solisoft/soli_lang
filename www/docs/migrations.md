@@ -12,11 +12,11 @@ YYYYMMDDHHMMSS_name.sl
 Each migration file contains `up()` and `down()` functions:
 
 ```soli
-fn up(db: Any)    db.create_collection("users")
+def up(db: Any)    db.create_collection("users")
   db.create_index("users", "idx_email", ["email"], { "unique": true })
 end
 
-fn down(db: Any)    db.drop_index("users", "idx_email")
+def down(db: Any)    db.drop_index("users", "idx_email")
   db.drop_collection("users")
 end
 ```
@@ -89,7 +89,7 @@ Create a new collection. The optional second argument selects the collection typ
 > collection). Use [`db.create_columnar`](#create_columnar) instead.
 
 ```soli
-fn up(db: Any)
+def up(db: Any)
   db.create_collection("users")                          # document
   db.create_collection("posts")
   db.create_collection("contact_documents", "blob")      # blob
@@ -102,7 +102,7 @@ For an edge collection, add hash indexes on the endpoint fields so traversals
 stay fast (dev auto-create does both steps for you):
 
 ```soli
-fn up(db: Any)
+def up(db: Any)
   db.create_collection("follows", "edge")
   db.create_index("follows", "idx_follows_from", ["_from"], {})
   db.create_index("follows", "idx_follows_to", ["_to"], {})
@@ -118,7 +118,7 @@ the optional `options` hash accepts `{ "compression": "lz4" | "none" }`
 (default `lz4`):
 
 ```soli
-fn up(db: Any)
+def up(db: Any)
   db.create_columnar("page_views", [
     { "name": "url", "type": "string" },
     { "name": "visited_at", "type": "timestamp" },
@@ -133,7 +133,7 @@ end
 Remove a columnar store:
 
 ```soli
-fn down(db: Any)
+def down(db: Any)
   db.drop_columnar("page_views")
 end
 ```
@@ -144,7 +144,7 @@ Delete documents older than an RFC3339 cutoff from a `timeseries` collection —
 the migration-side counterpart of [`Model.prune`](models#timeseries-models):
 
 ```soli
-fn up(db: Any)
+def up(db: Any)
   db.prune_collection("metrics", "2026-01-01T00:00:00Z")
 end
 ```
@@ -154,7 +154,7 @@ end
 Remove a collection:
 
 ```soli
-fn down(db: Any)    db.drop_collection("comments")
+def down(db: Any)    db.drop_collection("comments")
   db.drop_collection("posts")
   db.drop_collection("users")
 end
@@ -165,7 +165,7 @@ end
 List all collections in the database:
 
 ```soli
-fn up(db: Any)    collections = db.list_collections()
+def up(db: Any)    collections = db.list_collections()
   print(collections)
 end
 ```
@@ -175,7 +175,7 @@ end
 Get statistics for a collection:
 
 ```soli
-fn up(db: Any)    stats = db.collection_stats("users")
+def up(db: Any)    stats = db.collection_stats("users")
   print(stats)
 end
 ```
@@ -187,7 +187,7 @@ end
 Create an index on a collection:
 
 ```soli
-fn up(db: Any)    # Simple index on one field
+def up(db: Any)    # Simple index on one field
   db.create_index("users", "idx_email", ["email"], {})
 
   # Unique index
@@ -227,11 +227,11 @@ The last argument is a metric string (`"cosine"`, the default) or a hash with
 `metric` and `quantization`:
 
 ```soli
-fn up(db: Any)
+def up(db: Any)
   db.create_vector_index("articles", "idx_articles_embedding", "embedding", 1536, "cosine")
 end
 
-fn down(db: Any)
+def down(db: Any)
   db.drop_vector_index("articles", "idx_articles_embedding")
 end
 ```
@@ -256,7 +256,7 @@ boot) is the way to create them.
 Remove an index:
 
 ```soli
-fn down(db: Any)    db.drop_index("users", "idx_email")
+def down(db: Any)    db.drop_index("users", "idx_email")
   db.drop_index("users", "idx_username")
   db.drop_index("posts", "idx_user_slug")
 end
@@ -267,7 +267,7 @@ end
 List all indexes for a collection:
 
 ```soli
-fn up(db: Any)    indexes = db.list_indexes("users")
+def up(db: Any)    indexes = db.list_indexes("users")
   print(indexes)
 end
 ```
@@ -277,7 +277,7 @@ end
 For operations not covered by helpers, use raw SDBQL queries:
 
 ```soli
-fn up(db: Any)    # Insert seed data
+def up(db: Any)    # Insert seed data
   db.query("INSERT { name: 'Admin', role: 'admin' } INTO users")
 
   # Update existing data
@@ -311,7 +311,7 @@ Here's a complete migration for a blog application:
 # Migration: create_blog_schema
 # Created: 2026-01-22 14:30:52
 
-fn up(db: Any)    # Create collections
+def up(db: Any)    # Create collections
   db.create_collection("users")
   db.create_collection("posts")
   db.create_collection("comments")
@@ -334,7 +334,7 @@ fn up(db: Any)    # Create collections
   db.create_index("tags", "idx_tags_name", ["name"], { "unique": true })
 end
 
-fn down(db: Any)    # Drop indexes first
+def down(db: Any)    # Drop indexes first
   db.drop_index("tags", "idx_tags_name")
   db.drop_index("comments", "idx_comments_author")
   db.drop_index("comments", "idx_comments_post")

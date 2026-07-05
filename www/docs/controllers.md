@@ -41,8 +41,8 @@ Controllers are classes that extend the base `Controller` class. Actions take no
 ```soli
 class PostsController < Controller
   # Actions go here
-  fn index end
-  fn show end
+  def index end
+  def show end
 end
 ```
 
@@ -74,13 +74,13 @@ Each public function in a controller is an action:
 
 ```soli
 class PostsController < Controller
-  fn index end
-  fn show end
-  fn new end
-  fn create end
-  fn edit end
-  fn update end
-  fn delete end
+  def index end
+  def show end
+  def new end
+  def create end
+  def edit end
+  def update end
+  def delete end
 ```
 
 **Note:** Methods starting with `_` are private and not exposed as routes.
@@ -112,7 +112,7 @@ class ApplicationController < Controller
   }
 
   # Shared helper method available to all subclasses
-  fn _current_user
+  def _current_user
     req["current_user"]
   end
 end
@@ -134,12 +134,12 @@ class PostsController < ApplicationController
     }
   }
 
-  fn index
+  def index
     @user = this._current_user
     @posts = Post.all
   end
 
-  fn show
+  def show
     # @post is set by before_action — template renders posts/show
   end
 end
@@ -168,7 +168,7 @@ end
 
 # app/controllers/admin_users_controller.sl
 class AdminUsersController < AdminController
-  fn index
+  def index
     # Inherits: ApplicationController's auth + AdminController's admin check
     render("admin/users/index", { "users": User.all })
   end
@@ -249,7 +249,7 @@ this.after_action(:create, :update) = fn(req, response) {
 Access request data through the `req` parameter:
 
 ```soli
-fn create
+def create
   # Path parameters
   id = params["id"];
 
@@ -296,7 +296,7 @@ The request object is automatically injected into your controller:
 
 ```soli
 class PostsController < Controller
-  fn show
+  def show
     # Access params directly
     id = params["id"];
 
@@ -313,7 +313,7 @@ end
 The `cookies` global gives you read access to cookies sent by the client. It is a hash parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:
 
 ```soli
-fn show
+def show
   # Read a cookie
   theme = cookies["theme"] or "light";
 
@@ -327,7 +327,7 @@ end
 Write a response cookie. The cookie is sent back to the client as a `Set-Cookie` header:
 
 ```soli
-fn login
+def login
   set_cookie("session_id", "abc123");
   set_cookie("theme", "dark");
 
@@ -344,7 +344,7 @@ Cookies set via `set_cookie` are visible in templates and subsequent reads withi
 ### Render a Template
 
 ```soli
-fn index
+def index
   render("home/index", {
     "title": "Welcome",
     "message": "Hello!"
@@ -358,7 +358,7 @@ Any field set on the controller instance during an action — via either `this.f
 
 ```soli
 class PostsController < Controller
-  fn show
+  def show
     @post = Post.find(params["id"]);
     @comments = Comment.where({"post_id": @post.id}).all;
     render("posts/show")    # view sees `post` and `comments` with no data hash
@@ -422,12 +422,12 @@ class PostsController < Controller
     this.layout = "posts";  # Uses layouts/posts.html.slv
   }
 
-  fn show
+  def show
     # @post is available from before_action
   end
 
   # Skip layout for specific action
-  fn json_only
+  def json_only
     render_json({ "data": "value" }, layout: false)
   end
 end
@@ -479,14 +479,14 @@ no server restart required.
 ### Redirect
 
 ```soli
-fn create
+def create
   # Process form data...
 
   # Redirect to another page
   redirect("/users")
 end
 
-fn update
+def update
   # After update, redirect to show page
   user_id = params["id"];
   redirect("/users/" + user_id)
@@ -498,7 +498,7 @@ end
 For trusted external destinations, use `redirect_external()` explicitly:
 
 ```soli
-fn oauth_start
+def oauth_start
   redirect_external("https://github.com/login/oauth/authorize")
 end
 ```
@@ -506,7 +506,7 @@ end
 To send the user back where they came from, pass the `:back` symbol. Soli reads the `Referer` header and only honors it when scheme + host match the current request — external referers (or a missing/malformed header) fall back to `/`.
 
 ```soli
-fn destroy
+def destroy
   Comment.find(params["id"]).delete()
   redirect(:back)
 end
@@ -515,7 +515,7 @@ end
 ### JSON Response
 
 ```soli
-fn api_users
+def api_users
   render_json({
     "users": [
       {"id": 1, "name": "Alice"},
@@ -546,7 +546,7 @@ For a reusable model-side shape, define an `as_json` method on the Model subclas
 ### Plain Text
 
 ```soli
-fn ping
+def ping
   render_text("pong")
 end
 ```
@@ -595,7 +595,7 @@ respond_to(req, {
 ### Error Response
 
 ```soli
-fn show
+def show
   id = params["id"];
   if id == "" {
     return halt(400, "Missing ID");
@@ -623,7 +623,7 @@ class PostsController < Controller
     }
   }
 
-  fn show
+  def show
     # Access the post set by before_action
     post = req["post"];
 
@@ -631,7 +631,7 @@ class PostsController < Controller
   end
 
   # Access request parameters
-  fn _get_id -> String
+  def _get_id -> String
     params["id"]
   end
 end
@@ -642,7 +642,7 @@ end
 Validate and sanitize input:
 
 ```soli
-fn create
+def create
   params = req.form;
   clean_params = {
     "name": params["name"] ?? "",

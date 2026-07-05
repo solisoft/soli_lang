@@ -23,7 +23,7 @@
 
 let valid_api_key = "secret-key-123";
 
-fn authenticate(req: Any)    let headers = req["headers"];
+def authenticate(req: Any)    let headers = req["headers"];
     let provided_key = "";
 
     if (has_key(headers, "X-Api-Key"))

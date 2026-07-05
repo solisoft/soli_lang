@@ -139,7 +139,7 @@ user.is_a?("String")    # false</code></pre>
                     <pre data-filename="Example"><code class="language-soli text-sm">x = 42;
 defined("x");        # true
 defined("y");        # false</code></pre>
-                    <pre data-filename="In a function"><code class="language-soli text-sm">fn check(val) {
+                    <pre data-filename="In a function"><code class="language-soli text-sm">def check(val) {
   if defined("val") { "exists" } else { "not set" }
 }</code></pre>
                 </div>

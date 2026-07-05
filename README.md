@@ -30,7 +30,7 @@ Soli is a full-stack MVC framework written in Rust that brings the elegance of R
 
 ```soli
 // Define a controller
-fn index(req: Any) -> Any {
+def index(req: Any) -> Any {
     let posts = Post
         .where("doc.published == true")
         .order("created_at", "desc")
@@ -208,11 +208,11 @@ class Post extends Model {
     validates("title", { "presence": true, "min_length": 3 });
     validates("content", { "presence": true });
 
-    fn author() -> Any {
+    def author() -> Any {
         return User.find(this.author_id);
     }
 
-    fn comments() -> Any {
+    def comments() -> Any {
         return Comment.where("doc.post_id == @id", { "id": this.id });
     }
 }
@@ -221,7 +221,7 @@ class Post extends Model {
 ### Controllers
 
 ```soli
-fn create(req: Any) -> Any {
+def create(req: Any) -> Any {
     let params = req["params"];
     let result = Post.create(params);
 
@@ -266,7 +266,7 @@ Build reactive UIs without writing JavaScript:
 
 ```soli
 # app/controllers/live_controller.sl
-fn counter(event: Any) -> Any {
+def counter(event: Any) -> Any {
     let count = event["state"]["count"] ?? 0;
 
     if event["event"] == "increment" {

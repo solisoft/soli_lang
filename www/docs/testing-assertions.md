@@ -227,7 +227,7 @@ A typical test file structure with assertions:
 
 ```soli
 class UserModelTest
-  static fn run
+  static def run
     results = []
 
     # Test 1: Create user
@@ -284,7 +284,7 @@ print("Summary: " + string(passed) + " passed, " + string(failed) + " failed")
 You can create custom assertions by defining new functions:
 
 ```soli
-fn assert_length(expected_len, collection, message)
+def assert_length(expected_len, collection, message)
   actual_len = len(collection)
   {
     "passed": actual_len == expected_len,
@@ -294,7 +294,7 @@ fn assert_length(expected_len, collection, message)
   }
 end
 
-fn assert_starts_with(prefix, str, message)
+def assert_starts_with(prefix, str, message)
   starts_with = len(str) >= len(prefix) && substring(str, 0, len(prefix)) == prefix
   {
     "passed": starts_with,
@@ -317,7 +317,7 @@ end
 
 ```soli
 class TransactionModelTest
-  static fn run
+  static def run
     results = []
     MockDatabase.reset()
 

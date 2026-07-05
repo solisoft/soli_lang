@@ -145,7 +145,7 @@ The handler lives in a normal controller (or you can extract it to a dedicated L
 ```soli
 # app/controllers/dashboard_controller.sl
 
-fn project_activity(event_data: Any) -> Any {
+def project_activity(event_data: Any) -> Any {
     event = event_data["event"]
     state = event_data["state"] ?? {}
 

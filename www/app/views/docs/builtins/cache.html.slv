@@ -233,7 +233,7 @@ c.get("greeting")   # => "hello"</code></pre>
             <pre data-filename="With Cache.fetch"><code class="language-soli text-sm">user = Cache.fetch("user:" + str(user_id), 300) do
   User.find(user_id)
 end</code></pre>
-            <pre data-filename="Manual equivalent" class="mt-3"><code class="language-soli text-sm">fn get_user_cached(user_id) {
+            <pre data-filename="Manual equivalent" class="mt-3"><code class="language-soli text-sm">def get_user_cached(user_id) {
   key = "user:" + str(user_id)
   cached = Cache.get(key)
   return cached if cached != null
@@ -248,7 +248,7 @@ end</code></pre>
             <h3 class="text-lg font-semibold text-white mb-2">Write-through invalidation</h3>
             <p class="text-gray-400 mb-3">Drop the cache entry whenever the underlying record changes — simpler than trying to keep them in sync.</p>
             <pre data-filename="app/models/user.sl"><code class="language-soli text-sm">class User {
-  static fn update(id, attrs) {
+  static def update(id, attrs) {
     user = db.update("users", id, attrs)
     Cache.delete("user:" + str(id))
     user
@@ -259,7 +259,7 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-2">Short-TTL fragment caching</h3>
             <p class="text-gray-400 mb-3">Cache rendered fragments or aggregated views for a few seconds to absorb traffic spikes without going stale.</p>
-            <pre data-filename="app/controllers/dashboard_controller.sl"><code class="language-soli text-sm">fn index {
+            <pre data-filename="app/controllers/dashboard_controller.sl"><code class="language-soli text-sm">def index {
   stats = Cache.fetch("dashboard:stats", 30) do
     compute_dashboard_stats()
   end

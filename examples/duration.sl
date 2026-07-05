@@ -124,28 +124,28 @@ class Duration {
 }
 
 // Operator: Duration + Duration
-fn Duration.+(other: Duration): Duration {
+def Duration.+(other: Duration): Duration {
     let result = new Duration(0, "seconds");
     result.total_secs = self.total_secs + other.total_secs;
     return result;
 }
 
 // Operator: Duration - Duration
-fn Duration.-(other: Duration): Duration {
+def Duration.-(other: Duration): Duration {
     let result = new Duration(0, "seconds");
     result.total_secs = self.total_secs - other.total_secs;
     return result;
 }
 
 // Operator: Duration * Int
-fn Duration.*(n: Int): Duration {
+def Duration.*(n: Int): Duration {
     let result = new Duration(0, "seconds");
     result.total_secs = self.total_secs * (n as Float);
     return result;
 }
 
 // Operator: Duration / Int
-fn Duration./(n: Int): Duration {
+def Duration./(n: Int): Duration {
     let result = new Duration(0, "seconds");
     result.total_secs = self.total_secs / (n as Float);
     return result;

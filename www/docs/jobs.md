@@ -11,14 +11,14 @@ Create a file under `app/jobs/`. The filename and class name follow the same con
 ```soli
 # app/jobs/welcome_email_job.sl
 class WelcomeEmailJob {
-  static fn perform(args: Hash) {
+  static def perform(args: Hash) {
     user = User.find(args["user_id"]);
     Mailer.send(user.email, "Welcome to the app");
   }
 }
 ```
 
-Every job class must define a `static fn perform(args: Hash)`. That's the entry point SolidB triggers when the job runs.
+Every job class must define a `static def perform(args: Hash)`. That's the entry point SolidB triggers when the job runs.
 
 ## Enqueueing Jobs (Facade-style)
 
@@ -150,7 +150,7 @@ A class can declare a `static cron`. On boot, worker 0 upserts a cron entry name
 class NightlyReportJob {
   static cron = Cron.daily_at("03:00");
 
-  static fn perform(args: Hash) {
+  static def perform(args: Hash) {
     Report.generate();
   }
 }
@@ -227,7 +227,7 @@ Opt a job out of the synchronous path with `static background: Bool = true`:
 class MonthlyReportJob {
   static background: Bool = true          # run on the in-process background pool
 
-  static fn perform(args: Hash) {
+  static def perform(args: Hash) {
     # Heavy work — bulk queries, exports, PDF generation — runs here with no
     # timeout and without holding a web worker. Owns its own error handling.
     generate_report(args["month"]);

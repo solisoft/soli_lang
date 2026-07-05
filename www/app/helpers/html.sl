@@ -1,22 +1,22 @@
 # HTML formatting helpers
 
-fn truncate_html(html: String, length: Int) -> String
+def truncate_html(html: String, length: Int) -> String
     if (len(html) <= length) {
         return html;
     }
     substring(html, 0, length) + "..."
 end
 
-fn strip_tags(html: String) -> String
+def strip_tags(html: String) -> String
     strip_html(html)
 end
 
-fn format_html_content(content: String) -> String
+def format_html_content(content: String) -> String
     let escaped = html_escape(content);
     escaped
 end
 
-fn get_section_color(id: String) -> String
+def get_section_color(id: String) -> String
     if (id == "getting_started") return "text-indigo-400";
     elsif (id == "core_concepts") return "text-purple-400";
     elsif (id == "database") return "text-cyan-400";
@@ -28,7 +28,7 @@ fn get_section_color(id: String) -> String
     else return "text-gray-400";
 end
 
-fn get_icon_path(icon: String) -> String
+def get_icon_path(icon: String) -> String
     # Heroicons v2 (outline)
 
     if (icon == "rocket") {

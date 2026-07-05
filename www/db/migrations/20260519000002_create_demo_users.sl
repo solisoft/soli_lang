@@ -1,4 +1,4 @@
-fn up(db: Any) -> Any {
+def up(db: Any) -> Any {
   try { db.create_collection("demo_users") } catch _ {}
   try { db.drop_index("demo_users", "idx_email") } catch _ {}
   db.create_index("demo_users", "idx_email", ["email"], { "unique": true })
@@ -36,7 +36,7 @@ fn up(db: Any) -> Any {
   end
 }
 
-fn down(db: Any) -> Any {
+def down(db: Any) -> Any {
   db.drop_index("demo_users", "idx_email");
   db.drop_collection("demo_users");
 }

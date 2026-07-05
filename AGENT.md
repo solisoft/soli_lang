@@ -96,8 +96,8 @@ All three commands must pass before submitting changes.
 
 ### Functions
 ```soli
-fn double(x: Int) -> Int { return x * 2; }
-fn greet(name: String, prefix: String = "Hello") -> String {
+def double(x: Int) -> Int { return x * 2; }
+def greet(name: String, prefix: String = "Hello") -> String {
     return prefix + " " + name;
 }
 ```
@@ -133,7 +133,7 @@ class User {
         this.email = e;
     }
 
-    fn greet() -> String {
+    def greet() -> String {
         return "Hello, " + this.name;
     }
 }
@@ -356,7 +356,7 @@ post("/users", fn() {
 | Feature | Syntax |
 |---------|--------|
 | Variable | `let x: Int = 5;` |
-| Function | `fn name(params) -> Type { body }` |
+| Function | `def name(params) -> Type { body }` |
 | Lambda | `fn(x) x * 2` |
 | Class | `class Name { fields; new() { } methods }` |
 | Array literal | `[1, 2, 3]` |
@@ -385,7 +385,7 @@ class User extends Model {
 
     before_save("normalize_email")
 
-    fn normalize_email() -> Any {
+    def normalize_email() -> Any {
         this.email = this.email.downcase();
     }
 }
@@ -515,7 +515,7 @@ class {Resource}Controller extends Controller {
         #   this.layout("blank", except: [:index]);
     }
     
-    fn index(req: Any) -> Any {
+    def index(req: Any) -> Any {
         let {resources} = {Resource}.all();
         return render("{resources}/index", {
             "{resources}": {resources},
@@ -523,7 +523,7 @@ class {Resource}Controller extends Controller {
         });
     }
     
-    fn show(req: Any) -> Any {
+    def show(req: Any) -> Any {
         let id = req["params"]["id"];
         let {resource} = {Resource}.find(id);
         if ({resource} == null) {
@@ -532,11 +532,11 @@ class {Resource}Controller extends Controller {
         return render("{resources}/show", {"{resource}": {resource}});
     }
     
-    fn new(req: Any) -> Any {
+    def new(req: Any) -> Any {
         return render("{resources}/new", {"title": "New {Resource}"}]);
     }
     
-    fn create(req: Any) -> Any {
+    def create(req: Any) -> Any {
         let data = req["json"];
         let result = {Resource}.create(data);
         if (result["valid"]) {
@@ -545,7 +545,7 @@ class {Resource}Controller extends Controller {
         return {"status": 422, "body": json_stringify({"errors": result["errors"]})};
     }
     
-    fn edit(req: Any) -> Any {
+    def edit(req: Any) -> Any {
         let id = req["params"]["id"];
         let {resource} = {Resource}.find(id);
         if ({resource} == null) {
@@ -554,7 +554,7 @@ class {Resource}Controller extends Controller {
         return render("{resources}/edit", {"{resource}": {resource}}]);
     }
     
-    fn update(req: Any) -> Any {
+    def update(req: Any) -> Any {
         let id = req["params"]["id"];
         let data = req["json"];
         let result = {Resource}.update(id, data);
@@ -564,7 +564,7 @@ class {Resource}Controller extends Controller {
         return {"status": 422, "body": json_stringify({"errors": result["errors"]})};
     }
     
-    fn destroy(req: Any) -> Any {
+    def destroy(req: Any) -> Any {
         let id = req["params"]["id"];
         {Resource}.destroy(id);
         return {"status": 302, "headers": {"Location": "/{resources}"}};
@@ -575,7 +575,7 @@ class {Resource}Controller extends Controller {
 **Controller Naming Conventions:**
 - Class name: `PascalCase` ending with `Controller` (e.g., `UsersController`)
 - File name: `snake_case` ending with `_controller.sl` (e.g., `users_controller.sl`)
-- Method signature: `fn method_name(req: Any) -> Any`
+- Method signature: `def method_name(req: Any) -> Any`
 
 ### Middleware Generation Patterns
 
@@ -748,7 +748,7 @@ Use get/post/put/delete helpers
 
 **When generating controllers:**
 1. Extend `Controller` base class
-2. Use `fn method(req: Any) -> Any` signature
+2. Use `def method(req: Any) -> Any` signature
 3. Return `render()` for HTML, `render_json()` for JSON, `render_text()` for text, `redirect("/path")` for redirect
 4. Access params via `req["params"]`, body via `req["json"]`
 
@@ -832,13 +832,13 @@ class PostsController extends Controller {
         this.database = "myapp";
     }
     
-    fn index(req: Any) -> Any {
+    def index(req: Any) -> Any {
         let posts = solidb_query(this.db, this.database, 
             "FOR doc IN posts SORT doc.created_at DESC RETURN doc", {});
         return render("posts/index", {"posts": posts});
     }
     
-    fn show(req: Any) -> Any {
+    def show(req: Any) -> Any {
         let id = req["params"]["id"];
         let post = solidb_get(this.db, this.database, "posts", id);
         if (post == null) {
@@ -847,7 +847,7 @@ class PostsController extends Controller {
         return render("posts/show", {"post": post});
     }
     
-    fn create(req: Any) -> Any {
+    def create(req: Any) -> Any {
         let data = req["json"];
         let result = solidb_insert(this.db, this.database, "posts", {
             "title": data["title"],
@@ -1220,7 +1220,7 @@ SolidB includes native AI agent support:
 ### Example: Simple Web Handler
 ```soli
 // Fetch users and render template
-fn get_users() -> Any {
+def get_users() -> Any {
     let users = User.where("doc.active == @active", { "active": true }).limit(10).all();
     return render("users/list", {"users": users});
 }
@@ -1233,7 +1233,7 @@ let data = fetch_json("/api/users")
 
 ## Example: Safe HTML Rendering (XSS Prevention)
 ```soli
-fn render_comment(author: String, content: String) -> String {
+def render_comment(author: String, content: String) -> String {
     let safe_author = html_escape(author);
     let safe_content = sanitize_html(content);
     return "<div class=\"comment\"><strong>" + safe_author + ":</strong> " + safe_content + "</div>";

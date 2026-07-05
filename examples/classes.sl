@@ -2,7 +2,7 @@
 
 // Define an interface
 interface Drawable {
-    fn draw() -> String;
+    def draw() -> String;
 }
 
 // Base class
@@ -15,7 +15,7 @@ class Shape {
         this.y = y;
     }
 
-    fn getPosition() -> String {
+    def getPosition() -> String {
         return "(" + str(this.x) + ", " + str(this.y) + ")";
     }
 }
@@ -30,11 +30,11 @@ class Circle extends Shape implements Drawable {
         this.radius = radius;
     }
 
-    fn getArea() -> Float {
+    def getArea() -> Float {
         return 3.14159 * this.radius * this.radius;
     }
 
-    fn draw() -> String {
+    def draw() -> String {
         return "Circle at " + this.getPosition() + " with radius " + str(this.radius);
     }
 }
@@ -50,11 +50,11 @@ class Rectangle extends Shape implements Drawable {
         this.height = height;
     }
 
-    fn getArea() -> Float {
+    def getArea() -> Float {
         return this.width * this.height;
     }
 
-    fn draw() -> String {
+    def draw() -> String {
         return "Rectangle at " + this.getPosition() + " (" + str(this.width) + "x" + str(this.height) + ")";
     }
 }

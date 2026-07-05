@@ -41,7 +41,7 @@ print("Hello, World!");
 
 ```soli
 # A simple program that calculates and displays results
-fn calculate_area(radius: Float) -> Float
+def calculate_area(radius: Float) -> Float
   3.14159 * radius * radius
 end
 
@@ -788,7 +788,7 @@ end
 Use `throw` to raise an exception:
 
 ```soli
-fn divide(a: Int, b: Int) -> Int
+def divide(a: Int, b: Int) -> Int
   if b == 0
     throw "Division by zero";
   end
@@ -885,12 +885,12 @@ Functions are declared with the `fn` keyword. You can also use `def` as an alias
 
 ```soli
 # No parameters — parentheses are optional
-fn say_hello
+def say_hello
   print("Hello!");
 end
 
 # Equivalent with explicit empty parentheses
-fn say_hello()
+def say_hello()
   print("Hello!");
 end
 
@@ -900,7 +900,7 @@ def greet(name: String)
 end
 
 # With return value
-fn add(a: Int, b: Int) -> Int
+def add(a: Int, b: Int) -> Int
   a + b
 end
 
@@ -910,7 +910,7 @@ def log_message(msg: String)
 end
 
 # With type annotations on return
-fn multiply(a: Float, b: Float) -> Float
+def multiply(a: Float, b: Float) -> Float
   a * b
 end
 ```
@@ -919,7 +919,7 @@ end
 
 ```soli
 # Calculate factorial
-fn factorial(n: Int) -> Int
+def factorial(n: Int) -> Int
   if n <= 1
     return 1;
   end
@@ -937,7 +937,7 @@ end
 print(fibonacci(10));  # 55
 
 # Check if a number is prime
-fn is_prime(n: Int) -> Bool
+def is_prime(n: Int) -> Bool
   if n < 2
     return false;
   end
@@ -958,7 +958,7 @@ fn is_prime(n: Int) -> Bool
 end
 
 # Find maximum in array
-fn find_max(arr: Int[]) -> Int
+def find_max(arr: Int[]) -> Int
   if len(arr) == 0
     return 0;  # or panic for empty array
   end
@@ -975,7 +975,7 @@ end
 ### Early Returns
 
 ```soli
-fn process_user(user: Hash) -> Hash
+def process_user(user: Hash) -> Hash
   # Validate required fields
   if !has_key(user, "name")
     return {"error": "Name is required"};
@@ -1005,15 +1005,15 @@ Functions can accept other functions as parameters and return functions:
 
 ```soli
 # Function as parameter
-fn apply(x: Int, f: (Int) -> Int) -> Int
+def apply(x: Int, f: (Int) -> Int) -> Int
   f(x)
 end
 
-fn double(x: Int) -> Int
+def double(x: Int) -> Int
   x * 2
 end
 
-fn square(x: Int) -> Int
+def square(x: Int) -> Int
   x * x
 end
 
@@ -1021,7 +1021,7 @@ result = apply(5, double);   # 10
 squared = apply(5, square);  # 25
 
 # Passing anonymous functions
-fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
+def transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
   result = [];
   for item in arr
     push(result, transformer(item));
@@ -1033,8 +1033,8 @@ numbers = [1, 2, 3, 4, 5];
 doubled = transform_array(numbers, fn(x) x * 2);  # [2, 4, 6, 8, 10]
 
 # Function that returns a function
-fn multiplier(factor: Int) -> (Int) -> Int
-  fn closure(x: Int) -> Int
+def multiplier(factor: Int) -> (Int) -> Int
+  def closure(x: Int) -> Int
     x * factor
   end
   closure
@@ -1052,9 +1052,9 @@ print(times_three(5));  # 15
 
 ```soli
 # Counter using closure
-fn make_counter() -> () -> Int
+def make_counter() -> () -> Int
   let count = 0;
-  fn counter() -> Int
+  def counter() -> Int
     count = count + 1;
     count
   end
@@ -1072,8 +1072,8 @@ print(counter2());  # 1
 print(counter2());  # 2
 
 # Closure capturing variables
-fn make_greeter(greeting: String) -> (String) -> String
-  fn greet(name: String) -> String
+def make_greeter(greeting: String) -> (String) -> String
+  def greet(name: String) -> String
     greeting + ", " + name + "!"
   end
   greet
@@ -1089,7 +1089,7 @@ print(say_hola("Bob"));     # "Hola, Bob!"
 ### Default Parameters
 
 ```soli
-fn greet(name: String, greeting: String = "Hello") -> String
+def greet(name: String, greeting: String = "Hello") -> String
   greeting + ", " + name + "!"
 end
 
@@ -1098,7 +1098,7 @@ print(greet("Bob", "Hi"));          # "Hi, Bob!"
 print(greet("Charlie", "Welcome")); # "Welcome, Charlie!"
 
 # Optional parameters
-fn create_user(name: String, email: String = null, role: String = "user") -> Hash
+def create_user(name: String, email: String = null, role: String = "user") -> Hash
   user = {"name": name, "role": role};
   if email != null
     user["email"] = email;
@@ -1116,7 +1116,7 @@ user3 = create_user("Charlie", "charlie@example.com", "admin");
 You can call functions using named parameters with the colon syntax:
 
 ```soli
-fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void
+def configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void
   print("Connecting to #{host}:#{port} with debug=#{debug}");
 end
 
@@ -1177,7 +1177,7 @@ Named parameters are useful when:
 - API calls where parameter order might change
 
 ```soli
-fn http_request(
+def http_request(
   method: String = "GET",
   url: String,
   headers: Hash = {},
@@ -1196,7 +1196,7 @@ http_request(
 ### Variadic Functions
 
 ```soli
-fn sum(numbers: Int[]) -> Int
+def sum(numbers: Int[]) -> Int
   total = 0;
   for n in numbers
     total = total + n;
@@ -1212,7 +1212,7 @@ print(sum(nums));             # 6
 print(sum([...nums, 4, 5]));  # 15
 
 # Variadic-like with array
-fn format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String
+def format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String
   len = len(items);
   if len == 0
     return "";
@@ -1346,7 +1346,7 @@ print(fruits[0]);  # "apricot"
 print(fruits[100]);  # null
 
 # Slicing
-fn slice(arr: Array, start: Int, end: Int) -> Array {
+def slice(arr: Array, start: Int, end: Int) -> Array {
   result = [];
   actual_end = end;
   if (end > len(arr)) {
@@ -1416,7 +1416,7 @@ print(posts.pick("title"));      # "Hello"
 print(posts.pick("id", "title")); # [1, "Hello"]
 
 # chunk - split into chunks
-fn chunk(arr: Array, size: Int) -> Array[]
+def chunk(arr: Array, size: Int) -> Array[]
   result = [];
   current = [];
   for item in arr
@@ -1472,7 +1472,7 @@ let first = shift(arr);
 print(first);  # 0
 
 # Insert at index
-fn insert(arr: Array, index: Int, value: Any) -> Array
+def insert(arr: Array, index: Int, value: Any) -> Array
   let result = [];
   for i in range(0, len(arr))
     if i == index
@@ -1725,7 +1725,7 @@ print(expensive);  # {apple: 1.65, orange: 2.2, grape: 3.3}
 
 ```soli
 # Slicing
-fn slice(arr: Array, start: Int, end: Int) -> Array
+def slice(arr: Array, start: Int, end: Int) -> Array
   result = [];
   actual_end = end;
   if end > len(arr)
@@ -1761,11 +1761,11 @@ class Person
   end
 
   # Instance methods
-  fn greet() -> String
+  def greet() -> String
     "Hello, I'm " + this.name
   end
 
-  fn introduce() -> String
+  def introduce() -> String
     intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
     if this.email != ""
       intro = intro + ". You can reach me at " + this.email;
@@ -1773,7 +1773,7 @@ class Person
     intro
   end
 
-  fn have_birthday()
+  def have_birthday()
     this.age = this.age + 1;
   end
 end
@@ -1818,15 +1818,15 @@ class Counter
     @n = 0;            # same as this.n = 0
   end
 
-  fn bump()
+  def bump()
     @n += 1;           # read + write via sugar
   end
 
-  fn double_it()
+  def double_it()
     @n = @n * 2;
   end
 
-  fn value() -> Int
+  def value() -> Int
     @n                 # bare read, same as this.n
   end
 end
@@ -1853,7 +1853,7 @@ In MVC controllers, fields set on the controller (via `@foo = ...` or `this.foo 
 
 ```soli
 class PostsController < Controller
-  fn show
+  def show
     @post = Post.find(params["id"]);
     @related = Post.where({"category_id": @post.category_id}).limit(5);
     render("posts/show")    # no data hash — view sees `post` and `related`
@@ -1889,21 +1889,21 @@ class Rectangle
     this.height = height;
   end
 
-  fn area() -> Float
+  def area() -> Float
     this.width * this.height
   end
 
-  fn perimeter() -> Float
+  def perimeter() -> Float
     2 * (this.width + this.height)
   end
 
   # Static factory method
-  static fn square(side: Float) -> Rectangle
+  static def square(side: Float) -> Rectangle
     new Rectangle(side, side)
   end
 
   # Another factory method
-  static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle
+  static def from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle
     width = sqrt(area / aspect_ratio);
     height = width * aspect_ratio;
     new Rectangle(width, height)
@@ -1936,11 +1936,11 @@ class Animal
     this.age = age;
   end
 
-  fn speak() -> String
+  def speak() -> String
     this.name + " makes a sound"
   end
 
-  fn get_info() -> String
+  def get_info() -> String
     this.name + " is " + str(this.age) + " years old"
   end
 end
@@ -1956,12 +1956,12 @@ class Dog < Animal
   end
 
   # Override method
-  fn speak() -> String
+  def speak() -> String
     this.name + " barks!"
   end
 
   # Subclass-specific method
-  fn fetch() -> String
+  def fetch() -> String
     this.name + " fetches the ball!"
   end
 end
@@ -1972,11 +1972,11 @@ class Cat < Animal
     super(name, age);
   end
 
-  fn speak() -> String
+  def speak() -> String
     this.name + " meows!"
   end
 
-  fn purr() -> String
+  def purr() -> String
     this.name + " purrs contentedly"
   end
 end
@@ -2010,19 +2010,19 @@ Classes can extend other user-defined classes, forming deep inheritance chains. 
 
 ```soli
 class Controller
-  fn action() -> String
+  def action() -> String
     "base"
   end
 end
 
 class BaseController < Controller
-  fn before() -> String
+  def before() -> String
     "authenticated"
   end
 end
 
 class HomeController < BaseController
-  fn action() -> String
+  def action() -> String
     super.action() + " -> home"
   end
 end
@@ -2037,14 +2037,14 @@ print(c.before())   # "authenticated" (inherited from BaseController)
 ```soli
 # Define an interface
 interface Drawable {
-  fn draw() -> String;
-  fn get_color() -> String;
+  def draw() -> String;
+  def get_color() -> String;
 }
 
 # Another interface
 interface Resizable {
-  fn resize(width: Float, height: Float);
-  fn get_dimensions() -> {width: Float, height: Float};
+  def resize(width: Float, height: Float);
+  def get_dimensions() -> {width: Float, height: Float};
 }
 
 # Class implementing multiple interfaces
@@ -2057,19 +2057,19 @@ class Circle implements Drawable, Resizable {
     this.color = color;
   }
 
-  fn draw() -> String {
+  def draw() -> String {
     "Circle with radius " + str(this.radius) + " and color " + this.color
   }
 
-  fn get_color() -> String {
+  def get_color() -> String {
     this.color
   }
 
-  fn resize(width: Float, height: Float) {
+  def resize(width: Float, height: Float) {
     this.radius = width / 2;
   }
 
-  fn get_dimensions() -> {width: Float, height: Float} {
+  def get_dimensions() -> {width: Float, height: Float} {
     {"width": this.radius * 2, "height": this.radius * 2}
   }
 }
@@ -2085,20 +2085,20 @@ class Rectangle implements Drawable, Resizable {
     this.color = color;
   }
 
-  fn draw() -> String {
+  def draw() -> String {
     "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color
   }
 
-  fn get_color() -> String {
+  def get_color() -> String {
     this.color
   }
 
-  fn resize(width: Float, height: Float) {
+  def resize(width: Float, height: Float) {
     this.width = width;
     this.height = height;
   }
 
-  fn get_dimensions() -> {width: Float, height: Float} {
+  def get_dimensions() -> {width: Float, height: Float} {
     {"width": this.width, "height": this.height}
   }
 }
@@ -2126,12 +2126,12 @@ end
 
 # `extends` + `~`
 class Dog < Animal ~ Greetable
-  fn greet() "woof" end
+  def greet() "woof" end
 end
 
 # `<` + `~`
 class Cat < Animal ~ Greetable
-  fn greet() "meow" end
+  def greet() "meow" end
 end
 ```
 
@@ -2155,7 +2155,7 @@ class BankAccount
   end
 
   # Public method
-  public fn deposit(amount: Float) -> Bool
+  public def deposit(amount: Float) -> Bool
     if this.validate_amount(amount)
       this.balance = this.balance + amount;
       this.log_transaction("Deposit", amount);
@@ -2165,7 +2165,7 @@ class BankAccount
   end
 
   # Public method
-  public fn withdraw(amount: Float) -> Bool
+  public def withdraw(amount: Float) -> Bool
     if this.validate_amount(amount) && this.has_sufficient_funds(amount)
       this.balance = this.balance - amount;
       this.log_transaction("Withdrawal", -amount);
@@ -2175,27 +2175,27 @@ class BankAccount
   end
 
   # Public getter
-  public fn get_balance() -> Float
+  public def get_balance() -> Float
     this.balance
   end
 
   # Private method - internal helper
-  private fn validate_amount(amount: Float) -> Bool
+  private def validate_amount(amount: Float) -> Bool
     amount > 0
   end
 
   # Private method
-  private fn has_sufficient_funds(amount: Float) -> Bool
+  private def has_sufficient_funds(amount: Float) -> Bool
     this.balance >= amount
   end
 
   # Private method
-  private fn log_transaction(type: String, amount: Float)
+  private def log_transaction(type: String, amount: Float)
     # Internal logging logic
   end
 
   # Protected method - for subclasses
-  protected fn update_status(new_status: String)
+  protected def update_status(new_status: String)
     this.status = new_status;
   end
 end
@@ -2224,25 +2224,25 @@ class MathUtils
   static calculation_count: Int = 0;
 
   # Static methods
-  static fn square(x: Float) -> Float
+  static def square(x: Float) -> Float
     MathUtils.calculation_count = MathUtils.calculation_count + 1;
     x * x
   end
 
-  static fn cube(x: Float) -> Float
+  static def cube(x: Float) -> Float
     MathUtils.calculation_count = MathUtils.calculation_count + 1;
     x * x * x
   end
 
-  static fn max(a: Float, b: Float) -> Float
+  static def max(a: Float, b: Float) -> Float
     a > b ? a : b
   end
 
-  static fn min(a: Float, b: Float) -> Float
+  static def min(a: Float, b: Float) -> Float
     a < b ? a : b
   end
 
-  static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float
+  static def clamp(value: Float, min_val: Float, max_val: Float) -> Float
     if value < min_val
       return min_val;
     end
@@ -2292,11 +2292,11 @@ When a class has several class methods, repeating the `static` modifier on each 
 ```soli
 class MathUtils
   class << self
-    fn square(x: Float) -> Float
+    def square(x: Float) -> Float
       x * x
     end
 
-    fn cube(x: Float) -> Float
+    def cube(x: Float) -> Float
       x * x * x
     end
 
@@ -2330,15 +2330,15 @@ class Product
     this.quantity = quantity;
   end
 
-  fn get_total_value() -> Float
+  def get_total_value() -> Float
     this.price * this.quantity
   end
 
-  fn is_in_stock() -> Bool
+  def is_in_stock() -> Bool
     this.quantity > 0
   end
 
-  fn reduce_quantity(amount: Int) -> Bool
+  def reduce_quantity(amount: Int) -> Bool
     if this.quantity >= amount
       this.quantity = this.quantity - amount;
       return true;
@@ -2346,7 +2346,7 @@ class Product
     false
   }
 
-  fn to_string() -> String {
+  def to_string() -> String {
     this.name + " ($" + str(this.price) + ") - " + str(this.quantity) + " in stock"
   }
 }
@@ -2362,11 +2362,11 @@ class Electronics < Product
     this.warranty_months = warranty_months;
   end
 
-  fn is_under_warranty() -> Bool
+  def is_under_warranty() -> Bool
     this.warranty_months > 12
   end
 
-  fn to_string() -> String
+  def to_string() -> String
     this.brand + " " + this.name + " - $" + str(this.price) + " (" + str(this.warranty_months) + " month warranty)"
   end
 end
@@ -2379,11 +2379,11 @@ class Inventory
     this.products = [];
   end
 
-  fn add_product(product: Product)
+  def add_product(product: Product)
     push(this.products, product);
   end
 
-  fn remove_product(product_id: String) -> Product?
+  def remove_product(product_id: String) -> Product?
     for product, i in this.products
       if product.id == product_id
         return splice(this.products, i, 1)[0];
@@ -2392,7 +2392,7 @@ class Inventory
     null
   end
 
-  fn find_product(id: String) -> Product?
+  def find_product(id: String) -> Product?
     for product in this.products
       if product.id == id
         return product;
@@ -2401,7 +2401,7 @@ class Inventory
     null
   end
 
-  fn get_total_inventory_value() -> Float
+  def get_total_inventory_value() -> Float
     total = 0.0;
     for product in this.products
       total = total + product.get_total_value();
@@ -2409,11 +2409,11 @@ class Inventory
     total
   end
 
-  fn get_out_of_stock_products() -> Product[]
+  def get_out_of_stock_products() -> Product[]
     this.products.filter(fn(p) !p.is_in_stock())
   end
 
-  fn list_all()
+  def list_all()
     for product in this.products
       print(product.to_string);
     end
@@ -2446,17 +2446,17 @@ Soli supports nested classes - classes defined within other classes. This featur
 ```soli
 class Organization
   class Department
-    fn get_name()
+    def get_name()
       "Engineering"
     end
 
-    fn get_budget()
+    def get_budget()
       1000000
     end
   end
 
   class Team
-    fn get_name()
+    def get_name()
       "Backend Team"
     end
   end
@@ -2486,31 +2486,31 @@ Nested classes are perfect for implementing design patterns:
 # State Pattern
 class TrafficLight
   class RedState
-    fn next()
+    def next()
       "green"
     end
 
-    fn get_duration()
+    def get_duration()
       30
     end
   end
 
   class GreenState
-    fn next()
+    def next()
       "yellow"
     end
 
-    fn get_duration()
+    def get_duration()
       20
     end
   end
 
   class YellowState
-    fn next()
+    def next()
       "red"
     end
 
-    fn get_duration()
+    def get_duration()
       5
     end
   end
@@ -2528,19 +2528,19 @@ Group related classes together:
 ```soli
 class Database
   class Connection
-    fn connect()
+    def connect()
       "Connected to database"
     end
   end
 
   class QueryBuilder
-    fn select(table: String)
+    def select(table: String)
       "SELECT * FROM " + table
     end
   end
 
   class Transaction
-    fn begin()
+    def begin()
       "Transaction started"
     end
   end
@@ -2562,22 +2562,22 @@ Create hierarchical configuration structures:
 ```soli
 class Server
   class SSLConfig
-    fn is_enabled()
+    def is_enabled()
       true
     end
 
-    fn get_protocol()
+    def get_protocol()
       "TLS 1.3"
     end
   end
 
   class LoggingConfig
-    fn get_level()
+    def get_level()
       "INFO"
     end
   end
 
-  fn start()
+  def start()
     "Server starting with SSL: " + str(new Server::SSLConfig().is_enabled())
   end
 end
@@ -2593,19 +2593,19 @@ You can define multiple nested classes at the same level:
 ```soli
 class Service
   class Database
-    fn connect()
+    def connect()
       "DB connected"
     end
   end
 
   class Cache
-    fn get(key: String)
+    def get(key: String)
       "cached:" + key
     end
   end
 
   class Logger
-    fn log(msg: String)
+    def log(msg: String)
       "[LOG] " + msg
     end
   end
@@ -2663,7 +2663,7 @@ category = match n {
 print(category);  # "single digit positive"
 
 # Practical example: HTTP status handling
-fn handle_status(code: Int) -> String {
+def handle_status(code: Int) -> String {
   match code {
     code if code >= 200 && code < 300 => "Success: " + str(code),
     code if code >= 300 && code < 400 => "Redirect: " + str(code),
@@ -2746,7 +2746,7 @@ match data {
 # Type patterns with Any values
 let value: Any = get_some_value();
 
-fn describe_value(val: Any) -> String {
+def describe_value(val: Any) -> String {
   match val {
     s: String => "String with " + str(len(s)) + " characters",
     n: Int => "Integer: " + str(n),
@@ -2760,7 +2760,7 @@ fn describe_value(val: Any) -> String {
 }
 
 # Practical example: JSON value handler
-fn handle_json_value(value: Any) -> String {
+def handle_json_value(value: Any) -> String {
   match value {
     null => "null",
     s: String => "\"" + s + "\"",
@@ -2783,7 +2783,7 @@ fn handle_json_value(value: Any) -> String {
 
 ```soli
 # Command pattern matching
-fn execute_command(command: Hash) -> String {
+def execute_command(command: Hash) -> String {
   match command {
     {"action": "create", "type": "user", "data": data} => {
       "Creating user: " + data["name"];
@@ -2802,7 +2802,7 @@ fn execute_command(command: Hash) -> String {
 }
 
 # Tree traversal with pattern matching
-fn process_tree(node: Any) {
+def process_tree(node: Any) {
   match node {
     {"type": "leaf", "value": value} => {
       {"value": value * 2};
@@ -3014,9 +3014,9 @@ To rebuild an enum from a stored value by hand (e.g. a webhook payload), use
 The pipeline operator `|>` passes the left value as the first argument to the right function:
 
 ```soli
-fn double(x: Int) -> Int { x * 2 }
-fn add_one(x: Int) -> Int { x + 1 }
-fn square(x: Int) -> Int { x * x }
+def double(x: Int) -> Int { x * 2 }
+def add_one(x: Int) -> Int { x + 1 }
+def square(x: Int) -> Int { x * x }
 
 # Without pipeline (nested calls)
 result1 = square(add_one(double(5)));  # Hard to read
@@ -3029,16 +3029,16 @@ print(result2);  # (5 * 2 + 1)^2 = 121
 ### Pipeline with Multiple Arguments
 
 ```soli
-fn add(a: Int, b: Int) -> Int { a + b }
-fn multiply(a: Int, b: Int) -> Int { a * b }
+def add(a: Int, b: Int) -> Int { a + b }
+def multiply(a: Int, b: Int) -> Int { a * b }
 
 # 5 |> add(3) means add(5, 3)
 result = 5 |> add(3) |> multiply(2);
 print(result);  # (5 + 3) * 2 = 16
 
 # More complex chaining
-fn subtract(a: Int, b: Int) -> Int { a - b }
-fn divide(a: Int, b: Int) -> Int { int(a / b) }
+def subtract(a: Int, b: Int) -> Int { a - b }
+def divide(a: Int, b: Int) -> Int { int(a / b) }
 
 calc = 100
   |> |x| { subtract(x, 10) }()
@@ -3074,7 +3074,7 @@ numbers.filter(|x| x > 5).each(|x| print(x));
 
 ```soli
 # Data processing pipeline
-fn process_user_data(raw_data: Hash) -> Hash {
+def process_user_data(raw_data: Hash) -> Hash {
   raw_data
     |> |d| { d["sanitized_email"] = d["email"].lower().trim(); d }()
     |> validate_user()
@@ -3083,7 +3083,7 @@ fn process_user_data(raw_data: Hash) -> Hash {
 }
 
 # HTTP request pipeline
-fn fetch_and_process(url: String) -> Hash {
+def fetch_and_process(url: String) -> Hash {
   url
     |> HTTP.get_json()
     |> transform_response()
@@ -3092,7 +3092,7 @@ fn fetch_and_process(url: String) -> Hash {
 }
 
 # String transformation pipeline
-fn format_filename(filename: String) -> String {
+def format_filename(filename: String) -> String {
   filename
     |> |s| { s.lower() }()
     |> |s| { s.replace(" ", "_") }()
@@ -3117,7 +3117,7 @@ result = numbers
 print(result);  # 18 (6+8+10)
 
 # Fetch and process user with async pipeline
-fn get_user_data(user_id: Int) -> Hash {
+def get_user_data(user_id: Int) -> Hash {
   user_id
     |> |id| { {"id": id} }()
     |> fetch_from_db()
@@ -3149,38 +3149,38 @@ print("Total Revenue: $" + str(total_revenue));  # $2750
 # math.sl - A module exporting utility functions
 
 # Private function (not exported)
-fn validate_number(n: Int) -> Bool {
+def validate_number(n: Int) -> Bool {
   n >= 0
 }
 
 # Exported functions
-export fn add(a: Int, b: Int) -> Int {
+export def add(a: Int, b: Int) -> Int {
   a + b
 }
 
-export fn subtract(a: Int, b: Int) -> Int {
+export def subtract(a: Int, b: Int) -> Int {
   a - b
 }
 
-export fn multiply(a: Int, b: Int) -> Int {
+export def multiply(a: Int, b: Int) -> Int {
   a * b
 }
 
-export fn divide(a: Int, b: Int) -> Float {
+export def divide(a: Int, b: Int) -> Float {
   if (b == 0) {
     panic("Division by zero");
   }
   float(a) / float(b)
 }
 
-export fn factorial(n: Int) -> Int {
+export def factorial(n: Int) -> Int {
   if (n <= 1) {
     return 1;
   }
   n * factorial(n - 1)
 }
 
-export fn fibonacci(n: Int) -> Int {
+export def fibonacci(n: Int) -> Int {
   if (n <= 1) {
     return n;
   }
@@ -3243,7 +3243,7 @@ import "./config.sl";
 import "./utils/mod.sl" as utils;
 import "../lib/math/mod.sl" as math;
 
-fn main() {
+def main() {
   config = load_config();
   processed = utils.process_data(config);
   result = math.calculate(processed);
@@ -3670,7 +3670,7 @@ print(between.to_string);      # "1 day, 6 hours"
 
 ```soli
 # Calculate age from birthdate
-fn calculate_age(birthdate: DateTime) -> Int {
+def calculate_age(birthdate: DateTime) -> Int {
   now = DateTime.utc();
   age = now.year() - birthdate.year();
   if (now.month() < birthdate.month() ||
@@ -3684,7 +3684,7 @@ birthdate = DateTime.parse("1990-05-15");
 print(calculate_age(birthdate));  # e.g., 33
 
 # Format relative time
-fn relative_time(dt: DateTime) -> String {
+def relative_time(dt: DateTime) -> String {
   now = DateTime.utc();
   diff = now.sub(dt);
 
@@ -3708,13 +3708,13 @@ fn relative_time(dt: DateTime) -> String {
 }
 
 # Check if date is in the past
-fn is_past(dt: DateTime) -> Bool {
+def is_past(dt: DateTime) -> Bool {
   now = DateTime.utc();
   dt.to_unix() < now.to_unix()
 }
 
 # Get start of day
-fn start_of_day(dt: DateTime) -> DateTime {
+def start_of_day(dt: DateTime) -> DateTime {
   DateTime.parse(
     str(dt.year()) + "-" +
     str(dt.month()) + "-" +
@@ -3723,7 +3723,7 @@ fn start_of_day(dt: DateTime) -> DateTime {
 }
 
 # Get business days between two dates
-fn business_days(start: DateTime, end: DateTime) -> Int {
+def business_days(start: DateTime, end: DateTime) -> Int {
   count = 0;
   current = start;
   while (current.to_unix() <= end.to_unix()) {
@@ -3928,22 +3928,22 @@ item_count = 10;  # Good
 
 ```soli
 # Good: Single responsibility
-fn validate_email(email: String) -> Bool {
+def validate_email(email: String) -> Bool {
   email.contains("@") && email.contains(".")
 }
 
 # Good: Descriptive names
-fn calculate_total_with_tax() -> Float {
+def calculate_total_with_tax() -> Float {
   # ...
 }
 
 # Good: Limit parameters
-fn create_user(info: Hash) -> User {
-  # Instead of: fn create_user(name, email, age, address, phone)
+def create_user(info: Hash) -> User {
+  # Instead of: def create_user(name, email, age, address, phone)
 }
 
 # Good: Early returns for validation
-fn process_order(order: Hash) -> Result {
+def process_order(order: Hash) -> Result {
   if (!has_key(order, "items")) {
     return {"error": "Missing items"};
   }
@@ -3961,7 +3961,7 @@ fn process_order(order: Hash) -> Result {
 weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 # Good: Check bounds
-fn safe_get(arr: Array, index: Int) -> Any? {
+def safe_get(arr: Array, index: Int) -> Any? {
   if (index >= 0 && index < len(arr)) {
     return arr[index];
   }
@@ -3983,19 +3983,19 @@ class UserService {}
 
 # Good: Program to interfaces
 interface Repository {
-  fn find(id: Int) -> Any?;
-  fn save(entity: Any);
+  def find(id: Int) -> Any?;
+  def save(entity: Any);
 }
 
 # Good: Use private fields for encapsulation
 class BankAccount {
   private balance: Float;
 
-  public fn deposit(amount: Float) {
+  public def deposit(amount: Float) {
     # ...
   }
 
-  public fn get_balance() -> Float {
+  public def get_balance() -> Float {
     this.balance
   }
 }
@@ -4005,7 +4005,7 @@ class BankAccount {
 
 ```soli
 # Good: Avoid deep nesting
-fn process(data: Hash) -> Result {
+def process(data: Hash) -> Result {
   if (data == null) {
     return {"error": "No data"};
   }
@@ -4019,7 +4019,7 @@ fn process(data: Hash) -> Result {
 }
 
 # Good: Use pattern matching for complex conditions
-fn handle_event(event: Hash) -> String {
+def handle_event(event: Hash) -> String {
   match event {
     {"type": "click", "element": "button"} => "Button clicked",
     {"type": "submit", "form": form} => "Form submitted",
@@ -4047,7 +4047,7 @@ const PI = 3.14159;
 
 ### Functions
 ```soli
-fn add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int {
   a + b
 }
 
@@ -4064,7 +4064,7 @@ class Person {
   new(name: String) {
     this.name = name;
   }
-  fn greet() -> String {
+  def greet() -> String {
     "Hello, " + this.name
   }
 }
@@ -4122,7 +4122,7 @@ value |> fn1() |> fn2();
 ### Module
 ```soli
 # math.sl
-export fn add(a: Int, b: Int) -> Int {
+export def add(a: Int, b: Int) -> Int {
   a + b
 }
 

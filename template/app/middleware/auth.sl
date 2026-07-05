@@ -23,7 +23,7 @@
 
 let valid_api_key = "secret-key-123";
 
-fn authenticate(req: Any) -> Any {
+def authenticate(req: Any) -> Any {
     let headers = req["headers"];
     let provided_key = "";
 

@@ -434,6 +434,11 @@ impl Interpreter {
                         return Ok(result);
                     }
                     if let Some(result) =
+                        self.try_run_model_class_delete(&obj_val, name, arguments, span)?
+                    {
+                        return Ok(result);
+                    }
+                    if let Some(result) =
                         self.try_run_model_delete_callbacks(&obj_val, name, arguments, span)?
                     {
                         return Ok(result);
@@ -825,7 +830,7 @@ impl Interpreter {
     /// after_delete callbacks can execute with access to the current
     /// interpreter. Native methods cannot invoke user-defined Soli methods on
     /// their own because they only receive evaluated values.
-    fn try_run_model_delete_callbacks(
+    pub(crate) fn try_run_model_delete_callbacks(
         &mut self,
         obj_val: &Value,
         method_name: &str,
@@ -852,21 +857,54 @@ impl Interpreter {
         let before_events: &[&str] = &["before_delete"];
         let after_events: &[&str] = &["after_delete"];
 
+        let has_dependents = super::cascade::class_declares_dependents(&class.name);
+
         if before_names.is_empty()
             && after_names.is_empty()
             && !has_closure_callbacks(&class.name, before_events)
             && !has_closure_callbacks(&class.name, after_events)
+            && !has_dependents
         {
             return Ok(None);
         }
 
+        // Cycle guard for `dependent:` cascades: a document already being
+        // deleted higher up the chain is treated as handled.
+        let mut _cascade_guard = None;
+        if has_dependents {
+            let (collection, key) = {
+                let inst_ref = instance.borrow();
+                let collection = crate::interpreter::builtins::model::class_name_to_collection(
+                    &inst_ref.class.name,
+                );
+                let key = match inst_ref.get("_key") {
+                    Some(Value::String(s)) => Some(s.to_string()),
+                    _ => None,
+                };
+                (collection, key)
+            };
+            if let Some(key) = key {
+                match super::cascade::enter_cascade(&collection, &key) {
+                    Some(guard) => _cascade_guard = Some(guard),
+                    None => return Ok(Some(Value::Bool(true))),
+                }
+            }
+        }
+
         // SEC-086a: a `before_delete` callback returning `false` vetoes
-        // the deletion. Skip the native call and the after-callbacks; the
-        // instance keeps its DB-side state. Surface `_errors` and return
-        // `Bool(false)` so callers can branch on the result.
+        // the deletion. Skip the native call, the cascades, and the
+        // after-callbacks; the instance keeps its DB-side state. Surface
+        // `_errors` and return `Bool(false)` so callers can branch.
         if !self.run_model_callbacks(&class, &instance, &before_names, before_events, span)? {
             set_callback_aborted_error(&instance, "before_delete");
             return Ok(Some(Value::Bool(false)));
+        }
+
+        // `dependent:` cascades run on hard deletes only, after the veto
+        // and before the owner row is removed (Rails ordering). A
+        // soft-deleting owner keeps its children.
+        if has_dependents && !crate::interpreter::builtins::model::is_soft_delete(&class.name) {
+            self.run_dependent_cascades(&instance, span)?;
         }
 
         let callee_val =
@@ -879,6 +917,62 @@ impl Interpreter {
             self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
         }
 
+        Ok(Some(result))
+    }
+
+    /// Intercept the class form `Model.delete(id)` when the class declares
+    /// `dependent:` relations: load the document and route through the full
+    /// instance-delete flow so cascades (and, as a documented side effect,
+    /// delete callbacks) run. Classes without dependents keep the plain
+    /// native behavior.
+    fn try_run_model_class_delete(
+        &mut self,
+        obj_val: &Value,
+        method_name: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::{
+            class_name_to_collection, crud, get_model_class,
+        };
+
+        if method_name != "delete" || arguments.len() != 1 {
+            return Ok(None);
+        }
+        let class = match obj_val {
+            Value::Class(c) if c.is_model_subclass() => c.clone(),
+            _ => return Ok(None),
+        };
+        if !super::cascade::class_declares_dependents(&class.name) {
+            return Ok(None);
+        }
+        // From here on we own the call: arguments are evaluated exactly once.
+        let id_val = match &arguments[0] {
+            Argument::Positional(expr) => self.evaluate(expr)?,
+            _ => return Ok(None),
+        };
+        let id = match &id_val {
+            Value::String(s) => s.to_string(),
+            other => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "Model.delete() expects string id, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+
+        let collection = class_name_to_collection(&class.name);
+        let doc = match crud::exec_get(&collection, &id) {
+            Ok(doc) => doc,
+            // Mirror the native's miss behavior: an "Error: ..." string.
+            Err(e) => return Ok(Some(Value::String(format!("Error: {}", e).into()))),
+        };
+        let model_class = get_model_class(&class.name).unwrap_or(class);
+        let instance_value = crud::json_doc_to_instance(&model_class, &doc);
+        let result = self.delete_model_instance(&instance_value, span)?;
         Ok(Some(result))
     }
 

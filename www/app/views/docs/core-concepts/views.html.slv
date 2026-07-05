@@ -534,7 +534,7 @@
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Controller</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn downloads
+<pre><code class="language-soli text-sm">def downloads
   # One-shot download &mdash; never reuse; always re-fetch.
   return {
     "status": 200,

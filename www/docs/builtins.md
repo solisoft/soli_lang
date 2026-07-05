@@ -110,7 +110,7 @@ x = 42;
 defined("x");        # true
 defined("y");        # false
 
-fn check(val) {
+def check(val) {
   if defined("val") { "exists" } else { "not set" }
 }
 ```
@@ -3204,7 +3204,7 @@ set_cookie("theme", "dark")
 
 ## Background Jobs and Cron
 
-Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static fn perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).
+Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static def perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).
 
 ### Job class
 
@@ -3311,7 +3311,7 @@ A class can declare a `static cron` field; on boot, worker 0 upserts a cron entr
 class NightlyReportJob {
   static cron = Cron.daily_at("03:00")
 
-  static fn perform(args: Hash) {
+  static def perform(args: Hash) {
     Report.generate()
   }
 }

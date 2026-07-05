@@ -69,7 +69,7 @@ SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
 <pre><code class="language-soli text-sm">// order: 5
 // global_only: true
 
-fn add_cors_headers(req: Any) -&gt; Any {
+def add_cors_headers(req: Any) -&gt; Any {
   // Continue to next middleware/handler
   return {
     "continue": true,
@@ -85,7 +85,7 @@ fn add_cors_headers(req: Any) -&gt; Any {
 <pre><code class="language-soli text-sm">// order: 20
 // scope_only: true
 
-fn authenticate(req: Any) -&gt; Any {
+def authenticate(req: Any) -&gt; Any {
   headers = req["headers"];
   api_key = "";
 

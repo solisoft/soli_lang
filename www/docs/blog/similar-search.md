@@ -128,14 +128,14 @@ soli db:migrate generate create_products
 ```soli
 # db/migrations/20260101000000_create_products.sl
 
-fn up(db: Any)
+def up(db: Any)
     db.create_collection("products")
 
     # Create a vector index on the embedding field for HNSW similarity search
     db.create_vector_index("products", "embedding_idx", "embedding", 1536)
 end
 
-fn down(db: Any)
+def down(db: Any)
     db.drop_vector_index("products", "embedding_idx")
     db.drop_collection("products")
 end
@@ -158,7 +158,7 @@ Populate products and generate embeddings via the OpenAI-compatible API:
 ```soli
 # db/seeds.sl
 
-fn generate_embedding(text)
+def generate_embedding(text)
     let api_key = getenv("SOLI_EMBEDDING_API_KEY")
     let url = getenv("SOLI_EMBEDDING_URL") rescue "https://api.openai.com/v1/embeddings"
     let model = getenv("SOLI_EMBEDDING_MODEL") rescue "text-embedding-3-small"
@@ -211,7 +211,7 @@ end
 ```soli
 # app/controllers/products_controller.sl
 
-fn search(req)
+def search(req)
     let query = req["params"]["q"] || req["json"]["query"]
     let category = req["params"]["category"]
     let max_price = req["params"]["max_price"]

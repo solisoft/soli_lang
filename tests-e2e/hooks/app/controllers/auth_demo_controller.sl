@@ -8,7 +8,7 @@ class AuthDemoController extends Controller
     # Guests get 401; signed-in users get an explicitly-rendered dashboard
     # whose locals the test introspects via assigns() / view_path() /
     # render_template().
-    fn dashboard(req)
+    def dashboard(req)
         let user_id = session_get("user_id");
         if user_id.nil?
             return halt(401, "Sign in first");
@@ -24,7 +24,7 @@ class AuthDemoController extends Controller
     # Same idea, but *auto-rendered*: the action sets `@vars` and lets the
     # matching `auth_demo/auto` view render by convention (no explicit
     # render()). Proves assigns()/view_path() work on the auto-render path too.
-    fn auto(req)
+    def auto(req)
         let user_id = session_get("user_id");
         if user_id.nil?
             return halt(401, "Sign in first");

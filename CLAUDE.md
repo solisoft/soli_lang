@@ -42,17 +42,17 @@ Prefer the bare `name = value` form. Reach for `let` only when it earns its keep
 
 ### Functions
 ```soli
-fn add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int {
     return a + b;
 }
 
 // Optional parentheses for no-param functions
-fn greet {
+def greet {
     "Hello!"
 }
 
 // Default and named parameters
-fn configure(host: String = "localhost", port: Int = 8080) -> Void {
+def configure(host: String = "localhost", port: Int = 8080) -> Void {
     print("Connecting to #{host}:#{port}");
 }
 configure(port: 3000, host: "example.com");  // Named params in any order
@@ -103,7 +103,7 @@ class Person {
         this.age = age;
     }
     
-    fn greet() -> String {
+    def greet() -> String {
         return "Hello, I'm " + this.name;
     }
 }
@@ -153,7 +153,7 @@ let data = fetch_data() rescue null;
 
 1. **Use type annotations** - Catch errors early, improve readability
    ```soli
-   fn process_user(user: Hash) -> Hash { ... }
+   def process_user(user: Hash) -> Hash { ... }
    ```
 
 2. **Prefer immutability** - Use `const` for values that shouldn't change
@@ -172,7 +172,7 @@ let data = fetch_data() rescue null;
 
 6. **Implicit returns** - Last expression in a function block is automatically returned
    ```soli
-   fn get_greeting(name) {
+   def get_greeting(name) {
        "Hello, " + name + "!"  // No return needed
    }
    ```
@@ -239,8 +239,8 @@ class UserRepository { /* only database operations */ }
 
 **Open/Closed (O)** - Open for extension, closed for modification:
 ```soli
-class Shape { fn area() -> Float; }
-class Circle extends Shape { radius: Float; fn area() { 3.14 * radius * radius; } }
+class Shape { def area() -> Float; }
+class Circle extends Shape { radius: Float; def area() { 3.14 * radius * radius; } }
 ```
 
 **Liskov Substitution (L)** - Subclasses can replace their parent:
@@ -250,14 +250,14 @@ class Circle extends Shape { radius: Float; fn area() { 3.14 * radius * radius; 
 
 **Interface Segregation (I)** - Many small interfaces over one large:
 ```soli
-interface Printable { fn print(); }
-interface Exportable { fn export(); }
+interface Printable { def print(); }
+interface Exportable { def export(); }
 ```
 
 **Dependency Inversion (D)** - Depend on abstractions:
 ```soli
-interface Repository { fn find(id: Int) -> User; }
-class Service { repo: Repository; fn get(id) { repo.find(id); } }
+interface Repository { def find(id: Int) -> User; }
+class Service { repo: Repository; def get(id) { repo.find(id); } }
 ```
 
 ## Linting
@@ -299,12 +299,12 @@ resources("posts");  // RESTful routes
 // app/controllers/posts_controller.sl
 import "../models/post.sl";
 
-fn index(req: Any) -> Any {
+def index(req: Any) -> Any {
     let posts = Post.all();
     return render("posts/index", {"posts": posts});
 }
 
-fn create(req: Any) -> Any {
+def create(req: Any) -> Any {
     let params = req["json"];
     let result = Post.create(params);
     if result["valid"] {
@@ -408,7 +408,7 @@ session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 
 ### Example
 ```soli
-fn login(req) {
+def login(req) {
     let user = authenticate(req["json"]["email"], req["json"]["password"]);
     if user {
         session_regenerate();  // New session ID after login

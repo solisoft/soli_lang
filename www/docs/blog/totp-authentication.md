@@ -79,7 +79,7 @@ Here's a full example of adding TOTP-based 2FA to a login flow:
 ```soli
 # app/controllers/auth_controller.sl
 
-fn login
+def login
   params = req["all"]
   email = params["email"]
   password = params["password"]
@@ -101,7 +101,7 @@ fn login
   redirect("/dashboard")
 end
 
-fn verify_2fa
+def verify_2fa
   params = req["all"]
   temp_token = params["temp_token"]
   code = params["code"]
@@ -133,7 +133,7 @@ To help users set up 2FA, generate their secret and QR code:
 ```soli
 # app/controllers/settings_controller.sl
 
-fn enable_2fa
+def enable_2fa
   user = User.find(session["user_id"])
   
   # Generate a new random secret
