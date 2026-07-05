@@ -1,0 +1,222 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">How Soli Compares</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Soli is a batteries-included MVC framework shipped as a <strong>single Rust binary</strong> &mdash; language, server, ORM, template engine, test runner, formatter, linter, LSP and deploy tooling in one executable. No Node, no bundler, no dependency install between you and a running app.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">An honest tour</h4>
+                <p class="text-blue-200/80 text-sm">
+                    This page covers what Soli gives you today, where it genuinely stands out against Rails, Laravel, Phoenix and Django &mdash; and what it does <strong>not</strong> have yet. We'd rather you find the gaps here than in production.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">The Philosophy</h2>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
+        <li><strong class="text-white">One binary, three commands.</strong> <code>curl</code> the binary, <code>soli new</code>, <code>soli serve</code>. No <code>bundle install</code>, no <code>npm install</code>, no compile step for your app code.</li>
+        <li><strong class="text-white">Convention over configuration</strong>, Rails-style: auto-loaded models/controllers/policies, RESTful <code>resources</code> routing, <code class="text-amber-300">*_path</code> helpers, ERB-style views.</li>
+        <li><strong class="text-white">Server-rendered first.</strong> htmx + Alpine.js ship vendored in every new app; instant navigation and hover prefetch are built into the server. No JS build pipeline &mdash; by design.</li>
+        <li><strong class="text-white">SoliDB-native.</strong> The ORM speaks to SoliDB. There are no SQL adapters &mdash; the stack is integrated top to bottom, and that trade-off is deliberate.</li>
+        <li><strong class="text-white">Fast by default.</strong> 170,000+ req/s on a single server: engine-per-worker architecture, production bytecode VM, in-memory asset cache.</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">What's in the Box</h2>
+    <div class="rounded-xl border border-white/10 overflow-hidden mb-12">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Layer</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">What you get</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Routing</td>
+                        <td class="py-3 px-4 text-gray-400">Verb helpers, RESTful <code>resources</code> (nesting, <code>member</code>/<code>collection</code>), namespaces, <code>:param</code> + <code>*splat</code> segments, named <code class="text-amber-300">*_path</code>/<code class="text-amber-300">*_url</code> helpers, per-route and scoped middleware</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Controllers</td>
+                        <td class="py-3 px-4 text-gray-400">Class-based with inheritance, <code>before_action</code>/<code>after_action</code> (with <code>only:</code>/<code>except:</code>), per-action layouts, <code>@ivar</code> auto-exposure, <code>respond_to</code> content negotiation, <code>halt</code>, local-only <code>redirect</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Views</td>
+                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">ORM</td>
+                        <td class="py-3 px-4 text-gray-400">Query builder, associations (<code>belongs_to</code>, <code>has_many</code>, <code>has_one</code>, HABTM, polymorphic), eager <code>includes</code> in one round-trip, <code>grouped()</code> read-coalescing, scopes, callbacks, validations, soft delete, encrypted attributes, transactions, state machines</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Realtime</td>
+                        <td class="py-3 px-4 text-gray-400">WebSocket rooms + presence tracking, SSE (handler-driven <code>sse(req)</code> <em>and</em> async pub/sub <code>sse_broadcast</code>), LiveView (early), live reload in dev</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Auth &amp; security</td>
+                        <td class="py-3 px-4 text-gray-400"><code>soli generate auth</code> (Argon2id, session-fixation defense), Pundit-style policies (deny by default), <code>attr_accessible</code> mass-assignment whitelist, schema-based input validation (<code>V</code>, with type coercion), security headers on by default in prod, Origin-based CSRF checks, SSRF-hardened HTTP client, encrypted app bundles</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Jobs &amp; mail</td>
+                        <td class="py-3 px-4 text-gray-400"><code>Job.perform_later/perform_in/perform_at</code>, cron DSL, webhook jobs with HMAC signing (queue backed by SolidB); ActionMailer-style mailer with SMTP/STARTTLS, multipart, attachments, test mode</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Documents</td>
+                        <td class="py-3 px-4 text-gray-400"><code>pdf_render</code>, Factur-X / EN&nbsp;16931 e-invoices (PDF/A-3b), PAdES digital signatures + timestamping, tagged PDF/UA output, merge/fill/stamp, markdown&rarr;PDF, spreadsheets (CSV/XLSX read+write)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Tooling</td>
+                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, TUI REPL, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white font-medium">Long tail</td>
+                        <td class="py-3 px-4 text-gray-400">S3 client, image pipeline, web push (VAPID), JWT, TOTP primitives, feature flags with percentage rollout, i18n, KV store (Redis-style API), SOAP client, POP3 client</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Where Soli Stands Out</h2>
+    <div class="space-y-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Performance per server</h3>
+            <p class="text-gray-400 text-sm">A tree-walking dev mode and a bytecode VM in production, engine-per-worker with no GIL and no process fleet. Rails and Django applications typically measure in low thousands of req/s per server; Soli measures in the hundreds of thousands. Phoenix is the only peer here.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Deployment simplicity</h3>
+            <p class="text-gray-400 text-sm">One static binary runs your app, or bundles it (<code>soli build</code>) into a single <code>.soli</code> file &mdash; optionally AES-256-GCM encrypted with RAM-only extraction for licensed/on-prem distribution. That last capability has no first-party equivalent in Rails, Laravel, Phoenix or Django.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Developer experience in <code>--dev</code></h3>
+            <p class="text-gray-400 text-sm">The dev bar shows per-request queries with bind variables and durations, N+1 detection with a suggested fix, a zoomable flamegraph, per-template and per-middleware timings, and captures every XHR/htmx call a page makes. The dev error page includes a live REPL evaluated against the failed request's actual state. This is beyond what any of the big four ship out of the box.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Documents and compliance</h3>
+            <p class="text-gray-400 text-sm">European e-invoicing (Factur-X/EN&nbsp;16931), PAdES-compliant digital signatures with timestamp authorities, PDF/A and tagged PDF/UA output, form filling, stamping and merging &mdash; built in. In every other framework this is a third-party integration project.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Frontend without a toolchain</h3>
+            <p class="text-gray-400 text-sm">Auto-escaped server templates, vendored htmx + Alpine, Turbo-Drive-class instant navigation and hover prefetching with ETag revalidation &mdash; zero Node, zero config.</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Honest Gaps</h2>
+    <p class="text-gray-400 mb-6">
+        Things a Rails, Laravel, Phoenix or Django developer will look for and not find. Some are on the roadmap; some are deliberate trade-offs.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Framework surface</h3>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
+        <li><strong class="text-white">No auto-generated admin panel</strong> &mdash; a deliberate choice in 2026: every new app ships agent-ready (<code>CLAUDE.md</code>/<code>AGENTS.md</code>, permission presets, <code>/soli-resource</code>), so the bet is that a coding agent plus <code>soli generate scaffold</code> builds you a <em>bespoke</em> admin faster than you'd customize a generic one. If you want a Django-admin-style CRUD UI with zero building, it isn't here.</li>
+        <li><strong class="text-white">No form builders.</strong> Forms are hand-written HTML &mdash; no <code>form_with</code>-style helpers, and no per-form CSRF tokens (CSRF protection is Origin/Referer-based).</li>
+        <li><strong class="text-white">No built-in CORS</strong> &mdash; you hand-roll it as middleware.</li>
+        <li><strong class="text-white">No signed/encrypted client cookies</strong> &mdash; sessions are server-side by design; <code>set_cookie</code> writes bare cookies.</li>
+        <li><strong class="text-white">View composition is minimal</strong> &mdash; partials with locals, single <code>yield</code>; no components/slots, no <code>content_for</code>.</li>
+        <li><strong class="text-white">LiveView is early.</strong> Server-pushed re-renders work, but diffing is line-based (not DOM-aware) and the directive set is a subset of Phoenix's.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Auth</h3>
+    <p class="text-gray-400 mb-4">
+        The primitives are all here, with no third-party packages: session auth (<code>soli generate auth</code>, Argon2id), JWT API auth (<code>jwt_sign</code>/<code>jwt_verify</code>), native TOTP 2FA (<code>Crypto.totp_generate/verify/uri</code>), and OAuth built on the SSRF-hardened HTTP client &mdash; with official step-by-step guides for <a href="/docs/blog/github-oauth" class="text-amber-400 hover:text-amber-300">GitHub</a> and <a href="/docs/blog/google-oauth" class="text-amber-400 hover:text-amber-300">Google</a> sign-in and <a href="/docs/blog/totp-authentication" class="text-amber-400 hover:text-amber-300">TOTP</a>.
+    </p>
+    <p class="text-gray-400 mb-8">
+        What's missing is the <strong class="text-white">pre-wired, Devise-style suite</strong>: the generator scaffolds login/signup, but password reset, email confirmation, remember-me and account lockout are flows you assemble from the primitives rather than generate with one command.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Data layer</h3>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
+        <li><strong class="text-white">SoliDB only.</strong> No PostgreSQL/MySQL/SQLite adapters, no multi-database support. If your data must live in SQL, Soli is the wrong tool today.</li>
+        <li><strong class="text-white">No dirty tracking</strong> (<code>changed?</code>, <code>previous_changes</code>), <strong class="text-white">no cascade deletes</strong>, <strong class="text-white">no <code>through:</code> associations</strong> (HABTM join tables only), no counter caches.</li>
+        <li><strong class="text-white">Migrations roll back one step at a time</strong> &mdash; no <code>STEP=n</code>, no version targeting, no schema dump, no <code>db:reset</code>.</li>
+        <li><strong class="text-white">Uniqueness validation</strong> is only race-safe when backed by a database unique index &mdash; the same caveat as Rails' <code>validates_uniqueness_of</code>; Soli maps the index's 409 back into <code>_errors</code> automatically. (Conditional <code>if:</code>/<code>unless:</code> and per-operation <code>on: create/update</code> validation forms exist.)</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Testing</h3>
+    <p class="text-gray-400 mb-8">
+        The runner (parallel workers, isolated per-worker databases, coverage with a CI gate) is strong, but around it: <strong class="text-white">no per-test transaction rollback</strong>, <strong class="text-white">no mocking/stubbing framework</strong>, no time-travel helpers, no test filtering/watch/fail-fast flags, factories are static hash templates, and &ldquo;E2E&rdquo; means HTTP-level integration tests &mdash; <strong class="text-white">no browser driver</strong>.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Operations</h3>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
+        <li><strong class="text-white">No TLS in-process</strong> &mdash; you front Soli with a reverse proxy (HTTP/2 is cleartext-only behind it). Deliberate, but different from Phoenix.</li>
+        <li><strong class="text-white">Jobs require a SolidB server</strong> &mdash; there is no standalone worker daemon and no dashboard (no Sidekiq/Horizon equivalent). The opt-in in-process pool for long jobs is fire-and-forget.</li>
+        <li><strong class="text-white">No app console</strong> (<code>rails console</code> equivalent &mdash; the REPL is language-level) and no <code>soli routes</code> route lister.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Ecosystem</h3>
+    <p class="text-gray-400 mb-12">
+        This is the honest big one: Rails has ~180k gems' worth of ecosystem, Laravel has first-party packages for billing, search and admin, Django has 15+ years of reusable apps. Soli's package registry is young. What's in the box is unusually broad &mdash; but if it's not in the box, you're writing it.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Head-to-Head</h2>
+    <div class="space-y-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">vs Ruby on Rails</h3>
+            <p class="text-gray-400 text-sm mb-3">Rails remains the DX benchmark, and Soli borrows its conventions deliberately.</p>
+            <p class="text-gray-400 text-sm mb-2"><strong class="text-orange-300">Rails is ahead on:</strong> ActiveRecord maturity (dirty tracking, association depth, multi-DB), form builders + token CSRF, Hotwire, Devise/OmniAuth, ActiveAdmin, ActionMailbox/ActionText, system tests, and the gem ecosystem.</p>
+            <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> raw throughput and memory footprint by an order of magnitude, single-binary deployment, built-in profiling/N+1 tooling, document/e-invoice/signature capabilities, and zero-toolchain frontend.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">vs Laravel</h3>
+            <p class="text-gray-400 text-sm mb-3">Laravel's first-party ecosystem (Horizon, Nova, Socialite, Cashier, Livewire, Octane) is the richest in the industry &mdash; Soli has no equivalents for most of it.</p>
+            <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> performance (even against Octane), one-binary deploys with no PHP-FPM/composer/node stack, built-in realtime (rooms, presence, SSE) without Reverb or Pusher, and its testing/coverage runner.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">vs Phoenix</h3>
+            <p class="text-gray-400 text-sm mb-3">Phoenix is the closest performance peer, and its LiveView is years ahead of Soli's &mdash; deeply diffed, form-aware, with uploads and navigation. Elixir's OTP supervision and distribution have no Soli equivalent.</p>
+            <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> familiarity (Ruby-like syntax vs functional Elixir + the BEAM learning curve), the document/PDF suite, integrated dev tooling, and encrypted bundle distribution. If your product <em>is</em> realtime UI, choose Phoenix; if realtime is a feature, Soli's WebSockets/SSE cover it.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">vs Django</h3>
+            <p class="text-gray-400 text-sm mb-3">Django's auto-admin remains its signature feature; Soli deliberately doesn't generate one &mdash; its 2026 bet is that agent-ready scaffolding produces a bespoke admin faster than you'd bend a generic one to your needs. Django's forms + validation framework is also deeper.</p>
+            <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> performance (vs Python), built-in realtime (Channels is a bolt-on), modern developer tooling, and deployment weight.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">vs the TypeScript full-stacks (AdonisJS, NestJS, Next.js)</h3>
+            <p class="text-gray-400 text-sm">Soli competes here on <em>not</em> having a <code>node_modules</code> directory: comparable expressiveness, far higher throughput, and one binary instead of a toolchain. It concedes the npm ecosystem and React-style rich-client UIs.</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">When to Choose Soli</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div class="p-6 rounded-xl bg-green-500/10 border border-green-500/20">
+            <h3 class="text-lg font-semibold text-green-400 mb-3">Good fit today</h3>
+            <ul class="list-disc pl-5 text-green-200/80 text-sm space-y-2">
+                <li>Server-rendered CRUD/SaaS apps with htmx-style interactivity, where throughput per server and operational simplicity are priorities</li>
+                <li>Document-heavy back offices: invoicing, compliance (Factur-X), signed PDFs, spreadsheet import/export</li>
+                <li>Products distributed on-premise or licensed, using encrypted <code>.soli</code> bundles</li>
+                <li>Teams who want Rails ergonomics without Ruby's runtime cost, and accept an integrated (SoliDB) stack</li>
+            </ul>
+        </div>
+        <div class="p-6 rounded-xl bg-red-500/10 border border-red-500/20">
+            <h3 class="text-lg font-semibold text-red-400 mb-3">Reach for something else if you need</h3>
+            <ul class="list-disc pl-5 text-red-200/80 text-sm space-y-2">
+                <li>SQL, or any existing relational database &mdash; today Soli means SoliDB</li>
+                <li>A one-command, Devise-style auth suite &mdash; OAuth, JWT and TOTP are built-in with official guides, but reset/confirmation flows are assembled, not generated</li>
+                <li>A generic, zero-build admin UI (Django-style) &mdash; Soli's bet is agents + scaffolding for bespoke admins instead</li>
+                <li>Phoenix-LiveView-depth realtime UI, or a rich SPA toolchain</li>
+                <li>A large third-party package ecosystem</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Bottom Line</h2>
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/80 text-sm">
+            Soli's core loop &mdash; route, controller, model, view, test, deploy &mdash; is real, fast, and safer by default than most of its inspirations. Its standout edges (performance, dev tooling, documents, single-binary ops) are genuine and hard to replicate. Its gaps (pre-wired auth flows, form builders, SQL, ecosystem) are equally genuine, and some absences &mdash; the generic admin, the JS toolchain &mdash; are deliberate bets rather than debt. It is best understood as a young, opinionated, vertically-integrated Rails &mdash; already excellent inside its lane, and honest about the lane's current width.
+        </p>
+    </div>
+</div>

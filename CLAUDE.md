@@ -432,6 +432,8 @@ In `--dev`, every response also carries `X-Soli-Route: <controller#action>`, `X-
 
 When you add, change, or remove a feature visible to Soli users (a new builtin, a new DSL helper, a config option, a CLI flag, behavior change), update both surfaces in the same change. Skipping either leaves the docs site or the markdown reference stale.
 
+3. **`www/app/views/docs/getting-started/comparison.html.slv`** — the "How Soli Compares" page states what Soli has, what it lacks, and how it stacks up against Rails/Laravel/Phoenix/Django. Any code change that adds a capability listed there as missing, removes one listed as present, or shifts a maturity claim MUST update this page in the same change. A stale comparison page is worse than none — its credibility rests on being honest and current.
+
 Use `#` for comments inside Soli code blocks in both `.md` and `.slv` (the `//` style was standardized away — see `www/app/views/docs/CLAUDE.md` recent activity).
 
 ## Imports

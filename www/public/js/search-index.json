@@ -1,6 +1,29 @@
 {
   "entries": [
     {
+      "title": "How Soli Compares",
+      "type": "guide",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/comparison",
+      "signature": "",
+      "description": "Honest framework tour and comparison: what Soli ships, where it beats Rails / Laravel / Phoenix / Django, and the gaps it still has.",
+      "keywords": [
+        "comparison",
+        "compare",
+        "rails",
+        "laravel",
+        "phoenix",
+        "django",
+        "vs",
+        "alternatives",
+        "missing",
+        "gaps",
+        "features",
+        "why soli",
+        "benchmark"
+      ]
+    },
+    {
       "title": "print",
       "type": "function",
       "category": "Core",

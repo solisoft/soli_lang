@@ -32,6 +32,10 @@ fn getting_started_configuration
     render_docs("docs/getting-started/configuration", "Configuration", "getting_started", "configuration")
 end
 
+fn getting_started_comparison
+    render_docs("docs/getting-started/comparison", "How Soli Compares", "getting_started", "comparison")
+end
+
 # ============================================================================
 # Core Concepts
 # ============================================================================
