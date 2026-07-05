@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Security
+
+* **security(mailer):** `Mailer` now rejects CR/LF/NUL in every header-bound field (from, subject, to, cc, reply_to, SMTP envelope from, and each recipient) — closes an email/SMTP header-injection vector where a crafted subject or address could smuggle extra headers or SMTP commands
+* **security(bundle):** archive extraction (`.soli` bundles and the in-memory bundle FS) validates every entry path against Zip-Slip — a `..`, absolute, or drive-prefixed entry is rejected instead of writing outside the extraction root; offset arithmetic is overflow-checked
+* **security(serve):** the dev error-page REPL (arbitrary server-side code execution) is now trusted for **loopback peers only**. Previously any private/LAN peer was trusted, so a co-resident host on a shared Wi-Fi/office/container network could scrape the token from a dev error page and run code — a LAN-wide RCE whenever `--dev` binds a non-loopback address. LAN access is now an explicit `SOLI_DEV_REPL_ALLOW_REMOTE=1` + `SOLI_DEV_REPL_SECRET` opt-in (the code now matches the already-documented loopback-only behavior)
+* **security(pades):** PKCS#1 v1.5 signature verification reconstructs and compares the full encoded message instead of a suffix (`ends_with`) match — closes a Bleichenbacher-style RSA signature-forgery avenue
+* **security(deflate):** `Deflate.inflate` caps decompressed output (default 64 MiB, override via `SOLI_DEFLATE_MAX_BYTES`) and fails closed — stops a decompression bomb in an unauthenticated SAML `SAMLRequest`/`SAMLResponse` from exhausting memory
+* **security(deps):** the direct `quick-xml` used by the SOAP/SAML XML parsers is upgraded 0.36 → 0.41 (RUSTSEC-2026-0194 / -0195, quadratic-attribute and namespace-allocation DoS). Predefined entities and numeric character references are resolved explicitly while DTD/general entities remain rejected (XXE defense). Note: the transitive `quick-xml` reached through `calamine`/`umya-spreadsheet` (spreadsheet parsing) cannot reach ≥0.41 yet — even their latest releases pull 0.37/0.39 — so that DoS advisory stays open for untrusted `.xlsx`/`.ods` input until upstream updates
+* **security(deploy):** every value interpolated into a remote `ssh` shell command is POSIX-quoted — closes command injection through branch/path/URL fields during `soli deploy`
+* **security(session):** `set_cookie` validates the name and value, rejecting control characters and the `;`/`=`/whitespace delimiters that could inject extra cookie attributes
+* **security(templates):** `.md` views render with link/image URLs neutralized (blocks `javascript:`/`data:` XSS), and the template `<%= %>` auto-escape now also covers non-String values (e.g. an object's `Display`), which previously rendered unescaped
+* **security(jwt):** `jwt_verify` now enforces the `nbf` (not-before) claim
+* **security(model):** SoliDB document keys are percent-encoded as a single URL path segment, preventing query/fragment injection into the database request URL
+* **security(vm):** the unsafe VM stack ops carry `debug_assert!` bounds checks so a bytecode/stack-discipline bug surfaces as a controlled panic in debug/test builds instead of undefined behavior
+
 ### Performance
 
 * **perf(pdf):** embedded raster images (SVG logos, QR codes, barcodes) are now Flate-compressed, and page-content + embedded-font streams are compressed too (re-enabled `doc.compress()` in the vendored printpdf, which upstream left off). Previously every image XObject and every content/font stream was written **uncompressed** — a single 512×512 logo was ~768 KB — so an image-bearing document ballooned to megabytes. Compression is **lossless** (forced `FlateDecode`, never lossy JPEG), so QR/barcodes stay pixel-exact and scannable, and `lopdf` skips streams that already carry a filter so images aren't double-encoded. The five-page Helios annual-report sample dropped from **~2.3 MB to ~110 KB (~20×)**, cutting the base64 payload, transfer, and browser decode of the PDF playground proportionally
