@@ -655,7 +655,6 @@ SOLI_NAV=off soli serve .</code></pre>
             <strong>Graceful degradation:</strong> non-HTML responses (downloads, JSON), fetch failures, and redirects that leave the origin all fall back to a normal full navigation automatically. (Alpine <code>x-teleport</code> pages swap fine &mdash; the swap destroys the old Alpine tree, which runs each teleport's cleanup, before replacing the body and re-initializing.) Error pages (404/500) that render HTML are swapped in like any other page, with the URL updated to the final response URL.
         </p>
     </div>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>
     <p class="text-gray-400 mb-6">When you create a new app with <code>soli new</code>, a starter helper file is generated at <code>app/helpers/application_helper.sl</code>. These helpers are automatically available in all templates.</p>
