@@ -199,6 +199,20 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
 | `Model.offset(n)` | Offset results (returns QueryBuilder) |
 | `Model.paginate(hash)` | Terminal: fetch paginated results + metadata. See [Pagination](#pagination) below. |
+| `Model.time_bucket(interval, aggs?)` | Timeseries models only: bucketed aggregation (returns QueryBuilder, chain `.all`). See [Timeseries Models](#timeseries-models). |
+| `Model.prune(cutoff?)` | Timeseries models only: delete rows older than a duration (`"30d"`) or RFC3339 cutoff; without an argument uses the declared `retention:`. Returns the number deleted. |
+| `Model.group_by(fields)` | Grouped aggregation — field name or array; without `aggregate` yields a count per group (`n`). Returns QueryBuilder, chain `.all`. See [Analytics](analytics.md#rich-aggregation-document-models). |
+| `Model.aggregate(spec)` | Multi-aggregate spec `{ alias: [func, field] }` (or `["count"]`); with `group_by` one row per group, without it one row (chain `.first`). See [Analytics](analytics.md#rich-aggregation-document-models). |
+| `Model.median(field) / stddev / variance / count_distinct` | Statistical aggregation terminals (returns QueryBuilder, chain `.first`) |
+| `Model.similar(query, field?, k?, opts?)` | Vector similarity search; with a declared `vector_index` pushes down to the HNSW ANN index. `opts`: `{ "exact": true }`. See [Search](search.md#vector-search-similar). |
+| `Model.search(query, opts?)` | Fulltext search (requires `fulltext_index`); eager, ranked, results carry `_search_score`. See [Search](search.md#fulltext-search-search). |
+| `Model.near(lat, lon, opts?)` | Geo search sorted by distance (requires `geo_index`); results carry `_distance` in meters. See [Search](search.md#geo-search-near--within). |
+| `Model.within(lat, lon, radius)` | Geo search inside a radius in meters (requires `geo_index`). See [Search](search.md#geo-search-near--within). |
+| `Model.insert_rows(rows)` | Columnar models only: batch append, returns `{ "inserted": n, "ids": [...] }`. See [Analytics](analytics.md#columnar-models). |
+| `Model.aggregate(field, op, opts?)` | Columnar models only: scalar aggregate, or per-group rows with `{ "group_by": [...] }` |
+| `Model.query(spec)` | Columnar models only: fetch rows (`columns` / one `filter` / `limit`) |
+| `Model.add_column_index(field, kind?)` / `column_indexes` / `drop_column_index(field)` | Columnar models only: manage column indexes (`sorted` default, `hash`, `bitmap`, `minmax`, `bloom`) |
+| `Model.columnar_stats` | Columnar models only: store-level statistics |
 
 ## Relationship DSL
 
@@ -207,6 +221,24 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `has_many(name)` | Declare a one-to-many relationship |
 | `has_one(name)` | Declare a one-to-one relationship |
 | `belongs_to(name)` | Declare an inverse relationship |
+| `edge from:, to:` | Declare an edge model over a SolidB edge collection. See [Graph Models](#graph-models-edges-and-traversal). |
+
+## Storage & Index DSL
+
+Class-body declarations for the multi-model and search features:
+
+| Declaration | Description |
+|-------------|-------------|
+| `columnar options?` | Declare a columnar-store model (`compression: "lz4"` default, or `"none"`). See [Analytics & Columnar Stores](analytics.md#columnar-models). |
+| `column name, type, options?` | Declare a typed column on a columnar model (`nullable:`, `indexed:`) |
+| `vector_index field, dimension:, metric:` | Declare an HNSW vector index (optional `m:`, `ef_construction:`, `quantization:`, `name:`). See [Search](search.md#index-dsl). |
+| `fulltext_index field, ...` | Declare a fulltext index over one or more fields |
+| `geo_index field` | Declare a geospatial index (`{ "lat": ..., "lon": ... }` field) |
+| `index field_or_fields, options?` | Declare a secondary index (`unique:`, `type:` — `"persistent"` default / `"hash"` / `"fulltext"` / `"bloom"` / `"cuckoo"`, `name:`) |
+
+Index declarations are metadata-only at load: dev ensures them at server
+boot; in production run `soli db:indexes` or create them in migrations. See
+[Search — sync strategy](search.md#how-indexes-get-created-sync-strategy).
 
 ## QueryBuilder Methods
 
@@ -234,9 +266,17 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `.avg(field)` | Execute aggregation, return average of field |
 | `.min(field)` | Execute aggregation, return minimum of field |
 | `.max(field)` | Execute aggregation, return maximum of field |
-| `.group_by(field, func, agg_field)` | Execute grouping aggregation |
+| `.group_by(field, func, agg_field)` | Legacy grouping aggregation — returns `[{group, result}]` (chain `.all`) |
+| `.group_by(fields)` | Grouped mode — field name or array of names; combine with `.aggregate` (alone: implicit count per group as `n`). Chain `.all`. See [Analytics](analytics.md#rich-aggregation-document-models). |
+| `.aggregate(spec)` | Multi-aggregate spec `{ alias: [func, field] }` or `{ alias: ["count"] }` — funcs: sum, avg, min, max, count, count_distinct, median, stddev, variance |
+| `.having(expr, binds?)` | Post-COLLECT filter over bare group fields / aggregate aliases. **Developer-trusted string** — never build from user input. |
+| `.median(field)` / `.stddev(field)` / `.variance(field)` / `.count_distinct(field)` | Statistical aggregation (chain `.first`) |
+| `.similar(query, field?, k?, opts?)` | Vector similarity search — pushes down to the HNSW index when a `vector_index` is declared; `opts: { "exact": true }` forces exact client-side cosine. See [Search](search.md#vector-search-similar). |
+| `.time_bucket(interval, aggs?)` | Timeseries models only: group into fixed time buckets with per-bucket aggregates (chain `.all`). See [Timeseries Models](#timeseries-models). |
 | `.paginate(hash)` | Terminal: fetch paginated results + metadata. See [Pagination](#pagination) below. |
 | `.to_query` | Return the generated SDBQL string (for debugging) |
+| `record.traverse(EdgeModel, opts?)` | Instance method: start a graph-traversal QueryBuilder from a saved record. See [Graph Models](#graph-models-edges-and-traversal). |
+| `record.shortest_path(other, via:, direction?)` | Instance method, executes immediately: vertices along the shortest path (`[]` when unconnected). |
 
 ## Pagination
 
@@ -874,6 +914,118 @@ class Post < Model
 end
 ```
 
+## Graph Models (Edges and Traversal)
+
+SoliDB is multi-model: alongside document collections it supports native
+**edge collections**. Declare an edge model with the `edge` DSL and the Model
+API gains graph creation, traversal, and shortest-path queries:
+
+```soli
+class Follow < Model
+  edge from: "users", to: "users"
+end
+```
+
+`from:` and `to:` accept collection names (`"users"`) or model class names
+(`"User"`). The declaration marks the collection as the SolidB `edge` type —
+in dev it is auto-created with that type plus hash indexes on `_from` and
+`_to`.
+
+### Creating Edges
+
+Endpoints can be model instances, full `"collection/key"` ids, or bare keys:
+
+```soli
+f = Follow.create(from: alice, to: bob)
+f = Follow.create({ "from": alice, "to": "users/bob-key", "since": 2024 })
+
+f._from   # => "users/alice-key"
+f._to     # => "users/bob-key"
+```
+
+Edges are ordinary model records — validations, callbacks, and extra
+attributes (`since` above) work as usual. A missing or invalid endpoint
+behaves like a failed validation: `f._errors` is set (e.g.
+`[{ "field": "from", "message": "..." }]`) and the edge is not persisted.
+
+### Traversal
+
+Call `.traverse(EdgeModel, options?)` on a **saved** record to get a chainable
+QueryBuilder over the reachable vertices:
+
+```soli
+friends   = alice.traverse(Follow).all                    # OUTBOUND, depth 1..1
+followers = alice.traverse(Follow, direction: "in").all   # INBOUND
+network   = alice.traverse(Follow, depth: 3).all          # depth 1..3
+
+# Full chain — vertex filters use the usual `doc` variable; prefix a filter
+# with `edge.` to match edge attributes instead:
+ring = alice.traverse(Follow, depth: [2, 3], direction: "any")
+  .where({ "active": true })
+  .where("edge.since >= @y", { "y": 2024 })
+  .order("name")
+  .limit(10)
+  .all
+
+n = alice.traverse(Follow).count
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `direction` | `"out"` | `"out"` (OUTBOUND), `"in"` (INBOUND), or `"any"` |
+| `depth` | `1` | Int `n` traverses depth `1..n`; a `[min, max]` array sets an explicit range |
+
+> **Depth gotcha:** Soli's `1..3` range literal materializes to the
+> exclusive-end array `[1, 2]`. Prefer an explicit `[1, 3]` array for depth
+> ranges.
+
+- Results are instances of the target model — the class is resolved per
+  document, so mixed-vertex graphs return the right class for each vertex.
+- Soft-delete models compose: the deleted-filter is applied to the vertices.
+- A traversal builder does **not** compose with `includes`, `includes_count`,
+  `join`, `group_by`, `similar`, `update_all`, or `delete_all` — combining
+  them raises a clear error.
+- `traverse` and `shortest_path` require a saved record (they raise
+  otherwise).
+
+### Shortest Path
+
+`shortest_path` executes immediately (no `.all`) and returns the vertices
+along the shortest path between two records — `[]` when they are not
+connected. Direction defaults to `"any"`:
+
+```soli
+path = alice.shortest_path(bob, via: Follow)
+path = alice.shortest_path("users/bob-key", via: Follow, direction: "out")
+```
+
+### Relation Sugar
+
+An idiomatic named relation over a traversal is just a plain method:
+
+```soli
+class User < Model
+  def followers()
+    return this.traverse(Follow, { "direction": "in" })
+  end
+end
+
+User.find(key).followers().where({ "active": true }).count
+```
+
+### Migrations
+
+Dev auto-create already provisions the edge type and the `_from`/`_to` hash
+indexes. For explicit production migrations:
+
+```soli
+def up(db: Any)
+  db.create_collection("follows", "edge")
+  db.create_index("follows", "idx_follows_from", ["_from"], {})
+  db.create_index("follows", "idx_follows_to", ["_to"], {})
+end
+```
+
 ## Finder Methods
 
 Find records by specific field values:
@@ -924,10 +1076,36 @@ min_score = User.min("score");
 # Maximum
 max_score = User.max("views");
 
-# Group by aggregation
+# Group by aggregation (legacy 3-arg form, unchanged)
 by_country = User.group_by("country", "sum", "balance");
 # Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]
 ```
+
+### Rich grouped aggregation
+
+The newer form groups on one or more fields and computes several named
+aggregates at once, with `having` for post-group filtering:
+
+```soli
+rows = Order
+  .where({ "status": "paid" })
+  .group_by(["country", "plan"])
+  .aggregate({ "total": ["sum", "amount"], "n": ["count"] })
+  .having("total > @min", { "min": 1000 })
+  .order("total", "desc")
+  .all
+# => [{ "country": "FR", "plan": "pro", "total": 5300, "n": 12 }, ...]
+
+User.group_by("role").all           # 1-arg form: implicit count per group ("n")
+Order.aggregate({ "n": ["count"] }).first   # ungrouped: one row
+Order.median("amount").first        # also: stddev / variance / count_distinct
+```
+
+Aggregate functions: `sum`, `avg`, `min`, `max`, `count`, `count_distinct`,
+`median`, `stddev`, `variance` (no `PERCENTILE` — SolidB has no such
+function). The full treatment — `having` security notes, soft-delete
+behavior, the window-function escape hatch — lives in
+[Analytics & Columnar Stores](analytics.md).
 
 ## Pluck and Exists
 
@@ -972,7 +1150,29 @@ end
 
 Requires `SOLI_EMBEDDING_API_KEY` environment variable. See [database docs](/docs/database/finders#similar-simple) for configuration.
 
-SolidDB also supports native vector search with HNSW indexes, `VECTOR_SIMILARITY()` in SDBQL, hybrid search, and scalar quantization. Create a vector index on your embedding field for production workloads. See the [SolidDB Vector Search docs](https://solidb.solisoft.net/docs/vector-search) for details.
+### Index pushdown (`vector_index`)
+
+Declare a `vector_index` on the embedding field and `.similar()` pushes the
+search down to the database's HNSW index (approximate nearest neighbor)
+instead of computing cosine similarity client-side:
+
+```soli
+class Article < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+end
+
+Article.similar("query text", "embedding", 5)          # ANN via the HNSW index
+Article.similar([0.1, 0.2, ...], "embedding", 5)       # vector literal — no embedding call
+Article.similar("q", "embedding", 5, { "exact": true })  # force exact client-side cosine
+```
+
+ANN results are approximate, and chained `where` filters are applied *after*
+candidate selection (4×k candidates, capped at 400) — so fewer than `k` rows
+may return. Without a `vector_index` declaration, `.similar()` keeps the
+historical client-side path, unchanged. Full details, plus **fulltext**
+(`Model.search`, `_search_score`) and **geo** (`near` / `within`,
+`_distance`) search and the index DSL, live in
+[Search: Vector, Fulltext & Geo](search.md).
 
 ## Instance Methods
 
@@ -1106,6 +1306,109 @@ all = Post.with_deleted.all;
 # Query only deleted records
 deleted = Post.only_deleted.all;
 ```
+
+## Timeseries Models
+
+Declare a model as timeseries with the `timeseries` DSL. The collection is
+created with the SolidB `timeseries` type — optimized for append-only,
+time-indexed data (metrics, logs, telemetry):
+
+```soli
+class Metric < Model
+  timeseries retention: "30d"     # bare `timeseries` (no options) also works
+end
+
+class Reading < Model
+  timeseries retention: "90d", timestamp: "recorded_at"
+end
+```
+
+- `retention:` — optional retention window; used by `prune` when called
+  without an argument.
+- `timestamp:` — the field `time_bucket` buckets on. Defaults to the
+  server-set `_created_at`.
+
+### Insert-Only
+
+Timeseries records are insert-only, mirroring the database's own rules.
+Documents get UUIDv7 keys, so `_key` order is insertion-time order:
+
+```soli
+Metric.create({ "device": "srv1", "value": 0.42 })
+
+m.update({ "value": 1 })
+# => raises: "Metric is a timeseries model: records are insert-only.
+#    update is not supported — use prune() for retention."
+```
+
+Blocked: static `update` / `upsert`, instance `update` / `save` on an
+existing record / `increment` / `decrement`, and `update_all`. Allowed:
+`delete` and `delete_all`.
+
+> Don't set `_key` yourself on a timeseries model. `prune` relies on the
+> UUIDv7 key ordering — documents inserted with a caller-supplied `_key` are
+> never pruned.
+
+### Bucketed Aggregation (`time_bucket`)
+
+`time_bucket(interval, aggregates?)` groups rows into fixed time buckets and
+computes per-bucket aggregates. Chain it after `where(...)` filters and
+finish with `.all`:
+
+```soli
+rows = Metric.where("device = @d", { "d": "srv1" })
+  .time_bucket("5m", { "avg": "value", "max": "value" })
+  .all
+# => [{ "bucket": "2026-07-05T10:00:00+00:00", "avg": 0.41, "max": 0.9 }, ...]
+
+rows = Metric.time_bucket("1d").all                  # bare form: count per bucket
+# => [{ "bucket": "...", "count": 42 }, ...]
+
+rows = Metric.time_bucket("1h", avg: "value").all    # keyword style works too
+```
+
+- Interval units: `s`, `m`, `h`, `d` (the database's `TIME_BUCKET` contract).
+- Aggregates: `sum` / `avg` / `min` / `max` take a field name; `count` takes
+  `true` (`{ "count": true }`). With no aggregates you get a `count` per
+  bucket.
+- Buckets fall on the declared `timestamp:` field (default `_created_at`).
+- Rows come back as plain hashes — `bucket` (an RFC3339 string) plus your
+  aggregate aliases — sorted by bucket.
+
+### Retention (`prune`)
+
+`prune` deletes rows older than a cutoff and returns the number deleted:
+
+```soli
+deleted = Metric.prune("30d")                    # duration cutoff (units: s/m/h/d/w)
+deleted = Metric.prune("2026-06-01T00:00:00Z")   # explicit RFC3339 cutoff
+deleted = Metric.prune                           # uses the declared retention:
+```
+
+There is no auto-prune scheduler. Register a recurring [cron job](jobs.md)
+whose handler calls `prune`:
+
+```soli
+Cron.schedule("prune_metrics", Cron.daily_at("03:00"), "PruneMetricsJob", {})
+# ...and PruneMetricsJob.perform is a one-liner: Metric.prune
+```
+
+### Migrations and Continuous Aggregates
+
+Dev auto-create provisions the `timeseries` type for you; the explicit
+migration form is:
+
+```soli
+def up(db: Any)
+  db.create_collection("metrics", "timeseries")
+end
+```
+
+`db.prune_collection("metrics", "2026-01-01T00:00:00Z")` is also available on
+the migration `db` handle for one-off cleanups. For continuous aggregates
+(downsampling on write), SolidB streams are the raw-SDBQL escape hatch —
+`db.query("CREATE STREAM ...")` in a migration. See
+[Migrations](migrations.md).
 
 ## Encrypted Attributes
 

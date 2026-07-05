@@ -2051,6 +2051,17 @@ impl Interpreter {
 
             Value::Method(method) => {
                 let mut args = positional_args;
+                // Ruby-style: trailing named arguments collapse into a single
+                // trailing hash positional arg, mirroring the NativeFunction
+                // arm above. Built-in method receivers (QueryBuilder chaining,
+                // `.time_bucket("1h", avg: "value")`, …) read the keys by name.
+                if !named_args.is_empty() {
+                    let mut pairs = crate::interpreter::value::HashPairs::default();
+                    for (key, value) in &named_args {
+                        pairs.insert(HashKey::String(key.clone().into()), value.clone());
+                    }
+                    args.push(Value::Hash(Rc::new(RefCell::new(pairs))));
+                }
                 // Forward block argument as last positional arg for method calls
                 if let Some(block_val) = block_arg {
                     args.push(block_val);

@@ -681,13 +681,69 @@ fn create_database_sync(name: &str) -> Result<(), String> {
 /// message) when the database path is missing; in that case we create the
 /// database and retry the collection creation once.
 fn create_collection_sync(name: &str) -> Result<(), String> {
-    match try_create_collection_once(name) {
+    let result = match try_create_collection_once(name) {
         Err(e) if is_database_not_found_error(&e) => {
             create_database_sync(&get_database_name())?;
             try_create_collection_once(name)
         }
         other => other,
+    };
+    if result.is_ok() && super::registry::get_collection_type(name).as_deref() == Some("edge") {
+        // Without _from/_to indexes the DB falls back to a full edge scan per
+        // traversal. Best-effort: a failure here must not fail the write that
+        // triggered the auto-create.
+        for field in ["_from", "_to"] {
+            if let Err(e) = create_index_sync(name, field) {
+                eprintln!(
+                    "WARNING: could not create {} index on '{}': {}",
+                    field, name, e
+                );
+            }
+        }
     }
+    result
+}
+
+/// Best-effort hash-index creation used by the edge auto-create path.
+fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
+    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let database = get_database_name();
+    let url = format!(
+        "{}{}/_api/database/{}/index/{}",
+        scheme, host, database, collection
+    );
+
+    let body = serde_json::json!({
+        "name": format!("idx_{}_{}", collection, field.trim_start_matches('_')),
+        "field": field,
+        "type": "hash",
+        "unique": false,
+    })
+    .to_string();
+
+    let client = get_http_client().clone();
+
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+        // 409 = index already exists — fine.
+        if !resp.status().is_success() && resp.status() != reqwest::StatusCode::CONFLICT {
+            let status = resp.status();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
+            return Err(format!("Create index failed: {} - {}", status, body));
+        }
+        Ok(())
+    })
 }
 
 fn try_create_collection_once(name: &str) -> Result<(), String> {
@@ -698,7 +754,13 @@ fn try_create_collection_once(name: &str) -> Result<(), String> {
     let database = get_database_name();
     let url = format!("{}{}/_api/database/{}/collection", scheme, host, database);
 
-    let body = serde_json::json!({ "name": name }).to_string();
+    // Send the declared collection type ("edge", "timeseries", ...) when the
+    // model's class-body DSL registered one — the DB only applies type-driven
+    // behavior (e.g. insert-only) when the collection is created with it.
+    let body = match super::registry::get_collection_type(name) {
+        Some(ctype) => serde_json::json!({ "name": name, "type": ctype }).to_string(),
+        None => serde_json::json!({ "name": name }).to_string(),
+    };
 
     let client = get_http_client().clone();
 
@@ -734,6 +796,99 @@ fn try_create_collection_once(name: &str) -> Result<(), String> {
         }
 
         Ok(())
+    })
+}
+
+/// Generic JSON request against a database-scoped API path (used by the
+/// columnar/vector/geo model layers). `path_suffix` is appended to
+/// `/_api/database/{db}` (so pass e.g. "/columnar/page_views/insert").
+/// Returns the parsed JSON body; non-2xx surfaces as Err with the body text.
+pub fn exec_db_api_request(
+    method: reqwest::Method,
+    path_suffix: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let database = get_database_name();
+    let url = format!(
+        "{}{}/_api/database/{}{}",
+        scheme, host, database, path_suffix
+    );
+
+    let body_str = body.map(|b| b.to_string());
+    let client = get_http_client().clone();
+
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            let mut req = client.request(method.clone(), &url);
+            if let Some(ref b) = body_str {
+                req = req
+                    .header("Content-Type", "application/json")
+                    .body(b.clone());
+            }
+            req
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+        let status = resp.status();
+        let text = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+            .await
+            .unwrap_or_default();
+        if !status.is_success() {
+            return Err(format!("{} - {}", status, text));
+        }
+        if text.is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        serde_json::from_str(&text).map_err(|e| format!("invalid JSON response: {}", e))
+    })
+}
+
+/// Prune a (timeseries) collection: delete every document whose UUIDv7 key
+/// embeds a timestamp older than `older_than_iso` (RFC3339). Returns the
+/// number of deleted documents. A missing collection prunes to 0 rather than
+/// erroring — nothing to delete is a success for retention.
+pub fn exec_prune(collection: &str, older_than_iso: &str) -> Result<i64, String> {
+    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let database = get_database_name();
+    let url = format!(
+        "{}{}/_api/database/{}/collection/{}/prune",
+        scheme, host, database, collection
+    );
+
+    let body = serde_json::json!({ "older_than": older_than_iso }).to_string();
+
+    let client = get_http_client().clone();
+
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(0);
+        }
+        let text = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+            .await
+            .unwrap_or_default();
+        if !status.is_success() {
+            return Err(format!("Prune failed: {} - {}", status, text));
+        }
+        let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        Ok(json
+            .get("deleted")
+            .or_else(|| json.get("count"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0))
     })
 }
 

@@ -106,10 +106,26 @@ pub(crate) fn bind_native_static_to_model_class(
 ) -> Value {
     let class_val = class_val.clone();
     let original_func = native_method.func.clone();
+    let method_name = name.to_string();
     let bound_func = NativeFunction {
         name: format!("bound_{}", name),
         arity: None, // Variadic - don't check arity at VM level
         func: Rc::new(move |args| {
+            // Columnar models have no document API — reject the inherited
+            // document statics here (the one choke point shared by the
+            // tree-walker and the VM) with an honest pointer at the
+            // columnar surface.
+            if let Value::Class(c) = &class_val {
+                if crate::interpreter::builtins::model::columnar::is_document_api_method(
+                    &method_name,
+                ) && crate::interpreter::builtins::model::is_columnar_model(&c.name)
+                {
+                    return Err(
+                        crate::interpreter::builtins::model::columnar::
+                            columnar_no_document_api_error(&c.name, &method_name),
+                    );
+                }
+            }
             let mut full_args = vec![class_val.clone()];
             full_args.extend(args);
             original_func(full_args)
@@ -1966,7 +1982,8 @@ impl Interpreter {
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"
             | "all" | "first" | "count" | "paginate" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
-            | "avg" | "min" | "max" | "group_by"
+            | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
+            | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"
             // Enumerable-style array passthrough — materializes on call.
             | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"
             | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"

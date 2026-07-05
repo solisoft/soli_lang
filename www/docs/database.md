@@ -172,6 +172,34 @@ user = User.create({ "name": "Alice" })
 found = User.find(user["id"])
 ```
 
+## Collection Types
+
+SoliDB is multi-model: besides regular JSON document collections it supports
+`blob` (binary attachments), `columnar` (analytics), `edge` (graph), and
+`timeseries` (append-only, time-indexed) collections. The ORM has first-class
+DSLs for three of them:
+
+- **Edge collections** — declare `edge from:, to:` on a model to create
+  graph edges and run traversal / shortest-path queries. See
+  [Models — Graph Models](models.md#graph-models-edges-and-traversal).
+- **Timeseries collections** — declare `timeseries` on a model for
+  insert-only, UUIDv7-keyed records with `time_bucket` aggregation and
+  `prune` retention. See
+  [Models — Timeseries Models](models.md#timeseries-models).
+- **Columnar stores** — declare `columnar` + typed `column`s on a model for
+  high-volume append-and-aggregate data. A separate engine: no document CRUD
+  and no SDBQL `FOR`. See
+  [Analytics & Columnar Stores](analytics.md#columnar-models).
+
+Models can also declare **search indexes** (`vector_index`, `fulltext_index`,
+`geo_index`, `index`) and query them with `similar` / `search` / `near` /
+`within` — see [Search: Vector, Fulltext & Geo](search.md).
+
+Collection types are set at creation time — `db.create_collection(name, type)`
+(or `db.create_columnar` for columnar stores) in a
+[migration](migrations.md#create_collection), or automatically by the model
+DSLs in dev.
+
 ## Raw Queries
 
 For everyday CRUD inside a server, use the [Model ORM](models.md) — it shares the worker's connection and adds validations, callbacks, and relations. Drop down to a raw query when you need an SDBQL feature the ORM doesn't expose, or when you're writing a script or migration.
@@ -326,5 +354,7 @@ Error: Database 'mydb' not found
 ## Next Steps
 
 - [Models & ORM](/docs/models) - Learn how to work with data
+- [Analytics & Columnar Stores](/docs/database/analytics) - Grouped aggregation and columnar models
+- [Search: Vector, Fulltext & Geo](/docs/database/search) - Search indexes and queries
 - [Migrations](/docs/migrations) - Manage your database schema
 - [Testing](/docs/testing) - Test with database isolation

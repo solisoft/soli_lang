@@ -1,0 +1,185 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Search: Vector, Fulltext &amp; Geo</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Declare search indexes in the model class body &mdash; vector (HNSW ANN), fulltext, geospatial, and plain
+            secondary indexes &mdash; and query them with <code>similar</code>, <code>search</code>, <code>near</code>, and <code>within</code>.
+        </p>
+    </div>
+
+    <h2 id="index-dsl" class="text-2xl font-bold text-white mb-6">Index DSL</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Article &lt; Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+  fulltext_index "title", "body"
+  index "email", unique: true
+end
+
+class Store &lt; Model
+  geo_index "location"    # field holds { "lat": ..., "lon": ... }
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Declaration</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">vector_index field, dimension:, metric:</code></td>
+                    <td class="py-3 px-4 text-gray-400">HNSW vector index for ANN search on an embedding field. Optional: <code>m:</code>, <code>ef_construction:</code>, <code>quantization:</code>, <code>name:</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">fulltext_index field, ...</code></td>
+                    <td class="py-3 px-4 text-gray-400">Fulltext index over one or more fields; powers <code>Model.search</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">geo_index field</code></td>
+                    <td class="py-3 px-4 text-gray-400">Geospatial index; the field holds a <code>{ "lat": ..., "lon": ... }</code> hash. Powers <code>near</code> / <code>within</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">index field_or_fields, options?</code></td>
+                    <td class="py-3 px-4 text-gray-400">Secondary index. A field name or an array (compound). Options: <code>unique:</code>, <code>type:</code> (<code>"persistent"</code> default, or <code>"hash"</code> / <code>"fulltext"</code> / <code>"bloom"</code> / <code>"cuckoo"</code>), <code>name:</code> (defaults to <code>idx_&lt;collection&gt;_&lt;fields&gt;</code>).</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="index-sync" class="text-2xl font-bold text-white mb-6">How indexes get created (sync strategy)</h2>
+    <p class="text-gray-400 mb-4">
+        Declarations are <strong class="text-white">metadata-only at load</strong> &mdash; declaring an index doesn't talk to the database. In dev, the server ensures the declared indexes exist at boot. In production, run <code>soli db:indexes [folder]</code> (new CLI command) or create them in migrations &mdash; migrations remain the recommended production DDL path; <code>soli db:indexes</code> is the DSL reconciler:
+    </p>
+    <div class="rounded-lg bg-[#0C0A09] p-3 mb-4">
+<pre><code class="language-bash text-sm">soli db:indexes           # reconcile declared indexes for the current app
+soli db:indexes ./myapp   # or point at a project folder</code></pre>
+    </div>
+    <p class="text-gray-400 mb-4">
+        There's also an internal <code>__sync_model_indexes()</code> builtin for scripts and tests.
+    </p>
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">Migration-side equivalents</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>db.create_index(collection, name, fields, { "unique": ..., "type": ... })</code> for secondary and fulltext indexes (<code>type: "fulltext"</code>).</li>
+            <li><code>db.create_vector_index(collection, name, field, dimension, options)</code> / <code>db.drop_vector_index(collection, name)</code> for vector indexes &mdash; <code>options</code> is a metric string (<code>"cosine"</code>) or a hash with <code>metric</code> and <code>quantization</code>.</li>
+            <li>Geo indexes have <strong>no migration helper yet</strong> &mdash; dev boot or <code>soli db:indexes</code> creates them.</li>
+        </ul>
+    </div>
+
+    <h2 id="vector-search" class="text-2xl font-bold text-white mb-6">Vector Search (<code>similar</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        With a <code>vector_index</code> declared on the field, <code>.similar()</code> <strong class="text-white">pushes the search down</strong> to the database's HNSW index (approximate nearest neighbor):
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Article.similar("query text", "embedding", 5)      # embeds client-side, then ANN search
+Article.similar([0.1, 0.2, ...], "embedding", 5)   # vector literal — no embedding call
+
+# Chained filters: ANN candidates first, then your filter
+Article.where({ "published": true }).similar("q", "embedding", 5)
+
+# Escape hatch: force the old exact client-side cosine path
+Article.similar("q", "embedding", 5, { "exact": true })</code></pre>
+        </div>
+    </div>
+    <ul class="text-gray-400 text-sm space-y-2 mb-6 list-disc list-inside">
+        <li>Text queries are embedded client-side (requires <code>SOLI_EMBEDDING_API_KEY</code> &mdash; see <a href="/docs/database/finders#similar-simple" class="text-amber-400 hover:underline">the embedding configuration</a>). Pass a vector literal to skip the embedding call entirely.</li>
+        <li>Results carry a <code>_similarity_score</code> field.</li>
+        <li>Without a <code>vector_index</code> declaration, <code>.similar()</code> behaves exactly as before &mdash; the historical client-side cosine path is unchanged.</li>
+    </ul>
+
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2">ANN honesty notes</h4>
+        <ul class="text-amber-200/80 text-sm space-y-2">
+            <li>HNSW results are <strong>approximate</strong> &mdash; ordering can differ from exact cosine similarity, especially among close scores.</li>
+            <li>With chained filters, the database returns ANN <em>candidates</em> first (4&times;k, capped at 400) and your filters are applied <strong>after</strong> candidate selection &mdash; so fewer than <code>k</code> rows may come back.</li>
+            <li><code>{ "exact": true }</code> is the escape hatch: exact client-side cosine over the filtered rows, at fetch-everything cost.</li>
+        </ul>
+    </div>
+
+    <h2 id="fulltext-search" class="text-2xl font-bold text-white mb-6">Fulltext Search (<code>search</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        Requires a <code>fulltext_index</code> covering the field(s). Results are ranked; each carries <code>_search_score</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">results = Article.search("database indexing")
+results[0]._search_score
+
+# Fuzzy, field-scoped, highlighted
+results = Article.search("phne", { "field": "title", "distance": 1, "limit": 5, "highlight": true })
+results[0]._highlighted</code></pre>
+        </div>
+    </div>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Option</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">field</code></td>
+                    <td class="py-3 px-4 text-gray-400">Restrict the search to one indexed field</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">distance</code></td>
+                    <td class="py-3 px-4 text-gray-400">Fuzzy matching: maximum edit distance</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">limit</code></td>
+                    <td class="py-3 px-4 text-gray-400">Maximum number of results</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">highlight</code></td>
+                    <td class="py-3 px-4 text-gray-400">Adds a <code>_highlighted</code> field with match markup</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="geo-search" class="text-2xl font-bold text-white mb-6">Geo Search (<code>near</code> / <code>within</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        Requires a <code>geo_index</code>. <code>near</code> sorts by distance and adds <code>_distance</code> (meters); <code>within</code> returns everything inside a radius (meters):
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">nearby = Store.near(48.85, 2.35, { "limit": 5 })   # each result has ._distance
+inside = Store.within(48.85, 2.35, 2000.0)         # radius: 2 km</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">Pipeline notes (fulltext / geo)</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>search</code>, <code>near</code>, and <code>within</code> bypass the SDBQL query pipeline &mdash; they are <strong>eager</strong> and return an array of model instances immediately; there is no chaining (<code>.where(...)</code>, <code>.order(...)</code> don't compose with them).</li>
+            <li>On soft-delete models, deleted rows are dropped <strong>client-side</strong> after the index lookup &mdash; which can shrink a <code>limit</code>-ed result set.</li>
+        </ul>
+    </div>
+
+    <h2 id="hybrid-search" class="text-2xl font-bold text-white mb-6">Hybrid Search (not exposed yet)</h2>
+    <p class="text-gray-400 mb-12">
+        Combined vector + fulltext ranking is <strong class="text-white">not</strong> exposed through the ORM &mdash; the database's HTTP endpoint for it is still a stub. The raw-SDBQL escape hatch is SolidB's <code>HYBRID_SEARCH</code> function via <code>db.query(...)</code> / <code>@sdbql{}</code>; see the <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-amber-400 hover:underline">SolidB Hybrid Search docs</a> for its signature and tuning.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/analytics" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Analytics &amp; Columnar Stores &rarr;</h3>
+            <p class="text-sm text-gray-400">Rich grouped aggregation and column-oriented storage.</p>
+        </a>
+        <a href="/docs/database/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Migrations &rarr;</h3>
+            <p class="text-sm text-gray-400">Index helpers, types, and the production DDL path.</p>
+        </a>
+    </div>
+</div>

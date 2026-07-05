@@ -422,23 +422,47 @@ impl Parser {
                 "encrypts",
                 "enum_field",
                 "state_machine",
+                "edge",
+                "timeseries",
+                "columnar",
+                "column",
+                "index",
+                "vector_index",
+                "fulltext_index",
+                "geo_index",
             ];
-            // Bare class-level macros (no parentheses needed)
-            let bare_class_level_names = ["soft_delete"];
-            if bare_class_level_names.contains(&name.as_str()) {
+            // Bare class-level macros (no parentheses needed). A following
+            // `:` means it's really a field declaration (`timeseries: Bool`),
+            // so the bare form only wins when no colon follows.
+            let bare_class_level_names = ["soft_delete", "timeseries", "columnar"];
+            if bare_class_level_names.contains(&name.as_str())
+                && !matches!(
+                    self.tokens.get(self.current + 1).map(|t| &t.kind),
+                    Some(TokenKind::Colon)
+                )
+            {
                 return true;
             }
 
             if class_level_names.contains(&name.as_str()) {
-                // Look ahead for left paren, symbol, or string (for no-parens form:
-                // belongs_to :user, before_save "method")
+                // Look ahead for left paren, symbol, or string (for no-parens
+                // form: belongs_to :user, before_save "method"), an array
+                // (`index ["a", "b"], ...`), a `from:`-style keyword label
+                // (`edge from: "users"`), or an `ident:` named-arg label
+                // (`timeseries retention: "30d"` — colon at +2, which a field
+                // declaration never has).
                 if let Some(next) = self.tokens.get(self.current + 1) {
-                    return matches!(
-                        next.kind,
+                    return match &next.kind {
                         TokenKind::LeftParen
-                            | TokenKind::SymbolLiteral(_)
-                            | TokenKind::StringLiteral(_)
-                    );
+                        | TokenKind::SymbolLiteral(_)
+                        | TokenKind::StringLiteral(_)
+                        | TokenKind::LeftBracket => true,
+                        TokenKind::From | TokenKind::In | TokenKind::Identifier(_) => matches!(
+                            self.tokens.get(self.current + 2).map(|t| &t.kind),
+                            Some(TokenKind::Colon)
+                        ),
+                        _ => false,
+                    };
                 }
             }
         }
@@ -452,8 +476,58 @@ impl Parser {
         // Check for bare class-level macro (no parentheses): e.g., soft_delete
         // or e.g., belongs_to :user, before_save "method_name"
         if let TokenKind::Identifier(name) = &self.peek().kind {
-            let bare_names = ["soft_delete"];
-            if bare_names.contains(&name.as_str()) {
+            // Named-arg command form (`edge from: "users", to: "users"`,
+            // `timeseries retention: "30d"`) and array-first form
+            // (`index ["a", "b"], unique: true`): reuse the command-call
+            // argument grammar, which understands `from:`/`in:` keyword
+            // labels and `ident:` named args.
+            let named_start = matches!(
+                self.tokens.get(self.current + 1).map(|t| &t.kind),
+                Some(TokenKind::From) | Some(TokenKind::In) | Some(TokenKind::Identifier(_))
+            ) && matches!(
+                self.tokens.get(self.current + 2).map(|t| &t.kind),
+                Some(TokenKind::Colon)
+            );
+            let array_start = matches!(
+                self.tokens.get(self.current + 1).map(|t| &t.kind),
+                Some(TokenKind::LeftBracket)
+            );
+            if named_start || array_start {
+                let callee_name = name.clone();
+                self.advance(); // consume the identifier
+                let mut arguments = Vec::new();
+                if array_start {
+                    // Arrays aren't command-arg starters (ambiguous with
+                    // indexing), so parse the first argument explicitly.
+                    arguments.push(crate::ast::expr::Argument::Positional(self.expression()?));
+                    if self.match_token(&TokenKind::Comma) {
+                        arguments.extend(self.parse_command_arguments()?);
+                    }
+                } else {
+                    arguments = self.parse_command_arguments()?;
+                }
+                let span = start_span.merge(&self.previous_span());
+                let callee = Expr::new(ExprKind::Variable(callee_name), start_span);
+                let call = Expr::new(
+                    ExprKind::Call {
+                        callee: Box::new(callee),
+                        arguments,
+                    },
+                    span,
+                );
+                self.match_token(&TokenKind::Semicolon);
+                return Ok(Stmt::new(StmtKind::Expression(call), span, None));
+            }
+
+            let bare_names = ["soft_delete", "timeseries", "columnar"];
+            // A following `(` means the parens form — let the expression
+            // path below parse the full call instead of a bare zero-arg one.
+            if bare_names.contains(&name.as_str())
+                && !matches!(
+                    self.tokens.get(self.current + 1).map(|t| &t.kind),
+                    Some(TokenKind::LeftParen)
+                )
+            {
                 let name = name.clone();
                 self.advance(); // consume the identifier
                 let span = start_span.merge(&self.previous_span());
@@ -479,15 +553,11 @@ impl Parser {
                 ) {
                     let callee_name = name.clone();
                     self.advance(); // consume the identifier
-                                    // Parse one or more comma-separated positional args, so
-                                    // `enum_field :status, Status` works alongside the
-                                    // single-arg `belongs_to :user`. (Named args still require
-                                    // the parens form.)
-                    let mut arguments =
-                        vec![crate::ast::expr::Argument::Positional(self.expression()?)];
-                    while self.match_token(&TokenKind::Comma) {
-                        arguments.push(crate::ast::expr::Argument::Positional(self.expression()?));
-                    }
+                                    // Command-call argument grammar: comma-separated
+                                    // positional args (`enum_field :status, Status`) plus
+                                    // trailing named args (`column "ms", "int",
+                                    // nullable: true`).
+                    let mut arguments = self.parse_command_arguments()?;
                     // Trailing `do … end` block for declarative DSLs, e.g.
                     // `state_machine :status do … end`.
                     if self.check(&TokenKind::Do) {

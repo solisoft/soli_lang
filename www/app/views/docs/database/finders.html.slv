@@ -321,8 +321,11 @@ SOLI_EMBEDDING_URL=https://api.openai.com/v1/embeddings  # Default
 SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
             <p class="text-gray-400 text-sm mt-3">
                 When the API key is not set, <code>.similar()</code> returns an empty result set.
-                The current implementation computes cosine similarity client-side in Rust after
-                fetching matching documents from SolidB.
+                Without a <code>vector_index</code> declaration the implementation computes cosine
+                similarity client-side in Rust after fetching matching documents from SolidB; declare a
+                <code>vector_index</code> on the field and <code>.similar()</code> pushes down to the
+                database's HNSW ANN index instead &mdash; see
+                <a href="/docs/database/search#vector-search" class="text-amber-400 underline">Search: Vector, Fulltext &amp; Geo</a>.
             </p>
         </div>
 
@@ -331,7 +334,9 @@ SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
             <p class="text-gray-400 text-sm mb-3">
                 SolidDB provides native vector search with HNSW indexes, <code>VECTOR_SIMILARITY()</code> in SDBQL,
                 scalar quantization (4x memory reduction), and hybrid search combining vector + fulltext.
-                Create a vector index on your embedding field for production-scale workloads:
+                The idiomatic way to create the index is the model-body
+                <a href="/docs/database/search#index-dsl" class="text-amber-400 underline"><code>vector_index</code> DSL</a>;
+                the raw REST equivalent is:
             </p>
             <pre class="text-sm text-amber-100/80"><code>curl -X POST http://localhost:6745/_api/database/solidb/vector/products \
   -H "Content-Type: application/json" \

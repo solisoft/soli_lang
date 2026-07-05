@@ -1967,7 +1967,8 @@ impl Parser {
 
     /// Parse arguments for command-style calls (without parentheses).
     /// e.g., `print "hello", "world"` or `print x, y`
-    fn parse_command_arguments(&mut self) -> ParseResult<Vec<Argument>> {
+    /// Also used by class-level DSL statements (`edge from: "users", ...`).
+    pub(crate) fn parse_command_arguments(&mut self) -> ParseResult<Vec<Argument>> {
         let mut arguments = Vec::new();
 
         if !self.at_command_arg_start() {

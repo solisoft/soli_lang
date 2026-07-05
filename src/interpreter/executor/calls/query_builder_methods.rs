@@ -22,6 +22,30 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
+        // Traversal mode (instance.traverse(...)) composes with
+        // where/order/limit/offset/select/pluck and the terminals, but not
+        // with eager-loading, relation joins, aggregation modes, or bulk
+        // writes — reject those early with a clear message.
+        if qb.borrow().traversal.is_some()
+            && matches!(
+                method_name,
+                "includes"
+                    | "includes_count"
+                    | "join"
+                    | "group_by"
+                    | "aggregate"
+                    | "having"
+                    | "similar"
+                    | "update_all"
+                    | "delete_all"
+            )
+        {
+            return Err(RuntimeError::General {
+                message: format!("{}() cannot be combined with traverse()", method_name),
+                span,
+            });
+        }
+
         match method_name {
             "where" => self.qb_where(qb, arguments, span),
             "order" => self.qb_order(qb, arguments, span),
@@ -44,7 +68,16 @@ impl Interpreter {
             "avg" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Avg),
             "min" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Min),
             "max" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Max),
+            "median" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Median),
+            "stddev" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Stddev),
+            "variance" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Variance),
+            "count_distinct" => {
+                self.qb_aggregate(qb, arguments, span, AggregationFunc::CountDistinct)
+            }
+            "aggregate" => self.qb_aggregate_spec(qb, arguments, span),
+            "having" => self.qb_having(qb, arguments, span),
             "group_by" => self.qb_group_by(qb, arguments, span),
+            "time_bucket" => self.qb_time_bucket(qb, arguments, span),
             "to_query" => self.qb_to_query(qb, arguments, span),
             // Array passthrough: materialize the QueryBuilder once, then
             // dispatch the method to the resulting array. Lets has_many
@@ -569,6 +602,9 @@ impl Interpreter {
                 func.clone(),
                 field,
             ))
+        } else if !qb_ref.group_fields.is_empty() || !qb_ref.aggregate_specs.is_empty() {
+            crate::interpreter::builtins::model::execute_query_builder_grouped(&qb_ref)
+                .map_err(|e| RuntimeError::General { message: e, span })
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
             Ok(execute_query_builder_group_by(
                 &qb_ref,
@@ -576,6 +612,8 @@ impl Interpreter {
                 func.clone(),
                 af,
             ))
+        } else if qb_ref.time_bucket_info.is_some() {
+            Ok(crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref))
         } else {
             Ok(execute_query_builder(&qb_ref))
         }
@@ -599,6 +637,16 @@ impl Interpreter {
                 func.clone(),
                 field,
             ))
+        } else if !qb_ref.group_fields.is_empty() || !qb_ref.aggregate_specs.is_empty() {
+            // Grouped mode: .first returns the first group row (the whole
+            // result for ungrouped multi-aggregates, which yield one row).
+            let rows = crate::interpreter::builtins::model::execute_query_builder_grouped(&qb_ref)
+                .map_err(|e| RuntimeError::General { message: e, span })?;
+            if let Value::Array(arr) = &rows {
+                let first = arr.borrow().first().cloned();
+                return Ok(first.unwrap_or(Value::Null));
+            }
+            Ok(rows)
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
             Ok(execute_query_builder_group_by(
                 &qb_ref,
@@ -606,6 +654,8 @@ impl Interpreter {
                 func.clone(),
                 af,
             ))
+        } else if qb_ref.time_bucket_info.is_some() {
+            Ok(crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref))
         } else {
             Ok(execute_query_builder_first(&qb_ref))
         }
@@ -725,6 +775,21 @@ impl Interpreter {
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
+        {
+            let qb_ref = qb.borrow();
+            let class_name = crate::interpreter::symbol_string(qb_ref.class_name)
+                .unwrap_or_default()
+                .to_string();
+            if crate::interpreter::builtins::model::is_timeseries_model(&class_name) {
+                return Err(RuntimeError::General {
+                    message: crate::interpreter::builtins::model::timeseries_insert_only_error(
+                        &class_name,
+                        "update_all",
+                    ),
+                    span,
+                });
+            }
+        }
         let update_data = match &arguments[0] {
             hash @ Value::Hash(_) => crate::interpreter::value::value_to_json(hash)
                 .map_err(|e| RuntimeError::type_error(e, span))?,
@@ -806,9 +871,71 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        // group_by("field", "sum", "amount") or group_by("field", "avg", "amount")
+        // 1-arg form: group_by("country") or group_by(["country", "plan"]) —
+        // sets multi-key grouping; combine with .aggregate({...})/.having().
+        // Without aggregates, an implicit per-group count applies.
+        if arguments.len() == 1 {
+            let fields: Vec<String> = match &arguments[0] {
+                Value::String(s) => vec![s.to_string()],
+                Value::Array(arr) => {
+                    let arr = arr.borrow();
+                    let mut out = Vec::with_capacity(arr.len());
+                    for v in arr.iter() {
+                        match v {
+                            Value::String(s) => out.push(s.to_string()),
+                            other => {
+                                return Err(RuntimeError::type_error(
+                                    format!(
+                                        "group_by() expects string field names, got {} in array",
+                                        other.type_name()
+                                    ),
+                                    span,
+                                ))
+                            }
+                        }
+                    }
+                    out
+                }
+                other => {
+                    return Err(RuntimeError::type_error(
+                        format!(
+                            "group_by() expects a field name or array of field names, got {}",
+                            other.type_name()
+                        ),
+                        span,
+                    ))
+                }
+            };
+            if fields.is_empty() {
+                return Err(RuntimeError::new(
+                    "group_by() requires at least one field",
+                    span,
+                ));
+            }
+            for f in &fields {
+                crate::interpreter::builtins::model::validate_field_name(f, "group_by")
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+            }
+            let mut new_qb = qb.borrow().clone();
+            if new_qb.group_by_info.is_some() || new_qb.time_bucket_info.is_some() {
+                return Err(RuntimeError::new(
+                    "group_by() cannot be combined with the legacy 3-arg group_by or \
+                     time_bucket",
+                    span,
+                ));
+            }
+            new_qb.group_fields = fields;
+            return Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))));
+        }
+
+        // Legacy 3-arg form: group_by("field", "sum", "amount") — unchanged,
+        // returns [{group, result}] rows.
         if arguments.len() < 3 {
-            return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+            return Err(RuntimeError::type_error(
+                "group_by() expects a field (or array of fields), or the legacy \
+                 (field, func, agg_field) form",
+                span,
+            ));
         }
         let group_field = match &arguments[0] {
             Value::String(s) => s.clone(),
@@ -858,6 +985,142 @@ impl Interpreter {
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
+    /// aggregate({alias: [func, field], ...}) — multi-aggregate spec for the
+    /// grouped mode (with or without group_by). Repeated calls extend the
+    /// spec list.
+    fn qb_aggregate_spec(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let specs = crate::interpreter::builtins::model::parse_aggregate_spec_hash(&arguments[0])
+            .map_err(|e| RuntimeError::General { message: e, span })?;
+        let mut new_qb = qb.borrow().clone();
+        if new_qb.group_by_info.is_some() || new_qb.time_bucket_info.is_some() {
+            return Err(RuntimeError::new(
+                "aggregate() cannot be combined with the legacy 3-arg group_by or time_bucket",
+                span,
+            ));
+        }
+        new_qb.aggregate_specs.extend(specs);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    /// having("total > @min", {min: ...}) — post-COLLECT filter over bare
+    /// group/aggregate aliases. String is developer-trusted like string-form
+    /// where(); binds merge into the query's bind vars.
+    fn qb_having(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() || arguments.len() > 2 {
+            return Err(RuntimeError::type_error(
+                "having() expects a filter string and an optional bind-vars hash",
+                span,
+            ));
+        }
+        let filter = match &arguments[0] {
+            Value::String(s) => s.to_string(),
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!(
+                        "having() expects a filter string, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+        let mut new_qb = qb.borrow().clone();
+        if new_qb.group_fields.is_empty() && new_qb.aggregate_specs.is_empty() {
+            return Err(RuntimeError::new(
+                "having() requires group_by()/aggregate() earlier in the chain",
+                span,
+            ));
+        }
+        if let Some(Value::Hash(hash)) = arguments.get(1) {
+            for (k, v) in hash.borrow().iter() {
+                if let crate::interpreter::value::HashKey::String(key) = k {
+                    let json_val =
+                        crate::interpreter::builtins::model::ensure_string_form_bind_value(
+                            v, key, "having",
+                        )
+                        .map_err(|e| RuntimeError::General { message: e, span })?;
+                    new_qb
+                        .bind_vars
+                        .insert(crate::interpreter::get_symbol(key), json_val);
+                }
+            }
+        } else if let Some(other) = arguments.get(1) {
+            return Err(RuntimeError::type_error(
+                format!(
+                    "having() bind vars must be a hash, got {}",
+                    other.type_name()
+                ),
+                span,
+            ));
+        }
+        new_qb.having = Some(filter);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    /// time_bucket(interval, aggregates) — timeseries bucketed aggregation.
+    /// `interval` is "<n><s|m|h|d>"; `aggregates` maps alias → field for
+    /// sum/avg/min/max keys, plus `count: true`. Keyword style works too:
+    /// `.time_bucket("1h", avg: "value")` (named args collapse to a hash).
+    fn qb_time_bucket(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() || arguments.len() > 2 {
+            return Err(RuntimeError::type_error(
+                "time_bucket(interval, {aggregates}) expects an interval string and an \
+                 aggregates hash, e.g. time_bucket(\"1h\", { \"avg\": \"value\" })",
+                span,
+            ));
+        }
+
+        {
+            let qb_ref = qb.borrow();
+            if qb_ref.traversal.is_some()
+                || qb_ref.group_by_info.is_some()
+                || qb_ref.aggregation.is_some()
+            {
+                return Err(RuntimeError::General {
+                    message: "time_bucket() cannot be combined with traverse()/group_by()/\
+                              aggregations"
+                        .to_string(),
+                    span,
+                });
+            }
+        }
+
+        let class_name = {
+            let qb_ref = qb.borrow();
+            crate::interpreter::symbol_string(qb_ref.class_name)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let spec = crate::interpreter::builtins::model::query::parse_time_bucket_args(
+            &arguments[0],
+            arguments.get(1),
+            &class_name,
+        )
+        .map_err(|e| RuntimeError::General { message: e, span })?;
+
+        let mut new_qb = qb.borrow().clone();
+        new_qb.time_bucket_info = Some(spec);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
     fn qb_to_query(
         &mut self,
         qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
@@ -878,8 +1141,14 @@ impl Interpreter {
                 func.clone(),
                 field,
             )
+        } else if !qb_ref.group_fields.is_empty() || !qb_ref.aggregate_specs.is_empty() {
+            qb_ref
+                .build_grouped_query()
+                .map_err(|e| RuntimeError::General { message: e, span })?
         } else if let Some((ref group_field, ref func, ref agg_field)) = qb_ref.group_by_info {
             qb_ref.build_group_by_query(group_field, func.clone(), agg_field)
+        } else if qb_ref.time_bucket_info.is_some() {
+            qb_ref.build_time_bucket_query()
         } else {
             qb_ref.build_query()
         };
@@ -893,20 +1162,50 @@ impl Interpreter {
         }
     }
 
+    /// similar(query, [field], [k], [options]) — vector similarity. `query`
+    /// is a text string (embedded client-side) or a numeric vector literal.
+    /// Options: `exact: true` (force client-side exact cosine even with a
+    /// declared vector index), `ef_search: n` (ANN search width).
     fn qb_similar(
         &mut self,
         qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if arguments.is_empty() || arguments.len() > 3 {
-            return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+        use crate::interpreter::builtins::model::query::{SimilarInput, SimilarSpec};
+
+        if arguments.is_empty() || arguments.len() > 4 {
+            return Err(RuntimeError::wrong_arity(4, arguments.len(), span));
         }
-        let query_text = match &arguments[0] {
-            Value::String(s) => s.clone(),
-            _ => {
+        let input = match &arguments[0] {
+            Value::String(s) => SimilarInput::Text(s.to_string()),
+            Value::Array(arr) => {
+                let vec: Vec<f64> = arr
+                    .borrow()
+                    .iter()
+                    .map(|v| match v {
+                        Value::Int(n) => Ok(*n as f64),
+                        Value::Float(f) => Ok(*f),
+                        other => Err(RuntimeError::type_error(
+                            format!(
+                                "similar() vector entries must be numbers, got {}",
+                                other.type_name()
+                            ),
+                            span,
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                if vec.is_empty() {
+                    return Err(RuntimeError::new("similar() vector is empty", span));
+                }
+                SimilarInput::Vector(vec)
+            }
+            other => {
                 return Err(RuntimeError::type_error(
-                    "similar() expects string query text",
+                    format!(
+                        "similar() expects query text or a numeric vector, got {}",
+                        other.type_name()
+                    ),
                     span,
                 ))
             }
@@ -919,9 +1218,39 @@ impl Interpreter {
             Some(Value::Int(n)) if *n > 0 => *n as usize,
             _ => 10,
         };
+        let mut exact = false;
+        let mut ef_search: Option<usize> = None;
+        if let Some(Value::Hash(opts)) = arguments.get(3) {
+            for (k, v) in opts.borrow().iter() {
+                let key = match k {
+                    crate::interpreter::value::HashKey::String(s) => s.to_string(),
+                    _ => continue,
+                };
+                match (key.as_str(), v) {
+                    ("exact", Value::Bool(b)) => exact = *b,
+                    ("ef_search", Value::Int(n)) if *n > 0 => ef_search = Some(*n as usize),
+                    (other, _) => {
+                        return Err(RuntimeError::General {
+                            message: format!(
+                                "similar() unknown/invalid option '{}': expected exact: Bool \
+                                 or ef_search: Int",
+                                other
+                            ),
+                            span,
+                        })
+                    }
+                }
+            }
+        }
 
         let mut new_qb = qb.borrow().clone();
-        new_qb.set_similar(query_text.to_string(), field.to_string(), top_k);
+        new_qb.similar_query = Some(SimilarSpec {
+            input,
+            field: field.to_string(),
+            top_k,
+            exact,
+            ef_search,
+        });
         // Similar search results always need a limit (top_k)
         if new_qb.limit_val.is_none() || new_qb.limit_val.unwrap() > top_k {
             new_qb.limit_val = Some(top_k);

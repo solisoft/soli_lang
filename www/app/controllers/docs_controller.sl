@@ -124,6 +124,14 @@ fn database_finders
     render_docs("docs/database/finders", "Finders & Aggregations", "database", "finders")
 end
 
+fn database_analytics
+    render_docs("docs/database/analytics", "Analytics & Columnar Stores", "database", "analytics")
+end
+
+fn database_search
+    render_docs("docs/database/search", "Search: Vector, Fulltext & Geo", "database", "search")
+end
+
 fn database_advanced
     render_docs("docs/database/advanced", "Advanced Features", "database", "advanced")
 end

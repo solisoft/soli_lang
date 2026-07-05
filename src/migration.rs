@@ -405,20 +405,43 @@ class MigrationDb {{
         return _db.query(sdbql, bind_vars);
     }}
 
-    // Collection management. `collection_type` is optional — pass any
-    // SolidB-recognized type ("blob", "columnar", "timeseries", …) to
-    // create a typed collection. The string is forwarded verbatim to
-    // SolidB; the server decides what's valid. Default is a regular
-    // document collection.
+    // Collection management. `collection_type` is optional — pass a
+    // SolidB-recognized type ("edge", "timeseries", "blob") to create a
+    // typed collection. NOTE: "columnar" is NOT a document-collection type —
+    // passing it here used to silently create a mislabeled document
+    // collection; use create_columnar(name, columns) instead.
     fn create_collection(name: String, collection_type: String = "") -> Any {{
+        if (collection_type == "columnar") {{
+            throw "columnar stores are not document collections - use db.create_columnar(name, columns)";
+        }}
         if (collection_type == "") {{
             return solidb_create_collection(_db, name);
         }}
         return solidb_create_collection(_db, name, collection_type);
     }}
 
+    // Columnar store management. `columns` is an array of
+    // {{ "name": ..., "type": ..., "nullable": bool?, "indexed": bool? }}
+    // hashes; options accepts {{ "compression": "lz4"|"none" }}.
+    fn create_columnar(name: String, columns: Any, options: Any = null) -> Any {{
+        if (options == null) {{
+            return solidb_create_columnar(_db, name, columns);
+        }}
+        return solidb_create_columnar(_db, name, columns, options);
+    }}
+
+    fn drop_columnar(name: String) -> Any {{
+        return solidb_drop_columnar(_db, name);
+    }}
+
     fn drop_collection(name: String) -> Any {{
         return solidb_drop_collection(_db, name);
+    }}
+
+    // Timeseries retention: delete documents older than the RFC3339 cutoff.
+    // Returns the number of deleted documents.
+    fn prune_collection(name: String, older_than: String) -> Any {{
+        return solidb_prune_collection(_db, name, older_than);
     }}
 
     fn list_collections() -> Any {{

@@ -449,11 +449,63 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.group_by(field, func, agg_field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Group-by aggregation (returns QueryBuilder, chain <code>.all</code>)</td>
+                    <td class="py-3 px-4 text-gray-400">Legacy group-by aggregation — returns <code>[{group, result}]</code> (returns QueryBuilder, chain <code>.all</code>)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.pluck(field, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Select fields only (returns QueryBuilder, chain <code>.all</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.time_bucket(interval, aggs?)</code></td>
+                    <td class="py-3 px-4 text-gray-400"><a href="#timeseries-models" class="text-amber-400 hover:underline">Timeseries models</a> only: bucketed aggregation (returns QueryBuilder, chain <code>.all</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.prune(cutoff?)</code></td>
+                    <td class="py-3 px-4 text-gray-400"><a href="#timeseries-models" class="text-amber-400 hover:underline">Timeseries models</a> only: delete rows older than a duration (<code>"30d"</code>) or RFC3339 cutoff; without an argument uses the declared <code>retention:</code>. Returns the number deleted.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.group_by(fields)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Grouped aggregation — field name or array; without <code>aggregate</code> yields a count per group (<code>n</code>). Returns QueryBuilder, chain <code>.all</code>. See <a href="/docs/database/analytics#rich-aggregation" class="text-amber-400 hover:underline">Analytics</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.aggregate(spec)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Multi-aggregate spec <code>{ alias: [func, field] }</code> (or <code>["count"]</code>); with <code>group_by</code> one row per group, without it one row (chain <code>.first</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.median(field) / stddev / variance / count_distinct</code></td>
+                    <td class="py-3 px-4 text-gray-400">Statistical aggregation terminals (returns QueryBuilder, chain <code>.first</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.similar(query, field?, k?, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Vector similarity search; with a declared <code>vector_index</code> pushes down to the HNSW ANN index. <code>opts: { "exact": true }</code>. See <a href="/docs/database/search#vector-search" class="text-amber-400 hover:underline">Search</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.search(query, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Fulltext search (requires <code>fulltext_index</code>); eager, ranked, results carry <code>_search_score</code>. See <a href="/docs/database/search#fulltext-search" class="text-amber-400 hover:underline">Search</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.near(lat, lon, opts?)</code> / <code class="text-amber-300">Model.within(lat, lon, radius)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Geo search (requires <code>geo_index</code>); eager. <code>near</code> sorts by distance and adds <code>_distance</code> (meters); <code>within</code> takes a radius in meters.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.insert_rows(rows)</code></td>
+                    <td class="py-3 px-4 text-gray-400"><a href="/docs/database/analytics#columnar-models" class="text-amber-400 hover:underline">Columnar models</a> only: batch append, returns <code>{ "inserted": n, "ids": [...] }</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.aggregate(field, op, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Columnar models only: scalar aggregate, or per-group rows with <code>{ "group_by": [...] }</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.query(spec)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Columnar models only: fetch rows (<code>columns</code> / one <code>filter</code> / <code>limit</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.add_column_index(field, kind?)</code> / <code class="text-amber-300">column_indexes</code> / <code class="text-amber-300">drop_column_index(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Columnar models only: manage column indexes (<code>sorted</code> default, <code>hash</code>, <code>bitmap</code>, <code>minmax</code>, <code>bloom</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.columnar_stats</code></td>
+                    <td class="py-3 px-4 text-gray-400">Columnar models only: store-level statistics</td>
                 </tr>
                 <tr class="border-t border-white/10">
                     <td class="py-3 px-4"><code class="text-orange-300">Model.mock_query_result(query, results)</code></td>
@@ -462,6 +514,47 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 <tr>
                     <td class="py-3 px-4"><code class="text-orange-300">Model.clear_mocks()</code></td>
                     <td class="py-3 px-4 text-gray-400">Clear all registered mock responses</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="storage-index-dsl" class="text-2xl font-bold text-white mb-6">Storage &amp; Index DSL</h2>
+    <p class="text-gray-400 mb-6">
+        Class-body declarations for the multi-model and search features. Index declarations are metadata-only at load: dev ensures them at server boot; in production run <code>soli db:indexes</code> or create them in migrations. See <a href="/docs/database/search#index-sync" class="text-amber-400 hover:underline">Search &mdash; sync strategy</a>.
+    </p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Declaration</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">columnar options?</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a columnar-store model (<code>compression: "lz4"</code> default, or <code>"none"</code>). See <a href="/docs/database/analytics#columnar-models" class="text-amber-400 hover:underline">Analytics &amp; Columnar Stores</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">column name, type, options?</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a typed column on a columnar model (<code>nullable:</code>, <code>indexed:</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">vector_index field, dimension:, metric:</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare an HNSW vector index (optional <code>m:</code>, <code>ef_construction:</code>, <code>quantization:</code>, <code>name:</code>). See <a href="/docs/database/search#index-dsl" class="text-amber-400 hover:underline">Search</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">fulltext_index field, ...</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a fulltext index over one or more fields</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">geo_index field</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a geospatial index (<code>{ "lat": ..., "lon": ... }</code> field)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">index field_or_fields, options?</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a secondary index (<code>unique:</code>, <code>type:</code> &mdash; <code>"persistent"</code> default / <code>"hash"</code> / <code>"fulltext"</code> / <code>"bloom"</code> / <code>"cuckoo"</code>, <code>name:</code>)</td>
                 </tr>
             </tbody>
         </table>
@@ -955,6 +1048,198 @@ User.find(u._key).ssn   # =&gt; "123-45-6789" (decrypted)</code></pre>
         <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone.</p>
     </div>
 
+    <h2 id="graph-models" class="text-2xl font-bold text-white mb-6">Graph Models (Edges &amp; Traversal)</h2>
+    <p class="text-gray-400 mb-4">
+        SoliDB is multi-model: alongside document collections it supports native <strong class="text-white">edge collections</strong>. Declare an edge model with the <code>edge</code> DSL and the Model API gains graph creation, traversal, and shortest-path queries:
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/follow.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Follow &lt; Model
+  edge from: "users", to: "users"
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        <code>from:</code> and <code>to:</code> accept collection names (<code>"users"</code>) or model class names (<code>"User"</code>). The declaration marks the collection as the SolidB <code>edge</code> type &mdash; in dev it is auto-created with that type plus hash indexes on <code>_from</code> and <code>_to</code>.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Creating edges</h3>
+    <p class="text-gray-400 mb-4">Endpoints can be model instances, full <code>"collection/key"</code> ids, or bare keys:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">f = Follow.create(from: alice, to: bob)
+f = Follow.create({ "from": alice, "to": "users/bob-key", "since": 2024 })
+
+f._from   # => "users/alice-key"
+f._to     # => "users/bob-key"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">
+        Edges are ordinary model records &mdash; validations, callbacks, and extra attributes (<code>since</code> above) work as usual. A missing or invalid endpoint behaves like a failed validation: <code>f._errors</code> is set (e.g. <code>[{ "field": "from", "message": "..." }]</code>) and the edge is not persisted.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Traversal</h3>
+    <p class="text-gray-400 mb-4">
+        Call <code>.traverse(EdgeModel, options?)</code> on a <strong class="text-white">saved</strong> record to get a chainable QueryBuilder over the reachable vertices. <code>direction</code> defaults to <code>"out"</code> (also <code>"in"</code> / <code>"any"</code>); <code>depth</code> defaults to <code>1</code> &mdash; an Int <code>n</code> traverses depth <code>1..n</code>, a <code>[min, max]</code> array sets an explicit range:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">friends   = alice.traverse(Follow).all                    # OUTBOUND, depth 1..1
+followers = alice.traverse(Follow, direction: "in").all   # INBOUND
+network   = alice.traverse(Follow, depth: 3).all          # depth 1..3
+
+# Full chain — vertex filters use the usual `doc` variable; prefix a filter
+# with `edge.` to match edge attributes instead:
+ring = alice.traverse(Follow, depth: [2, 3], direction: "any")
+  .where({ "active": true })
+  .where("edge.since >= @y", { "y": 2024 })
+  .order("name")
+  .limit(10)
+  .all
+
+n = alice.traverse(Follow).count</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-4">
+        <p class="text-yellow-300 text-sm">
+            <strong>Depth gotcha:</strong> Soli's <code>1..3</code> range literal materializes to the exclusive-end array <code>[1, 2]</code>. Prefer an explicit <code>[1, 3]</code> array for depth ranges.
+        </p>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <ul class="text-amber-300 text-sm space-y-1 list-disc list-inside">
+            <li>Results are instances of the target model &mdash; the class is resolved per document, so mixed-vertex graphs return the right class for each vertex.</li>
+            <li>Soft-delete models compose: the deleted-filter is applied to the vertices.</li>
+            <li>A traversal builder does <strong>not</strong> compose with <code>includes</code>, <code>includes_count</code>, <code>join</code>, <code>group_by</code>, <code>similar</code>, <code>update_all</code>, or <code>delete_all</code> &mdash; combining them raises a clear error.</li>
+            <li><code>traverse</code> and <code>shortest_path</code> require a saved record (they raise otherwise).</li>
+        </ul>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Shortest path</h3>
+    <p class="text-gray-400 mb-4">
+        <code>shortest_path</code> executes immediately (no <code>.all</code>) and returns the vertices along the shortest path between two records &mdash; <code>[]</code> when they are not connected. Direction defaults to <code>"any"</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">path = alice.shortest_path(bob, via: Follow)
+path = alice.shortest_path("users/bob-key", via: Follow, direction: "out")</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Relation sugar</h3>
+    <p class="text-gray-400 mb-4">An idiomatic named relation over a traversal is just a plain method:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User &lt; Model
+  def followers()
+    return this.traverse(Follow, { "direction": "in" })
+  end
+end
+
+User.find(key).followers().where({ "active": true }).count</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        For explicit production migrations, create the collection with the <code>"edge"</code> type and add hash indexes on <code>_from</code>/<code>_to</code> &mdash; see <a href="/docs/database/migrations" class="text-amber-400 hover:underline">Migrations</a>.
+    </p>
+
+    <h2 id="timeseries-models" class="text-2xl font-bold text-white mb-6">Timeseries Models</h2>
+    <p class="text-gray-400 mb-4">
+        Declare a model as timeseries with the <code>timeseries</code> DSL. The collection is created with the SolidB <code>timeseries</code> type &mdash; optimized for append-only, time-indexed data (metrics, logs, telemetry):
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/metric.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Metric &lt; Model
+  timeseries retention: "30d"     # bare `timeseries` (no options) also works
+end
+
+class Reading &lt; Model
+  timeseries retention: "90d", timestamp: "recorded_at"
+end</code></pre>
+        </div>
+    </div>
+
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>retention:</code> &mdash; optional retention window; used by <code>prune</code> when called without an argument.</li>
+        <li><code>timestamp:</code> &mdash; the field <code>time_bucket</code> buckets on. Defaults to the server-set <code>_created_at</code>.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Insert-only</h3>
+    <p class="text-gray-400 mb-4">
+        Timeseries records are insert-only, mirroring the database's own rules. Documents get UUIDv7 keys, so <code>_key</code> order is insertion-time order:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Metric.create({ "device": "srv1", "value": 0.42 })
+
+m.update({ "value": 1 })
+# => raises: "Metric is a timeseries model: records are insert-only.
+#    update is not supported — use prune() for retention."</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Blocked: static <code>update</code> / <code>upsert</code>, instance <code>update</code> / <code>save</code> on an existing record / <code>increment</code> / <code>decrement</code>, and <code>update_all</code>. Allowed: <code>delete</code> and <code>delete_all</code>.
+    </p>
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-6">
+        <p class="text-yellow-300 text-sm">
+            Don't set <code>_key</code> yourself on a timeseries model. <code>prune</code> relies on the UUIDv7 key ordering &mdash; documents inserted with a caller-supplied <code>_key</code> are never pruned.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Bucketed aggregation (<code>time_bucket</code>)</h3>
+    <p class="text-gray-400 mb-4">
+        <code>time_bucket(interval, aggregates?)</code> groups rows into fixed time buckets and computes per-bucket aggregates. Chain it after <code>where(...)</code> filters and finish with <code>.all</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">rows = Metric.where("device = @d", { "d": "srv1" })
+  .time_bucket("5m", { "avg": "value", "max": "value" })
+  .all
+# => [{ "bucket": "2026-07-05T10:00:00+00:00", "avg": 0.41, "max": 0.9 }, ...]
+
+rows = Metric.time_bucket("1d").all                  # bare form: count per bucket
+# => [{ "bucket": "...", "count": 42 }, ...]
+
+rows = Metric.time_bucket("1h", avg: "value").all    # keyword style works too</code></pre>
+        </div>
+    </div>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li>Interval units: <code>s</code>, <code>m</code>, <code>h</code>, <code>d</code> (the database's <code>TIME_BUCKET</code> contract).</li>
+        <li>Aggregates: <code>sum</code> / <code>avg</code> / <code>min</code> / <code>max</code> take a field name; <code>count</code> takes <code>true</code> (<code>{ "count": true }</code>). With no aggregates you get a <code>count</code> per bucket.</li>
+        <li>Buckets fall on the declared <code>timestamp:</code> field (default <code>_created_at</code>).</li>
+        <li>Rows come back as plain hashes &mdash; <code>bucket</code> (an RFC3339 string) plus your aggregate aliases &mdash; sorted by bucket.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Retention (<code>prune</code>)</h3>
+    <p class="text-gray-400 mb-4"><code>prune</code> deletes rows older than a cutoff and returns the number deleted:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">deleted = Metric.prune("30d")                    # duration cutoff (units: s/m/h/d/w)
+deleted = Metric.prune("2026-06-01T00:00:00Z")   # explicit RFC3339 cutoff
+deleted = Metric.prune                           # uses the declared retention:</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        There is no auto-prune scheduler. Register a recurring <a href="/docs/jobs" class="text-amber-400 hover:underline">cron job</a> whose handler calls <code>prune</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Cron.schedule("prune_metrics", Cron.daily_at("03:00"), "PruneMetricsJob", {})
+# ...and PruneMetricsJob.perform is a one-liner: Metric.prune</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Dev auto-create provisions the <code>timeseries</code> collection type for you; the explicit migration form is <code>db.create_collection("metrics", "timeseries")</code>, and <code>db.prune_collection(name, cutoff)</code> handles one-off cleanups. For continuous aggregates (downsampling on write), SolidB streams are the raw-SDBQL escape hatch &mdash; <code>db.query("CREATE STREAM ...")</code> in a migration. See <a href="/docs/database/migrations" class="text-amber-400 hover:underline">Migrations</a>.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
@@ -1097,6 +1382,14 @@ end
         <a href="/docs/database/finders" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Finders & Aggregations &rarr;</h3>
             <p class="text-sm text-gray-400">find_by, pluck, exists, sum, avg, min, max, and group_by.</p>
+        </a>
+        <a href="/docs/database/analytics" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Analytics &amp; Columnar &rarr;</h3>
+            <p class="text-sm text-gray-400">Grouped multi-aggregate queries with having, and columnar-store models.</p>
+        </a>
+        <a href="/docs/database/search" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Search: Vector, Fulltext &amp; Geo &rarr;</h3>
+            <p class="text-sm text-gray-400">Index DSL, ANN similarity, fulltext ranking, and geo queries.</p>
         </a>
         <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Advanced Features &rarr;</h3>

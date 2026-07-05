@@ -180,6 +180,17 @@ impl TypeEnvironment {
             },
         );
 
+        // __sync_model_indexes() -> String[] — run the declared-index
+        // reconciler (dev boot / `soli db:indexes` sweep); returns report
+        // lines. Internal surface used by tests and setup scripts.
+        self.functions.insert(
+            "__sync_model_indexes".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            },
+        );
+
         // range(Int, Int) -> Int[]
         self.functions.insert(
             "range".to_string(),

@@ -564,6 +564,54 @@ pub fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a retention/duration string of the form `<number><unit>` with
+/// unit s/m/h/d/w (e.g. "30d", "90m"). Used by the `timeseries` DSL and
+/// `Model.prune`.
+pub fn validate_retention_duration(value: &str) -> Result<(), String> {
+    let (digits, unit) = value.split_at(value.len().saturating_sub(1));
+    let unit_ok = matches!(unit, "s" | "m" | "h" | "d" | "w");
+    let digits_ok = !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
+    if unit_ok && digits_ok && digits.parse::<u64>().map(|n| n > 0).unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid duration {:?}: expected <number><unit> with unit s/m/h/d/w, e.g. \"30d\"",
+            value
+        ))
+    }
+}
+
+/// The standard insert-only violation message for timeseries models. Mirrors
+/// the DB's own restriction (updates/upserts rejected; deletes allowed) but
+/// fails before any DB round trip with an actionable message.
+pub fn timeseries_insert_only_error(class_name: &str, op: &str) -> String {
+    format!(
+        "{} is a timeseries model: records are insert-only. {} is not supported — \
+         use prune() for retention.",
+        class_name, op
+    )
+}
+
+/// Convert a duration string (validated by `validate_retention_duration`)
+/// into an RFC3339 cutoff timestamp `now - duration`.
+pub fn duration_to_cutoff_rfc3339(value: &str) -> Result<String, String> {
+    validate_retention_duration(value)?;
+    let (digits, unit) = value.split_at(value.len() - 1);
+    let n: u64 = digits
+        .parse()
+        .map_err(|_| format!("invalid duration {:?}", value))?;
+    let seconds = match unit {
+        "s" => n,
+        "m" => n * 60,
+        "h" => n * 3600,
+        "d" => n * 86_400,
+        "w" => n * 604_800,
+        _ => unreachable!(),
+    };
+    let cutoff = chrono::Utc::now() - chrono::Duration::seconds(seconds as i64);
+    Ok(cutoff.to_rfc3339())
+}
+
 /// Collect field names from `attr_accessible(...)` arguments. Accepts
 /// either a single Array of strings (`attr_accessible(["a", "b"])`) or a
 /// variadic string list (`attr_accessible("a", "b")`) — both forms read
@@ -1565,6 +1613,50 @@ impl Model {
                 // raw hash through unchanged (back-compat).
                 let data = filter_mass_assign(&class_name, &raw_data);
 
+                // Edge models: coerce from:/to: into _from/_to document ids.
+                // Endpoints are read from the raw hash so attr_accessible
+                // can't strip them; missing/invalid endpoints surface as
+                // _errors like validation failures.
+                let mut edge_refs: Option<(String, String)> = None;
+                let data = match super::registry::get_edge_spec(&class_name) {
+                    Some(edge_spec) => {
+                        match super::graph::transform_edge_data(&raw_data, &edge_spec) {
+                            Ok((from_ref, to_ref)) => {
+                                edge_refs = Some((from_ref.clone(), to_ref.clone()));
+                                super::graph::rebuild_edge_data(&data, &from_ref, &to_ref)
+                            }
+                            Err(endpoint_errors) => {
+                                let instance = Rc::new(RefCell::new(
+                                    crate::interpreter::value::Instance::new(class.clone()),
+                                ));
+                                apply_hash_to_instance(&instance, &data)?;
+                                let error_values: Vec<Value> = endpoint_errors
+                                    .into_iter()
+                                    .map(|(field, message)| {
+                                        let mut pairs =
+                                            crate::interpreter::value::HashPairs::default();
+                                        pairs.insert(
+                                            HashKey::String("field".into()),
+                                            Value::String(field.into()),
+                                        );
+                                        pairs.insert(
+                                            HashKey::String("message".into()),
+                                            Value::String(message.into()),
+                                        );
+                                        Value::Hash(Rc::new(RefCell::new(pairs)))
+                                    })
+                                    .collect();
+                                instance.borrow_mut().set(
+                                    "_errors".to_string(),
+                                    Value::Array(Rc::new(RefCell::new(error_values))),
+                                );
+                                return Ok(Value::Instance(instance));
+                            }
+                        }
+                    }
+                    None => data,
+                };
+
                 // Build a base instance from the (filtered) attributes so
                 // the returned object carries the data we'd actually
                 // persist, even on failure.
@@ -1572,6 +1664,13 @@ impl Model {
                     class.clone(),
                 )));
                 apply_hash_to_instance(&instance, &data)?;
+                // apply_hash_to_instance skips `_`-prefixed keys; the edge
+                // payload is the exception the caller should see.
+                if let Some((ref from_ref, ref to_ref)) = edge_refs {
+                    let mut inst_mut = instance.borrow_mut();
+                    inst_mut.set("_from".to_string(), Value::String(from_ref.clone().into()));
+                    inst_mut.set("_to".to_string(), Value::String(to_ref.clone().into()));
+                }
 
                 // Run validations against the filtered input — non-permitted
                 // fields are gone, so callers can't satisfy a validation
@@ -1931,6 +2030,10 @@ impl Model {
                 let class_name = get_class_name_from_class(&args)?;
                 let collection = class_name_to_collection(&class_name);
 
+                if super::registry::is_timeseries_model(&class_name) {
+                    return Err(timeseries_insert_only_error(&class_name, "update"));
+                }
+
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
                     Some(other) => {
@@ -2090,6 +2193,25 @@ impl Model {
                 Some(1),
                 |args| {
                     let collection = get_collection_from_class(&args)?;
+
+                    // Columnar models count through the columnar engine
+                    // (COLLECTION_COUNT only sees document collections).
+                    if let Ok(class_name) = get_class_name_from_class(&args) {
+                        if super::registry::is_columnar_model(&class_name) {
+                            let schema = super::registry::get_columnar_schema(&class_name)
+                                .unwrap_or_default();
+                            let column =
+                                schema.columns.first().map(|c| c.name.clone()).ok_or_else(
+                                    || {
+                                        format!(
+                                            "{}.count: columnar model has no `column` declarations",
+                                            class_name
+                                        )
+                                    },
+                                )?;
+                            return super::columnar::aggregate(&collection, &column, "count", None);
+                        }
+                    }
 
                     let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
 
@@ -2439,6 +2561,9 @@ impl Model {
                 let class = get_class_rc_from_args(&args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
+                if super::registry::is_timeseries_model(&class_name) {
+                    return Err(timeseries_insert_only_error(&class_name, "upsert"));
+                }
                 let key = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("upsert() expects string key".to_string()),
@@ -2668,12 +2793,19 @@ impl Model {
             })),
         );
 
-        // Model.sum(field), Model.avg(field), Model.min(field), Model.max(field) - Aggregations
+        // Model.sum(field), Model.avg(field), ... - Aggregations. The stats
+        // funcs (median/stddev/variance) are emitted via COLLECT_LIST — see
+        // build_aggregation_query. PERCENTILE is not a SolidB function (yet),
+        // so it is deliberately absent.
         for (name, func) in &[
             ("sum", super::AggregationFunc::Sum),
             ("avg", super::AggregationFunc::Avg),
             ("min", super::AggregationFunc::Min),
             ("max", super::AggregationFunc::Max),
+            ("median", super::AggregationFunc::Median),
+            ("stddev", super::AggregationFunc::Stddev),
+            ("variance", super::AggregationFunc::Variance),
+            ("count_distinct", super::AggregationFunc::CountDistinct),
         ] {
             let method_name = name.to_string();
             let func = func.clone();
@@ -2703,13 +2835,318 @@ impl Model {
             );
         }
 
-        // Model.group_by(field, func, agg_field) - Group by with aggregation
+        // Model.aggregate(...) — ONE static, two model kinds:
+        //   Document models: aggregate({alias: [func, field], ...}) →
+        //     QueryBuilder in grouped mode (combine with .group_by/.having;
+        //     chain .all / .first).
+        //   Columnar models: aggregate(column, op[, {"group_by": [...]}]) →
+        //     executes immediately via the columnar engine (scalar, or rows
+        //     of {group cols..., "value"} when grouped).
         native_static_methods.insert(
-            "group_by".to_string(),
-            Rc::new(NativeFunction::new("Model.group_by", Some(4), |args| {
+            "aggregate".to_string(),
+            Rc::new(NativeFunction::new("Model.aggregate", None, |args| {
                 let class = get_class_rc_from_args(&args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
+
+                if super::registry::is_columnar_model(&class_name) {
+                    let column = match args.get(1) {
+                        Some(Value::String(s)) => s.to_string(),
+                        _ => {
+                            return Err(format!(
+                                "{}.aggregate(column, op[, options]) expects a column name \
+                                 string (columnar form)",
+                                class_name
+                            ))
+                        }
+                    };
+                    validate_field_name(&column, "aggregate")?;
+                    let op = match args.get(2) {
+                        Some(Value::String(s)) => s.to_lowercase(),
+                        _ => {
+                            return Err(format!(
+                                "{}.aggregate(column, op[, options]) expects an operation \
+                                 string ({})",
+                                class_name,
+                                super::columnar::COLUMN_AGG_OPS.join(", ")
+                            ))
+                        }
+                    };
+                    if !super::columnar::COLUMN_AGG_OPS.contains(&op.as_str()) {
+                        return Err(format!(
+                            "{}.aggregate unknown operation '{}': expected one of {}",
+                            class_name,
+                            op,
+                            super::columnar::COLUMN_AGG_OPS.join(", ")
+                        ));
+                    }
+                    let mut group_by: Option<Vec<String>> = None;
+                    if let Some(Value::Hash(opts)) = args.get(3) {
+                        use crate::interpreter::value::HashKey;
+                        for (k, v) in opts.borrow().iter() {
+                            match k {
+                                HashKey::String(s) if s.as_str() == "group_by" => {
+                                    let cols = match v {
+                                        Value::Array(arr) => {
+                                            let arr = arr.borrow();
+                                            let mut out = Vec::with_capacity(arr.len());
+                                            for c in arr.iter() {
+                                                match c {
+                                                    Value::String(s) => {
+                                                        validate_field_name(s, "aggregate")?;
+                                                        out.push(s.to_string());
+                                                    }
+                                                    other => {
+                                                        return Err(format!(
+                                                            "aggregate() group_by entries must \
+                                                             be strings, got {}",
+                                                            other.type_name()
+                                                        ))
+                                                    }
+                                                }
+                                            }
+                                            out
+                                        }
+                                        Value::String(s) => {
+                                            validate_field_name(s, "aggregate")?;
+                                            vec![s.to_string()]
+                                        }
+                                        other => {
+                                            return Err(format!(
+                                                "aggregate() group_by must be an array of \
+                                                 columns, got {}",
+                                                other.type_name()
+                                            ))
+                                        }
+                                    };
+                                    group_by = Some(cols);
+                                }
+                                HashKey::String(s) => {
+                                    return Err(format!(
+                                        "aggregate() unknown option '{}': expected group_by",
+                                        s
+                                    ))
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    return super::columnar::aggregate(&collection, &column, &op, group_by);
+                }
+
+                let spec_arg = args.get(1).ok_or_else(|| {
+                    "aggregate() requires a spec hash, e.g. aggregate({ \"total\": [\"sum\", \
+                     \"amount\"] })"
+                        .to_string()
+                })?;
+                let specs = super::query::parse_aggregate_spec_hash(spec_arg)?;
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.aggregate_specs = specs;
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Columnar-model statics. Each requires a `columnar` declaration;
+        // document models get a clear pointer at the document API instead.
+        {
+            fn require_columnar(args: &[Value], method: &str) -> Result<(String, String), String> {
+                let class_name = get_class_name_from_class(args)?;
+                if !super::registry::is_columnar_model(&class_name) {
+                    return Err(format!(
+                        "{}.{} requires a `columnar` declaration in the class body (regular \
+                         models use the document API)",
+                        class_name, method
+                    ));
+                }
+                let collection = class_name_to_collection(&class_name);
+                Ok((class_name, collection))
+            }
+
+            // Model.insert_rows([{...}, ...]) — bulk row insert; auto-creates
+            // the store from the declared schema in dev.
+            native_static_methods.insert(
+                "insert_rows".to_string(),
+                Rc::new(NativeFunction::new("Model.insert_rows", Some(2), |args| {
+                    let (class_name, collection) = require_columnar(&args, "insert_rows")?;
+                    let rows = match args.get(1) {
+                        Some(rows @ Value::Array(_)) => {
+                            crate::interpreter::value::value_to_json(rows)?
+                        }
+                        _ => {
+                            return Err(format!(
+                                "{}.insert_rows expects an array of row hashes",
+                                class_name
+                            ))
+                        }
+                    };
+                    let schema =
+                        super::registry::get_columnar_schema(&class_name).unwrap_or_default();
+                    super::columnar::insert_rows(&collection, &schema, rows)
+                })),
+            );
+
+            // Model.query({"columns": [...], "filter": {...}, "limit": n}) —
+            // projection scan with the engine's single optional filter.
+            native_static_methods.insert(
+                "query".to_string(),
+                Rc::new(NativeFunction::new("Model.query", Some(2), |args| {
+                    let (class_name, collection) = require_columnar(&args, "query")?;
+                    let options = args.get(1).ok_or_else(|| {
+                        format!(
+                            "{}.query expects an options hash with a \"columns\" array",
+                            class_name
+                        )
+                    })?;
+                    let (columns, filter, limit) = super::columnar::parse_query_options(options)?;
+                    super::columnar::query(&collection, columns, filter, limit)
+                })),
+            );
+
+            // Model.add_column_index(column[, type]) — sorted (default),
+            // hash, bitmap, minmax, or bloom.
+            native_static_methods.insert(
+                "add_column_index".to_string(),
+                Rc::new(NativeFunction::new(
+                    "Model.add_column_index",
+                    None,
+                    |args| {
+                        let (class_name, collection) = require_columnar(&args, "add_column_index")?;
+                        let column = match args.get(1) {
+                            Some(Value::String(s)) => s.to_string(),
+                            _ => {
+                                return Err(format!(
+                                    "{}.add_column_index expects a column name",
+                                    class_name
+                                ))
+                            }
+                        };
+                        validate_field_name(&column, "add_column_index")?;
+                        let index_type = match args.get(2) {
+                            Some(Value::String(s)) => {
+                                let t = s.to_lowercase();
+                                if !super::columnar::COLUMN_INDEX_TYPES.contains(&t.as_str()) {
+                                    return Err(format!(
+                                        "{}.add_column_index unknown type '{}': expected one \
+                                         of {}",
+                                        class_name,
+                                        t,
+                                        super::columnar::COLUMN_INDEX_TYPES.join(", ")
+                                    ));
+                                }
+                                Some(t)
+                            }
+                            None => None,
+                            Some(other) => {
+                                return Err(format!(
+                                    "{}.add_column_index type must be a string, got {}",
+                                    class_name,
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        super::columnar::create_index(&collection, &column, index_type.as_deref())
+                    },
+                )),
+            );
+
+            native_static_methods.insert(
+                "column_indexes".to_string(),
+                Rc::new(NativeFunction::new_auto_invocable(
+                    "Model.column_indexes",
+                    Some(1),
+                    |args| {
+                        let (_, collection) = require_columnar(&args, "column_indexes")?;
+                        super::columnar::list_indexes(&collection)
+                    },
+                )),
+            );
+
+            native_static_methods.insert(
+                "drop_column_index".to_string(),
+                Rc::new(NativeFunction::new(
+                    "Model.drop_column_index",
+                    Some(2),
+                    |args| {
+                        let (class_name, collection) =
+                            require_columnar(&args, "drop_column_index")?;
+                        let column = match args.get(1) {
+                            Some(Value::String(s)) => s.to_string(),
+                            _ => {
+                                return Err(format!(
+                                    "{}.drop_column_index expects a column name",
+                                    class_name
+                                ))
+                            }
+                        };
+                        validate_field_name(&column, "drop_column_index")?;
+                        super::columnar::drop_index(&collection, &column)
+                    },
+                )),
+            );
+
+            native_static_methods.insert(
+                "columnar_stats".to_string(),
+                Rc::new(NativeFunction::new_auto_invocable(
+                    "Model.columnar_stats",
+                    Some(1),
+                    |args| {
+                        let (_, collection) = require_columnar(&args, "columnar_stats")?;
+                        super::columnar::stats(&collection)
+                    },
+                )),
+            );
+        }
+
+        // Model.group_by(...) — two forms:
+        //   group_by("country") / group_by(["country", "plan"]) — multi-key
+        //   grouping (combine with .aggregate/.having; implicit count).
+        //   group_by(field, func, agg_field) — legacy single-aggregate form,
+        //   returns [{group, result}] rows (unchanged).
+        native_static_methods.insert(
+            "group_by".to_string(),
+            Rc::new(NativeFunction::new("Model.group_by", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                if args.len() == 2 {
+                    let fields: Vec<String> = match args.get(1) {
+                        Some(Value::String(s)) => vec![s.to_string()],
+                        Some(Value::Array(arr)) => {
+                            let arr = arr.borrow();
+                            let mut out = Vec::with_capacity(arr.len());
+                            for v in arr.iter() {
+                                match v {
+                                    Value::String(s) => out.push(s.to_string()),
+                                    other => {
+                                        return Err(format!(
+                                            "group_by() expects string field names, got {} in \
+                                             array",
+                                            other.type_name()
+                                        ))
+                                    }
+                                }
+                            }
+                            out
+                        }
+                        _ => {
+                            return Err("group_by() expects a field name or array of field names"
+                                .to_string())
+                        }
+                    };
+                    if fields.is_empty() {
+                        return Err("group_by() requires at least one field".to_string());
+                    }
+                    for f in &fields {
+                        validate_field_name(f, "group_by")?;
+                    }
+                    let mut qb =
+                        super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                    qb.group_fields = fields;
+                    return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));
+                }
+
                 let group_field = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("group_by() expects string group field".to_string()),
@@ -2742,6 +3179,355 @@ impl Model {
             })),
         );
 
+        // Model.similar(query[, field][, k][, options]) — start a similarity
+        // chain without a where(): returns a QueryBuilder with the similar
+        // spec set (same argument shapes as the chainable .similar()).
+        native_static_methods.insert(
+            "similar".to_string(),
+            Rc::new(NativeFunction::new("Model.similar", None, |args| {
+                use super::query::{SimilarInput, SimilarSpec};
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let input = match args.get(1) {
+                    Some(Value::String(s)) => SimilarInput::Text(s.to_string()),
+                    Some(Value::Array(arr)) => {
+                        let vec: Vec<f64> = arr
+                            .borrow()
+                            .iter()
+                            .map(|v| match v {
+                                Value::Int(n) => Ok(*n as f64),
+                                Value::Float(f) => Ok(*f),
+                                other => Err(format!(
+                                    "similar() vector entries must be numbers, got {}",
+                                    other.type_name()
+                                )),
+                            })
+                            .collect::<Result<_, _>>()?;
+                        if vec.is_empty() {
+                            return Err("similar() vector is empty".to_string());
+                        }
+                        SimilarInput::Vector(vec)
+                    }
+                    _ => return Err("similar() expects query text or a numeric vector".to_string()),
+                };
+                let field = match args.get(2) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => "embedding".to_string(),
+                };
+                validate_field_name(&field, "similar")?;
+                let top_k = match args.get(3) {
+                    Some(Value::Int(n)) if *n > 0 => *n as usize,
+                    _ => 10,
+                };
+                let mut exact = false;
+                let mut ef_search: Option<usize> = None;
+                if let Some(Value::Hash(opts)) = args.get(4) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in opts.borrow().iter() {
+                        let key = match k {
+                            HashKey::String(s) => s.to_string(),
+                            _ => continue,
+                        };
+                        match (key.as_str(), v) {
+                            ("exact", Value::Bool(b)) => exact = *b,
+                            ("ef_search", Value::Int(n)) if *n > 0 => ef_search = Some(*n as usize),
+                            (other, _) => {
+                                return Err(format!("similar() unknown/invalid option '{}'", other))
+                            }
+                        }
+                    }
+                }
+
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.similar_query = Some(SimilarSpec {
+                    input,
+                    field,
+                    top_k,
+                    exact,
+                    ef_search,
+                });
+                qb.limit_val = Some(top_k);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.search("query"[, options]) — fulltext search over the fields
+        // of the declared `fulltext_index`. Options: field:, distance:,
+        // limit:, highlight:. Returns ranked instances with _search_score.
+        native_static_methods.insert(
+            "search".to_string(),
+            Rc::new(NativeFunction::new("Model.search", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let indexes = super::registry::get_fulltext_indexes(&class_name);
+                let declared = indexes.first().ok_or_else(|| {
+                    format!(
+                        "{}.search requires a `fulltext_index` declaration in the class body, \
+                         e.g. fulltext_index \"title\", \"body\"",
+                        class_name
+                    )
+                })?;
+
+                let query_text = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err(format!("{}.search expects a query string", class_name)),
+                };
+
+                let mut field = declared
+                    .fields
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+                let mut distance: usize = 2;
+                let mut limit: usize = 10;
+                let mut highlight = false;
+                if let Some(Value::Hash(opts)) = args.get(2) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in opts.borrow().iter() {
+                        let key = match k {
+                            HashKey::String(s) => s.to_string(),
+                            _ => continue,
+                        };
+                        match (key.as_str(), v) {
+                            ("field", Value::String(s)) => {
+                                let s = s.to_string();
+                                if !declared.fields.iter().any(|f| f == &s) {
+                                    return Err(format!(
+                                        "{}.search field '{}' is not covered by the \
+                                         fulltext_index (declared: {})",
+                                        class_name,
+                                        s,
+                                        declared.fields.join(", ")
+                                    ));
+                                }
+                                field = s;
+                            }
+                            ("distance", Value::Int(n)) if *n >= 0 => distance = *n as usize,
+                            ("limit", Value::Int(n)) if *n > 0 => limit = *n as usize,
+                            ("highlight", Value::Bool(b)) => highlight = *b,
+                            (other, _) => {
+                                return Err(format!(
+                                    "search() unknown/invalid option '{}': expected field:, \
+                                     distance:, limit:, or highlight:",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                }
+
+                super::search::exec_fulltext_search(
+                    &collection,
+                    &class,
+                    &field,
+                    &query_text,
+                    distance,
+                    limit,
+                    highlight,
+                    is_soft_delete(&class_name),
+                )
+            })),
+        );
+
+        // Model.near(lat, lon[, options]) / Model.within(lat, lon, radius) —
+        // geo queries over the declared `geo_index` field. Results carry
+        // `_distance` (meters).
+        fn geo_args(
+            args: &[Value],
+            method: &str,
+        ) -> Result<(String, String, Rc<Class>, f64, f64), String> {
+            let class = get_class_rc_from_args(args)?;
+            let class_name = class.name.clone();
+            let collection = class_name_to_collection(&class_name);
+            let geo = super::registry::get_geo_indexes(&class_name);
+            let field = geo.first().map(|g| g.field.clone()).ok_or_else(|| {
+                format!(
+                    "{}.{} requires a `geo_index` declaration in the class body, e.g. \
+                         geo_index \"location\"",
+                    class_name, method
+                )
+            })?;
+            let num = |v: Option<&Value>, what: &str| -> Result<f64, String> {
+                match v {
+                    Some(Value::Int(n)) => Ok(*n as f64),
+                    Some(Value::Float(f)) => Ok(*f),
+                    _ => Err(format!(
+                        "{}.{} expects numeric {}",
+                        class_name, method, what
+                    )),
+                }
+            };
+            let lat = num(args.get(1), "lat")?;
+            let lon = num(args.get(2), "lon")?;
+            Ok((collection, field, class, lat, lon))
+        }
+
+        native_static_methods.insert(
+            "near".to_string(),
+            Rc::new(NativeFunction::new("Model.near", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let (collection, field, class, lat, lon) = geo_args(&args, "near")?;
+                let mut limit: f64 = 10.0;
+                if let Some(Value::Hash(opts)) = args.get(3) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in opts.borrow().iter() {
+                        match (k, v) {
+                            (HashKey::String(key), Value::Int(n))
+                                if key.as_str() == "limit" && *n > 0 =>
+                            {
+                                limit = *n as f64
+                            }
+                            (HashKey::String(key), _) => {
+                                return Err(format!(
+                                    "near() unknown/invalid option '{}': expected limit:",
+                                    key
+                                ))
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                super::search::exec_geo_query(
+                    &collection,
+                    &class,
+                    &field,
+                    "near",
+                    lat,
+                    lon,
+                    ("limit", limit),
+                    is_soft_delete(&class_name),
+                )
+            })),
+        );
+
+        native_static_methods.insert(
+            "within".to_string(),
+            Rc::new(NativeFunction::new("Model.within", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let (collection, field, class, lat, lon) = geo_args(&args, "within")?;
+                let radius = match args.get(3) {
+                    Some(Value::Int(n)) if *n > 0 => *n as f64,
+                    Some(Value::Float(f)) if *f > 0.0 => *f,
+                    _ => {
+                        return Err(format!(
+                            "{}.within expects a radius in meters as the third argument",
+                            class_name
+                        ))
+                    }
+                };
+                super::search::exec_geo_query(
+                    &collection,
+                    &class,
+                    &field,
+                    "within",
+                    lat,
+                    lon,
+                    ("radius", radius),
+                    is_soft_delete(&class_name),
+                )
+            })),
+        );
+
+        // Model.time_bucket(interval[, aggregates]) — bucketed aggregation for
+        // timeseries models. Returns a QueryBuilder (chain .all to execute).
+        native_static_methods.insert(
+            "time_bucket".to_string(),
+            Rc::new(NativeFunction::new("Model.time_bucket", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                if !super::registry::is_timeseries_model(&class_name) {
+                    return Err(format!(
+                        "{}.time_bucket() requires a `timeseries` declaration in the class \
+                         body — for regular models use group_by()",
+                        class_name
+                    ));
+                }
+
+                let interval_arg = args.get(1).ok_or_else(|| {
+                    "time_bucket(interval, {aggregates}) requires an interval string, \
+                         e.g. time_bucket(\"1h\", { \"avg\": \"value\" })"
+                        .to_string()
+                })?;
+                let spec =
+                    super::query::parse_time_bucket_args(interval_arg, args.get(2), &class_name)?;
+
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.time_bucket_info = Some(spec);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.prune([older_than]) — timeseries retention. Deletes documents
+        // older than the cutoff: a duration ("30d" → now - 30d), an RFC3339
+        // timestamp, or (no argument) the declared `retention:`. Returns the
+        // number of deleted documents.
+        native_static_methods.insert(
+            "prune".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model.prune",
+                None,
+                |args| {
+                    let class = get_class_rc_from_args(&args)?;
+                    let class_name = class.name.clone();
+                    let collection = class_name_to_collection(&class_name);
+
+                    let ts_spec =
+                        super::registry::get_timeseries_spec(&class_name).ok_or_else(|| {
+                            format!(
+                                "{}.prune() requires a `timeseries` declaration in the class \
+                                 body",
+                                class_name
+                            )
+                        })?;
+
+                    let cutoff_iso = match args.get(1) {
+                        Some(Value::String(s)) => {
+                            let s = s.to_string();
+                            if validate_retention_duration(&s).is_ok() {
+                                duration_to_cutoff_rfc3339(&s)?
+                            } else if chrono::DateTime::parse_from_rfc3339(&s).is_ok() {
+                                s
+                            } else {
+                                return Err(format!(
+                                    "{}.prune() expects a duration (\"30d\") or an RFC3339 \
+                                     timestamp, got {:?}",
+                                    class_name, s
+                                ));
+                            }
+                        }
+                        Some(other) => {
+                            return Err(format!(
+                                "{}.prune() expects a string argument, got {}",
+                                class_name,
+                                other.type_name()
+                            ))
+                        }
+                        None => match &ts_spec.retention {
+                            Some(retention) => duration_to_cutoff_rfc3339(retention)?,
+                            None => {
+                                return Err(format!(
+                                    "{}.prune requires an argument or a retention: declaration \
+                                     (e.g. timeseries retention: \"30d\")",
+                                    class_name
+                                ))
+                            }
+                        },
+                    };
+
+                    let deleted = super::crud::exec_prune(&collection, &cutoff_iso)?;
+                    Ok(Value::Int(deleted))
+                },
+            )),
+        );
+
         // ====================================================================
         // Instance Methods (called on model instances: user.update(), user.delete())
         // ====================================================================
@@ -2764,6 +3550,13 @@ impl Model {
                         Value::Instance(inst) => inst.clone(),
                         _ => return Err("Expected instance".to_string()),
                     };
+
+                    {
+                        let class_name = instance.borrow().class.name.clone();
+                        if super::registry::is_timeseries_model(&class_name) {
+                            return Err(timeseries_insert_only_error(&class_name, "update"));
+                        }
+                    }
 
                     // Optional hash of attributes: `inst.update({...})`
                     // applies the hash to instance fields before running
@@ -2939,6 +3732,49 @@ impl Model {
                         }
                     }
 
+                    // Edge models: coerce `from`/`to` fields (set via
+                    // save({from: ..., to: ...}) or plain assignment) into
+                    // _from/_to before the persisted map is built.
+                    {
+                        let class_name = instance.borrow().class.name.clone();
+                        if let Some(edge_spec) = super::registry::get_edge_spec(&class_name) {
+                            let mut inst_mut = instance.borrow_mut();
+                            for (field, expected, target) in [
+                                ("from", &edge_spec.from_collection, "_from"),
+                                ("to", &edge_spec.to_collection, "_to"),
+                            ] {
+                                if let Some(val) = inst_mut.get(field) {
+                                    match super::graph::edge_ref(&val, expected, field) {
+                                        Ok(r) => {
+                                            inst_mut.fields.remove(field);
+                                            inst_mut
+                                                .set(target.to_string(), Value::String(r.into()));
+                                        }
+                                        Err(message) => {
+                                            let mut pairs =
+                                                crate::interpreter::value::HashPairs::default();
+                                            pairs.insert(
+                                                HashKey::String("field".into()),
+                                                Value::String(field.into()),
+                                            );
+                                            pairs.insert(
+                                                HashKey::String("message".into()),
+                                                Value::String(message.into()),
+                                            );
+                                            let err_hash =
+                                                Value::Hash(Rc::new(RefCell::new(pairs)));
+                                            inst_mut.set(
+                                                "_errors".to_string(),
+                                                Value::Array(Rc::new(RefCell::new(vec![err_hash]))),
+                                            );
+                                            return Ok(Value::Bool(false));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let inst_ref = instance.borrow();
                     let class_name = inst_ref.class.name.clone();
                     let collection = class_name_to_collection(&class_name);
@@ -2946,6 +3782,13 @@ impl Model {
                         Value::String(s) => Some(s.clone()),
                         _ => None,
                     });
+
+                    // Timeseries models are insert-only: saving an existing
+                    // record is an update, which the DB rejects — surface a
+                    // clear error before any DB round trip.
+                    if key_opt.is_some() && super::registry::is_timeseries_model(&class_name) {
+                        return Err(timeseries_insert_only_error(&class_name, "save"));
+                    }
 
                     // Handle pending translations before saving
                     let translated_field_names = get_translated_fields(&class_name);
@@ -3007,10 +3850,14 @@ impl Model {
                     // Get data we need before dropping inst_ref
                     let data_hash = instance_fields_to_hash(&inst_ref);
 
-                    // Build map for DB operation before dropping inst_ref
+                    // Build map for DB operation before dropping inst_ref.
+                    // `_`-prefixed fields are DB-managed and stripped — except
+                    // _from/_to on edge models, which ARE the edge payload.
+                    let is_edge = super::registry::is_edge_model(&class_name);
                     let mut map = serde_json::Map::new();
                     for (k, v) in &inst_ref.fields {
-                        if !k.starts_with('_') {
+                        if !k.starts_with('_') || (is_edge && matches!(k.as_str(), "_from" | "_to"))
+                        {
                             map.insert(k.clone(), value_to_json(v)?);
                         }
                     }
@@ -3293,6 +4140,190 @@ impl Model {
             })),
         );
 
+        // instance.traverse(EdgeModel[, {direction:, depth:}]) — graph
+        // traversal from this record. Returns a chainable QueryBuilder whose
+        // vertex variable is `doc`, so .where/.order/.limit/.count compose
+        // exactly like a collection query.
+        native_methods.insert(
+            "traverse".to_string(),
+            Rc::new(NativeFunction::new("Model#traverse", None, |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let own_class_name = instance.borrow().class.name.clone();
+                let own_collection = class_name_to_collection(&own_class_name);
+                let start_id = super::graph::edge_ref(
+                    &Value::Instance(instance.clone()),
+                    &own_collection,
+                    "traverse()",
+                )
+                .map_err(|_| {
+                    format!(
+                        "traverse() requires a saved record ({} instance has no _key)",
+                        own_class_name
+                    )
+                })?;
+
+                let spec = super::graph::parse_traverse_options(&args[1..])?;
+
+                // The result class: follow the edge declaration in the walk
+                // direction; per-document _id resolution corrects mixed
+                // results at materialization time.
+                let target_collection = match (&spec.edge_spec, spec.direction) {
+                    (Some(es), super::graph::TraversalDirection::Out) => es.to_collection.clone(),
+                    (Some(es), super::graph::TraversalDirection::In) => es.from_collection.clone(),
+                    _ => own_collection.clone(),
+                };
+                let target_class_name = super::relations::classify(&target_collection);
+                let target_class = super::registry::get_model_class(&target_class_name)
+                    .or_else(|| super::registry::get_model_class(&own_class_name));
+
+                let mut qb = match target_class {
+                    Some(class) => QueryBuilder::new_with_class(
+                        target_class_name,
+                        spec.edge_collection.clone(),
+                        class,
+                    ),
+                    None => QueryBuilder::new(target_class_name, spec.edge_collection.clone()),
+                };
+                qb.bind_vars.insert(
+                    crate::interpreter::get_symbol(super::graph::TRAVERSE_START_BIND),
+                    serde_json::Value::String(start_id),
+                );
+                qb.traversal = Some(super::graph::TraversalClause {
+                    edge_collection: spec.edge_collection,
+                    direction: spec.direction,
+                    min_depth: spec.min_depth,
+                    max_depth: spec.max_depth,
+                });
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // instance.shortest_path(target, via: EdgeModel[, direction: "any"])
+        // — BFS shortest path. Executes immediately; returns the Array of
+        // vertices in path order (start → target), or [] when unconnected.
+        native_methods.insert(
+            "shortest_path".to_string(),
+            Rc::new(NativeFunction::new("Model#shortest_path", None, |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let own_class = instance.borrow().class.clone();
+                let own_class_name = own_class.name.clone();
+                let own_collection = class_name_to_collection(&own_class_name);
+                let start_id = super::graph::edge_ref(
+                    &Value::Instance(instance.clone()),
+                    &own_collection,
+                    "shortest_path()",
+                )
+                .map_err(|_| {
+                    format!(
+                        "shortest_path() requires a saved record ({} instance has no _key)",
+                        own_class_name
+                    )
+                })?;
+
+                let target = args.get(1).cloned().ok_or_else(|| {
+                    "shortest_path(target, via: EdgeModel) requires a target record".to_string()
+                })?;
+
+                // Options: via: (required), direction: (default "any").
+                let mut via: Option<Value> = None;
+                let mut direction = super::graph::TraversalDirection::Any;
+                if let Some(opts) = args.get(2) {
+                    let hash = match opts {
+                        Value::Hash(h) => h.clone(),
+                        other => {
+                            return Err(format!(
+                                "shortest_path() options must be a hash, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+                    for (k, v) in hash.borrow().iter() {
+                        let key = match k {
+                            HashKey::String(s) => s.to_string(),
+                            _ => continue,
+                        };
+                        match key.as_str() {
+                            "via" => via = Some(v.clone()),
+                            "direction" => {
+                                let dir = match v {
+                                    Value::String(s) => s.to_string(),
+                                    Value::Symbol(s) => s.to_string(),
+                                    other => {
+                                        return Err(format!(
+                                            "shortest_path() direction must be a string, got {}",
+                                            other.type_name()
+                                        ))
+                                    }
+                                };
+                                direction = super::graph::TraversalDirection::parse(&dir)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "shortest_path() unknown option '{}': expected via: or \
+                                     direction:",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                }
+                let via = via.ok_or_else(|| {
+                    "shortest_path() requires via: an edge model, e.g. \
+                     shortest_path(other, via: Follow)"
+                        .to_string()
+                })?;
+
+                let (edge_collection, edge_spec) = match &via {
+                    Value::Class(c) => {
+                        let name = c.name.to_string();
+                        let spec = super::registry::get_edge_spec(&name)
+                            .ok_or_else(|| format!("{} has no `edge` declaration", name))?;
+                        (class_name_to_collection(&name), Some(spec))
+                    }
+                    Value::String(s) => (s.to_string(), None),
+                    other => {
+                        return Err(format!(
+                            "shortest_path() via: expects an edge model class or collection \
+                             name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                super::graph::validate_collection_ident(&edge_collection, "shortest_path")?;
+
+                // Coerce the target to a full "coll/key" id. Bare keys need a
+                // declared edge spec to know the collection; walking OUT ends
+                // on to_collection, IN on from_collection, ANY defaults to
+                // the receiver's own collection.
+                let end_expected = match (&edge_spec, direction) {
+                    (Some(es), super::graph::TraversalDirection::Out) => es.to_collection.clone(),
+                    (Some(es), super::graph::TraversalDirection::In) => es.from_collection.clone(),
+                    _ => own_collection.clone(),
+                };
+                let end_id =
+                    super::graph::any_vertex_ref(&target, &end_expected, "shortest_path()")?;
+
+                let (query, binds) = super::graph::shortest_path_query(
+                    &edge_collection,
+                    direction,
+                    &start_id,
+                    &end_id,
+                );
+                Ok(super::crud::exec_auto_collection_as_instances_with_binds(
+                    query,
+                    binds,
+                    &edge_collection,
+                    &own_class,
+                ))
+            })),
+        );
+
         let model_class = Class {
             name: "Model".to_string(),
             superclass: None,
@@ -3320,6 +4351,12 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
         Value::Instance(inst) => inst.clone(),
         _ => return Err("Expected instance".to_string()),
     };
+    {
+        let class_name = instance.borrow().class.name.clone();
+        if super::registry::is_timeseries_model(&class_name) {
+            return Err(timeseries_insert_only_error(&class_name, op_name));
+        }
+    }
     let field = match args.get(1) {
         Some(Value::String(s)) => s.clone(),
         _ => return Err(format!("{}() expects a string field name", op_name)),
@@ -3488,6 +4525,24 @@ pub fn register_model_builtins(env: &mut Environment) {
         );
     }
 
+    // __sync_model_indexes() — run the declared-index reconciler (the same
+    // sweep as dev-boot / `soli db:indexes`). Returns the report lines.
+    // Double-underscore: internal surface, used by tests and setup scripts.
+    env.define(
+        "__sync_model_indexes".to_string(),
+        Value::NativeFunction(NativeFunction::new_auto_invocable(
+            "__sync_model_indexes",
+            Some(0),
+            |_args| {
+                let lines: Vec<Value> = super::index_sync::sync_declared_indexes()
+                    .into_iter()
+                    .map(|l| Value::String(l.into()))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(lines))))
+            },
+        )),
+    );
+
     // soft_delete - Mark a model as using soft delete
     env.define(
         "soft_delete".to_string(),
@@ -3496,6 +4551,572 @@ pub fn register_model_builtins(env: &mut Environment) {
             let mut metadata = get_or_create_metadata(&class_name);
             metadata.soft_delete = true;
             update_metadata(&class_name, metadata);
+            Ok(Value::Null)
+        })),
+    );
+
+    // edge from: "users", to: "users" — mark the model as an edge collection.
+    // The named args collapse into a trailing hash, so args = [Class, Hash].
+    // Endpoints accept collection names or model classes. Records the edge
+    // spec (drives Follow.create endpoint coercion + traverse()) and the
+    // collection type (drives typed auto-create).
+    env.define(
+        "edge".to_string(),
+        Value::NativeFunction(NativeFunction::new("edge", Some(2), |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let usage = "edge requires from: and to: collections, e.g. \
+                         edge from: \"users\", to: \"users\"";
+            let opts = match args.get(1) {
+                Some(Value::Hash(h)) => h.clone(),
+                _ => return Err(usage.to_string()),
+            };
+            let mut from_val: Option<Value> = None;
+            let mut to_val: Option<Value> = None;
+            for (k, v) in opts.borrow().iter() {
+                match k {
+                    HashKey::String(s) if s.as_str() == "from" => from_val = Some(v.clone()),
+                    HashKey::String(s) if s.as_str() == "to" => to_val = Some(v.clone()),
+                    HashKey::String(s) => {
+                        return Err(format!("edge: unknown option '{}'. {}", s, usage))
+                    }
+                    _ => return Err(usage.to_string()),
+                }
+            }
+            let (from_val, to_val) = match (from_val, to_val) {
+                (Some(f), Some(t)) => (f, t),
+                _ => return Err(usage.to_string()),
+            };
+
+            let from_collection = super::graph::endpoint_to_collection(&from_val)?;
+            let to_collection = super::graph::endpoint_to_collection(&to_val)?;
+
+            let mut metadata = get_or_create_metadata(&class_name);
+            metadata.edge = Some(super::registry::EdgeSpec {
+                from_collection,
+                to_collection,
+            });
+            update_metadata(&class_name, metadata);
+            super::registry::register_collection_type(&collection, "edge");
+            Ok(Value::Null)
+        })),
+    );
+
+    // timeseries [retention: "30d", timestamp: "recorded_at"] — mark the model
+    // as a timeseries collection (insert-only on the DB side; UUIDv7 keys give
+    // time ordering). Bare `timeseries` is valid: args = [Class] or
+    // [Class, Hash].
+    env.define(
+        "timeseries".to_string(),
+        Value::NativeFunction(NativeFunction::new("timeseries", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let mut spec = super::registry::TimeseriesSpec::default();
+            if let Some(opts) = args.get(1) {
+                let hash = match opts {
+                    Value::Hash(h) => h.clone(),
+                    other => {
+                        return Err(format!(
+                            "timeseries options must be a hash (retention:, timestamp:), got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                for (k, v) in hash.borrow().iter() {
+                    let key = match k {
+                        HashKey::String(s) => s.to_string(),
+                        _ => {
+                            return Err(
+                                "timeseries options must be retention: or timestamp:".to_string()
+                            )
+                        }
+                    };
+                    match key.as_str() {
+                        "retention" => {
+                            let val = match v {
+                                Value::String(s) => s.to_string(),
+                                other => {
+                                    return Err(format!(
+                                        "timeseries retention: must be a duration string \
+                                         like \"30d\", got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            validate_retention_duration(&val)?;
+                            spec.retention = Some(val);
+                        }
+                        "timestamp" => {
+                            let val = match v {
+                                Value::String(s) => s.to_string(),
+                                Value::Symbol(s) => s.to_string(),
+                                other => {
+                                    return Err(format!(
+                                        "timeseries timestamp: must be a field name, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            validate_field_name(&val, "timeseries")?;
+                            spec.timestamp_field = Some(val);
+                        }
+                        other => {
+                            return Err(format!(
+                                "timeseries: unknown option '{}': expected retention: or \
+                                 timestamp:",
+                                other
+                            ))
+                        }
+                    }
+                }
+            }
+
+            let mut metadata = get_or_create_metadata(&class_name);
+            metadata.timeseries = Some(spec);
+            update_metadata(&class_name, metadata);
+            super::registry::register_collection_type(&collection, "timeseries");
+            Ok(Value::Null)
+        })),
+    );
+
+    // columnar [compression: "lz4"|"none"] — mark the model as backed by the
+    // columnar engine (its own HTTP API; no document CRUD). Declare the
+    // schema with `column` lines below it.
+    env.define(
+        "columnar".to_string(),
+        Value::NativeFunction(NativeFunction::new("columnar", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+
+            let mut compression: Option<String> = None;
+            if let Some(opts) = args.get(1) {
+                let hash = match opts {
+                    Value::Hash(h) => h.clone(),
+                    other => {
+                        return Err(format!(
+                            "columnar options must be a hash (compression:), got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                for (k, v) in hash.borrow().iter() {
+                    match k {
+                        HashKey::String(s) if s.as_str() == "compression" => {
+                            let val = match v {
+                                Value::String(s) => s.to_lowercase().to_string(),
+                                other => {
+                                    return Err(format!(
+                                        "columnar compression: must be \"lz4\" or \"none\", \
+                                         got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            if val != "lz4" && val != "none" {
+                                return Err(format!(
+                                    "columnar compression: must be \"lz4\" or \"none\", got \
+                                     {:?}",
+                                    val
+                                ));
+                            }
+                            compression = Some(val);
+                        }
+                        HashKey::String(s) => {
+                            return Err(format!(
+                                "columnar: unknown option '{}': expected compression:",
+                                s
+                            ))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            super::registry::set_columnar(&class_name, compression);
+            Ok(Value::Null)
+        })),
+    );
+
+    // column "name", "type"[, nullable: true, indexed: true] — declare one
+    // column of a columnar model. Types are validated against the server
+    // whitelist because unknown types silently degrade to String there.
+    env.define(
+        "column".to_string(),
+        Value::NativeFunction(NativeFunction::new("column", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+
+            let name = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                Some(Value::Symbol(s)) => s.to_string(),
+                _ => {
+                    return Err(
+                        "column expects a name and a type, e.g. column \"url\", \"string\""
+                            .to_string(),
+                    )
+                }
+            };
+            validate_field_name(&name, "column")?;
+
+            let data_type = match args.get(2) {
+                Some(Value::String(s)) => s.to_lowercase().to_string(),
+                Some(Value::Symbol(s)) => s.to_lowercase().to_string(),
+                _ => {
+                    return Err(format!(
+                        "column \"{}\" requires a type: one of {}",
+                        name,
+                        super::columnar::COLUMN_TYPES.join(", ")
+                    ))
+                }
+            };
+            if !super::columnar::COLUMN_TYPES.contains(&data_type.as_str()) {
+                return Err(format!(
+                    "column \"{}\": unknown type {:?} — expected one of {}",
+                    name,
+                    data_type,
+                    super::columnar::COLUMN_TYPES.join(", ")
+                ));
+            }
+
+            let mut nullable = false;
+            let mut indexed = false;
+            if let Some(Value::Hash(opts)) = args.get(3) {
+                for (k, v) in opts.borrow().iter() {
+                    let key = match k {
+                        HashKey::String(s) => s.to_string(),
+                        _ => continue,
+                    };
+                    let flag = match v {
+                        Value::Bool(b) => *b,
+                        other => {
+                            return Err(format!(
+                                "column \"{}\" option {} must be a bool, got {}",
+                                name,
+                                key,
+                                other.type_name()
+                            ))
+                        }
+                    };
+                    match key.as_str() {
+                        "nullable" => nullable = flag,
+                        "indexed" => indexed = flag,
+                        other => {
+                            return Err(format!(
+                                "column \"{}\": unknown option '{}': expected nullable: or \
+                                 indexed:",
+                                name, other
+                            ))
+                        }
+                    }
+                }
+            }
+
+            super::registry::add_columnar_column(
+                &class_name,
+                super::registry::ColumnarColumnDef {
+                    name,
+                    data_type,
+                    nullable,
+                    indexed,
+                },
+            );
+            Ok(Value::Null)
+        })),
+    );
+
+    // vector_index "embedding", dimension: 1536[, metric:, m:,
+    // ef_construction:, quantization:, name:] — declare an HNSW ANN index.
+    // Makes similar() push down to the DB (exact: true opts out per call).
+    // Ensured by sync_declared_indexes (dev boot / `soli db:indexes`).
+    env.define(
+        "vector_index".to_string(),
+        Value::NativeFunction(NativeFunction::new("vector_index", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let field = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                Some(Value::Symbol(s)) => s.to_string(),
+                _ => {
+                    return Err("vector_index expects a field name, e.g. vector_index \
+                                \"embedding\", dimension: 1536"
+                        .to_string())
+                }
+            };
+            validate_field_name(&field, "vector_index")?;
+
+            let mut dimension: Option<usize> = None;
+            let mut metric: Option<String> = None;
+            let mut m: Option<usize> = None;
+            let mut ef_construction: Option<usize> = None;
+            let mut quantization: Option<String> = None;
+            let mut name: Option<String> = None;
+
+            if let Some(Value::Hash(opts)) = args.get(2) {
+                for (k, v) in opts.borrow().iter() {
+                    let key = match k {
+                        HashKey::String(s) => s.to_string(),
+                        _ => continue,
+                    };
+                    match (key.as_str(), v) {
+                        ("dimension", Value::Int(n)) if *n > 0 => dimension = Some(*n as usize),
+                        ("metric", Value::String(s)) => {
+                            let val = s.to_lowercase().to_string();
+                            if !["cosine", "euclidean", "dot_product", "dotproduct"]
+                                .contains(&val.as_str())
+                            {
+                                return Err(format!(
+                                    "vector_index metric: unknown '{}': expected cosine, \
+                                     euclidean, or dot_product",
+                                    val
+                                ));
+                            }
+                            metric = Some(val);
+                        }
+                        ("m", Value::Int(n)) if *n > 0 => m = Some(*n as usize),
+                        ("ef_construction", Value::Int(n)) if *n > 0 => {
+                            ef_construction = Some(*n as usize)
+                        }
+                        ("quantization", Value::String(s)) => quantization = Some(s.to_string()),
+                        ("name", Value::String(s)) => {
+                            validate_field_name(s, "vector_index")?;
+                            name = Some(s.to_string());
+                        }
+                        (other, _) => {
+                            return Err(format!("vector_index: unknown/invalid option '{}'", other))
+                        }
+                    }
+                }
+            }
+
+            let dimension = dimension.ok_or_else(|| {
+                "vector_index requires dimension:, e.g. vector_index \"embedding\", \
+                 dimension: 1536"
+                    .to_string()
+            })?;
+            let _ = &collection;
+            super::registry::add_vector_index(
+                &class_name,
+                super::registry::VectorIndexDef {
+                    name: name.unwrap_or_else(|| format!("idx_{}", field)),
+                    field,
+                    dimension,
+                    metric,
+                    m,
+                    ef_construction,
+                    quantization,
+                },
+            );
+            Ok(Value::Null)
+        })),
+    );
+
+    // fulltext_index "title", "body"[, name: "..."] — declare an n-gram
+    // fulltext index over one or more fields; enables Model.search().
+    env.define(
+        "fulltext_index".to_string(),
+        Value::NativeFunction(NativeFunction::new("fulltext_index", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let mut fields: Vec<String> = Vec::new();
+            let mut name: Option<String> = None;
+            for arg in args.iter().skip(1) {
+                match arg {
+                    Value::String(s) => {
+                        validate_field_name(s, "fulltext_index")?;
+                        fields.push(s.to_string());
+                    }
+                    Value::Symbol(s) => {
+                        validate_field_name(s, "fulltext_index")?;
+                        fields.push(s.to_string());
+                    }
+                    Value::Hash(opts) => {
+                        for (k, v) in opts.borrow().iter() {
+                            match (k, v) {
+                                (HashKey::String(key), Value::String(s))
+                                    if key.as_str() == "name" =>
+                                {
+                                    validate_field_name(s, "fulltext_index")?;
+                                    name = Some(s.to_string());
+                                }
+                                (HashKey::String(key), _) => {
+                                    return Err(format!("fulltext_index: unknown option '{}'", key))
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "fulltext_index expects field names, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+            if fields.is_empty() {
+                return Err(
+                    "fulltext_index requires at least one field, e.g. fulltext_index \
+                     \"title\", \"body\""
+                        .to_string(),
+                );
+            }
+            super::registry::add_fulltext_index(
+                &class_name,
+                super::registry::FulltextIndexDef {
+                    name: name.unwrap_or_else(|| format!("ft_{}", collection)),
+                    fields,
+                },
+            );
+            Ok(Value::Null)
+        })),
+    );
+
+    // geo_index "location"[, name: "..."] — declare a geo index on a
+    // {lat, lon} field; enables Model.near() / Model.within().
+    env.define(
+        "geo_index".to_string(),
+        Value::NativeFunction(NativeFunction::new("geo_index", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+
+            let field = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                Some(Value::Symbol(s)) => s.to_string(),
+                _ => {
+                    return Err(
+                        "geo_index expects a field name, e.g. geo_index \"location\"".to_string(),
+                    )
+                }
+            };
+            validate_field_name(&field, "geo_index")?;
+
+            let mut name: Option<String> = None;
+            if let Some(Value::Hash(opts)) = args.get(2) {
+                for (k, v) in opts.borrow().iter() {
+                    match (k, v) {
+                        (HashKey::String(key), Value::String(s)) if key.as_str() == "name" => {
+                            validate_field_name(s, "geo_index")?;
+                            name = Some(s.to_string());
+                        }
+                        (HashKey::String(key), _) => {
+                            return Err(format!("geo_index: unknown option '{}'", key))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            super::registry::add_geo_index(
+                &class_name,
+                super::registry::GeoIndexDef {
+                    name: name.unwrap_or_else(|| format!("geo_{}", field)),
+                    field,
+                },
+            );
+            Ok(Value::Null)
+        })),
+    );
+
+    // index "email", unique: true / index ["tenant_id", "email"], type:
+    // "hash" — declare a secondary index. Types: hash, persistent (default),
+    // fulltext, bloom, cuckoo.
+    env.define(
+        "index".to_string(),
+        Value::NativeFunction(NativeFunction::new("index", None, |args| {
+            use crate::interpreter::value::HashKey;
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let fields: Vec<String> = match args.get(1) {
+                Some(Value::String(s)) => vec![s.to_string()],
+                Some(Value::Symbol(s)) => vec![s.to_string()],
+                Some(Value::Array(arr)) => {
+                    let arr = arr.borrow();
+                    let mut out = Vec::with_capacity(arr.len());
+                    for v in arr.iter() {
+                        match v {
+                            Value::String(s) => out.push(s.to_string()),
+                            Value::Symbol(s) => out.push(s.to_string()),
+                            other => {
+                                return Err(format!(
+                                    "index expects string field names, got {} in array",
+                                    other.type_name()
+                                ))
+                            }
+                        }
+                    }
+                    out
+                }
+                _ => {
+                    return Err("index expects a field name or array of field names, e.g. \
+                                index \"email\", unique: true"
+                        .to_string())
+                }
+            };
+            if fields.is_empty() {
+                return Err("index requires at least one field".to_string());
+            }
+            for f in &fields {
+                validate_field_name(f, "index")?;
+            }
+
+            let mut index_type = "persistent".to_string();
+            let mut unique = false;
+            let mut name: Option<String> = None;
+            if let Some(Value::Hash(opts)) = args.get(2) {
+                for (k, v) in opts.borrow().iter() {
+                    let key = match k {
+                        HashKey::String(s) => s.to_string(),
+                        _ => continue,
+                    };
+                    match (key.as_str(), v) {
+                        ("unique", Value::Bool(b)) => unique = *b,
+                        ("type", Value::String(s)) => {
+                            let t = match s.to_lowercase().as_str() {
+                                // skiplist/btree are aliases the server maps
+                                // to persistent.
+                                "skiplist" | "btree" => "persistent".to_string(),
+                                t @ ("hash" | "persistent" | "fulltext" | "bloom" | "cuckoo") => {
+                                    t.to_string()
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "index type: unknown '{}': expected hash, persistent, \
+                                         fulltext, bloom, or cuckoo",
+                                        other
+                                    ))
+                                }
+                            };
+                            index_type = t;
+                        }
+                        ("name", Value::String(s)) => {
+                            validate_field_name(s, "index")?;
+                            name = Some(s.to_string());
+                        }
+                        (other, _) => {
+                            return Err(format!("index: unknown/invalid option '{}'", other))
+                        }
+                    }
+                }
+            }
+
+            super::registry::add_secondary_index(
+                &class_name,
+                super::registry::SecondaryIndexDef {
+                    name: name
+                        .unwrap_or_else(|| format!("idx_{}_{}", collection, fields.join("_"))),
+                    fields,
+                    index_type,
+                    unique,
+                },
+            );
             Ok(Value::Null)
         })),
     );

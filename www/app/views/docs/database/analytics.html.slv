@@ -1,0 +1,310 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Analytics &amp; Columnar Stores</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Two complementary tools for analytical workloads: rich grouped aggregation on document models
+            (<code>group_by</code> / <code>aggregate</code> / <code>having</code>), and columnar stores &mdash;
+            a separate column-oriented engine for high-volume append-and-aggregate data.
+        </p>
+    </div>
+
+    <h2 id="rich-aggregation" class="text-2xl font-bold text-white mb-6">Rich Aggregation (Document Models)</h2>
+    <p class="text-gray-400 mb-6">
+        Group on one or more fields with <code>group_by</code> and compute several named aggregates at once with <code>aggregate</code>:
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">rows = Order
+  .where({ "status": "paid" })
+  .group_by(["country", "plan"])
+  .aggregate({ "total": ["sum", "amount"], "avg_age": ["avg", "age"], "n": ["count"] })
+  .having("total > @min", { "min": 1000 })
+  .order("total", "desc")
+  .limit(20)
+  .all
+# => [{ "country": "FR", "plan": "pro", "total": 5300, "avg_age": 34.2, "n": 12 }, ...]</code></pre>
+        </div>
+    </div>
+
+    <ul class="text-gray-400 text-sm space-y-2 mb-8 list-disc list-inside">
+        <li><code>group_by</code> takes a field name or an <strong class="text-white">array</strong> of field names. Each result row is a plain hash carrying the group fields plus your aggregate aliases.</li>
+        <li>The <code>aggregate</code> spec maps <code>alias: [func, field]</code> &mdash; or <code>alias: ["count"]</code> for a plain row count.</li>
+        <li>In grouped mode, <code>order</code> must name a <strong class="text-white">group field or an aggregate alias</strong>; <code>limit</code> / <code>offset</code> compose as usual.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Aggregate functions</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Function</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">sum / avg / min / max</code></td>
+                    <td class="py-3 px-4 text-gray-400">The classics, over a field</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">count</code></td>
+                    <td class="py-3 px-4 text-gray-400">Row count per group (no field argument)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">count_distinct</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number of distinct values of a field</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">median / stddev / variance</code></td>
+                    <td class="py-3 px-4 text-gray-400">Statistical aggregates over a field</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-300 text-sm">
+            <code>PERCENTILE</code> is <strong>not</strong> available &mdash; SolidB has no such aggregate function. <code>median</code> covers p50; other percentiles need application-side math over the raw rows.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Shorthand forms</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># 1-arg group_by: implicit count per group, aliased "n"
+User.group_by("role").all
+# => [{ "role": "admin", "n": 3 }, { "role": "member", "n": 240 }]
+
+# Ungrouped aggregate: the whole match collapses to one row — chain .first
+totals = Order.aggregate({ "total": ["sum", "amount"], "n": ["count"] }).first
+
+# Statistical terminals — like sum/avg, chain .first
+Order.median("amount").first
+Order.where({ "status": "paid" }).stddev("amount").first
+Order.variance("amount").first
+Order.count_distinct("customer_id").first
+
+# Legacy 3-arg form: unchanged, returns [{group, result}]
+User.group_by("country", "sum", "balance").all</code></pre>
+        </div>
+    </div>
+
+    <h3 id="having" class="text-lg font-semibold text-white mb-3">Filtering groups with <code>having</code></h3>
+    <p class="text-gray-400 mb-4">
+        <code>having(expr, binds?)</code> filters <strong class="text-white">after</strong> the COLLECT, over the bare aggregate aliases and group fields (no <code>doc.</code> prefix):
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Order
+  .group_by("country")
+  .aggregate({ "total": ["sum", "amount"], "n": ["count"] })
+  .having("total > @min AND n >= @orders", { "min": 1000, "orders": 5 })
+  .all</code></pre>
+        </div>
+    </div>
+    <div class="my-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 mb-8">
+        <p class="text-red-300 text-sm">
+            <strong>Security:</strong> like the string form of <code>where</code>, the <code>having</code> string is <strong>developer-trusted</strong> &mdash; it is spliced into the query. Never build it from user input; user-supplied values belong in the bind-vars hash.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Soft delete</h3>
+    <p class="text-gray-400 mb-8">
+        The new grouped queries (<code>group_by</code> + <code>aggregate</code>) respect the model's soft-delete scope &mdash; deleted rows are excluded by default, and <code>with_deleted</code> / <code>only_deleted</code> compose. One honest inconsistency: the legacy three-argument form <strong class="text-white">never</strong> applied the soft-delete filter, and still doesn't (kept unchanged for backward compatibility).
+    </p>
+
+    <h3 id="window-functions" class="text-lg font-semibold text-white mb-3">Window functions: raw-SDBQL escape hatch</h3>
+    <p class="text-gray-400 mb-4">
+        <code>ROW_NUMBER()</code> / <code>LAG()</code> / <code>OVER (...)</code> are <strong class="text-white">not</strong> exposed through the QueryBuilder. Drop down to a raw query (<code>db.query</code> in a script/migration, or an <code>@sdbql{}</code> block) when you need them:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+rows = db.query("
+  FOR o IN orders
+    RETURN { country: o.country, amount: o.amount,
+             rank: ROW_NUMBER() OVER (PARTITION BY o.country ORDER BY o.amount DESC) }
+")</code></pre>
+        </div>
+    </div>
+
+    <h2 id="columnar-models" class="text-2xl font-bold text-white mb-6">Columnar Models</h2>
+    <p class="text-gray-400 mb-6">
+        Columnar stores are a <strong class="text-white">separate storage engine</strong> inside SolidB: data is laid out by column rather than by document, which makes appends cheap and large scans/aggregations fast. They are <em>not</em> document collections &mdash; they live behind their own HTTP API, are <strong class="text-white">not</strong> visible to SDBQL <code>FOR</code> loops, and have no document CRUD.
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/page_view.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class PageView &lt; Model
+  columnar compression: "lz4"        # optional options; bare `columnar` works
+  column "url", "string"
+  column "visited_at", "timestamp"
+  column "duration_ms", "int", nullable: true
+  column "country", "string", indexed: true
+end</code></pre>
+        </div>
+    </div>
+
+    <ul class="text-gray-400 text-sm space-y-2 mb-6 list-disc list-inside">
+        <li><code>columnar</code> marks the model as a columnar store. Options: <code>compression:</code> &mdash; <code>"lz4"</code> (the default) or <code>"none"</code>.</li>
+        <li><code>column name, type</code> declares a typed column. <code>nullable: true</code> allows nils; <code>indexed: true</code> creates the default (sorted) column index.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Column types</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Type</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Accepted spellings</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4 text-white">integer</td>
+                    <td class="py-3 px-4 text-gray-400"><code>int</code>, <code>int64</code>, <code>integer</code>, <code>bigint</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white">float</td>
+                    <td class="py-3 px-4 text-gray-400"><code>float</code>, <code>float64</code>, <code>double</code>, <code>number</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white">string</td>
+                    <td class="py-3 px-4 text-gray-400"><code>string</code>, <code>text</code>, <code>varchar</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white">boolean</td>
+                    <td class="py-3 px-4 text-gray-400"><code>bool</code>, <code>boolean</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white">timestamp</td>
+                    <td class="py-3 px-4 text-gray-400"><code>timestamp</code>, <code>datetime</code>, <code>date</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white">json</td>
+                    <td class="py-3 px-4 text-gray-400"><code>json</code>, <code>object</code>, <code>array</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Inserting rows (<code>insert_rows</code>)</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">PageView.insert_rows([
+  { "url": "/", "visited_at": "2026-07-05T10:00:00Z", "duration_ms": 12, "country": "FR" },
+  { "url": "/pricing", "visited_at": "2026-07-05T10:00:03Z", "duration_ms": 48, "country": "DE" }
+])
+# => { "inserted": 2, "ids": [...] }</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8">
+        In dev the store is auto-created (with your declared columns) on first use, like document collections.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Aggregating</h3>
+    <p class="text-gray-400 mb-4">
+        <code>aggregate(field, op, options?)</code> returns a scalar, or one row per group with a <code>group_by</code> option. Ops: <code>count</code> / <code>sum</code> / <code>avg</code> / <code>min</code> / <code>max</code> / <code>count_distinct</code>.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">PageView.aggregate("duration_ms", "avg")                               # => 27.4 (scalar)
+PageView.aggregate("duration_ms", "avg", { "group_by": ["country"] })
+# => [{ "country": "FR", "value": 12.0 }, { "country": "DE", "value": 48.0 }]
+PageView.count</code></pre>
+        </div>
+    </div>
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-300 text-sm">
+            Known cosmetic quirk: grouped <strong>string</strong> keys may come back JSON-quoted (e.g. <code>"\"FR\""</code> instead of <code>"FR"</code>) &mdash; this happens server-side. Strip the quotes client-side if it matters for display.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Querying rows (<code>query</code>)</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">PageView.query({
+  "columns": ["url", "duration_ms"],
+  "filter": { "column": "country", "op": "eq", "value": "FR" },
+  "limit": 100
+})</code></pre>
+        </div>
+    </div>
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-8">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">Query endpoint limits</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li>At most <strong>one</strong> filter. Ops: <code>eq</code> / <code>ne</code> / <code>gt</code> / <code>gte</code> / <code>lt</code> / <code>lte</code> / <code>in</code>.</li>
+            <li><strong>No sort</strong> &mdash; order the returned rows client-side if you need to.</li>
+            <li><code>columns</code> projects; <code>limit</code> caps the row count.</li>
+            <li>For anything richer, aggregate server-side (above) or export into a document collection.</li>
+        </ul>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Column indexes</h3>
+    <p class="text-gray-400 mb-4">
+        Kinds: <code>sorted</code> (the default) | <code>hash</code> | <code>bitmap</code> | <code>minmax</code> | <code>bloom</code>. Rule of thumb: <code>sorted</code> for ranges and equality, <code>hash</code> for pure equality, <code>bitmap</code> for low-cardinality columns (country, status), <code>minmax</code> for block pruning on range scans, <code>bloom</code> for fast negative membership tests.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">PageView.add_column_index("country", "bitmap")
+PageView.column_indexes
+PageView.drop_column_index("country")
+PageView.columnar_stats     # store-level statistics</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">No document API</h3>
+    <p class="text-gray-400 mb-4">Columnar models deliberately raise on the document API:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">PageView.find(id)
+# => raises: "PageView.find: PageView is a columnar model;
+#    columnar stores have no document API."</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8">
+        No <code>_key</code>, <code>find</code>, <code>save</code>, <code>where</code>, validations, callbacks, or relations &mdash; and no SDBQL <code>FOR</code> over the store. <code>insert_rows</code>, <code>aggregate</code>, <code>query</code>, <code>count</code>, and the index/stats helpers above are the whole API.
+    </p>
+
+    <h3 id="columnar-migrations" class="text-lg font-semibold text-white mb-3">Migrations</h3>
+    <p class="text-gray-400 mb-4">
+        Use the dedicated helpers &mdash; <code>columns</code> is an array of <code>{ "name": ..., "type": ..., "nullable"?: bool, "indexed"?: bool }</code> hashes, and <code>options</code> accepts <code>{ "compression": "lz4" | "none" }</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">def up(db: Any)
+  db.create_columnar("page_views", [
+    { "name": "url", "type": "string" },
+    { "name": "visited_at", "type": "timestamp" },
+    { "name": "duration_ms", "type": "int", "nullable": true },
+    { "name": "country", "type": "string", "indexed": true }
+  ], { "compression": "lz4" })
+end
+
+def down(db: Any)
+  db.drop_columnar("page_views")
+end</code></pre>
+        </div>
+    </div>
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-300 text-sm">
+            <code>db.create_collection(name, "columnar")</code> now <strong>raises</strong> &mdash; it used to silently create a mislabeled <em>document</em> collection, which was never a real columnar store. Use <code>db.create_columnar</code> instead.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/search" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Search: Vector, Fulltext &amp; Geo &rarr;</h3>
+            <p class="text-sm text-gray-400">Index DSL, ANN similarity search, fulltext ranking, and geo queries.</p>
+        </a>
+        <a href="/docs/database/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Migrations &rarr;</h3>
+            <p class="text-sm text-gray-400">create_columnar, index types, and the rest of the schema toolkit.</p>
+        </a>
+    </div>
+</div>

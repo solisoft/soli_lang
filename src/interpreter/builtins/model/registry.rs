@@ -15,6 +15,77 @@ use crate::interpreter::value::Class;
 /// A model field bound to an enum type via `enum_field`: (field name, enum class).
 type EnumFieldBinding = (String, Rc<Class>);
 
+/// `edge from: "users", to: "users"` declaration: the two vertex collections
+/// this edge model connects. Endpoint coercion (`Follow.create(from: alice)`)
+/// validates against these.
+#[derive(Debug, Clone)]
+pub struct EdgeSpec {
+    pub from_collection: String,
+    pub to_collection: String,
+}
+
+/// `timeseries retention: "30d", timestamp: "recorded_at"` declaration.
+/// Timeseries collections are insert-only on the DB side; `timestamp_field`
+/// defaults to the server-set `_created_at` when not declared.
+#[derive(Debug, Clone, Default)]
+pub struct TimeseriesSpec {
+    pub retention: Option<String>,
+    pub timestamp_field: Option<String>,
+}
+
+/// One `column "name", "type", {...}` declaration on a columnar model.
+#[derive(Debug, Clone)]
+pub struct ColumnarColumnDef {
+    pub name: String,
+    /// Wire type string (int64/float64/string/bool/timestamp/json — the
+    /// client validates against the server whitelist before sending).
+    pub data_type: String,
+    pub nullable: bool,
+    pub indexed: bool,
+}
+
+/// `columnar` + `column` declarations of a columnar model.
+#[derive(Debug, Clone, Default)]
+pub struct ColumnarSchemaDef {
+    pub columns: Vec<ColumnarColumnDef>,
+    pub compression: Option<String>,
+}
+
+/// A `vector_index "field", dimension: N` declaration (HNSW ANN index).
+#[derive(Debug, Clone)]
+pub struct VectorIndexDef {
+    pub name: String,
+    pub field: String,
+    pub dimension: usize,
+    pub metric: Option<String>,
+    pub m: Option<usize>,
+    pub ef_construction: Option<usize>,
+    pub quantization: Option<String>,
+}
+
+/// A `fulltext_index "title", "body"` declaration (n-gram inverted index).
+#[derive(Debug, Clone)]
+pub struct FulltextIndexDef {
+    pub name: String,
+    pub fields: Vec<String>,
+}
+
+/// A `geo_index "location"` declaration.
+#[derive(Debug, Clone)]
+pub struct GeoIndexDef {
+    pub name: String,
+    pub field: String,
+}
+
+/// An `index "email", unique: true` declaration (secondary index).
+#[derive(Debug, Clone)]
+pub struct SecondaryIndexDef {
+    pub name: String,
+    pub fields: Vec<String>,
+    pub index_type: String,
+    pub unique: bool,
+}
+
 /// Metadata for a model class (validations, callbacks).
 #[derive(Debug, Clone, Default)]
 pub struct ModelMetadata {
@@ -34,6 +105,20 @@ pub struct ModelMetadata {
     /// only — guard/before/after closures live in the `state_machine`
     /// thread-locals. Keyed by field, so a model may declare more than one.
     pub state_machines: Vec<StateMachineDef>,
+    /// Set by the `edge` class-body DSL.
+    pub edge: Option<EdgeSpec>,
+    /// Set by the `timeseries` class-body DSL.
+    pub timeseries: Option<TimeseriesSpec>,
+    /// Set by the `columnar`/`column` class-body DSL.
+    pub columnar: Option<ColumnarSchemaDef>,
+    /// Set by the `vector_index` class-body DSL.
+    pub vector_indexes: Vec<VectorIndexDef>,
+    /// Set by the `fulltext_index` class-body DSL.
+    pub fulltext_indexes: Vec<FulltextIndexDef>,
+    /// Set by the `geo_index` class-body DSL.
+    pub geo_indexes: Vec<GeoIndexDef>,
+    /// Set by the `index` class-body DSL.
+    pub secondary_indexes: Vec<SecondaryIndexDef>,
 }
 
 lazy_static! {
@@ -45,6 +130,26 @@ lazy_static! {
     /// write layer (exec_insert/exec_update) can encrypt without a class handle.
     static ref ENCRYPTED_COLLECTIONS: RwLock<HashMap<String, Vec<String>>> =
         RwLock::new(HashMap::new());
+
+    /// Collection name -> SolidB collection type ("edge", "timeseries", ...).
+    /// Keyed by collection so the auto-create path (try_create_collection_once)
+    /// can send the right `type` without a class handle.
+    static ref COLLECTION_TYPES: RwLock<HashMap<String, String>> =
+        RwLock::new(HashMap::new());
+}
+
+/// Record the SolidB collection type declared for a collection (via the
+/// `edge`/`timeseries` class-body DSL). Re-declaring overwrites.
+pub fn register_collection_type(collection: &str, ctype: &str) {
+    COLLECTION_TYPES
+        .write()
+        .unwrap()
+        .insert(collection.to_string(), ctype.to_string());
+}
+
+/// The declared SolidB collection type for a collection, if any.
+pub fn get_collection_type(collection: &str) -> Option<String> {
+    COLLECTION_TYPES.read().unwrap().get(collection).cloned()
 }
 
 /// Register an encrypted field for a model (by class) and its collection.
@@ -208,6 +313,149 @@ pub fn is_soft_delete(class_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The `edge` declaration on a model class, if any.
+pub fn get_edge_spec(class_name: &str) -> Option<EdgeSpec> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry.get(class_name).and_then(|m| m.edge.clone())
+}
+
+pub fn is_edge_model(class_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.edge.is_some())
+        .unwrap_or(false)
+}
+
+/// The `timeseries` declaration on a model class, if any.
+pub fn get_timeseries_spec(class_name: &str) -> Option<TimeseriesSpec> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry.get(class_name).and_then(|m| m.timeseries.clone())
+}
+
+/// Mark a model as columnar (the `columnar` DSL). Keeps any columns already
+/// declared; sets/replaces the compression option.
+pub fn set_columnar(class_name: &str, compression: Option<String>) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    let schema = metadata.columnar.get_or_insert_with(Default::default);
+    schema.compression = compression;
+}
+
+/// Add (or replace, by name) a `column` declaration on a columnar model.
+pub fn add_columnar_column(class_name: &str, def: ColumnarColumnDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    let schema = metadata.columnar.get_or_insert_with(Default::default);
+    schema.columns.retain(|c| c.name != def.name);
+    schema.columns.push(def);
+}
+
+/// Register (replace-by-name) a vector index declaration.
+pub fn add_vector_index(class_name: &str, def: VectorIndexDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.vector_indexes.retain(|d| d.name != def.name);
+    metadata.vector_indexes.push(def);
+}
+
+/// The declared vector index covering `field`, if any.
+pub fn get_vector_index_for_field(class_name: &str, field: &str) -> Option<VectorIndexDef> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .and_then(|m| m.vector_indexes.iter().find(|d| d.field == field).cloned())
+}
+
+pub fn add_fulltext_index(class_name: &str, def: FulltextIndexDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.fulltext_indexes.retain(|d| d.name != def.name);
+    metadata.fulltext_indexes.push(def);
+}
+
+pub fn get_fulltext_indexes(class_name: &str) -> Vec<FulltextIndexDef> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.fulltext_indexes.clone())
+        .unwrap_or_default()
+}
+
+pub fn add_geo_index(class_name: &str, def: GeoIndexDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.geo_indexes.retain(|d| d.name != def.name);
+    metadata.geo_indexes.push(def);
+}
+
+pub fn get_geo_indexes(class_name: &str) -> Vec<GeoIndexDef> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.geo_indexes.clone())
+        .unwrap_or_default()
+}
+
+pub fn add_secondary_index(class_name: &str, def: SecondaryIndexDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.secondary_indexes.retain(|d| d.name != def.name);
+    metadata.secondary_indexes.push(def);
+}
+
+/// Snapshot of every model's declared indexes, keyed by collection — the
+/// input to `sync_declared_indexes`.
+#[allow(clippy::type_complexity)]
+pub fn all_declared_indexes() -> Vec<(
+    String,
+    Vec<SecondaryIndexDef>,
+    Vec<VectorIndexDef>,
+    Vec<FulltextIndexDef>,
+    Vec<GeoIndexDef>,
+)> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .iter()
+        .filter(|(_, m)| {
+            !m.secondary_indexes.is_empty()
+                || !m.vector_indexes.is_empty()
+                || !m.fulltext_indexes.is_empty()
+                || !m.geo_indexes.is_empty()
+        })
+        .map(|(class_name, m)| {
+            (
+                crate::interpreter::builtins::model::class_name_to_collection(class_name),
+                m.secondary_indexes.clone(),
+                m.vector_indexes.clone(),
+                m.fulltext_indexes.clone(),
+                m.geo_indexes.clone(),
+            )
+        })
+        .collect()
+}
+
+pub fn is_columnar_model(class_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.columnar.is_some())
+        .unwrap_or(false)
+}
+
+pub fn get_columnar_schema(class_name: &str) -> Option<ColumnarSchemaDef> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry.get(class_name).and_then(|m| m.columnar.clone())
+}
+
+pub fn is_timeseries_model(class_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.timeseries.is_some())
+        .unwrap_or(false)
+}
+
 /// Register a model class for lazy relation conversion.
 /// Called when model classes are set up.
 pub fn register_model_class(class_name: &str, class: Rc<Class>) {
@@ -235,6 +483,7 @@ pub fn clear_model_classes() {
 /// Clear all model registries (MODEL_REGISTRY and MODEL_CLASSES). Used during hot reload.
 pub fn clear_all_model_registries() {
     MODEL_REGISTRY.write().unwrap().clear();
+    COLLECTION_TYPES.write().unwrap().clear();
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();

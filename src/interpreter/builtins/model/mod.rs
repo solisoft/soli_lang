@@ -260,28 +260,33 @@
 
 pub mod batch;
 pub mod callbacks;
+pub mod columnar;
 pub mod core;
 pub mod crud;
 pub mod db_config;
 mod engine_context;
+pub mod graph;
 pub mod habtm;
+pub mod index_sync;
 pub mod query;
 pub mod query_log;
 mod registry;
 pub mod relations;
 pub mod scopes;
+pub mod search;
 pub mod state_machine;
 pub mod uploaders;
 pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
 pub use core::{
-    build_safe_filter_from_hash, class_name_to_collection, ensure_scalar_bind_value,
-    ensure_string_form_bind_value, get_model_engine_context, get_or_create_metadata,
-    get_translated_fields, init_db_config, init_jwt_token, is_translated_field,
-    register_model_builtins, register_translation, set_model_engine_context, update_metadata,
-    validate_field_name, validate_order_direction, EngineContextGuard, Model, ModelMetadata,
-    DB_CONFIG, MODEL_REGISTRY,
+    build_safe_filter_from_hash, class_name_to_collection, duration_to_cutoff_rfc3339,
+    ensure_scalar_bind_value, ensure_string_form_bind_value, get_model_engine_context,
+    get_or_create_metadata, get_translated_fields, init_db_config, init_jwt_token,
+    is_translated_field, register_model_builtins, register_translation, set_model_engine_context,
+    timeseries_insert_only_error, update_metadata, validate_field_name, validate_order_direction,
+    validate_retention_duration, EngineContextGuard, Model, ModelMetadata, DB_CONFIG,
+    MODEL_REGISTRY,
 };
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,
@@ -290,11 +295,16 @@ pub use crud::{
 pub use query::{
     build_aggregation_query, execute_query_builder, execute_query_builder_aggregate,
     execute_query_builder_count, execute_query_builder_delete_all, execute_query_builder_exists,
-    execute_query_builder_first, execute_query_builder_group_by, execute_query_builder_update_all,
-    AggregationFunc, IncludeClause, IncludeCountClause, JoinClause, QueryBuilder,
+    execute_query_builder_first, execute_query_builder_group_by, execute_query_builder_grouped,
+    execute_query_builder_time_bucket, execute_query_builder_update_all, parse_aggregate_spec_hash,
+    AggregateSpec, AggregationFunc, IncludeClause, IncludeCountClause, JoinClause, QueryBuilder,
+    TimeBucketSpec,
 };
 pub use registry::{
-    clear_all_model_registries, clear_model_classes, get_model_class, register_model_class,
+    clear_all_model_registries, clear_model_classes, get_collection_type, get_columnar_schema,
+    get_edge_spec, get_model_class, get_timeseries_spec, is_columnar_model, is_edge_model,
+    is_timeseries_model, register_collection_type, register_model_class, ColumnarColumnDef,
+    ColumnarSchemaDef, EdgeSpec, TimeseriesSpec,
 };
 pub use relations::{
     build_relation, classify, get_relation, get_relations, register_relation, singularize,

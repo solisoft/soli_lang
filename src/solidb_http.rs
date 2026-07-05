@@ -381,6 +381,67 @@ impl SoliDBClient {
         Ok(())
     }
 
+    /// Create a columnar store. `columns` are `{name, type, nullable?,
+    /// indexed?}` objects (the wire key really is `type`); compression is
+    /// "lz4" (default) or "none".
+    pub fn create_columnar(
+        &self,
+        name: &str,
+        columns: &Value,
+        compression: Option<&str>,
+    ) -> Result<Value, SoliDBError> {
+        let db = self.get_db()?;
+        let mut body = serde_json::json!({ "name": name, "columns": columns });
+        if let Some(c) = compression {
+            body["compression"] = serde_json::Value::String(c.to_string());
+        }
+        self.request(
+            reqwest::Method::POST,
+            &format!("/_api/database/{}/columnar", db),
+            Some(&body),
+        )
+    }
+
+    pub fn drop_columnar(&self, name: &str) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/_api/database/{}/columnar/{}", db, name),
+            None,
+        )?;
+        Ok(())
+    }
+
+    pub fn list_columnar(&self) -> Result<Vec<Value>, SoliDBError> {
+        let db = self.get_db()?;
+        let response: Value = self.request(
+            reqwest::Method::GET,
+            &format!("/_api/database/{}/columnar", db),
+            None,
+        )?;
+        Ok(response
+            .get("collections")
+            .and_then(|c| c.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Prune a (timeseries) collection: delete documents older than the
+    /// RFC3339 cutoff. Returns the number of deleted documents.
+    pub fn prune_collection(&self, name: &str, older_than_iso: &str) -> Result<u64, SoliDBError> {
+        let db = self.get_db()?;
+        let body = serde_json::json!({ "older_than": older_than_iso });
+        let response: Value = self.request(
+            reqwest::Method::POST,
+            &format!("/_api/database/{}/collection/{}/prune", db, name),
+            Some(&body),
+        )?;
+        Ok(response
+            .get("deleted")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_default())
+    }
+
     pub fn insert(
         &self,
         collection: &str,
@@ -528,15 +589,17 @@ impl SoliDBClient {
         name: &str,
         fields: Vec<String>,
         unique: bool,
-        sparse: bool,
+        index_type: &str,
     ) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
+        // Server-recognized types: hash, persistent (skiplist/btree aliases),
+        // fulltext, bloom, cuckoo. The old `sparse` key was dropped — the
+        // server never read it.
         let payload = serde_json::json!({
             "name": name,
-            "type": "hash",
+            "type": index_type,
             "fields": fields,
-            "unique": unique,
-            "sparse": sparse
+            "unique": unique
         });
         // SolidB index routes are `/_api/database/{db}/index/{collection}`
         // (NOT `/{collection}/indexes` — that path was retired and now

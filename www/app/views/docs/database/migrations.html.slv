@@ -102,12 +102,25 @@ soli db:migrate down</code></pre>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-cyan-300 font-bold">db.create_collection(name, type?)</code>
-            <p class="text-sm text-gray-400 mt-1">Create a collection. <code>type</code> is optional &mdash; one of <code>"blob"</code>, <code>"columnar"</code>, <code>"timeseries"</code>, &hellip; (forwarded verbatim to SolidB). Default is a document collection.</p>
+            <p class="text-sm text-gray-400 mt-1">Create a collection. <code>type</code> is optional &mdash; one of <code>"blob"</code>, <code>"edge"</code>, <code>"timeseries"</code>, &hellip; (forwarded verbatim to SolidB). Default is a document collection.</p>
             <ul class="text-xs text-gray-500 mt-2 space-y-1">
                 <li><code>blob</code> &mdash; binary attachments; required for <code>solidb_store_blob</code> and the <a href="/docs/database/models#uploaders" class="text-amber-400 hover:underline">uploader DSL</a>.</li>
-                <li><code>columnar</code> &mdash; analytics workloads; column-oriented storage with fast aggregations.</li>
-                <li><code>timeseries</code> &mdash; append-only time-indexed events (metrics, logs, telemetry).</li>
+                <li><code>edge</code> &mdash; graph edges (<code>_from</code>/<code>_to</code>); backs the <a href="/docs/database/models#graph-models" class="text-amber-400 hover:underline">edge model DSL</a> and traversals.</li>
+                <li><code>timeseries</code> &mdash; append-only time-indexed events (metrics, logs, telemetry); backs the <a href="/docs/database/models#timeseries-models" class="text-amber-400 hover:underline">timeseries model DSL</a>.</li>
+                <li><code>"columnar"</code> now <strong class="text-amber-300">raises</strong> &mdash; columnar stores are not document collections (it used to silently create a mislabeled document collection). Use <code>db.create_columnar</code> instead.</li>
             </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.create_columnar(name, columns, options?)</code>
+            <p class="text-sm text-gray-400 mt-1">Create a <a href="/docs/database/analytics#columnar-models" class="text-amber-400 hover:underline">columnar store</a>. <code>columns</code> is an array of <code>{ "name": ..., "type": ..., "nullable"?: bool, "indexed"?: bool }</code> hashes; <code>options</code> accepts <code>{ "compression": "lz4" | "none" }</code> (default <code>lz4</code>).</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.drop_columnar(name)</code>
+            <p class="text-sm text-gray-400 mt-1">Remove a columnar store and all its data.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.prune_collection(name, cutoff)</code>
+            <p class="text-sm text-gray-400 mt-1">Delete documents older than an RFC3339 cutoff from a <code>timeseries</code> collection &mdash; the migration-side counterpart of <a href="/docs/database/models#timeseries-models" class="text-amber-400 hover:underline"><code>Model.prune</code></a>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-cyan-300 font-bold">db.drop_collection(name)</code>
@@ -130,8 +143,23 @@ soli db:migrate down</code></pre>
   db.create_collection("users")                       # document
   db.create_collection("posts")
   db.create_collection("contact_documents", "blob")   # blob
-  db.create_collection("page_views", "columnar")      # columnar
+  db.create_collection("follows", "edge")             # edge (graph)
   db.create_collection("metrics", "timeseries")       # timeseries
+
+  # Columnar stores use the dedicated helper (create_collection with
+  # "columnar" raises — columnar stores are not document collections)
+  db.create_columnar("page_views", [
+    { "name": "url", "type": "string" },
+    { "name": "country", "type": "string", "indexed": true }
+  ])
+
+  # Edge collections: hash-index the endpoints so traversals stay fast
+  # (dev auto-create does both steps for you)
+  db.create_index("follows", "idx_follows_from", ["_from"], {})
+  db.create_index("follows", "idx_follows_to", ["_to"], {})
+
+  # Timeseries collections: one-off cleanup of old rows
+  db.prune_collection("metrics", "2026-01-01T00:00:00Z")
 end
 
 def down(db: Any)
@@ -149,8 +177,13 @@ end</code></pre></code></pre>
             <p class="text-sm text-gray-400 mt-2">Create an index on a collection.</p>
             <ul class="text-sm text-gray-400 mt-2 space-y-1 ml-4">
                 <li><code>fields</code> - Array of field names: <code>["email"]</code> or <code>["first_name", "last_name"]</code></li>
-                <li><code>options</code> - Hash with <code>unique: true</code> and/or <code>sparse: true</code></li>
+                <li><code>options</code> - Hash with <code>unique: true</code> and/or <code>type:</code> &mdash; <code>"hash"</code> (default), <code>"persistent"</code>, <code>"fulltext"</code>, <code>"bloom"</code>, or <code>"cuckoo"</code> (<code>"skiplist"</code>/<code>"btree"</code> are aliases for <code>"persistent"</code>)</li>
+                <li>The old <code>sparse</code> option was dropped &mdash; the server never read it, so it changed nothing.</li>
             </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.create_vector_index(collection, name, field, dimension, options?)</code>
+            <p class="text-sm text-gray-400 mt-1">Create an HNSW vector index for <a href="/docs/database/search#vector-search" class="text-amber-400 hover:underline">ANN search</a>. <code>options</code> is a metric string (<code>"cosine"</code>, default) or a hash with <code>metric</code> and <code>quantization</code>. Drop with <code>db.drop_vector_index(collection, name)</code>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-cyan-300 font-bold">db.drop_index(collection, name)</code>
@@ -162,6 +195,12 @@ end</code></pre></code></pre>
         </div>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-8">
+        <p class="text-blue-200/80 text-sm">
+            Models can also declare indexes in the class body (<code>index</code>, <code>vector_index</code>, <code>fulltext_index</code>, <code>geo_index</code> &mdash; see <a href="/docs/database/search#index-dsl" class="text-amber-400 hover:underline">Search</a>). Declarations are metadata-only: dev creates them at server boot; in production mirror them in migrations (the recommended DDL path) or run the reconciler <code>soli db:indexes [folder]</code>. Geo indexes currently have no migration helper &mdash; <code>soli db:indexes</code> (or dev boot) creates them.
+        </p>
+    </div>
+
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Index Examples</label>
         <div class="p-4 overflow-x-auto">
@@ -169,8 +208,10 @@ end</code></pre></code></pre>
   db.create_index("users", "idx_email", ["email"], {})
   # Unique index
   db.create_index("users", "idx_username", ["username"], { "unique": true })
-  # Sparse index (only indexes documents with the field)
-  db.create_index("users", "idx_phone", ["phone"], { "sparse": true })
+  # Typed index — "hash" is the default; "persistent" for sorted/range lookups
+  db.create_index("users", "idx_age", ["age"], { "type": "persistent" })
+  # Fulltext index
+  db.create_index("articles", "idx_articles_ft", ["title", "body"], { "type": "fulltext" })
   # Compound index on multiple fields
   db.create_index("users", "idx_name", ["first_name", "last_name"], {})
   # Unique compound index
@@ -180,7 +221,8 @@ end
 def down(db: Any)
 db.drop_index("posts", "idx_user_slug")
 db.drop_index("users", "idx_name")
-db.drop_index("users", "idx_phone")
+db.drop_index("articles", "idx_articles_ft")
+db.drop_index("users", "idx_age")
 db.drop_index("users", "idx_username")
 db.drop_index("users", "idx_email")
 end</code></pre></code></pre>
@@ -212,6 +254,10 @@ end</code></pre></code></pre>
 end</code></pre></code></pre>
         </div>
     </div>
+
+    <p class="text-gray-400 mb-12">
+        Raw queries are also the escape hatch for SolidB features the helpers don't wrap &mdash; e.g. continuous aggregates over a timeseries collection via <code>db.query("CREATE STREAM ...")</code>.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
     <p class="text-gray-400 mb-6">A migration for a blog application:</p>
@@ -360,7 +406,19 @@ SOLIDB_PASSWORD=secret</code></pre>
             <tbody class="divide-y divide-white/5">
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name, type?)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Create a collection. <code>type</code> is optional &mdash; <code>"blob"</code>, <code>"columnar"</code>, <code>"timeseries"</code>, &hellip; default is document.</td>
+                    <td class="py-3 px-4 text-gray-400">Create a collection. <code>type</code> is optional &mdash; <code>"blob"</code>, <code>"edge"</code>, <code>"timeseries"</code>, &hellip; default is document. <code>"columnar"</code> raises &mdash; use <code>create_columnar</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_columnar(name, columns, options?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Create a columnar store. <code>columns</code>: array of <code>{name, type, nullable?, indexed?}</code> hashes; <code>options</code>: <code>{"compression": "lz4"|"none"}</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_columnar(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Drop a columnar store</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.prune_collection(name, cutoff)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Delete documents older than an RFC3339 cutoff from a timeseries collection</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.drop_collection(name)</code></td>
@@ -376,7 +434,15 @@ SOLIDB_PASSWORD=secret</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.create_index(collection, name, fields, options)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Create an index</td>
+                    <td class="py-3 px-4 text-gray-400">Create an index. <code>options</code>: <code>unique:</code> and <code>type:</code> (<code>"hash"</code> default, <code>"persistent"</code>, <code>"fulltext"</code>, <code>"bloom"</code>, <code>"cuckoo"</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_vector_index(collection, name, field, dimension, options?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Create an HNSW vector index. <code>options</code>: metric string or <code>{metric, quantization}</code> hash</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_vector_index(collection, name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Drop a vector index</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.drop_index(collection, name)</code></td>

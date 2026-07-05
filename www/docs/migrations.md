@@ -81,16 +81,71 @@ Create a new collection. The optional second argument selects the collection typ
 |--------|---------|
 | (omitted) | Standard JSON document collection (the common case). |
 | `"blob"` | Binary attachments; required for `solidb_store_blob` and the [uploader DSL](models#uploaders). |
-| `"columnar"` | Analytics workloads — column-oriented storage, fast aggregations over large rowsets. |
-| `"timeseries"` | Append-only time-indexed events (metrics, logs, telemetry); SolidB optimizes range queries on the timestamp. |
+| `"edge"` | Graph edges (`_from`/`_to` documents); backs the [`edge` model DSL](models#graph-models-edges-and-traversal) and traversal queries. |
+| `"timeseries"` | Append-only time-indexed events (metrics, logs, telemetry); SolidB optimizes range queries on the timestamp. Backs the [`timeseries` model DSL](models#timeseries-models). |
+
+> `db.create_collection(name, "columnar")` **raises** — columnar stores are
+> not document collections (it used to silently create a mislabeled document
+> collection). Use [`db.create_columnar`](#create_columnar) instead.
 
 ```soli
 fn up(db: Any)
   db.create_collection("users")                          # document
   db.create_collection("posts")
   db.create_collection("contact_documents", "blob")      # blob
-  db.create_collection("page_views", "columnar")         # columnar
+  db.create_collection("follows", "edge")                # edge (graph)
   db.create_collection("metrics", "timeseries")          # timeseries
+end
+```
+
+For an edge collection, add hash indexes on the endpoint fields so traversals
+stay fast (dev auto-create does both steps for you):
+
+```soli
+fn up(db: Any)
+  db.create_collection("follows", "edge")
+  db.create_index("follows", "idx_follows_from", ["_from"], {})
+  db.create_index("follows", "idx_follows_to", ["_to"], {})
+end
+```
+
+### create_columnar
+
+Create a [columnar store](analytics.md#columnar-models) — a separate
+column-oriented engine, not a document collection. `columns` is an array of
+`{ "name": ..., "type": ..., "nullable"?: bool, "indexed"?: bool }` hashes;
+the optional `options` hash accepts `{ "compression": "lz4" | "none" }`
+(default `lz4`):
+
+```soli
+fn up(db: Any)
+  db.create_columnar("page_views", [
+    { "name": "url", "type": "string" },
+    { "name": "visited_at", "type": "timestamp" },
+    { "name": "duration_ms", "type": "int", "nullable": true },
+    { "name": "country", "type": "string", "indexed": true }
+  ], { "compression": "lz4" })
+end
+```
+
+### drop_columnar
+
+Remove a columnar store:
+
+```soli
+fn down(db: Any)
+  db.drop_columnar("page_views")
+end
+```
+
+### prune_collection
+
+Delete documents older than an RFC3339 cutoff from a `timeseries` collection —
+the migration-side counterpart of [`Model.prune`](models#timeseries-models):
+
+```soli
+fn up(db: Any)
+  db.prune_collection("metrics", "2026-01-01T00:00:00Z")
 end
 ```
 
@@ -138,8 +193,11 @@ fn up(db: Any)    # Simple index on one field
   # Unique index
   db.create_index("users", "idx_username", ["username"], { "unique": true })
 
-  # Sparse index (only indexes documents that contain the field)
-  db.create_index("users", "idx_phone", ["phone"], { "sparse": true })
+  # Typed index — "hash" is the default; "persistent" for sorted/range lookups
+  db.create_index("users", "idx_age", ["age"], { "type": "persistent" })
+
+  # Fulltext index
+  db.create_index("articles", "idx_articles_ft", ["title", "body"], { "type": "fulltext" })
 
   # Compound index on multiple fields
   db.create_index("users", "idx_name", ["first_name", "last_name"], {})
@@ -155,7 +213,43 @@ end
 - `fields` - Array of field names to index
 - `options` - Hash with optional settings:
   - `unique: true` - Enforce unique values
-  - `sparse: true` - Only index documents containing the indexed fields
+  - `type: "..."` - Index kind: `"hash"` (default), `"persistent"`,
+    `"fulltext"`, `"bloom"`, or `"cuckoo"` (`"skiplist"` / `"btree"` are
+    accepted as aliases for `"persistent"`)
+
+> The old `sparse` option was dropped — the server never read it. Remove it
+> from existing migrations at your leisure; it changed nothing.
+
+### create_vector_index / drop_vector_index
+
+Create an HNSW vector index for [ANN search](search.md#vector-search-similar).
+The last argument is a metric string (`"cosine"`, the default) or a hash with
+`metric` and `quantization`:
+
+```soli
+fn up(db: Any)
+  db.create_vector_index("articles", "idx_articles_embedding", "embedding", 1536, "cosine")
+end
+
+fn down(db: Any)
+  db.drop_vector_index("articles", "idx_articles_embedding")
+end
+```
+
+### Model-declared indexes and `soli db:indexes`
+
+Models can declare indexes in the class body (`index`, `vector_index`,
+`fulltext_index`, `geo_index` — see [Search](search.md#index-dsl)). Those
+declarations are metadata-only: dev creates them at server boot, and in
+production you either mirror them in migrations (the recommended DDL path) or
+run the reconciler:
+
+```bash
+soli db:indexes [folder]   # create any missing declared indexes
+```
+
+Geo indexes currently have no migration helper — `soli db:indexes` (or dev
+boot) is the way to create them.
 
 ### drop_index
 
@@ -204,6 +298,10 @@ fn up(db: Any)    # Insert seed data
 end
 ```
 
+Raw queries are also the escape hatch for SolidB features the helpers don't
+wrap — e.g. continuous aggregates over a timeseries collection via
+`db.query("CREATE STREAM ...")`.
+
 ## Complete Example
 
 Here's a complete migration for a blog application:
@@ -226,7 +324,7 @@ fn up(db: Any)    # Create collections
   # Post indexes
   db.create_index("posts", "idx_posts_author", ["author_id"], {})
   db.create_index("posts", "idx_posts_slug", ["slug"], { "unique": true })
-  db.create_index("posts", "idx_posts_published", ["published_at"], { "sparse": true })
+  db.create_index("posts", "idx_posts_published", ["published_at"], { "type": "persistent" })
 
   # Comment indexes
   db.create_index("comments", "idx_comments_post", ["post_id"], {})
@@ -349,11 +447,16 @@ database connection. A seed that throws stops the run and exits non-zero.
 
 | Method | Description |
 |--------|-------------|
-| `db.create_collection(name, type?)` | Create a collection. `type` is optional — `"blob"`, `"columnar"`, `"timeseries"`, etc.; default is a document collection. |
+| `db.create_collection(name, type?)` | Create a collection. `type` is optional — `"blob"`, `"edge"`, `"timeseries"`, etc.; default is a document collection. `"columnar"` raises — use `create_columnar`. |
+| `db.create_columnar(name, columns, options?)` | Create a columnar store. `columns` is an array of `{name, type, nullable?, indexed?}` hashes; `options` accepts `{"compression": "lz4"\|"none"}`. |
+| `db.drop_columnar(name)` | Drop a columnar store |
+| `db.prune_collection(name, cutoff)` | Delete documents older than an RFC3339 cutoff from a timeseries collection |
 | `db.drop_collection(name)` | Drop a collection |
 | `db.list_collections()` | List all collections |
 | `db.collection_stats(name)` | Get collection statistics |
-| `db.create_index(collection, name, fields, options)` | Create an index |
+| `db.create_index(collection, name, fields, options)` | Create an index. `options`: `unique:` and `type:` (`"hash"` default, `"persistent"`, `"fulltext"`, `"bloom"`, `"cuckoo"`) |
+| `db.create_vector_index(collection, name, field, dimension, options?)` | Create an HNSW vector index. `options`: metric string or `{metric, quantization}` hash |
+| `db.drop_vector_index(collection, name)` | Drop a vector index |
 | `db.drop_index(collection, name)` | Drop an index |
 | `db.list_indexes(collection)` | List indexes for a collection |
 | `db.query(sdbql, bind_vars?)` | Execute a raw SDBQL query, optionally with a hash of bind variables |

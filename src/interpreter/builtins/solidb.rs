@@ -267,6 +267,10 @@ fn register_solidb_class(env: &mut Environment) {
         ("close", 0),
         ("create_collection", 1),
         ("drop_collection", 1),
+        ("prune_collection", 2),
+        ("create_columnar", 2),
+        ("drop_columnar", 1),
+        ("list_columnar", 0),
         ("list_collections", 0),
         ("collection_stats", 1),
         ("create_index", 4),
@@ -286,7 +290,10 @@ fn register_solidb_class(env: &mut Environment) {
         // `create_collection` accepts an optional `collection_type` arg;
         // `query` accepts an optional `bind_vars` hash. Both register
         // variadic and validate arg counts inside the dispatch arm.
-        let variadic = matches!(method_name, "create_collection" | "query");
+        let variadic = matches!(
+            method_name,
+            "create_collection" | "query" | "create_columnar"
+        );
         let registered_arity = if variadic { None } else { Some(arity) };
         // User-facing arity (without the implicit instance arg) for the
         // class native_method. Method dispatch in the executor prepends
@@ -712,6 +719,141 @@ fn register_solidb_class(env: &mut Environment) {
                             Ok(format!("Created collection: {}", name))
                         })
                     }
+                    "create_columnar" => {
+                        let name = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "create_columnar() expects string name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let columns = match args.get(2) {
+                            Some(cols @ Value::Array(_)) => {
+                                crate::interpreter::value::value_to_json(cols)?
+                            }
+                            _ => {
+                                return Err("create_columnar() expects an array of column hashes \
+                                     ({\"name\", \"type\", \"nullable\"?, \"indexed\"?})"
+                                    .to_string())
+                            }
+                        };
+                        let compression = match args.get(3) {
+                            Some(Value::Hash(opts)) => {
+                                use crate::interpreter::value::HashKey;
+                                let mut c = None;
+                                for (k, v) in opts.borrow().iter() {
+                                    if let (HashKey::String(key), Value::String(s)) = (k, v) {
+                                        if key.as_str() == "compression" {
+                                            c = Some(s.to_string());
+                                        }
+                                    }
+                                }
+                                c
+                            }
+                            Some(Value::String(s)) => Some(s.to_string()),
+                            _ => None,
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let resp = client
+                                .create_columnar(&name, &columns, compression.as_deref())
+                                .map_err(|e| format!("Create columnar failed: {}", e))?;
+                            Ok(resp.to_string())
+                        })
+                    }
+                    "drop_columnar" => {
+                        let name = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "drop_columnar() expects string name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .drop_columnar(&name)
+                                .map_err(|e| format!("Drop columnar failed: {}", e))?;
+                            Ok(format!("Dropped columnar store: {}", name))
+                        })
+                    }
+                    "list_columnar" => {
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let list = client
+                                .list_columnar()
+                                .map_err(|e| format!("List columnar failed: {}", e))?;
+                            Ok(serde_json::Value::Array(list).to_string())
+                        })
+                    }
+                    "prune_collection" => {
+                        let name = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "prune_collection() expects string name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let older_than = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "prune_collection() expects an RFC3339 timestamp, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let deleted = client
+                                .prune_collection(&name, &older_than)
+                                .map_err(|e| format!("Prune failed: {}", e))?;
+                            // exec_db_sync parses the string as JSON → Int.
+                            Ok(deleted.to_string())
+                        })
+                    }
                     "drop_collection" => {
                         let name = match &args[1] {
                             Value::String(s) => s.clone(),
@@ -826,9 +968,15 @@ fn register_solidb_class(env: &mut Environment) {
                                 ))
                             }
                         };
-                        let (unique, sparse) = if args.len() > 4 {
+                        // Options: bool (unique shorthand) or a hash with
+                        // `unique` and `type` keys. Default type stays "hash"
+                        // to preserve historical Solidb#create_index behavior;
+                        // pass type: "persistent"/"fulltext"/"bloom"/"cuckoo"
+                        // for the other kinds. (`sparse` was dropped — the
+                        // server never read it.)
+                        let (unique, index_type) = if args.len() > 4 {
                             match &args[4] {
-                                Value::Bool(b) => (*b, false),
+                                Value::Bool(b) => (*b, "hash".to_string()),
                                 Value::Hash(hash) => {
                                     let borrowed = hash.borrow();
                                     let unique = borrowed
@@ -836,17 +984,17 @@ fn register_solidb_class(env: &mut Environment) {
                                             .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"unique"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
-                                    let sparse = borrowed
+                                    let index_type = borrowed
                                             .iter()
-                                            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"sparse"))
-                                            .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
-                                            .unwrap_or(false);
-                                    (unique, sparse)
+                                            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"type"))
+                                            .and_then(|(_, v)| if let Value::String(s) = v { Some(s.to_string()) } else { None })
+                                            .unwrap_or_else(|| "hash".to_string());
+                                    (unique, index_type)
                                 }
-                                _ => (false, false),
+                                _ => (false, "hash".to_string()),
                             }
                         } else {
-                            (false, false)
+                            (false, "hash".to_string())
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
@@ -860,7 +1008,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 client = client.with_basic_auth(u, p);
                             }
                             client
-                                .create_index(&collection, &name, fields, unique, sparse)
+                                .create_index(&collection, &name, fields, unique, &index_type)
                                 .map_err(|e| format!("Create index failed: {}", e))?;
                             Ok(format!("Created index: {} on {}", name, collection))
                         })

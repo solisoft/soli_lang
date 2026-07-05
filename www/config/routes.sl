@@ -48,6 +48,8 @@ get("/docs/database/relationships", "docs#database_relationships")
 get("/docs/database/validations", "docs#database_validations")
 get("/docs/database/state-machines", "docs#database_state_machines")
 get("/docs/database/finders", "docs#database_finders")
+get("/docs/database/analytics", "docs#database_analytics")
+get("/docs/database/search", "docs#database_search")
 get("/docs/database/advanced", "docs#database_advanced")
 get("/docs/database/migrations", "docs#database_migrations")
 
