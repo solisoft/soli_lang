@@ -25,7 +25,7 @@ use super::relations::{
     build_habtm_relation, build_relation, get_relation, register_relation, RelationType,
 };
 use super::uploaders::{default_collection, get_uploader, register_uploader, UploaderConfig};
-use super::validation::{register_validation, ValidationRule};
+use super::validation::{parse_validates_options, register_validation_with_conditions};
 
 /// Get a Transaction class for a specific model.
 /// Creates a new class each time (not cached due to Class not being Sync).
@@ -1030,64 +1030,8 @@ impl Model {
                     None => return Err("validates() requires options argument".to_string()),
                 };
 
-                let mut rule = ValidationRule::new(field.to_string());
-
-                // Parse options
-                use crate::interpreter::value::HashKey;
-                for (key, value) in options {
-                    if let HashKey::String(key_str) = key {
-                        match key_str.as_ref() {
-                            "presence" => {
-                                if let Value::Bool(b) = value {
-                                    rule.presence = b;
-                                }
-                            }
-                            "uniqueness" => {
-                                if let Value::Bool(b) = value {
-                                    rule.uniqueness = b;
-                                }
-                            }
-                            "min_length" => {
-                                if let Value::Int(n) = value {
-                                    rule.min_length = Some(n as usize);
-                                }
-                            }
-                            "max_length" => {
-                                if let Value::Int(n) = value {
-                                    rule.max_length = Some(n as usize);
-                                }
-                            }
-                            "format" => {
-                                if let Value::String(s) = value {
-                                    rule.format = Some(s.to_string());
-                                }
-                            }
-                            "numericality" => {
-                                if let Value::Bool(b) = value {
-                                    rule.numericality = b;
-                                }
-                            }
-                            "min" => match value {
-                                Value::Int(n) => rule.min = Some(n as f64),
-                                Value::Float(n) => rule.min = Some(n),
-                                _ => {}
-                            },
-                            "max" => match value {
-                                Value::Int(n) => rule.max = Some(n as f64),
-                                Value::Float(n) => rule.max = Some(n),
-                                _ => {}
-                            },
-                            "custom" => {
-                                if let Value::String(s) = value {
-                                    rule.custom = Some(s.to_string());
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-
-                register_validation(&class_name, rule);
+                let (rule, conditions) = parse_validates_options(&field, &options)?;
+                register_validation_with_conditions(&class_name, rule, conditions);
                 Ok(Value::Null)
             })),
         );
@@ -3452,7 +3396,6 @@ pub fn register_model_builtins(env: &mut Environment) {
     // These functions expect the class as the first argument (passed by execute_class)
 
     // validates(class, field, options) - Register validation rules
-    use crate::interpreter::value::HashKey;
     env.define(
         "validates".to_string(),
         Value::NativeFunction(NativeFunction::new("validates", Some(3), |args| {
@@ -3481,63 +3424,8 @@ pub fn register_model_builtins(env: &mut Environment) {
                 None => return Err("validates() requires options argument".to_string()),
             };
 
-            let mut rule = ValidationRule::new(field.to_string());
-
-            // Parse options
-            for (key, value) in options {
-                if let HashKey::String(key_str) = key {
-                    match key_str.as_ref() {
-                        "presence" => {
-                            if let Value::Bool(b) = value {
-                                rule.presence = b;
-                            }
-                        }
-                        "uniqueness" => {
-                            if let Value::Bool(b) = value {
-                                rule.uniqueness = b;
-                            }
-                        }
-                        "min_length" => {
-                            if let Value::Int(n) = value {
-                                rule.min_length = Some(n as usize);
-                            }
-                        }
-                        "max_length" => {
-                            if let Value::Int(n) = value {
-                                rule.max_length = Some(n as usize);
-                            }
-                        }
-                        "format" => {
-                            if let Value::String(s) = value {
-                                rule.format = Some(s.to_string());
-                            }
-                        }
-                        "numericality" => {
-                            if let Value::Bool(b) = value {
-                                rule.numericality = b;
-                            }
-                        }
-                        "min" => match value {
-                            Value::Int(n) => rule.min = Some(n as f64),
-                            Value::Float(n) => rule.min = Some(n),
-                            _ => {}
-                        },
-                        "max" => match value {
-                            Value::Int(n) => rule.max = Some(n as f64),
-                            Value::Float(n) => rule.max = Some(n),
-                            _ => {}
-                        },
-                        "custom" => {
-                            if let Value::String(s) = value {
-                                rule.custom = Some(s.to_string());
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            register_validation(&class_name, rule);
+            let (rule, conditions) = parse_validates_options(&field, &options)?;
+            register_validation_with_conditions(&class_name, rule, conditions);
             Ok(Value::Null)
         })),
     );

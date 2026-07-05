@@ -357,6 +357,39 @@ end
 | `min: n` | Number must be >= n |
 | `max: n` | Number must be <= n |
 | `custom: "method_name"` | Call custom validation method |
+| `on: "create"` / `on: "update"` | Only run the rule for that operation |
+| `if: fn(record) { ... }` | Only run the rule when the closure is truthy |
+| `unless: fn(record) { ... }` | Skip the rule when the closure is truthy |
+
+### Conditional and Per-Operation Rules
+
+Every rule in a `validates(...)` call can be restricted to one persistence
+operation with `on:`, or gated on the record's data with an `if:` / `unless:`
+closure. The closure receives the attribute hash being validated (declare
+zero parameters if you don't need it) and its truthiness decides.
+
+```soli
+class User < Model
+  # Only enforced when the record is first created
+  validates("password", { "presence": true, "min_length": 8, "on": "create" })
+
+  # Only enforced on updates (e.g. a moderation field set later)
+  validates("reviewer", { "presence": true, "on": "update" })
+
+  # Enforced only for a subset of records
+  validates("company_name", { "presence": true, "if": fn(record) { record["kind"] == "business" } })
+
+  # Skipped for privileged records
+  validates("bio", { "presence": true, "unless": fn(record) { record["role"] == "admin" } })
+end
+```
+
+`Model.create` counts as `create`; `instance.update()` and `instance.save()`
+on a record that already has a `_key` count as `update`. `if:` and `unless:`
+can be combined on one call — the rule runs only when `if:` is truthy **and**
+`unless:` is falsy. Passing anything other than `"create"`/`"update"` to
+`on:`, or a non-function to `if:`/`unless:`, raises at class-load time
+rather than silently running the rule unconditionally.
 
 ### Validation Results
 

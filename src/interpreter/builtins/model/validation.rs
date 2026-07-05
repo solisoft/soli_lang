@@ -8,6 +8,13 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{ControlFlow, Interpreter};
 use crate::interpreter::value::{Function, HashKey, HashPairs, Value};
 
+/// Persistence operation names used for `validates ... on:` matching.
+/// `run_validations` derives the operation from `exclude_key`: every update
+/// path (instance.update / save-with-_key) passes the record's key so
+/// uniqueness can exclude self, and every create path passes `None`.
+const OP_CREATE: &str = "create";
+const OP_UPDATE: &str = "update";
+
 use super::core::{class_name_to_collection, MODEL_REGISTRY};
 use super::crud::exec_with_auto_collection;
 
@@ -40,6 +47,46 @@ pub fn register_custom_validator(class_name: &str, validator: CustomValidator) {
 
 fn custom_validators_for(class_name: &str) -> Vec<CustomValidator> {
     CUSTOM_VALIDATORS.with(|c| c.borrow().get(class_name).cloned().unwrap_or_default())
+}
+
+/// `if:` / `unless:` condition closures attached to one `validates(...)` call.
+/// Stored thread-local for the same reason as [`CustomValidator`]: closures
+/// are `Rc<Function>` (`!Send`) and each worker registers its own copies when
+/// it loads the model files.
+#[derive(Clone, Default, Debug)]
+pub struct RuleConditions {
+    pub if_fn: Option<Rc<Function>>,
+    pub unless_fn: Option<Rc<Function>>,
+}
+
+impl RuleConditions {
+    pub fn is_empty(&self) -> bool {
+        self.if_fn.is_none() && self.unless_fn.is_none()
+    }
+}
+
+thread_local! {
+    static RULE_CONDITIONS: RefCell<HashMap<String, RuleConditions>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Identity of a rule inside the global registry, used to key its thread-local
+/// conditions. The Debug rendering of the rule's static content is stable
+/// across the N+1 model-file loads (boot + per worker), so every thread maps
+/// the same `validates(...)` call to the same key. Insertion overwrites, which
+/// also keeps dev-mode hot reloads (same thread re-runs the class body) from
+/// stacking duplicates.
+fn rule_condition_key(class_name: &str, rule: &ValidationRule) -> String {
+    format!("{}::{:?}", class_name, rule)
+}
+
+fn conditions_for(class_name: &str, rule: &ValidationRule) -> RuleConditions {
+    RULE_CONDITIONS.with(|c| {
+        c.borrow()
+            .get(&rule_condition_key(class_name, rule))
+            .cloned()
+            .unwrap_or_default()
+    })
 }
 
 /// Invoke a user closure as a validator. Receives the field value and the
@@ -80,6 +127,12 @@ pub struct ValidationRule {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub custom: Option<String>, // method name for custom validation
+    /// Restrict the rule to one operation: `"create"` or `"update"`.
+    /// `None` runs on both.
+    pub on: Option<String>,
+    /// True when an `if:`/`unless:` closure is attached (the closures
+    /// themselves live in the thread-local [`RULE_CONDITIONS`] registry).
+    pub has_condition: bool,
 }
 
 impl ValidationRule {
@@ -134,6 +187,128 @@ pub fn register_validation(class_name: &str, rule: ValidationRule) {
         return;
     }
     metadata.validations.push(rule);
+}
+
+/// Register a rule together with its `if:`/`unless:` closures. The rule goes
+/// into the global (deduped) registry; the closures go into this thread's
+/// condition registry, keyed by the rule's identity.
+pub fn register_validation_with_conditions(
+    class_name: &str,
+    rule: ValidationRule,
+    conditions: RuleConditions,
+) {
+    if rule.has_condition {
+        RULE_CONDITIONS.with(|c| {
+            c.borrow_mut()
+                .insert(rule_condition_key(class_name, &rule), conditions);
+        });
+    }
+    register_validation(class_name, rule);
+}
+
+/// Parse the options hash of a `validates(field, {...})` call into a rule plus
+/// its optional condition closures. Shared by the class static method and the
+/// class-body DSL registration paths. Unknown keys are ignored (back-compat);
+/// `on:`/`if:`/`unless:` reject wrong types loudly — silently dropping a
+/// condition would make the rule run unconditionally, the opposite of what
+/// the author asked for.
+pub fn parse_validates_options(
+    field: &str,
+    options: &HashPairs,
+) -> Result<(ValidationRule, RuleConditions), String> {
+    let mut rule = ValidationRule::new(field.to_string());
+    let mut conditions = RuleConditions::default();
+
+    for (key, value) in options.iter() {
+        let HashKey::String(key_str) = key else {
+            continue;
+        };
+        match key_str.as_ref() {
+            "presence" => {
+                if let Value::Bool(b) = value {
+                    rule.presence = *b;
+                }
+            }
+            "uniqueness" => {
+                if let Value::Bool(b) = value {
+                    rule.uniqueness = *b;
+                }
+            }
+            "min_length" => {
+                if let Value::Int(n) = value {
+                    rule.min_length = Some(*n as usize);
+                }
+            }
+            "max_length" => {
+                if let Value::Int(n) = value {
+                    rule.max_length = Some(*n as usize);
+                }
+            }
+            "format" => {
+                if let Value::String(s) = value {
+                    rule.format = Some(s.to_string());
+                }
+            }
+            "numericality" => {
+                if let Value::Bool(b) = value {
+                    rule.numericality = *b;
+                }
+            }
+            "min" => match value {
+                Value::Int(n) => rule.min = Some(*n as f64),
+                Value::Float(n) => rule.min = Some(*n),
+                _ => {}
+            },
+            "max" => match value {
+                Value::Int(n) => rule.max = Some(*n as f64),
+                Value::Float(n) => rule.max = Some(*n),
+                _ => {}
+            },
+            "custom" => {
+                if let Value::String(s) = value {
+                    rule.custom = Some(s.to_string());
+                }
+            }
+            "on" => match value {
+                Value::String(s) | Value::Symbol(s)
+                    if s.as_str() == OP_CREATE || s.as_str() == OP_UPDATE =>
+                {
+                    rule.on = Some(s.to_string());
+                }
+                other => {
+                    return Err(format!(
+                        "validates() `on:` must be \"create\" or \"update\", got {}",
+                        match other {
+                            Value::String(s) | Value::Symbol(s) => format!("\"{}\"", s),
+                            v => v.type_name(),
+                        }
+                    ))
+                }
+            },
+            "if" => match value {
+                Value::Function(f) => conditions.if_fn = Some(f.clone()),
+                other => {
+                    return Err(format!(
+                        "validates() `if:` expects a function, got {}",
+                        other.type_name()
+                    ))
+                }
+            },
+            "unless" => match value {
+                Value::Function(f) => conditions.unless_fn = Some(f.clone()),
+                other => {
+                    return Err(format!(
+                        "validates() `unless:` expects a function, got {}",
+                        other.type_name()
+                    ))
+                }
+            },
+            _ => {}
+        }
+    }
+
+    rule.has_condition = !conditions.is_empty();
+    Ok((rule, conditions))
 }
 
 /// Heuristic detection of a unique-index conflict in an error returned by
@@ -202,32 +377,108 @@ pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<Validat
         .collect()
 }
 
+/// Invoke an `if:`/`unless:` condition closure. The record hash is bound to
+/// the closure's first parameter (if it declares one); the closure's
+/// truthiness decides.
+fn invoke_condition(func: &Function, record: &Value) -> Result<bool, String> {
+    let call_env = Environment::with_enclosing(func.closure.clone());
+    let mut env_inner = call_env;
+    if let Some(p) = func.params.first() {
+        env_inner.define(p.name.clone(), record.clone());
+    }
+    let env_rc = Rc::new(RefCell::new(env_inner));
+    let env_clone = env_rc.borrow().clone();
+    let mut interp = Interpreter::default();
+    match interp.execute_block(&func.body, env_clone) {
+        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
+        Ok(ControlFlow::Continue) => Ok(true),
+        Ok(ControlFlow::Throw(e)) => Err(format!("validation condition threw: {}", e)),
+        Err(e) => Err(format!("validation condition error: {}", e)),
+    }
+}
+
+/// Decide whether a rule applies to this run: `on:` must match the operation
+/// and any `if:`/`unless:` closures must agree.
+fn rule_should_run(
+    class_name: &str,
+    rule: &ValidationRule,
+    data: &Value,
+    op: &str,
+) -> Result<bool, String> {
+    if let Some(on) = &rule.on {
+        if on != op {
+            return Ok(false);
+        }
+    }
+    if rule.has_condition {
+        let conditions = conditions_for(class_name, rule);
+        if let Some(f) = &conditions.if_fn {
+            if !invoke_condition(f, data)? {
+                return Ok(false);
+            }
+        }
+        if let Some(f) = &conditions.unless_fn {
+            if invoke_condition(f, data)? {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// Look up a field in the data hash with a short-lived borrow, so no borrow
+/// is held while user closures (conditions, custom validators) run — a
+/// closure that mutates the record hash must not panic the validator.
+fn lookup_field(data: &Value, field: &str) -> Option<Value> {
+    match data {
+        Value::Hash(h) => h
+            .borrow()
+            .iter()
+            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *field))
+            .map(|(_, v)| v.clone()),
+        _ => None,
+    }
+}
+
 /// Run validations on data and return any errors.
-/// If `exclude_key` is provided (for updates), that record is excluded from uniqueness checks.
+/// If `exclude_key` is provided (for updates), that record is excluded from
+/// uniqueness checks — and the run counts as an `update` for `on:` matching;
+/// `None` counts as a `create`.
 pub fn run_validations(
     class_name: &str,
     data: &Value,
     exclude_key: Option<&str>,
 ) -> Result<Vec<ValidationError>, String> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    let metadata = match registry.get(class_name) {
-        Some(m) => m,
-        None => return Ok(vec![]),
+    // Clone the rules out so no MODEL_REGISTRY lock is held during the run:
+    // uniqueness talks to the database and if:/unless: conditions execute
+    // user closures, either of which may re-enter the registry.
+    let rules: Vec<ValidationRule> = {
+        let registry = MODEL_REGISTRY.read().unwrap();
+        registry
+            .get(class_name)
+            .map(|m| m.validations.clone())
+            .unwrap_or_default()
     };
 
-    let hash = match data {
-        Value::Hash(h) => h.borrow(),
-        _ => return Ok(vec![ValidationError::new("_base", "Data must be a hash")]),
+    if !matches!(data, Value::Hash(_)) {
+        return Ok(vec![ValidationError::new("_base", "Data must be a hash")]);
+    }
+
+    let op = if exclude_key.is_some() {
+        OP_UPDATE
+    } else {
+        OP_CREATE
     };
 
     let mut errors = Vec::new();
 
-    for rule in &metadata.validations {
+    for rule in &rules {
+        if !rule_should_run(class_name, rule, data, op)? {
+            continue;
+        }
+
         // Find the field value
-        let field_value = hash
-            .iter()
-            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *rule.field))
-            .map(|(_, v)| v.clone());
+        let field_value = lookup_field(data, &rule.field);
 
         // Presence validation
         if rule.presence {
@@ -381,29 +632,14 @@ pub fn run_validations(
         }
     }
 
-    // Drop the metadata read lock before invoking user closures — closures
-    // may transitively call back into MODEL_REGISTRY (e.g. a uniqueness check
-    // implemented in user code) and we must not be holding it.
-    drop(registry);
-
-    // Closure-based custom validators registered via `Model.add_validator`.
+    // Closure-based custom validators registered via `register_custom_validator`.
     let custom = custom_validators_for(class_name);
-    if !custom.is_empty() {
-        // Re-borrow the data hash so we can look up field values. We dropped
-        // the original `hash` borrow when we dropped `registry`? Actually we
-        // didn't — `hash` is a borrow on `data`, not on the registry. It's
-        // still live below.
-        for v in &custom {
-            let field_value = hash
-                .iter()
-                .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *v.field))
-                .map(|(_, val)| val.clone())
-                .unwrap_or(Value::Null);
-            match invoke_validator(&v.func, &field_value, data) {
-                Ok(true) => {}
-                Ok(false) => errors.push(ValidationError::new(&v.field, v.message.clone())),
-                Err(e) => return Err(e),
-            }
+    for v in &custom {
+        let field_value = lookup_field(data, &v.field).unwrap_or(Value::Null);
+        match invoke_validator(&v.func, &field_value, data) {
+            Ok(true) => {}
+            Ok(false) => errors.push(ValidationError::new(&v.field, v.message.clone())),
+            Err(e) => return Err(e),
         }
     }
 
@@ -476,6 +712,75 @@ mod tests {
         let errs = build_unique_violation_errors(class, err);
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].field, "email");
+    }
+
+    fn empty_hash() -> Value {
+        Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    #[test]
+    fn on_create_rule_skipped_for_updates() {
+        let class = "TestOnCreateSkip__cond";
+        let mut rule = ValidationRule::new("email".to_string());
+        rule.presence = true;
+        rule.on = Some("create".to_string());
+        register_validation(class, rule);
+
+        // Missing field: presence fails on create...
+        let errs = run_validations(class, &empty_hash(), None).unwrap();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "email");
+        // ...but the rule is skipped on update.
+        let errs = run_validations(class, &empty_hash(), Some("k1")).unwrap();
+        assert!(errs.is_empty());
+    }
+
+    #[test]
+    fn on_update_rule_skipped_for_creates() {
+        let class = "TestOnUpdateSkip__cond";
+        let mut rule = ValidationRule::new("email".to_string());
+        rule.presence = true;
+        rule.on = Some("update".to_string());
+        register_validation(class, rule);
+
+        let errs = run_validations(class, &empty_hash(), None).unwrap();
+        assert!(errs.is_empty());
+        let errs = run_validations(class, &empty_hash(), Some("k1")).unwrap();
+        assert_eq!(errs.len(), 1);
+    }
+
+    #[test]
+    fn parse_options_reads_on() {
+        let mut options = HashPairs::default();
+        options.insert(HashKey::String("presence".into()), Value::Bool(true));
+        options.insert(HashKey::String("on".into()), Value::String("create".into()));
+        let (rule, conditions) = parse_validates_options("email", &options).unwrap();
+        assert!(rule.presence);
+        assert_eq!(rule.on.as_deref(), Some("create"));
+        assert!(!rule.has_condition);
+        assert!(conditions.is_empty());
+    }
+
+    #[test]
+    fn parse_options_rejects_bad_on_value() {
+        let mut options = HashPairs::default();
+        options.insert(
+            HashKey::String("on".into()),
+            Value::String("creates".into()),
+        );
+        let err = parse_validates_options("email", &options).unwrap_err();
+        assert!(err.contains("\"creates\""), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn parse_options_rejects_non_function_condition() {
+        let mut options = HashPairs::default();
+        options.insert(HashKey::String("if".into()), Value::Bool(true));
+        assert!(parse_validates_options("email", &options).is_err());
+
+        let mut options = HashPairs::default();
+        options.insert(HashKey::String("unless".into()), Value::Bool(true));
+        assert!(parse_validates_options("email", &options).is_err());
     }
 
     #[test]

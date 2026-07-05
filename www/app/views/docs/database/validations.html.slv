@@ -80,8 +80,48 @@ end</code></pre>
                     <td class="py-3 px-4"><code class="text-green-300">custom: "method"</code></td>
                     <td class="py-3 px-4 text-gray-400">Call custom validation method</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">on: "create" / "update"</code></td>
+                    <td class="py-3 px-4 text-gray-400">Only run the rule for that operation</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">if: fn(record) { ... }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Only run the rule when the closure is truthy</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">unless: fn(record) { ... }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Skip the rule when the closure is truthy</td>
+                </tr>
             </tbody>
         </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Conditional &amp; Per-Operation Rules</h2>
+    <p class="text-gray-400 mb-6">
+        Every rule in a <code>validates(...)</code> call can be restricted to one persistence operation with <code>on:</code>, or gated on the record's data with an <code>if:</code> / <code>unless:</code> closure. The closure receives the attribute hash being validated (declare zero parameters if you don't need it) and its truthiness decides. <code>Model.create</code> counts as <code>create</code>; <code>instance.update()</code> and <code>instance.save()</code> on a record that already has a <code>_key</code> count as <code>update</code>.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+  # Only enforced when the record is first created
+  validates("password", { "presence": true, "min_length": 8, "on": "create" })
+
+  # Only enforced on updates (e.g. a moderation field set later)
+  validates("reviewer", { "presence": true, "on": "update" })
+
+  # Enforced only for a subset of records
+  validates("company_name", { "presence": true, "if": fn(record) { record["kind"] == "business" } })
+
+  # Skipped for privileged records
+  validates("bio", { "presence": true, "unless": fn(record) { record["role"] == "admin" } })
+end</code></pre>
+        </div>
+    </div>
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/80 text-sm">
+            <code>if:</code> and <code>unless:</code> can be combined on one call &mdash; the rule runs only when <code>if:</code> is truthy <strong>and</strong> <code>unless:</code> is falsy. Passing anything other than <code>"create"</code>/<code>"update"</code> to <code>on:</code>, or a non-function to <code>if:</code>/<code>unless:</code>, raises at class-load time rather than silently running the rule unconditionally.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Validation Results</h2>
