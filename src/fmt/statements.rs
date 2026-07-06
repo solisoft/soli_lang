@@ -104,6 +104,14 @@ impl Printer<'_> {
         // Reset the postfix-rewrite flag; the if-branch below sets it back
         // to true when we actually rewrite a block-if to postfix form.
         self.last_stmt_rewrote_to_postfix = false;
+        // Record this statement's opener line now that its own leading comments
+        // are flushed. For a block-bodied statement (`if`/`while`/`for`/`def`/
+        // `class`/…) whose body starts with a comment, this keeps
+        // `emit_comment`'s blank-line-preservation check measuring the gap from
+        // the opener line rather than from the statement *before* the block —
+        // otherwise a comment adjacent to the opener spuriously gains a blank
+        // line above it. The end line is still recorded after the body prints.
+        self.record_emitted_line(stmt.span.line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // At statement position, `fn` is a function declaration and
@@ -560,8 +568,25 @@ impl Printer<'_> {
 
     pub(super) fn print_param_list(&mut self, params: &[Parameter]) {
         // Estimate inline width and break to multi-line if it would exceed.
-        let est: usize = params.iter().map(|p| p.name.len() + 2).sum::<usize>() + 2;
-        if params.len() > 3 && self.current_column() + est > MAX_LINE_LENGTH {
+        // Mirror `write_param`'s output width — name, `: <Type>` annotation,
+        // and ` = <default>` — so long typed signatures actually break instead
+        // of overflowing the line-length limit the linter enforces.
+        let est: usize = params
+            .iter()
+            .map(|p| {
+                let mut w = p.name.len() + if p.is_block_param { 1 } else { 0 };
+                let ty = format_type(&p.type_annotation);
+                if !ty.is_empty() && ty != "Any" {
+                    w += 2 + ty.len();
+                }
+                if let Some(def) = &p.default_value {
+                    w += 3 + super::expressions::ast_inline_width(self.source, def);
+                }
+                w + 2 // ", " separator
+            })
+            .sum::<usize>()
+            + 2;
+        if params.len() > 1 && self.current_column() + est > MAX_LINE_LENGTH {
             self.write("(");
             self.newline();
             self.with_indent(|p| {

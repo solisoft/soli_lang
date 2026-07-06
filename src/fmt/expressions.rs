@@ -659,16 +659,19 @@ impl Printer<'_> {
             // (layout-independent) and treat multi-line-prone args as
             // fixed-size openings (~6 chars for `fn() {`, 1 for `[`/`{`).
             let args_w: usize = args.iter().map(|a| {
-                let expr = match a {
-                    Argument::Positional(e) => e,
-                    Argument::Named(na) => &na.value,
-                    Argument::Block(e) => e,
+                // Count the `name: ` / `&` prefix too — omitting it lets wide
+                // named-argument calls slip under the limit and overflow.
+                let (prefix, expr) = match a {
+                    Argument::Positional(e) => (0, e),
+                    Argument::Named(na) => (na.name.len() + 2, &na.value),
+                    Argument::Block(e) => (1, e),
                 };
-                if super::statements::expr_likely_breaks(expr) {
-                    arg_opening_width(expr)
-                } else {
-                    span_inline_width(self.source, expr.span).min(60)
-                }
+                prefix
+                    + if super::statements::expr_likely_breaks(expr) {
+                        arg_opening_width(expr)
+                    } else {
+                        span_inline_width(self.source, expr.span).min(60)
+                    }
             }).sum::<usize>()
                 + 2 // "()"
                 + (arg_count.saturating_sub(1)) * 2; // ", "

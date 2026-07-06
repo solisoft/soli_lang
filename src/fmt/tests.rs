@@ -318,6 +318,57 @@ fn postfix_if_round_trips() {
 }
 
 #[test]
+fn no_blank_line_before_comment_starting_block_body() {
+    // Regression: a comment as the first line of an `if` body must not gain a
+    // spurious blank line above it. The block opener line is now recorded so
+    // the comment's gap is measured from the opener, not from the statement
+    // before the block (which previously looked like a paragraph break).
+    let src = "fn f\n  x = 1\n  if cond\n    # first body line\n    y = 2\n  end\nend\n";
+    let out = format_source(src).unwrap();
+    assert!(
+        !out.contains("if cond\n\n"),
+        "no blank line should be inserted between `if` and its leading body comment:\n{}",
+        out
+    );
+    assert_idempotent(src);
+}
+
+#[test]
+fn long_typed_signature_wraps_under_line_limit() {
+    // Regression: the param-list width estimate must account for the `: Type`
+    // annotations, so a wide typed signature breaks across lines instead of
+    // overflowing the line-length limit the linter enforces.
+    let src = "class C\n  def self.init_params(referer: String, product_id: String, file: String, locale: String, country: String, code_integration: String) -> Hash\n    return {}\n  end\nend\n";
+    let out = format_source(src).unwrap();
+    assert!(
+        out.lines().all(|l| l.chars().count() <= 120),
+        "signature must wrap so no line exceeds 120 chars:\n{}",
+        out
+    );
+    assert!(
+        out.contains("static def init_params(\n"),
+        "params should break onto their own lines:\n{}",
+        out
+    );
+    assert_idempotent(src);
+}
+
+#[test]
+fn long_named_arg_call_wraps_under_line_limit() {
+    // Regression: the call-arg width estimate must count the `name: ` prefix of
+    // named arguments, so a wide named-argument call breaks instead of
+    // overflowing the line-length limit.
+    let src = "class C\n  def show\n    params = CswClient.base_params(referer, image_height: SalesupFlow.image_height(), image_width: SalesupFlow.image_width())\n    return params\n  end\nend\n";
+    let out = format_source(src).unwrap();
+    assert!(
+        out.lines().all(|l| l.chars().count() <= 120),
+        "call must wrap so no line exceeds 120 chars:\n{}",
+        out
+    );
+    assert_idempotent(src);
+}
+
+#[test]
 fn postfix_unless_round_trips() {
     assert_round_trip("let a = 10\nprint(\"ok\") unless a < 0\n");
 }
