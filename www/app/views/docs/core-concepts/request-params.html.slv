@@ -363,8 +363,11 @@ end</code></pre>
 })
 Post.create(permitted)</code></pre>
         </div>
-        <p class="text-gray-400">
+        <p class="text-gray-400 mb-4">
             Unlisted keys are dropped silently; a missing source (<code class="text-amber-400">permit(null, …)</code>) filters to an empty hash. <code class="text-amber-400">[{...}]</code> also accepts a numeric-keyed hash (<code>items[0][sku]</code> parsing) and returns an array of its filtered values. <code>soli generate scaffold</code> writes <code class="text-amber-400">_permit_params</code> with <code class="text-amber-400">permit()</code>.
+        </p>
+        <p class="text-gray-400">
+            <code class="text-amber-400">permit</code> is the <em>primary</em> mass-assignment filter; a model can additionally declare <a href="/docs/database/models" class="text-amber-400 hover:text-amber-300"><code>attr_accessible</code></a> as defense-in-depth. Both are whitelists, so the result is their <strong class="text-white">intersection</strong> — a model using both must list every top-level key controllers permit, or the value is silently dropped at the model layer (in <code>--dev</code>, drops log a <code>[WARN] attr_accessible …</code> line).
         </p>
     </section>
 

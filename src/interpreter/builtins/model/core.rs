@@ -953,6 +953,7 @@ fn filter_mass_assign(class_name: &str, data: &Value) -> Value {
     // Tiny lists stay as Vec; HashSet would be overkill here (typical
     // attr_accessible call lists 5–15 fields).
     let mut filtered: HashPairs = HashPairs::default();
+    let mut dropped: Vec<String> = Vec::new();
     for (k, v) in pairs.borrow().iter() {
         if let HashKey::String(field) = k {
             if field.starts_with('_') {
@@ -960,8 +961,20 @@ fn filter_mass_assign(class_name: &str, data: &Value) -> Value {
             }
             if whitelist.iter().any(|w| **w == **field) {
                 filtered.insert(k.clone(), v.clone());
+            } else {
+                dropped.push(field.to_string());
             }
         }
+    }
+    // The silent-intersection trap: a controller `permit`s a key the model's
+    // whitelist doesn't list, and the value vanishes here with no error.
+    // Surface the drop in dev mode so the drift is visible when it bites.
+    if !dropped.is_empty() && crate::interpreter::builtins::template::is_dev_mode() {
+        eprintln!(
+            "[WARN] attr_accessible on {} dropped mass-assign key(s): {} — add them to the model's whitelist or remove them from the controller's permit()",
+            class_name,
+            dropped.join(", ")
+        );
     }
     Value::Hash(Rc::new(RefCell::new(filtered)))
 }

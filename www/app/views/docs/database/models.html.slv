@@ -675,6 +675,9 @@ User.create({
     </div>
 
     <p class="text-gray-400 mb-4">
+        <strong class="text-white">How this relates to <code>permit()</code>:</strong> <a href="/docs/core-concepts/request-params#permit" class="text-amber-400 hover:text-amber-300"><code>permit(params, shape)</code></a> is the <em>primary</em> mass-assignment filter — it lives in the controller, where assignability is actually decided, and it understands nested shapes. <code>attr_accessible</code> is optional defense-in-depth for high-stakes models and covers paths that bypass controllers (jobs, websocket handlers, a raw <code>Model.create(params)</code>). Both are whitelists, so the result is their <strong>intersection</strong>: if you use both, <code>attr_accessible</code> must list every top-level key any controller permits, or the value is silently dropped at the model layer — in <code>--dev</code> such drops log a <code>[WARN] attr_accessible on … dropped mass-assign key(s)</code>. <code>attr_accessible</code> is flat: for nested assignable fields, list the top-level key and let <code>permit</code> control the sub-shape.
+    </p>
+    <p class="text-gray-400 mb-6">
         For controller-side filtering (when you'd rather hand-pick keys at the boundary), <code>hash.slice(["a", "b"])</code> returns a new hash with only the listed keys &mdash; useful when you need a different whitelist per action:
     </p>
 

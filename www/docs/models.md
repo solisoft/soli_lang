@@ -375,6 +375,8 @@ Filtering applies to every mass-assign path: `Model.create(hash)`, `Model.update
 
 **Models without a declaration keep the legacy "all keys accepted" behaviour** for backwards compatibility. New models that take request data should always declare `attr_accessible`. The CLAUDE.md security guidance recommends auditing every `Model.create`/`Model.update` call site against an explicit whitelist.
 
+**How this relates to `permit()`.** [`permit(params, shape)`](/docs/core-concepts/request-params#permit) is the *primary* mass-assignment filter — it lives in the controller, where assignability is actually decided (an admin form and a public form permit different fields against the same model), and it understands nested shapes. `attr_accessible` is optional defense-in-depth for high-stakes models (`User` blocking `role`/`is_admin` even if a controller forgets to filter) and covers paths that bypass controllers — jobs, websocket handlers, a raw `Model.create(params)`. Both are whitelists, so the effective result is their **intersection**: if you use both on a model, `attr_accessible` must list every top-level key any controller permits, or the value is dropped at the model layer. `attr_accessible` is flat — for nested assignable fields, list the top-level key and let `permit` control the sub-shape. In `--dev`, a mass-assign that hits the whitelist logs `[WARN] attr_accessible on User dropped mass-assign key(s): …` so the drift is visible.
+
 For controller-side filtering (when you'd rather hand-pick keys at the boundary), the existing `hash.slice(["a", "b"])` returns a new hash with only the listed keys — handy when you need different whitelists per action:
 
 ```soli

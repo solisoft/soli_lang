@@ -44,8 +44,8 @@ app_name/
 ├── stdlib/              # Standard library modules
 │   └── state_machine.sl # State machine implementation
 ├── tests/               # Test files
-├── package.json         # NPM dependencies
-└── tailwind.config.js   # TailwindCSS configuration
+└── package.json         # NPM dependencies (Tailwind v4 — content is
+                         # auto-detected, no tailwind.config.js needed)
 ```
 
 ## Standard Library

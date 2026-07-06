@@ -89,6 +89,12 @@ Unlisted keys are dropped silently; a missing source (`permit(null, …)`)
 filters to an empty hash. `[{...}]` also accepts a numeric-keyed hash
 (`items[0][sku]` parsing) and returns an array of its filtered values.
 
+`permit` is the primary mass-assignment filter; a model can additionally
+declare [`attr_accessible`](/docs/database/models) as defense-in-depth. Both
+are whitelists, so the result is their intersection — if a model uses both,
+its `attr_accessible` list must include every top-level key controllers
+permit (in `--dev`, drops log a `[WARN] attr_accessible …` line).
+
 ## The `cookies` Global
 
 For convenience, the server also sets a global `cookies` variable to the same value as `req["cookies"]`. This hash contains all cookies parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:
