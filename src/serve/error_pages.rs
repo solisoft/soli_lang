@@ -948,7 +948,7 @@ fn param_should_redact(key: &str) -> bool {
 /// true. Values pass through serde_json so quotes / control chars get
 /// escaped properly (the previous `format!("{:?}", map)` rendering would
 /// silently break on values containing `"` or `\`).
-fn redact_map<F>(map: &HashMap<String, String>, should_redact: F) -> serde_json::Value
+fn redact_map<F>(map: &[(String, String)], should_redact: F) -> serde_json::Value
 where
     F: Fn(&str) -> bool,
 {
@@ -1402,11 +1402,12 @@ mod tests {
         headers.insert("content-type", "application/json".parse().unwrap());
         headers.insert("user-agent", "tests/1.0".parse().unwrap());
 
-        let mut query = HashMap::new();
-        query.insert("page".to_string(), "2".to_string());
-        query.insert("password".to_string(), "p4ssw0rd".to_string());
-        query.insert("api_key".to_string(), "secret-key".to_string());
-        query.insert("csrf_token".to_string(), "abc123".to_string());
+        let query = vec![
+            ("page".to_string(), "2".to_string()),
+            ("password".to_string(), "p4ssw0rd".to_string()),
+            ("api_key".to_string(), "secret-key".to_string()),
+            ("csrf_token".to_string(), "abc123".to_string()),
+        ];
 
         RequestData {
             method: std::borrow::Cow::Borrowed("POST"),
@@ -1511,7 +1512,7 @@ mod tests {
         let req = RequestData {
             method: std::borrow::Cow::Borrowed("GET"),
             path: "/x".to_string(),
-            query: HashMap::new(),
+            query: Vec::new(),
             headers,
             body: r#"{"k":"v\\""}"#.to_string(),
             body_bytes: None,

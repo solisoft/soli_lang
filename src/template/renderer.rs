@@ -1046,6 +1046,77 @@ mod tests {
     }
 
     #[test]
+    fn fields_for_prefixes_names_and_prefills_nested_values() {
+        let record = make_hash(vec![(
+            "author",
+            make_hash(vec![("name", Value::String("Ada".into()))]),
+        )]);
+        let html = render_form(
+            "<% f = form_with(post, {\"url\": \"/x\"}) %><% af = f.fields_for(\"author\") %><%- af.label(\"name\") %><%- af.text_field(\"name\") %>",
+            vec![("post", record)],
+        );
+        assert!(
+            html.contains("<label for=\"author_name\">Name</label>"),
+            "{}",
+            html
+        );
+        assert!(
+            html.contains(
+                "<input type=\"text\" id=\"author_name\" name=\"author[name]\" value=\"Ada\">"
+            ),
+            "{}",
+            html
+        );
+    }
+
+    #[test]
+    fn fields_for_block_binds_sub_builder_without_wrapping() {
+        let record = make_hash(vec![(
+            "author",
+            make_hash(vec![("name", Value::String("Ada".into()))]),
+        )]);
+        let html = render_form(
+            "<%- form_with(post, {\"url\": \"/x\"}) do |f| -%>\n<%- f.fields_for(\"author\") do |af| -%>\n<%- af.text_field(\"name\") -%>\n<%- end -%>\n<%- end -%>",
+            vec![("post", record)],
+        );
+        assert!(
+            html.contains("name=\"author[name]\" value=\"Ada\""),
+            "{}",
+            html
+        );
+        // Exactly one form tag pair — the fields_for block adds no wrapper.
+        assert_eq!(html.matches("<form").count(), 1, "{}", html);
+        assert_eq!(html.matches("</form>").count(), 1, "{}", html);
+    }
+
+    #[test]
+    fn fields_for_with_index_and_deep_nesting() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/x\"}) %><% item = f.fields_for(\"items\", 0) %><%- item.text_field(\"sku\") %>",
+            vec![],
+        );
+        assert!(
+            html.contains("id=\"items_0_sku\" name=\"items[0][sku]\""),
+            "{}",
+            html
+        );
+    }
+
+    #[test]
+    fn select_multiple_appends_brackets_and_name_override_wins() {
+        let html = render_form(
+            "<% f = form_with(null, {\"url\": \"/x\"}) %><% choices = [\"a\", \"b\"] %><%- f.select(\"tags\", choices, {\"multiple\": true}) %><%- f.text_field(\"extra\", {\"name\": \"custom[key]\"}) %>",
+            vec![],
+        );
+        assert!(
+            html.contains("<select id=\"tags\" name=\"tags[]\" multiple>"),
+            "{}",
+            html
+        );
+        assert!(html.contains("name=\"custom[key]\""), "{}", html);
+    }
+
+    #[test]
     fn csrf_meta_tag_and_field_share_the_session_token() {
         let html = render_form("<%- csrf_meta_tag() %>|<%- csrf_field() %>", vec![]);
         let token_of = |marker: &str| {

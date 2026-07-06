@@ -323,6 +323,51 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- Nested parameters -->
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-6" id="nested-parameters">Nested Parameters</h2>
+        <p class="text-gray-400 mb-6">
+            Bracket keys nest, Rack-style — in form bodies, multipart bodies, and query strings alike:
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Wire format</th>
+                        <th class="px-4 py-3 font-semibold"><code>params</code> shape</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="px-4 py-3"><code>title=Hi</code></td><td class="px-4 py-3"><code>params["title"]</code> → <code>"Hi"</code></td></tr>
+                    <tr><td class="px-4 py-3"><code>author[name]=Ada</code></td><td class="px-4 py-3"><code>params["author"]["name"]</code> → <code>"Ada"</code></td></tr>
+                    <tr><td class="px-4 py-3"><code>tags[]=a&amp;tags[]=b</code></td><td class="px-4 py-3"><code>params["tags"]</code> → <code>["a", "b"]</code> (submission order)</td></tr>
+                    <tr><td class="px-4 py-3"><code>items[][sku]=x&amp;items[][sku]=y</code></td><td class="px-4 py-3"><code>params["items"]</code> → <code>[{"sku": "x"}, {"sku": "y"}]</code></td></tr>
+                    <tr><td class="px-4 py-3"><code>items[0][sku]=x</code></td><td class="px-4 py-3"><code>params["items"]["0"]["sku"]</code> — numeric segments are hash keys</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-8">
+            Nesting is capped at 32 levels; malformed or over-deep bracket keys stay as flat literal keys. Arrays come only from <code class="text-amber-400">[]</code> — numeric indices parse as hash keys, which <code class="text-amber-400">permit</code> converts back to arrays. The <a href="/docs/core-concepts/forms" class="text-amber-400 hover:text-amber-300">form builder's <code>fields_for</code></a> generates these names for you.
+        </p>
+
+        <h3 class="text-xl font-bold text-white mb-4" id="permit">permit() — strong parameters</h3>
+        <p class="text-gray-400 mb-4">
+            SoliDB is schemaless: an unfiltered <code class="text-amber-400">Model.create(params)</code> persists <strong class="text-white">anything</strong> a client posts. <code class="text-amber-400">permit(params, shape)</code> whitelists the shape you expect and drops the rest:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">permitted = permit(params, {
+  "title": true,                            # scalar (containers dropped)
+  "tags": [],                               # array of scalars
+  "author": {"name": true, "email": true},  # nested hash
+  "items": [{"sku": true, "qty": true}]     # array of hashes
+})
+Post.create(permitted)</code></pre>
+        </div>
+        <p class="text-gray-400">
+            Unlisted keys are dropped silently; a missing source (<code class="text-amber-400">permit(null, …)</code>) filters to an empty hash. <code class="text-amber-400">[{...}]</code> also accepts a numeric-keyed hash (<code>items[0][sku]</code> parsing) and returns an array of its filtered values. <code>soli generate scaffold</code> writes <code class="text-amber-400">_permit_params</code> with <code class="text-amber-400">permit()</code>.
+        </p>
+    </section>
+
     <!-- API Reference -->
     <section>
         <h2 class="text-2xl font-bold text-white mb-6">API Reference</h2>

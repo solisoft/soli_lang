@@ -79,11 +79,13 @@ class {controller_name} < Controller
     return redirect("/{resource}")
   end
 
-  # Mass assignment protection: whitelist allowed parameters
+  # Mass-assignment whitelist: permit() keeps exactly this shape and drops
+  # everything else a client posts (true = scalar, [] = array of scalars,
+  # a nested hash literal = nested whitelist).
   def _permit_params(params)
-    return {{
+    return permit(params, {{
 {permitted_params}
-    }}
+    }})
   end
 end
 "#,

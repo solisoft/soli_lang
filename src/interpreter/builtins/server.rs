@@ -777,6 +777,183 @@ mod expand_wildcard_action_tests {
     }
 }
 
+/// Parse an `application/x-www-form-urlencoded` string into **ordered**
+/// key/value pairs. Order matters for bracket-array keys (`tags[]=a&tags[]=b`
+/// must keep submission order, and repeated keys must not collapse the way
+/// they do in a HashMap).
+pub fn parse_query_pairs(query: &str) -> Vec<(String, String)> {
+    let mut result = Vec::new();
+    if query.is_empty() {
+        return result;
+    }
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        if let Some((key, value)) = pair.split_once('=') {
+            let decoded_key = urlencoding::decode(&key.replace('+', " "))
+                .unwrap_or_else(|_| key.into())
+                .into_owned();
+            let decoded_value = urlencoding::decode(&value.replace('+', " "))
+                .unwrap_or_else(|_| value.into())
+                .into_owned();
+            result.push((decoded_key, decoded_value));
+        } else {
+            let decoded = urlencoding::decode(&pair.replace('+', " "))
+                .unwrap_or_else(|_| pair.into())
+                .into_owned();
+            result.push((decoded, String::new()));
+        }
+    }
+    result
+}
+
+/// Rack-style parameter nesting depth cap: a hostile key like `a[b][b][b]…`
+/// nested thousands deep would otherwise build a pathological tree.
+const MAX_PARAM_DEPTH: usize = 32;
+
+/// Intermediate owned tree for nesting — built with plain ownership, then
+/// converted to `Value` once at the end (mutating `Rc<RefCell<…>>` trees
+/// in place would fight the borrow checker for no gain).
+enum ParamNode {
+    Str(String),
+    Map(indexmap::IndexMap<String, ParamNode>),
+    List(Vec<ParamNode>),
+}
+
+/// One parsed segment of a bracket key: `post[author][]` →
+/// `[Key("post"), Key("author"), Append]`.
+enum ParamSeg {
+    Key(String),
+    Append,
+}
+
+/// Split a bracket key into segments. `None` when the key isn't bracket
+/// syntax (no '['), is malformed (unbalanced/misplaced brackets), or exceeds
+/// the depth cap — the caller then keeps it as a flat literal key.
+fn parse_bracket_key(key: &str) -> Option<Vec<ParamSeg>> {
+    let open = key.find('[')?;
+    if open == 0 {
+        return None; // no base name — keep flat
+    }
+    let mut segs = vec![ParamSeg::Key(key[..open].to_string())];
+    let mut rest = &key[open..];
+    while !rest.is_empty() {
+        if !rest.starts_with('[') {
+            return None;
+        }
+        let close = rest.find(']')?;
+        let inner = &rest[1..close];
+        segs.push(if inner.is_empty() {
+            ParamSeg::Append
+        } else {
+            ParamSeg::Key(inner.to_string())
+        });
+        rest = &rest[close + 1..];
+    }
+    if segs.len() > MAX_PARAM_DEPTH {
+        return None;
+    }
+    Some(segs)
+}
+
+/// Insert one value at a segment path, Rack-style. On a type conflict
+/// (`a=1&a[b]=2`) the later assignment replaces the earlier value.
+fn insert_param(node: &mut ParamNode, segs: &[ParamSeg], value: String) {
+    let Some(seg) = segs.first() else {
+        *node = ParamNode::Str(value);
+        return;
+    };
+    match seg {
+        ParamSeg::Key(name) => {
+            if !matches!(node, ParamNode::Map(_)) {
+                *node = ParamNode::Map(indexmap::IndexMap::new());
+            }
+            let ParamNode::Map(map) = node else {
+                unreachable!()
+            };
+            let child = map
+                .entry(name.clone())
+                .or_insert_with(|| ParamNode::Str(String::new()));
+            insert_param(child, &segs[1..], value);
+        }
+        ParamSeg::Append => {
+            if !matches!(node, ParamNode::List(_)) {
+                *node = ParamNode::List(Vec::new());
+            }
+            let ParamNode::List(list) = node else {
+                unreachable!()
+            };
+            match segs.get(1) {
+                // Trailing `[]`: push the scalar.
+                None => list.push(ParamNode::Str(value)),
+                // `a[][b]…`: fill the last hash element until it already
+                // has the next key, then start a new element (Rack's rule
+                // for arrays of hashes).
+                Some(ParamSeg::Key(next_key)) => {
+                    let reuse_last = matches!(
+                        list.last(),
+                        Some(ParamNode::Map(m)) if !m.contains_key(next_key)
+                    );
+                    if !reuse_last {
+                        list.push(ParamNode::Map(indexmap::IndexMap::new()));
+                    }
+                    let last = list.last_mut().expect("just ensured non-empty");
+                    insert_param(last, &segs[1..], value);
+                }
+                // `a[][]` — ambiguous; treat like a trailing append.
+                Some(ParamSeg::Append) => list.push(ParamNode::Str(value)),
+            }
+        }
+    }
+}
+
+fn param_node_to_value(node: ParamNode) -> Value {
+    match node {
+        ParamNode::Str(s) => Value::String(s.into()),
+        ParamNode::Map(map) => {
+            let mut pairs = HashPairs::with_capacity_and_hasher(map.len(), AHasher::default());
+            for (k, v) in map {
+                pairs.insert(HashKey::String(k.into()), param_node_to_value(v));
+            }
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        }
+        ParamNode::List(list) => Value::Array(Rc::new(RefCell::new(
+            list.into_iter().map(param_node_to_value).collect(),
+        ))),
+    }
+}
+
+/// Nest ordered pairs into a params hash: bracket keys (`post[title]`,
+/// `tags[]`, `items[][sku]`) become nested hashes/arrays, Rack-style.
+/// Numeric segments are hash keys ("0", "1"), not array indices — arrays
+/// come only from `[]`. Keys without brackets (or with malformed /
+/// over-deep bracket syntax) stay flat literal keys.
+pub fn nest_query_pairs(pairs: Vec<(String, String)>) -> HashPairs {
+    let mut root: indexmap::IndexMap<String, ParamNode> = indexmap::IndexMap::new();
+    for (key, value) in pairs {
+        match parse_bracket_key(&key) {
+            Some(segs) => {
+                let ParamSeg::Key(base) = &segs[0] else {
+                    unreachable!("parse_bracket_key guarantees a Key base");
+                };
+                let child = root
+                    .entry(base.clone())
+                    .or_insert_with(|| ParamNode::Str(String::new()));
+                insert_param(child, &segs[1..], value);
+            }
+            None => {
+                root.insert(key, ParamNode::Str(value));
+            }
+        }
+    }
+    let mut result = HashPairs::with_capacity_and_hasher(root.len(), AHasher::default());
+    for (k, v) in root {
+        result.insert(HashKey::String(k.into()), param_node_to_value(v));
+    }
+    result
+}
+
 /// Parse query string into a hash map.
 pub fn parse_query_string(query: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
@@ -888,15 +1065,13 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
     if body.is_empty() {
         return None;
     }
-    let form_data = parse_query_string(body);
+    let form_data = parse_query_pairs(body);
     if form_data.is_empty() {
         return None;
     }
-    let pairs: HashPairs = form_data
-        .into_iter()
-        .map(|(k, v)| (HashKey::String(k.into()), Value::String(v.into())))
-        .collect();
-    Some(Value::Hash(Rc::new(RefCell::new(pairs))))
+    Some(Value::Hash(Rc::new(RefCell::new(nest_query_pairs(
+        form_data,
+    )))))
 }
 
 /// Build a request hash from HTTP request data.
@@ -922,7 +1097,7 @@ pub fn build_request_hash(
         method,
         path,
         params,
-        query,
+        query.into_iter().collect(),
         header_pairs,
         cookies,
         body,
@@ -953,7 +1128,7 @@ pub fn build_request_hash_with_parsed(
     method: &str,
     path: &str,
     params: HashMap<String, String>,
-    query: HashMap<String, String>,
+    query: Vec<(String, String)>,
     headers: HashPairs,
     cookies: Value,
     body: &str,
@@ -971,14 +1146,12 @@ pub fn build_request_hash_with_parsed(
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
+    // Ordered pairs → nested hash: bracket keys (`filter[status]`, `tags[]`)
+    // nest the same way form bodies do.
     let query_value = if query.is_empty() {
         None
     } else {
-        let mut map = HashPairs::with_capacity_and_hasher(query.len(), AHasher::default());
-        for (k, v) in query {
-            map.insert(HashKey::String(k.into()), Value::String(v.into()));
-        }
-        Some(Value::Hash(Rc::new(RefCell::new(map))))
+        Some(Value::Hash(Rc::new(RefCell::new(nest_query_pairs(query)))))
     };
 
     // Cookies were parsed once by the caller; always a hash (never Null) so
@@ -1774,5 +1947,101 @@ mod body_base64_tests {
         )]);
         let (_, _, body) = extract_response(response);
         assert!(body.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod nested_param_tests {
+    use super::*;
+
+    fn nested(query: &str) -> Value {
+        Value::Hash(Rc::new(RefCell::new(nest_query_pairs(parse_query_pairs(
+            query,
+        )))))
+    }
+
+    fn get(value: &Value, key: &str) -> Value {
+        let Value::Hash(h) = value else {
+            panic!("expected hash, got {:?}", value)
+        };
+        h.borrow()
+            .get(&crate::interpreter::value::StrKey(key))
+            .cloned()
+            .unwrap_or(Value::Null)
+    }
+
+    fn as_str(value: &Value) -> String {
+        match value {
+            Value::String(s) => s.to_string(),
+            other => panic!("expected string, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn flat_keys_stay_flat() {
+        let v = nested("title=Hello&body=World");
+        assert_eq!(as_str(&get(&v, "title")), "Hello");
+        assert_eq!(as_str(&get(&v, "body")), "World");
+    }
+
+    #[test]
+    fn bracket_keys_nest_into_hashes() {
+        let v = nested("post%5Btitle%5D=Hi&post%5Bauthor%5D%5Bname%5D=Ada");
+        let post = get(&v, "post");
+        assert_eq!(as_str(&get(&post, "title")), "Hi");
+        assert_eq!(as_str(&get(&get(&post, "author"), "name")), "Ada");
+    }
+
+    #[test]
+    fn empty_brackets_build_ordered_arrays() {
+        let v = nested("tags%5B%5D=a&tags%5B%5D=b&tags%5B%5D=c");
+        let Value::Array(items) = get(&v, "tags") else {
+            panic!("expected array")
+        };
+        let items: Vec<String> = items.borrow().iter().map(as_str).collect();
+        assert_eq!(items, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn array_of_hashes_rack_grouping() {
+        // items[][sku]=a&items[][qty]=1&items[][sku]=b → two hashes.
+        let v = nested("items%5B%5D%5Bsku%5D=a&items%5B%5D%5Bqty%5D=1&items%5B%5D%5Bsku%5D=b");
+        let Value::Array(items) = get(&v, "items") else {
+            panic!("expected array")
+        };
+        let items = items.borrow();
+        assert_eq!(items.len(), 2);
+        assert_eq!(as_str(&get(&items[0], "sku")), "a");
+        assert_eq!(as_str(&get(&items[0], "qty")), "1");
+        assert_eq!(as_str(&get(&items[1], "sku")), "b");
+    }
+
+    #[test]
+    fn numeric_segments_are_hash_keys() {
+        let v = nested("items%5B0%5D%5Bsku%5D=a&items%5B1%5D%5Bsku%5D=b");
+        let items = get(&v, "items");
+        assert_eq!(as_str(&get(&get(&items, "0"), "sku")), "a");
+        assert_eq!(as_str(&get(&get(&items, "1"), "sku")), "b");
+    }
+
+    #[test]
+    fn malformed_and_overdeep_keys_stay_flat() {
+        // Unbalanced bracket.
+        let v = nested("a%5Bb=1");
+        assert_eq!(as_str(&get(&v, "a[b")), "1");
+        // Leading bracket (no base name).
+        let v = nested("%5Bb%5D=1");
+        assert_eq!(as_str(&get(&v, "[b]")), "1");
+        // Over the depth cap.
+        let deep = format!("a{}=x", "%5Bb%5D".repeat(40));
+        let v = nested(&deep);
+        let flat_key = format!("a{}", "[b]".repeat(40));
+        assert_eq!(as_str(&get(&v, &flat_key)), "x");
+    }
+
+    #[test]
+    fn type_conflict_last_wins() {
+        let v = nested("a=1&a%5Bb%5D=2");
+        assert_eq!(as_str(&get(&get(&v, "a"), "b")), "2");
     }
 }

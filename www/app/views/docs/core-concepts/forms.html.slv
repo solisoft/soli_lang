@@ -123,7 +123,7 @@
             </table>
         </div>
         <p class="text-gray-400 mt-6">
-            Field names are <strong class="text-white">flat</strong> (<code class="text-amber-300">name="title"</code>), matching Soli's flat <code>params</code> model — controllers read <code class="text-amber-300">params["title"]</code> exactly as before. An unchecked <code>check_box</code> submits nothing; read it as <code class="text-amber-300">params["published"] == "true"</code>. For <code>select</code> pairs, build the choices in a <code>&lt;% %&gt;</code> code block and put a space between the brackets — a leading <code class="text-amber-300">[[</code> lexes as a Lua-style raw string, not a nested array:
+            Top-level names are flat (<code class="text-amber-300">name="title"</code> → <code class="text-amber-300">params["title"]</code>), and bracket names <strong class="text-white">nest</strong>: the server parses <code class="text-amber-300">author[name]</code> into <code class="text-amber-300">params["author"]["name"]</code>, <code class="text-amber-300">tags[]</code> into an ordered array, and <code class="text-amber-300">items[][sku]</code> into an array of hashes — Rack-style, for form bodies, multipart bodies, and query strings alike (see <a href="/docs/core-concepts/request-params" class="text-amber-400 hover:text-amber-300">Nested Parameters</a>). <code>select</code> takes <code class="text-amber-300">{"multiple": true}</code> (its name gains <code>[]</code>), and every field helper accepts a <code class="text-amber-300">{"name": "..."}</code> override. An unchecked <code>check_box</code> submits nothing; read it as <code class="text-amber-300">params["published"] == "true"</code>. For <code>select</code> pairs, build the choices in a <code>&lt;% %&gt;</code> code block and put a space between the brackets — a leading <code class="text-amber-300">[[</code> lexes as a Lua-style raw string, not a nested array:
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mt-4">
             <div class="p-6 overflow-x-auto">
@@ -131,6 +131,26 @@
 &lt;%- f.select("status", choices) %&gt;</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mt-6 mb-4">
+            <strong class="text-white">Nested forms:</strong> SoliDB documents nest, and so do forms. <code class="text-amber-300">f.fields_for("author")</code> yields a sub-builder whose fields render as <code class="text-amber-300">author[name]</code> and prefill from <code class="text-amber-300">record["author"]["name"]</code> — the form mirrors the document shape 1:1. Collections take an index: <code class="text-amber-300">f.fields_for("items", 0)</code> renders <code class="text-amber-300">items[0][sku]</code>.
+        </p>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-4">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- form_with(post) do |f| -%&gt;
+  &lt;%- f.text_field("title") %&gt;
+
+  &lt;%- f.fields_for("author") do |author| -%&gt;
+    &lt;%- author.label("name") %&gt;
+    &lt;%- author.text_field("name") %&gt;
+  &lt;%- end -%&gt;
+
+  &lt;%- f.submit("Save") %&gt;
+&lt;%- end -%&gt;</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400">
+            Whitelist the nested shape in the controller with <code class="text-amber-300">permit(params, {"title": true, "author": {"name": true}, "tags": []})</code> — SoliDB is schemaless, so unfiltered mass-assignment would persist anything a client posts. <code>soli generate scaffold</code> writes <code class="text-amber-300">_permit_params</code> in this style; the full rules live in <a href="/docs/core-concepts/request-params" class="text-amber-400 hover:text-amber-300">Request Parameters → permit()</a>.
+        </p>
     </section>
 
     <!-- 4. button_to + method override -->

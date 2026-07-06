@@ -365,9 +365,14 @@ the newline after a tag.
   `"multipart": true` on the form), `text_area`, `check_box`, `radio_button`,
   `select`, `label`, `submit`. Options become HTML attributes; values prefill
   from the record and are escaped; errored fields get a `field-error` class.
-- Field names are **flat** (`name="title"`) — read `params["title"]` in the
-  controller. An unchecked `check_box` submits nothing; read it as
-  `params["published"] == "true"`.
+- Top-level names are flat (`name="title"` → `params["title"]`); bracket
+  names **nest** (`author[name]` → `params["author"]["name"]`, `tags[]` →
+  array). `f.fields_for("author") do |author| ... end` renders them and
+  prefills from the nested document. An unchecked `check_box` submits
+  nothing; read it as `params["published"] == "true"`.
+- Always filter mass-assignment through `permit(params, {"title": true,
+  "author": {"name": true}, "tags": []})` — SoliDB is schemaless, so an
+  unfiltered `Model.create(params)` persists anything a client posts.
 - Delete/logout links: `button_to("Delete", "/posts/" + post["_key"].to_s,
   {"method": "delete", "confirm": "Are you sure?"})` — never a bare `<a>`.
 - Hand-written `<form method="POST">`? Add `<%- csrf_field() %>` inside it.

@@ -76,6 +76,7 @@ pub mod pades;
 pub mod pades_tsa;
 pub mod pdf;
 pub mod pdf_markdown;
+pub mod permit;
 pub mod pop3;
 pub mod primitives;
 pub mod rate_limit;
@@ -509,6 +510,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register session management builtins
     session::register_session_builtins(env);
+    permit::register_permit_builtins(env);
 
     // Register Job and Cron classes (SolidB-backed background jobs)
     jobs::register_jobs_builtins(env);

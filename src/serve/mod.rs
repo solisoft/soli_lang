@@ -225,8 +225,8 @@ use uuid::Uuid;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash_with_parsed, extract_response, find_route, get_routes,
-    parse_form_urlencoded_body, parse_json_body, parse_query_string, routes_to_worker_routes,
-    set_worker_routes, ParsedBody, WorkerRoute,
+    parse_form_urlencoded_body, parse_json_body, parse_query_pairs, parse_query_string,
+    routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
 };
 
 // Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
@@ -284,7 +284,7 @@ use worker_pool::{HotReloadVersions, WorkerQueues, WorkerSender};
 pub(crate) struct RequestData {
     pub(crate) method: Cow<'static, str>,
     pub(crate) path: String,
-    pub(crate) query: HashMap<String, String>,
+    pub(crate) query: Vec<(String, String)>,
     /// The wire headers, moved straight out of hyper (names are lowercase).
     /// `HeaderMap` is `Send`, so no per-header String copies happen on the
     /// async side; the worker converts to Soli `HashPairs` exactly once when
@@ -295,7 +295,7 @@ pub(crate) struct RequestData {
     #[allow(dead_code)]
     pub(crate) body_bytes: Option<Vec<u8>>,
     /// Pre-parsed form fields from multipart
-    pub(crate) multipart_form: Option<HashMap<String, String>>,
+    pub(crate) multipart_form: Option<Vec<(String, String)>>,
     /// Pre-parsed files from multipart
     pub(crate) multipart_files: Option<Vec<UploadedFile>>,
     /// SEC-030: actual TCP peer IP (no port). Threaded to handlers as
@@ -3067,8 +3067,9 @@ async fn handle_hyper_request(
 
     let query_str = uri.query().unwrap_or("");
 
-    // Parse query string
-    let query = parse_query_string(query_str);
+    // Parse query string into ordered pairs (order matters for bracket
+    // arrays like tags[]=a&tags[]=b — the worker nests them Rack-style).
+    let query = parse_query_pairs(query_str);
 
     // Split the request: take ownership of the wire headers (moved into
     // RequestData as-is — `HeaderMap` is Send) and the body stream. No
@@ -3159,7 +3160,7 @@ async fn handle_hyper_request(
         method,
         &body,
         req_content_type.as_deref(),
-        multipart_form.as_ref(),
+        multipart_form.as_deref(),
     );
 
     // Create oneshot channel for response
@@ -3492,7 +3493,7 @@ fn apply_form_method_override(
     method: Cow<'static, str>,
     body: &str,
     content_type: Option<&str>,
-    multipart_form: Option<&HashMap<String, String>>,
+    multipart_form: Option<&[(String, String)]>,
 ) -> Cow<'static, str> {
     if method != "POST" {
         return method;
@@ -3501,9 +3502,9 @@ fn apply_form_method_override(
         Some(ct) if ct.starts_with("application/x-www-form-urlencoded") => {
             form_body_param(body, "_method")
         }
-        Some(ct) if ct.starts_with("multipart/form-data") => {
-            multipart_form.and_then(|form| form.get("_method").cloned())
-        }
+        Some(ct) if ct.starts_with("multipart/form-data") => multipart_form
+            .and_then(|form| form.iter().find(|(k, _)| k == "_method"))
+            .map(|(_, v)| v.clone()),
         _ => None,
     };
     match requested.as_deref().map(str::trim) {
@@ -3545,7 +3546,8 @@ fn verify_csrf_token(data: &RequestData, method: &str, path: &str) -> Result<(),
             } else if content_type.starts_with("multipart/form-data") {
                 data.multipart_form
                     .as_ref()
-                    .and_then(|form| form.get("_csrf_token").cloned())
+                    .and_then(|form| form.iter().find(|(k, _)| k == "_csrf_token"))
+                    .map(|(_, v)| v.clone())
             } else {
                 None
             }
@@ -5955,23 +5957,17 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
 fn parse_request_body(
     body: &str,
     content_type: Option<&str>,
-    multipart_form: Option<&HashMap<String, String>>,
+    multipart_form: Option<&[(String, String)]>,
     multipart_files: Option<&Vec<UploadedFile>>,
 ) -> ParsedBody {
     let mut parsed = ParsedBody::default();
 
-    // Handle multipart data if available (parsed in async context)
+    // Handle multipart data if available (parsed in async context). Bracket
+    // keys nest exactly like urlencoded bodies.
     if let Some(form_fields) = multipart_form {
         if !form_fields.is_empty() {
-            let form_map: HashPairs = form_fields
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        HashKey::String(k.clone().into()),
-                        Value::String(v.clone().into()),
-                    )
-                })
-                .collect();
+            let form_map =
+                crate::interpreter::builtins::server::nest_query_pairs(form_fields.to_vec());
             parsed.form = Some(Value::Hash(Rc::new(RefCell::new(form_map))));
         }
     }
@@ -6269,7 +6265,7 @@ fn handle_request(
         parse_request_body(
             &data.body,
             content_type,
-            data.multipart_form.as_ref(),
+            data.multipart_form.as_deref(),
             data.multipart_files.as_ref(),
         )
     };
@@ -8238,14 +8234,14 @@ mod tests {
     fn make_request_data(
         headers: &[(&str, &str)],
         body: &str,
-        multipart_form: Option<HashMap<String, String>>,
+        multipart_form: Option<Vec<(String, String)>>,
     ) -> RequestData {
         // _rx is dropped: verify_csrf_token never sends a response.
         let (tx, _rx) = oneshot::channel();
         RequestData {
             method: Cow::Borrowed("POST"),
             path: "/posts".to_string(),
-            query: HashMap::new(),
+            query: Vec::new(),
             headers: make_headers(headers),
             body: body.to_string(),
             body_bytes: None,
@@ -8292,8 +8288,7 @@ mod tests {
             "POST"
         );
         // Multipart reads the pre-parsed form map.
-        let mut multipart = HashMap::new();
-        multipart.insert("_method".to_string(), "put".to_string());
+        let multipart = vec![("_method".to_string(), "put".to_string())];
         assert_eq!(
             apply_form_method_override(
                 Cow::Borrowed("POST"),

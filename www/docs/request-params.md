@@ -52,6 +52,43 @@ end
 
 `params` is refreshed before each request, so it is always in sync with the current handler's `req["all"]`. Dot access (`params.name`) and bracket access (`params["name"]`) both work.
 
+## Nested Parameters
+
+Bracket keys nest, Rack-style — in form bodies, multipart bodies, and query
+strings alike:
+
+| Wire format | `params` shape |
+|-------------|----------------|
+| `title=Hi` | `params["title"]` → `"Hi"` |
+| `author[name]=Ada` | `params["author"]["name"]` → `"Ada"` |
+| `tags[]=a&tags[]=b` | `params["tags"]` → `["a", "b"]` (submission order) |
+| `items[][sku]=x&items[][sku]=y` | `params["items"]` → `[{"sku": "x"}, {"sku": "y"}]` |
+| `items[0][sku]=x` | `params["items"]["0"]["sku"]` — numeric segments are hash keys |
+
+Nesting is capped at 32 levels; malformed or over-deep bracket keys stay as
+flat literal keys. Arrays come only from `[]` — numeric indices parse as
+hash keys (`"0"`, `"1"`, …), which `permit` converts back to arrays.
+
+### permit() — strong parameters
+
+SoliDB is schemaless: an unfiltered `Model.create(params)` persists
+**anything** a client posts. `permit(params, shape)` whitelists the shape
+you expect and drops the rest:
+
+```soli
+permitted = permit(params, {
+  "title": true,                            # scalar (containers dropped)
+  "tags": [],                               # array of scalars
+  "author": {"name": true, "email": true},  # nested hash
+  "items": [{"sku": true, "qty": true}]     # array of hashes
+})
+Post.create(permitted)
+```
+
+Unlisted keys are dropped silently; a missing source (`permit(null, …)`)
+filters to an empty hash. `[{...}]` also accepts a numeric-keyed hash
+(`items[0][sku]` parsing) and returns an array of its filtered values.
+
 ## The `cookies` Global
 
 For convenience, the server also sets a global `cookies` variable to the same value as `req["cookies"]`. This hash contains all cookies parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:

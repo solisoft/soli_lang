@@ -105,10 +105,66 @@ Two gotchas: build the pairs in a `<% %>` code block (complex nested literals
 don't parse inside output tags), and put a space between the brackets —
 a leading `[[` lexes as a Lua-style raw string, not a nested array.
 
-Field names are **flat** (`name="title"`), matching Soli's flat `params`
-model — your controller reads `params["title"]` exactly as before. An
-unchecked `check_box` submits nothing; read it as
-`params["published"] == "true"`.
+Top-level field names are flat (`name="title"` → `params["title"]`), and
+bracket names **nest**: the server parses `author[name]` into
+`params["author"]["name"]`, `tags[]` into an ordered array, and
+`items[][sku]` into an array of hashes — Rack-style, for form bodies,
+multipart bodies, and query strings alike. An unchecked `check_box` submits
+nothing; read it as `params["published"] == "true"`. Add
+`{"multiple": true}` to a `select` and the name gains `[]`, collecting the
+selections into an array. A `{"name": "..."}` option overrides the derived
+name verbatim.
+
+## Nested forms (fields_for)
+
+SoliDB documents nest, and so do forms. `f.fields_for("author")` returns a
+sub-builder whose fields render as `author[name]` and prefill from
+`record["author"]["name"]` — the form mirrors the document shape 1:1:
+
+```erb
+<%- form_with(post) do |f| -%>
+  <%- f.text_field("title") %>
+
+  <%- f.fields_for("author") do |author| -%>
+    <%- author.label("name") %>
+    <%- author.text_field("name") %>
+  <%- end -%>
+
+  <%- f.submit("Save") %>
+<%- end -%>
+```
+
+Submitting posts `title=...&author[name]=...`, which the server nests back
+into `params` — `Post.create(permit(params, {"title": true, "author":
+{"name": true}}))` stores the same nested document the form displayed.
+Collections take an index: `f.fields_for("items", 0)` renders
+`items[0][sku]` (numeric segments parse as hash keys `"0"`, `"1"`, …;
+`permit` converts a numeric-keyed hash back to an array).
+
+## permit() — strong parameters
+
+Schemaless cuts both ways: unfiltered mass-assignment would persist
+*anything* a client posts — extra keys, nested garbage, `"is_admin": true`.
+`permit(params, shape)` whitelists exactly the shape you expect and drops
+the rest:
+
+```soli
+def _permit_params(params)
+  return permit(params, {
+    "title": true,                            # scalar (containers dropped)
+    "tags": [],                               # array of scalars
+    "author": {"name": true, "email": true},  # nested hash
+    "items": [{"sku": true, "qty": true}]     # array of hashes
+  })
+end
+```
+
+`true` keeps a scalar and drops container values (structure can't smuggle
+through a scalar slot); `[]` keeps an array's scalar elements; a nested hash
+recurses; `[{...}]` filters each element of an array — and accepts a
+numeric-keyed hash (`items[0][sku]` parsing), returning an array. Unlisted
+keys are silently dropped. `soli generate scaffold` writes `_permit_params`
+in this style.
 
 ## Validation errors
 

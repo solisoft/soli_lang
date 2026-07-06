@@ -22,12 +22,25 @@ class FormBuilder
     url: String
     http_method: String
     form_attrs: Any
+    name_prefix: String
 
-    new(record, url, http_method, form_attrs)
+    new(record, url, http_method, form_attrs, name_prefix = "")
         this.record = record
         this.url = url
         this.http_method = http_method
         this.form_attrs = form_attrs
+        this.name_prefix = name_prefix
+    end
+
+    # Sub-builder for a nested document: fields render as name="author[name]"
+    # and prefill from record[field]. Pass an index for collections:
+    # fields_for("items", 0) renders name="items[0][sku]". The server nests
+    # bracket names back into params["author"]["name"] etc.
+    def fields_for(field, index = null)
+        prefix = field
+        prefix = this.name_prefix + "[" + field + "]" unless this.name_prefix.blank?
+        prefix = prefix + "[" + index.to_s + "]" unless index.nil?
+        new FormBuilder(this.value_for(field), "", "post", {}, prefix)
     end
 
     def open()
@@ -51,9 +64,9 @@ class FormBuilder
     def label(field, text = null, options = null)
         extra = this.attributes_without(options, [])
         caption = text ?? field.replace("_", " ").capitalize()
-        field_id = attr(field)
+        input_id = this.id_for(field)
         escaped_caption = h(caption)
-        "<label for=\"#{field_id}\"#{extra}>#{escaped_caption}</label>"
+        "<label for=\"#{input_id}\"#{extra}>#{escaped_caption}</label>"
     end
 
     def text_field(field, options = null)
@@ -90,41 +103,46 @@ class FormBuilder
 
     def text_area(field, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class", "value"])
+        extra = this.attributes_without(opts, ["class", "value", "name"])
         class_attr = this.class_attribute(field, opts)
         invalid = this.invalid_attribute(field)
         value = opts["value"] ?? this.value_for(field)
-        field_id = attr(field)
+        input_id = this.id_for(field)
+        input_name = this.name_for(field, opts)
         escaped_value = h(value.to_s)
-        "<textarea id=\"#{field_id}\" name=\"#{field_id}\"#{class_attr}#{invalid}#{extra}>#{escaped_value}</textarea>"
+        "<textarea id=\"#{input_id}\" name=\"#{input_name}\"#{class_attr}#{invalid}#{extra}>#{escaped_value}</textarea>"
     end
 
     def check_box(field, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class", "value"])
+        extra = this.attributes_without(opts, ["class", "value", "name"])
         class_attr = this.class_attribute(field, opts)
         current = this.value_for(field)
         checked = ""
         checked = " checked" if current == true || current.to_s == "true"
-        field_id = attr(field)
-        "<input type=\"checkbox\" id=\"#{field_id}\" name=\"#{field_id}\" value=\"true\"#{checked}#{class_attr}#{extra}>"
+        input_id = this.id_for(field)
+        input_name = this.name_for(field, opts)
+        "<input type=\"checkbox\" id=\"#{input_id}\" name=\"#{input_name}\" value=\"true\"#{checked}#{class_attr}#{extra}>"
     end
 
     def radio_button(field, value, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class"])
+        extra = this.attributes_without(opts, ["class", "name"])
         class_attr = this.class_attribute(field, opts)
         checked = ""
         checked = " checked" if this.value_for(field).to_s == value.to_s
-        field_name = attr(field)
+        input_id = this.id_for(field)
+        input_name = this.name_for(field, opts)
         option_value = attr(value.to_s)
-        "<input type=\"radio\" id=\"#{field_name}_#{option_value}\" name=\"#{field_name}\" value=\"#{option_value}\"#{checked}#{class_attr}#{extra}>"
+        "<input type=\"radio\" id=\"#{input_id}_#{option_value}\" name=\"#{input_name}\" value=\"#{option_value}\"#{checked}#{class_attr}#{extra}>"
     end
 
-    # choices: array of strings, or array of [label, value] pairs.
+    # choices: array of strings, or array of [label, value] pairs. Pass
+    # {"multiple": true} for a multi-select — the name gains [] so the
+    # server collects the selections into an array.
     def select(field, choices, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class"])
+        extra = this.attributes_without(opts, ["class", "name", "multiple"])
         class_attr = this.class_attribute(field, opts)
         invalid = this.invalid_attribute(field)
         current = this.value_for(field).to_s
@@ -142,8 +160,14 @@ class FormBuilder
             option_label = h(choice_label.to_s)
             options_html = options_html + "<option value=\"#{option_value}\"#{selected}>#{option_label}</option>"
         end
-        field_id = attr(field)
-        "<select id=\"#{field_id}\" name=\"#{field_id}\"#{class_attr}#{invalid}#{extra}>#{options_html}</select>"
+        input_id = this.id_for(field)
+        input_name = this.name_for(field, opts)
+        multiple_attr = ""
+        if opts["multiple"] == true
+            input_name = input_name + "[]"
+            multiple_attr = " multiple"
+        end
+        "<select id=\"#{input_id}\" name=\"#{input_name}\"#{multiple_attr}#{class_attr}#{invalid}#{extra}>#{options_html}</select>"
     end
 
     def submit(text = null, options = null)
@@ -187,7 +211,7 @@ class FormBuilder
 
     def input(input_type, field, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class", "value"])
+        extra = this.attributes_without(opts, ["class", "value", "name"])
         class_attr = this.class_attribute(field, opts)
         invalid = this.invalid_attribute(field)
         value = opts["value"]
@@ -199,14 +223,35 @@ class FormBuilder
             escaped_value = attr(value.to_s)
             value_attr = " value=\"#{escaped_value}\""
         end
-        field_id = attr(field)
-        "<input type=\"#{input_type}\" id=\"#{field_id}\" name=\"#{field_id}\"#{value_attr}#{class_attr}#{invalid}#{extra}>"
+        input_id = this.id_for(field)
+        input_name = this.name_for(field, opts)
+        "<input type=\"#{input_type}\" id=\"#{input_id}\" name=\"#{input_name}\"#{value_attr}#{class_attr}#{invalid}#{extra}>"
     end
 
     def value_for(field)
         return null if this.record.nil?
 
         this.record[field]
+    end
+
+    # name attribute: prefixed bracket form under fields_for, flat otherwise.
+    # A "name" option on the helper overrides it verbatim.
+    def name_for(field, opts)
+        override = opts["name"]
+        return attr(override.to_s) unless override.nil?
+
+        return attr(field) if this.name_prefix.blank?
+
+        attr(this.name_prefix + "[" + field + "]")
+    end
+
+    # id attribute: brackets flattened to underscores (author[name] →
+    # author_name) so labels stay linkable.
+    def id_for(field)
+        return attr(field) if this.name_prefix.blank?
+
+        flat_prefix = this.name_prefix.replace("][", "_").replace("[", "_").replace("]", "")
+        attr(flat_prefix + "_" + field)
     end
 
     def field_errors(field)

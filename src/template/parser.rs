@@ -262,31 +262,34 @@ fn rewrite_each_opener(code: &str) -> Option<String> {
     Some(format!("for {} in {}", idents.join(", "), iterable))
 }
 
-/// Split a `form_with(...) do` / `form_with(...) do |var|` block opener into
-/// (builder-call source, block variable — default `f`). `None` when the code
-/// isn't that shape (e.g. a plain `<% f = form_with(post) %>` assignment).
-fn form_with_block_parts(code: &str) -> Option<(&str, String)> {
+/// Split a builder block opener — `form_with(...) do [|var|]` or
+/// `<recv>.fields_for(...) do [|var|]` — into (builder-call source, block
+/// variable, wraps_output). `wraps_output` is true for `form_with` (the
+/// body is wrapped in `open()`/`close()`); a `fields_for` block only binds
+/// the sub-builder. `None` when the code isn't a block opener (e.g. a plain
+/// `<% f = form_with(post) %>` assignment).
+fn form_with_block_parts(code: &str) -> Option<(&str, String, bool)> {
     let code = code.trim();
-    if !code.starts_with("form_with") {
-        return None;
-    }
-    if let Some(rest) = code.strip_suffix('|') {
+    let (head, var) = if let Some(rest) = code.strip_suffix('|') {
         let bar = rest.rfind('|')?;
         let var = rest[bar + 1..].trim();
         let head = rest[..bar].trim_end().strip_suffix("do")?.trim_end();
         let valid_ident = !var.is_empty()
             && !var.starts_with(|c: char| c.is_ascii_digit())
             && var.chars().all(|c| c.is_alphanumeric() || c == '_');
-        if !valid_ident || !head.starts_with("form_with") {
+        if !valid_ident {
             return None;
         }
-        Some((head, var.to_string()))
+        (head, var.to_string())
     } else {
-        let head = code.strip_suffix("do")?.trim_end();
-        if !head.starts_with("form_with") {
-            return None;
-        }
-        Some((head, "f".to_string()))
+        (code.strip_suffix("do")?.trim_end(), "f".to_string())
+    };
+    if head.starts_with("form_with") {
+        Some((head, var, true))
+    } else if head.contains(".fields_for(") && head.ends_with(')') {
+        Some((head, var, false))
+    } else {
+        None
     }
 }
 
@@ -450,10 +453,10 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
                     // Malformed capture (missing `do`); the template parser
                     // reports the friendly error, nothing to lint here.
                     continue;
-                } else if let Some((_, var)) = form_with_block_parts(code) {
-                    // A form_with block opener: balance its `end` and bind
-                    // the block param so `f.text_field(...)` in the body
-                    // doesn't trip undefined-local.
+                } else if let Some((_, var, _)) = form_with_block_parts(code) {
+                    // A form_with/fields_for block opener: balance its `end`
+                    // and bind the block param so `f.text_field(...)` in the
+                    // body doesn't trip undefined-local.
                     (std::borrow::Cow::Owned(format!("for {} in []", var)), *line)
                 } else {
                     (std::borrow::Cow::Borrowed(code), *line)
@@ -941,15 +944,26 @@ fn parse_form_with_block(
     tokens: &[Token],
     open_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
-    let (head, var) = match &tokens[0] {
+    let (head, var, wraps_output) = match &tokens[0] {
         Token::Code(code, _) => form_with_block_parts(code)
             .ok_or_else(|| format!("Expected form_with block at line {}", open_line))?,
         _ => return Err(format!("Expected form_with block at line {}", open_line)),
     };
     ensure_loop_var_not_keyword(&var, "form_with block parameter", open_line)?;
     let builder_expr = parse_core_expr(head, open_line)?;
-    let open_expr = parse_core_expr(&format!("{}.open()", var), open_line)?;
-    let close_expr = parse_core_expr(&format!("{}.close()", var), open_line)?;
+    // fields_for blocks bind the sub-builder without wrapping the body in
+    // any output — their open/close render as empty strings.
+    let (open_expr, close_expr) = if wraps_output {
+        (
+            parse_core_expr(&format!("{}.open()", var), open_line)?,
+            parse_core_expr(&format!("{}.close()", var), open_line)?,
+        )
+    } else {
+        (
+            parse_core_expr("\"\"", open_line)?,
+            parse_core_expr("\"\"", open_line)?,
+        )
+    };
 
     let mut body = Vec::new();
     let mut i = 1; // Skip the opener token

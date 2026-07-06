@@ -13183,6 +13183,53 @@
         "credentials",
         "options request"
       ]
+    },
+    {
+      "title": "permit",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/request-params",
+      "signature": "permit(params, shape) -> Hash",
+      "description": "Strong parameters for documents: whitelist-filter a (nested) params hash \u2014 scalars, arrays, nested shapes; everything else is dropped.",
+      "keywords": [
+        "permit",
+        "strong parameters",
+        "mass assignment",
+        "whitelist",
+        "params",
+        "security"
+      ]
+    },
+    {
+      "title": "fields_for",
+      "type": "function",
+      "category": "Views",
+      "path": "/docs/core-concepts/forms",
+      "signature": "f.fields_for(field, index?) -> FormBuilder",
+      "description": "Nested form sub-builder: fields render as author[name] and prefill from the nested document; the server nests them back into params.",
+      "keywords": [
+        "fields_for",
+        "nested form",
+        "nested params",
+        "sub-builder",
+        "form builder"
+      ]
+    },
+    {
+      "title": "Nested Parameters",
+      "type": "guide",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/request-params",
+      "signature": "",
+      "description": "Bracket keys nest Rack-style: author[name], tags[], items[][sku] \u2014 form, multipart, and query params alike; filter with permit().",
+      "keywords": [
+        "nested params",
+        "bracket",
+        "array params",
+        "tags[]",
+        "rack",
+        "parse"
+      ]
     }
   ]
 }

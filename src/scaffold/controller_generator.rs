@@ -19,21 +19,16 @@ pub fn create_controller(
     let model_name = to_pascal_case(name);
     let model_var = to_snake_case(name);
 
-    // Generate the list of permitted parameters for mass assignment protection
+    // Whitelist shape for permit() — mass-assignment protection. SoliDB is
+    // schemaless, so anything not filtered here would persist verbatim.
     let permitted_params = fields
         .iter()
-        .map(|f| {
-            format!(
-                r#"            "{}": params["{}"]"#,
-                f.to_snake_case(),
-                f.to_snake_case()
-            )
-        })
+        .map(|f| format!(r#"      "{}": true"#, f.to_snake_case()))
         .collect::<Vec<_>>()
         .join(",\n");
 
     let permitted_params = if permitted_params.is_empty() {
-        "            # (no fields defined)".to_string()
+        "      # (no fields defined)".to_string()
     } else {
         permitted_params
     };

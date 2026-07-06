@@ -1,6 +1,5 @@
 //! Multipart form handling and file upload utilities
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use base64::{engine::general_purpose, Engine as _};
@@ -36,8 +35,10 @@ pub(crate) fn max_upload_files() -> usize {
 pub async fn parse_multipart_body(
     body_bytes: &[u8],
     content_type: &str,
-) -> (HashMap<String, String>, Vec<UploadedFile>) {
-    let mut form_fields = HashMap::new();
+) -> (Vec<(String, String)>, Vec<UploadedFile>) {
+    // Ordered pairs: repeated bracket-array fields (tags[]) must survive
+    // and keep submission order for Rack-style nesting.
+    let mut form_fields = Vec::new();
     let mut files = Vec::new();
 
     // Extract boundary from content-type header
@@ -92,7 +93,7 @@ pub async fn parse_multipart_body(
             } else {
                 // This is a regular form field
                 let value = String::from_utf8_lossy(&data).to_string();
-                form_fields.insert(name, value);
+                form_fields.push((name, value));
             }
         }
     }

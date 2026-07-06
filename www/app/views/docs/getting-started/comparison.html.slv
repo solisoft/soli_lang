@@ -54,7 +54,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Views</td>
-                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, <code>content_for</code>/named <code>yield</code>, Rails-style form builder (<code>form_with(post) do |f|</code> blocks &mdash; derived URLs/verbs, value prefill, validation errors, per-form CSRF tokens, <code>button_to</code>, <code>_method</code> override), markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
+                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, <code>content_for</code>/named <code>yield</code>, Rails-style form builder (<code>form_with(post) do |f|</code> blocks &mdash; derived URLs/verbs, value prefill, validation errors, per-form CSRF tokens, <code>button_to</code>, <code>_method</code> override, <code>fields_for</code> nested sub-builders), Rack-style nested params (<code>author[name]</code>, <code>tags[]</code>), markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">ORM</td>
@@ -66,7 +66,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Auth &amp; security</td>
-                        <td class="py-3 px-4 text-gray-400"><code>soli generate auth</code> (Argon2id, session-fixation defense, password reset, email confirmation, remember-me, account lockout), Pundit-style policies (deny by default), <code>attr_accessible</code> mass-assignment whitelist, schema-based input validation (<code>V</code>, with type coercion), security headers on by default in prod, layered CSRF (Origin/Referer gate + verified per-form tokens), declarative CORS (<code>cors("/api/*", {...})</code> &mdash; preflights, response headers, origin-checked CSRF opt-in), SSRF-hardened HTTP client, encrypted app bundles</td>
+                        <td class="py-3 px-4 text-gray-400"><code>soli generate auth</code> (Argon2id, session-fixation defense, password reset, email confirmation, remember-me, account lockout), Pundit-style policies (deny by default), <code>attr_accessible</code> + nested <code>permit()</code> mass-assignment whitelists, schema-based input validation (<code>V</code>, with type coercion), security headers on by default in prod, layered CSRF (Origin/Referer gate + verified per-form tokens), declarative CORS (<code>cors("/api/*", {...})</code> &mdash; preflights, response headers, origin-checked CSRF opt-in), SSRF-hardened HTTP client, encrypted app bundles</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Jobs &amp; mail</td>
@@ -121,7 +121,6 @@
     <h3 class="text-xl font-semibold text-white mb-4">Framework surface</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No auto-generated admin panel</strong> &mdash; a deliberate choice in 2026: every new app ships agent-ready (<code>CLAUDE.md</code>/<code>AGENTS.md</code>, permission presets, <code>/soli-resource</code>), so the bet is that a coding agent plus <code>soli generate scaffold</code> builds you a <em>bespoke</em> admin faster than you'd customize a generic one. If you want a Django-admin-style CRUD UI with zero building, it isn't here.</li>
-        <li><strong class="text-white">Form builder is flat.</strong> <code>form_with(post) do |f| ... end</code> matches Rails' shape (derived URLs/verbs, prefill, errors, per-form CSRF tokens, <code>button_to</code>), but field names stay flat (<code>name="title"</code>, matching Soli's flat <code>params</code>) &mdash; no nested/indexed params and no <code>fields_for</code>-style nested forms.</li>
         <li><strong class="text-white">No signed/encrypted cookie <em>jar</em></strong> &mdash; <code>set_cookie</code> writes bare cookies (no Rails-style <code>cookies.encrypted[...]</code> for arbitrary values). Sessions themselves can be client-side and encrypted: the <code>cookie</code> session driver seals the whole session with AES-256-GCM, Rails-cookie-store-style.</li>
         <li><strong class="text-white">View composition is lean</strong> &mdash; layouts, partials with locals, and Rails-style <code>content_for</code>/named <code>yield</code> blocks; no component/slot system (ViewComponent, Phoenix components).</li>
         <li><strong class="text-white">LiveView is young.</strong> Patching is DOM-aware &mdash; the client morphs nodes in place with keyed reconciliation (<code>soli-key</code>/<code>soli-ignore</code>), so focus and widget state survive updates &mdash; but the directive set is a subset of Phoenix's: no debounce/throttle, JS commands, uploads, streams, or nested live components.</li>
@@ -164,7 +163,7 @@
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">vs Ruby on Rails</h3>
             <p class="text-gray-400 text-sm mb-3">Rails remains the DX benchmark, and Soli borrows its conventions deliberately.</p>
-            <p class="text-gray-400 text-sm mb-2"><strong class="text-orange-300">Rails is ahead on:</strong> ActiveRecord maturity (multi-DB, richer association options, decades of edge cases), nested forms (<code>fields_for</code>), Hotwire, Devise/OmniAuth, ActiveAdmin, ActionMailbox/ActionText, system tests, and the gem ecosystem.</p>
+            <p class="text-gray-400 text-sm mb-2"><strong class="text-orange-300">Rails is ahead on:</strong> ActiveRecord maturity (multi-DB, richer association options, decades of edge cases), Hotwire, Devise/OmniAuth, ActiveAdmin, ActionMailbox/ActionText, system tests, and the gem ecosystem.</p>
             <p class="text-gray-400 text-sm"><strong class="text-amber-300">Soli is ahead on:</strong> raw throughput and memory footprint by an order of magnitude, single-binary deployment, built-in profiling/N+1 tooling, document/e-invoice/signature capabilities, and zero-toolchain frontend.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">

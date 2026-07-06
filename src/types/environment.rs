@@ -466,6 +466,15 @@ impl TypeEnvironment {
             },
         );
 
+        // permit(params, shape) -> Hash
+        self.functions.insert(
+            "permit".to_string(),
+            Type::Function {
+                params: vec![Type::Any, Type::Any],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
         // ulid() -> String
         self.functions.insert(
             "ulid".to_string(),
