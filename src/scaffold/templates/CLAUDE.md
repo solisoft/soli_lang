@@ -54,7 +54,11 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 1. `soli generate model post` → fill fields, validations, associations.
 2. `soli generate migration create_posts` → fill `up`/`down`, then `soli db:migrate up`.
 3. `soli generate controller posts` → fill `index`/`show`/`create`/etc.
-4. In `config/routes.sl` add `resources("posts")`.
+4. In `config/routes.sl` add `resources("posts")
+
+# Built-in CORS for browser-facing APIs: answers preflights, stamps the
+# allow headers, and opens the CSRF origin gate for the listed origins only.
+cors("/api/*", {"origins": ["https://app.example.com"], "credentials": true})`.
 5. Edit `app/views/posts/*.html.slv`.
 6. Add specs in `tests/posts_controller_spec.sl`.
 7. Run the verification loop.

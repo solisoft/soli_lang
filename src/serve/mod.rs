@@ -7,6 +7,7 @@
 //! - Middleware support for request interception
 
 mod asset_cache;
+pub mod cors;
 pub mod dev_bar;
 pub mod dev_store;
 mod hot_reload;
@@ -995,7 +996,31 @@ fn run_hyper_server_worker_pool(
                                     .body(full(Bytes::from("Server shutting down")))
                                     .unwrap());
                             }
-                            handle_hyper_request(
+                            // Built-in CORS (`cors("/api/*", {...})` in
+                            // config/routes.sl). Wraps the whole handler so
+                            // every response of a CORS-managed path —
+                            // buffered, streamed, static, or error — carries
+                            // the allow headers, and preflights are answered
+                            // before routing.
+                            let cors_decision = cors::evaluate(
+                                req.method().as_str(),
+                                req.uri().path(),
+                                req.headers(),
+                            );
+                            if let Some(preflight) =
+                                cors_decision.as_ref().and_then(|d| d.preflight.as_ref())
+                            {
+                                let mut builder = Response::builder()
+                                    .status(StatusCode::NO_CONTENT)
+                                    .header("Server", "soliMVC");
+                                for (key, value) in preflight {
+                                    builder = add_header_checked(builder, key, value);
+                                }
+                                return Ok(builder
+                                    .body(full(Bytes::new()))
+                                    .unwrap_or_else(|_| Response::new(full(Bytes::new()))));
+                            }
+                            let result = handle_hyper_request(
                                 req,
                                 request_tx,
                                 reload_tx,
@@ -1006,7 +1031,21 @@ fn run_hyper_server_worker_pool(
                                 dev_mode,
                                 peer_addr,
                             )
-                            .await
+                            .await;
+                            match (result, cors_decision) {
+                                (Ok(mut response), Some(decision)) => {
+                                    for (key, value) in decision.response_headers {
+                                        if let (Ok(name), Ok(val)) = (
+                                            hyper::header::HeaderName::try_from(key.as_str()),
+                                            hyper::header::HeaderValue::try_from(value.as_str()),
+                                        ) {
+                                            response.headers_mut().append(name, val);
+                                        }
+                                    }
+                                    Ok(response)
+                                }
+                                (result, _) => result,
+                            }
                         }
                     });
 
@@ -3575,6 +3614,14 @@ fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Re
     }
     if csrf_disabled_by_env() {
         return Ok(());
+    }
+    // A `cors("/path", {...})` declaration allowing this Origin is an
+    // explicit cross-origin opt-in for the path — more precise than
+    // `skip_csrf`, since the origin is checked against the declared list.
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        if cors::allows_cross_origin(path, origin.trim()) {
+            return Ok(());
+        }
     }
 
     let request_authority = match websocket_request_authority(headers) {

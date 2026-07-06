@@ -13166,6 +13166,23 @@
         "link",
         "confirm"
       ]
+    },
+    {
+      "title": "cors",
+      "type": "function",
+      "category": "Routing",
+      "path": "/docs/core-concepts/routing",
+      "signature": "cors(path_pattern, options?) -> Void",
+      "description": "Built-in CORS: declare cross-origin access per path \u2014 preflights answered before routing, allow headers on every response, origin-checked CSRF opt-in.",
+      "keywords": [
+        "cors",
+        "cross-origin",
+        "preflight",
+        "access-control-allow-origin",
+        "origins",
+        "credentials",
+        "options request"
+      ]
     }
   ]
 }

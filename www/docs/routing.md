@@ -189,7 +189,7 @@ Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `
 
 When **neither** `Origin` nor `Referer` is present, Soli branches on the `Cookie` header: a cookie-bearing request is rejected (it has no proof of same-site provenance and is exactly the stripped-UA / proxy bypass surface), while a cookie-less request is allowed (typical of non-browser API clients like cURL or mobile apps that don't ride a session cookie). Cookie-bearing endpoints that legitimately can't rely on `Origin`/`Referer` should use the `skip_csrf` route-level opt-out below.
 
-For routes that legitimately accept cross-origin POSTs — Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks — opt out per route via `skip_csrf`:
+For routes that legitimately accept cross-origin POSTs — Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks — opt out per route via `skip_csrf` (for browser-facing APIs, prefer [`cors()`](#cors), which opens the gate only for the origins it declares):
 
 ```soli
 # config/routes.sl
@@ -209,6 +209,42 @@ The pattern is matched against the request path; `/prefix/*` covers `/prefix` an
 On top of the origin gate, Soli verifies **per-form CSRF tokens**: any state-changing request that carries a token — the `_csrf_token` field that `form_with` / `csrf_field()` embed, or the `X-CSRF-Token` header fed by `csrf_meta_tag()` — must match the session's token (constant-time compare) or it is rejected with 403 even when the Origin check passed. Requests without a token keep the origin posture; set `SOLI_CSRF_TOKENS=require` to make tokens mandatory for browser form posts. Both `skip_csrf` and `SOLI_DISABLE_CSRF` opt out of both layers. See [Forms & CSRF](/docs/core-concepts/forms) for the form builder that wires all of this up.
 
 HTML forms can only express GET and POST — a POST whose form body carries `_method=PUT|PATCH|DELETE` is routed as that verb (the builder emits the hidden field), which is how `resources(...)` update/destroy routes work from plain forms.
+
+## CORS
+
+Declare cross-origin access per path with `cors()` — no middleware to write:
+
+```soli
+# config/routes.sl
+cors("/api/*", {
+  "origins": ["https://app.example.com"],   # or "*" (the default)
+  "methods": ["GET", "POST", "PATCH", "DELETE"],
+  "headers": ["Content-Type", "Authorization"],
+  "expose": ["X-Request-Id"],
+  "credentials": true,
+  "max_age": 86400
+})
+```
+
+The server handles the rest:
+
+- **Preflights** (`OPTIONS` + `Origin` + `Access-Control-Request-Method`) are
+  answered before routing with `204` and the allow headers — no `OPTIONS`
+  routes to define.
+- **Every response** of a CORS-managed path — rendered, streamed (SSE),
+  static, or error — carries `Access-Control-Allow-Origin` (plus
+  credentials/expose headers) and `Vary: Origin`.
+- **The CSRF origin gate opens** for an allowed `Origin` on that path — a
+  `cors()` declaration is a more precise cross-origin opt-in than
+  `skip_csrf`, because the origin is checked against the declared list. A
+  cross-origin POST from an origin *not* in the list still gets `403`.
+
+All options are optional. `origins` defaults to `"*"`; with
+`"credentials": true` the allow-origin header echoes the requesting origin
+(never `*`, per spec). An empty `headers` list echoes whatever the preflight
+asked for. Unknown option keys raise, so a typo can't silently weaken the
+policy. Re-declaring a pattern replaces its rule, so routes hot-reload picks
+up config edits.
 
 ## Listing Routes (`soli routes`)
 

@@ -745,6 +745,124 @@ pub fn register_router_builtins(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+
+    // cors(path_pattern, options?) — declare cross-origin access for a path
+    // (or `/prefix/*`), handled entirely by the server: preflights are
+    // answered before routing, allow headers are stamped on every response
+    // of the path, and an allowed Origin passes the same-origin CSRF gate.
+    //
+    // Examples (config/routes.sl):
+    //   cors("/api/*")                                        # any origin, no credentials
+    //   cors("/api/*", {"origins": ["https://app.example.com"],
+    //                   "credentials": true,
+    //                   "expose": ["X-Request-Id"]})
+    //
+    // Options: origins (String "*" or Array, default "*"), methods (Array,
+    // default GET/POST/PUT/PATCH/DELETE), headers (Array; empty echoes the
+    // preflight's requested headers), expose (Array), credentials (Bool,
+    // default false), max_age (Int seconds, default 86400). Unknown keys
+    // raise so a typo can't silently weaken the policy.
+    env.define(
+        "cors".to_string(),
+        Value::NativeFunction(NativeFunction::new("cors", None, |args| {
+            let pattern = match args.first() {
+                Some(Value::String(s)) => s.to_string(),
+                Some(other) => {
+                    return Err(format!(
+                        "cors() expects string path pattern, got {}",
+                        other.type_name()
+                    ))
+                }
+                None => return Err("cors() requires a path pattern".to_string()),
+            };
+
+            fn string_list(value: &Value, option: &str) -> Result<Vec<String>, String> {
+                match value {
+                    Value::String(s) => Ok(vec![s.to_string()]),
+                    Value::Array(items) => items
+                        .borrow()
+                        .iter()
+                        .map(|item| match item {
+                            Value::String(s) => Ok(s.to_string()),
+                            other => Err(format!(
+                                "cors() option '{}' expects strings, got {}",
+                                option,
+                                other.type_name()
+                            )),
+                        })
+                        .collect(),
+                    other => Err(format!(
+                        "cors() option '{}' expects a string or array of strings, got {}",
+                        option,
+                        other.type_name()
+                    )),
+                }
+            }
+
+            let mut rule = crate::serve::cors::CorsRule {
+                pattern,
+                origins: vec!["*".to_string()],
+                methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect(),
+                allow_headers: vec![],
+                expose_headers: vec![],
+                credentials: false,
+                max_age: 86400,
+            };
+
+            if let Some(options) = args.get(1) {
+                let Value::Hash(map) = options else {
+                    return Err(format!(
+                        "cors() expects an options hash, got {}",
+                        options.type_name()
+                    ));
+                };
+                for (key, value) in map.borrow().iter() {
+                    let name = key.to_value().to_string();
+                    match name.as_str() {
+                        "origins" => rule.origins = string_list(value, "origins")?,
+                        "methods" => {
+                            rule.methods = string_list(value, "methods")?
+                                .into_iter()
+                                .map(|m| m.to_uppercase())
+                                .collect()
+                        }
+                        "headers" => rule.allow_headers = string_list(value, "headers")?,
+                        "expose" => rule.expose_headers = string_list(value, "expose")?,
+                        "credentials" => match value {
+                            Value::Bool(b) => rule.credentials = *b,
+                            other => {
+                                return Err(format!(
+                                    "cors() option 'credentials' expects a boolean, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        },
+                        "max_age" => match value {
+                            Value::Int(n) if *n >= 0 => rule.max_age = *n as u64,
+                            other => {
+                                return Err(format!(
+                                    "cors() option 'max_age' expects a non-negative integer, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        },
+                        unknown => {
+                            return Err(format!(
+                                "cors() got unknown option '{}' (expected origins, methods, headers, expose, credentials, max_age)",
+                                unknown
+                            ))
+                        }
+                    }
+                }
+            }
+
+            crate::serve::cors::register_cors_rule(rule);
+            Ok(Value::Null)
+        })),
+    );
 }
 
 #[cfg(test)]

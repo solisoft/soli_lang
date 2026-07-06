@@ -292,6 +292,7 @@ soli lint path/to/file.sl   # Lint specific file
 get("/", "home#index");
 post("/users", "users#create");
 resources("posts");  // RESTful routes
+cors("/api/*", {"origins": ["https://app.example.com"]});  // built-in CORS: preflights + headers + origin-checked CSRF opt-in
 ```
 
 **Controller**:

@@ -521,7 +521,7 @@ resources("/admin/merchants", "admin/merchants")</code></pre>
             When <strong>neither</strong> <code class="text-amber-400">Origin</code> nor <code class="text-amber-400">Referer</code> is present, Soli branches on the <code class="text-amber-400">Cookie</code> header: a cookie-bearing request is rejected (it has no proof of same-site provenance and is exactly the stripped-UA / proxy bypass surface), while a cookie-less request is allowed (typical of non-browser API clients like cURL or mobile apps that don't ride a session cookie). Cookie-bearing endpoints that legitimately can't rely on <code class="text-amber-400">Origin</code>/<code class="text-amber-400">Referer</code> should use the <code class="text-amber-400">skip_csrf</code> route-level opt-out below.
         </p>
         <p class="text-gray-300 text-sm mb-3">
-            For routes that legitimately accept cross-origin POSTs &mdash; Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks &mdash; opt out per route via <code class="text-amber-400">skip_csrf</code>:
+            For routes that legitimately accept cross-origin POSTs &mdash; Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks &mdash; opt out per route via <code class="text-amber-400">skip_csrf</code> (for browser-facing APIs, prefer <a href="#cors" class="text-amber-400 hover:text-amber-300">cors()</a>, which opens the gate only for the origins it declares):
         </p>
         <pre class="rounded-lg bg-black/30 p-4 overflow-x-auto"><code class="language-soli text-sm"># config/routes.sl
 
@@ -540,6 +540,32 @@ post("/api/orders", "api#orders_create");</code></pre>
             On top of the origin gate, Soli verifies <strong>per-form CSRF tokens</strong>: any state-changing request that carries a token &mdash; the <code class="text-amber-400">_csrf_token</code> field that <code class="text-amber-400">form_with</code> / <code class="text-amber-400">csrf_field()</code> embed, or the <code class="text-amber-400">X-CSRF-Token</code> header fed by <code class="text-amber-400">csrf_meta_tag()</code> &mdash; must match the session&#39;s token (constant-time compare) or it is rejected with 403 even when the Origin check passed. Requests without a token keep the origin posture; set <code class="text-amber-400">SOLI_CSRF_TOKENS=require</code> to make tokens mandatory for browser form posts. Both <code class="text-amber-400">skip_csrf</code> and <code class="text-amber-400">SOLI_DISABLE_CSRF</code> opt out of both layers. A POST carrying <code class="text-amber-400">_method=PUT|PATCH|DELETE</code> in its form body is routed as that verb, which is how <code class="text-amber-400">resources(...)</code> update/destroy routes work from plain HTML forms. See <a href="/docs/core-concepts/forms" class="text-amber-400 hover:text-amber-300">Forms &amp; CSRF</a> for the form builder that wires all of this up.
         </p>
     </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6" id="cors">CORS</h2>
+    <p class="text-gray-400 mb-6">
+        Declare cross-origin access per path with <code class="text-amber-400">cors()</code> &mdash; no middleware to write:
+    </p>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <pre data-filename="config/routes.sl"><code class="language-soli text-sm">cors("/api/*", {
+  "origins": ["https://app.example.com"],   # or "*" (the default)
+  "methods": ["GET", "POST", "PATCH", "DELETE"],
+  "headers": ["Content-Type", "Authorization"],
+  "expose": ["X-Request-Id"],
+  "credentials": true,
+  "max_age": 86400
+})</code></pre>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+        <li><strong class="text-white">Preflights</strong> (<code>OPTIONS</code> + <code>Origin</code> + <code>Access-Control-Request-Method</code>) are answered before routing with <code>204</code> and the allow headers &mdash; no <code>OPTIONS</code> routes to define.</li>
+        <li><strong class="text-white">Every response</strong> of a CORS-managed path &mdash; rendered, streamed (SSE), static, or error &mdash; carries <code>Access-Control-Allow-Origin</code> (plus credentials/expose headers) and <code>Vary: Origin</code>.</li>
+        <li><strong class="text-white">The CSRF origin gate opens</strong> for an allowed <code>Origin</code> on that path &mdash; a <code class="text-amber-400">cors()</code> declaration is a more precise cross-origin opt-in than <code class="text-amber-400">skip_csrf</code>, because the origin is checked against the declared list. A cross-origin POST from an origin <em>not</em> in the list still gets <code>403</code>.</li>
+    </ul>
+
+    <p class="text-gray-400 mb-12">
+        All options are optional. <code class="text-amber-400">origins</code> defaults to <code>"*"</code>; with <code class="text-amber-400">"credentials": true</code> the allow-origin header echoes the requesting origin (never <code>*</code>, per spec). An empty <code class="text-amber-400">headers</code> list echoes whatever the preflight asked for. Unknown option keys raise, so a typo can't silently weaken the policy. Re-declaring a pattern replaces its rule, so routes hot-reload picks up config edits.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6" id="listing-routes">Listing Routes (<code>soli routes</code>)</h2>
     <p class="text-gray-400 mb-6">

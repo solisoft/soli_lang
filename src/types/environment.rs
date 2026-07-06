@@ -457,6 +457,15 @@ impl TypeEnvironment {
             },
         );
 
+        // cors(pattern, options?) -> Void
+        self.functions.insert(
+            "cors".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
         // ulid() -> String
         self.functions.insert(
             "ulid".to_string(),
