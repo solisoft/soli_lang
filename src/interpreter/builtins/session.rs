@@ -849,6 +849,19 @@ pub fn take_response_cookies() -> Vec<(String, String, String)> {
     RESPONSE_COOKIES.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
+/// Last-written value of a response cookie set earlier in this request, if
+/// any. Lets `read_cookie` honor the same-request read-your-write contract
+/// without waiting for the value to round-trip through the browser.
+pub fn peek_response_cookie(name: &str) -> Option<String> {
+    RESPONSE_COOKIES.with(|c| {
+        c.borrow()
+            .iter()
+            .rev()
+            .find(|(n, _, _)| n == name)
+            .map(|(_, v, _)| v.clone())
+    })
+}
+
 /// Parse a Cookie header string into a HashMap of name -> value.
 pub fn parse_cookies_from_header(cookie_header: Option<&str>) -> HashMap<String, String> {
     let mut cookies = HashMap::new();
@@ -1426,10 +1439,11 @@ pub fn ensure_csrf_token() -> String {
 /// Register cookie-related builtins (set_cookie) that are available in all
 /// contexts (controllers, views, middleware).
 pub fn register_cookie_builtins(env: &mut Environment) {
-    // set_cookie(name, value) -> Null
+    // set_cookie(name, value, options?) -> Null
     env.define(
         "set_cookie".to_string(),
         Value::NativeFunction(NativeFunction::new("set_cookie", None, |args| {
+            use super::cookie_jar::SealMode;
             let name = match args.first() {
                 Some(Value::String(s)) => s.clone(),
                 Some(other) => {
@@ -1440,15 +1454,37 @@ pub fn register_cookie_builtins(env: &mut Environment) {
                 }
                 None => return Err("set_cookie() requires a name".to_string()),
             };
-            let value = match args.get(1) {
-                Some(Value::String(s)) => s.clone(),
-                Some(other) => {
-                    return Err(format!(
-                        "set_cookie() expects string value, got {}",
-                        other.type_name()
-                    ))
+            // Sealing options are consumed before the value is read: in
+            // sealed modes the value may be any JSON-serializable Soli value,
+            // not just a string.
+            let (seal_mode, seal_max_age) = match args.get(2) {
+                Some(Value::Hash(options)) => seal_options(&options.borrow())?,
+                _ => (SealMode::Plain, None),
+            };
+            let value = match seal_mode {
+                SealMode::Plain => match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    Some(other) => {
+                        return Err(format!(
+                            "set_cookie() expects string value, got {} (pass {{\"signed\": true}} \
+                             or {{\"encrypted\": true}} to store structured values)",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("set_cookie() requires a value".to_string()),
+                },
+                SealMode::Encrypted | SealMode::Signed => {
+                    let raw = args
+                        .get(1)
+                        .ok_or_else(|| "set_cookie() requires a value".to_string())?;
+                    let json = crate::interpreter::value::value_to_json(raw)?;
+                    let jar = super::cookie_jar::current_jar()?;
+                    if seal_mode == SealMode::Encrypted {
+                        jar.seal_encrypted(&name, &json, seal_max_age)?
+                    } else {
+                        jar.seal_signed(&name, &json, seal_max_age)?
+                    }
                 }
-                None => return Err("set_cookie() requires a value".to_string()),
             };
             validate_cookie_pair(&name, &value)?;
             let attrs = match args.get(2) {
@@ -1467,11 +1503,66 @@ pub fn register_cookie_builtins(env: &mut Environment) {
     );
 }
 
+/// Extract the sealing directives from `set_cookie`'s options hash:
+/// `"encrypted"`/`"signed"` booleans (mutually exclusive) plus the `max_age`
+/// the sealed payload embeds as its own expiry. Attribute keys are validated
+/// separately by `build_cookie_attributes`.
+fn seal_options(
+    options: &crate::interpreter::value::HashPairs,
+) -> Result<(super::cookie_jar::SealMode, Option<u64>), String> {
+    use super::cookie_jar::SealMode;
+    use crate::interpreter::value::HashKey;
+
+    let mut mode = SealMode::Plain;
+    let mut max_age = None;
+    for (k, v) in options.iter() {
+        let HashKey::String(key) = k else {
+            return Err("set_cookie() option keys must be strings".to_string());
+        };
+        match key.as_ref() {
+            "encrypted" | "signed" => match v {
+                Value::Bool(true) => {
+                    if mode != SealMode::Plain {
+                        return Err(
+                            "set_cookie() options \"encrypted\" and \"signed\" are mutually exclusive"
+                                .to_string(),
+                        );
+                    }
+                    mode = if key.as_ref() == "encrypted" {
+                        SealMode::Encrypted
+                    } else {
+                        SealMode::Signed
+                    };
+                }
+                Value::Bool(false) => {}
+                other => {
+                    return Err(format!(
+                        "set_cookie() {} must be a boolean, got {}",
+                        key,
+                        other.type_name()
+                    ))
+                }
+            },
+            "max_age" => {
+                if let Value::Int(n) = v {
+                    if *n >= 0 {
+                        max_age = Some(*n as u64);
+                    }
+                }
+                // Invalid max_age raises in build_cookie_attributes.
+            }
+            _ => {}
+        }
+    }
+    Ok((mode, max_age))
+}
+
 /// Render `set_cookie`'s options hash into a validated Set-Cookie attribute
 /// suffix. Supported keys: `path` (default "/"), `max_age` (seconds; 0
 /// expires the cookie immediately), `expires` (RFC-1123 date string),
 /// `http_only`, `secure` (booleans), `same_site` ("Lax"/"Strict"/"None"),
-/// `domain`. Unknown keys raise so typos can't silently weaken a cookie.
+/// `domain`; `encrypted`/`signed` are accepted but handled upstream by
+/// `seal_options`. Unknown keys raise so typos can't silently weaken a cookie.
 fn build_cookie_attributes(
     options: &crate::interpreter::value::HashPairs,
 ) -> Result<String, String> {
@@ -1542,9 +1633,12 @@ fn build_cookie_attributes(
                 attrs.push_str(&format!("; SameSite={}", normalized));
             }
             "domain" => attrs.push_str(&format!("; Domain={}", string_attr(v, "domain")?)),
+            // Sealing directives, consumed upstream by `seal_options` before
+            // the value was sealed — they are not Set-Cookie attributes.
+            "encrypted" | "signed" => {}
             other => {
                 return Err(format!(
-                    "set_cookie() unknown option \"{}\" (path, max_age, expires, http_only, secure, same_site, domain)",
+                    "set_cookie() unknown option \"{}\" (path, max_age, expires, http_only, secure, same_site, domain, encrypted, signed)",
                     other
                 ))
             }

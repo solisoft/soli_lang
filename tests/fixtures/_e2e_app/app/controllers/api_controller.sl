@@ -172,6 +172,36 @@ fn set_cookie_demo(req: Any) -> Any {
     return {"status": 200, "body": "cookie set"};
 }
 
+# Write one encrypted and one signed cookie, then read them back within the
+# same request (read-your-write via the response-cookie peek).
+fn jar_write(req: Any) -> Any {
+    set_cookie("jar_enc", {"theme": "dark", "count": 42}, {"encrypted": true, "max_age": 3600, "http_only": true});
+    set_cookie("jar_sig", 42, {"signed": true});
+    let readback = {
+        "enc": read_cookie("jar_enc", {"encrypted": true}),
+        "sig": read_cookie("jar_sig", {"signed": true})
+    };
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify(readback)
+    };
+}
+
+# Open sealed cookies from the incoming Cookie header. Tampered, forged or
+# absent values read as null.
+fn jar_read(req: Any) -> Any {
+    let result = {
+        "enc": read_cookie("jar_enc", {"encrypted": true}),
+        "sig": read_cookie("jar_sig", {"signed": true})
+    };
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify(result)
+    };
+}
+
 fn named_routes_probe(req: Any) -> Any {
     let result = {
         "posts_path": posts_path(),

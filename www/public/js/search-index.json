@@ -9617,13 +9617,49 @@
       "type": "function",
       "category": "Controllers",
       "path": "/docs/controllers#",
-      "signature": "set_cookie(name, value)",
-      "description": "Set a response cookie sent as a Set-Cookie header",
+      "signature": "set_cookie(name, value, options?)",
+      "description": "Set a response cookie; options control attributes (max_age, http_only, ...) and signed/encrypted sealing",
       "keywords": [
         "cookie",
         "set",
         "response",
-        "header"
+        "header",
+        "signed",
+        "encrypted"
+      ]
+    },
+    {
+      "title": "read_cookie",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/controllers#",
+      "signature": "read_cookie(name, options?)",
+      "description": "Read a cookie back, verifying/decrypting signed or encrypted values; invalid seals read as nil",
+      "keywords": [
+        "cookie",
+        "read",
+        "signed",
+        "encrypted",
+        "verify",
+        "decrypt"
+      ]
+    },
+    {
+      "title": "Signed & encrypted cookies",
+      "type": "guide",
+      "category": "Controllers",
+      "path": "/docs/controllers#",
+      "signature": "set_cookie(name, value, {\"encrypted\": true})",
+      "description": "Tamper-proof (HMAC-SHA256) and opaque (AES-256-GCM) cookie values keyed off SOLI_SESSION_SECRET, with name binding and embedded expiry",
+      "keywords": [
+        "cookie",
+        "jar",
+        "signed",
+        "encrypted",
+        "tamper",
+        "HMAC",
+        "AES",
+        "SOLI_SESSION_SECRET"
       ]
     },
     {

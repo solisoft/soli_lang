@@ -143,6 +143,16 @@ fn do_hmac_sha256(message: &str, key: &str) -> Result<String, String> {
     Ok(bytes_to_hex(&mac.finalize().into_bytes()))
 }
 
+/// Raw-bytes HMAC-SHA256 (the builtin above returns hex). Used by the signed
+/// cookie jar, whose wire format carries the MAC base64url-encoded.
+pub(crate) fn hmac_sha256_bytes(message: &[u8], key: &[u8]) -> Vec<u8> {
+    type HmacSha256 = Hmac<Sha256>;
+    // HMAC accepts keys of any length, so new_from_slice cannot fail.
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+    mac.update(message);
+    mac.finalize().into_bytes().to_vec()
+}
+
 /// Constant-time byte comparison. Returns false immediately for unequal-length
 /// inputs (length is not secret); for equal-length inputs the running time
 /// depends only on the length, not on the position of any differing byte.
@@ -461,6 +471,26 @@ fn resolve_aes_key(explicit: Option<&str>) -> Result<[u8; 32], String> {
 /// Encrypt raw bytes: returns `nonce[12] ‖ ciphertext+tag`. Binary twin of
 /// `aes_encrypt`, shared with the encrypted-bundle container (`src/bundle.rs`).
 pub(crate) fn aes_encrypt_bytes(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
+    // Zero-length AAD is byte-identical to no AAD in GCM, so every existing
+    // sealed value (sessions, bundles, model fields) stays decryptable.
+    aes_encrypt_bytes_aad(plaintext, key, b"")
+}
+
+/// Decrypt `nonce[12] ‖ ciphertext+tag`. Binary twin of `aes_decrypt`.
+pub(crate) fn aes_decrypt_bytes(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
+    aes_decrypt_bytes_aad(data, key, b"")
+}
+
+/// Encrypt raw bytes with additional authenticated data bound into the GCM
+/// tag. The AAD is not stored in the output — the caller must supply the same
+/// bytes to decrypt, which is what makes it a purpose binding (see the cookie
+/// jar, which binds the cookie name so sealed values can't be swapped between
+/// cookies).
+pub(crate) fn aes_encrypt_bytes_aad(
+    plaintext: &[u8],
+    key: &[u8; 32],
+    aad: &[u8],
+) -> Result<Vec<u8>, String> {
     // Fully-qualified: `hmac::Mac` is also in scope and defines new_from_slice.
     let cipher = <Aes256Gcm as aes_gcm::aead::KeyInit>::new_from_slice(key)
         .map_err(|e| format!("bad key: {e}"))?;
@@ -469,7 +499,13 @@ pub(crate) fn aes_encrypt_bytes(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<
     #[allow(deprecated)]
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .map_err(|e| format!("encryption failed: {e}"))?;
     let mut out = Vec::with_capacity(12 + ciphertext.len());
     out.extend_from_slice(&nonce_bytes);
@@ -477,8 +513,12 @@ pub(crate) fn aes_encrypt_bytes(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<
     Ok(out)
 }
 
-/// Decrypt `nonce[12] ‖ ciphertext+tag`. Binary twin of `aes_decrypt`.
-pub(crate) fn aes_decrypt_bytes(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
+/// Decrypt `nonce[12] ‖ ciphertext+tag`, authenticating `aad` against the tag.
+pub(crate) fn aes_decrypt_bytes_aad(
+    data: &[u8],
+    key: &[u8; 32],
+    aad: &[u8],
+) -> Result<Vec<u8>, String> {
     if data.len() < 12 {
         return Err("ciphertext too short".to_string());
     }
@@ -488,7 +528,13 @@ pub(crate) fn aes_decrypt_bytes(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, 
     #[allow(deprecated)]
     let nonce = Nonce::from_slice(nonce_bytes);
     cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
         .map_err(|_| "decryption failed (wrong key or corrupt data)".to_string())
 }
 

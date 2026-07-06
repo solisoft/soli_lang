@@ -43,6 +43,7 @@ pub mod cache;
 pub mod clock;
 pub mod collections;
 pub mod controller;
+pub mod cookie_jar;
 pub mod crypto;
 pub mod datetime;
 pub mod datetime_class;
@@ -598,6 +599,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register cookie builtins (set_cookie) — registered last so they win over
     // any test helpers with the same name (e.g. set_cookie in request_helpers).
     session::register_cookie_builtins(env);
+
+    // Signed/encrypted cookie jar reader (read_cookie); the write side rides
+    // set_cookie's options ("signed"/"encrypted") above.
+    cookie_jar::register_cookie_jar_builtins(env);
 }
 
 /// Register the Error class and built-in error types.

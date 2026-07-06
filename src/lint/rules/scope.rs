@@ -53,6 +53,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "flash",
     "errors",
     "set_cookie",
+    "read_cookie",
     // Common stdlib / builtins (uppercase-classes handled separately)
     "print",
     "println",

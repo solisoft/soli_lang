@@ -6103,6 +6103,14 @@ fn handle_request(
     // header used to be scanned twice per request).
     let cookie_pairs = parse_cookie_pairs(header_str(&data.headers, "cookie"));
 
+    // Hand the raw header to the cookie jar so `read_cookie` can verify/open
+    // sealed values on demand. Installing `None` doubles as the per-request
+    // clear, alongside the session-state clears below.
+    crate::interpreter::builtins::cookie_jar::install_request_cookie_header(header_str(
+        &data.headers,
+        "cookie",
+    ));
+
     // Drop any cookie-driver session state a previous request left on this
     // worker thread. Must happen before `ensure_session` installs this
     // request's state — a no-cookie request would otherwise silently inherit

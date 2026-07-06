@@ -322,22 +322,52 @@ def show
 end
 ```
 
-### set_cookie(name, value)
+### set_cookie(name, value, options?)
 
 Write a response cookie. The cookie is sent back to the client as a `Set-Cookie` header:
 
 ```soli
 def login
   set_cookie("session_id", "abc123");
-  set_cookie("theme", "dark");
+  set_cookie("theme", "dark", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax"});
 
   {"status": 200, "body": "Logged in"}
 end
 ```
 
-> **Note:** `set_cookie` sets minimal cookie attributes (`Path=/`). For advanced options like `Max-Age`, `Secure`, `HttpOnly`, or `SameSite`, set the `Set-Cookie` header directly in your response.
+The options hash controls the cookie attributes: `path` (default `"/"`), `max_age` (seconds; `0` expires the cookie immediately), `expires` (RFC-1123 date), `http_only`, `secure`, `same_site` (`"Lax"`/`"Strict"`/`"None"`) and `domain` — plus the `signed`/`encrypted` sealing options below. Unknown keys raise, so a typo can't silently weaken a cookie.
 
-Cookies set via `set_cookie` are visible in templates and subsequent reads within the same request through the `cookies` global.
+Cookies set via `set_cookie` are visible in templates and subsequent reads within the same request through the `cookies` global; `read_cookie` sees them too.
+
+### Signed and encrypted cookies
+
+Bare cookies are attacker-writable: anything the client sends in the `Cookie` header lands in `cookies` verbatim. When a cookie carries a value you need to *trust* — or one the client shouldn't be able to read — seal it with the `signed` or `encrypted` option and read it back with `read_cookie`:
+
+```soli
+def remember_theme
+  # Encrypted: opaque on the client, accepts any JSON-serializable value.
+  set_cookie("prefs", {"theme": "dark", "cols": [1, 2]}, {"encrypted": true, "max_age": 86400});
+
+  # Signed: readable on the client but tamper-proof.
+  set_cookie("uid", 42, {"signed": true});
+end
+
+def show
+  prefs = read_cookie("prefs", {"encrypted": true});   # {"theme": "dark", "cols": [1, 2]}
+  uid = read_cookie("uid", {"signed": true});          # 42
+  raw = read_cookie("theme");                          # plain read, like cookies["theme"]
+end
+```
+
+The reader states the trust requirement: a bare cookie named `uid` that an attacker sets to `42` reads as `nil` through `read_cookie("uid", {"signed": true})` — only a value your server sealed verifies. Tampered, expired, forged or mode-mismatched values all read as `nil`, indistinguishable from an absent cookie.
+
+How it works:
+
+- Encrypted cookies are AES-256-GCM sealed (`enc.v1.` prefix); signed cookies are HMAC-SHA256 authenticated with the payload readable as base64url JSON (`sig.v1.` prefix).
+- Both keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+ characters, same secret as the `cookie` session driver — rotating it invalidates all sealed cookies). Sealing without a secret raises; set the env var or call `session_configure({"secret": ...})`.
+- The cookie **name** is bound into the seal, so a validly-sealed value copied from one cookie into another reads as `nil`.
+- A `max_age` option is also embedded as an expiry *inside* the sealed payload — a captured cookie can't be replayed past its intended lifetime even if the client ignores the browser-level `Max-Age`.
+- `signed` and `encrypted` are mutually exclusive; the sealed value counts against the ~4KB cookie limit and oversize raises at write time.
 
 ## Returning Responses
 

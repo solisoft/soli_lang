@@ -54,6 +54,9 @@ impl ServerProcess {
             .arg(port.to_string())
             .arg("--workers")
             .arg("2")
+            // For the signed/encrypted cookie-jar tests. Harmless to the
+            // rest: the session driver stays in_memory.
+            .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -463,6 +466,132 @@ fn set_cookie_emits_set_cookie_header() {
         "expected Set-Cookie with my_cookie=my_value, got: {}",
         set_cookie
     );
+}
+
+/// GET /jar/write and return its two sealed Set-Cookie header values
+/// (jar_enc, jar_sig) plus the response body.
+fn jar_write(server: &ServerProcess) -> (String, String, String) {
+    let resp = ureq::get(&server.url("/jar/write"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("jar write request");
+    assert_eq!(resp.status(), 200);
+    let cookies: Vec<String> = resp
+        .all("set-cookie")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let find = |name: &str| {
+        cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", name)))
+            .unwrap_or_else(|| panic!("no {} in Set-Cookie headers: {:?}", name, cookies))
+            .clone()
+    };
+    let enc = find("jar_enc");
+    let sig = find("jar_sig");
+    (enc, sig, body_string(resp))
+}
+
+#[test]
+fn cookie_jar_seals_values_and_reads_back_same_request() {
+    let server = shared_server();
+    let (enc, sig, body) = jar_write(server);
+
+    // Sealed formats on the wire; the encrypted value leaks no plaintext and
+    // the cookie attributes survive alongside the sealing options.
+    assert!(
+        enc.starts_with("jar_enc=enc.v1."),
+        "expected sealed encrypted value, got: {}",
+        enc
+    );
+    assert!(
+        !enc.contains("dark"),
+        "encrypted cookie must not leak plaintext: {}",
+        enc
+    );
+    assert!(
+        enc.contains("Max-Age=3600") && enc.contains("HttpOnly"),
+        "cookie attributes must survive sealing: {}",
+        enc
+    );
+    assert!(
+        sig.starts_with("jar_sig=sig.v1."),
+        "expected signed value, got: {}",
+        sig
+    );
+
+    // Same-request read-your-write returned the decoded values.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("invalid JSON {:?}: {}", body, e));
+    assert_eq!(parsed["enc"]["theme"], "dark");
+    assert_eq!(parsed["enc"]["count"], 42);
+    assert_eq!(parsed["sig"], 42);
+}
+
+#[test]
+fn cookie_jar_round_trips_across_requests() {
+    let server = shared_server();
+    let (enc, sig, _) = jar_write(server);
+    let pair = |header: &str| header.split(';').next().unwrap().to_string();
+    let cookie_header = format!("{}; {}", pair(&enc), pair(&sig));
+
+    let resp = ureq::get(&server.url("/jar/read"))
+        .timeout(Duration::from_secs(3))
+        .set("Cookie", &cookie_header)
+        .call()
+        .expect("jar read request");
+    let body = body_string(resp);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("invalid JSON {:?}: {}", body, e));
+    assert_eq!(parsed["enc"]["theme"], "dark");
+    assert_eq!(parsed["enc"]["count"], 42);
+    assert_eq!(parsed["sig"], 42);
+
+    // The signed cookie's payload segment is plain base64url JSON — readable
+    // without the key (that's the signed/encrypted distinction).
+    let sig_value = pair(&sig);
+    let payload_b64 = sig_value
+        .trim_start_matches("jar_sig=sig.v1.")
+        .split('.')
+        .next()
+        .unwrap();
+    use base64::Engine as _;
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .expect("signed payload decodes");
+    let payload: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(payload["val"], 42);
+}
+
+#[test]
+fn cookie_jar_rejects_tampered_and_forged_values() {
+    let server = shared_server();
+    let (enc, _, _) = jar_write(server);
+    let enc_value = enc
+        .split(';')
+        .next()
+        .unwrap()
+        .trim_start_matches("jar_enc=");
+
+    // Flip a character in the ciphertext body.
+    let mut bytes = enc_value.as_bytes().to_vec();
+    let mid = bytes.len() / 2;
+    bytes[mid] = if bytes[mid] == b'A' { b'B' } else { b'A' };
+    let tampered = String::from_utf8(bytes).unwrap();
+
+    // A tampered sealed value and a bare attacker-set value (the forgery
+    // case: plain "42" where a *verified* 42 is expected) both read as null.
+    let resp = ureq::get(&server.url("/jar/read"))
+        .timeout(Duration::from_secs(3))
+        .set("Cookie", &format!("jar_enc={}; jar_sig=42", tampered))
+        .call()
+        .expect("jar read request");
+    let body = body_string(resp);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("invalid JSON {:?}: {}", body, e));
+    assert_eq!(parsed["enc"], serde_json::Value::Null, "body: {}", body);
+    assert_eq!(parsed["sig"], serde_json::Value::Null, "body: {}", body);
 }
 
 #[test]

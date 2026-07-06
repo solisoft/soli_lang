@@ -384,12 +384,24 @@ Soli exposes parsed cookies from the `Cookie` header as a global `cookies` hash,
 
 ### Cookies Functions
 ```soli
-cookies["theme"];                // Read a cookie (bracket access)
-cookies.theme;                   // Read a cookie (dot access)
-set_cookie("name", "value");     // Set a response cookie (Set-Cookie header)
+cookies["theme"];                # Read a cookie (bracket access)
+cookies.theme;                   # Read a cookie (dot access)
+set_cookie("name", "value");     # Set a response cookie (Set-Cookie header)
+read_cookie("name");             # Read one cookie (raw), nil when absent
 ```
 
 Use `set_cookie` in controllers and middleware to write response cookies. An optional third options hash controls attributes: `set_cookie("name", "value", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax", "path": "/", "expires": "...", "domain": "..."})`. Without options the cookie is emitted with `Path=/` only; `max_age: 0` expires it immediately. Unknown option keys raise.
+
+### Signed/Encrypted Cookies
+
+```soli
+set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400});  # AES-256-GCM, opaque
+set_cookie("uid", 42, {"signed": true});                                        # HMAC-SHA256, readable but tamper-proof
+read_cookie("prefs", {"encrypted": true});   # decoded value, or nil on tamper/expiry/forgery
+read_cookie("uid", {"signed": true});
+```
+
+Sealed modes accept any JSON-serializable value. Keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+ chars — sealing raises without it; rotating it invalidates sealed cookies *and* cookie-driver sessions). The cookie name is bound into the seal (no value-swapping between cookies) and `max_age` is embedded as an in-payload expiry. `signed`/`encrypted` are mutually exclusive. The reader states the trust requirement — a bare attacker-set cookie reads as `nil` through a sealed-mode `read_cookie`, so use it (not `cookies[...]`) for any value you need to trust.
 
 ## Session Storage
 
@@ -424,7 +436,7 @@ session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SOLI_SESSION_DRIVER` | Storage backend | `in_memory` |
-| `SOLI_SESSION_SECRET` | Secret for the `cookie` driver (32+ chars); rotating it invalidates all sessions | unset |
+| `SOLI_SESSION_SECRET` | Secret for the `cookie` driver and the signed/encrypted cookie jar (32+ chars); rotating it invalidates all sessions and sealed cookies | unset |
 | `SOLI_SESSION_PATH` | Path for disk storage | `./sessions` |
 | `SOLI_SOLIDB_HOST` | SolidB server | `localhost:8080` |
 | `SOLI_SOLIDB_DATABASE` | SolidB database | `solidb` |

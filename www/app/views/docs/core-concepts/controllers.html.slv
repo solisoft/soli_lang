@@ -267,14 +267,43 @@ end</code></pre>
         <section id="fn-set_cookie" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-set_cookie" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">set_cookie(name, value)</code>
+                    <code class="text-lg font-mono text-amber-400">set_cookie(name, value, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 text-sm mb-3">Set a response cookie sent back to the client as a <code>Set-Cookie</code> header. The cookie is emitted with <code>Path=/</code>.</p>
+                <p class="text-gray-400 text-sm mb-3">Set a response cookie sent back to the client as a <code>Set-Cookie</code> header. Without options the cookie is emitted with <code>Path=/</code>; the options hash accepts <code>path</code>, <code>max_age</code> (seconds; <code>0</code> expires immediately), <code>expires</code>, <code>http_only</code>, <code>secure</code>, <code>same_site</code> (<code>"Lax"</code>/<code>"Strict"</code>/<code>"None"</code>) and <code>domain</code>, plus the <code>signed</code>/<code>encrypted</code> sealing options below. Unknown keys raise.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("session_id", "abc123");
-set_cookie("theme", "dark");</code></pre>
+set_cookie("theme", "dark", {"max_age": 86400, "http_only": true, "same_site": "Lax"});</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-sealed-cookies" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-sealed-cookies" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Signed &amp; encrypted cookies</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Bare cookies are attacker-writable. When a cookie carries a value you need to <em>trust</em> &mdash; or one the client shouldn't read &mdash; seal it: <code>{"signed": true}</code> is HMAC-SHA256 authenticated (client-readable but tamper-proof), <code>{"encrypted": true}</code> is AES-256-GCM sealed (opaque). Sealed values accept any JSON-serializable value. Keys derive from <code class="text-orange-400">SOLI_SESSION_SECRET</code> (32+ chars; sealing raises without it), the cookie <strong class="text-white">name</strong> is bound into the seal so values can't be swapped between cookies, and <code>max_age</code> is embedded as an expiry inside the payload.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("prefs", {"theme": "dark", "cols": [1, 2]}, {"encrypted": true, "max_age": 86400});
+set_cookie("uid", 42, {"signed": true});</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-read_cookie" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-read_cookie" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">read_cookie(name, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Read a cookie back, verifying/decrypting sealed values. The reader states the trust requirement: a bare cookie an attacker sets to <code>42</code> reads as <code>nil</code> through <code>read_cookie("uid", {"signed": true})</code> &mdash; only a value your server sealed under that name and mode verifies. Tampered, expired, forged or mode-mismatched values all read as <code>nil</code>, indistinguishable from an absent cookie. Without options it returns the raw string, like <code>cookies[name]</code>. Sees cookies written by <code>set_cookie</code> earlier in the same request.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">prefs = read_cookie("prefs", {"encrypted": true});   # {"theme": "dark", "cols": [1, 2]}
+uid = read_cookie("uid", {"signed": true});          # 42 — verified, not forgeable
+theme = read_cookie("theme");                        # raw string or nil</code></pre>
             </div>
         </section>
     </div>

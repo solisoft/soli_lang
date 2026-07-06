@@ -3189,13 +3189,14 @@ session_id = cookies.session_id
 Sets a response cookie sent to the client as a `Set-Cookie` header. Without
 options only `Path=/` is set. The options hash accepts `max_age` (seconds;
 `0` expires the cookie immediately), `expires`, `http_only`, `secure`,
-`same_site` (`"Lax"`/`"Strict"`/`"None"`), `path`, and `domain`. Unknown
-keys raise so a typo can't silently weaken a cookie.
+`same_site` (`"Lax"`/`"Strict"`/`"None"`), `path`, and `domain`, plus the
+`signed`/`encrypted` sealing options (below). Unknown keys raise so a typo
+can't silently weaken a cookie.
 
 **Parameters:**
 - `name` (String) - Cookie name
-- `value` (String) - Cookie value
-- `options` (Hash, optional) - Cookie attributes
+- `value` (String) - Cookie value (any JSON-serializable value with `signed`/`encrypted`)
+- `options` (Hash, optional) - Cookie attributes and sealing options
 
 **Returns:** null
 
@@ -3212,6 +3213,45 @@ set_cookie("remember_token", user["_key"] + ":" + token, {
 
 # Expire it on logout:
 set_cookie("remember_token", "", { "max_age": 0, "http_only": true })
+```
+
+### Signed and encrypted cookies
+
+`{"signed": true}` seals the value with HMAC-SHA256 (readable on the client
+as base64url JSON, but tamper-proof); `{"encrypted": true}` seals it with
+AES-256-GCM (opaque). Sealed values accept any JSON-serializable value, not
+just strings. Both keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+
+chars; sealing raises without it), the cookie **name** is bound into the
+seal so values can't be swapped between cookies, and a `max_age` is embedded
+as an expiry inside the payload. The two options are mutually exclusive.
+
+```soli
+set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400})
+set_cookie("uid", 42, {"signed": true})
+```
+
+### read_cookie(name, options?)
+
+Reads a cookie back, verifying/decrypting sealed values. The options state
+the trust requirement: `{"signed": true}` or `{"encrypted": true}` returns
+the decoded value only when it was validly sealed by your server under that
+name and mode — tampered, expired, forged (attacker-set bare values) or
+mode-mismatched cookies all return `nil`, indistinguishable from an absent
+cookie. Without options it returns the raw string value (like
+`cookies[name]`). Sees cookies written by `set_cookie` earlier in the same
+request.
+
+**Parameters:**
+- `name` (String) - Cookie name
+- `options` (Hash, optional) - `{"signed": true}` or `{"encrypted": true}`
+
+**Returns:** the decoded value, or `nil`
+
+**Example:**
+```soli
+prefs = read_cookie("prefs", {"encrypted": true})   # {"theme": "dark"}
+uid = read_cookie("uid", {"signed": true})          # 42 — verified, not forgeable
+theme = read_cookie("theme")                        # raw string or nil
 ```
 
 ### csrf_token()
