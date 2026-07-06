@@ -54,7 +54,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Views</td>
-                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, <code>content_for</code>/named <code>yield</code>, Rails-style form builder (<code>form_with</code> &mdash; derived URLs/verbs, value prefill, validation errors, <code>button_to</code>, <code>_method</code> override), markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
+                        <td class="py-3 px-4 text-gray-400">ERB-style templates, <strong class="text-white">auto-escaped by default</strong>, layouts + partials with <code>locals</code>, <code>content_for</code>/named <code>yield</code>, Rails-style form builder (<code>form_with(post) do |f|</code> blocks &mdash; derived URLs/verbs, value prefill, validation errors, per-form CSRF tokens, <code>button_to</code>, <code>_method</code> override), markdown views, i18n/date/url helpers, ammonia-backed <code>sanitize_html</code></td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">ORM</td>
@@ -121,7 +121,7 @@
     <h3 class="text-xl font-semibold text-white mb-4">Framework surface</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No auto-generated admin panel</strong> &mdash; a deliberate choice in 2026: every new app ships agent-ready (<code>CLAUDE.md</code>/<code>AGENTS.md</code>, permission presets, <code>/soli-resource</code>), so the bet is that a coding agent plus <code>soli generate scaffold</code> builds you a <em>bespoke</em> admin faster than you'd customize a generic one. If you want a Django-admin-style CRUD UI with zero building, it isn't here.</li>
-        <li><strong class="text-white">Form builder is flat.</strong> <code>form_with</code> covers the Rails core (derived URLs/verbs, prefill, errors, per-form CSRF tokens, <code>button_to</code>) but field names stay flat (<code>name="title"</code>, matching Soli's flat <code>params</code>) &mdash; no nested/indexed params and no <code>fields_for</code>-style nested forms.</li>
+        <li><strong class="text-white">Form builder is flat.</strong> <code>form_with(post) do |f| ... end</code> matches Rails' shape (derived URLs/verbs, prefill, errors, per-form CSRF tokens, <code>button_to</code>), but field names stay flat (<code>name="title"</code>, matching Soli's flat <code>params</code>) &mdash; no nested/indexed params and no <code>fields_for</code>-style nested forms.</li>
         <li><strong class="text-white">No built-in CORS</strong> &mdash; you hand-roll it as middleware.</li>
         <li><strong class="text-white">No signed/encrypted cookie <em>jar</em></strong> &mdash; <code>set_cookie</code> writes bare cookies (no Rails-style <code>cookies.encrypted[...]</code> for arbitrary values). Sessions themselves can be client-side and encrypted: the <code>cookie</code> session driver seals the whole session with AES-256-GCM, Rails-cookie-store-style.</li>
         <li><strong class="text-white">View composition is lean</strong> &mdash; layouts, partials with locals, and Rails-style <code>content_for</code>/named <code>yield</code> blocks; no component/slot system (ViewComponent, Phoenix components).</li>
