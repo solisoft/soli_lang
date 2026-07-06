@@ -140,6 +140,9 @@ pub enum Command {
         /// Replace `.sl` sources with serialized binary ASTs (implies
         /// `encrypt`) so no readable source ships in the bundle.
         protect: bool,
+        /// Platform to embed for `--standalone` (release artifact name:
+        /// linux-amd64, linux-arm64, darwin-arm64). None = host platform.
+        target: Option<String>,
     },
 }
 
@@ -192,7 +195,7 @@ pub fn print_usage() {
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
-    eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone]");
+    eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone] [--target PLATFORM]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
@@ -224,7 +227,14 @@ pub fn print_usage() {
     eprintln!("                                      SOLI_BUNDLE_KEY or SOLI_BUNDLE_AUTH_URL)");
     eprintln!("                       --protect      Ship binary ASTs instead of .sl sources");
     eprintln!("                                      (implies --encrypt)");
-    eprintln!("                       --standalone   Build standalone binary (experimental)");
+    eprintln!("                       --standalone   Emit a self-contained executable (embeds the");
+    eprintln!(
+        "                                      soli runtime; composes with --encrypt/--protect)"
+    );
+    eprintln!("                       --target T     Platform for --standalone: linux-amd64,");
+    eprintln!(
+        "                                      linux-arm64, darwin-arm64 (default: this machine)"
+    );
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
@@ -272,6 +282,11 @@ pub fn print_usage() {
     eprintln!("  soli generate auth            Scaffold authentication + policy layer");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
+    eprintln!("  soli build my_app --standalone     Self-contained executable ./my_app");
+    eprintln!("  soli build my_app --standalone --protect --target linux-arm64");
+    eprintln!(
+        "                                Cross-build ./my_app-linux-arm64 (encrypted, no source)"
+    );
     eprintln!("  soli serve my_app.soli       Serve app from bundle (no source files needed)");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
     eprintln!("  soli serve my_app -d          Start as daemon (background process)");
@@ -1055,6 +1070,7 @@ pub fn parse_args() -> Options {
                 let mut standalone = false;
                 let mut encrypt = false;
                 let mut protect = false;
+                let mut target: Option<String> = None;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--output" | "-o" => {
@@ -1068,6 +1084,17 @@ pub fn parse_args() -> Options {
                         }
                         "--standalone" => {
                             standalone = true;
+                        }
+                        "--target" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!(
+                                    "--target requires a platform (linux-amd64, linux-arm64, darwin-arm64)"
+                                );
+                                print_usage();
+                                process::exit(64);
+                            }
+                            target = Some(args[i].clone());
                         }
                         "--encrypt" => {
                             encrypt = true;
@@ -1100,12 +1127,18 @@ pub fn parse_args() -> Options {
                     print_usage();
                     process::exit(64);
                 });
+                if target.is_some() && !standalone {
+                    eprintln!("--target only applies to --standalone builds");
+                    print_usage();
+                    process::exit(64);
+                }
                 options.command = Command::Build {
                     folder,
                     output,
                     standalone,
                     encrypt,
                     protect,
+                    target,
                 };
                 return options;
             }

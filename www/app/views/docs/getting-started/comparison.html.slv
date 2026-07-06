@@ -78,7 +78,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Tooling</td>
-                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, app-aware TUI REPL (<code>soli</code> in an app dir loads your models + DB &mdash; a <code>rails console</code>), <code>soli routes</code> route lister, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code></td>
+                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, app-aware TUI REPL (<code>soli</code> in an app dir loads your models + DB &mdash; a <code>rails console</code>), <code>soli routes</code> route lister, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code>, self-executing app binaries (<code>soli build --standalone</code>, cross-target)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Long tail</td>
@@ -97,7 +97,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Deployment simplicity</h3>
-            <p class="text-gray-400 text-sm">One static binary runs your app, or bundles it (<code>soli build</code>) into a single <code>.soli</code> file &mdash; optionally AES-256-GCM encrypted with RAM-only extraction for licensed/on-prem distribution. That last capability has no first-party equivalent in Rails, Laravel, Phoenix or Django.</p>
+            <p class="text-gray-400 text-sm">One static binary runs your app, bundles it (<code>soli build</code>) into a single <code>.soli</code> file, or compiles app + runtime into one <strong class="text-white">self-executing binary</strong> (<code>soli build --standalone</code>, cross-buildable for linux-amd64/linux-arm64/darwin-arm64) &mdash; optionally AES-256-GCM encrypted with RAM-only extraction for licensed/on-prem distribution. Those last capabilities have no first-party equivalent in Rails, Laravel, Phoenix or Django.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Developer experience in <code>--dev</code></h3>
@@ -196,7 +196,7 @@
             <ul class="list-disc pl-5 text-green-200/80 text-sm space-y-2">
                 <li>Server-rendered CRUD/SaaS apps with htmx-style interactivity, where throughput per server and operational simplicity are priorities</li>
                 <li>Document-heavy back offices: invoicing, compliance (Factur-X), signed PDFs, spreadsheet import/export</li>
-                <li>Products distributed on-premise or licensed, using encrypted <code>.soli</code> bundles</li>
+                <li>Products distributed on-premise or licensed, using encrypted <code>.soli</code> bundles or self-executing standalone binaries (no soli install on the target)</li>
                 <li>Teams who want Rails ergonomics without Ruby's runtime cost, and accept an integrated (SoliDB) stack</li>
             </ul>
         </div>

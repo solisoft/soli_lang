@@ -1,9 +1,15 @@
 pub mod args;
 mod commands;
+mod standalone;
 
 use args::{parse_args, Command};
 
 pub fn run() {
+    // A standalone app executable (soli runtime + embedded bundle) boots the
+    // app here and never reaches the soli CLI. Regular soli binaries have no
+    // embedded payload and fall straight through.
+    standalone::boot_if_standalone();
+
     let options = parse_args();
 
     match &options.command {
@@ -86,6 +92,14 @@ pub fn run() {
             standalone,
             encrypt,
             protect,
-        } => commands::run_build(folder, output.as_deref(), *standalone, *encrypt, *protect),
+            target,
+        } => commands::run_build(
+            folder,
+            output.as_deref(),
+            *standalone,
+            *encrypt,
+            *protect,
+            target.as_deref(),
+        ),
     }
 }

@@ -23,6 +23,7 @@ pub fn run_build(
     standalone: bool,
     encrypt: bool,
     protect: bool,
+    target: Option<&str>,
 ) {
     // Resolve "." to current directory so file_name() works properly
     let source_dir = if folder == "." {
@@ -41,9 +42,12 @@ pub fn run_build(
         process::exit(1);
     }
 
-    if standalone {
-        eprintln!("Standalone binary output not yet implemented");
-        process::exit(1);
+    // Catch a --target typo before doing any build work.
+    if let Some(t) = target {
+        if let Err(e) = crate::cli::standalone::validate_target(t) {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
     }
 
     // The key comes from the same resolution chain as serve (SOLI_BUNDLE_KEY
@@ -82,30 +86,90 @@ pub fn run_build(
         bundle_data
     };
 
+    let app_name = source_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "app".to_string());
     let output_path = match output {
         Some(path) => Path::new(path).to_path_buf(),
-        None => {
-            let name = source_dir
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "app".to_string());
-            Path::new(&format!("{}.soli", name)).to_path_buf()
+        None if standalone => {
+            // `<name>` for host builds, `<name>-<target>` for cross builds.
+            let name = match target {
+                Some(t) => format!(
+                    "{}-{}",
+                    app_name,
+                    crate::cli::standalone::target_label(Some(t))
+                ),
+                None => app_name.clone(),
+            };
+            Path::new(&name).to_path_buf()
         }
+        None => Path::new(&format!("{}.soli", app_name)).to_path_buf(),
     };
+
+    // The extensionless standalone default collides with the source dir when
+    // building from the parent directory (`soli build my_app --standalone`).
+    if standalone && output_path.is_dir() {
+        eprintln!(
+            "Error: output path '{}' is a directory — pass --output <file>",
+            output_path.display()
+        );
+        process::exit(1);
+    }
+
+    let mode = match (protect, encrypt) {
+        (true, _) => "protected: binary AST, encrypted",
+        (false, true) => "encrypted",
+        _ => "",
+    };
+
+    if standalone {
+        if let Err(e) =
+            crate::cli::standalone::write_standalone_exe(&bundle_data, &output_path, target)
+        {
+            eprintln!("Error building standalone executable: {}", e);
+            process::exit(1);
+        }
+        let total = std::fs::metadata(&output_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let mode_suffix = if mode.is_empty() {
+            String::new()
+        } else {
+            format!(", {}", mode)
+        };
+        println!(
+            "  \x1b[32m\x1b[1m✓\x1b[0m Standalone executable written to {} ({:.1} MB, {:.1} KB app bundle{})",
+            output_path.display(),
+            total as f64 / (1024.0 * 1024.0),
+            bundle_data.len() as f64 / 1024.0,
+            mode_suffix
+        );
+        let run_name = output_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| output_path.display().to_string());
+        println!(
+            "    Platform: {} — run it with: ./{} --port 8080",
+            crate::cli::standalone::target_label(target),
+            run_name
+        );
+        return;
+    }
 
     match std::fs::write(&output_path, &bundle_data) {
         Ok(_) => {
             let size_kb = bundle_data.len() as f64 / 1024.0;
-            let mode = match (protect, encrypt) {
-                (true, _) => " (protected: binary AST, encrypted)",
-                (false, true) => " (encrypted)",
-                _ => "",
+            let mode_suffix = if mode.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", mode)
             };
             println!(
                 "  \x1b[32m\x1b[1m✓\x1b[0m Bundle written to {} ({:.1} KB){}",
                 output_path.display(),
                 size_kb,
-                mode
+                mode_suffix
             );
         }
         Err(e) => {
@@ -275,28 +339,52 @@ fn serve_from_bundle(
     let bundle_data = std::fs::read(bundle_path)
         .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path, e))?;
 
-    // Load `.env` (and `.env.{APP_ENV}`) from the directory containing the
-    // bundle file BEFORE anything else: the bundle key config
-    // (SOLI_BUNDLE_KEY / SOLI_BUNDLE_AUTH_URL) may live there. Dotfiles are
-    // deliberately excluded from bundles (secrets don't belong in a
-    // distributable artifact), so the operator drops a `.env` next to the
-    // `.soli` — the extracted temp dir that `serve_folder` later scans
-    // never has one.
+    // The `.env` convention: config lives in the directory containing the
+    // bundle file (dotfiles are deliberately excluded from bundles).
     let bundle_dir = Path::new(bundle_path)
         .canonicalize()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    solilang::serve::env_loader::load_env_files(&bundle_dir);
 
-    let encrypted = solilang::bundle::is_encrypted_bundle(&bundle_data);
+    serve_bundle_bytes(
+        &bundle_data,
+        &bundle_dir,
+        port,
+        dev_mode,
+        workers,
+        bundle_path,
+    )
+}
+
+/// Serve a bundle from its raw bytes — the shared tail of `soli serve
+/// app.soli` and standalone executables (`cli::standalone`), so both inherit
+/// the same key resolution, /dev/shm extraction contract, and atexit cleanup.
+/// `origin` is the human label used in error messages (a bundle path or the
+/// standalone executable's name).
+pub(crate) fn serve_bundle_bytes(
+    bundle_data: &[u8],
+    env_dir: &Path,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+    origin: &str,
+) -> Result<(), String> {
+    // Load `.env` (and `.env.{APP_ENV}`) BEFORE anything else: the bundle
+    // key config (SOLI_BUNDLE_KEY / SOLI_BUNDLE_AUTH_URL) may live there.
+    // Secrets don't belong in a distributable artifact, so the operator
+    // drops a `.env` next to it — the extracted temp dir that
+    // `serve_folder` later scans never has one.
+    solilang::serve::env_loader::load_env_files(env_dir);
+
+    let encrypted = solilang::bundle::is_encrypted_bundle(bundle_data);
     let bundle_data = if encrypted {
         let (key, source) =
-            resolve_bundle_key().map_err(|e| format!("'{}' is encrypted — {}", bundle_path, e))?;
+            resolve_bundle_key().map_err(|e| format!("'{}' is encrypted — {}", origin, e))?;
         println!("Decrypting bundle ({})", source);
-        solilang::bundle::decrypt_bundle(&bundle_data, &key)?
+        solilang::bundle::decrypt_bundle(bundle_data, &key)?
     } else {
-        bundle_data
+        bundle_data.to_vec()
     };
 
     let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
@@ -1503,7 +1591,7 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
 /// SEC-041: stream-hash a file with SHA-256, returning the lowercase hex
 /// digest. Used to verify the downloaded release tarball against the
 /// `.sha256` sibling asset before any extraction or `chmod 0755` step.
-fn sha256_of_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha256_of_file(path: &Path) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     let mut file = File::open(path).map_err(|e| format!("open {}: {}", path.display(), e))?;
     let mut hasher = Sha256::new();

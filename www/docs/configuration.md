@@ -11,7 +11,7 @@ SOLIDB_DATABASE=myapp_development
 
 Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `\n` — entries with control characters are skipped at load time with a warning on stderr. This avoids HTTP-header-split / log-injection vectors when an env value flows downstream into responses or structured logs.
 
-The files are read from the app folder passed to `soli serve`. When serving a bundle (`soli serve app.soli`), they are read from the directory containing the `.soli` file — dotfiles are never included in a bundle, so ship the `.env` alongside it.
+The files are read from the app folder passed to `soli serve`. When serving a bundle (`soli serve app.soli`) or running a standalone executable (`soli build --standalone`), they are read from the directory containing the `.soli` file / the executable — dotfiles are never included in a bundle, so ship the `.env` alongside the artifact.
 
 ## Application Environment
 
@@ -47,7 +47,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 
 ### Bundle protection
 
-Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Protected Bundles](/docs/development-tools/deploy#encrypted-bundles)). These are read at both `soli build --encrypt`/`--protect` and `soli serve app.soli`, and may live in the `.env` next to the bundle. Distinct from `SOLI_ENCRYPTION_KEY`, which encrypts model fields.
+Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Protected Bundles](/docs/development-tools/deploy#encrypted-bundles)). These are read at `soli build --encrypt`/`--protect` time, by `soli serve app.soli`, and by standalone executables built with `--standalone`; they may live in the `.env` next to the artifact. Distinct from `SOLI_ENCRYPTION_KEY`, which encrypts model fields.
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
@@ -55,6 +55,7 @@ Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Prot
 | `SOLI_BUNDLE_AUTH_URL` | URL of a key server. Soli issues a `GET`; the response body (≤ 4 KB, trimmed) is the key material. Revoke the entry to lock the app out. Used only when `SOLI_BUNDLE_KEY` is unset. | unset |
 | `SOLI_BUNDLE_API_KEY` | Sent as the `x-api-key` header on the `SOLI_BUNDLE_AUTH_URL` request — this host's identity to the key server. | unset |
 | `SOLI_BUNDLE_ALLOW_DISK` | Set to `1` to allow a decrypted bundle to extract to the temp dir when `/dev/shm` (RAM-backed tmpfs) is unavailable. Without it, such a boot is refused rather than writing plaintext to persistent disk. | unset |
+| `SOLI_RELEASE_BASE_URL` | Base URL `soli build --standalone --target <t>` downloads release runtimes from (layout: `{base}/v{version}/soli-{target}.tar.gz` + `.sha256`). For mirrors and air-gapped build machines. | GitHub releases |
 
 ### Production logging (`SOLI_LOG`)
 

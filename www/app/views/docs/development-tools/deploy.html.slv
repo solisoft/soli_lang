@@ -286,6 +286,57 @@ SOLI_BUNDLE_API_KEY=srv-7f3c...           # this host's identity; revoke it to l
         </ul>
     </div>
 
+    <!-- Standalone executables -->
+    <h2 id="standalone-executables" class="text-2xl font-bold text-white mb-6">Standalone Executables</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">--standalone</code> goes one step further than a <code>.soli</code> bundle: it embeds the <strong>entire soli runtime</strong> into the artifact, producing a single native executable that boots your app directly — the target machine needs <em>no</em> soli install at all. It composes with <code>--encrypt</code> and <code>--protect</code>; key resolution and the key-server kill-switch work exactly as above.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="One file, zero dependencies"><code class="language-bash text-sm"># Build a self-contained executable (encrypted, no readable source)
+soli build my_app --standalone --protect
+#   ✓ Standalone executable written to my_app (41.2 MB, 1.9 KB app bundle, protected: binary AST, encrypted)
+#     Platform: linux-x86_64 — run it with: ./my_app --port 8080
+
+# Ship ONE file; run it with no soli install on the server
+scp my_app deploy@server:/opt/my_app/
+ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Cross-platform builds</h3>
+    <p class="text-gray-400 mb-4">
+        <code class="text-amber-400">--target</code> selects which platform's runtime to embed — build on your workstation, deploy anywhere. The matching official release runtime (same version as your <code>soli</code>) is downloaded, <strong>sha256-verified</strong> against the published checksum, cached under <code>~/.cache/soli/runtimes/</code>, and embedded:
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Cross-target builds"><code class="language-bash text-sm">soli build my_app --standalone --protect --target linux-arm64
+#   ✓ Standalone executable written to my_app-linux-arm64 ...
+
+# Supported targets (the published release artifacts):
+#   linux-amd64   linux-arm64   darwin-arm64</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Air-gapped or mirrored environments can point <code class="text-amber-400">SOLI_RELEASE_BASE_URL</code> at their own artifact server (same layout: <code>{base}/v{version}/soli-{target}.tar.gz</code> + <code>.sha256</code>). Without <code>--target</code> the running <code>soli</code> binary itself is embedded — no network needed.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Running a standalone app</h3>
+    <p class="text-gray-400 mb-4">
+        The executable accepts app-oriented flags — <code>--port</code>, <code>--host</code>, <code>--workers</code>, <code>--dev</code>, <code>--version</code>, <code>--help</code> — and reads its <code>.env</code> from the <strong>directory containing the executable</strong>, the same convention as a <code>.soli</code> bundle. For encrypted apps, provide <code>SOLI_BUNDLE_KEY</code> or <code>SOLI_BUNDLE_AUTH_URL</code> there.
+    </p>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <h3 class="text-lg font-semibold text-white mb-2">Operational notes</h3>
+        <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
+            <li>The runtime adds a ~40&nbsp;MB baseline to the artifact regardless of app size.</li>
+            <li>The protected-bundle <strong>version lock is satisfied by construction</strong> — runtime and bundle ship as a matched pair.</li>
+            <li>Encrypted standalones inherit the RAM-only extraction contract: <code>/dev/shm</code> or <code>SOLI_BUNDLE_ALLOW_DISK=1</code>.</li>
+            <li><strong>Do not post-process the artifact</strong> — <code>strip</code>, <code>objcopy</code>, <code>upx</code> or re-signing-tools that rewrite the file destroy the embedded bundle trailer.</li>
+            <li><strong>macOS:</strong> building <em>on</em> a Mac ad-hoc re-signs the artifact automatically. A <code>darwin-arm64</code> artifact cross-built on Linux must be re-signed before Apple Silicon will run it: <code>codesign --force -s - my_app-darwin-arm64</code> on a Mac (or <code>rcodesign sign</code> from any platform). No Windows target is published.</li>
+            <li><code>soli update</code> does not apply to standalone apps — a runtime fix means rebuilding and redeploying the artifact.</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">

@@ -12724,6 +12724,25 @@
       ]
     },
     {
+      "title": "Standalone executables",
+      "type": "guide",
+      "category": "Deploy",
+      "path": "/docs/development-tools/deploy#standalone-executables",
+      "signature": "soli build my_app --standalone --target linux-arm64",
+      "description": "Self-executing app binary embedding the soli runtime - one file, no soli install on the target; cross-buildable for linux-amd64/linux-arm64/darwin-arm64",
+      "keywords": [
+        "standalone",
+        "executable",
+        "binary",
+        "self-contained",
+        "cross-compile",
+        "target",
+        "deploy",
+        "bundle",
+        "SOLI_RELEASE_BASE_URL"
+      ]
+    },
+    {
       "title": "aggregate",
       "type": "method",
       "category": "Database",
