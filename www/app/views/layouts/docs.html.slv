@@ -481,6 +481,33 @@
             ]
         };
         });
+
+        // `.html.slv` template snippets (`language-erb`): HTML base with the
+        // tag regions highlighted as Soli. Mirrors highlight.js's own erb
+        // grammar with the Ruby sublanguage swapped for `soli` (registered
+        // just above); the end pattern also closes the newline-trimming
+        // dash-form closer. The delimiters are built by concatenation so
+        // this layout's own template tokenizer never sees a literal tag
+        // opener inside the inline script.
+        var ERB_OPEN = '<' + '%';
+        var ERB_CLOSE = '%' + '>';
+        hljs.registerLanguage('erb', function(hljs) {
+            return {
+                name: 'ERB',
+                aliases: ['slv'],
+                subLanguage: 'xml',
+                contains: [
+                    hljs.COMMENT(ERB_OPEN + '#', ERB_CLOSE),
+                    {
+                        begin: ERB_OPEN + '[%=-]?',
+                        end: '[%-]?' + ERB_CLOSE,
+                        subLanguage: 'soli',
+                        excludeBegin: true,
+                        excludeEnd: true
+                    }
+                ]
+            };
+        });
     }
 
     function initDocPage() {
@@ -652,11 +679,6 @@
 
     function runHighlight() {
         registerSoliLanguage();
-
-        document.querySelectorAll('code.language-erb').forEach(function(block) {
-            block.classList.remove('language-erb');
-            block.classList.add('language-xml');
-        });
 
         // Reset the marker only on blocks whose content is actually fresh (a
         // livereload morph re-injects plain text but can keep the attribute).
