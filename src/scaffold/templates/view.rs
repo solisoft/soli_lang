@@ -133,10 +133,9 @@ pub fn form_view_template(
     <div class="max-w-2xl">
         <h1 class="text-2xl font-bold mb-6">{title}</h1>
 
-        <% f = form_with({model_var}, {{"url": {form_action}, "method": "{method}", "class": "space-y-6"}}) %>
-        <%- f.open() %>
+        <%- form_with({model_var}, {{"url": {form_action}, "method": "{method}", "class": "space-y-6"}}) do |f| -%>
             <%- partial("{resource}/form", {{ "{model_var}": {model_var}, "f": f }}) %>
-        <%- f.close() %>
+        <%- end -%>
     </div>
 </div>
 "#,

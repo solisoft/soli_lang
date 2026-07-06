@@ -357,15 +357,16 @@ describe("Feature Name", fn() {
 Views have a Rails-style form builder (engine-embedded, available in every `.html.slv`). Builder calls emit HTML, so output them with `<%-` (raw), not `<%=`:
 
 ```erb
-<% f = form_with(post) %>
-<%- f.open() %>
+<%- form_with(post) do |f| -%>
   <%- f.error_summary() %>
   <%- f.label("title") %>
   <%- f.text_field("title", {"placeholder": "Title"}) %>
   <%- f.errors_for("title") %>
   <%- f.submit("Save") %>
-<%- f.close() %>
+<%- end -%>
 ```
+
+The `do |f|` block binds the builder and wraps the body in `<form>` + `_method` + CSRF token; a bare `do` gives an implicit `f`. `-%>` on any tag swallows the following newline. The explicit `f = form_with(post)` / `f.open()` / `f.close()` form remains for non-contiguous markup.
 
 `form_with(record)` derives the action: a new record POSTs to `/<collection>`, a persisted one PATCHes `/<collection>/<key>` via the hidden `_method` field the server honors. `f.open()` embeds the per-session CSRF token; the server verifies supplied tokens (403 on mismatch) on top of the Origin/Referer gate — `SOLI_CSRF_TOKENS=require` makes them mandatory for browser form posts.
 

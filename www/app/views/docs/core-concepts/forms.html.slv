@@ -45,8 +45,7 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">app/views/posts/new.html.slv</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;% f = form_with(post) %&gt;
-&lt;%- f.open() %&gt;
+<pre><code class="language-erb text-sm">&lt;%- form_with(post) do |f| -%&gt;
   &lt;%- f.error_summary() %&gt;
 
   &lt;%- f.label("title") %&gt;
@@ -56,11 +55,11 @@
   &lt;%- f.text_area("body") %&gt;
   &lt;%- f.check_box("published") %&gt;
   &lt;%- f.submit("Save") %&gt;
-&lt;%- f.close() %&gt;</code></pre>
+&lt;%- end -%&gt;</code></pre>
             </div>
         </div>
         <p class="text-gray-400 mt-6">
-            Use <code class="text-amber-300">&lt;%-</code> (raw output) for every builder call — the helpers return HTML, and <code class="text-amber-300">&lt;%=</code> would escape it into visible text. Field <em>values</em> are always escaped by the builder itself.
+            The <code class="text-amber-300">do |f|</code> block binds the builder (any name; a bare <code class="text-amber-300">do</code> gives an implicit <code class="text-amber-300">f</code>) and wraps the body in the <code>&lt;form&gt;</code> tag, the <code class="text-amber-300">_method</code> override, and the CSRF token. The opener works in any tag style, and a <code class="text-amber-300">-%&gt;</code> closer swallows the newline after the tag (on any template tag). Use <code class="text-amber-300">&lt;%-</code> (raw output) for every builder call — the helpers return HTML, and <code class="text-amber-300">&lt;%=</code> would escape it into visible text; field <em>values</em> are always escaped by the builder itself. The explicit form (<code class="text-amber-300">f = form_with(post)</code> then <code class="text-amber-300">f.open()</code> / <code class="text-amber-300">f.close()</code>) remains available for forms assembled across non-contiguous markup.
         </p>
     </section>
 
@@ -201,10 +200,9 @@
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;% f = form_with(post) %&gt;
-&lt;%- f.open() %&gt;
+<pre><code class="language-erb text-sm">&lt;%- form_with(post) do |f| -%&gt;
   &lt;%- partial("posts/form", { "post": post, "f": f }) %&gt;
-&lt;%- f.close() %&gt;</code></pre>
+&lt;%- end -%&gt;</code></pre>
             </div>
         </div>
     </section>

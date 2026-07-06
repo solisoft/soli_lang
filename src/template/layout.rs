@@ -120,6 +120,7 @@ fn render_layout_inner(
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreOutput { line, .. } => Some(*line),
             TemplateNode::ContentFor { line, .. } => Some(*line),
+            TemplateNode::FormWith { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -256,6 +257,37 @@ fn render_layout_inner(
                         &mut captured,
                     )?;
                     crate::template::content_store::append(name, &captured);
+                }
+                TemplateNode::FormWith {
+                    parts,
+                    body,
+                    line: _,
+                } => {
+                    // Same semantics as the view renderer: bind the builder
+                    // in a child scope and wrap the body in open()/close().
+                    core_eval::push_scope(interpreter);
+                    let builder = interpreter
+                        .evaluate(&parts.builder_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    core_eval::define_var(interpreter, &parts.var, builder);
+                    let open_html = interpreter
+                        .evaluate(&parts.open_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    write_value_to_output(&open_html, false, output);
+                    render_layout_inner(
+                        interpreter,
+                        body,
+                        content,
+                        data,
+                        partial_renderer,
+                        layout_path,
+                        output,
+                    )?;
+                    let close_html = interpreter
+                        .evaluate(&parts.close_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    write_value_to_output(&close_html, false, output);
+                    core_eval::pop_scope(interpreter);
                 }
                 TemplateNode::Partial {
                     name,

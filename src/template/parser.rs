@@ -139,6 +139,17 @@ pub enum CompareOp {
     Ge, // >=
 }
 
+/// The pre-parsed pieces of a `form_with ... do |f|` block: the
+/// `form_with(...)` builder call, the block variable, and the synthesized
+/// `<var>.open()` / `<var>.close()` calls the renderer wraps the body in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FormWithParts {
+    pub builder_expr: crate::ast::expr::Expr,
+    pub var: String,
+    pub open_expr: crate::ast::expr::Expr,
+    pub close_expr: crate::ast::expr::Expr,
+}
+
 /// A node in the template AST.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateNode {
@@ -174,6 +185,14 @@ pub enum TemplateNode {
     /// The body renders into the content_for store instead of the output.
     ContentFor {
         name: String,
+        body: Vec<TemplateNode>,
+        line: usize,
+    },
+    /// Form-builder block: `<% form_with(record) do |f| %> ... <% end %>`.
+    /// Sugar for binding the builder and wrapping the body in `f.open()` /
+    /// `f.close()`. The exprs live behind a Box so the enum stays small.
+    FormWith {
+        parts: Box<FormWithParts>,
         body: Vec<TemplateNode>,
         line: usize,
     },
@@ -243,6 +262,34 @@ fn rewrite_each_opener(code: &str) -> Option<String> {
     Some(format!("for {} in {}", idents.join(", "), iterable))
 }
 
+/// Split a `form_with(...) do` / `form_with(...) do |var|` block opener into
+/// (builder-call source, block variable — default `f`). `None` when the code
+/// isn't that shape (e.g. a plain `<% f = form_with(post) %>` assignment).
+fn form_with_block_parts(code: &str) -> Option<(&str, String)> {
+    let code = code.trim();
+    if !code.starts_with("form_with") {
+        return None;
+    }
+    if let Some(rest) = code.strip_suffix('|') {
+        let bar = rest.rfind('|')?;
+        let var = rest[bar + 1..].trim();
+        let head = rest[..bar].trim_end().strip_suffix("do")?.trim_end();
+        let valid_ident = !var.is_empty()
+            && !var.starts_with(|c: char| c.is_ascii_digit())
+            && var.chars().all(|c| c.is_alphanumeric() || c == '_');
+        if !valid_ident || !head.starts_with("form_with") {
+            return None;
+        }
+        Some((head, var.to_string()))
+    } else {
+        let head = code.strip_suffix("do")?.trim_end();
+        if !head.starts_with("form_with") {
+            return None;
+        }
+        Some((head, "f".to_string()))
+    }
+}
+
 /// Tokenize the template source into a sequence of tokens.
 fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
@@ -303,25 +350,47 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 }
             }
 
+            // ERB-style `-%>` trim marker: strip it here and swallow the
+            // newline right after the tag (below), so block tags don't
+            // leave blank lines in the rendered output.
+            let mut tag_content = tag_content.trim().to_string();
+            let trim_following_newline = tag_content.ends_with('-');
+            if trim_following_newline {
+                tag_content.pop();
+                tag_content.truncate(tag_content.trim_end().len());
+            }
+
             if is_comment {
                 // discard — <%# comment %> is silently dropped; content is never rendered or executed
+            } else if tag_content == "end" || form_with_block_parts(&tag_content).is_some() {
+                // `form_with(...) do |f|` block openers and their `end` read
+                // naturally as output tags (`<%- %>` / `<%= %>`, Rails-style).
+                // Normalize them to Code tokens so the block dispatcher sees
+                // them regardless of tag style.
+                tokens.push(Token::Code(tag_content, tag_line));
+            } else if is_raw {
+                tokens.push(Token::OutputRaw(tag_content, tag_line));
+            } else if is_unescape {
+                tokens.push(Token::OutputUnescape(tag_content, tag_line));
+            } else if is_output {
+                tokens.push(Token::OutputEscaped(tag_content, tag_line));
             } else {
-                let tag_content = tag_content.trim().to_string();
+                // Ruby-style iteration: `<% xs.each do |x| %>` (and the
+                // `|x, i|` form) is sugar for `<% for x in xs %>` —
+                // normalize here so every block-dispatch site (top
+                // level, if/for bodies) resolves it via the same For
+                // node machinery.
+                let tag_content = rewrite_each_opener(&tag_content).unwrap_or(tag_content);
+                tokens.push(Token::Code(tag_content, tag_line));
+            }
 
-                if is_raw {
-                    tokens.push(Token::OutputRaw(tag_content, tag_line));
-                } else if is_unescape {
-                    tokens.push(Token::OutputUnescape(tag_content, tag_line));
-                } else if is_output {
-                    tokens.push(Token::OutputEscaped(tag_content, tag_line));
-                } else {
-                    // Ruby-style iteration: `<% xs.each do |x| %>` (and the
-                    // `|x, i|` form) is sugar for `<% for x in xs %>` —
-                    // normalize here so every block-dispatch site (top
-                    // level, if/for bodies) resolves it via the same For
-                    // node machinery.
-                    let tag_content = rewrite_each_opener(&tag_content).unwrap_or(tag_content);
-                    tokens.push(Token::Code(tag_content, tag_line));
+            if trim_following_newline {
+                if chars.peek() == Some(&'\r') {
+                    chars.next();
+                }
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                    current_line += 1;
                 }
             }
 
@@ -368,7 +437,7 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
     let mut line_has_code = false;
 
     for token in &tokens {
-        let (snippet, line) = match token {
+        let (snippet, line): (std::borrow::Cow<'_, str>, usize) = match token {
             Token::Literal(..) => continue,
             Token::Code(code, line) => {
                 let code = code.trim();
@@ -376,13 +445,18 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
                     // A capture-open tag isn't Soli, but its `end` is still
                     // consumed by the core parser — synthesize `if true` so
                     // the block stays balanced in the extracted source.
-                    ("if true", *line)
+                    (std::borrow::Cow::Borrowed("if true"), *line)
                 } else if is_content_for_code(code) {
                     // Malformed capture (missing `do`); the template parser
                     // reports the friendly error, nothing to lint here.
                     continue;
+                } else if let Some((_, var)) = form_with_block_parts(code) {
+                    // A form_with block opener: balance its `end` and bind
+                    // the block param so `f.text_field(...)` in the body
+                    // doesn't trip undefined-local.
+                    (std::borrow::Cow::Owned(format!("for {} in []", var)), *line)
                 } else {
-                    (code, *line)
+                    (std::borrow::Cow::Borrowed(code), *line)
                 }
             }
             Token::OutputEscaped(expr, line)
@@ -395,7 +469,7 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
                 if parse_yield_directive(expr, *line).is_some() {
                     continue;
                 }
-                (expr, *line)
+                (std::borrow::Cow::Borrowed(expr), *line)
             }
         };
         if snippet.is_empty() {
@@ -411,7 +485,7 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
             out.push('\n');
             cur_line += 1;
         }
-        out.push_str(snippet);
+        out.push_str(&snippet);
         cur_line += snippet.matches('\n').count();
         line_has_code = true;
     }
@@ -444,6 +518,11 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     // Parse content_for capture block
                     let (cf_node, consumed) = parse_content_for_block(&tokens[i..], *line)?;
                     nodes.push(cf_node);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    // Parse form_with builder block
+                    let (fw_node, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    nodes.push(fw_node);
                     i += consumed;
                 } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
@@ -544,6 +623,15 @@ fn parse_if_block(
                         body.push(nested_cf);
                     }
                     i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    // Nested form_with block
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    if in_else {
+                        else_body.as_mut().unwrap().push(nested_fw);
+                    } else {
+                        body.push(nested_fw);
+                    }
+                    i += consumed;
                 } else {
                     // Other code block - parse through core parser
                     let stmts = parse_core_code(code, *line)?;
@@ -623,6 +711,11 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     // Nested content_for
                     let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
                     body.push(nested_cf);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    // Nested form_with block
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    body.push(nested_fw);
                     i += consumed;
                 } else {
                     // Other code block - parse through core parser
@@ -842,6 +935,80 @@ fn parse_yield_directive(expr: &str, line: usize) -> Option<Result<TemplateNode,
     Some(parse_directive_name(args, directive, line).map(|name| TemplateNode::Yield(Some(name))))
 }
 
+/// Parse a `<% form_with(record) do |f| %> ... <% end %>` block starting at
+/// the given position. Returns the FormWith node and the tokens consumed.
+fn parse_form_with_block(
+    tokens: &[Token],
+    open_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    let (head, var) = match &tokens[0] {
+        Token::Code(code, _) => form_with_block_parts(code)
+            .ok_or_else(|| format!("Expected form_with block at line {}", open_line))?,
+        _ => return Err(format!("Expected form_with block at line {}", open_line)),
+    };
+    ensure_loop_var_not_keyword(&var, "form_with block parameter", open_line)?;
+    let builder_expr = parse_core_expr(head, open_line)?;
+    let open_expr = parse_core_expr(&format!("{}.open()", var), open_line)?;
+    let close_expr = parse_core_expr(&format!("{}.close()", var), open_line)?;
+
+    let mut body = Vec::new();
+    let mut i = 1; // Skip the opener token
+
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::Code(code, line) => {
+                let code = code.trim();
+
+                if code == "end" {
+                    return Ok((
+                        TemplateNode::FormWith {
+                            parts: Box::new(FormWithParts {
+                                builder_expr,
+                                var,
+                                open_expr,
+                                close_expr,
+                            }),
+                            body,
+                            line: open_line,
+                        },
+                        i + 1,
+                    ));
+                } else if let Some(rest) = code.strip_prefix("if ") {
+                    let condition = parse_core_expr(rest.trim(), *line)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
+                    body.push(nested_if);
+                    i += consumed;
+                } else if code.starts_with("for ") {
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
+                    body.push(nested_for);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    body.push(nested_cf);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    body.push(nested_fw);
+                    i += consumed;
+                } else {
+                    let stmts = parse_core_code(code, *line)?;
+                    body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
+                    i += 1;
+                }
+            }
+            token => {
+                body.push(parse_output_token(token)?);
+                i += 1;
+            }
+        }
+    }
+
+    Err(format!(
+        "Unclosed form_with block at line {} - missing 'end'",
+        open_line
+    ))
+}
+
 /// Whether a code-tag starts a `content_for` statement (well-formed or not).
 /// Used by the block parsers to dispatch; `parse_content_for_block` reports
 /// the friendly error when the trailing `do` is missing.
@@ -915,6 +1082,10 @@ fn parse_content_for_block(
                 } else if is_content_for_code(code) {
                     let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
                     body.push(nested_cf);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    body.push(nested_fw);
                     i += consumed;
                 } else {
                     let stmts = parse_core_code(code, *line)?;

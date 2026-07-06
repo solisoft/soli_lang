@@ -10,8 +10,7 @@ route PUT/PATCH/DELETE.
 ## Quick start
 
 ```erb
-<% f = form_with(post) %>
-<%- f.open() %>
+<%- form_with(post) do |f| -%>
   <%- f.error_summary() %>
 
   <%- f.label("title") %>
@@ -21,11 +20,28 @@ route PUT/PATCH/DELETE.
   <%- f.text_area("body") %>
   <%- f.check_box("published") %>
   <%- f.submit("Save") %>
-<%- f.close() %>
+<%- end -%>
 ```
+
+The `do |f|` block binds the builder (name it whatever you like, or write a
+bare `do` for an implicit `f`); the block emits the `<form>` tag, the hidden
+`_method` override, and the CSRF token before the body, and `</form>` after
+it. The opener reads naturally in any tag style (`<% %>`, `<%= %>`, `<%- %>`),
+and a `-%>` closer swallows the newline that follows the tag — on any
+template tag — so blocks don't leave blank lines in the output.
 
 Use `<%-` (raw output) for every builder call — the helpers return HTML.
 `<%=` would escape it into visible text.
+
+Prefer the block form. The explicit builder is still there when you need it
+(a form assembled across non-contiguous markup):
+
+```erb
+<% f = form_with(post) %>
+<%- f.open() %>
+  ...
+<%- f.close() %>
+```
 
 With a **new record**, `f.open()` renders a form that POSTs to
 `/<collection>`; with a **persisted record** (one that has a `_key`) it
@@ -181,10 +197,9 @@ For htmx, wire the header once:
 Partials render in a fresh scope, so pass the builder explicitly:
 
 ```erb
-<% f = form_with(post) %>
-<%- f.open() %>
+<%- form_with(post) do |f| -%>
   <%- partial("posts/form", { "post": post, "f": f }) %>
-<%- f.close() %>
+<%- end -%>
 ```
 
 ## See also

@@ -343,15 +343,18 @@ field the server honors) and embeds the CSRF token. Builder calls return
 HTML, so output them with `<%-` (raw), never `<%=`:
 
 ```erb
-<% f = form_with(post) %>
-<%- f.open() %>
+<%- form_with(post) do |f| -%>
   <%- f.error_summary() %>
   <%- f.label("title") %>
   <%- f.text_field("title", {"placeholder": "Title"}) %>
   <%- f.errors_for("title") %>
   <%- f.submit("Save") %>
-<%- f.close() %>
+<%- end -%>
 ```
+
+The `do |f|` block binds the builder and wraps the body in `<form>` +
+`_method` + CSRF token (a bare `do` gives an implicit `f`); `-%>` swallows
+the newline after a tag.
 
 - Field helpers: `text_field`, `email_field`, `password_field`, `number_field`,
   `date_field`, `datetime_field`, `hidden_field`, `file_field` (+

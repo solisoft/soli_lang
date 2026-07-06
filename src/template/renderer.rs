@@ -86,6 +86,7 @@ fn render_inner(
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreOutput { line, .. } => Some(*line),
             TemplateNode::ContentFor { line, .. } => Some(*line),
+            TemplateNode::FormWith { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -210,6 +211,37 @@ fn render_inner(
                         &mut captured,
                     )?;
                     crate::template::content_store::append(name, &captured);
+                }
+                TemplateNode::FormWith {
+                    parts,
+                    body,
+                    line: _,
+                } => {
+                    // Bind the builder in a child scope, then wrap the body
+                    // in its open()/close() output (raw — the builder emits
+                    // HTML and escapes field values itself).
+                    core_eval::push_scope(interpreter);
+                    let builder = interpreter
+                        .evaluate(&parts.builder_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    core_eval::define_var(interpreter, &parts.var, builder);
+                    let open_html = interpreter
+                        .evaluate(&parts.open_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    write_value_to_output(&open_html, false, output);
+                    render_inner(
+                        interpreter,
+                        body,
+                        data,
+                        partial_renderer,
+                        template_path,
+                        output,
+                    )?;
+                    let close_html = interpreter
+                        .evaluate(&parts.close_expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    write_value_to_output(&close_html, false, output);
+                    core_eval::pop_scope(interpreter);
                 }
                 TemplateNode::Partial {
                     name,
@@ -943,6 +975,74 @@ mod tests {
             "{}",
             html
         );
+    }
+
+    #[test]
+    fn form_with_block_wraps_body_in_open_close() {
+        let record = make_hash(vec![("title", Value::String("Hi".into()))]);
+        let html = render_form(
+            "<% form_with(post, {\"url\": \"/posts\"}) do %><%- f.text_field(\"title\") %><% end %>",
+            vec![("post", record)],
+        );
+        assert!(
+            html.starts_with("<form action=\"/posts\" method=\"POST\">"),
+            "{}",
+            html
+        );
+        assert!(html.contains("name=\"_csrf_token\""), "{}", html);
+        assert!(html.contains("value=\"Hi\""), "{}", html);
+        assert!(html.ends_with("</form>"), "{}", html);
+    }
+
+    #[test]
+    fn form_with_block_supports_named_var_and_output_tags() {
+        // Rails-style: the opener reads naturally as an output tag; `-%>`
+        // swallows the newline after each tag.
+        let html = render_form(
+            "<%- form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do |form| -%>\n<%- form.text_field(\"q\") -%>\n<%- end -%>\n",
+            vec![],
+        );
+        assert_eq!(
+            html,
+            "<form action=\"/search\" method=\"GET\"><input type=\"text\" id=\"q\" name=\"q\"></form>"
+        );
+    }
+
+    #[test]
+    fn form_with_block_nests_inside_for() {
+        let items = Value::Array(Rc::new(RefCell::new(vec![
+            Value::String("a".into()),
+            Value::String("b".into()),
+        ])));
+        let html = render_form(
+            "<% for item in items %><% form_with(null, {\"url\": \"/x\", \"method\": \"get\"}) do %><%= item %><% end %><% end %>",
+            vec![("items", items)],
+        );
+        assert_eq!(
+            html,
+            "<form action=\"/x\" method=\"GET\">a</form><form action=\"/x\" method=\"GET\">b</form>"
+        );
+    }
+
+    #[test]
+    fn form_with_block_missing_end_errors() {
+        let err = parse_template("<% form_with(null) do %>never closed").unwrap_err();
+        assert!(err.contains("Unclosed form_with block"), "got: {}", err);
+    }
+
+    #[test]
+    fn trim_marker_swallows_following_newline() {
+        let html = render_form(
+            "<%= name -%>\nrest",
+            vec![("name", Value::String("A".into()))],
+        );
+        assert_eq!(html, "Arest");
+        // Without the marker the newline stays.
+        let html = render_form(
+            "<%= name %>\nrest",
+            vec![("name", Value::String("A".into()))],
+        );
+        assert_eq!(html, "A\nrest");
     }
 
     #[test]
