@@ -1029,6 +1029,34 @@ pub(crate) fn reload_routes_in_worker(
         eprintln!("Worker {}: Error loading engine routes: {}", worker_id, e);
     }
 
+    // 5b. Preserve the background-jobs callback route across the reload.
+    // `POST /_jobs/run/:name` (→ `_jobs#run`) is registered per-worker by
+    // `load_jobs_in_worker`, NOT by routes.sl, so the `clear_routes()` + replay
+    // above wipes it. The `_jobs#run` controller action itself survives (the
+    // CONTROLLERS registry is never cleared here), so re-adding the route entry
+    // from the pre-reload snapshot fully restores the endpoint. Without this,
+    // editing config/routes.sl in `--dev` silently removes the endpoint SolidB
+    // POSTs to trigger cron/enqueued jobs — every callback then 404s until the
+    // app is restarted. Only the success path needs this: the failure branch
+    // below restores `saved_routes` wholesale (jobs route included).
+    if reload_result.is_ok() {
+        let jobs_route_present = crate::interpreter::builtins::server::get_routes()
+            .iter()
+            .any(|r| r.handler_name == "_jobs#run");
+        if !jobs_route_present {
+            for saved in saved_routes
+                .iter()
+                .filter(|r| r.handler_name == "_jobs#run")
+            {
+                crate::interpreter::builtins::server::register_route_with_handler(
+                    &saved.method,
+                    &saved.path_pattern,
+                    saved.handler_name.clone(),
+                );
+            }
+        }
+    }
+
     // 6. Rebuild route index
     crate::interpreter::builtins::server::rebuild_route_index();
 
@@ -1050,5 +1078,68 @@ pub(crate) fn reload_routes_in_worker(
     {
         let mut env = interpreter.environment.borrow_mut();
         crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+    }
+}
+
+#[cfg(test)]
+mod reload_jobs_callback_tests {
+    use super::*;
+    use crate::interpreter::builtins::server;
+
+    /// Regression: editing `config/routes.sl` in `--dev` triggers
+    /// `reload_routes_in_worker`, which `clear_routes()`es the whole table and
+    /// replays only routes.sl + engine routes. The framework-owned background
+    /// jobs callback (`POST /_jobs/run/:name`, registered by
+    /// `load_jobs_in_worker`, never by routes.sl) used to be dropped by that
+    /// wipe — so SolidB's cron/enqueue callbacks 404'd until the app restarted,
+    /// even though the job class was still loaded. The reload must preserve it.
+    ///
+    /// Env-independent by design: we register the callback route directly via
+    /// the low-level (non-secret-gated) primitive so this test never touches
+    /// `SOLI_WEBHOOK_SECRET` / `SOLI_JOBS_SECRET` and cannot race the env-mutating
+    /// tests in `jobs.rs`.
+    #[test]
+    fn routes_reload_preserves_jobs_callback_route() {
+        // Isolate this thread's route table.
+        server::clear_routes();
+
+        // A routes.sl that — like every real one — does not register the
+        // framework jobs callback. Empty body keeps the reload free of routing
+        // natives (the DSL wrappers are only *defined*, never called here).
+        let dir = tempfile::tempdir().unwrap();
+        let routes_file = dir.path().join("routes.sl");
+        std::fs::write(&routes_file, "# no user routes\n").unwrap();
+        let controllers_dir = dir.path().join("controllers");
+        std::fs::create_dir_all(&controllers_dir).unwrap();
+
+        let mut interpreter = Interpreter::new_for_serve();
+        define_routes_dsl(&mut interpreter).unwrap();
+
+        // Simulate startup: `load_jobs_in_worker` registers the callback route
+        // once the webhook secret is present.
+        server::register_route_with_handler("POST", "/_jobs/run/:name", "_jobs#run".to_string());
+        server::rebuild_route_index();
+        assert!(
+            server::find_route("POST", "/_jobs/run/email_job").is_some(),
+            "precondition: jobs callback route is registered before reload"
+        );
+
+        // Act: hot-reload routes (what saving config/routes.sl does).
+        let mut tracker = FileTracker::new();
+        reload_routes_in_worker(
+            0,
+            &mut interpreter,
+            &routes_file,
+            &controllers_dir,
+            &mut tracker,
+        );
+
+        // The callback must survive the clear_routes() wipe.
+        assert!(
+            server::find_route("POST", "/_jobs/run/email_job").is_some(),
+            "jobs callback route must survive a routes.sl hot reload"
+        );
+
+        server::clear_routes();
     }
 }
