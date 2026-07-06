@@ -1498,6 +1498,16 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        json_class.methods.insert(
+            "parse_jsonp".to_string(),
+            MethodInfo {
+                name: "parse_jsonp".to_string(),
+                params: vec![("jsonp".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("JSON".to_string(), json_class);
 
         // HTTP class
@@ -1578,6 +1588,16 @@ impl TypeEnvironment {
                 name: "get_all_json".to_string(),
                 params: vec![("urls".to_string(), Type::Array(Box::new(Type::String)))],
                 return_type: Type::Array(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "get_jsonp".to_string(),
+            MethodInfo {
+                name: "get_jsonp".to_string(),
+                params: vec![("url".to_string(), Type::String)],
+                return_type: Type::Future(Box::new(Type::Any)),
                 is_private: false,
                 is_static: true,
             },

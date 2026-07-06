@@ -1218,6 +1218,74 @@ pub fn register_http_class(env: &mut Environment) {
         })),
     );
 
+    // HTTP.get_jsonp(url) - Fetch a JSONP endpoint and unwrap the `callback(...)`
+    // padding, returning the parsed value. Mirrors get_json but strips the
+    // JavaScript wrapper before parsing.
+    http_static_methods.insert(
+        "get_jsonp".to_string(),
+        Rc::new(NativeFunction::new("HTTP.get_jsonp", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.get_jsonp() requires a URL".to_string());
+            }
+            let url = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "HTTP.get_jsonp() expects string URL, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            validate_url_for_ssrf(&url)?;
+
+            let timeout = extract_timeout(args.get(1))?;
+
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_user_http_client().clone();
+                    match http_block_on(&rt, async move {
+                        let req = apply_timeout(client.get(&*url), timeout);
+                        let resp = send_logged("GET", &url, req).await?;
+
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        let text = read_capped_text_async(resp).await?;
+                        let inner = crate::interpreter::jsonp::strip_jsonp_padding(&text)?;
+                        match serde_json::from_str::<serde_json::Value>(inner) {
+                            Ok(json) => json_to_value(json),
+                            Err(e) => Err(format!("Failed to parse JSONP: {}", e)),
+                        }
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
+                    }
+                }
+                _ => Ok(spawn_http_future(
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = apply_timeout(client.get(&*url), timeout)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
+                    },
+                    HttpFutureKind::Jsonp,
+                )),
+            }
+        })),
+    );
+
     http_static_methods.insert(
         "post_json".to_string(),
         Rc::new(NativeFunction::new("HTTP.post_json", None, |args| {

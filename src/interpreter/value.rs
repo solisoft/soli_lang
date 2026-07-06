@@ -414,6 +414,8 @@ pub enum HttpFutureKind {
     String,
     /// Returns parsed JSON
     Json,
+    /// Returns parsed JSON after stripping JSONP callback padding
+    Jsonp,
     /// Returns full response hash (status, headers, body)
     FullResponse,
     /// Returns SystemResult (for System.run())
@@ -448,6 +450,7 @@ impl std::fmt::Debug for HttpFutureKind {
         match self {
             HttpFutureKind::String => write!(f, "String"),
             HttpFutureKind::Json => write!(f, "Json"),
+            HttpFutureKind::Jsonp => write!(f, "Jsonp"),
             HttpFutureKind::FullResponse => write!(f, "FullResponse"),
             HttpFutureKind::SystemResult => write!(f, "SystemResult"),
         }
@@ -1503,6 +1506,14 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
             match serde_json::from_str::<serde_json::Value>(raw_data) {
                 Ok(json) => json_to_value(json),
                 Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+            }
+        }
+        HttpFutureKind::Jsonp => {
+            // Strip the callback padding, then parse the inner JSON.
+            let inner = crate::interpreter::jsonp::strip_jsonp_padding(raw_data)?;
+            match serde_json::from_str::<serde_json::Value>(inner) {
+                Ok(json) => json_to_value(json),
+                Err(e) => Err(format!("Failed to parse JSONP: {}", e)),
             }
         }
         HttpFutureKind::FullResponse => {

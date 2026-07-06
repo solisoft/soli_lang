@@ -359,6 +359,31 @@ render_json(user)
             </div>
         </section>
 
+        <section id="fn-render_jsonp" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-render_jsonp" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">render_jsonp(data, status?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Render a JSONP response for legacy cross-origin consumers. Reads the callback name from the request's <code class="text-amber-400">?callback</code> query param and emits <code class="text-amber-400">/**/callback({...});</code> with <code class="text-amber-400">Content-Type: application/javascript</code>. Falls back to a plain JSON response when no callback is present.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">def feed
+  render_jsonp({ "items": [1, 2, 3] })
+end
+
+# GET /feed?callback=handleFeed  ->  /**/handleFeed({"items":[1,2,3]});
+# GET /feed                      ->  {"items":[1,2,3]}   (application/json)
+# GET /feed?callback=alert(1)    ->  400 Bad Request     (name not reflected)</code></pre>
+                <div class="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                    <p class="text-rose-200/80 text-sm">
+                        <strong>Security — JSONP is cross-origin readable.</strong>
+                        A JSONP endpoint can be loaded by any site via a <code class="text-amber-400">&lt;script&gt;</code> tag, bypassing the same-origin policy — which is why this is a dedicated opt-in helper rather than an automatic mode of <code class="text-amber-400">render_json</code>. The callback name is validated against a strict identifier whitelist (letters, digits, <code class="text-amber-400">_</code>, <code class="text-amber-400">$</code>, dots, ≤64 chars) before it is written into the body, and an invalid name returns <code class="text-amber-400">400</code> without being reflected. Only expose data through <code class="text-amber-400">render_jsonp</code> that is safe to read from any origin — never authenticated or per-user data.
+                    </p>
+                </div>
+            </div>
+        </section>
+
         <section id="fn-render_text" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-render_text" class="group flex items-center gap-2 mb-3">

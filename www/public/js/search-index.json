@@ -762,6 +762,22 @@
       ]
     },
     {
+      "title": "HTTP.get_jsonp",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-get-jsonp",
+      "signature": "HTTP.get_jsonp(url)",
+      "description": "GET a JSONP endpoint and unwrap the callback padding into a value",
+      "keywords": [
+        "http",
+        "jsonp",
+        "json",
+        "callback",
+        "cross-origin",
+        "get"
+      ]
+    },
+    {
       "title": "HTTP.post_json",
       "type": "method",
       "category": "HTTP",
@@ -965,6 +981,22 @@
         "stringify",
         "encode",
         "serialize"
+      ]
+    },
+    {
+      "title": "JSON.parse_jsonp",
+      "type": "method",
+      "category": "JSON",
+      "path": "/docs/builtins/json#def-json-parse-jsonp",
+      "signature": "JSON.parse_jsonp(string)",
+      "description": "Unwrap a JSONP callback(...) string and parse the inner JSON",
+      "keywords": [
+        "json",
+        "jsonp",
+        "parse",
+        "callback",
+        "unwrap",
+        "cross-origin"
       ]
     },
     {
@@ -4059,6 +4091,22 @@
         "response",
         "http",
         "api",
+        "render"
+      ]
+    },
+    {
+      "title": "render_jsonp",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-render_jsonp",
+      "signature": "render_jsonp(data, status?)",
+      "description": "Render a JSONP response wrapping JSON in the request's ?callback function",
+      "keywords": [
+        "jsonp",
+        "json",
+        "callback",
+        "cross-origin",
+        "response",
         "render"
       ]
     },

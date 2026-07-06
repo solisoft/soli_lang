@@ -91,6 +91,37 @@ arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]</code></pre>
             </div>
         </section>
+
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                </svg>
+            </span>
+            JSON.parse_jsonp(string)
+        </h2>
+
+        <section id="def-json-parse-jsonp" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-json-parse-jsonp" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">JSON.parse_jsonp(string)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Unwrap a JSONP <code class="text-amber-400">callback({...});</code> string (with an optional leading <code class="text-amber-400">/**/</code> guard) and parse the inner JSON into a Soli value. Pairs with <code class="text-amber-400">HTTP.get_jsonp</code> for consuming legacy cross-origin APIs.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">string</code> : <code class="text-orange-400">String</code> - A JSONP response body
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">Any</code> - The parsed value. Raises if the string is not a valid <code class="text-amber-400">callback(...)</code> wrapper or the inner JSON is malformed.
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">data = JSON.parse_jsonp('/**/cb({"name": "Alice", "age": 30});')
+println(data["name"])  # "Alice"</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Common Patterns -->

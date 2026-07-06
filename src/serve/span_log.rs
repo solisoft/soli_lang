@@ -136,7 +136,7 @@ pub fn clear() {
 /// Returns true for the small whitelist of request-path native
 /// builtins worth instrumenting in the flamegraph. Anything that turns
 /// a controller action into a response goes here — `render`, `redirect`,
-/// `halt`, `render_json`, `render_text`, `render_partial`. Other
+/// `halt`, `render_json`, `render_jsonp`, `render_text`, `render_partial`. Other
 /// builtins (`len`, `str`, `print`, `t`, `h`, …) are deliberately left
 /// out: instrumenting them would generate one Fn span per call inside
 /// hot iteration loops and drown out signal in the chart.
@@ -146,7 +146,13 @@ pub fn clear() {
 fn is_request_path_native(name: &str) -> bool {
     matches!(
         name,
-        "render" | "render_partial" | "render_json" | "render_text" | "redirect" | "halt"
+        "render"
+            | "render_partial"
+            | "render_json"
+            | "render_jsonp"
+            | "render_text"
+            | "redirect"
+            | "halt"
     )
 }
 
@@ -579,6 +585,7 @@ mod tests {
             "render",
             "render_partial",
             "render_json",
+            "render_jsonp",
             "render_text",
             "redirect",
             "halt",

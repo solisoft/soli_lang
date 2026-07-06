@@ -177,6 +177,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "json_parse",
     // Controller helpers
     "render_json",
+    "render_jsonp",
     // Support helpers
     "fmt_blob_size",
     "fmt_blob_date",

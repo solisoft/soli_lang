@@ -899,6 +899,27 @@ data = HTTP.get_json("https://api.example.com/users/1")
 println(data["body"]["name"])
 ```
 
+### HTTP.get_jsonp(url, options?)
+
+Performs an HTTP GET against a JSONP endpoint and unwraps the `callback(...)`
+padding, returning the parsed value. Use it to consume legacy cross-origin APIs
+that only expose JSONP. The `?callback=...` name goes in the URL you pass; the
+JavaScript wrapper (and an optional leading `/**/` guard) is stripped before the
+inner JSON is parsed.
+
+**Parameters:**
+- `url` (String) - The JSONP URL (typically containing a `callback` query param)
+- `options` (Hash, optional) - Request options (e.g. `{ "timeout": 5 }`)
+
+**Returns:** Any - The parsed value (Hash, Array, …). Raises if the body is not a
+valid `callback(...)` wrapper or the inner JSON is malformed.
+
+**Example:**
+```soli
+feed = HTTP.get_jsonp("https://api.example.com/feed?callback=cb")
+println(feed["items"][0])
+```
+
 ### HTTP.put(url, body, options?) / HTTP.patch(url, body, options?) / HTTP.delete(url, options?) / HTTP.head(url, options?)
 
 PUT / PATCH / DELETE / HEAD counterparts to `HTTP.get` and `HTTP.post`. JSON
@@ -2104,6 +2125,29 @@ println(json)  # {"name":"Alice","scores":[95,87]}
 
 arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]
+```
+
+### JSON.parse_jsonp(string)
+
+Unwraps a JSONP string — `callback({...});`, `callback([...])`, optionally with a
+leading `/**/` guard — and parses the inner JSON into a Soli value. The padding
+between the first `(` and last `)` is stripped, so parentheses inside JSON string
+values are preserved.
+
+**Parameters:**
+- `string` (String) - A JSONP response body
+
+**Returns:** Any - The parsed value. Raises if the string is not a valid
+`callback(...)` wrapper or the inner JSON is malformed.
+
+**Example:**
+```soli
+data = JSON.parse_jsonp('/**/cb({"name": "Alice", "age": 30});')
+println(data["name"])  # "Alice"
+
+# Pair it with a raw fetch when you don't want HTTP.get_jsonp:
+body = HTTP.get("https://api.example.com/feed?callback=cb")
+feed = JSON.parse_jsonp(body)
 ```
 
 ---

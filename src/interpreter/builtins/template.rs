@@ -542,6 +542,25 @@ fn current_request_string_field(field: &str) -> Value {
     }
 }
 
+/// Read a query-string param off the thread-local current request's `query`
+/// sub-hash. Returns `None` when there is no active request, no `query` hash, or
+/// the key is absent / not a string. Used by `render_jsonp` to resolve the
+/// `?callback` name.
+fn current_request_query_param(name: &str) -> Option<String> {
+    let Value::Hash(h) = get_current_request()? else {
+        return None;
+    };
+    let borrowed = h.borrow();
+    let Some(Value::Hash(query)) = borrowed.get(&HashKey::String("query".into())) else {
+        return None;
+    };
+    let query = query.borrow();
+    match query.get(&HashKey::String(name.to_string().into())) {
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
 /// Resolve the registered layout for a controller class + the in-flight
 /// action: the first matching per-action `this.layout(...)` rule, else the
 /// controller-wide `this.layout = "..."` default. `None` when the class isn't
@@ -1934,6 +1953,69 @@ pub fn register_template_builtins(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+
+    // render_jsonp(data, status?) - Render a JSONP response wrapping the JSON in
+    // the request's `?callback` function. Opt-in: JSONP is cross-origin readable,
+    // so this is a dedicated helper rather than auto-enabled on render_json.
+    // Falls back to a plain JSON response when no callback param is present, and
+    // returns 400 (without reflecting the value) when the callback is invalid.
+    env.define(
+        "render_jsonp".to_string(),
+        Value::NativeFunction(NativeFunction::new("render_jsonp", None, |args| {
+            if args.is_empty() {
+                return Err("render_jsonp() requires at least one argument".to_string());
+            }
+
+            // Auto-resolve any Futures in the data
+            let data = resolve_futures_in_value(args[0].clone());
+            let status = if args.len() > 1 {
+                match &args[1] {
+                    Value::Int(n) => *n as u16,
+                    _ => 200,
+                }
+            } else {
+                200
+            };
+
+            let json_body = match &data {
+                Value::String(s) => s.to_string(),
+                _ => value_to_json(&data)?.to_string(),
+            };
+
+            // Resolve the callback from `?callback`; wrap when valid, fall back
+            // to plain JSON when absent, reject when present-but-invalid.
+            let (status, content_type, body) = match current_request_query_param("callback") {
+                None => (
+                    status,
+                    "application/json; charset=utf-8".to_string(),
+                    json_body,
+                ),
+                Some(callback) if crate::interpreter::jsonp::is_valid_jsonp_callback(&callback) => {
+                    (
+                        status,
+                        "application/javascript; charset=utf-8".to_string(),
+                        // `/**/` is the standard content-sniffing hardening prefix.
+                        format!("/**/{}({});", callback, json_body),
+                    )
+                }
+                Some(_) => (
+                    400,
+                    "text/plain; charset=utf-8".to_string(),
+                    "Invalid JSONP callback".to_string(),
+                ),
+            };
+
+            crate::interpreter::builtins::server::set_fast_path_response(
+                crate::interpreter::builtins::server::FastPathResponse {
+                    status,
+                    headers: vec![("Content-Type".to_string(), content_type)],
+                    body,
+                },
+            );
+
+            Ok(Value::Null)
+        })),
+    );
 }
 
 #[cfg(test)]
@@ -2285,6 +2367,77 @@ mod tests {
         set_current_request(make_request(&[("path", Value::Int(42))]));
         assert_eq!(current_request_string_field("path"), Value::Null);
 
+        clear_current_request();
+    }
+
+    /// Build a request whose `query` sub-hash carries the given `?callback` value
+    /// (or no callback at all), for the render_jsonp tests.
+    fn make_request_with_callback(callback: Option<&str>) -> Value {
+        let mut query = HashPairs::default();
+        if let Some(cb) = callback {
+            query.insert(HashKey::String("callback".into()), Value::String(cb.into()));
+        }
+        let query_val = Value::Hash(Rc::new(RefCell::new(query)));
+        make_request(&[("query", query_val)])
+    }
+
+    fn one_key_data() -> Value {
+        let mut map = HashPairs::default();
+        map.insert(HashKey::String("n".into()), Value::Int(1));
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    fn take_fast_path() -> crate::interpreter::builtins::server::FastPathResponse {
+        crate::interpreter::builtins::server::take_fast_path_response()
+            .expect("render_jsonp should set a fast-path response")
+    }
+
+    fn content_type(resp: &crate::interpreter::builtins::server::FastPathResponse) -> Option<&str> {
+        resp.headers
+            .iter()
+            .find(|(k, _)| k == "Content-Type")
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn render_jsonp_wraps_when_callback_present() {
+        set_current_request(make_request_with_callback(Some("handleData")));
+        let result = call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+        assert_eq!(result, Value::Null);
+
+        let resp = take_fast_path();
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "/**/handleData({\"n\":1});");
+        assert_eq!(
+            content_type(&resp),
+            Some("application/javascript; charset=utf-8")
+        );
+        clear_current_request();
+    }
+
+    #[test]
+    fn render_jsonp_falls_back_to_json_without_callback() {
+        set_current_request(make_request_with_callback(None));
+        call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+
+        let resp = take_fast_path();
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "{\"n\":1}");
+        assert_eq!(content_type(&resp), Some("application/json; charset=utf-8"));
+        clear_current_request();
+    }
+
+    #[test]
+    fn render_jsonp_rejects_invalid_callback_without_reflecting() {
+        set_current_request(make_request_with_callback(Some("alert(document.cookie)")));
+        call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+
+        let resp = take_fast_path();
+        assert_eq!(resp.status, 400);
+        assert_eq!(resp.body, "Invalid JSONP callback");
+        // The attacker-supplied name must never appear in the response body.
+        assert!(!resp.body.contains("alert"));
+        assert_eq!(content_type(&resp), Some("text/plain; charset=utf-8"));
         clear_current_request();
     }
 }

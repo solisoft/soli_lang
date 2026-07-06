@@ -5,6 +5,7 @@ pub mod environment;
 pub mod executor;
 pub mod hidden_class;
 pub mod inline_cache;
+pub mod jsonp;
 pub mod symbol;
 pub mod value;
 pub mod value_json;

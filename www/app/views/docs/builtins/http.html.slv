@@ -86,6 +86,18 @@ resp = HTTP.get("https://api.example.com/slow", { "timeout": 5 })</code></pre>
             </div>
         </section>
 
+        <section id="def-http-get-jsonp" class="scroll-mt-20 mb-6">
+            <a href="#def-http-get-jsonp" class="group flex items-center gap-2 mb-3">
+                <code class="text-lg font-mono text-amber-400">HTTP.get_jsonp(url, options?)</code>
+                <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+            </a>
+            <p class="text-gray-400 mb-3">Fetch a JSONP endpoint and unwrap the <code class="text-amber-400">callback(...)</code> padding, returning the parsed value. Use it to consume legacy cross-origin APIs that only expose JSONP; put the <code class="text-amber-400">?callback=...</code> name in the URL you pass.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">feed = HTTP.get_jsonp("https://api.example.com/feed?callback=cb")
+println(feed["items"][0])</code></pre>
+        </section>
+
         <section id="def-http-post" class="scroll-mt-20 mb-6">
             <a href="#def-http-post" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-amber-400">HTTP.post(url, body, options?)</code>

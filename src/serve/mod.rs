@@ -4687,6 +4687,13 @@ fn call_handler(
     let action_name = handler_name.rsplit('#').next().unwrap_or(handler_name);
     crate::interpreter::builtins::set_current_action(action_name);
 
+    // Publish the current request to the thread-local so request-aware builtins
+    // (`render_jsonp`'s `?callback` lookup, `current_path()`/`current_method()`)
+    // work during the action body regardless of controller style. OOP controllers
+    // also set this in `setup_controller_context`; setting it here first covers
+    // function-based handlers, which have no controller instance.
+    crate::interpreter::builtins::template::set_current_request(request_hash.clone());
+
     // Reset any view debug context left over from a prior request on this
     // reused worker thread. `render()` keeps the context set on error (so the
     // failing locals reach the dev error page), so a controller-only error in

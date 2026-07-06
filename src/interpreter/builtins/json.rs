@@ -38,6 +38,29 @@ pub fn register_json_class(env: &mut Environment) {
         })),
     );
 
+    // JSON.parse_jsonp(string) - Unwrap a JSONP `callback({...});` string and
+    // parse the inner JSON into a Value.
+    json_static_methods.insert(
+        "parse_jsonp".to_string(),
+        Rc::new(NativeFunction::new(
+            "JSON.parse_jsonp",
+            Some(1),
+            |mut args| {
+                let jsonp_str = match args.swap_remove(0) {
+                    Value::String(s) => s,
+                    other => {
+                        return Err(format!(
+                            "JSON.parse_jsonp() expects string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                let inner = crate::interpreter::jsonp::strip_jsonp_padding(&jsonp_str)?;
+                parse_json(inner)
+            },
+        )),
+    );
+
     // Create JSON class
     let json_class = Class {
         name: "JSON".to_string(),

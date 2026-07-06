@@ -573,6 +573,35 @@ For a reusable model-side shape, define an `as_json` method on the Model subclas
 >
 > Same convention as Rails' `ActiveModel::Serializers#as_json`. When `render_json` receives an `Instance` whose class declares `def as_json`, the framework calls the method first and forwards the resulting Hash to `render_json`. Models without an `as_json` method fall back to the default-deny filter described above. Defining `as_json` gives you a single declarative place to evolve a model's public API shape.
 
+### JSONP Response
+
+`render_jsonp(data, status?)` serves a JSONP response for legacy cross-origin
+consumers. It reads the callback function name from the request's `?callback`
+query param and wraps the serialized JSON as `/**/callback({...});` with
+`Content-Type: application/javascript`. The same default-deny filter and `as_json`
+convention as `render_json` apply to the serialized `data`.
+
+```soli
+def feed
+  render_jsonp({ "items": [1, 2, 3] })
+end
+```
+
+- `GET /feed?callback=handleFeed` → `/**/handleFeed({"items":[1,2,3]});` as `application/javascript`.
+- `GET /feed` (no `callback`) → falls back to a plain JSON response (`application/json`).
+- `GET /feed?callback=alert(1)` → `400 Bad Request`; the callback name is **not** reflected.
+
+The callback name is validated against a strict identifier whitelist (letters,
+digits, `_`, `$`, and dots, ≤64 chars — allowing names like
+`angular.callbacks._0`) before it is ever written into the body, which closes the
+classic JSONP XSS vector.
+
+> **Security — JSONP is cross-origin readable.** A JSONP endpoint can be loaded
+> by any site via a `<script>` tag, bypassing the same-origin policy. This is why
+> it is a dedicated opt-in helper rather than an automatic mode of `render_json`.
+> Only expose data through `render_jsonp` that is safe to read from any origin —
+> never authenticated, per-user, or otherwise sensitive data.
+
 ### Plain Text
 
 ```soli
