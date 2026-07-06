@@ -214,6 +214,11 @@ pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemon
         process::exit(1);
     }
 
+    if let Err(msg) = solilang::module::enforce_min_soli_version(path) {
+        eprintln!("{}", msg);
+        process::exit(1);
+    }
+
     #[cfg(unix)]
     if daemonize {
         let pid_file = path.join("soli.pid");
@@ -560,6 +565,17 @@ fn kill_previous_process(pid_file: &Path) {
 
 pub fn run_file(path: &str, options: &Options) {
     let path = Path::new(path);
+
+    // Enforce a `soli_version` floor if this script lives inside a project.
+    // A standalone script with no enclosing soli.toml is unaffected.
+    let start_dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if let Err(msg) = solilang::module::enforce_min_soli_version(start_dir) {
+        eprintln!("{}", msg);
+        process::exit(1);
+    }
 
     let result = if options.use_vm {
         solilang::run_file_vm(path, !options.no_type_check)
@@ -1203,38 +1219,6 @@ pub fn run_update(name: Option<&str>) {
     println!();
 }
 
-/// Compare two dotted version strings (e.g. "1.9.0", "1.10.0-rc1")
-/// numerically, component by component. Each component's leading digits are
-/// parsed as a number, so `1.10.0` correctly sorts *after* `1.9.0` (a plain
-/// string compare would get this backwards). Pre-release / build suffixes are
-/// ignored for ordering — good enough for the "is the release strictly newer
-/// than what I'm running?" gate.
-fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
-    fn parts(v: &str) -> Vec<u64> {
-        v.trim_start_matches('v')
-            .split('.')
-            .map(|component| {
-                component
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect::<String>()
-                    .parse::<u64>()
-                    .unwrap_or(0)
-            })
-            .collect()
-    }
-    let (pa, pb) = (parts(a), parts(b));
-    for i in 0..pa.len().max(pb.len()) {
-        let x = pa.get(i).copied().unwrap_or(0);
-        let y = pb.get(i).copied().unwrap_or(0);
-        match x.cmp(&y) {
-            std::cmp::Ordering::Equal => continue,
-            other => return other,
-        }
-    }
-    std::cmp::Ordering::Equal
-}
-
 pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     let repo = "solisoft/soli_lang";
     let current_version = VERSION;
@@ -1310,7 +1294,7 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     // guard only short-circuited the exactly-equal case, so a machine running
     // a newer build than the latest published release (e.g. a locally built
     // or pre-release binary) would silently install the older release.
-    match compare_versions(latest_tag, current_version) {
+    match solilang::module::compare_versions(latest_tag, current_version) {
         std::cmp::Ordering::Equal => {
             println!(
                 "  You are already running the latest version: v{}",
@@ -2002,7 +1986,7 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::compare_versions;
+    use solilang::module::compare_versions;
     use std::cmp::Ordering;
 
     #[test]

@@ -17,6 +17,9 @@ pub struct Package {
     pub description: Option<String>,
     /// Main entry point (default: app.sl)
     pub main: String,
+    /// Minimum required Soli interpreter version (e.g. "1.16.0").
+    /// When set, `soli serve`/`test`/`run` refuse to start on an older soli.
+    pub soli_version: Option<String>,
     /// Dependencies: name -> path or version
     pub dependencies: HashMap<String, Dependency>,
     /// Directory containing soli.toml (set by Package::load)
@@ -73,6 +76,7 @@ impl Package {
             version: DEFAULT_VERSION.to_string(),
             description: None,
             main: "app.sl".to_string(),
+            soli_version: None,
             dependencies: HashMap::new(),
             package_dir: None,
         }
@@ -132,6 +136,7 @@ impl Package {
                             "version" => package.version = value,
                             "description" => package.description = Some(value),
                             "main" => package.main = value,
+                            "soli_version" => package.soli_version = Some(value),
                             _ => {
                                 return Err(PackageError::InvalidField(format!("package.{}", key)))
                             }
@@ -300,6 +305,9 @@ impl Package {
         out.push_str("[package]\n");
         out.push_str(&format!("name = \"{}\"\n", self.name));
         out.push_str(&format!("version = \"{}\"\n", self.version));
+        if let Some(ref v) = self.soli_version {
+            out.push_str(&format!("soli_version = \"{}\"\n", v));
+        }
         if let Some(ref desc) = self.description {
             out.push_str(&format!("description = \"{}\"\n", desc));
         }
@@ -344,6 +352,72 @@ impl Package {
 
         out
     }
+
+    /// Check the running Soli version against this manifest's `soli_version`.
+    ///
+    /// Returns `Ok` when no minimum is declared or `running` is at least the
+    /// required version; otherwise `Err` with a user-facing upgrade message.
+    pub fn check_soli_version(&self, running: &str) -> Result<(), String> {
+        let Some(req) = &self.soli_version else {
+            return Ok(());
+        };
+        if compare_versions(running, req) == std::cmp::Ordering::Less {
+            return Err(format!(
+                "Error: this project requires soli >= {req},\n\
+                 but you are running soli {running}.\n\
+                 Upgrade with: soli update"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Compare two dotted version strings (e.g. "1.9.0", "1.10.0-rc1") numerically,
+/// component by component. Each component's leading digits are parsed as a
+/// number, so `1.10.0` correctly sorts *after* `1.9.0` (a plain string compare
+/// would get this backwards). Pre-release / build suffixes are ignored for
+/// ordering — good enough for "is the running version at least the required
+/// one?" gates.
+pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    fn parts(v: &str) -> Vec<u64> {
+        v.trim_start_matches('v')
+            .split('.')
+            .map(|component| {
+                component
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse::<u64>()
+                    .unwrap_or(0)
+            })
+            .collect()
+    }
+    let (pa, pb) = (parts(a), parts(b));
+    for i in 0..pa.len().max(pb.len()) {
+        let x = pa.get(i).copied().unwrap_or(0);
+        let y = pb.get(i).copied().unwrap_or(0);
+        match x.cmp(&y) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Walk up from `start_dir` for a `soli.toml` and enforce its `soli_version`.
+///
+/// Best-effort: no manifest, no `soli_version`, or a manifest the subset parser
+/// can't fully read all resolve to `Ok(())` — this check never *newly* blocks a
+/// project the parser chokes on. Returns `Err` only when a minimum is declared
+/// and the running interpreter is older than it.
+pub fn enforce_min_soli_version(start_dir: &Path) -> Result<(), String> {
+    let Some(manifest) = Package::find(start_dir) else {
+        return Ok(());
+    };
+    let Ok(pkg) = Package::load(&manifest) else {
+        return Ok(());
+    };
+    pkg.check_soli_version(env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]
@@ -481,5 +555,56 @@ utils = { path = "../utils" }
             }
             _ => panic!("Expected git dependency"),
         }
+    }
+
+    #[test]
+    fn test_parse_soli_version() {
+        let content = r#"
+[package]
+name = "my-app"
+version = "1.0.0"
+soli_version = "1.16.0"
+"#;
+
+        let pkg = Package::parse(content).unwrap();
+        assert_eq!(pkg.soli_version.as_deref(), Some("1.16.0"));
+    }
+
+    #[test]
+    fn test_soli_version_roundtrips_through_to_toml() {
+        // `soli add`/`remove` rewrite the manifest via to_toml — the minimum
+        // version must survive that round-trip or it would be silently dropped.
+        let content = r#"
+[package]
+name = "my-app"
+version = "1.0.0"
+soli_version = "1.16.0"
+
+[dependencies]
+utils = { path = "../utils" }
+"#;
+
+        let pkg = Package::parse(content).unwrap();
+        let reparsed = Package::parse(&pkg.to_toml()).unwrap();
+        assert_eq!(reparsed.soli_version.as_deref(), Some("1.16.0"));
+    }
+
+    #[test]
+    fn test_check_soli_version_gate() {
+        let mut pkg = Package::new("my-app");
+
+        // No minimum declared → always Ok.
+        assert!(pkg.check_soli_version("0.1.0").is_ok());
+
+        pkg.soli_version = Some("1.16.0".to_string());
+
+        // Running older than required → Err (numeric compare, not lexicographic).
+        assert!(pkg.check_soli_version("1.15.9").is_err());
+        assert!(pkg.check_soli_version("1.9.0").is_err());
+
+        // Running equal or newer → Ok.
+        assert!(pkg.check_soli_version("1.16.0").is_ok());
+        assert!(pkg.check_soli_version("1.20.0").is_ok());
+        assert!(pkg.check_soli_version("2.0.0").is_ok());
     }
 }

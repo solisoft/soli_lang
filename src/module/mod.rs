@@ -15,5 +15,5 @@ pub mod registry;
 mod resolver;
 mod tar_extract;
 
-pub use package::{Dependency, Package};
+pub use package::{compare_versions, enforce_min_soli_version, Dependency, Package};
 pub use resolver::{ModuleResolver, ResolvedModule};

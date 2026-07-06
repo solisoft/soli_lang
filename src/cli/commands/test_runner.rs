@@ -316,6 +316,12 @@ pub fn run_test(
     // same in-process flag.
     solilang::interpreter::builtins::http_class::enable_ssrf_test_mode();
     let app_dir = resolve_app_dir(&test_path, test_path.is_file());
+
+    if let Err(msg) = solilang::module::enforce_min_soli_version(&app_dir) {
+        eprintln!("{}", msg);
+        process::exit(1);
+    }
+
     let env_test_path = app_dir.join(".env.test");
     if !env_test_path.exists() {
         eprintln!(

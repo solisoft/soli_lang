@@ -153,8 +153,11 @@
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Ecosystem</h3>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-4">
         This is the honest big one: Rails has ~180k gems' worth of ecosystem, Laravel has first-party packages for billing, search and admin, Django has 15+ years of reusable apps. Soli's package registry is young. What's in the box is unusually broad &mdash; but if it's not in the box, you're writing it.
+    </p>
+    <p class="text-gray-400 mb-12">
+        The basic package hygiene is in place, though: a project can pin a minimum interpreter version with <code class="text-amber-300">soli_version</code> in its <code class="text-amber-300">soli.toml</code> &mdash; MSRV-style, like Cargo's <code class="text-amber-300">rust-version</code> or Bundler's <code class="text-amber-300">required_ruby_version</code> &mdash; so a too-old <code class="text-amber-300">soli</code> fails fast with an upgrade message instead of a cryptic runtime error.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Head-to-Head</h2>

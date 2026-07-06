@@ -401,6 +401,10 @@ soli add soli-math --version 1.0.0
 soli install                    # install everything from soli.toml
 soli publish                    # publish your package to a registry</code></pre>
 
+    <p class="text-gray-400 mt-4 text-sm">
+        The manifest can also pin a minimum interpreter version with <code class="bg-white/10 px-1 rounded">soli_version = "1.16.0"</code> in <code class="bg-white/10 px-1 rounded">[package]</code>; <code class="bg-white/10 px-1 rounded">soli serve</code>/<code class="bg-white/10 px-1 rounded">test</code>/<code class="bg-white/10 px-1 rounded">run</code> then refuse to start on an older <code class="bg-white/10 px-1 rounded">soli</code>.
+    </p>
+
     <p class="text-gray-400 mt-4 mb-12 text-sm">
         See <a href="/docs/language/modules" class="text-amber-400 hover:text-amber-300">Modules &amp; Packages</a> for the full <code class="bg-white/10 px-1 rounded">soli.toml</code> reference.
     </p>

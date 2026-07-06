@@ -169,6 +169,8 @@ soli install                    # install everything from soli.toml
 soli publish                    # publish your package to a registry
 ```
 
+The manifest can also pin a minimum interpreter version with `soli_version = "1.16.0"` in `[package]`; `soli serve`/`test`/`run` then refuse to start on an older `soli`.
+
 See [Modules & Packages](/docs/language/modules) for the full `soli.toml` reference.
 
 ## Design Philosophy

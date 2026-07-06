@@ -75,8 +75,10 @@ pub fn soli_toml(name: &str) -> String {
 name = "{}"
 version = "0.1.0"
 main = "app.sl"
+# soli_version = "{}"   # uncomment to require a minimum soli version to run this project
 "#,
-        name
+        name,
+        env!("CARGO_PKG_VERSION")
     )
 }
 

@@ -3260,6 +3260,7 @@ name = "my-app"
 version = "1.0.0"
 description = "My awesome Soli application"
 main = "src/main.sl"
+soli_version = "1.16.0"   # minimum Soli version required to run this project
 authors = ["Author Name <author@example.com>"]
 
 [dependencies]
@@ -3282,6 +3283,20 @@ dev = "soli serve"
 build = "soli build --release"
 test = "soli test"
 ```
+
+The optional `soli_version` field declares the **minimum** Soli interpreter
+version the project needs — the same idea as Cargo's `rust-version` (MSRV). When
+it is set, `soli serve`, `soli test`, and running a script inside the project
+refuse to start on an older `soli` and print an upgrade message:
+
+```
+Error: this project requires soli >= 1.20.0,
+but you are running soli 1.16.0.
+Upgrade with: soli update
+```
+
+It is a bare minimum: a running version equal to or newer than the declared one
+passes. Omit the field to accept any Soli version.
 
 ---
 
