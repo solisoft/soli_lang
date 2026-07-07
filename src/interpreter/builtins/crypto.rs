@@ -20,7 +20,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
+use crate::interpreter::value::{hash_from_pairs, Class, HashKey, NativeFunction, Value};
 
 const X25519_PRIVATE_KEY_LENGTH: usize = 32;
 const X25519_PUBLIC_KEY_LENGTH: usize = 32;
@@ -133,6 +133,95 @@ fn do_md5(data: &str) -> String {
     let mut hasher = Md5::new();
     hasher.update(data.as_bytes());
     bytes_to_hex(&hasher.finalize())
+}
+
+/// Render a hash key as its canonical string form (used to sort object keys
+/// deterministically before hashing).
+fn hashkey_to_canonical_string(key: &HashKey) -> String {
+    match key {
+        HashKey::String(s) | HashKey::Symbol(s) => s.to_string(),
+        HashKey::Int(i) => i.to_string(),
+        HashKey::Bool(b) => b.to_string(),
+        HashKey::Null => "null".to_string(),
+        HashKey::Decimal(d) => d.to_string(),
+    }
+}
+
+/// Serialize a value to canonical JSON — object keys sorted lexicographically,
+/// recursively — so the same logical content always yields the same bytes (and
+/// therefore the same hash). Only JSON-shaped values are supported; opaque
+/// runtime values (functions, instances, futures, …) are rejected.
+fn canonical_json_into(value: &Value, out: &mut String) -> Result<(), String> {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Int(i) => out.push_str(&i.to_string()),
+        Value::Float(f) => {
+            if !f.is_finite() {
+                return Err("Crypto.canonical_json(): NaN/Infinity are not valid JSON".to_string());
+            }
+            out.push_str(&format!("{}", f));
+        }
+        Value::Decimal(d) => out.push_str(&d.to_string()),
+        Value::String(s) | Value::Symbol(s) => {
+            out.push_str(&serde_json::to_string(s.as_str()).map_err(|e| e.to_string())?);
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.borrow().iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                canonical_json_into(item, out)?;
+            }
+            out.push(']');
+        }
+        Value::Hash(pairs) => {
+            let pairs = pairs.borrow();
+            let mut entries: Vec<(String, &Value)> = Vec::with_capacity(pairs.len());
+            for (k, v) in &*pairs {
+                entries.push((hashkey_to_canonical_string(k), v));
+            }
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            out.push('{');
+            for (i, (k, v)) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(k.as_str()).map_err(|e| e.to_string())?);
+                out.push(':');
+                canonical_json_into(v, out)?;
+            }
+            out.push('}');
+        }
+        other => {
+            return Err(format!(
+                "Crypto.canonical_json(): cannot serialize a {} value",
+                other.type_name()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Merkle root over a list of hex leaf hashes. Nodes are combined pairwise as
+/// `sha256(left_hex ‖ right_hex)`; an odd node is paired with itself (Bitcoin
+/// convention). The empty set hashes the empty string; a single leaf is its own
+/// root. Deterministic and dependency-free (operates on the hex strings).
+fn merkle_root_hex(leaves: &[String]) -> String {
+    if leaves.is_empty() {
+        return do_sha256("");
+    }
+    let mut level: Vec<String> = leaves.to_vec();
+    while level.len() > 1 {
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
+        for pair in level.chunks(2) {
+            let right = if pair.len() == 2 { &pair[1] } else { &pair[0] };
+            next.push(do_sha256(&format!("{}{}", pair[0], right)));
+        }
+        level = next;
+    }
+    level.into_iter().next().unwrap()
 }
 
 fn do_hmac_sha256(message: &str, key: &str) -> Result<String, String> {
@@ -645,6 +734,52 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             Ok(Value::String(do_sha512(&data).into()))
+        })),
+    );
+
+    // Crypto.canonical_json(value) -> String
+    // Deterministic JSON (recursively sorted object keys) for stable hashing —
+    // the building block for tamper-evident hash-chained ledgers.
+    crypto_static_methods.insert(
+        "canonical_json".to_string(),
+        Rc::new(NativeFunction::new(
+            "Crypto.canonical_json",
+            Some(1),
+            |args| {
+                let mut out = String::new();
+                canonical_json_into(&args[0], &mut out)?;
+                Ok(Value::String(out.into()))
+            },
+        )),
+    );
+
+    // Crypto.merkle_root(hashes) -> String
+    // Merkle root of an array of hex leaf hashes (single hash proving the set).
+    crypto_static_methods.insert(
+        "merkle_root".to_string(),
+        Rc::new(NativeFunction::new("Crypto.merkle_root", Some(1), |args| {
+            let arr = match &args[0] {
+                Value::Array(items) => items.borrow(),
+                other => {
+                    return Err(format!(
+                        "Crypto.merkle_root() expects an array, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut leaves: Vec<String> = Vec::with_capacity(arr.len());
+            for item in arr.iter() {
+                match item {
+                    Value::String(s) => leaves.push(s.to_string()),
+                    other => {
+                        return Err(format!(
+                            "Crypto.merkle_root() expects an array of hex-string hashes, got a {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+            Ok(Value::String(merkle_root_hex(&leaves).into()))
         })),
     );
 
@@ -1569,6 +1704,63 @@ pub fn register_crypto_builtins(env: &mut Environment) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_json_sorts_object_keys() {
+        // Inserted b,a — canonical output must be sorted a,b.
+        let h = hash_from_pairs([("b", Value::Int(1)), ("a", Value::Int(2))]);
+        let mut out = String::new();
+        canonical_json_into(&h, &mut out).unwrap();
+        assert_eq!(out, r#"{"a":2,"b":1}"#);
+    }
+
+    #[test]
+    fn canonical_json_is_insertion_order_independent() {
+        let a = hash_from_pairs([("x", Value::Int(1)), ("y", Value::Int(2))]);
+        let b = hash_from_pairs([("y", Value::Int(2)), ("x", Value::Int(1))]);
+        let (mut sa, mut sb) = (String::new(), String::new());
+        canonical_json_into(&a, &mut sa).unwrap();
+        canonical_json_into(&b, &mut sb).unwrap();
+        assert_eq!(sa, sb, "same content, different key order → identical bytes");
+    }
+
+    #[test]
+    fn canonical_json_primitives_arrays_and_nesting() {
+        let inner = hash_from_pairs([("n", Value::Null), ("s", Value::String("a\"b".into()))]);
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Bool(true)])));
+        let h = hash_from_pairs([("arr", arr), ("obj", inner)]);
+        let mut out = String::new();
+        canonical_json_into(&h, &mut out).unwrap();
+        assert_eq!(out, r#"{"arr":[1,true],"obj":{"n":null,"s":"a\"b"}}"#);
+    }
+
+    #[test]
+    fn canonical_json_rejects_opaque_values() {
+        let f = Value::NativeFunction(NativeFunction::new("x", Some(0), |_| Ok(Value::Null)));
+        let mut out = String::new();
+        assert!(canonical_json_into(&f, &mut out).is_err());
+    }
+
+    #[test]
+    fn merkle_root_edge_cases() {
+        assert_eq!(merkle_root_hex(&[]), do_sha256(""));
+        assert_eq!(merkle_root_hex(&["aa".to_string()]), "aa");
+        assert_eq!(
+            merkle_root_hex(&["aa".to_string(), "bb".to_string()]),
+            do_sha256("aabb")
+        );
+        // Odd count: the last node pairs with itself.
+        let three = ["aa", "bb", "cc"].map(String::from);
+        let expected = do_sha256(&format!("{}{}", do_sha256("aabb"), do_sha256("cccc")));
+        assert_eq!(merkle_root_hex(&three), expected);
+    }
+
+    #[test]
+    fn merkle_root_is_order_sensitive() {
+        let ab = merkle_root_hex(&["aa".to_string(), "bb".to_string()]);
+        let ba = merkle_root_hex(&["bb".to_string(), "aa".to_string()]);
+        assert_ne!(ab, ba);
+    }
 
     #[test]
     fn secure_compare_equal_strings() {

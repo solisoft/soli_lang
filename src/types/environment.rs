@@ -1510,6 +1510,57 @@ impl TypeEnvironment {
         );
         self.classes.insert("JSON".to_string(), json_class);
 
+        // Crypto class — hashing/signing/encoding primitives. Registered so
+        // `Crypto.*` type-checks in scripts (not just in models/controllers,
+        // which aren't type-checked). Every method takes one `Any` param, which
+        // keeps the arity check flexible (methods have varied/optional args).
+        let mut crypto_class = ClassType::new("Crypto".to_string());
+        let crypto_string_methods = [
+            "sha256",
+            "sha512",
+            "md5",
+            "hmac",
+            "canonical_json",
+            "merkle_root",
+            "encrypt",
+            "decrypt",
+            "argon2_hash",
+            "password_hash",
+            "modexp",
+            "pkcs1_pad",
+            "pkcs1_unpad",
+            "totp_generate",
+            "totp_uri",
+            "x25519_public_key",
+            "x25519_shared_secret",
+        ];
+        let crypto_bool_methods = [
+            "secure_compare",
+            "argon2_verify",
+            "password_verify",
+            "totp_verify",
+        ];
+        let crypto_any_methods = ["ed25519_keypair", "x25519_keypair"];
+        for (names, ret) in [
+            (&crypto_string_methods[..], Type::String),
+            (&crypto_bool_methods[..], Type::Bool),
+            (&crypto_any_methods[..], Type::Any),
+        ] {
+            for name in names {
+                crypto_class.methods.insert(
+                    name.to_string(),
+                    MethodInfo {
+                        name: name.to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: ret.clone(),
+                        is_private: false,
+                        is_static: true,
+                    },
+                );
+            }
+        }
+        self.classes.insert("Crypto".to_string(), crypto_class);
+
         // HTTP class
         let mut http_class = ClassType::new("HTTP".to_string());
         http_class.methods.insert(
