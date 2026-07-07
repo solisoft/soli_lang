@@ -130,6 +130,31 @@ def show
         "layout": "layouts/docs",
         "breadcrumb_href": "/docs/blog",
         "content": html,
-        "slug": slug
+        "slug": slug,
+        "og_image": blog_og_image(slug),
+        "og_description": blog_og_description(slug)
     })
+end
+
+# Open Graph helpers: reuse a post's card image + description for link previews
+# (Slack, X, LinkedIn, iMessage, …). Early-return lookups keep the values out of
+# block-scoped assignment.
+def find_blog_post(slug)
+    for post in get_blog_posts()
+        return post if post["slug"] == slug
+    end
+    return null
+end
+
+def blog_og_image(slug)
+    let post = find_blog_post(slug)
+    return null if post == null
+    return null if post["image"] == null
+    return "https://soli.solisoft.net/images/blog/" + post["image"]
+end
+
+def blog_og_description(slug)
+    let post = find_blog_post(slug)
+    return "" if post == null
+    return post["description"]
 end

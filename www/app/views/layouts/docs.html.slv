@@ -248,6 +248,9 @@
             transform: translateX(0);
         }
     </style>
+
+    <!-- Per-page <head> injection (og:image and friends from blog posts, etc.) -->
+    <%= yield "head" %>
 </head>
 <body class="bg-[#0C0A09] text-gray-300 antialiased h-full selection:bg-amber-500/40 selection:text-white">
     <%- render_partial("layouts/search_modal") %>
