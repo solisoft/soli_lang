@@ -161,6 +161,67 @@ end</code></pre>
         </section>
     </section>
 
+    <!-- Tamper-Evidence -->
+    <section id="section-tamper-evidence" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Tamper-Evidence (Hash Chains &amp; Merkle Trees)
+        </h2>
+
+        <p class="text-gray-400 mb-6">Two building blocks for verifiable, append-only data &mdash; audit logs, provenance trails, and hash-chained ledgers.</p>
+
+        <section id="def-canonical-json" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-canonical-json" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.canonical_json(value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Serializes a value to <strong>canonical JSON</strong> &mdash; object keys sorted lexicographically, recursively &mdash; so the same logical content always produces the same bytes, and therefore the same hash. Ordinary <code class="text-amber-400">.to_json</code> preserves insertion order, which is not stable enough to hash.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">value</code> : <code class="text-orange-400">Any</code> - A JSON-shaped value. Opaque values (functions, instances, …) raise.
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - Deterministic JSON text.</div>
+                <pre data-filename="Example"><code class="language-soli text-sm">Crypto.canonical_json({ "b": 1, "a": 2 })   # {"a":2,"b":1}
+Crypto.canonical_json({ "a": 2, "b": 1 })   # {"a":2,"b":1}  (same bytes)
+
+record = { "amount": 100, "to": "alice" }
+hash = Crypto.sha256(Crypto.canonical_json(record))</code></pre>
+            </div>
+        </section>
+
+        <section id="def-merkle-root" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-merkle-root" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.merkle_root(hashes)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Computes the <strong>Merkle root</strong> of an array of hex leaf hashes &mdash; a single hash proving the whole set. Nodes combine pairwise as <code class="text-amber-400">sha256(left ‖ right)</code>; an odd node pairs with itself. Empty → hash of the empty string; a single leaf is its own root. The root changes if any leaf changes or is reordered.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">hashes</code> : <code class="text-orange-400">Array&lt;String&gt;</code> - Hex hash strings (e.g. each record's <code class="text-amber-400">sha256</code>).
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - 64-character hex Merkle root.</div>
+                <pre data-filename="Example"><code class="language-soli text-sm">leaves = records.map(fn(r) Crypto.sha256(Crypto.canonical_json(r)))
+root = Crypto.merkle_root(leaves)
+# Publish `root`; re-derive it later to detect tampering.</code></pre>
+                <div class="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p class="text-amber-200/80 text-sm"><strong>Tamper-evident ledgers.</strong> Chain records with <code class="text-amber-300">hash = Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))</code> so each record commits to the one before it &mdash; any later edit or deletion breaks the chain and is detectable by recomputing it.</p>
+                </div>
+            </div>
+        </section>
+    </section>
+
     <!-- Password Hashing -->
     <section id="section-password-hashing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

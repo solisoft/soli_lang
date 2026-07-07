@@ -1123,6 +1123,41 @@
       ]
     },
     {
+      "title": "Crypto.canonical_json",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-canonical-json",
+      "signature": "Crypto.canonical_json(value)",
+      "description": "Deterministic JSON with recursively sorted keys, for stable hashing",
+      "keywords": [
+        "crypto",
+        "canonical",
+        "json",
+        "deterministic",
+        "hash",
+        "ledger",
+        "tamper"
+      ]
+    },
+    {
+      "title": "Crypto.merkle_root",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-merkle-root",
+      "signature": "Crypto.merkle_root(hashes)",
+      "description": "Merkle root of an array of hex leaf hashes — one hash proving a set",
+      "keywords": [
+        "crypto",
+        "merkle",
+        "root",
+        "tree",
+        "hash",
+        "ledger",
+        "tamper",
+        "blockchain"
+      ]
+    },
+    {
       "title": "sha256",
       "type": "function",
       "category": "Crypto",

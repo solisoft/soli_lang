@@ -1391,6 +1391,58 @@ if secure_compare(expected, request_signature)
 end
 ```
 
+### Tamper-Evidence (Hash Chains & Merkle Trees)
+
+Two building blocks for verifiable, append-only data — audit logs, provenance
+trails, and hash-chained ledgers.
+
+#### Crypto.canonical_json(value)
+
+Serializes a value to **canonical JSON** — object keys sorted lexicographically,
+recursively — so the same logical content always produces the same bytes, and
+therefore the same hash. Ordinary JSON serialization (`.to_json`) preserves
+insertion order, which is not stable enough to hash; use this whenever you hash a
+structured value.
+
+**Parameters:**
+- `value` (Any) - A JSON-shaped value (Hash, Array, String, Int, Float, Bool, null). Opaque values (functions, class instances, …) raise.
+
+**Returns:** String - Deterministic JSON text.
+
+**Example:**
+```soli
+Crypto.canonical_json({ "b": 1, "a": 2 })   # {"a":2,"b":1}
+Crypto.canonical_json({ "a": 2, "b": 1 })   # {"a":2,"b":1}  (same bytes)
+
+# Stable content hash of a record:
+record = { "amount": 100, "to": "alice" }
+hash = Crypto.sha256(Crypto.canonical_json(record))
+```
+
+#### Crypto.merkle_root(hashes)
+
+Computes the **Merkle root** of an array of hex leaf hashes — a single hash that
+proves the entire set. Nodes are combined pairwise as `sha256(left ‖ right)`; an
+odd node is paired with itself. An empty array hashes the empty string; a single
+leaf is its own root. The root changes if any leaf changes or is reordered.
+
+**Parameters:**
+- `hashes` (Array<String>) - Hex hash strings (e.g. each record's `sha256`).
+
+**Returns:** String - 64-character hex Merkle root.
+
+**Example:**
+```soli
+leaves = records.map(fn(r) Crypto.sha256(Crypto.canonical_json(r)))
+root = Crypto.merkle_root(leaves)
+# Publish `root` to prove the set is intact; re-derive it later to detect tampering.
+```
+
+> **Tamper-evident ledgers.** Chain records with
+> `hash = Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))`
+> so each record commits to the one before it — any later edit or deletion breaks
+> the chain and is detectable by recomputing it.
+
 ### Base64 Encoding
 
 Base64 encoding and decoding is available via the **Base64 class**:
