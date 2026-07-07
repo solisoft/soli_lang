@@ -1438,10 +1438,31 @@ root = Crypto.merkle_root(leaves)
 # Publish `root` to prove the set is intact; re-derive it later to detect tampering.
 ```
 
-> **Tamper-evident ledgers.** Chain records with
-> `hash = Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))`
-> so each record commits to the one before it — any later edit or deletion breaks
-> the chain and is detectable by recomputing it.
+#### Crypto.ledger_hash(prev_hash, seq, data)
+
+The leaf hash of a hash-chained ledger record — a one-call shorthand for
+`Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))`.
+Because it's a single definition, the code that writes records and the code that
+verifies them share the exact same formula and can't drift apart.
+
+**Parameters:**
+- `prev_hash` (String) - The previous record's `hash` (or 64 zeros for the genesis record)
+- `seq` (Int) - The record's monotonic sequence number
+- `data` (Hash) - The record's user fields (canonicalized internally)
+
+**Returns:** String - 64-character hex hash committing to the previous record, the sequence, and the content.
+
+**Example:**
+```soli
+prev = "0000000000000000000000000000000000000000000000000000000000000000"
+hash = Crypto.ledger_hash(prev, 0, { "amount": 100, "to": "alice" })
+```
+
+> **Tamper-evident ledgers.** Chain records so each commits to the one before it
+> (`Crypto.ledger_hash(prev_hash, seq, data)`) — any later edit or deletion breaks
+> the chain and is detectable by recomputing it. See the blog post
+> [Tamper-Evident Audit Logs in Soli](/docs/blog/tamper-evident-ledgers) for a
+> complete, verifiable example.
 
 ### Base64 Encoding
 

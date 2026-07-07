@@ -117,7 +117,7 @@ fn x25519_is_small_order_output(shared: &[u8; 32]) -> bool {
 // Hash Functions Implementation
 // ============================================================================
 
-fn do_sha256(data: &str) -> String {
+pub(crate) fn do_sha256(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     bytes_to_hex(&hasher.finalize())
@@ -151,7 +151,7 @@ fn hashkey_to_canonical_string(key: &HashKey) -> String {
 /// recursively — so the same logical content always yields the same bytes (and
 /// therefore the same hash). Only JSON-shaped values are supported; opaque
 /// runtime values (functions, instances, futures, …) are rejected.
-fn canonical_json_into(value: &Value, out: &mut String) -> Result<(), String> {
+pub(crate) fn canonical_json_into(value: &Value, out: &mut String) -> Result<(), String> {
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
@@ -208,7 +208,7 @@ fn canonical_json_into(value: &Value, out: &mut String) -> Result<(), String> {
 /// `sha256(left_hex ‖ right_hex)`; an odd node is paired with itself (Bitcoin
 /// convention). The empty set hashes the empty string; a single leaf is its own
 /// root. Deterministic and dependency-free (operates on the hex strings).
-fn merkle_root_hex(leaves: &[String]) -> String {
+pub(crate) fn merkle_root_hex(leaves: &[String]) -> String {
     if leaves.is_empty() {
         return do_sha256("");
     }
@@ -751,6 +751,40 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 Ok(Value::String(out.into()))
             },
         )),
+    );
+
+    // Crypto.ledger_hash(prev_hash, seq, data) -> String
+    // The leaf hash of a hash-chained ledger record:
+    //   sha256(prev_hash ":" seq ":" canonical_json(data)).
+    // A single Rust definition shared by the Ledger chain-on-create hook and the
+    // native chain verifier, so the two can never drift.
+    crypto_static_methods.insert(
+        "ledger_hash".to_string(),
+        Rc::new(NativeFunction::new("Crypto.ledger_hash", Some(3), |args| {
+            let prev = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "Crypto.ledger_hash() prev_hash must be a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let seq = match &args[1] {
+                Value::Int(n) => *n,
+                other => {
+                    return Err(format!(
+                        "Crypto.ledger_hash() seq must be an int, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut canon = String::new();
+            canonical_json_into(&args[2], &mut canon)?;
+            Ok(Value::String(
+                do_sha256(&format!("{}:{}:{}", prev, seq, canon)).into(),
+            ))
+        })),
     );
 
     // Crypto.merkle_root(hashes) -> String
@@ -1721,13 +1755,19 @@ mod tests {
         let (mut sa, mut sb) = (String::new(), String::new());
         canonical_json_into(&a, &mut sa).unwrap();
         canonical_json_into(&b, &mut sb).unwrap();
-        assert_eq!(sa, sb, "same content, different key order → identical bytes");
+        assert_eq!(
+            sa, sb,
+            "same content, different key order → identical bytes"
+        );
     }
 
     #[test]
     fn canonical_json_primitives_arrays_and_nesting() {
         let inner = hash_from_pairs([("n", Value::Null), ("s", Value::String("a\"b".into()))]);
-        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Bool(true)])));
+        let arr = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Bool(true),
+        ])));
         let h = hash_from_pairs([("arr", arr), ("obj", inner)]);
         let mut out = String::new();
         canonical_json_into(&h, &mut out).unwrap();

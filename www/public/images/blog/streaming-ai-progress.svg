@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="A Soli server streaming an AI agent's progress to a browser over Server-Sent Events: plan, tool calls, and synthesis events arrive one by one and render as a live progress list.">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg2)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="56" y="70" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="34" font-weight="700" fill="#f4f4f5">Stream the agent as it thinks</text>
+  <text x="56" y="102" font-family="system-ui, sans-serif" font-size="17" fill="#8b929e">One <tspan font-family="ui-monospace, monospace" fill="#f59e0b">sse()</tspan> block pushes each step to the browser the moment it happens — no WebSocket, no client framework.</text>
+
+  <!-- Browser (left) -->
+  <g>
+    <rect x="56" y="150" width="420" height="360" rx="14" fill="#101319" stroke="#2b3038"/>
+    <rect x="56" y="150" width="420" height="40" rx="14" fill="#161a22"/>
+    <rect x="56" y="176" width="420" height="14" fill="#161a22"/>
+    <circle cx="80" cy="170" r="5" fill="#ef4444"/><circle cx="98" cy="170" r="5" fill="#f59e0b"/><circle cx="116" cy="170" r="5" fill="#22c55e"/>
+    <rect x="150" y="160" width="300" height="20" rx="10" fill="#0b0d0f" stroke="#2b3038"/>
+    <text x="164" y="174" font-family="ui-monospace, monospace" font-size="11" fill="#6b7280">/agent/run</text>
+
+    <!-- progress list -->
+    <g font-family="system-ui, sans-serif" font-size="14">
+      <circle cx="84" cy="228" r="6" fill="#22c55e"/>
+      <text x="102" y="233" fill="#d1d5db">Planned 4 steps</text>
+
+      <circle cx="84" cy="266" r="6" fill="#22c55e"/>
+      <text x="102" y="271" fill="#d1d5db">search_docs("ledger")</text>
+
+      <circle cx="84" cy="304" r="6" fill="#22c55e"/>
+      <text x="102" y="309" fill="#d1d5db">read_file("crypto.rs")</text>
+
+      <circle cx="84" cy="342" r="6" fill="#f59e0b"/>
+      <text x="102" y="347" fill="#e5e7eb">Synthesizing answer…</text>
+      <rect x="102" y="360" width="230" height="8" rx="4" fill="#1f242c"/>
+      <rect x="102" y="360" width="150" height="8" rx="4" fill="url(#a2Bar)"/>
+      <linearGradient id="a2Bar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+
+      <circle cx="84" cy="404" r="6" fill="#3a3f48"/>
+      <text x="102" y="409" fill="#6b7280">Done</text>
+    </g>
+    <text x="76" y="480" font-family="ui-monospace, monospace" font-size="11.5" fill="#4b5563">new EventSource("/agent/run")</text>
+  </g>
+
+  <!-- SSE stream (middle) -->
+  <g font-family="ui-monospace, monospace" font-size="11.5">
+    <path d="M488 330 L 560 330" stroke="#f59e0b" stroke-width="2" marker-end="url(#a2)"/>
+    <g fill="#0f1319" stroke="#3a2f14">
+      <rect x="500" y="196" width="132" height="26" rx="6"/>
+      <rect x="500" y="238" width="132" height="26" rx="6"/>
+      <rect x="500" y="280" width="132" height="26" rx="6"/>
+      <rect x="500" y="322" width="132" height="26" rx="6"/>
+    </g>
+    <g fill="#cbd5e1">
+      <text x="512" y="213">event: plan</text>
+      <text x="512" y="255">event: tool</text>
+      <text x="512" y="297">event: tool</text>
+      <text x="512" y="339">event: token</text>
+    </g>
+    <text x="500" y="378" fill="#6b7280">text/event-stream</text>
+  </g>
+
+  <!-- Server (right) -->
+  <g>
+    <rect x="648" y="150" width="320" height="360" rx="14" fill="#101319" stroke="#2b3038"/>
+    <rect x="648" y="150" width="320" height="40" rx="14" fill="#161a22"/>
+    <rect x="648" y="176" width="320" height="14" fill="#161a22"/>
+    <text x="670" y="176" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#cbd5e1">agent_controller.sl</text>
+    <g font-family="ui-monospace, monospace" font-size="13">
+      <text x="670" y="228" fill="#c792ea">def</text><text x="702" y="228" fill="#82aaff"> run</text>
+      <text x="670" y="258" fill="#f59e0b">  sse</text><text x="700" y="258" fill="#8b929e"> do |stream|</text>
+      <text x="686" y="288" fill="#8b929e">stream.send(</text>
+      <text x="706" y="312" fill="#c3e88d">"plan"</text><text x="748" y="312" fill="#8b929e">, plan)</text>
+      <text x="686" y="342" fill="#8b929e">agent.each do |ev|</text>
+      <text x="702" y="366" fill="#8b929e">stream.send(ev)</text>
+      <text x="686" y="390" fill="#8b929e">end</text>
+      <text x="670" y="414" fill="#8b929e">  end</text>
+      <text x="670" y="438" fill="#c792ea">end</text>
+    </g>
+  </g>
+</svg>

@@ -1522,6 +1522,7 @@ impl TypeEnvironment {
             "hmac",
             "canonical_json",
             "merkle_root",
+            "ledger_hash",
             "encrypt",
             "decrypt",
             "argon2_hash",

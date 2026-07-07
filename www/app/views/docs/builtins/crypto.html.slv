@@ -215,8 +215,30 @@ hash = Crypto.sha256(Crypto.canonical_json(record))</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">leaves = records.map(fn(r) Crypto.sha256(Crypto.canonical_json(r)))
 root = Crypto.merkle_root(leaves)
 # Publish `root`; re-derive it later to detect tampering.</code></pre>
+            </div>
+        </section>
+
+        <section id="def-ledger-hash" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-ledger-hash" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.ledger_hash(prev_hash, seq, data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">The leaf hash of a hash-chained ledger record &mdash; a one-call shorthand for <code class="text-amber-400">Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))</code>. A single definition, so the write path and the verifier share the exact same formula and can't drift apart.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">prev_hash</code> : <code class="text-orange-400">String</code> - the previous record's hash (64 zeros for the genesis record)</div>
+                    <div><code class="text-amber-400">seq</code> : <code class="text-orange-400">Int</code> - the record's monotonic sequence number</div>
+                    <div><code class="text-amber-400">data</code> : <code class="text-orange-400">Hash</code> - the record's user fields</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - 64-character hex hash.</div>
+                <pre data-filename="Example"><code class="language-soli text-sm">prev = "0000000000000000000000000000000000000000000000000000000000000000"
+hash = Crypto.ledger_hash(prev, 0, { "amount": 100, "to": "alice" })</code></pre>
                 <div class="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                    <p class="text-amber-200/80 text-sm"><strong>Tamper-evident ledgers.</strong> Chain records with <code class="text-amber-300">hash = Crypto.sha256(prev_hash + ":" + str(seq) + ":" + Crypto.canonical_json(data))</code> so each record commits to the one before it &mdash; any later edit or deletion breaks the chain and is detectable by recomputing it.</p>
+                    <p class="text-amber-200/80 text-sm"><strong>Tamper-evident ledgers.</strong> Chain records so each commits to the one before it &mdash; any later edit or deletion breaks the chain and is detectable by recomputing it. See the blog post <a href="/docs/blog/tamper-evident-ledgers" class="text-amber-300 underline">Tamper-Evident Audit Logs in Soli</a> for a complete, verifiable example.</p>
                 </div>
             </div>
         </section>

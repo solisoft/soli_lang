@@ -3865,6 +3865,26 @@ impl Model {
         // ====================================================================
         let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
+        // instance.to_h() - The instance's user fields as a Hash. Drops the
+        // `_`-prefixed framework fields (`_key`, `_id`, `_rev`, `_errors`, …),
+        // returning just the user-assigned attributes. Handy for serialization,
+        // diffing, and content hashing (e.g. Ledger records).
+        native_methods.insert(
+            "to_h".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model#to_h",
+                None,
+                |args| {
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    Ok(instance_fields_to_hash(&inst_ref))
+                },
+            )),
+        );
+
         // instance.update() - Persist current instance fields to DB
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(

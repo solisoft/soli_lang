@@ -1158,6 +1158,23 @@
       ]
     },
     {
+      "title": "Crypto.ledger_hash",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-ledger-hash",
+      "signature": "Crypto.ledger_hash(prev_hash, seq, data)",
+      "description": "Leaf hash of a hash-chained ledger record: sha256(prev : seq : canonical_json(data))",
+      "keywords": [
+        "crypto",
+        "ledger",
+        "hash",
+        "chain",
+        "tamper",
+        "audit",
+        "blockchain"
+      ]
+    },
+    {
       "title": "sha256",
       "type": "function",
       "category": "Crypto",

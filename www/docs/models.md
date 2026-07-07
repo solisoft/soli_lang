@@ -132,6 +132,15 @@ user.save({ "name": "Alice Smith", "age": 31 });
 user.update({ "name": "Alice Smith", "age": 31 });
 ```
 
+`instance.to_h()` returns the record's user fields as a Hash, dropping the
+`_`-prefixed framework fields (`_key`, `_id`, `_rev`, `_errors`, …). Handy for
+serialization, diffing, and content hashing:
+
+```soli
+user = User.find("user123");
+user.to_h();   # { "name": "Alice Smith", "age": 31 }
+```
+
 ### Deleting Records
 
 ```soli
