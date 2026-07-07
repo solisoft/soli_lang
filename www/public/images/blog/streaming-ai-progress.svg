@@ -72,12 +72,12 @@
     <rect x="648" y="176" width="320" height="14" fill="#161a22"/>
     <text x="670" y="176" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#cbd5e1">agent_controller.sl</text>
     <g font-family="ui-monospace, monospace" font-size="13">
-      <text x="670" y="228" fill="#c792ea">def</text><text x="702" y="228" fill="#82aaff"> run</text>
-      <text x="670" y="258" fill="#f59e0b">  sse</text><text x="700" y="258" fill="#8b929e"> do |stream|</text>
-      <text x="686" y="288" fill="#8b929e">stream.send(</text>
+      <text x="670" y="228" fill="#c792ea">def</text><text x="702" y="228" fill="#82aaff"> run(req)</text>
+      <text x="670" y="258" fill="#f59e0b">  sse(req)</text><text x="726" y="258" fill="#8b929e"> do |out|</text>
+      <text x="686" y="288" fill="#8b929e">out.emit(</text>
       <text x="706" y="312" fill="#c3e88d">"plan"</text><text x="748" y="312" fill="#8b929e">, plan)</text>
       <text x="686" y="342" fill="#8b929e">agent.each do |ev|</text>
-      <text x="702" y="366" fill="#8b929e">stream.send(ev)</text>
+      <text x="702" y="366" fill="#8b929e">out.emit(ev)</text>
       <text x="686" y="390" fill="#8b929e">end</text>
       <text x="670" y="414" fill="#8b929e">  end</text>
       <text x="670" y="438" fill="#c792ea">end</text>

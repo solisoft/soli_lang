@@ -6,6 +6,11 @@ The fix isn't a fancier spinner. It's *telling the user what's happening, as it 
 
 This post builds a small research agent that streams its progress live. No WebSocket handshake, no client framework, no polling.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/streaming-ai-progress.svg" width="1024" height="576" alt="A Soli controller's sse() block on the right streams named events — plan, tool, tool, token — over a text/event-stream connection to the browser on the left, which renders them as a live progress list: planned 4 steps, two completed tool calls, and 'synthesizing answer…' in progress." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">One <code>sse()</code> block on the server pushes each step to the browser's <code>EventSource</code> the moment it happens — the user watches the agent work instead of staring at a spinner.</figcaption>
+</figure>
+
 ## Why SSE (and not WebSockets)
 
 Progress reporting is one-directional: the server talks, the browser listens. SSE fits that shape perfectly and costs almost nothing:
