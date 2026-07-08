@@ -14,6 +14,7 @@ pub mod coverage;
 pub mod embedding;
 pub mod error;
 pub mod fmt;
+pub mod generation;
 pub mod inflect;
 pub mod interpreter;
 pub mod lexer;

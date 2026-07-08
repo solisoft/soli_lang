@@ -33,10 +33,13 @@ name = "soli"
 path = "src/main.rs"
 
 [features]
-default = ["embedding"]
+default = ["embedding", "llm"]
 # Coverage is now always enabled at runtime via --coverage flag
-full = ["embedding"]
+full = ["embedding", "llm"]
 embedding = []
+# LLM text completion via an OpenAI-compatible chat/completions endpoint
+# (src/generation.rs, exposed to Soli as the `llm_generate` builtin).
+llm = []
 
 [dependencies]
 thiserror = "1.0"

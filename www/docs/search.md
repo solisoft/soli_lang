@@ -87,6 +87,41 @@ Article.similar("q", "embedding", 5, { "exact": true })
 - `{ "exact": true }` is the escape hatch: exact client-side cosine over the
   filtered rows, at fetch-everything cost.
 
+### Generating embeddings (`embed` / `embed_batch`)
+
+`.similar("text", ...)` embeds the *query* for you, but you still need to
+embed the **documents** you store. `embed` is the write-side counterpart — it
+returns the vector for a string so you can persist it on the record:
+
+```soli
+class Article < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.title + "\n" + this.body)
+  }
+end
+```
+
+- `embed(text) -> Array<Float>` — one embedding vector.
+- `embed_batch(texts) -> Array<Array<Float>>` — one request for many texts,
+  returned in input order. Use it to back-fill embeddings over an existing
+  collection instead of one call per row:
+
+```soli
+articles = Article.where({ "embedding": null }).all
+vectors  = embed_batch(articles.map(fn(a) a.title))
+articles.each_with_index(fn(article, i) {
+  article.embedding = vectors[i]
+  article.save()
+})
+```
+
+Both use the same `SOLI_EMBEDDING_*` configuration as `.similar()` (see
+[the embedding configuration](database.md)); they raise if
+`SOLI_EMBEDDING_API_KEY` is unset. Keys and endpoints live in the environment,
+not in app code — one place to review where text is sent.
+
 ## Fulltext Search (`search`)
 
 Requires a `fulltext_index` covering the field(s). Results are ranked;

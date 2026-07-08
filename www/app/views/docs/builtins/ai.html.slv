@@ -1,0 +1,189 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">AI</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">AI Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Embedding generation and LLM text completion against OpenAI-compatible endpoints. Endpoints and API keys are read from the environment, so credentials stay out of app code &mdash; one place to review where text is sent (a single point for GDPR / data-residency review).
+        </p>
+        <div class="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 text-sm">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Works with OpenAI or a self-hosted vLLM / Ollama / llama.cpp (often keyless)
+        </div>
+    </div>
+
+    <!-- Functions -->
+    <section id="section-ai" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            embed(text)
+        </h2>
+
+        <section id="def-embed" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-embed" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">embed(text)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Generate an embedding vector for a string &mdash; the write-side counterpart to <code class="text-amber-400">Model.similar</code>, which embeds the <em>query</em> but not the documents you store.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">text</code> : <code class="text-orange-400">String</code> - text to embed
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">Array&lt;Float&gt;</code> - the embedding vector. Raises if <code class="text-amber-400">SOLI_EMBEDDING_API_KEY</code> is unset or the call fails.
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Article &lt; Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.title + "\n" + this.body)
+  }
+end</code></pre>
+            </div>
+        </section>
+
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3 mt-8">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            embed_batch(texts)
+        </h2>
+
+        <section id="def-embed-batch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-embed-batch" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">embed_batch(texts)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Embed many texts in a single request, returned in input order. Use it to back-fill embeddings over an existing collection instead of one call per row.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">texts</code> : <code class="text-orange-400">Array&lt;String&gt;</code> - texts to embed
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">Array&lt;Array&lt;Float&gt;&gt;</code> - one vector per input, in input order
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">articles = Article.where({ "embedding": null }).all
+vectors  = embed_batch(articles.map(fn(a) a.title))
+articles.each_with_index(fn(article, i) {
+  article.embedding = vectors[i]
+  article.save()
+})</code></pre>
+            </div>
+        </section>
+
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3 mt-8">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 3v-3z" />
+                </svg>
+            </span>
+            llm_generate(system, user)
+        </h2>
+
+        <section id="def-llm-generate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-llm-generate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">llm_generate(system, user)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Chat completion via an OpenAI-compatible <code class="text-amber-400">chat/completions</code> endpoint.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">system</code> : <code class="text-orange-400">String</code> - system prompt (role / instructions)</div>
+                    <div><code class="text-amber-400">user</code> : <code class="text-orange-400">String</code> - user prompt</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">String</code> - the model's completion text. Raises if the call fails.
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">summary = llm_generate(
+  "You summarize support tickets in one sentence.",
+  ticket.body
+)</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Configuration -->
+    <section id="section-config" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration</h2>
+        <p class="text-gray-400 mb-4">All AI functions read their endpoint and credentials from environment variables. The <code class="text-amber-400">SOLI_LLM_API_KEY</code> is optional &mdash; it is omitted from the request when unset, so keyless local servers work out of the box.</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Variable</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Default</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_EMBEDDING_API_KEY</code></td>
+                        <td class="py-3 px-4 text-gray-400">required for <code>embed</code> / <code>embed_batch</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_EMBEDDING_URL</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>https://api.openai.com/v1/embeddings</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_EMBEDDING_MODEL</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>text-embedding-3-small</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_LLM_URL</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>https://api.openai.com/v1/chat/completions</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_LLM_API_KEY</code></td>
+                        <td class="py-3 px-4 text-gray-400">optional (omitted when unset)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_LLM_MODEL</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>gpt-4o-mini</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_LLM_TEMPERATURE</code></td>
+                        <td class="py-3 px-4 text-gray-400">optional (only sent when set)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-300">SOLI_LLM_MAX_TOKENS</code></td>
+                        <td class="py-3 px-4 text-gray-400">optional (only sent when set)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/json" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            JSON Class
+        </a>
+        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+            Crypto / TOTP
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

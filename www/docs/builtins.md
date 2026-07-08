@@ -1305,6 +1305,86 @@ println(json)  # {"name":"Alice","scores":[95,87,92]}
 
 ---
 
+## AI Functions
+
+Embedding generation and LLM text completion against OpenAI-compatible
+endpoints. Endpoints and API keys are read from the environment, so credentials
+stay out of app code and there is one place to review where text is sent (a
+single point for GDPR / data-residency review). Any OpenAI-compatible server
+works — OpenAI, or a self-hosted vLLM / Ollama / llama.cpp (which often need no
+API key).
+
+### embed(text)
+
+Generate an embedding vector for a string — the write-side counterpart to
+`Model.similar`, which embeds the *query* but not the documents you store.
+
+**Parameters:**
+- `text` (String) - text to embed
+
+**Returns:** Array<Float> - the embedding vector
+
+**Environment:** `SOLI_EMBEDDING_API_KEY` (required), `SOLI_EMBEDDING_URL`
+(default `https://api.openai.com/v1/embeddings`), `SOLI_EMBEDDING_MODEL`
+(default `text-embedding-3-small`). Raises if the key is unset or the call fails.
+
+**Example:**
+```soli
+class Article < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.title + "\n" + this.body)
+  }
+end
+```
+
+### embed_batch(texts)
+
+Embed many texts in a single request, returned in input order. Use it to
+back-fill embeddings over an existing collection instead of one call per row.
+
+**Parameters:**
+- `texts` (Array<String>) - texts to embed
+
+**Returns:** Array<Array<Float>> - one vector per input, in input order
+
+**Example:**
+```soli
+articles = Article.where({ "embedding": null }).all
+vectors  = embed_batch(articles.map(fn(a) a.title))
+articles.each_with_index(fn(article, i) {
+  article.embedding = vectors[i]
+  article.save()
+})
+```
+
+### llm_generate(system, user)
+
+Chat completion via an OpenAI-compatible `chat/completions` endpoint.
+
+**Parameters:**
+- `system` (String) - system prompt (role/instructions)
+- `user` (String) - user prompt
+
+**Returns:** String - the model's completion text
+
+**Environment:** `SOLI_LLM_URL` (default
+`https://api.openai.com/v1/chat/completions`), `SOLI_LLM_API_KEY` (optional —
+omitted from the request when unset, for keyless local servers), `SOLI_LLM_MODEL`
+(default `gpt-4o-mini`), `SOLI_LLM_TEMPERATURE` and `SOLI_LLM_MAX_TOKENS`
+(optional — only sent when set). Raises if the call fails.
+
+**Example:**
+```soli
+summary = llm_generate(
+  "You summarize support tickets in one sentence.",
+  ticket.body
+)
+```
+
+---
+
 ## Cryptography Functions
 
 All cryptographic functions are available both as static methods on the `Crypto` class and as standalone functions.

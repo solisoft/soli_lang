@@ -329,6 +329,10 @@ def builtins_json
     render_docs("docs/builtins/json", "JSON Functions", "builtins", "json")
 end
 
+def builtins_ai
+    render_docs("docs/builtins/ai", "AI Functions", "builtins", "ai")
+end
+
 def builtins_crypto
     render_docs("docs/builtins/crypto", "Crypto Functions", "builtins", "crypto")
 end
