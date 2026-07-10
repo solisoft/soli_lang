@@ -335,7 +335,7 @@ n = alice.traverse(Follow).count</code></pre>
 
     <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-300 text-sm">
-            A traversal builder does <strong>not</strong> compose with <code>includes</code>, <code>includes_count</code>, <code>join</code>, <code>group_by</code>, <code>similar</code>, <code>update_all</code>, or <code>delete_all</code> — combining them raises a clear error. <code>traverse</code> requires a saved record. Note the depth gotcha: Soli's <code>1..3</code> range literal materializes to the exclusive-end array <code>[1, 2]</code> — prefer an explicit <code>[1, 3]</code>.
+            A traversal builder does <strong>not</strong> compose with <code>includes</code>, <code>includes_count</code>, <code>join</code>, <code>group_by</code>, <code>update_all</code>, or <code>delete_all</code> — combining them raises a clear error. <strong><code>.similar()</code> does compose</strong> — rank reachable vertices by semantic relevance (exact client-side cosine; no HNSW pushdown on graph queries). <code>traverse</code> requires a saved record. Note the depth gotcha: Soli's <code>1..3</code> range literal materializes to the exclusive-end array <code>[1, 2]</code> — prefer an explicit <code>[1, 3]</code>.
         </p>
     </div>
 

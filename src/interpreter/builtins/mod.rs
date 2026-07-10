@@ -107,6 +107,7 @@ pub mod strings;
 pub mod system;
 pub mod template;
 pub mod test_dsl;
+pub mod test_helpers;
 pub mod test_server;
 pub mod trust_proxy;
 pub mod types;
@@ -528,6 +529,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register test-only builtins (skipped in serve mode)
     if include_test_builtins {
         factories::register_factories(env);
+        test_helpers::register_test_helpers(env);
         assertions::register_assertions(env);
         expectations::register_expectation_class(env);
         test_dsl::register_test_builtins(env);

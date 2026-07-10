@@ -15,10 +15,13 @@
 //! `QueryBuilder::for_head` so every existing FILTER/SORT/LIMIT path applies
 //! to traversal results unchanged.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{HashKey, Instance, Value};
 
+use super::query::QueryBuilder;
 use super::registry::{get_edge_spec, EdgeSpec};
 
 /// Traversal direction. `Out` follows `_from → _to`, `In` the reverse,
@@ -408,6 +411,83 @@ pub fn parse_traverse_options(args: &[Value]) -> Result<TraverseSpec, String> {
         min_depth,
         max_depth,
     })
+}
+
+/// Build a chainable [`QueryBuilder`] for graph traversal from a saved vertex.
+/// Mirrors `instance.traverse(EdgeModel, options?)` without going through the
+/// interpreter call path (used by `graph_rag` expansion).
+pub fn build_traverse_qb_from_seed(
+    seed: Rc<RefCell<Instance>>,
+    edge_arg: &Value,
+    direction: TraversalDirection,
+    min_depth: usize,
+    max_depth: usize,
+) -> Result<QueryBuilder, String> {
+    let own_class_name = seed.borrow().class.name.clone();
+    let own_collection = super::core::class_name_to_collection(&own_class_name);
+    let start_id = edge_ref(
+        &Value::Instance(seed.clone()),
+        &own_collection,
+        "traverse()",
+    )
+    .map_err(|_| {
+        format!(
+            "traverse() requires a saved record ({} instance has no _key)",
+            own_class_name
+        )
+    })?;
+
+    let (edge_collection, edge_spec) = match edge_arg {
+        Value::Class(c) => {
+            let class_name = c.name.to_string();
+            let spec = get_edge_spec(&class_name).ok_or_else(|| {
+                format!(
+                    "{} has no `edge` declaration — declare `edge from: \"...\", to: \"...\"` \
+                     in its class body (or pass an edge collection name)",
+                    class_name
+                )
+            })?;
+            (
+                super::core::class_name_to_collection(&class_name),
+                Some(spec),
+            )
+        }
+        Value::String(s) => (s.to_string(), None),
+        other => {
+            return Err(format!(
+                "traverse() expects an edge model class or collection name, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    validate_collection_ident(&edge_collection, "traverse")?;
+
+    let target_collection = match (&edge_spec, direction) {
+        (Some(es), TraversalDirection::Out) => es.to_collection.clone(),
+        (Some(es), TraversalDirection::In) => es.from_collection.clone(),
+        _ => own_collection.clone(),
+    };
+    let target_class_name = super::relations::classify(&target_collection);
+    let target_class = super::registry::get_model_class(&target_class_name)
+        .or_else(|| super::registry::get_model_class(&own_class_name));
+
+    let mut qb = match target_class {
+        Some(class) => {
+            QueryBuilder::new_with_class(target_class_name, edge_collection.clone(), class)
+        }
+        None => QueryBuilder::new(target_class_name, edge_collection.clone()),
+    };
+    qb.bind_vars.insert(
+        crate::interpreter::get_symbol(TRAVERSE_START_BIND),
+        serde_json::Value::String(start_id),
+    );
+    qb.traversal = Some(TraversalClause {
+        edge_collection,
+        direction,
+        min_depth,
+        max_depth,
+    });
+    Ok(qb)
 }
 
 /// Build the SHORTEST_PATH query. Start/end travel as bind vars; direction

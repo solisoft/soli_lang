@@ -1,3 +1,18 @@
+<% content_for "head" do %>
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Soli">
+  <meta property="og:title" content="<%= title %>">
+  <meta property="og:description" content="<%= og_description %>">
+  <meta property="og:url" content="https://soli.solisoft.net/docs/blog/<%= slug %>">
+  <meta name="twitter:title" content="<%= title %>">
+  <meta name="twitter:description" content="<%= og_description %>">
+  <% if og_image %>
+  <meta property="og:image" content="<%= og_image %>">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="<%= og_image %>">
+  <% end %>
+<% end %>
+
 <div>
     <div class="mb-8">
         <a href="/docs/blog" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 mb-4">

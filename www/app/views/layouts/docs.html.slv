@@ -116,6 +116,135 @@
             border: 1px solid rgba(245, 158, 11, 0.2);
         }
 
+        /* Mermaid diagrams (```mermaid fences in markdown blog posts / docs) */
+        .mermaid-wrap {
+            position: relative;
+            margin: 1.5rem auto;
+            max-width: 100%;
+            border-radius: 0.75rem;
+            border: 1px solid #30363d;
+            background: #0b0d0f;
+            overflow: hidden;
+        }
+        .mermaid-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.35rem;
+            padding: 0.45rem 0.55rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .mermaid-toolbar-hint {
+            margin-right: auto;
+            font-size: 0.7rem;
+            color: #6b7280;
+            user-select: none;
+        }
+        .mermaid-zoom-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.85rem;
+            height: 1.85rem;
+            padding: 0 0.4rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #9ca3af;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+        }
+        .mermaid-zoom-btn:hover {
+            color: #fff;
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.35);
+        }
+        .mermaid-zoom-label {
+            min-width: 2.75rem;
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: #9ca3af;
+            user-select: none;
+        }
+        .mermaid-viewport {
+            overflow: auto;
+            padding: 1.25rem 1rem;
+            max-height: min(70vh, 520px);
+            cursor: grab;
+            touch-action: pan-x pan-y;
+        }
+        .mermaid-viewport.is-dragging { cursor: grabbing; }
+        .mermaid-viewport-inner {
+            display: inline-block;
+            min-width: 100%;
+            text-align: center;
+            transform-origin: top center;
+            transition: transform 0.12s ease-out;
+        }
+        .mermaid-diagram {
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            text-align: center;
+        }
+        .mermaid-diagram svg {
+            max-width: none;
+            height: auto;
+            display: inline-block;
+        }
+        /* Fullscreen lightbox */
+        .mermaid-lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            background: rgba(8, 9, 11, 0.92);
+            backdrop-filter: blur(6px);
+        }
+        .mermaid-lightbox[hidden] { display: none !important; }
+        .mermaid-lightbox-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            flex-shrink: 0;
+        }
+        .mermaid-lightbox-stage {
+            flex: 1;
+            overflow: auto;
+            padding: 1.5rem;
+            cursor: grab;
+            touch-action: pan-x pan-y;
+        }
+        .mermaid-lightbox-stage.is-dragging { cursor: grabbing; }
+        .mermaid-lightbox-inner {
+            display: inline-block;
+            min-width: 100%;
+            text-align: center;
+            transform-origin: top center;
+            transition: transform 0.12s ease-out;
+        }
+        .mermaid-lightbox-close {
+            margin-right: auto;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #9ca3af;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0.35rem 0.5rem;
+        }
+        .mermaid-lightbox-close:hover { color: #fff; }
+
 
         /* Prose customization - full width */
         .prose-docs {
@@ -248,6 +377,9 @@
             transform: translateX(0);
         }
     </style>
+
+    <!-- Per-page <head> injection (og:image and friends from blog posts, etc.) -->
+    <%= yield "head" %>
 </head>
 <body class="bg-[#0C0A09] text-gray-300 antialiased h-full selection:bg-amber-500/40 selection:text-white">
     <%- render_partial("layouts/search_modal") %>
@@ -510,12 +642,272 @@
         });
     }
 
+    var MERMAID_SRC = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    var MERMAID_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+
+    function mermaidZoomLabel(scale) {
+        return Math.round(scale * 100) + '%';
+    }
+
+    function nearestMermaidZoomIndex(scale) {
+        var best = 0;
+        var bestDiff = Infinity;
+        for (var i = 0; i < MERMAID_ZOOM_STEPS.length; i++) {
+            var diff = Math.abs(MERMAID_ZOOM_STEPS[i] - scale);
+            if (diff < bestDiff) { bestDiff = diff; best = i; }
+        }
+        return best;
+    }
+
+    function ensureMermaidLightbox() {
+        var box = document.getElementById('mermaid-lightbox');
+        if (box) return box;
+
+        box = document.createElement('div');
+        box.id = 'mermaid-lightbox';
+        box.className = 'mermaid-lightbox';
+        box.hidden = true;
+        box.innerHTML =
+            '<div class="mermaid-lightbox-toolbar">' +
+                '<button type="button" class="mermaid-lightbox-close" data-mermaid-lb="close">Close (Esc)</button>' +
+                '<span class="mermaid-toolbar-hint">Drag to pan · Ctrl+scroll to zoom</span>' +
+                '<button type="button" class="mermaid-zoom-btn" data-mermaid-lb="out" aria-label="Zoom out">−</button>' +
+                '<span class="mermaid-zoom-label" data-mermaid-lb="label">100%</span>' +
+                '<button type="button" class="mermaid-zoom-btn" data-mermaid-lb="in" aria-label="Zoom in">+</button>' +
+                '<button type="button" class="mermaid-zoom-btn" data-mermaid-lb="reset" aria-label="Reset zoom">Reset</button>' +
+            '</div>' +
+            '<div class="mermaid-lightbox-stage" data-mermaid-lb="stage">' +
+                '<div class="mermaid-lightbox-inner" data-mermaid-lb="inner"></div>' +
+            '</div>';
+
+        document.body.appendChild(box);
+
+        var lbState = { scale: 1, source: null };
+
+        function setLbScale(scale) {
+            lbState.scale = scale;
+            var inner = box.querySelector('[data-mermaid-lb="inner"]');
+            var label = box.querySelector('[data-mermaid-lb="label"]');
+            if (inner) inner.style.transform = 'scale(' + scale + ')';
+            if (label) label.textContent = mermaidZoomLabel(scale);
+        }
+
+        function lbZoom(delta) {
+            var idx = nearestMermaidZoomIndex(lbState.scale);
+            idx = Math.max(0, Math.min(MERMAID_ZOOM_STEPS.length - 1, idx + delta));
+            setLbScale(MERMAID_ZOOM_STEPS[idx]);
+        }
+
+        box.querySelector('[data-mermaid-lb="out"]').addEventListener('click', function() { lbZoom(-1); });
+        box.querySelector('[data-mermaid-lb="in"]').addEventListener('click', function() { lbZoom(1); });
+        box.querySelector('[data-mermaid-lb="reset"]').addEventListener('click', function() { setLbScale(1); });
+        box.querySelector('[data-mermaid-lb="close"]').addEventListener('click', function() { closeMermaidLightbox(); });
+
+        box.addEventListener('click', function(e) {
+            if (e.target === box) closeMermaidLightbox();
+        });
+
+        var stage = box.querySelector('[data-mermaid-lb="stage"]');
+        attachMermaidPan(stage);
+        attachMermaidWheelZoom(stage, function(delta) { lbZoom(delta); });
+
+        document.addEventListener('keydown', function(e) {
+            if (!box.hidden && e.key === 'Escape') closeMermaidLightbox();
+        });
+
+        box._mermaidLb = {
+            open: function(svg) {
+                var inner = box.querySelector('[data-mermaid-lb="inner"]');
+                inner.innerHTML = '';
+                inner.appendChild(svg.cloneNode(true));
+                lbState.scale = 1.25;
+                setLbScale(1.25);
+                box.hidden = false;
+                document.body.classList.add('overflow-hidden');
+                stage.scrollTop = 0;
+                stage.scrollLeft = 0;
+            },
+            close: function() {
+                box.hidden = true;
+                document.body.classList.remove('overflow-hidden');
+            }
+        };
+
+        return box;
+    }
+
+    function closeMermaidLightbox() {
+        var box = document.getElementById('mermaid-lightbox');
+        if (box && box._mermaidLb) box._mermaidLb.close();
+    }
+
+    function attachMermaidPan(viewport) {
+        var dragging = false;
+        var startX = 0;
+        var startY = 0;
+        var scrollLeft = 0;
+        var scrollTop = 0;
+
+        viewport.addEventListener('mousedown', function(e) {
+            if (e.button !== 0) return;
+            dragging = true;
+            viewport.classList.add('is-dragging');
+            startX = e.pageX;
+            startY = e.pageY;
+            scrollLeft = viewport.scrollLeft;
+            scrollTop = viewport.scrollTop;
+        });
+
+        window.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            viewport.scrollLeft = scrollLeft - (e.pageX - startX);
+            viewport.scrollTop = scrollTop - (e.pageY - startY);
+        });
+
+        window.addEventListener('mouseup', function() {
+            dragging = false;
+            viewport.classList.remove('is-dragging');
+        });
+    }
+
+    function attachMermaidWheelZoom(viewport, onStep) {
+        viewport.addEventListener('wheel', function(e) {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            onStep(e.deltaY > 0 ? -1 : 1);
+        }, { passive: false });
+    }
+
+    function wrapMermaidDiagram(diagram) {
+        if (diagram.closest('.mermaid-wrap')) return;
+
+        var wrap = document.createElement('div');
+        wrap.className = 'mermaid-wrap';
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'mermaid-toolbar';
+        toolbar.innerHTML =
+            '<span class="mermaid-toolbar-hint">Drag to pan · Ctrl+scroll to zoom</span>' +
+            '<button type="button" class="mermaid-zoom-btn" data-mermaid="out" aria-label="Zoom out">−</button>' +
+            '<span class="mermaid-zoom-label" data-mermaid="label">100%</span>' +
+            '<button type="button" class="mermaid-zoom-btn" data-mermaid="in" aria-label="Zoom in">+</button>' +
+            '<button type="button" class="mermaid-zoom-btn" data-mermaid="reset" aria-label="Reset zoom">Reset</button>' +
+            '<button type="button" class="mermaid-zoom-btn" data-mermaid="expand" aria-label="Expand diagram" title="Expand">' +
+                '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/>' +
+                '</svg>' +
+            '</button>';
+
+        var viewport = document.createElement('div');
+        viewport.className = 'mermaid-viewport';
+
+        var inner = document.createElement('div');
+        inner.className = 'mermaid-viewport-inner';
+
+        diagram.parentNode.insertBefore(wrap, diagram);
+        inner.appendChild(diagram);
+        viewport.appendChild(inner);
+        wrap.appendChild(toolbar);
+        wrap.appendChild(viewport);
+
+        var state = { scale: 1 };
+
+        function setScale(scale) {
+            state.scale = scale;
+            inner.style.transform = 'scale(' + scale + ')';
+            toolbar.querySelector('[data-mermaid="label"]').textContent = mermaidZoomLabel(scale);
+        }
+
+        function stepZoom(delta) {
+            var idx = nearestMermaidZoomIndex(state.scale);
+            idx = Math.max(0, Math.min(MERMAID_ZOOM_STEPS.length - 1, idx + delta));
+            setScale(MERMAID_ZOOM_STEPS[idx]);
+        }
+
+        toolbar.querySelector('[data-mermaid="out"]').addEventListener('click', function() { stepZoom(-1); });
+        toolbar.querySelector('[data-mermaid="in"]').addEventListener('click', function() { stepZoom(1); });
+        toolbar.querySelector('[data-mermaid="reset"]').addEventListener('click', function() { setScale(1); });
+        toolbar.querySelector('[data-mermaid="expand"]').addEventListener('click', function() {
+            var svg = diagram.querySelector('svg');
+            if (!svg) return;
+            ensureMermaidLightbox()._mermaidLb.open(svg);
+        });
+
+        viewport.addEventListener('dblclick', function() {
+            var svg = diagram.querySelector('svg');
+            if (!svg) return;
+            ensureMermaidLightbox()._mermaidLb.open(svg);
+        });
+
+        attachMermaidPan(viewport);
+        attachMermaidWheelZoom(viewport, stepZoom);
+    }
+
+    // Turn ```mermaid fenced blocks into rendered SVG diagrams. Must run before
+    // highlight.js so the raw source isn't syntax-highlighted as code.
+    function initMermaid() {
+        var article = document.getElementById('doc-article');
+        if (!article) return;
+
+        var codes = article.querySelectorAll('pre > code.language-mermaid');
+        if (codes.length === 0) return;
+
+        var nodes = [];
+        codes.forEach(function(code) {
+            var pre = code.parentElement;
+            if (!pre) return;
+            var div = document.createElement('div');
+            div.className = 'mermaid mermaid-diagram';
+            div.textContent = code.textContent;
+            pre.replaceWith(div);
+            nodes.push(div);
+        });
+
+        function runMermaid() {
+            if (typeof mermaid === 'undefined') return;
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'dark',
+                securityLevel: 'loose',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                themeVariables: {
+                    primaryColor: '#101319',
+                    primaryTextColor: '#e5e7eb',
+                    primaryBorderColor: '#f59e0b',
+                    lineColor: '#f59e0b',
+                    secondaryColor: '#161a22',
+                    tertiaryColor: '#0b0d0f'
+                }
+            });
+            mermaid.run({ nodes: nodes }).then(function() {
+                nodes.forEach(wrapMermaidDiagram);
+            }).catch(function(err) {
+                console.error('Mermaid render failed:', err);
+            });
+        }
+
+        if (typeof mermaid !== 'undefined') {
+            runMermaid();
+            return;
+        }
+
+        var loader = document.getElementById('__mermaid-loader');
+        if (!loader) {
+            loader = document.createElement('script');
+            loader.id = '__mermaid-loader';
+            loader.src = MERMAID_SRC;
+            document.head.appendChild(loader);
+        }
+        loader.addEventListener('load', runMermaid, { once: true });
+    }
+
     function initDocPage() {
         // `soli:load` keeps this bound on `document` across swaps, so it also
         // fires when navigating to a non-docs page (a different layout). Bail
         // unless the docs article is present, so we don't add copy buttons /
         // highlighting to pages that didn't ask.
         if (!document.getElementById('doc-article')) return;
+        initMermaid();
         initHighlighting();
         addCopyButtons();
         scrollToActiveMenuItem();

@@ -3,11 +3,36 @@
 //! These functions work with primitive types (i64, &str, String) and can be
 //! called from both the interpreter and template contexts.
 
+use std::cell::RefCell;
+
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
-/// Get current Unix timestamp (UTC).
+thread_local! {
+    static FROZEN_NOW: RefCell<Option<i64>> = const { RefCell::new(None) };
+}
+
+/// Pin `datetime_now()` to a fixed Unix timestamp until `unfreeze_datetime()`.
+pub fn freeze_datetime(timestamp: i64) {
+    FROZEN_NOW.with(|frozen| {
+        *frozen.borrow_mut() = Some(timestamp);
+    });
+}
+
+/// Clear any frozen timestamp set by `freeze_datetime()`.
+pub fn unfreeze_datetime() {
+    FROZEN_NOW.with(|frozen| {
+        frozen.borrow_mut().take();
+    });
+}
+
+/// True when a test-time freeze is active on this thread.
+pub fn is_datetime_frozen() -> bool {
+    FROZEN_NOW.with(|frozen| frozen.borrow().is_some())
+}
+
+/// Get current Unix timestamp (UTC), or the frozen value when set.
 pub fn datetime_now() -> i64 {
-    Utc::now().timestamp()
+    FROZEN_NOW.with(|frozen| frozen.borrow().unwrap_or_else(|| Utc::now().timestamp()))
 }
 
 /// Format a Unix timestamp using strftime format string.
@@ -707,6 +732,16 @@ pub fn localize_names(formatted: &str, months: &[&str], days: &[&str], locale: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_freeze_datetime_pins_now() {
+        unfreeze_datetime();
+        freeze_datetime(1_700_000_000);
+        assert_eq!(datetime_now(), 1_700_000_000);
+        assert_eq!(datetime_now(), 1_700_000_000);
+        unfreeze_datetime();
+        assert!(!is_datetime_frozen());
+    }
 
     #[test]
     fn test_datetime_now() {

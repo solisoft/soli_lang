@@ -1090,6 +1090,102 @@ impl Model {
                 Ok(exec_query_hardcoded(query.to_string()))
             })),
         );
+
+        Self::register_ai_builtins(env);
+    }
+
+    /// App-facing AI primitives: `embed` / `embed_batch` (write-side embedding
+    /// generation, the counterpart to the read-side `similar()` push-down) and
+    /// `llm_generate` (OpenAI-compatible chat completion). Endpoints and keys
+    /// are read from environment here, so credentials stay out of Soli code and
+    /// there is one place to review where text is sent (GDPR).
+    fn register_ai_builtins(env: &mut Environment) {
+        // embed(text) -> Array<Float>
+        // Generate an embedding vector for `text` via SOLI_EMBEDDING_* config.
+        env.define(
+            "embed".to_string(),
+            Value::NativeFunction(NativeFunction::new("embed", Some(1), |args| {
+                let text = match args.first() {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => {
+                        return Err("embed expects a text string, e.g. embed(\"hello\")".to_string())
+                    }
+                };
+                let vector = crate::embedding::generate_embedding(&text).ok_or_else(|| {
+                    "embed could not generate an embedding: set SOLI_EMBEDDING_API_KEY \
+                     (and optionally SOLI_EMBEDDING_URL / SOLI_EMBEDDING_MODEL)"
+                        .to_string()
+                })?;
+                let items: Vec<Value> = vector.into_iter().map(Value::Float).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(items))))
+            })),
+        );
+
+        // embed_batch(texts) -> Array<Array<Float>>
+        // Embed many texts in a single request — for back-filling a collection.
+        env.define(
+            "embed_batch".to_string(),
+            Value::NativeFunction(NativeFunction::new("embed_batch", Some(1), |args| {
+                let texts: Vec<String> = match args.first() {
+                    Some(Value::Array(arr)) => {
+                        let mut out = Vec::with_capacity(arr.borrow().len());
+                        for item in arr.borrow().iter() {
+                            match item {
+                                Value::String(s) => out.push(s.to_string()),
+                                _ => {
+                                    return Err(
+                                        "embed_batch expects an array of strings".to_string()
+                                    )
+                                }
+                            }
+                        }
+                        out
+                    }
+                    _ => {
+                        return Err("embed_batch expects an array of strings, e.g. \
+                                    embed_batch([\"a\", \"b\"])"
+                            .to_string())
+                    }
+                };
+                let vectors =
+                    crate::embedding::generate_embeddings_batch(&texts).ok_or_else(|| {
+                        "embed_batch could not generate embeddings: set SOLI_EMBEDDING_API_KEY \
+                     (and optionally SOLI_EMBEDDING_URL / SOLI_EMBEDDING_MODEL)"
+                            .to_string()
+                    })?;
+                let rows: Vec<Value> = vectors
+                    .into_iter()
+                    .map(|vector| {
+                        let items: Vec<Value> = vector.into_iter().map(Value::Float).collect();
+                        Value::Array(Rc::new(RefCell::new(items)))
+                    })
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(rows))))
+            })),
+        );
+
+        // llm_generate(system, user) -> String
+        // Chat completion via an OpenAI-compatible endpoint (SOLI_LLM_* config).
+        env.define(
+            "llm_generate".to_string(),
+            Value::NativeFunction(NativeFunction::new("llm_generate", Some(2), |args| {
+                let system = match args.first() {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err("llm_generate expects (system, user) strings".to_string()),
+                };
+                let user = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err("llm_generate expects (system, user) strings".to_string()),
+                };
+                let output =
+                    crate::generation::generate_completion(&system, &user).ok_or_else(|| {
+                        "llm_generate failed: set SOLI_LLM_URL (and optionally SOLI_LLM_API_KEY / \
+                         SOLI_LLM_MODEL / SOLI_LLM_TEMPERATURE / SOLI_LLM_MAX_TOKENS)"
+                            .to_string()
+                    })?;
+                Ok(Value::String(output.into()))
+            })),
+        );
     }
 
     fn register_model_class(env: &mut Environment) {
@@ -3662,6 +3758,35 @@ impl Model {
                     fusion,
                     limit,
                     is_soft_delete(&class_name),
+                )
+            })),
+        );
+
+        // Model.graph_rag(query, { via:, ... }) — graph-augmented retrieval:
+        // ANN seeds on the declared vector_index, expand each seed through the
+        // edge model's traversal, re-rank the union by cosine similarity.
+        // Options: via: (required), direction:, depth:, field:, seed_k:,
+        // limit:, vector:.
+        native_static_methods.insert(
+            "graph_rag".to_string(),
+            Rc::new(NativeFunction::new("Model.graph_rag", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let query_text = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err(format!("{}.graph_rag expects a query string", class_name)),
+                };
+
+                let opts = super::graph_rag::parse_graph_rag_options(&class_name, args.get(2))?;
+
+                super::graph_rag::exec_graph_rag(
+                    &class,
+                    &class_name,
+                    &collection,
+                    &query_text,
+                    opts,
                 )
             })),
         );

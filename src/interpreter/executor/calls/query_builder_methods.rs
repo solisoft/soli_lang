@@ -35,7 +35,6 @@ impl Interpreter {
                     | "group_by"
                     | "aggregate"
                     | "having"
-                    | "similar"
                     | "update_all"
                     | "delete_all"
             )

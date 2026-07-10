@@ -745,33 +745,44 @@ expect(value).to_contain("substring")</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6" id="section-database-testing">Database Testing</h2>
 
         <h3 class="text-xl font-semibold text-white mb-4">Transaction Rollback</h3>
-        <p class="text-gray-400 mb-4">Tests are isolated using database transactions:</p>
+        <p class="text-gray-400 mb-4">Worker databases are truncated between runs. Wrap per-example writes in <code>with_transaction</code> — it always rolls back, even on success (unlike <code>Model.transaction</code>):</p>
 
         <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
   test("creates user", fn() {
+    Factory.define("user", {"email": "tx@test.com", "name": "Test"})
+    Factory.bind("user", User)
+
     with_transaction(fn() {
-      user = Factory.create("user", hash("name": "Test"))
-      expect(User.count).to_equal(1)
-      expect(user.name).to_equal("Test")
+      user = Factory.insert("user")
+      assert_eq(User.count(), 1)
+      assert_eq(user.name, "Test")
     })
+    assert_eq(User.count(), 0)
   })
 })</code></pre>
 
+        <h3 class="text-xl font-semibold text-white mb-4">Time Travel</h3>
+        <p class="text-gray-400 mb-4">Pin <code>datetime_now()</code> for cron, TTL, and expiration specs. Cleared automatically before each test.</p>
+        <pre data-filename="tests/time_spec.sl"><code class="language-soli text-sm">freeze_time(1_700_000_000)
+travel_to("2024-06-15")
+unfreeze_time()</code></pre>
+
         <h3 class="text-xl font-semibold text-white mb-4">Factory Pattern</h3>
 
-        <pre data-filename="Using Factories"><code class="language-soli text-sm"># Define factories
-Factory.define("user", hash(
-  "email": "user@example.com",
+        <pre data-filename="Using Factories"><code class="language-soli text-sm">Factory.define("user", {
+  "email": "user#{n}@example.com",
   "name": "Test User"
-))
-Factory.define("post", hash(
-  "title": "Test Post",
-  "content": "Content here"
-))
-# Use factories
+})
+Factory.define("post", fn() {
+  return {"title": "Post #{Factory.sequence("post")}"}
+})
+
 user = Factory.create("user")
-post = Factory.create("post", hash("title": "Custom Title"))
-users = Factory.create_list("user", 5);</code></pre>
+post = Factory.create_with("post", {"title": "Custom Title"})
+users = Factory.create_list("user", 5)
+
+Factory.bind("user", User)
+persisted = Factory.insert("user")</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4" id="section-mock-queries">Mock Database Queries</h3>
         <p class="text-gray-400 mb-4">For integration tests without a real database, use <code>Model.mock_query_result()</code> to intercept queries and return predefined data:</p>

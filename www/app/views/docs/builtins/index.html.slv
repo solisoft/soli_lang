@@ -42,6 +42,10 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">JSON</span>
             </a>
+            <a href="/docs/builtins/ai" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">AI</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">AI</span>
+            </a>
             <a href="/docs/builtins/markdown" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-xs font-bold">Md</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Markdown</span>
@@ -157,6 +161,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">JSON Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Parse and stringify JSON data.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/ai" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">AI Functions</h3>
+                </a>
+                <p class="text-gray-400 mt-2">Embedding generation (<code>embed</code> / <code>embed_batch</code>) and LLM completion (<code>llm_generate</code>) against OpenAI-compatible endpoints.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/markdown" class="group">

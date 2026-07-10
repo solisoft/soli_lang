@@ -14,6 +14,7 @@ pub mod coverage;
 pub mod embedding;
 pub mod error;
 pub mod fmt;
+pub mod generation;
 pub mod inflect;
 pub mod interpreter;
 pub mod lexer;
@@ -526,6 +527,8 @@ fn execute_test_suites(
         }
 
         for test in &suite.tests {
+            crate::interpreter::builtins::datetime::helpers::unfreeze_datetime();
+
             // Run before_each if defined
             if let Some(before_each) = &suite.before_each {
                 let rebound = rebind_closure(before_each, &interpreter.environment);

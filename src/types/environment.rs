@@ -494,6 +494,32 @@ impl TypeEnvironment {
             },
         );
 
+        // AI primitives (SOLI_EMBEDDING_* / SOLI_LLM_* config)
+        // embed(String) -> Array<Float>
+        self.functions.insert(
+            "embed".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::Float))),
+            },
+        );
+        // embed_batch(Array<String>) -> Array<Array<Float>>
+        self.functions.insert(
+            "embed_batch".to_string(),
+            Type::Function {
+                params: vec![Type::Array(Box::new(Type::String))],
+                return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Float))))),
+            },
+        );
+        // llm_generate(String, String) -> String
+        self.functions.insert(
+            "llm_generate".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // Environment access
         // getenv(String) -> String|Null  (Any so callers can compare against null)
         self.functions.insert(

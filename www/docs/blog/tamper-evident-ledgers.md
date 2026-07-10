@@ -50,13 +50,13 @@ to the previous hash, the sequence number, and the canonical content:
 ```soli
 const GENESIS = "0000000000000000000000000000000000000000000000000000000000000000"
 
-def append(chain, data) {
+def append(chain, data)
   let prev = chain.length() == 0 ? GENESIS : chain[chain.length() - 1]["hash"]
   let seq  = chain.length()
   let hash = Crypto.sha256(prev + ":" + str(seq) + ":" + Crypto.canonical_json(data))
   chain.push({ "seq": seq, "prev_hash": prev, "hash": hash, "data": data })
   return chain
-}
+end
 ```
 
 Because each `hash` folds in the previous record's `hash`, the records form a chain:
@@ -79,17 +79,17 @@ Verification is just re-deriving the chain and checking that every stored hash m
 what the content actually produces. The first mismatch is your tamper point:
 
 ```soli
-def verify(chain) {
+def verify(chain)
   let prev = GENESIS
-  for rec in chain {
+  for rec in chain
     let expected = Crypto.sha256(prev + ":" + str(rec["seq"]) + ":" + Crypto.canonical_json(rec["data"]))
-    if expected != rec["hash"] {
+    if expected != rec["hash"]
       return { "ok": false, "broken_at": rec["seq"] }
-    }
+    end
     prev = rec["hash"]
-  }
+  end
   return { "ok": true, "count": chain.length() }
-}
+end
 
 print(verify(ledger))   # {ok => true, count => 3}
 ```
@@ -135,7 +135,7 @@ callback, where the record is about to be written:
 class LedgerEntry < Model
   before_create("chain")
 
-  def chain {
+  def chain
     let tail = LedgerEntry.order("seq", "desc").first()
     this.prev_hash = tail.nil? ? GENESIS : tail.hash
     this.seq       = tail.nil? ? 0 : tail.seq + 1

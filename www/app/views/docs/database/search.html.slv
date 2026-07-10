@@ -104,6 +104,39 @@ Article.similar("q", "embedding", 5, { "exact": true })</code></pre>
         </ul>
     </div>
 
+    <h3 id="generating-embeddings" class="text-xl font-bold text-white mb-4">Generating embeddings (<code>embed</code> / <code>embed_batch</code>)</h3>
+    <p class="text-gray-400 mb-4">
+        <code>.similar("text", ...)</code> embeds the <em>query</em> for you, but you still need to embed the <strong class="text-white">documents</strong> you store. <code>embed</code> is the write-side counterpart &mdash; it returns the vector for a string so you can persist it on the record:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Article &lt; Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.title + "\n" + this.body)
+  }
+end</code></pre>
+        </div>
+    </div>
+    <ul class="space-y-3 text-gray-400 mb-6">
+        <li><code class="text-amber-300">embed(text)</code> &rarr; <code>Array&lt;Float&gt;</code> &mdash; one embedding vector.</li>
+        <li><code class="text-amber-300">embed_batch(texts)</code> &rarr; <code>Array&lt;Array&lt;Float&gt;&gt;</code> &mdash; one request for many texts, returned in input order. Use it to back-fill embeddings over an existing collection instead of one call per row.</li>
+    </ul>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">articles = Article.where({ "embedding": null }).all
+vectors  = embed_batch(articles.map(fn(a) a.title))
+articles.each_with_index(fn(article, i) {
+  article.embedding = vectors[i]
+  article.save()
+})</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Both use the same <code>SOLI_EMBEDDING_*</code> configuration as <code>.similar()</code>; they raise if <code>SOLI_EMBEDDING_API_KEY</code> is unset. Keys and endpoints live in the environment, not in app code &mdash; one place to review where text is sent.
+    </p>
+
     <h2 id="fulltext-search" class="text-2xl font-bold text-white mb-6">Fulltext Search (<code>search</code>)</h2>
     <p class="text-gray-400 mb-4">
         Requires a <code>fulltext_index</code> covering the field(s). Results are ranked; each carries <code>_search_score</code>:
@@ -164,6 +197,39 @@ inside = Store.within(48.85, 2.35, 2000.0)         # radius: 2 km</code></pre>
             <li><code>search</code>, <code>near</code>, and <code>within</code> bypass the SDBQL query pipeline &mdash; they are <strong>eager</strong> and return an array of model instances immediately; there is no chaining (<code>.where(...)</code>, <code>.order(...)</code> don't compose with them).</li>
             <li>On soft-delete models, deleted rows are dropped <strong>client-side</strong> after the index lookup &mdash; which can shrink a <code>limit</code>-ed result set.</li>
         </ul>
+    </div>
+
+    <h2 id="graph-rag" class="text-2xl font-bold text-white mb-6">Graph-augmented retrieval (<code>graph_rag</code>)</h2>
+    <p class="text-gray-400 mb-6">
+        When documents are connected by <a href="/docs/database/models#graph-models" class="text-amber-400 hover:underline">edge models</a>, seed with ANN on the <code>vector_index</code>, expand each hit through <code>via: EdgeModel</code>, then re-rank the union. Results carry <code>_similarity_score</code>, <code>_graph_seed</code>, and <code>_graph_hops</code>.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Product.graph_rag("wireless running gear", {
+  "via": CompatibleWith,
+  "direction": "any",
+  "depth": 1,
+  "seed_k": 3,
+  "limit": 10
+})
+
+# Or compose: rank traversal reach by meaning
+product.traverse(CompatibleWith).similar("accessories", "embedding", 5).all</code></pre>
+        </div>
+    </div>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs text-gray-500 uppercase bg-white/5">
+                <tr><th class="px-4 py-3">Option</th><th class="px-4 py-3">Default</th><th class="px-4 py-3">Description</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-4 py-3 font-mono text-amber-300">via</td><td class="px-4 py-3">—</td><td class="px-4 py-3">Required edge model class</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">direction</td><td class="px-4 py-3">out</td><td class="px-4 py-3">out, in, or any</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">depth</td><td class="px-4 py-3">1</td><td class="px-4 py-3">Int or [min, max]</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">seed_k</td><td class="px-4 py-3">5</td><td class="px-4 py-3">ANN seed count</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">limit</td><td class="px-4 py-3">10</td><td class="px-4 py-3">Final result cap</td></tr>
+            </tbody>
+        </table>
     </div>
 
     <h2 id="hybrid-search" class="text-2xl font-bold text-white mb-6">Hybrid Search (not exposed yet)</h2>

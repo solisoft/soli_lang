@@ -1305,6 +1305,86 @@ println(json)  # {"name":"Alice","scores":[95,87,92]}
 
 ---
 
+## AI Functions
+
+Embedding generation and LLM text completion against OpenAI-compatible
+endpoints. Endpoints and API keys are read from the environment, so credentials
+stay out of app code and there is one place to review where text is sent (a
+single point for GDPR / data-residency review). Any OpenAI-compatible server
+works — OpenAI, or a self-hosted vLLM / Ollama / llama.cpp (which often need no
+API key).
+
+### embed(text)
+
+Generate an embedding vector for a string — the write-side counterpart to
+`Model.similar`, which embeds the *query* but not the documents you store.
+
+**Parameters:**
+- `text` (String) - text to embed
+
+**Returns:** Array<Float> - the embedding vector
+
+**Environment:** `SOLI_EMBEDDING_API_KEY` (required), `SOLI_EMBEDDING_URL`
+(default `https://api.openai.com/v1/embeddings`), `SOLI_EMBEDDING_MODEL`
+(default `text-embedding-3-small`). Raises if the key is unset or the call fails.
+
+**Example:**
+```soli
+class Article < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.title + "\n" + this.body)
+  }
+end
+```
+
+### embed_batch(texts)
+
+Embed many texts in a single request, returned in input order. Use it to
+back-fill embeddings over an existing collection instead of one call per row.
+
+**Parameters:**
+- `texts` (Array<String>) - texts to embed
+
+**Returns:** Array<Array<Float>> - one vector per input, in input order
+
+**Example:**
+```soli
+articles = Article.where({ "embedding": null }).all
+vectors  = embed_batch(articles.map(fn(a) a.title))
+articles.each_with_index(fn(article, i) {
+  article.embedding = vectors[i]
+  article.save()
+})
+```
+
+### llm_generate(system, user)
+
+Chat completion via an OpenAI-compatible `chat/completions` endpoint.
+
+**Parameters:**
+- `system` (String) - system prompt (role/instructions)
+- `user` (String) - user prompt
+
+**Returns:** String - the model's completion text
+
+**Environment:** `SOLI_LLM_URL` (default
+`https://api.openai.com/v1/chat/completions`), `SOLI_LLM_API_KEY` (optional —
+omitted from the request when unset, for keyless local servers), `SOLI_LLM_MODEL`
+(default `gpt-4o-mini`), `SOLI_LLM_TEMPERATURE` and `SOLI_LLM_MAX_TOKENS`
+(optional — only sent when set). Raises if the call fails.
+
+**Example:**
+```soli
+summary = llm_generate(
+  "You summarize support tickets in one sentence.",
+  ticket.body
+)
+```
+
+---
+
 ## Cryptography Functions
 
 All cryptographic functions are available both as static methods on the `Crypto` class and as standalone functions.
@@ -3671,26 +3751,53 @@ Asserts that a string is valid JSON.
 
 ---
 
+## Test Helpers
+
+### with_transaction(block)
+
+Runs a block inside a SolidB transaction and **always rolls back** when the block finishes (test-only). Unlike `Model.transaction { }`, it never commits.
+
+```soli
+with_transaction(fn() {
+  Factory.insert("user")
+  assert_eq(User.count(), 1)
+})
+assert_eq(User.count(), 0)
+```
+
+### freeze_time(timestamp) / travel_to(timestamp) / unfreeze_time()
+
+Pins `datetime_now()` to a fixed Unix timestamp (int or parseable date string). Cleared by `unfreeze_time()` and automatically before each test example.
+
+```soli
+freeze_time(1_700_000_000)
+travel_to("2024-06-15")
+unfreeze_time()
+```
+
+---
+
 ## Factory Functions
 
-Factories help create test data.
+Factories help create test data. `Factory.create` returns hashes; use `Factory.insert` to persist through a bound model.
 
-### Factory.define(name, data)
+### Factory.define(name, data_or_block)
 
-Defines a factory template.
-
-**Parameters:**
-- `name` (String) - Factory name
-- `data` (Hash) - Default data
+Defines a factory template as a static hash or a callable block.
 
 **Example:**
 ```soli
 Factory.define("user", {
-  "name": "Test User",
-  "email": "test@example.com",
-  "role": "user"
+  "email": "user#{n}@test.com",
+  "name": "Test User"
+})
+
+Factory.define("post", fn() {
+  return {"title": "Post #{Factory.sequence("post")}"}
 })
 ```
+
+String values may include `#{n}` — replaced with a per-factory auto-incrementing counter on each `create`.
 
 ### Factory.create(name)
 
@@ -3752,9 +3859,22 @@ Factory.sequence("user_id")  # 1
 Factory.sequence("user_id")  # 2
 ```
 
+### Factory.bind(name, model_class)
+
+Associates a factory name with a model class for `Factory.insert`.
+
+### Factory.insert(name, overrides?)
+
+Builds factory attributes (running callable templates and `#{n}` interpolation) then calls `Model.create`. Returns the persisted record.
+
+```soli
+Factory.bind("user", User)
+user = Factory.insert("user", {"email": "custom@example.com"})
+```
+
 ### Factory.clear
 
-Clears all factory definitions and sequences.
+Clears all factory definitions, model bindings, and sequences.
 
 ---
 
