@@ -83,6 +83,9 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "before_all",
     "after_all",
     "with_transaction",
+    "freeze_time",
+    "travel_to",
+    "unfreeze_time",
     // Test HTTP helpers
     "get",
     "post",

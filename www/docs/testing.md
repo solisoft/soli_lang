@@ -148,39 +148,60 @@ end)
 
 ### Transaction Rollback
 
-Tests are isolated using database transactions:
+The test runner resets worker databases between runs (collection truncate). For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
 
 ```soli
-describe("User model", fn()
-  test("creates user", fn()
-    with_transaction(fn()
-      user = Factory.create("user", hash("name": "Test"))
-      expect(User.count).to_equal(1)
-      expect(user.name).to_equal("Test")
-    end)
-    # Transaction automatically rolls back
-  end)
-end)
+describe("User model", fn() {
+  test("creates user", fn() {
+    Factory.define("user", {"email": "tx@test.com", "name": "Test"})
+    Factory.bind("user", User)
+
+    with_transaction(fn() {
+      user = Factory.insert("user")
+      assert_eq(User.count(), 1)
+      assert_eq(user.name, "Test")
+    })
+    # Rolled back — count is 0 again
+    assert_eq(User.count(), 0)
+  })
+})
+```
+
+Unlike `Model.transaction { }`, which commits on success, `with_transaction` is test-only and never commits.
+
+### Time Travel
+
+Pin `datetime_now()` for cron, TTL, and expiration specs:
+
+```soli
+freeze_time(1_700_000_000)          # int timestamp
+travel_to("2024-06-15")             # alias — parses date strings too
+assert_eq(datetime_now(), 1_715_212_800)
+unfreeze_time()                     # also cleared automatically before each test
 ```
 
 ### Factory Pattern
 
 ```soli
-# Define factories
-Factory.define("user", hash(
-  "email": "user@example.com",
+# Static template
+Factory.define("user", {
+  "email": "user#{n}@example.com",
   "name": "Test User"
-))
+})
 
-Factory.define("post", hash(
-  "title": "Test Post",
-  "content": "Content here"
-))
+# Callable template (fresh data every create)
+Factory.define("post", fn() {
+  return {"title": "Post #{Factory.sequence("post")}"}
+})
 
-# Use factories
+# Build hashes (no DB)
 user = Factory.create("user")
-post = Factory.create("post", hash("title": "Custom Title"))
+post = Factory.create_with("post", {"title": "Custom Title"})
 users = Factory.create_list("user", 5)
+
+# Persist through a model
+Factory.bind("user", User)
+persisted = Factory.insert("user")
 ```
 
 ## Parallel Execution

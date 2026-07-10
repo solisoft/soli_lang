@@ -330,6 +330,11 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            if name == "with_transaction" {
+                if let Some(result) = self.try_evaluate_with_transaction(arguments, span)? {
+                    return Ok(result);
+                }
+            }
             // `event :name do … end` inside a `state_machine` block. Scoped to an
             // active builder so a stray `event(...)` elsewhere falls through to
             // the native placeholder (which raises a clear error). The block must
@@ -339,6 +344,24 @@ impl Interpreter {
             {
                 if let Some(result) = self.try_evaluate_sm_event(arguments, span)? {
                     return Ok(result);
+                }
+            }
+        }
+
+        // Factory.create / create_with / create_list / insert need the
+        // interpreter to invoke callable factory templates and persist via
+        // Model.create — handled here before member dispatch.
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if let ExprKind::Variable(prefix) = &object.kind {
+                if prefix == "Factory"
+                    && matches!(
+                        name.as_str(),
+                        "create" | "create_with" | "create_list" | "insert"
+                    )
+                {
+                    if let Some(result) = self.try_evaluate_factory_call(name, arguments, span)? {
+                        return Ok(result);
+                    }
                 }
             }
         }
@@ -1562,6 +1585,127 @@ impl Interpreter {
     /// call falls through to the native `grouped` placeholder (which raises a
     /// clear usage error). A nested `grouped` joins the outer batch; only the
     /// outermost call begins/flushes it.
+    fn try_evaluate_with_transaction(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::crud::{
+            begin_transaction, clear_current_tx, has_active_tx, rollback_transaction,
+        };
+
+        if arguments.len() != 1 {
+            return Ok(None);
+        }
+        let block_expr = match &arguments[0] {
+            Argument::Block(e) | Argument::Positional(e) => e,
+            _ => return Ok(None),
+        };
+        let block = self.evaluate(block_expr)?;
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Ok(None);
+        }
+
+        if has_active_tx() {
+            return self.call_value(block, Vec::new(), span).map(Some);
+        }
+
+        begin_transaction(None).map_err(|e| RuntimeError::General {
+            message: format!("with_transaction: failed to begin: {}", e),
+            span,
+        })?;
+
+        match self.call_value(block, Vec::new(), span) {
+            Ok(value) => {
+                if let Err(e) = rollback_transaction() {
+                    clear_current_tx();
+                    return Err(RuntimeError::General {
+                        message: format!("with_transaction: rollback failed: {}", e),
+                        span,
+                    });
+                }
+                Ok(Some(value))
+            }
+            Err(err) => {
+                let _ = rollback_transaction();
+                clear_current_tx();
+                Err(err)
+            }
+        }
+    }
+
+    fn try_evaluate_factory_call(
+        &mut self,
+        method: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::factories;
+
+        let mut arg_values = Vec::new();
+        for arg in arguments {
+            match arg {
+                Argument::Positional(expr) | Argument::Block(expr) => {
+                    arg_values.push(self.evaluate(expr)?);
+                }
+                Argument::Named(_) => return Ok(None),
+            }
+        }
+
+        let result = match method {
+            "create" => {
+                if arg_values.len() != 1 {
+                    return Ok(None);
+                }
+                let name = factories::factory_name_from_value(&arg_values[0])?;
+                factories::build(self, &name, None, span)
+            }
+            "create_with" => {
+                if arg_values.len() != 2 {
+                    return Ok(None);
+                }
+                let name = factories::factory_name_from_value(&arg_values[0])?;
+                factories::build(self, &name, Some(&arg_values[1]), span)
+            }
+            "create_list" => {
+                if arg_values.len() != 2 {
+                    return Ok(None);
+                }
+                let name = factories::factory_name_from_value(&arg_values[0])?;
+                let count = match &arg_values[1] {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    other => {
+                        return Err(RuntimeError::General {
+                            message: format!(
+                                "Factory.create_list expects count as non-negative integer, got {}",
+                                other.type_name()
+                            ),
+                            span,
+                        });
+                    }
+                };
+                factories::build_list(self, &name, count, span)
+            }
+            "insert" => {
+                let overrides = if arg_values.len() == 2 {
+                    Some(&arg_values[1])
+                } else if arg_values.len() == 1 {
+                    None
+                } else {
+                    return Ok(None);
+                };
+                let name = factories::factory_name_from_value(&arg_values[0])?;
+                factories::insert(self, &name, overrides, span)
+            }
+            _ => return Ok(None),
+        };
+
+        result.map(Some)
+    }
+
     fn try_evaluate_grouped(
         &mut self,
         arguments: &[Argument],

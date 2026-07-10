@@ -356,11 +356,6 @@ pub fn run_test(
 
     let mut model_preamble_files: Vec<(PathBuf, String)> = Vec::new();
 
-    // Test helpers expected to exist by scaffold-generated tests but not shipped
-    // as builtins. Defined at Soli level so they can call user lambdas.
-    let helpers_src = "fn with_transaction(block) { block() }\n".to_string();
-    model_preamble_files.push((PathBuf::from("<test-helpers>"), helpers_src));
-
     // Load every `.sl` in app/models, app/services, app/helpers,
     // app/middleware, app/jobs into the test interpreter. Models and services
     // define classes used in tests; helpers and middleware define top-level

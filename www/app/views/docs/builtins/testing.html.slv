@@ -478,6 +478,29 @@ expect(user).to_not_be_null();</code></pre>
         </div>
     </section>
 
+    <!-- Test helpers -->
+    <section id="section-test-helpers" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Test Helpers</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <section id="def-with-transaction" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">with_transaction(block)</code>
+                <p class="text-gray-400 text-sm mt-1">Begin → run block → always rollback (never commits)</p>
+            </section>
+            <section id="def-freeze-time" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">freeze_time(ts)</code>
+                <p class="text-gray-400 text-sm mt-1">Pin <code>datetime_now()</code>; cleared before each test</p>
+            </section>
+            <section id="def-travel-to" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">travel_to(ts)</code>
+                <p class="text-gray-400 text-sm mt-1">Alias for <code>freeze_time</code></p>
+            </section>
+            <section id="def-unfreeze-time" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">unfreeze_time()</code>
+                <p class="text-gray-400 text-sm mt-1">Restore wall-clock time</p>
+            </section>
+        </div>
+    </section>
+
     <!-- Factory Functions -->
     <section id="section-factories" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Factory Functions</h2>
@@ -490,12 +513,15 @@ expect(user).to_not_be_null();</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Define a factory with default data.</p>
+                <p class="text-gray-400 mb-3">Define a factory with a static hash or callable block. Use <code>#{n}</code> in strings for auto-incrementing values.</p>
                 <div class="mt-4">
                     <pre data-filename="Example"><code class="language-soli text-sm">Factory.define("user", {
   "name": "Test User",
-  "email": "test@example.com",
-  "age": 25
+  "email": "user#{n}@test.com"
+})
+
+Factory.define("post", fn() {
+  return {"title": "Post #{Factory.sequence("post")}"}
 })</code></pre>
                 </div>
             </div>
@@ -550,11 +576,25 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     <p class="text-gray-400 text-sm mt-1">Get auto-incrementing number</p>
                 </section>
 
+                <section id="def-factory-bind" class="scroll-mt-20">
+                    <a href="#def-factory-bind" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">Factory.bind(name, Model)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Associate factory with a model class</p>
+                </section>
+
+                <section id="def-factory-insert" class="scroll-mt-20">
+                    <a href="#def-factory-insert" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">Factory.insert(name, overrides?)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Build + <code>Model.create</code></p>
+                </section>
+
                 <section id="def-factory-clear" class="scroll-mt-20">
                     <a href="#def-factory-clear" class="group flex items-center gap-2">
                         <code class="font-mono text-amber-400">Factory.clear</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Clear all factories</p>
+                    <p class="text-gray-400 text-sm mt-1">Clear definitions, bindings, sequences</p>
                 </section>
             </div>
         </div>

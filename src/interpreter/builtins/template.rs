@@ -870,6 +870,52 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    env.define(
+        "freeze_time".to_string(),
+        Value::NativeFunction(NativeFunction::new("freeze_time", Some(1), |args| {
+            let timestamp = match &args[0] {
+                Value::Int(n) => *n,
+                Value::String(s) => datetime_helpers::datetime_parse(s)
+                    .ok_or_else(|| format!("freeze_time(): invalid date string {:?}", s))?,
+                other => {
+                    return Err(format!(
+                        "freeze_time() expects timestamp (int) or date string, got {}",
+                        other.type_name()
+                    ));
+                }
+            };
+            datetime_helpers::freeze_datetime(timestamp);
+            Ok(Value::Int(timestamp))
+        })),
+    );
+
+    env.define(
+        "travel_to".to_string(),
+        Value::NativeFunction(NativeFunction::new("travel_to", Some(1), |args| {
+            let timestamp = match &args[0] {
+                Value::Int(n) => *n,
+                Value::String(s) => datetime_helpers::datetime_parse(s)
+                    .ok_or_else(|| format!("travel_to(): invalid date string {:?}", s))?,
+                other => {
+                    return Err(format!(
+                        "travel_to() expects timestamp (int) or date string, got {}",
+                        other.type_name()
+                    ));
+                }
+            };
+            datetime_helpers::freeze_datetime(timestamp);
+            Ok(Value::Int(timestamp))
+        })),
+    );
+
+    env.define(
+        "unfreeze_time".to_string(),
+        Value::NativeFunction(NativeFunction::new("unfreeze_time", Some(0), |_args| {
+            datetime_helpers::unfreeze_datetime();
+            Ok(Value::Null)
+        })),
+    );
+
     env.define("datetime_format".to_string(), Value::NativeFunction(NativeFunction::new("datetime_format", Some(2), |args| {
         let timestamp = match &args[0] {
             Value::Int(n) => *n,

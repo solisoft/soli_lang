@@ -3751,26 +3751,53 @@ Asserts that a string is valid JSON.
 
 ---
 
+## Test Helpers
+
+### with_transaction(block)
+
+Runs a block inside a SolidB transaction and **always rolls back** when the block finishes (test-only). Unlike `Model.transaction { }`, it never commits.
+
+```soli
+with_transaction(fn() {
+  Factory.insert("user")
+  assert_eq(User.count(), 1)
+})
+assert_eq(User.count(), 0)
+```
+
+### freeze_time(timestamp) / travel_to(timestamp) / unfreeze_time()
+
+Pins `datetime_now()` to a fixed Unix timestamp (int or parseable date string). Cleared by `unfreeze_time()` and automatically before each test example.
+
+```soli
+freeze_time(1_700_000_000)
+travel_to("2024-06-15")
+unfreeze_time()
+```
+
+---
+
 ## Factory Functions
 
-Factories help create test data.
+Factories help create test data. `Factory.create` returns hashes; use `Factory.insert` to persist through a bound model.
 
-### Factory.define(name, data)
+### Factory.define(name, data_or_block)
 
-Defines a factory template.
-
-**Parameters:**
-- `name` (String) - Factory name
-- `data` (Hash) - Default data
+Defines a factory template as a static hash or a callable block.
 
 **Example:**
 ```soli
 Factory.define("user", {
-  "name": "Test User",
-  "email": "test@example.com",
-  "role": "user"
+  "email": "user#{n}@test.com",
+  "name": "Test User"
+})
+
+Factory.define("post", fn() {
+  return {"title": "Post #{Factory.sequence("post")}"}
 })
 ```
+
+String values may include `#{n}` — replaced with a per-factory auto-incrementing counter on each `create`.
 
 ### Factory.create(name)
 
@@ -3832,9 +3859,22 @@ Factory.sequence("user_id")  # 1
 Factory.sequence("user_id")  # 2
 ```
 
+### Factory.bind(name, model_class)
+
+Associates a factory name with a model class for `Factory.insert`.
+
+### Factory.insert(name, overrides?)
+
+Builds factory attributes (running callable templates and `#{n}` interpolation) then calls `Model.create`. Returns the persisted record.
+
+```soli
+Factory.bind("user", User)
+user = Factory.insert("user", {"email": "custom@example.com"})
+```
+
 ### Factory.clear
 
-Clears all factory definitions and sequences.
+Clears all factory definitions, model bindings, and sequences.
 
 ---
 
