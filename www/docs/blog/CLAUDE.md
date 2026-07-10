@@ -34,3 +34,20 @@ When you add or update a post, always ship an illustration:
   `alt` on the `<img>`. Keep code/values shown in the diagram accurate to the post.
 
 See `tamper-evident-ledgers.svg` and `streaming-ai-progress.svg` for reference.
+
+## Mermaid diagrams (optional)
+
+Blog posts served through `layouts/docs` can include architecture flowcharts as
+fenced Mermaid blocks — they render client-side via Mermaid.js (dark theme):
+
+````markdown
+```mermaid
+flowchart LR
+  A[Ingest] --> B[Retrieve] --> C[Generate]
+```
+````
+
+Prefer a hero **SVG** for the main illustration; use Mermaid for supplementary
+pipeline diagrams inside the body. Rendered diagrams get inline zoom controls
+(+/−, reset), drag-to-pan, Ctrl+scroll zoom, double-click or expand for
+fullscreen.

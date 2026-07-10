@@ -7,6 +7,13 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
+<a href="/docs/blog/rag-product-discovery"><img src="/images/blog/rag-product-discovery.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="RAG Product Discovery"></a>
+<br>
+<strong><a href="/docs/blog/rag-product-discovery">RAG Product Discovery in Soli</a></strong><br>
+<small>Embed on save, retrieve with .similar() and hybrid(), generate grounded answers with llm_generate — the full RAG loop in one stack.</small>
+</div>
+
+<div>
 <a href="/docs/blog/e2e-testing"><img src="/images/blog/e2e-testing.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="E2E Testing"></a>
 <br>
 <strong><a href="/docs/blog/e2e-testing">Full End-to-End Tests in Pure Soli</a></strong><br>
@@ -101,6 +108,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [RAG Product Discovery in Soli](/docs/blog/rag-product-discovery) - Embed products on save, retrieve with `.similar()` and `hybrid()`, then generate grounded shopping answers with `llm_generate` — no separate vector DB or orchestration framework
 - [Full End-to-End Tests in Pure Soli](/docs/blog/e2e-testing) - Realistic integration tests using a built-in test server, BDD DSL (`describe`/`test`), session helpers, and coverage gates — no external tools.
 - [Scaffolds That Don’t Suck](/docs/blog/scaffolds) - One command (`/soli-resource`) from idea to complete, tested, production-shaped resource with an intelligent pause for human input.
 - [Destructuring Done Right](/docs/blog/pattern-matching) - Rich pattern matching with guards, array/hash destructuring, and rest patterns as everyday, reliable control flow.

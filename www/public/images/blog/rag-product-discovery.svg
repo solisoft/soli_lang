@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="RAG product discovery in Soli: products are embedded on save into SolidB with an HNSW index, queries flow through .similar() or hybrid() to retrieve scored matches, then llm_generate produces a grounded answer citing real product names and prices.">
+  <defs>
+    <linearGradient id="bgRag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="barRag" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <marker id="arrRag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bgRag)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="56" y="58" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="32" font-weight="700" fill="#f4f4f5">RAG product discovery</text>
+  <text x="56" y="88" font-family="system-ui, sans-serif" font-size="16" fill="#8b929e"><tspan font-family="ui-monospace, monospace" fill="#f59e0b">embed</tspan> on save → <tspan font-family="ui-monospace, monospace" fill="#f59e0b">.similar()</tspan> / <tspan font-family="ui-monospace, monospace" fill="#f59e0b">hybrid()</tspan> → <tspan font-family="ui-monospace, monospace" fill="#f59e0b">llm_generate</tspan> — one stack, no vector DB.</text>
+
+  <!-- Phase labels -->
+  <g font-family="system-ui, sans-serif" font-size="11" font-weight="600" letter-spacing="0.08em">
+    <text x="56" y="118" fill="#6b7280">INGEST</text>
+    <text x="310" y="118" fill="#6b7280">STORE</text>
+    <text x="530" y="118" fill="#6b7280">RETRIEVE</text>
+    <text x="780" y="118" fill="#6b7280">GENERATE</text>
+  </g>
+
+  <!-- Ingest card -->
+  <g>
+    <rect x="56" y="132" width="210" height="200" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="76" y="162" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#cbd5e1">product.sl</text>
+    <g font-family="ui-monospace, monospace" font-size="12">
+      <text x="76" y="192" fill="#c792ea">before_save</text><text x="168" y="192" fill="#8b929e"> fn()</text>
+      <text x="88" y="216" fill="#8b929e">this.embedding =</text>
+      <text x="88" y="240" fill="#f59e0b">  embed(</text>
+      <text x="104" y="264" fill="#c3e88d">name + desc</text><text x="196" y="264" fill="#f59e0b">)</text>
+    </g>
+    <rect x="76" y="286" width="170" height="28" rx="8" fill="#0b0d0f" stroke="#3a2f14"/>
+    <text x="88" y="305" font-family="ui-monospace, monospace" font-size="11" fill="#d97706">1536-dim vector</text>
+  </g>
+
+  <!-- Arrow ingest → store -->
+  <path d="M272 232 L 298 232" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrRag)"/>
+
+  <!-- SolidB store -->
+  <g>
+    <ellipse cx="360" cy="252" rx="58" ry="18" fill="#161a22" stroke="#2b3038"/>
+    <rect x="302" y="252" width="116" height="90" fill="#161a22" stroke="#2b3038"/>
+    <ellipse cx="360" cy="342" rx="58" ry="18" fill="#101319" stroke="#2b3038"/>
+    <text x="360" y="298" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#e5e7eb">SolidB</text>
+    <rect x="318" y="308" width="84" height="22" rx="6" fill="#0b0d0f" stroke="#3a2f14"/>
+    <text x="360" y="323" text-anchor="middle" font-family="ui-monospace, monospace" font-size="10" fill="#22c55e">HNSW index</text>
+  </g>
+
+  <!-- Arrow store → retrieve -->
+  <path d="M418 232 L 518 232" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrRag)"/>
+
+  <!-- Retrieve card -->
+  <g>
+    <rect x="528" y="132" width="220" height="200" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="548" y="162" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#cbd5e1">User query</text>
+    <rect x="548" y="172" width="180" height="24" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+    <text x="560" y="189" font-family="ui-monospace, monospace" font-size="10.5" fill="#8b929e">"waterproof hiking boots"</text>
+
+    <text x="548" y="218" font-family="ui-monospace, monospace" font-size="11.5" fill="#f59e0b">.similar(q, "embedding", 5)</text>
+    <text x="548" y="242" font-family="ui-monospace, monospace" font-size="11" fill="#6b7280">or hybrid(q, { fusion: "rrf" })</text>
+
+    <!-- result rows -->
+    <g font-family="system-ui, sans-serif" font-size="11">
+      <rect x="548" y="254" width="180" height="22" rx="6" fill="#0f1319" stroke="#2b3038"/>
+      <text x="558" y="269" fill="#d1d5db">Trail Blazer Boots</text>
+      <text x="688" y="269" text-anchor="end" fill="#22c55e">0.87</text>
+
+      <rect x="548" y="282" width="180" height="22" rx="6" fill="#0f1319" stroke="#2b3038"/>
+      <text x="558" y="297" fill="#9ca3af">BT Speaker</text>
+      <text x="688" y="297" text-anchor="end" fill="#6b7280">0.62</text>
+    </g>
+    <text x="548" y="318" font-family="ui-monospace, monospace" font-size="10" fill="#6b7280">_similarity_score</text>
+  </g>
+
+  <!-- Arrow retrieve → generate -->
+  <path d="M752 232 L 768 232" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrRag)"/>
+
+  <!-- Generate card -->
+  <g>
+    <rect x="776" y="132" width="192" height="200" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="796" y="162" font-family="ui-monospace, monospace" font-size="12" fill="#f59e0b">llm_generate(</text>
+    <text x="808" y="184" font-family="ui-monospace, monospace" font-size="10.5" fill="#8b929e">system, context+q)</text>
+
+    <!-- answer bubble -->
+    <rect x="796" y="200" width="152" height="108" rx="10" fill="#0f1319" stroke="#3a2f14"/>
+    <g font-family="system-ui, sans-serif" font-size="11" fill="#d1d5db">
+      <text x="808" y="222">I'd recommend the</text>
+      <text x="808" y="240"><tspan font-weight="600" fill="#f59e0b">Trail Blazer</tspan> at</text>
+      <text x="808" y="258"><tspan font-weight="600" fill="#22c55e">$189.99</tspan> — waterproof</text>
+      <text x="808" y="276">leather, within budget.</text>
+    </g>
+    <text x="796" y="326" font-family="ui-monospace, monospace" font-size="10" fill="#6b7280">grounded answer</text>
+  </g>
+
+  <!-- Bottom pipeline bar -->
+  <rect x="56" y="360" width="912" height="56" rx="14" fill="#101319" stroke="#2b3038"/>
+  <g font-family="system-ui, sans-serif" font-size="13">
+    <circle cx="100" cy="388" r="8" fill="#22c55e"/>
+    <text x="116" y="393" fill="#d1d5db">Ingest</text>
+    <rect x="168" y="384" width="80" height="8" rx="4" fill="url(#barRag)"/>
+
+    <circle cx="290" cy="388" r="8" fill="#22c55e"/>
+    <text x="306" y="393" fill="#d1d5db">Retrieve</text>
+    <rect x="378" y="384" width="80" height="8" rx="4" fill="url(#barRag)"/>
+
+    <circle cx="500" cy="388" r="8" fill="#22c55e"/>
+    <text x="516" y="393" fill="#d1d5db">Augment</text>
+    <rect x="588" y="384" width="80" height="8" rx="4" fill="url(#barRag)"/>
+
+    <circle cx="710" cy="388" r="8" fill="#f59e0b"/>
+    <text x="726" y="393" fill="#e5e7eb">Generate</text>
+    <rect x="798" y="384" width="80" height="8" rx="4" fill="url(#barRag)"/>
+
+    <text x="900" y="393" fill="#6b7280">~2s</text>
+  </g>
+
+  <!-- API response preview -->
+  <g>
+    <rect x="56" y="436" width="440" height="108" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="76" y="462" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#cbd5e1">POST /api/products/ask</text>
+    <g font-family="ui-monospace, monospace" font-size="10.5" fill="#8b929e">
+      <text x="76" y="484">{ "question": "waterproof hiking…",</text>
+      <text x="76" y="502">  "answer": "Trail Blazer at $189.99…",</text>
+      <text x="76" y="520">  "sources": [{ "name": "…", "score": 0.87 }] }</text>
+    </g>
+  </g>
+
+  <!-- Env vars -->
+  <g>
+    <rect x="516" y="436" width="452" height="108" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="536" y="462" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#cbd5e1">Environment</text>
+    <g font-family="ui-monospace, monospace" font-size="10.5">
+      <text x="536" y="484" fill="#6b7280">SOLI_EMBEDDING_API_KEY</text><text x="720" y="484" fill="#8b929e">→ embed / .similar()</text>
+      <text x="536" y="504" fill="#6b7280">SOLI_LLM_API_KEY</text><text x="720" y="504" fill="#8b929e">→ llm_generate</text>
+      <text x="536" y="524" fill="#6b7280">SOLI_LLM_MODEL</text><text x="720" y="524" fill="#8b929e">gpt-4o-mini (default)</text>
+    </g>
+  </g>
+</svg>
