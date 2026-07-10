@@ -109,6 +109,7 @@ pub fn is_document_api_method(name: &str) -> bool {
             | "similar"
             | "search"
             | "hybrid"
+            | "graph_rag"
             | "near"
             | "within"
     )

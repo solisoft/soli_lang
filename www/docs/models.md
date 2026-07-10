@@ -1233,8 +1233,12 @@ n = alice.traverse(Follow).count
   document, so mixed-vertex graphs return the right class for each vertex.
 - Soft-delete models compose: the deleted-filter is applied to the vertices.
 - A traversal builder does **not** compose with `includes`, `includes_count`,
-  `join`, `group_by`, `similar`, `update_all`, or `delete_all` — combining
-  them raises a clear error.
+  `join`, `group_by`, `update_all`, or `delete_all` — combining them raises a
+  clear error. **`.similar()` does compose** — rank traversal results by
+  semantic relevance (exact client-side cosine; no HNSW pushdown on graph
+  queries).
+- `Model.graph_rag(query, options)` — graph-augmented retrieval: ANN seeds,
+  expand through an edge model, re-rank. See [Graph RAG](#graph-rag) below.
 - `traverse` and `shortest_path` require a saved record (they raise
   otherwise).
 
@@ -1275,6 +1279,77 @@ def up(db: Any)
   db.create_index("follows", "idx_follows_to", ["_to"], {})
 end
 ```
+
+### Graph RAG
+
+Combine **vector retrieval** with **graph expansion** for richer RAG context.
+Two APIs:
+
+**Composition** — rank neighbors of a seed vertex by meaning:
+
+```soli
+# Saved record required for traverse()
+related = product.traverse(CompatibleWith, depth: 1)
+  .similar("wireless accessories", "embedding", 5)
+  .all
+
+for item in related
+  print(item.name + " — " + str(item._similarity_score))
+end
+```
+
+Traversal + `.similar()` always uses exact client-side cosine over the
+reachable vertices (HNSW pushdown does not apply to graph FOR-heads).
+
+**`Model.graph_rag()`** — seed-and-expand in one eager call:
+
+```soli
+class CompatibleWith < Model
+  edge from: "products", to: "products"
+end
+
+class Product < Model
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+
+  before_save fn() {
+    this.embedding = embed(this.name + ". " + this.description)
+  }
+end
+
+context = Product.graph_rag("running headphones with long battery", {
+  "via": CompatibleWith,
+  "direction": "any",
+  "depth": 1,
+  "seed_k": 3,
+  "limit": 8
+})
+
+for product in context
+  print(product.name)
+  print("  score: " + str(product._similarity_score))
+  print("  seed:  " + str(product._graph_seed))
+  print("  hops:  " + str(product._graph_hops))
+end
+
+answer = llm_generate(
+  "Recommend only from the list. Mention names and prices.",
+  build_product_context(context) + "\n\nQuestion: running headphones"
+)
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `via` | — | **Required.** Edge model class (must declare `edge from:, to:`) |
+| `direction` | `"out"` | `"out"`, `"in"`, or `"any"` |
+| `depth` | `1` | Int `n` (1..n) or `[min, max]` array |
+| `field` | `"embedding"` | Vector field covered by `vector_index` |
+| `seed_k` | `5` | ANN seeds from the collection index |
+| `limit` | `10` | Final result cap after expand + re-rank |
+| `vector` | — | Query vector literal — skips the embedding API call |
+
+Each result carries `_similarity_score` (re-rank score), `_graph_seed` (true
+for direct ANN hits), and `_graph_hops` (0 for seeds, 1 for expanded
+neighbors in v1).
 
 ## Finder Methods
 

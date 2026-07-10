@@ -278,6 +278,7 @@ pub mod db_config;
 pub mod dirty;
 mod engine_context;
 pub mod graph;
+pub mod graph_rag;
 pub mod habtm;
 pub mod index_sync;
 pub mod query;

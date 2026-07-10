@@ -199,6 +199,25 @@ still appear. See the
 for fusion-method details and tuning guidance. The raw-SDBQL escape hatch
 remains SolidB's `HYBRID_SEARCH` function via `db.query(...)` / `@sdbql{}`.
 
+## Graph-augmented retrieval (`graph_rag`)
+
+When your knowledge is connected by **edge models** (citations, compatibility,
+authorship), plain vector search misses related context one hop away.
+`Model.graph_rag()` seeds with ANN on the declared `vector_index`, expands
+each hit through `via: EdgeModel`, then re-ranks the union:
+
+```soli
+Product.graph_rag("wireless running gear", {
+  "via": CompatibleWith,
+  "seed_k": 3,
+  "limit": 10
+})
+```
+
+You can also compose manually: `seed.traverse(Edge).similar(query, field, k)`.
+See [Models — Graph RAG](models.md#graph-rag) for options and metadata fields
+(`_graph_seed`, `_graph_hops`).
+
 ## Pipeline notes (fulltext / hybrid / geo)
 
 `search`, `hybrid`, `near`, and `within` bypass the SDBQL query pipeline:

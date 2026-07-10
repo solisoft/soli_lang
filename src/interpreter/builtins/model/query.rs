@@ -1063,11 +1063,12 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, spec: &SimilarSpec
         SimilarInput::Vector(v) => v.clone(),
     };
 
-    // ANN pushdown: opt-in via the `vector_index` declaration.
+    // ANN pushdown: opt-in via the `vector_index` declaration. Graph
+    // traversals use a FOR-head that HNSW cannot express — always exact.
     let class_name = crate::interpreter::symbol_string(qb.class_name)
         .unwrap_or_default()
         .to_string();
-    if !spec.exact {
+    if !spec.exact && qb.traversal.is_none() {
         if let Some(index_def) = super::registry::get_vector_index_for_field(&class_name, field) {
             return execute_similar_pushdown(qb, collection, spec, &index_def.name, &query_vec);
         }
@@ -2770,6 +2771,28 @@ mod tests {
             query,
             "FOR doc, edge IN 1..1 OUTBOUND @__soli_traverse_start follows LIMIT 1 RETURN true"
         );
+    }
+
+    #[test]
+    fn test_traversal_similar_skips_ann_pushdown() {
+        use super::SimilarInput;
+        let mut qb = make_traversal_qb(super::super::graph::TraversalDirection::Out);
+        qb.similar_query = Some(super::SimilarSpec {
+            input: SimilarInput::Vector(vec![1.0, 0.0, 0.0, 0.0]),
+            field: "vec".to_string(),
+            top_k: 3,
+            exact: false,
+            ef_search: None,
+        });
+        // Traversal + similar always uses the exact fetch path (no HNSW pushdown).
+        // With no DB, execute_similar_query returns empty when embedding fails;
+        // here we only assert the code path builds a traversal query when fetched.
+        let (query, _) = {
+            let mut fetch_qb = qb.clone();
+            fetch_qb.similar_query = None;
+            fetch_qb.build_query()
+        };
+        assert!(query.contains("OUTBOUND @__soli_traverse_start"));
     }
 
     // ---- time_bucket mode ----

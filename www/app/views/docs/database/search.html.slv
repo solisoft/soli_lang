@@ -199,6 +199,39 @@ inside = Store.within(48.85, 2.35, 2000.0)         # radius: 2 km</code></pre>
         </ul>
     </div>
 
+    <h2 id="graph-rag" class="text-2xl font-bold text-white mb-6">Graph-augmented retrieval (<code>graph_rag</code>)</h2>
+    <p class="text-gray-400 mb-6">
+        When documents are connected by <a href="/docs/database/models#graph-models" class="text-amber-400 hover:underline">edge models</a>, seed with ANN on the <code>vector_index</code>, expand each hit through <code>via: EdgeModel</code>, then re-rank the union. Results carry <code>_similarity_score</code>, <code>_graph_seed</code>, and <code>_graph_hops</code>.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Product.graph_rag("wireless running gear", {
+  "via": CompatibleWith,
+  "direction": "any",
+  "depth": 1,
+  "seed_k": 3,
+  "limit": 10
+})
+
+# Or compose: rank traversal reach by meaning
+product.traverse(CompatibleWith).similar("accessories", "embedding", 5).all</code></pre>
+        </div>
+    </div>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs text-gray-500 uppercase bg-white/5">
+                <tr><th class="px-4 py-3">Option</th><th class="px-4 py-3">Default</th><th class="px-4 py-3">Description</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-4 py-3 font-mono text-amber-300">via</td><td class="px-4 py-3">—</td><td class="px-4 py-3">Required edge model class</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">direction</td><td class="px-4 py-3">out</td><td class="px-4 py-3">out, in, or any</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">depth</td><td class="px-4 py-3">1</td><td class="px-4 py-3">Int or [min, max]</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">seed_k</td><td class="px-4 py-3">5</td><td class="px-4 py-3">ANN seed count</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">limit</td><td class="px-4 py-3">10</td><td class="px-4 py-3">Final result cap</td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <h2 id="hybrid-search" class="text-2xl font-bold text-white mb-6">Hybrid Search (not exposed yet)</h2>
     <p class="text-gray-400 mb-12">
         Combined vector + fulltext ranking is <strong class="text-white">not</strong> exposed through the ORM &mdash; the database's HTTP endpoint for it is still a stub. The raw-SDBQL escape hatch is SolidB's <code>HYBRID_SEARCH</code> function via <code>db.query(...)</code> / <code>@sdbql{}</code>; see the <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-amber-400 hover:underline">SolidB Hybrid Search docs</a> for its signature and tuning.

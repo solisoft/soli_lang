@@ -3762,6 +3762,35 @@ impl Model {
             })),
         );
 
+        // Model.graph_rag(query, { via:, ... }) — graph-augmented retrieval:
+        // ANN seeds on the declared vector_index, expand each seed through the
+        // edge model's traversal, re-rank the union by cosine similarity.
+        // Options: via: (required), direction:, depth:, field:, seed_k:,
+        // limit:, vector:.
+        native_static_methods.insert(
+            "graph_rag".to_string(),
+            Rc::new(NativeFunction::new("Model.graph_rag", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let query_text = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err(format!("{}.graph_rag expects a query string", class_name)),
+                };
+
+                let opts = super::graph_rag::parse_graph_rag_options(&class_name, args.get(2))?;
+
+                super::graph_rag::exec_graph_rag(
+                    &class,
+                    &class_name,
+                    &collection,
+                    &query_text,
+                    opts,
+                )
+            })),
+        );
+
         // Model.near(lat, lon[, options]) / Model.within(lat, lon, radius) —
         // geo queries over the declared `geo_index` field. Results carry
         // `_distance` (meters).
