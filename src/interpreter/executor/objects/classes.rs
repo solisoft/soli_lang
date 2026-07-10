@@ -122,8 +122,9 @@ impl Interpreter {
                 ctor_env.define(param.name.clone(), value.clone());
             }
 
-            // Execute constructor body
-            let _ = self.execute_block(&ctor.body, ctor_env);
+            // Execute constructor body (pushes a frame so coverage/stack
+            // traces attribute constructor lines to the class's own file).
+            self.execute_constructor_body(ctor, ctor_env);
         }
 
         Ok(Value::Instance(instance))

@@ -683,6 +683,21 @@ impl Interpreter {
 
         result
     }
+
+    /// Execute a constructor body with a call-stack frame carrying the
+    /// constructor's defining file, so coverage, stack traces, and the
+    /// flamegraph attribute constructor-body lines to the class's source
+    /// file — exactly like `call_function_with_this` does for methods.
+    /// Without the frame, constructor hits attribute to the *caller* and
+    /// are dropped from coverage as test-directory lines.
+    pub(crate) fn execute_constructor_body(&mut self, ctor: &Function, ctor_env: Environment) {
+        let span = ctor.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
+        self.push_frame(&ctor.name, span, ctor.source_path.clone());
+        // Result intentionally discarded (pre-existing constructor behavior);
+        // no `?` between push and pop, so the frame is always popped.
+        let _ = self.execute_block(&ctor.body, ctor_env);
+        self.pop_frame();
+    }
 }
 
 impl Default for Interpreter {

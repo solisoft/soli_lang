@@ -1996,7 +1996,7 @@ impl Interpreter {
                         ctor_env.define(param.name.clone(), value.clone());
                     }
 
-                    let _ = self.execute_block(&ctor.body, ctor_env);
+                    self.execute_constructor_body(ctor, ctor_env);
                 }
 
                 Ok(Value::Instance(instance))
@@ -2137,7 +2137,7 @@ impl Interpreter {
                         ctor_env.define(param.name.clone(), value);
                     }
 
-                    let _ = self.execute_block(&ctor.body, ctor_env);
+                    self.execute_constructor_body(ctor, ctor_env);
                 }
 
                 Ok(Value::Null)
@@ -2265,7 +2265,7 @@ impl Interpreter {
                         ctor_env.define(param.name.clone(), value);
                     }
 
-                    let _ = self.execute_block(&ctor.body, ctor_env);
+                    self.execute_constructor_body(ctor, ctor_env);
                 }
 
                 Ok(Value::Instance(instance))
