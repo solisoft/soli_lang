@@ -61,11 +61,13 @@ pub mod http_class;
 pub mod http_log;
 pub mod i18n;
 pub mod image;
+pub mod imap;
 pub mod jobs;
 pub mod json;
 pub mod jwt;
 pub mod kv;
 pub mod kv_log;
+pub mod mail_parse;
 pub mod mailer;
 pub mod markdown;
 pub mod math;
@@ -448,6 +450,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register Pop3 email-reading class
     pop3::register_pop3_class(env);
+
+    // Register Imap email-reading class
+    imap::register_imap_class(env);
 
     // Register outbound-email (Mailer) native builtins. The `Mailer`/`Message`
     // classes themselves are defined by a Soli prelude (mailer::ensure_prelude).

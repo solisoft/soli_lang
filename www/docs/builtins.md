@@ -1271,6 +1271,103 @@ end
 mail.quit()
 ```
 
+## IMAP (Email Reading)
+
+The `Imap` class reads email over IMAP4rev1. Unlike POP3, IMAP is stateful and
+server-side: you `select()` a mailbox, then `search()` and `fetch()` within it,
+leaving the messages on the server. It connects over implicit TLS by default
+(port `993`) and parses each message into the same structured hash as `Pop3`.
+
+### Imap.new(host, user, password, opts?)
+
+Connect and authenticate, returning a client instance. The optional `opts` hash
+accepts `port` (default `993`) and `tls` (default `true`).
+
+```soli
+mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
+
+# Plaintext on a custom port (e.g. a local test server)
+mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })
+```
+
+> **Gmail / 2FA accounts:** use an [App Password](https://support.google.com/accounts/answer/185833),
+> not your normal password, and enable IMAP in the account settings.
+
+### Instance methods
+
+| Method | Returns |
+|--------|---------|
+| `mail.select(mailbox = "INBOX")` | Mailbox status: `{ "mailbox", "exists", "recent", "unseen", "uidvalidity", "uidnext", "flags" }`. Selects it for subsequent calls. |
+| `mail.mailboxes()` | `[ { "name", "delimiter", "flags" }, ... ]` — all mailboxes/folders |
+| `mail.search(criteria = "ALL")` | Array of **sequence numbers** matching an IMAP search key |
+| `mail.uid_search(criteria = "ALL")` | Array of **UIDs** matching an IMAP search key |
+| `mail.fetch(seq)` | A parsed message hash for the given sequence number |
+| `mail.fetch_uid(uid)` | A parsed message hash for the given UID |
+| `mail.fetch_all()` | An array of parsed message hashes from the selected mailbox |
+| `mail.mark_seen(seq)` / `mail.mark_unseen(seq)` | Toggle the `\Seen` flag; returns `true` |
+| `mail.delete(seq)` | Marks the message `\Deleted` (removed on `expunge`); returns `true` |
+| `mail.expunge()` | Permanently removes `\Deleted` messages; returns `true` |
+| `mail.copy(seq, mailbox)` | Copies the message into another mailbox; returns `true` |
+| `mail.move(seq, mailbox)` | Moves the message (RFC 6851 `MOVE`); returns `true` |
+| `mail.logout()` | Closes the connection; returns `true` |
+
+`fetch_all()` requires a prior `select()` and is capped at 200 messages by
+default; raise it with the `SOLI_IMAP_MAX_MESSAGES` environment variable.
+`fetch`/`fetch_uid` use `BODY.PEEK[]`, so reading a message does **not** mark it
+`\Seen` — call `mark_seen()` explicitly if you want that.
+
+### Search criteria
+
+`criteria` is passed straight through as an IMAP search key, so any standard
+expression works:
+
+```soli
+mail.uid_search("UNSEEN")                       # unread
+mail.search("FROM alice@example.com")           # by sender
+mail.search("SINCE 1-Jun-2026 SUBJECT invoice") # combine keys
+mail.search("ALL")                              # everything (the default)
+```
+
+### Message hash shape
+
+Fetched messages carry the same fields as `Pop3` plus IMAP identity fields
+(`seq`, `uid`, `flags`):
+
+```soli
+{
+  "seq":          1,
+  "uid":          4821,
+  "flags":        ["\\Seen", "\\Answered"],
+  "size":         2048,
+  "subject":      "Hello from Alice",
+  "from":         { "name": "Alice", "address": "alice@example.com" },
+  "to":           [ { "name": "Bob", "address": "bob@example.com" } ],
+  "date":         "2026-06-01T10:00:00Z",
+  "text_body":    "Hi Bob, ...",
+  "html_body":    "<p>Hi Bob, ...</p>",
+  "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
+  "raw":          "From: Alice ..."   # full RFC822 source
+}
+```
+
+### Example
+
+```soli
+mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
+
+info = mail.select("INBOX")
+print("#{info["exists"]} messages, #{info["unseen"]} unread")
+
+# Fetch and archive every unread message
+for uid in mail.uid_search("UNSEEN")
+  msg = mail.fetch_uid(uid)
+  print("#{msg["date"]} — #{msg["from"]["address"]}: #{msg["subject"]}")
+  mail.mark_seen(msg["seq"])
+end
+
+mail.logout()
+```
+
 ## JSON Functions
 
 ### json_parse(string)

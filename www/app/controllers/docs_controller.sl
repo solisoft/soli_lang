@@ -417,6 +417,10 @@ def builtins_pop3
     render_docs("docs/builtins/pop3", "POP3 Email Class", "builtins", "pop3")
 end
 
+def builtins_imap
+    render_docs("docs/builtins/imap", "IMAP Email Class", "builtins", "imap")
+end
+
 def builtins_mailer
     render_docs("docs/builtins/mailer", "Mailer", "builtins", "mailer")
 end

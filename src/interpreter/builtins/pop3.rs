@@ -28,10 +28,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use lazy_static::lazy_static;
-use mail_parser::{Addr, Address, MessageParser, MimeHeaders};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
+use crate::interpreter::builtins::mail_parse;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, HashKey, Instance, NativeFunction, Value};
 
@@ -41,9 +41,10 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// `SOLI_POP3_MAX_MESSAGES`.
 const DEFAULT_MAX_MESSAGES: i64 = 200;
 
-/// A boxed, owning POP3 stream — either a rustls TLS stream or a plain TCP
-/// stream (the latter only for local/testing servers).
-trait Stream: Read + Write + Send {}
+/// A boxed, owning mail stream — either a rustls TLS stream or a plain TCP
+/// stream (the latter only for local/testing servers). Shared with the `Imap`
+/// client, which reuses [`connect`].
+pub(crate) trait Stream: Read + Write + Send {}
 impl<T: Read + Write + Send> Stream for T {}
 
 /// A live, authenticated POP3 connection.
@@ -72,7 +73,7 @@ fn tls_config() -> Result<Arc<ClientConfig>, String> {
     let config =
         ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
             .with_safe_default_protocol_versions()
-            .map_err(|e| format!("POP3 TLS init failed: {e}"))?
+            .map_err(|e| format!("Mail TLS init failed: {e}"))?
             .with_root_certificates(roots)
             .with_no_client_auth();
     let arc = Arc::new(config);
@@ -80,8 +81,9 @@ fn tls_config() -> Result<Arc<ClientConfig>, String> {
     Ok(arc)
 }
 
-/// Open a TCP (optionally TLS-wrapped) connection to the POP3 server.
-fn connect(host: &str, port: u16, use_tls: bool) -> Result<Box<dyn Stream>, String> {
+/// Open a TCP (optionally TLS-wrapped) connection to a mail server. Shared by
+/// the `Pop3` and `Imap` clients.
+pub(crate) fn connect(host: &str, port: u16, use_tls: bool) -> Result<Box<dyn Stream>, String> {
     let addr = (host, port)
         .to_socket_addrs()
         .map_err(|e| format!("DNS resolution failed for {host}:{port}: {e}"))?
@@ -209,104 +211,13 @@ fn with_conn<R>(
 // Message parsing
 // ---------------------------------------------------------------------------
 
-fn opt_str(s: Option<&str>) -> Value {
-    s.map(|s| Value::String(s.to_string().into()))
-        .unwrap_or(Value::Null)
-}
-
-fn addr_to_hash(addr: &Addr) -> Value {
-    hash_from_pairs([
-        ("name".to_string(), opt_str(addr.name())),
-        ("address".to_string(), opt_str(addr.address())),
-    ])
-}
-
-/// First address of a header as `{name, address}`, or `null`.
-fn addr_first(addr: Option<&Address>) -> Value {
-    match addr.and_then(|a| a.first()) {
-        Some(one) => addr_to_hash(one),
-        None => Value::Null,
-    }
-}
-
-/// All addresses of a header as an array of `{name, address}` hashes.
-fn addr_all(addr: Option<&Address>) -> Value {
-    let mut out = Vec::new();
-    if let Some(a) = addr {
-        for one in a.iter() {
-            out.push(addr_to_hash(one));
-        }
-    }
-    Value::Array(Rc::new(RefCell::new(out)))
-}
-
-/// Parse a raw RFC822 message into a structured Soli hash.
+/// Parse a raw RFC822 message into a structured Soli hash. The POP3 message
+/// number is prepended as `id`; the remaining fields come from the shared
+/// [`mail_parse::common_fields`] parser.
 fn parse_message(raw: &str, msg_id: i64) -> Value {
-    let size = raw.len() as i64;
-    let parsed = MessageParser::default().parse(raw.as_bytes());
-
-    let (subject, from, to, date, text_body, html_body, attachments) = match &parsed {
-        Some(msg) => {
-            let date = msg
-                .date()
-                .map(|d| Value::String(d.to_rfc3339().into()))
-                .unwrap_or(Value::Null);
-            let text_body = msg
-                .body_text(0)
-                .map(|c| Value::String(c.into_owned().into()))
-                .unwrap_or(Value::Null);
-            let html_body = msg
-                .body_html(0)
-                .map(|c| Value::String(c.into_owned().into()))
-                .unwrap_or(Value::Null);
-            let mut atts = Vec::new();
-            for part in msg.attachments() {
-                let content_type = part
-                    .content_type()
-                    .map(|ct| match ct.subtype() {
-                        Some(sub) => Value::String(format!("{}/{}", ct.ctype(), sub).into()),
-                        None => Value::String(ct.ctype().to_string().into()),
-                    })
-                    .unwrap_or(Value::Null);
-                atts.push(hash_from_pairs([
-                    ("name".to_string(), opt_str(part.attachment_name())),
-                    ("content_type".to_string(), content_type),
-                    ("size".to_string(), Value::Int(part.len() as i64)),
-                ]));
-            }
-            (
-                opt_str(msg.subject()),
-                addr_first(msg.from()),
-                addr_all(msg.to()),
-                date,
-                text_body,
-                html_body,
-                Value::Array(Rc::new(RefCell::new(atts))),
-            )
-        }
-        None => (
-            Value::Null,
-            Value::Null,
-            Value::Array(Rc::new(RefCell::new(Vec::new()))),
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Array(Rc::new(RefCell::new(Vec::new()))),
-        ),
-    };
-
-    hash_from_pairs([
-        ("id".to_string(), Value::Int(msg_id)),
-        ("size".to_string(), Value::Int(size)),
-        ("subject".to_string(), subject),
-        ("from".to_string(), from),
-        ("to".to_string(), to),
-        ("date".to_string(), date),
-        ("text_body".to_string(), text_body),
-        ("html_body".to_string(), html_body),
-        ("attachments".to_string(), attachments),
-        ("raw".to_string(), Value::String(raw.to_string().into())),
-    ])
+    let mut pairs = vec![("id".to_string(), Value::Int(msg_id))];
+    pairs.extend(mail_parse::common_fields(raw.as_bytes()));
+    hash_from_pairs(pairs)
 }
 
 // ---------------------------------------------------------------------------

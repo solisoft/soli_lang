@@ -1704,6 +1704,28 @@ impl TypeEnvironment {
         );
         self.classes.insert("Pop3".to_string(), pop3_class);
 
+        // Imap email-reading class: `Imap.new(host, user, pass, opts?)` returns
+        // a client instance (typed Any, so its `.select()/.search()/.fetch()/…`
+        // calls are permissive, matching the Pop3/Solidb instance pattern).
+        let mut imap_class = ClassType::new("Imap".to_string());
+        imap_class.methods.insert(
+            "new".to_string(),
+            MethodInfo {
+                name: "new".to_string(),
+                params: vec![
+                    ("host".to_string(), Type::String),
+                    ("user".to_string(), Type::String),
+                    ("password".to_string(), Type::String),
+                    // Optional opts hash; `Any` also makes the arg count lenient.
+                    ("opts".to_string(), Type::Any),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Imap".to_string(), imap_class);
+
         // System class
         let mut system_class = ClassType::new("System".to_string());
         system_class.methods.insert(

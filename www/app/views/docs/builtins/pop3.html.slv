@@ -121,8 +121,8 @@ mail.quit()</code></pre>
             </svg>
             SOAP Class
         </a>
-        <a href="/docs/builtins/file" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-            File Functions
+        <a href="/docs/builtins/imap" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+            IMAP Class
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>

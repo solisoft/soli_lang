@@ -1,0 +1,160 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">IMAP (Email)</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Imap Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Read email over IMAP4rev1 — select a mailbox, search and fetch server-side, with TLS by default and structured message parsing.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-300">
+                <code class="text-amber-400">Imap</code> connects to an IMAP server over implicit TLS (port <code class="text-cyan-400">993</code>) by default and authenticates. Unlike <a href="/docs/builtins/pop3" class="text-cyan-400 hover:underline">Pop3</a>, IMAP is stateful and leaves mail on the server: you <code class="text-cyan-400">select()</code> a mailbox, then <code class="text-cyan-400">search()</code> / <code class="text-cyan-400">fetch()</code> within it. Fetched messages are parsed into the same hash shape as <code class="text-amber-400">Pop3</code>, plus IMAP identity fields (<code class="text-cyan-400">seq</code>, <code class="text-cyan-400">uid</code>, <code class="text-cyan-400">flags</code>).
+            </p>
+        </div>
+    </section>
+
+    <!-- Imap.new -->
+    <section id="imap-new" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Imap.new(host, user, password, opts?)
+        </h2>
+
+        <section id="imap-new-method" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#imap-new-method" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Imap.new(host, user, password, opts?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Connects and authenticates, returning a client instance.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">host</code> : <code class="text-orange-400">String</code> &mdash; IMAP server hostname</div>
+                    <div><code class="text-amber-400">user</code> : <code class="text-orange-400">String</code> &mdash; Mailbox username</div>
+                    <div><code class="text-amber-400">password</code> : <code class="text-orange-400">String</code> &mdash; Password or app password</div>
+                    <div><code class="text-amber-400">opts</code> : <code class="text-orange-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>993</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>)</div>
+                </div>
+                <pre data-filename="Connect"><code class="language-soli text-sm">mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
+
+# Plaintext on a custom port (e.g. a local test server)
+mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })</code></pre>
+                <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
+                    <p class="text-sm text-amber-200"><strong>Gmail / 2FA accounts:</strong> use an <a class="underline" href="https://support.google.com/accounts/answer/185833">App Password</a>, not your normal password, and enable IMAP access in your account settings.</p>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Instance methods -->
+    <section id="imap-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Instance Methods</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 space-y-3 text-sm text-gray-400">
+            <div><code class="text-amber-400">mail.select(mailbox = "INBOX")</code> &mdash; selects a mailbox and returns its status: <code class="text-cyan-400">{ "mailbox", "exists", "recent", "unseen", "uidvalidity", "uidnext", "flags" }</code>. Subsequent calls operate on it.</div>
+            <div><code class="text-amber-400">mail.mailboxes()</code> &mdash; returns an array of <code class="text-cyan-400">{ "name", "delimiter", "flags" }</code> for every mailbox/folder.</div>
+            <div><code class="text-amber-400">mail.search(criteria = "ALL")</code> &mdash; returns an array of <strong>sequence numbers</strong> matching an IMAP search key.</div>
+            <div><code class="text-amber-400">mail.uid_search(criteria = "ALL")</code> &mdash; returns an array of <strong>UIDs</strong> matching an IMAP search key.</div>
+            <div><code class="text-amber-400">mail.fetch(seq)</code> &mdash; returns a parsed message hash for a sequence number (see below).</div>
+            <div><code class="text-amber-400">mail.fetch_uid(uid)</code> &mdash; returns a parsed message hash for a UID.</div>
+            <div><code class="text-amber-400">mail.fetch_all()</code> &mdash; returns parsed messages from the selected mailbox (capped at 200; raise via <code class="text-amber-400">SOLI_IMAP_MAX_MESSAGES</code>).</div>
+            <div><code class="text-amber-400">mail.mark_seen(seq)</code> / <code class="text-amber-400">mail.mark_unseen(seq)</code> &mdash; toggle the <code class="text-cyan-400">\Seen</code> flag; return <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.delete(seq)</code> &mdash; marks the message <code class="text-cyan-400">\Deleted</code> (removed on <code class="text-amber-400">expunge</code>); returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.expunge()</code> &mdash; permanently removes <code class="text-cyan-400">\Deleted</code> messages; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.copy(seq, mailbox)</code> &mdash; copies a message into another mailbox; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.move(seq, mailbox)</code> &mdash; moves a message via the RFC 6851 <code class="text-cyan-400">MOVE</code> extension; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.logout()</code> &mdash; closes the connection; returns <code class="text-cyan-400">true</code>.</div>
+        </div>
+        <div class="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4 mt-4">
+            <p class="text-sm text-cyan-100"><code class="text-amber-400">fetch</code> / <code class="text-amber-400">fetch_uid</code> use <code>BODY.PEEK[]</code>, so reading a message does <strong>not</strong> mark it <code>\Seen</code> &mdash; call <code class="text-amber-400">mark_seen()</code> explicitly if you want that.</p>
+        </div>
+    </section>
+
+    <!-- Search criteria -->
+    <section id="imap-search" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Search Criteria</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4"><code class="text-cyan-400">criteria</code> is passed straight through as an IMAP search key, so any standard expression works:</p>
+            <pre data-filename="Searching"><code class="language-soli text-sm">mail.uid_search("UNSEEN")                       # unread
+mail.search("FROM alice@example.com")           # by sender
+mail.search("SINCE 1-Jun-2026 SUBJECT invoice") # combine keys
+mail.search("ALL")                              # everything (the default)</code></pre>
+        </div>
+    </section>
+
+    <!-- Message hash shape -->
+    <section id="imap-message" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Message Hash</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">Each fetched message is a hash carrying the same fields as <a href="/docs/builtins/pop3" class="text-cyan-400 hover:underline">Pop3</a> plus IMAP identity fields (<code class="text-cyan-400">seq</code>, <code class="text-cyan-400">uid</code>, <code class="text-cyan-400">flags</code>). <code class="text-cyan-400">from</code> is a single <code class="text-cyan-400">{name, address}</code> hash (or <code>null</code>); <code class="text-cyan-400">to</code> is an array of them. Missing headers/bodies are <code>null</code>.</p>
+            <pre data-filename="Message"><code class="language-soli text-sm">{
+  "seq":          1,
+  "uid":          4821,
+  "flags":        ["\\Seen", "\\Answered"],
+  "size":         2048,
+  "subject":      "Hello from Alice",
+  "from":         { "name": "Alice", "address": "alice@example.com" },
+  "to":           [ { "name": "Bob", "address": "bob@example.com" } ],
+  "date":         "2026-06-01T10:00:00Z",
+  "text_body":    "Hi Bob, ...",
+  "html_body":    "&lt;p&gt;Hi Bob, ...&lt;/p&gt;",
+  "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
+  "raw":          "From: Alice ..."   # full RFC822 source
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="archive_unread.sl"><code class="language-soli text-sm">mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
+
+info = mail.select("INBOX")
+print("#{info["exists"]} messages, #{info["unseen"]} unread")
+
+# Fetch and mark every unread message as read
+for uid in mail.uid_search("UNSEEN")
+  msg = mail.fetch_uid(uid)
+  print("#{msg["date"]} — #{msg["from"]["address"]}: #{msg["subject"]}")
+
+  for attachment in msg["attachments"]
+    print("  attachment: #{attachment["name"]} (#{attachment["content_type"]})")
+  end
+
+  mail.mark_seen(msg["seq"])
+end
+
+mail.logout()</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/pop3" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            POP3 Class
+        </a>
+        <a href="/docs/builtins/mailer" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+            Mailer
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>
