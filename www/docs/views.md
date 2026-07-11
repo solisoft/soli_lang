@@ -923,6 +923,20 @@ Include partials — use `partial(...)` as the short alias for `render_partial(.
 <%= render_partial("partials/user_card", {"user": current_user}) %>
 ```
 
+### Inherited instance variables
+
+Partials **and** components inherit the current controller's `@instance`
+variables, just like the main view — so a partial can read `@current_user` or
+`@posts` without threading them through the locals hash:
+
+```erb
+<%# controller: @current_user = User.find(id) %>
+<%= partial("shared/avatar") %>   <%# the partial reads @current_user directly %>
+```
+
+An explicit local always wins over an inherited ivar of the same name, and
+framework internals (`req`, `params`, `session`, `headers`) are never injected.
+
 ### The `locals` hash
 
 Partials expose their entire context hash as a `locals` variable, mirroring
@@ -985,7 +999,7 @@ Resolution rules:
 - If the name contains `/` or `.`, it is treated as a relative path from `app/views/`.
 - Otherwise Soli looks for `components/<name>.html.slv`.
 
-Data works exactly like partials: values are exposed as bare variables. Use `locals["key"]` only when the key collides with a builtin or reserved word.
+Data works exactly like partials: values are exposed as bare variables. Use `locals["key"]` only when the key collides with a builtin or reserved word. Components also inherit the controller's `@instance` variables (see [Inherited instance variables](#inherited-instance-variables)).
 
 The function-call form passes only a data hash — it has no captured body, so a `<%= yield %>` inside the component needs an explicit `"content"` (or `"body"`) key. To pass block content into the default slot, use the [block form](#block-syntax-and-slots).
 

@@ -336,6 +336,14 @@ impl TemplateCache {
         let template_path = self.resolve_template_path(&resolved_name)?;
         let nodes = self.get_or_load_template(&template_path)?;
 
+        // Propagate the current controller's `@instance` variables into this
+        // include's locals (Rails-style), mirroring how the main view receives
+        // them via `inject_controller_instance_vars`. Explicit locals passed to
+        // partial()/component() win (the helper never clobbers existing keys),
+        // framework fields (req/params/session/headers) are skipped, and it is a
+        // no-op outside a class-controller request (function handlers, tests).
+        crate::interpreter::builtins::template::inject_controller_instance_vars(data);
+
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
@@ -1695,6 +1703,57 @@ mod tests {
         let out = cache.render("index", &Value::Null, Some(None)).unwrap();
         assert_eq!(out.trim(), "<header>HEAD</header><main>BODY</main>");
 
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn instance_vars_propagate_into_partials_and_components() {
+        // A controller's @ivars reach partials AND components (Rails-style),
+        // resolving through the same `@foo -> foo local` lenient fallback the
+        // main view uses. Explicit locals still win (covered elsewhere).
+        use crate::interpreter::builtins::controller::registry::{
+            clear_current_controller, set_current_controller,
+        };
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        use crate::interpreter::value::{Class, Instance};
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        // Fake controller exposing @greeting = "Bonjour".
+        let class = Rc::new(Class {
+            name: "GreetController".to_string(),
+            ..Default::default()
+        });
+        let mut inst = Instance::new(class);
+        inst.fields
+            .insert("greeting".to_string(), Value::String("Bonjour".into()));
+        set_current_controller(Value::Instance(Rc::new(RefCell::new(inst))));
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        let components = views.join("components");
+        fs::create_dir_all(&components).unwrap();
+        // Both read the inherited @greeting with no explicit local passed.
+        fs::write(views.join("_hello.html.slv"), "partial:<%= @greeting %>").unwrap();
+        fs::write(
+            components.join("hello.html.slv"),
+            "component:<%= @greeting %>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let empty = || Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+        // `@greeting` resolves through the view's lenient-vars fallback.
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let partial_out = cache.render_partial("hello", &empty()).unwrap();
+        let component_out = cache.render_component("hello", &empty()).unwrap();
+        drop(_lenient);
+        assert_eq!(partial_out, "partial:Bonjour");
+        assert_eq!(component_out, "component:Bonjour");
+
+        clear_current_controller();
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
     }

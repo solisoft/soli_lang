@@ -127,6 +127,8 @@ For named, reusable UI pieces (cards, rows, badges, etc.) prefer the dedicated c
 
 Components are looked up in `app/views/components/` (subdirectories allowed). See the full "Components" section in the Views documentation.
 
+Both partials and components inherit the controller's `@instance` variables, so you can read `@current_user` inside them without passing it explicitly (an explicit local of the same name wins).
+
 ```erb
 <% for post in @posts %>
   <%- partial("posts/post", { "post": post }) %>
