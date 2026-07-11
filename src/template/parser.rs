@@ -150,6 +150,13 @@ pub struct FormWithParts {
     pub close_expr: crate::ast::expr::Expr,
 }
 
+/// Parts for a component block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComponentParts {
+    pub name: crate::ast::expr::Expr,
+    pub props: Option<crate::ast::expr::Expr>,
+}
+
 /// A node in the template AST.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateNode {
@@ -193,6 +200,13 @@ pub enum TemplateNode {
     /// `f.close()`. The exprs live behind a Box so the enum stays small.
     FormWith {
         parts: Box<FormWithParts>,
+        body: Vec<TemplateNode>,
+        line: usize,
+    },
+    /// Component block: `<%- component "card", title: "x" do %> ... <%- end %>`.
+    /// Captures body as default slot content.
+    Component {
+        parts: Box<ComponentParts>,
         body: Vec<TemplateNode>,
         line: usize,
     },
@@ -293,6 +307,19 @@ fn form_with_block_parts(code: &str) -> Option<(&str, String, bool)> {
     }
 }
 
+/// Detect `component "name", props do` or `component("name", props) do` openers.
+/// Returns the head (the call part before "do").
+fn component_block_parts(code: &str) -> Option<&str> {
+    let code = code.trim();
+    if let Some(rest) = code.strip_suffix("do") {
+        let head = rest.trim_end();
+        if head.starts_with("component") {
+            return Some(head);
+        }
+    }
+    None
+}
+
 /// Tokenize the template source into a sequence of tokens.
 fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
@@ -365,8 +392,11 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
 
             if is_comment {
                 // discard — <%# comment %> is silently dropped; content is never rendered or executed
-            } else if tag_content == "end" || form_with_block_parts(&tag_content).is_some() {
-                // `form_with(...) do |f|` block openers and their `end` read
+            } else if tag_content == "end"
+                || form_with_block_parts(&tag_content).is_some()
+                || component_block_parts(&tag_content).is_some()
+            {
+                // `form_with(...) do |f|` and `component ... do` block openers and their `end` read
                 // naturally as output tags (`<%- %>` / `<%= %>`, Rails-style).
                 // Normalize them to Code tokens so the block dispatcher sees
                 // them regardless of tag style.
@@ -458,6 +488,10 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
                     // and bind the block param so `f.text_field(...)` in the
                     // body doesn't trip undefined-local.
                     (std::borrow::Cow::Owned(format!("for {} in []", var)), *line)
+                } else if component_block_parts(code).is_some() {
+                    // Component block opener: the head (component call) is Soli,
+                    // the body will be handled as captured content. Treat head as-is.
+                    (std::borrow::Cow::Borrowed(code), *line)
                 } else {
                     (std::borrow::Cow::Borrowed(code), *line)
                 }
@@ -526,6 +560,11 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     // Parse form_with builder block
                     let (fw_node, consumed) = parse_form_with_block(&tokens[i..], *line)?;
                     nodes.push(fw_node);
+                    i += consumed;
+                } else if component_block_parts(code).is_some() {
+                    // Parse component block with body as slot
+                    let (comp_node, consumed) = parse_component_block(&tokens[i..], *line)?;
+                    nodes.push(comp_node);
                     i += consumed;
                 } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
@@ -635,6 +674,15 @@ fn parse_if_block(
                         body.push(nested_fw);
                     }
                     i += consumed;
+                } else if component_block_parts(code).is_some() {
+                    // Nested component block
+                    let (nested_comp, consumed) = parse_component_block(&tokens[i..], *line)?;
+                    if in_else {
+                        else_body.as_mut().unwrap().push(nested_comp);
+                    } else {
+                        body.push(nested_comp);
+                    }
+                    i += consumed;
                 } else {
                     // Other code block - parse through core parser
                     let stmts = parse_core_code(code, *line)?;
@@ -719,6 +767,11 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     // Nested form_with block
                     let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
                     body.push(nested_fw);
+                    i += consumed;
+                } else if component_block_parts(code).is_some() {
+                    // Nested component block
+                    let (nested_comp, consumed) = parse_component_block(&tokens[i..], *line)?;
+                    body.push(nested_comp);
                     i += consumed;
                 } else {
                     // Other code block - parse through core parser
@@ -1019,6 +1072,146 @@ fn parse_form_with_block(
 
     Err(format!(
         "Unclosed form_with block at line {} - missing 'end'",
+        open_line
+    ))
+}
+
+/// Parse a `<% component "name", props do %> ... <% end %>` block starting at
+/// the given position. The body is captured as the default slot content.
+fn parse_component_block(
+    tokens: &[Token],
+    open_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    let head = match &tokens[0] {
+        Token::Code(code, _) => component_block_parts(code)
+            .ok_or_else(|| format!("Expected component block at line {}", open_line))?,
+        _ => return Err(format!("Expected component block at line {}", open_line)),
+    };
+
+    // Parse the head as a call expr to extract name and props.
+    // head e.g. `component "card", { title: x }` or `component("card", props)`
+    let call_expr = parse_core_expr(head, open_line)?;
+    let (name_expr, props_expr) = match &call_expr.kind {
+        crate::ast::expr::ExprKind::Call {
+            callee: _,
+            arguments,
+        } => {
+            // callee should resolve to "component" at runtime, we take first arg as name
+            if arguments.is_empty() {
+                return Err(format!(
+                    "component block requires a name at line {}",
+                    open_line
+                ));
+            }
+            let name_e = match &arguments[0] {
+                crate::ast::expr::Argument::Positional(e) => e.clone(),
+                _ => {
+                    return Err(format!(
+                        "component name must be positional at line {}",
+                        open_line
+                    ))
+                }
+            };
+            // Props can arrive two ways:
+            //   component "card", { "title": x } do    -> a positional hash literal
+            //   component "card", title: x, size: y do -> named args
+            // The named form parses as `Argument::Named`; fold those into a
+            // synthesized hash literal so both spellings reach the renderer as a
+            // `Value::Hash`. A leading positional hash wins if present.
+            let props_e = if arguments.len() > 1 {
+                match &arguments[1] {
+                    crate::ast::expr::Argument::Positional(e) => Some(e.clone()),
+                    crate::ast::expr::Argument::Named(_) => {
+                        let pairs: Vec<(crate::ast::expr::Expr, crate::ast::expr::Expr)> =
+                            arguments[1..]
+                                .iter()
+                                .filter_map(|arg| match arg {
+                                    crate::ast::expr::Argument::Named(named) => Some((
+                                        crate::ast::expr::Expr::new(
+                                            crate::ast::expr::ExprKind::StringLiteral(
+                                                named.name.clone(),
+                                            ),
+                                            named.span,
+                                        ),
+                                        named.value.clone(),
+                                    )),
+                                    _ => None,
+                                })
+                                .collect();
+                        Some(crate::ast::expr::Expr::new(
+                            crate::ast::expr::ExprKind::Hash(pairs),
+                            call_expr.span,
+                        ))
+                    }
+                    crate::ast::expr::Argument::Block(_) => None,
+                }
+            } else {
+                None
+            };
+            (name_e, props_e)
+        }
+        _ => {
+            // bare component "name" ? treat as name
+            (call_expr, None)
+        }
+    };
+
+    let mut body = Vec::new();
+    let mut i = 1; // Skip the opener token
+
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::Code(code, line) => {
+                let code = code.trim();
+
+                if code == "end" {
+                    return Ok((
+                        TemplateNode::Component {
+                            parts: Box::new(ComponentParts {
+                                name: name_expr,
+                                props: props_expr,
+                            }),
+                            body,
+                            line: open_line,
+                        },
+                        i + 1,
+                    ));
+                } else if let Some(rest) = code.strip_prefix("if ") {
+                    let condition = parse_core_expr(rest.trim(), *line)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
+                    body.push(nested_if);
+                    i += consumed;
+                } else if code.starts_with("for ") {
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
+                    body.push(nested_for);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    body.push(nested_cf);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    body.push(nested_fw);
+                    i += consumed;
+                } else if component_block_parts(code).is_some() {
+                    let (nested_comp, consumed) = parse_component_block(&tokens[i..], *line)?;
+                    body.push(nested_comp);
+                    i += consumed;
+                } else {
+                    let stmts = parse_core_code(code, *line)?;
+                    body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
+                    i += 1;
+                }
+            }
+            token => {
+                body.push(parse_output_token(token)?);
+                i += 1;
+            }
+        }
+    }
+
+    Err(format!(
+        "Unclosed component block at line {} - missing 'end'",
         open_line
     ))
 }
@@ -2275,5 +2468,71 @@ mod tests {
         // Content inside <%# %> must not be parsed or executed as Soli code
         let nodes = parse_template("ok<%# raise(\"boom\") %>end").unwrap();
         assert!(nodes.iter().all(|n| matches!(n, TemplateNode::Literal(_))));
+    }
+
+    #[test]
+    fn test_parse_component_block() {
+        // Named-arg form: `title: "Hi"` must be folded into props (regression:
+        // the Named arg used to be silently dropped).
+        let nodes =
+            parse_template("<%- component \"card\", title: \"Hi\" do %>body<% end %>").unwrap();
+        let TemplateNode::Component { parts, .. } = &nodes[0] else {
+            panic!("expected a Component node, got {:?}", nodes[0]);
+        };
+        let props = parts
+            .props
+            .as_ref()
+            .expect("named args should become props");
+        match &props.kind {
+            crate::ast::expr::ExprKind::Hash(pairs) => {
+                assert_eq!(pairs.len(), 1);
+                assert!(matches!(
+                    &pairs[0].0.kind,
+                    crate::ast::expr::ExprKind::StringLiteral(k) if k == "title"
+                ));
+                assert!(matches!(
+                    &pairs[0].1.kind,
+                    crate::ast::expr::ExprKind::StringLiteral(v) if v == "Hi"
+                ));
+            }
+            other => panic!("expected props to be a hash literal, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_component_block_positional_hash() {
+        // Paren form: an explicit positional hash literal is used directly as
+        // props. (The paren-less brace form isn't supported — `{` is not a
+        // command-arg starter — so an explicit hash must use parentheses.)
+        let nodes =
+            parse_template("<%- component(\"card\", { \"title\": \"Hi\" }) do %>b<% end %>")
+                .unwrap();
+        let TemplateNode::Component { parts, .. } = &nodes[0] else {
+            panic!("expected a Component node");
+        };
+        let props = parts
+            .props
+            .as_ref()
+            .expect("positional hash should be props");
+        assert!(matches!(&props.kind, crate::ast::expr::ExprKind::Hash(_)));
+    }
+
+    #[test]
+    fn test_parse_component_block_multiple_named_args() {
+        // Several named args fold into a multi-pair hash in order.
+        let nodes =
+            parse_template("<%- component \"card\", title: \"Hi\", size: \"lg\" do %>b<% end %>")
+                .unwrap();
+        let TemplateNode::Component { parts, .. } = &nodes[0] else {
+            panic!("expected a Component node");
+        };
+        let props = parts
+            .props
+            .as_ref()
+            .expect("named args should become props");
+        match &props.kind {
+            crate::ast::expr::ExprKind::Hash(pairs) => assert_eq!(pairs.len(), 2),
+            other => panic!("expected a hash literal, got {:?}", other),
+        }
     }
 }

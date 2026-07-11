@@ -1195,6 +1195,109 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         "partial".to_string(),
         Value::NativeFunction(render_partial_fn),
     );
+
+    // Pagination view helper.
+    // Accepts the full result from Model.paginate(...) or just the "pagination" sub-hash.
+    // Options (hash):
+    //   "path": base URL or path to append ?page= (string)
+    //   "param": query param name (default "page")
+    //   "window": number of page links around current (default 2)
+    //   "class": extra CSS class on the nav
+    // Returns raw HTML (use with <%- %>). Links preserve other query params when possible.
+    env.define(
+        "paginate".to_string(),
+        Value::NativeFunction(NativeFunction::new("paginate", None, |args| {
+            if args.is_empty() {
+                return Err(
+                    "paginate() requires the pagination data (from Model.paginate or similar)"
+                        .to_string(),
+                );
+            }
+            let pag_data = &args[0];
+            let opts = if args.len() > 1 {
+                &args[1]
+            } else {
+                &Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+            };
+
+            match paginate_html(pag_data, opts) {
+                Ok(html) => Ok(Value::String(html.into())),
+                Err(e) => Err(e),
+            }
+        })),
+    );
+
+    // number_with_delimiter(value, delimiter?) -> String
+    // Formats a number with thousands separators (default ",") for display,
+    // e.g. number_with_delimiter(1234567) -> "1,234,567". Pairs with paginate()
+    // totals. Any fractional part is preserved; the integer part is grouped.
+    env.define(
+        "number_with_delimiter".to_string(),
+        Value::NativeFunction(NativeFunction::new("number_with_delimiter", None, |args| {
+            if args.is_empty() {
+                return Err("number_with_delimiter() requires a number".to_string());
+            }
+            let delimiter = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                _ => ",".to_string(),
+            };
+            let grouped = |s: &str| -> String {
+                match s.split_once('.') {
+                    Some((int_part, frac)) => {
+                        format!("{}.{}", group_integer_str(int_part, &delimiter), frac)
+                    }
+                    None => group_integer_str(s, &delimiter),
+                }
+            };
+            let formatted = match &args[0] {
+                Value::Int(n) => group_integer_str(&n.to_string(), &delimiter),
+                Value::Float(f) => grouped(&format!("{}", f)),
+                Value::String(s) => grouped(s.as_ref()),
+                other => {
+                    return Err(format!(
+                        "number_with_delimiter() expects a number, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::String(formatted.into()))
+        })),
+    );
+
+    // Component helper for reusable view pieces (better composition than deep partial nesting).
+    // Looks for app/views/components/<name>.html.slv (or a path containing /).
+    // data: hash of locals passed to the component.
+    // Usage: <%- component("card", {"title": "Stats"}) %>
+    // For body content, pre-capture or pass "content": "..." ; future versions may support block syntax.
+    env.define(
+        "component".to_string(),
+        Value::NativeFunction(NativeFunction::new("component", None, |args| {
+            if args.is_empty() {
+                return Err("component() requires at least a name".to_string());
+            }
+            let name = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "component() expects string name, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let data = if args.len() > 1 {
+                args[1].clone()
+            } else {
+                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+            };
+            let data = resolve_futures_in_value(data);
+            let cache = get_template_cache()?;
+            inject_template_helpers(&data);
+            match cache.render_component(&name, &data) {
+                Ok(s) => Ok(Value::String(s.into())),
+                Err(e) => Err(format!("component('{}') failed: {}", name, e)),
+            }
+        })),
+    );
 }
 
 fn redirect_response(location: String) -> Value {
@@ -1328,6 +1431,225 @@ fn validate_external_redirect_url(url: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Insert `delimiter` every three digits from the right of the integer string
+/// `int_str`, preserving a leading `-` sign. Content that isn't a plain run of
+/// digits is returned unchanged (so non-numeric strings pass through as-is).
+fn group_integer_str(int_str: &str, delimiter: &str) -> String {
+    let (sign, digits) = match int_str.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", int_str),
+    };
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return int_str.to_string();
+    }
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    let len = digits.len();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            grouped.push_str(delimiter);
+        }
+        grouped.push(ch);
+    }
+    format!("{}{}", sign, grouped)
+}
+
+// ===== Pagination view helper implementation =====
+
+/// Build a page URL by taking a base path and setting/replacing the page param.
+/// Preserves other query params when possible.
+fn build_pagination_url(base: &str, page: i64, param_name: &str) -> String {
+    if page <= 0 {
+        return base.to_string();
+    }
+
+    // Split base into path and query
+    let (path_part, query_part) = if let Some(qi) = base.find('?') {
+        (&base[..qi], Some(&base[qi + 1..]))
+    } else {
+        (base, None)
+    };
+
+    // Collect kept query params (drop the target page param)
+    let mut kept: Vec<String> = Vec::new();
+    if let Some(qs) = query_part {
+        for part in qs.split('&') {
+            if !part.starts_with(&format!("{}=", param_name)) && !part.is_empty() {
+                kept.push(part.to_string());
+            }
+        }
+    }
+
+    // Add the page param
+    kept.push(format!("{}={}", param_name, page));
+
+    if kept.is_empty() {
+        path_part.to_string()
+    } else {
+        format!("{}?{}", path_part, kept.join("&"))
+    }
+}
+
+/// Render pagination HTML from the pagination metadata.
+/// Accepts either the full paginate result hash or the inner "pagination" hash.
+fn paginate_html(pag_data: &Value, opts: &Value) -> Result<String, String> {
+    // Extract pagination sub object
+    let pagination = if let Value::Hash(h) = pag_data {
+        let borrowed = h.borrow();
+        if let Some(p) = borrowed.get(&HashKey::String("pagination".into())) {
+            p.clone()
+        } else {
+            pag_data.clone()
+        }
+    } else {
+        pag_data.clone()
+    };
+
+    let (page, total_pages) = if let Value::Hash(h) = &pagination {
+        let b = h.borrow();
+        let pg = match b.get(&HashKey::String("page".into())) {
+            Some(Value::Int(n)) => *n,
+            _ => 1,
+        };
+        let tp = match b.get(&HashKey::String("total_pages".into())) {
+            Some(Value::Int(n)) => *n,
+            _ => 1,
+        };
+        (pg, tp.max(1))
+    } else {
+        (1, 1)
+    };
+
+    if total_pages <= 1 {
+        return Ok(String::new());
+    }
+
+    // Options
+    let param = if let Value::Hash(h) = opts {
+        match h.borrow().get(&HashKey::String("param".into())) {
+            Some(Value::String(s)) => s.to_string(),
+            _ => "page".to_string(),
+        }
+    } else {
+        "page".to_string()
+    };
+
+    let window = if let Value::Hash(h) = opts {
+        match h.borrow().get(&HashKey::String("window".into())) {
+            Some(Value::Int(n)) => (*n as usize).clamp(0, 10),
+            _ => 2usize,
+        }
+    } else {
+        2
+    };
+
+    let extra_class = if let Value::Hash(h) = opts {
+        match h.borrow().get(&HashKey::String("class".into())) {
+            Some(Value::String(s)) => format!(" {}", s),
+            _ => String::new(),
+        }
+    } else {
+        String::new()
+    };
+
+    let base_path = if let Value::Hash(h) = opts {
+        match h.borrow().get(&HashKey::String("path".into())) {
+            Some(Value::String(s)) => s.to_string(),
+            _ => {
+                // Try to get current path
+                match current_request_string_field("path") {
+                    Value::String(p) => p.to_string(),
+                    _ => "/".to_string(),
+                }
+            }
+        }
+    } else {
+        match current_request_string_field("path") {
+            Value::String(p) => p.to_string(),
+            _ => "/".to_string(),
+        }
+    };
+
+    let mut links = Vec::new();
+
+    // Prev
+    if page > 1 {
+        let url = build_pagination_url(&base_path, page - 1, &param);
+        links.push(format!(
+            r#"<a href="{}" class="page prev" rel="prev">Previous</a>"#,
+            html::html_escape(&url)
+        ));
+    } else {
+        links.push(r#"<span class="page prev disabled">Previous</span>"#.to_string());
+    }
+
+    // Page numbers with window
+    let start = (page as isize - window as isize).max(1) as i64;
+    let end = (page + window as i64).min(total_pages);
+
+    if start > 1 {
+        let url = build_pagination_url(&base_path, 1, &param);
+        links.push(format!(
+            r#"<a href="{}" class="page">1</a>"#,
+            html::html_escape(&url)
+        ));
+        if start > 2 {
+            links.push(r#"<span class="gap">…</span>"#.to_string());
+        }
+    }
+
+    for p in start..=end {
+        if p == page {
+            links.push(format!(
+                r#"<span class="page current" aria-current="page">{}</span>"#,
+                p
+            ));
+        } else {
+            let url = build_pagination_url(&base_path, p, &param);
+            links.push(format!(
+                r#"<a href="{}" class="page">{}</a>"#,
+                html::html_escape(&url),
+                p
+            ));
+        }
+    }
+
+    if end < total_pages {
+        if end < total_pages - 1 {
+            links.push(r#"<span class="gap">…</span>"#.to_string());
+        }
+        let url = build_pagination_url(&base_path, total_pages, &param);
+        links.push(format!(
+            r#"<a href="{}" class="page">{}</a>"#,
+            html::html_escape(&url),
+            total_pages
+        ));
+    }
+
+    // Next
+    if page < total_pages {
+        let url = build_pagination_url(&base_path, page + 1, &param);
+        links.push(format!(
+            r#"<a href="{}" class="page next" rel="next">Next</a>"#,
+            html::html_escape(&url)
+        ));
+    } else {
+        links.push(r#"<span class="page next disabled">Next</span>"#.to_string());
+    }
+
+    let inner = links.join("\n  ");
+    Ok(format!(
+        r#"<nav class="pagination{}" aria-label="Pagination">{}</nav>"#,
+        extra_class,
+        if inner.is_empty() {
+            String::new()
+        } else {
+            format!("\n  {}\n", inner)
+        }
+    ))
+}
+
+// ===== end pagination helper =====
 
 /// Maximum size of the serialized locals shipped to the e2e test client via
 /// the `x-soli-test-assigns` response header. Beyond this we fall back to a
@@ -2485,5 +2807,43 @@ mod tests {
         assert!(!resp.body.contains("alert"));
         assert_eq!(content_type(&resp), Some("text/plain; charset=utf-8"));
         clear_current_request();
+    }
+
+    #[test]
+    fn number_with_delimiter_groups_thousands() {
+        // Core grouping used by the number_with_delimiter() view helper.
+        assert_eq!(group_integer_str("0", ","), "0");
+        assert_eq!(group_integer_str("100", ","), "100");
+        assert_eq!(group_integer_str("1000", ","), "1,000");
+        assert_eq!(group_integer_str("1234567", ","), "1,234,567");
+        // Sign is preserved, grouping applies to the digits.
+        assert_eq!(group_integer_str("-1234567", ","), "-1,234,567");
+        // Custom delimiters (locale variants).
+        assert_eq!(group_integer_str("1234567", " "), "1 234 567");
+        assert_eq!(group_integer_str("1234", "."), "1.234");
+        // Non-numeric content passes through untouched.
+        assert_eq!(group_integer_str("abc", ","), "abc");
+    }
+
+    #[test]
+    fn paginate_helper_renders_links() {
+        let mut p: HashPairs = HashPairs::default();
+        p.insert(HashKey::String("page".into()), Value::Int(2));
+        p.insert(HashKey::String("per".into()), Value::Int(10));
+        p.insert(HashKey::String("total".into()), Value::Int(45));
+        p.insert(HashKey::String("total_pages".into()), Value::Int(5));
+        let pagination = Value::Hash(Rc::new(RefCell::new(p)));
+
+        let html = paginate_html(
+            &pagination,
+            &Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+        )
+        .unwrap();
+        assert!(html.contains("pagination"));
+        assert!(html.contains("Previous"));
+        assert!(html.contains("Next"));
+        assert!(html.contains("page=1"));
+        assert!(html.contains("page=3"));
+        assert!(html.contains(r#"class="page current""#));
     }
 }

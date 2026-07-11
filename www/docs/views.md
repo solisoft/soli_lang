@@ -581,19 +581,20 @@ Truncates text to a maximum length, appending a suffix (default: "...").
 
 ### number_with_delimiter(number, delimiter)
 
-Formats a number with thousands separators. Locale-aware by default.
+Formats a number with thousands separators for display. The integer part is
+grouped in threes; a leading sign and any fractional part are preserved.
 
 **Parameters:**
-- `number` (Int|Float) - The number to format
-- `delimiter` (String, optional) - The separator character (auto-detected from locale if not specified)
+- `number` (Int|Float|String) - The number to format
+- `delimiter` (String, optional) - The separator inserted between groups (default `","`)
 
 ```erb
 <p>Views: <%= number_with_delimiter(1234567) %></p>
-<!-- en: "1,234,567" | fr: "1 234 567" | de: "1.234.567" -->
+<!-- "1,234,567" -->
 
 <p>Population: <%= number_with_delimiter(population) %></p>
 
-<!-- Override with specific delimiter -->
+<!-- Override with a specific delimiter -->
 <p>Custom: <%= number_with_delimiter(1234567, "'") %></p>
 <!-- "1'234'567" -->
 ```
@@ -714,6 +715,30 @@ Converts text to a URL-friendly slug by lowercasing, replacing spaces and specia
 </a>
 <!-- <a href="/posts/my-awesome-post">My Awesome Post</a> -->
 ```
+
+### paginate(pagination, options)
+
+Renders a pagination navigation control from the result of `Model.paginate(...)` (or the inner `pagination` hash).
+
+**Parameters:**
+- `pagination` (Hash) — the pagination metadata (`{page, per, total, total_pages}`)
+- `options` (Hash, optional)
+  - `"path"`: base URL/path for links (falls back to current request path)
+  - `"param"`: query parameter name (default `"page"`)
+  - `"window"`: how many page numbers to show around the current page (default `2`)
+  - `"class"`: extra CSS class(es) on the `<nav>`
+
+Returns raw HTML (use `<%- %>`).
+
+```erb
+<%- paginate(@pagination, {"path": users_path()}) %>
+```
+
+Generates semantic `<nav class="pagination">` with Previous/Next and page links. Preserves other query parameters when possible.
+
+### component(name, data)
+
+See the full [Components](#components) section for the dedicated `component()` helper and recommended file layout.
 
 ### Complete Application Helpers Example
 
@@ -939,6 +964,174 @@ guards:
 data hash — in that case it's an empty hash, so `locals[anything]` is safe
 and returns `null`.
 
+## Components
+
+Soli ships a lightweight component system for reusable UI primitives. The `component()` helper gives you a dedicated convention that is clearer than scattering everything under `partials/`.
+
+While `partial()` is great for one-off extracted fragments, `component()` signals that you're rendering a designed, named building block (cards, rows, badges, empty states, stat blocks, etc.).
+
+### The `component()` helper
+
+```erb
+<%- component("stats_card", {
+  "label": "Active Users",
+  "value": 1243,
+  "trend": "+18%"
+}) %>
+```
+
+Resolution rules:
+
+- If the name contains `/` or `.`, it is treated as a relative path from `app/views/`.
+- Otherwise Soli looks for `components/<name>.html.slv`.
+
+Data works exactly like partials: values are exposed as bare variables. Use `locals["key"]` only when the key collides with a builtin or reserved word.
+
+The function-call form passes only a data hash — it has no captured body, so a `<%= yield %>` inside the component needs an explicit `"content"` (or `"body"`) key. To pass block content into the default slot, use the [block form](#block-syntax-and-slots).
+
+### Component files
+
+Component files live under `app/views/components/`. They do **not** need a leading underscore (unlike partials).
+
+```erb
+<!-- app/views/components/stats_card.html.slv -->
+<div class="stats-card">
+  <div class="label"><%= label %></div>
+  <div class="value"><%= number_with_delimiter(value) %></div>
+  <% if trend %>
+    <div class="trend"><%= trend %></div>
+  <% end %>
+</div>
+```
+
+### Subdirectories
+
+Group related components naturally:
+
+```
+app/views/components/
+├── card.html.slv
+├── badge.html.slv
+├── table/
+│   ├── header.html.slv
+│   └── row.html.slv
+└── form/
+    └── field.html.slv
+```
+
+```erb
+<%= component("table/row", {"record": post}) %>
+<%= component("form/field", {"name": "email", "type": "email"}) %>
+```
+
+### Block syntax and slots
+
+To pass body content, use the block form — the block body is captured and
+exposed to the component as the default slot. Props come from **named
+arguments** (`title: "…"`) or an explicit **parenthesized hash**; a paren-less
+`component "card", { … } do` does *not* pass the hash (`{` isn't a command
+argument), so reach for named args or parentheses:
+
+```erb
+<%- component "card", title: "Important Notice" do %>
+  <p>This is the default slot body.</p>
+<%- end %>
+
+<%# equivalent, with an explicit hash %>
+<%- component("card", { "title": "Important Notice" }) do %>
+  <p>This is the default slot body.</p>
+<%- end %>
+```
+
+Inside the component template, use `<%= content %>` or `<%= yield %>` for the default slot:
+
+```erb
+<div class="card">
+  <h3><%= title %></h3>
+  <div class="body">
+    <%= yield %>
+  </div>
+</div>
+```
+
+For named slots, use `content_for` inside the block and `yield "name"` (or `content_for "name"`) in the template. This works because component bodies participate in the content capture system:
+
+```erb
+<%- component "card", title: "With header" do %>
+  <% content_for "header" do %>
+    <strong>Header content</strong>
+  <% end %>
+  Body
+<%- end %>
+```
+
+```erb
+<div class="card">
+  <header><%= yield "header" %></header>
+  <div class="body"><%= content %></div>
+</div>
+```
+
+Named slots are great for things like headers, footers, or sidebars within a component.
+
+### Components vs partials
+
+| Situation                              | Recommended helper                  |
+|----------------------------------------|-------------------------------------|
+| One-off extracted fragment             | `partial("thing", ...)`             |
+| Named, reusable UI primitive           | `component("thing", ...)`           |
+| Design-system pieces (cards, rows...)  | `component("job_row", ...)`         |
+| Internal shared layout helper          | `partial("shared/...", ...)`        |
+
+Both ultimately call the same rendering machinery. The difference is intent and file organization.
+
+### Best practices
+
+- Keep components small and purely presentational.
+- Start the file with a `#` comment listing the expected keys (Soli comments inside templates are `#`).
+- Always use `h()` for user data.
+- Choose descriptive names: `user_avatar`, `empty_state`, `job_row`, `stat_block`.
+- Use subdirectories when you have more than a handful of components.
+- Prefer `component()` over `partial()` for anything that feels like a reusable widget.
+
+### Example: realistic admin component
+
+```erb
+<!-- app/views/components/job_row.html.slv -->
+# Expected locals:
+#   job: Hash with id, script, webhook_url, status, priority
+#   status_class: optional extra class
+
+<tr class="job-row <%= status_class || "" %>">
+  <td class="font-mono"><%= job["id"] %></td>
+  <td><%= h(job["script"] || job["webhook_url"]) %></td>
+  <td><span class="status-pill"><%= job["status"] %></span></td>
+  <td class="text-right"><%= job["priority"] %></td>
+  <td>
+    <% if job["status"] == "pending" %>
+      <button
+        class="btn-xs"
+        hx-post="<%= some_action_path(job) %>"
+        hx-target="closest tr"
+      >
+        Run now
+      </button>
+    <% end %>
+  </td>
+</tr>
+```
+
+Used from a queues view:
+
+```erb
+<% for job in @jobs %>
+  <%- component("job_row", {
+    "job": job,
+    "status_class": job["status"] == "failed" ? "is-failed" : ""
+  }) %>
+<% end %>
+```
+
 ## Passing Data
 
 Controllers pass data to views:
@@ -972,10 +1165,11 @@ Access in template:
 ## View Best Practices
 
 1. Keep views simple and focused on presentation
-2. Use partials for repeated elements
-3. Never put business logic in views
-4. Use helper functions for complex formatting
-5. Escape user-generated content with `h()`
+2. Use `component()` for named, reusable UI primitives (cards, rows, badges, etc.)
+3. Use `partial()` for one-off fragments or internal helpers
+4. Never put business logic in views
+5. Use helper functions for complex formatting
+6. Escape user-generated content with `h()`
 
 ## File Organization
 
@@ -988,6 +1182,11 @@ app/views/
 │   ├── _form.html.slv
 │   ├── edit.html.slv
 │   └── show.html.slv
+├── components/
+│   ├── card.html.slv
+│   ├── job_row.html.slv
+│   └── table/
+│       └── row.html.slv
 ├── partials/
 │   ├── _header.html.slv
 │   └── _footer.html.slv

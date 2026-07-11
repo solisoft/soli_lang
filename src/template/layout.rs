@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 use crate::span::Span;
 use crate::template::core_eval;
 use crate::template::parser::{parse_template, Expr, TemplateNode};
@@ -121,6 +121,7 @@ fn render_layout_inner(
             TemplateNode::CoreOutput { line, .. } => Some(*line),
             TemplateNode::ContentFor { line, .. } => Some(*line),
             TemplateNode::FormWith { line, .. } => Some(*line),
+            TemplateNode::Component { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -288,6 +289,62 @@ fn render_layout_inner(
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     write_value_to_output(&close_html, false, output);
                     core_eval::pop_scope(interpreter);
+                }
+                TemplateNode::Component { parts, body, .. } => {
+                    let name_val = interpreter
+                        .evaluate(&parts.name)
+                        .map_err(|e| format!("Evaluation error in component name: {}", e))?;
+                    let comp_name = match &name_val {
+                        Value::String(s) => s.to_string(),
+                        other => {
+                            return Err(format!(
+                                "component name must evaluate to string, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+
+                    let mut captured = String::new();
+                    render_layout_inner(
+                        interpreter,
+                        body,
+                        content,
+                        data,
+                        partial_renderer,
+                        layout_path,
+                        &mut captured,
+                    )?;
+
+                    let mut comp_map: HashPairs = HashPairs::default();
+                    if let Some(props_expr) = &parts.props {
+                        if let Ok(Value::Hash(h)) = interpreter.evaluate(props_expr) {
+                            for (k, v) in h.borrow().iter() {
+                                comp_map.insert(k.clone(), v.clone());
+                            }
+                        }
+                    }
+                    comp_map.insert(
+                        HashKey::String("content".into()),
+                        Value::String(captured.into()),
+                    );
+                    let comp_data = Value::Hash(Rc::new(RefCell::new(comp_map)));
+
+                    // Resolve like the component() helper (see renderer.rs): a
+                    // `/`- or `.`-bearing name is verbatim; a bare name resolves
+                    // under components/.
+                    let comp_path = if comp_name.contains('/') || comp_name.contains('.') {
+                        comp_name.clone()
+                    } else {
+                        format!("components/{}", comp_name)
+                    };
+                    if let Some(r) = partial_renderer {
+                        output.push_str(&r(&comp_path, &comp_data)?);
+                    } else {
+                        return Err(format!(
+                            "Component rendering not available for '{}'",
+                            comp_name
+                        ));
+                    }
                 }
                 TemplateNode::Partial {
                     name,

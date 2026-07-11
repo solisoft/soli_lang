@@ -693,9 +693,9 @@ SOLI_NAV=off soli serve .</code></pre>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Number helpers (locale-aware)</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separator (auto-detects from locale) --&gt
+<pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separators (default ",") --&gt
 &lt;%= number_with_delimiter(1234567) %&gt
-&lt;!-- en: "1,234,567" | fr: "1 234 567" | de: "1.234.567" --&gt
+&lt;!-- "1,234,567" --&gt
 
 &lt;!-- Override delimiter manually --&gt
 &lt;%= number_with_delimiter(1234567, "'") %&gt
@@ -723,9 +723,10 @@ SOLI_NAV=off soli serve .</code></pre>
             <div>
                 <h4 class="text-lg font-semibold text-blue-400 mb-1">Locale-Aware Formatting</h4>
                 <p class="text-blue-200/80 text-sm">
-                    <code>number_with_delimiter()</code> and <code>currency()</code> automatically use the current I18n locale.
+                    <code>currency()</code> uses the current I18n locale for its symbol, separators, and position.
                     Use <code>set_locale("fr")</code> in your controller to change formatting.
                     Supported: en, fr, de, es, it, pt, ja, zh, ru.
+                    (<code>number_with_delimiter()</code> uses a fixed <code>","</code> unless you pass a delimiter argument.)
                 </p>
             </div>
         </div>
@@ -805,9 +806,24 @@ SOLI_NAV=off soli serve .</code></pre>
                     <td class="py-3 px-4 font-mono text-amber-400">slugify(text)</td>
                     <td class="py-3 px-4">Convert text to URL-friendly slug</td>
                 </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">paginate(pagination, opts?)</td>
+                    <td class="py-3 px-4">Render pagination nav from Model.paginate result (links + window)</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">component(name, data?)</td>
+                    <td class="py-3 px-4">Render reusable component from components/&lt;name&gt;.html.slv</td>
+                </tr>
             </tbody>
         </table>
     </div>
+
+    <p class="text-gray-400 mb-8">
+      Core pagination and component helpers are available in every template (no import needed):
+      <code class="font-mono text-amber-300">paginate(pagination, opts?)</code> renders nav links from a paginate result;
+      <code class="font-mono text-amber-300">component(name, data?)</code> renders from <code>app/views/components/*.html.slv</code>.
+      Use <code>&lt;%- %&gt;</code> for both.
+    </p>
 
     <h3 class="text-xl font-semibold text-white mb-4">Complete Example</h3>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
@@ -957,6 +973,171 @@ SOLI_NAV=off soli serve .</code></pre>
         <code class="block mt-2 px-3 py-2 rounded bg-[#171412] text-amber-300 font-mono text-xs">&lt;% let css = locals["class"].nil? ? "h-5 w-5" : locals["class"] %&gt;</code>
         <code>locals</code> is always defined — even when a partial is rendered without a data hash it's an empty hash, so <code>locals[anything]</code> is safe.
     </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Components</h2>
+    <p class="text-gray-400 mb-6">
+      Components provide a dedicated convention and helper for reusable UI primitives. Use <code>component()</code> when you want to signal "this is a designed building block" rather than a generic fragment.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">The <code>component()</code> helper</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Usage</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- component("stats_card", {
+  "label": "Active Users",
+  "value": 1243,
+  "trend": "+18%"
+}) %&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+      Resolution rules:
+    </p>
+    <ul class="list-disc list-inside text-gray-400 mb-6">
+      <li>If the name contains <code>/</code> or <code>.</code>, it is used as a relative path.</li>
+      <li>Otherwise Soli looks for <code>components/&lt;name&gt;.html.slv</code>.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Component files</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/components/stats_card.html.slv</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;div class="stats-card"&gt;
+  &lt;div class="label"&gt;&lt;%= label %&gt;&lt;/div&gt;
+  &lt;div class="value"&gt;&lt;%= number_with_delimiter(value) %&gt;&lt;/div&gt;
+  &lt;% if trend %&gt;
+    &lt;div class="trend"&gt;&lt;%= trend %&gt;&lt;/div&gt;
+  &lt;% end %&gt;
+&lt;/div&gt;</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Subdirectories</h3>
+    <p class="text-gray-400 mb-4">Group related components:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Directory layout</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">app/views/components/
+├── card.html.slv
+├── badge.html.slv
+├── table/
+│   ├── header.html.slv
+│   └── row.html.slv
+└── form/
+    └── field.html.slv
+
+&lt;%= component("table/row", { "record": post }) %&gt;
+&lt;%= component("form/field", { "name": "email" }) %&gt;</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Block syntax and slots</h3>
+    <p class="text-gray-400 mb-4">
+      Use the block form for default slot (body) content. The body is automatically captured and available as <code>content</code> or via <code>yield</code> inside the component template.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Usage</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- component "card", title: "Stats" do %&gt;
+  Body content here
+&lt;%- end %&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+      Props come from named arguments (<code>title: "Stats"</code>) or an explicit parenthesized hash (<code>component("card", { "title": "Stats" }) do</code>). A paren-less <code>component "card", { … } do</code> does <em>not</em> pass the hash.
+    </p>
+
+    <p class="text-gray-400 mb-4">
+      Inside <code>components/card.html.slv</code>:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;div class="card"&gt;
+  &lt;h3&gt;&lt;%= title %&gt;&lt;/h3&gt;
+  &lt;div class="body"&gt;&lt;%= yield %&gt;&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+      For named slots, use <code>content_for "name" do</code> inside the block and <code>yield "name"</code> in the template.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Components vs partials</h3>
+    <table class="w-full text-sm mb-8">
+      <thead>
+        <tr class="border-b border-white/10 text-left">
+          <th class="py-2 px-3 text-gray-400">Use case</th>
+          <th class="py-2 px-3 text-gray-400">Recommended</th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-400">
+        <tr class="border-b border-white/5">
+          <td class="py-2 px-3">One-off extracted fragment</td>
+          <td class="py-2 px-3 font-mono">partial("thing", ...)</td>
+        </tr>
+        <tr class="border-b border-white/5">
+          <td class="py-2 px-3">Named, reusable UI primitive</td>
+          <td class="py-2 px-3 font-mono">component("thing", ...)</td>
+        </tr>
+        <tr>
+          <td class="py-2 px-3">Design-system pieces (cards, rows, badges)</td>
+          <td class="py-2 px-3 font-mono">component("job_row", ...)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="text-gray-400 mb-8">
+      Both render the same way. The difference is convention and discoverability.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Best practices</h3>
+    <ul class="list-disc list-inside text-gray-400 mb-8 space-y-1">
+      <li>Keep components small and purely presentational.</li>
+      <li>Start the file with a <code>#</code> comment documenting expected keys.</li>
+      <li>Always use <code>h()</code> for any user-supplied content.</li>
+      <li>Use descriptive names: <code>user_avatar</code>, <code>empty_state</code>, <code>job_row</code>.</li>
+      <li>Group with subdirectories once you have more than ~8–10 components.</li>
+      <li>Prefer <code>component()</code> for anything that feels like a reusable widget.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Realistic example</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/components/job_row.html.slv</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm"># Expected locals:
+#   job: the job hash (id, script, status, priority, ...)
+#   status_class: optional CSS class
+
+&lt;tr class="job-row &lt;%= status_class || "" %&gt;"&gt;
+  &lt;td class="font-mono"&gt;&lt;%= job["id"] %&gt;&lt;/td&gt;
+  &lt;td&gt;&lt;%= h(job["script"] || job["webhook_url"]) %&gt;&lt;/td&gt;
+  &lt;td&gt;&lt;span class="status-pill"&gt;&lt;%= job["status"] %&gt;&lt;/span&gt;&lt;/td&gt;
+  &lt;td class="text-right"&gt;&lt;%= job["priority"] %&gt;&lt;/td&gt;
+  &lt;td&gt;
+    &lt;% if job["status"] == "pending" %&gt;
+      &lt;button class="btn-xs" hx-post="..."&gt;Run now&lt;/button&gt;
+    &lt;% end %&gt;
+  &lt;/td&gt;
+&lt;/tr&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+      Used from a queue listing:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;% for job in @jobs %&gt;
+  &lt;%- component("job_row", {
+    "job": job,
+    "status_class": job["status"] == "failed" ? "is-failed" : ""
+  }) %&gt;
+&lt;% end %&gt;</code></pre>
+        </div>
+    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Markdown Views</h2>
     <p class="text-gray-400 mb-6">

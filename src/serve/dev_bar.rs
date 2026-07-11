@@ -675,6 +675,7 @@ fn flame_color(kind: SpanKind) -> &'static str {
         SpanKind::Action => "#8be9fd",
         SpanKind::View => "#b8e986",
         SpanKind::Partial => "#a4d97a",
+        SpanKind::Component => "#79d9c0",
         SpanKind::Db => "#bd93f9",
         SpanKind::Http => "#ff79c6",
         SpanKind::Kv => "#ffb86c",

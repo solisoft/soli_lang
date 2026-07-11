@@ -119,6 +119,14 @@ Render a partial with `partial("dir/name", { "local_key": value })`. The
 template file **must** be named `_name.html.slv` — the leading underscore is
 mandatory. `render_partial(...)` is an alias for the same builtin.
 
+For named, reusable UI pieces (cards, rows, badges, etc.) prefer the dedicated component helper instead:
+
+```erb
+<%- component("user_card", { "user": user }) %>
+```
+
+Components are looked up in `app/views/components/` (subdirectories allowed). See the full "Components" section in the Views documentation.
+
 ```erb
 <% for post in @posts %>
   <%- partial("posts/post", { "post": post }) %>

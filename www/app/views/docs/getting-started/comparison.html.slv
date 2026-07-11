@@ -121,7 +121,7 @@
     <h3 class="text-xl font-semibold text-white mb-4">Framework surface</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No auto-generated admin panel</strong> &mdash; a deliberate choice in 2026: every new app ships agent-ready (<code>CLAUDE.md</code>/<code>AGENTS.md</code>, permission presets, <code>/soli-resource</code>), so the bet is that a coding agent plus <code>soli generate scaffold</code> builds you a <em>bespoke</em> admin faster than you'd customize a generic one. If you want a Django-admin-style CRUD UI with zero building, it isn't here.</li>
-        <li><strong class="text-white">View composition is lean</strong> &mdash; layouts, partials with locals, and Rails-style <code>content_for</code>/named <code>yield</code> blocks; no component/slot system (ViewComponent, Phoenix components).</li>
+        <li><strong class="text-white">View composition</strong> &mdash; layouts, partials with locals, <code>content_for</code>/named <code>yield</code>, plus a built-in <code>component(name, data)</code> helper (looks in <code>components/</code>) with a block form for default and named slots, and <code>paginate(pagination)</code> for list navigation. Not a full ViewComponent system (no component classes or typed slots), but a practical step up from raw partials.</li>
         <li><strong class="text-white">LiveView is young.</strong> Patching is DOM-aware &mdash; the client morphs nodes in place with keyed reconciliation (<code>soli-key</code>/<code>soli-ignore</code>), so focus and widget state survive updates &mdash; but the directive set is a subset of Phoenix's: no debounce/throttle, JS commands, uploads, streams, or nested live components.</li>
     </ul>
 

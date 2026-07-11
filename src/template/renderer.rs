@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 use crate::span::Span;
 use crate::template::core_eval;
 use crate::template::parser::{Expr, TemplateNode};
@@ -87,6 +87,7 @@ fn render_inner(
             TemplateNode::CoreOutput { line, .. } => Some(*line),
             TemplateNode::ContentFor { line, .. } => Some(*line),
             TemplateNode::FormWith { line, .. } => Some(*line),
+            TemplateNode::Component { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -194,7 +195,22 @@ fn render_inner(
                         }
                     }
                 }
-                TemplateNode::Yield(_) => {
+                TemplateNode::Yield(name) => {
+                    if let Some(n) = name {
+                        // Support named yields from content_for (e.g. for component named slots or layouts)
+                        if let Some(c) = crate::template::content_store::get(n) {
+                            output.push_str(&c);
+                            return Ok(());
+                        }
+                    } else {
+                        // Support default slot for components via "content" or yield
+                        if let Value::Hash(h) = data {
+                            if let Some(c) = h.borrow().get(&HashKey::String("content".into())) {
+                                write_value_to_output(c, false, output);
+                                return Ok(());
+                            }
+                        }
+                    }
                     return Err("yield encountered outside of layout context".to_string());
                 }
                 TemplateNode::ContentFor { name, body, .. } => {
@@ -242,6 +258,65 @@ fn render_inner(
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     write_value_to_output(&close_html, false, output);
                     core_eval::pop_scope(interpreter);
+                }
+                TemplateNode::Component { parts, body, .. } => {
+                    // Evaluate name expr to get the component name (string)
+                    let name_val = interpreter
+                        .evaluate(&parts.name)
+                        .map_err(|e| format!("Evaluation error in component name: {}", e))?;
+                    let comp_name = match &name_val {
+                        Value::String(s) => s.to_string(),
+                        other => {
+                            return Err(format!(
+                                "component name must evaluate to string, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+
+                    // Render the block body into captured default slot content
+                    let mut captured = String::new();
+                    render_inner(
+                        interpreter,
+                        body,
+                        data,
+                        partial_renderer,
+                        template_path,
+                        &mut captured,
+                    )?;
+
+                    // Build props data + content for default slot
+                    let mut comp_map: HashPairs = HashPairs::default();
+                    if let Some(props_expr) = &parts.props {
+                        if let Ok(Value::Hash(h)) = interpreter.evaluate(props_expr) {
+                            for (k, v) in h.borrow().iter() {
+                                comp_map.insert(k.clone(), v.clone());
+                            }
+                        }
+                    }
+                    comp_map.insert(
+                        HashKey::String("content".into()),
+                        Value::String(captured.into()),
+                    );
+                    let comp_data = Value::Hash(Rc::new(RefCell::new(comp_map)));
+
+                    // Resolve like the component() helper: a `/`- or `.`-bearing
+                    // name is app/views-relative and verbatim; a bare name
+                    // resolves under components/. render_partial keeps components/
+                    // paths clean (no `_`) and tags them as components in the dev bar.
+                    let comp_path = if comp_name.contains('/') || comp_name.contains('.') {
+                        comp_name.clone()
+                    } else {
+                        format!("components/{}", comp_name)
+                    };
+                    if let Some(r) = partial_renderer {
+                        output.push_str(&r(&comp_path, &comp_data)?);
+                    } else {
+                        return Err(format!(
+                            "Component rendering not available for '{}'",
+                            comp_name
+                        ));
+                    }
                 }
                 TemplateNode::Partial {
                     name,
@@ -1127,5 +1202,46 @@ mod tests {
         let field_token = token_of("value=\"");
         assert_eq!(meta_token, field_token);
         assert_eq!(meta_token.len(), 32);
+    }
+
+    #[test]
+    fn component_block_renders_with_props_and_content() {
+        // Mock component renderer that reads BOTH the prop (title) and the
+        // default slot (content) straight from the data hash, so the assertion
+        // proves props actually flow through (not a hardcoded value).
+        let component_renderer: PartialRenderer = Some(&|name: &str, data: &Value| {
+            if name != "components/card" {
+                return Err(format!("unknown component: {}", name));
+            }
+            let Value::Hash(h) = data else {
+                return Ok("<div class=\"card\"></div>".to_string());
+            };
+            let borrowed = h.borrow();
+            let field = |key: &str| match borrowed.get(&HashKey::String(key.into())) {
+                Some(Value::String(s)) => s.to_string(),
+                _ => String::new(),
+            };
+            Ok(format!(
+                "<div class=\"card\"><h3>{}</h3>{}</div>",
+                field("title"),
+                field("content")
+            ))
+        });
+
+        // Named-arg form: `title: "Stats"` must reach the component as a prop
+        // (regression guard for the previously-dropped Named argument).
+        let nodes =
+            parse_template("<%- component \"card\", title: \"Stats\" do %>body here<% end %>")
+                .unwrap();
+        let result = render_nodes(&nodes, &make_hash(vec![]), component_renderer).unwrap();
+        assert_eq!(result, "<div class=\"card\"><h3>Stats</h3>body here</div>");
+
+        // Paren form with an explicit positional hash must render identically.
+        let nodes2 = parse_template(
+            "<%- component(\"card\", { \"title\": \"Stats\" }) do %>body here<% end %>",
+        )
+        .unwrap();
+        let result2 = render_nodes(&nodes2, &make_hash(vec![]), component_renderer).unwrap();
+        assert_eq!(result2, "<div class=\"card\"><h3>Stats</h3>body here</div>");
     }
 }

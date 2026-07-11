@@ -72,6 +72,15 @@ pub struct TemplateCache {
     path_cache: RwLock<HashMap<String, Arc<PathBuf>>>,
 }
 
+/// Which kind of nested include is being rendered — selects the path-resolution
+/// rule (partials get a `_` prefix; components resolve under `components/`
+/// verbatim) and the dev-bar label / span kind.
+#[derive(Clone, Copy)]
+enum IncludeKind {
+    Partial,
+    Component,
+}
+
 impl TemplateCache {
     /// Create a new template cache for the given views directory.
     pub fn new(views_dir: impl Into<PathBuf>) -> Self {
@@ -242,13 +251,74 @@ impl TemplateCache {
         result
     }
 
-    /// Render a partial template (no layout).
+    /// Render a partial template (no layout). Partials live at `_name` (or
+    /// `dir/_name`), *except* `components/` paths which stay clean.
     pub fn render_partial(&self, name: &str, data: &Value) -> Result<String, String> {
-        // Per-partial span + view-log entry, matching `render` above.
-        let mut _span = crate::serve::span_log::SpanGuard::start(
-            name,
-            crate::serve::span_log::SpanKind::Partial,
-        );
+        self.render_include(name, data, IncludeKind::Partial)
+    }
+
+    /// Render a component template (no layout). Components are looked up under
+    /// `components/` (or an explicit `/`- or `.`-bearing path) and do NOT get a
+    /// leading `_` prefix (unlike partials).
+    pub fn render_component(&self, name: &str, data: &Value) -> Result<String, String> {
+        self.render_include(name, data, IncludeKind::Component)
+    }
+
+    /// Shared implementation behind [`render_partial`] and [`render_component`].
+    /// The two differ only in on-disk name resolution and the dev-bar label /
+    /// span kind; everything else (content_for frame join, markdown conversion,
+    /// view-log + metrics) is identical.
+    fn render_include(
+        &self,
+        name: &str,
+        data: &Value,
+        kind: IncludeKind,
+    ) -> Result<String, String> {
+        // Resolve the on-disk name for this include kind.
+        let resolved_name = match kind {
+            IncludeKind::Component => {
+                // A `/`- or `.`-bearing name is app/views-relative and used
+                // verbatim; a bare name resolves under components/.
+                if name.contains('/') || name.contains('.') {
+                    name.to_string()
+                } else {
+                    format!("components/{}", name)
+                }
+            }
+            IncludeKind::Partial => {
+                // Partials start with `_`, except components/ paths (kept clean
+                // so the block form's `components/<name>` resolves like the
+                // function-call `component()` helper).
+                if name.starts_with("components/") || name.contains("/components/") {
+                    name.to_string()
+                } else if name.contains('/') {
+                    // e.g., "users/card" -> "users/_card"
+                    let parts: Vec<&str> = name.rsplitn(2, '/').collect();
+                    if parts.len() == 2 {
+                        format!("{}/_{}", parts[1], parts[0])
+                    } else {
+                        format!("_{}", name)
+                    }
+                } else {
+                    format!("_{}", name)
+                }
+            }
+        };
+
+        // Anything resolving under components/ is a component for the dev bar,
+        // regardless of which syntax reached us (the block form arrives here as
+        // a Partial include with a `components/<name>` path).
+        let is_component = matches!(kind, IncludeKind::Component)
+            || resolved_name.starts_with("components/")
+            || resolved_name.contains("/components/");
+        let (span_kind, marker) = if is_component {
+            (crate::serve::span_log::SpanKind::Component, "component")
+        } else {
+            (crate::serve::span_log::SpanKind::Partial, "partial")
+        };
+
+        // Per-include span + view-log entry, matching `render` above.
+        let mut _span = crate::serve::span_log::SpanGuard::start(name, span_kind);
         let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
         let view_id = view_start.map(|_| crate::serve::view_log::next_id());
         if let Some(id) = view_id {
@@ -259,24 +329,11 @@ impl TemplateCache {
         let render_start = crate::metrics::metrics_enabled().then(Instant::now);
 
         // Join the surrounding render's content_for store so captures inside
-        // the partial reach the layout. A standalone partial render (no view
-        // in progress) owns a throwaway frame instead — captures are dropped.
+        // the include reach the layout. A standalone render (no view in
+        // progress) owns a throwaway frame instead — captures are dropped.
         let _content_frame = content_store::ensure_frame();
 
-        // Partials start with underscore
-        let partial_name = if name.contains('/') {
-            // e.g., "users/card" -> "users/_card"
-            let parts: Vec<&str> = name.rsplitn(2, '/').collect();
-            if parts.len() == 2 {
-                format!("{}/_{}", parts[1], parts[0])
-            } else {
-                format!("_{}", name)
-            }
-        } else {
-            format!("_{}", name)
-        };
-
-        let template_path = self.resolve_template_path(&partial_name)?;
+        let template_path = self.resolve_template_path(&resolved_name)?;
         let nodes = self.get_or_load_template(&template_path)?;
 
         let partial_renderer =
@@ -290,7 +347,7 @@ impl TemplateCache {
             Some(&template_path_str),
         )?;
 
-        // If the partial is a markdown file, convert to HTML. URL-neutralizing
+        // If the include is a markdown file, convert to HTML. URL-neutralizing
         // converter — the ERB pass already escaped interpolated data (see the
         // matching note in `render`).
         let result = if is_markdown_template(&template_path) {
@@ -299,7 +356,7 @@ impl TemplateCache {
             content
         };
         let result = if let Some(id) = view_id {
-            wrap_dev_marker("partial", id, name, &result)
+            wrap_dev_marker(marker, id, name, &result)
         } else {
             result
         };
@@ -1539,6 +1596,104 @@ mod tests {
         let cache = TemplateCache::new(&views);
         let result = cache.render_partial("card", &ctx).unwrap();
         assert_eq!(result.trim(), "HI!");
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn component_renders_end_to_end_both_forms() {
+        // Exercises the *real* cache (not a mock renderer) so a component file
+        // on disk, prop passing, and the default slot all work together.
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        let components = views.join("components");
+        fs::create_dir_all(&components).unwrap();
+        // A component reads a prop (title) and the default slot (yield).
+        fs::write(
+            components.join("card.html.slv"),
+            "<div class=\"card\"><h3><%= title %></h3><%= yield %></div>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+
+        // Block form: named-arg props + a body captured into the default slot.
+        fs::write(
+            views.join("index.html.slv"),
+            "<%- component \"card\", title: \"Stats\" do %>body<% end %>",
+        )
+        .unwrap();
+        let block = cache.render("index", &Value::Null, Some(None)).unwrap();
+        assert_eq!(block.trim(), "<div class=\"card\"><h3>Stats</h3>body</div>");
+
+        // Function form: props hash + an explicit `content` key for the slot.
+        let mut data = HashPairs::default();
+        data.insert(
+            HashKey::String("title".into()),
+            Value::String("Stats".into()),
+        );
+        data.insert(
+            HashKey::String("content".into()),
+            Value::String("body".into()),
+        );
+        let data = Value::Hash(Rc::new(RefCell::new(data)));
+        let func = cache.render_component("card", &data).unwrap();
+        assert_eq!(func.trim(), "<div class=\"card\"><h3>Stats</h3>body</div>");
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn number_delimiter_and_ternary_render_in_template() {
+        // Verifies number_with_delimiter() is registered as a view helper AND
+        // that a ternary evaluates inside <%= %> (both go through the core
+        // expression parser in the real render pipeline).
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+        fs::write(
+            views.join("p.html.slv"),
+            "n=<%= number_with_delimiter(1234567) %>|t=<%= 1 == 1 ? \"yes\" : \"no\" %>",
+        )
+        .unwrap();
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("p", &Value::Null, Some(None)).unwrap();
+        assert_eq!(out.trim(), "n=1,234,567|t=yes");
+    }
+
+    #[test]
+    fn component_named_slot_via_content_for() {
+        // A `content_for "x"` inside the component block feeds `yield "x"` in
+        // the component template (named slots); the remaining body feeds the
+        // default `yield`.
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        let components = views.join("components");
+        fs::create_dir_all(&components).unwrap();
+        fs::write(
+            components.join("panel.html.slv"),
+            "<header><%= yield \"header\" %></header><main><%= yield %></main>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("index.html.slv"),
+            "<%- component \"panel\" do %><% content_for \"header\" do %>HEAD<% end %>BODY<%- end %>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("index", &Value::Null, Some(None)).unwrap();
+        assert_eq!(out.trim(), "<header>HEAD</header><main>BODY</main>");
 
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
