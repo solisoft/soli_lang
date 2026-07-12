@@ -356,7 +356,7 @@ pub fn run_test(
 
     let mut model_preamble_files: Vec<(PathBuf, String)> = Vec::new();
 
-    // Load every `.sl` in app/models, app/services, app/helpers,
+    // Load every `.sl` in app/models, app/policies, app/services, app/helpers,
     // app/middleware, app/jobs into the test interpreter. Models and services
     // define classes used in tests; helpers and middleware define top-level
     // `def` functions that unit tests can call directly (without going through
@@ -364,7 +364,22 @@ pub fn run_test(
     // `active_link(path, current)`. Jobs are also classes that specs invoke
     // directly (`EmailJob.perform(...)`); without preloading them, the call
     // throws "undefined" and a `try/catch` in the spec can pass vacuously.
-    for sub in ["models", "services", "helpers", "middleware", "jobs"] {
+    //
+    // Policies are classes too (`ApplicationPolicy`, `<Model>Policy`), so a spec
+    // can exercise the predicates directly instead of only through an HTTP
+    // request — the base-class defaults and the fail-closed `policy_for` branch
+    // are otherwise unreachable, since every concrete policy overrides them.
+    // They sort before `helpers`, whose `current_user` / `signed_in?` must stay
+    // the ones a spec sees (`app/policies/application_policy.sl` defines
+    // identical globals; last write wins).
+    for sub in [
+        "models",
+        "policies",
+        "services",
+        "helpers",
+        "middleware",
+        "jobs",
+    ] {
         let dir = app_dir.join("app").join(sub);
         if !dir.is_dir() {
             continue;
