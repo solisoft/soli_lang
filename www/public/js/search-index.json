@@ -536,7 +536,7 @@
       "category": "FeatureFlags",
       "path": "/docs/core-concepts/feature-flags",
       "signature": "FeatureFlags",
-      "description": "Toggle features at runtime without redeploying \u2014 env overrides, kill-switch, allowlists, and stable percentage rollout, backed by the shared cache",
+      "description": "Toggle features at runtime without redeploying — env overrides, kill-switch, allowlists, and stable percentage rollout, backed by the shared cache",
       "keywords": [
         "feature flag",
         "feature flags",
@@ -582,7 +582,7 @@
       "category": "FeatureFlags",
       "path": "/docs/core-concepts/feature-flags",
       "signature": "FeatureFlags.enable(name) / FeatureFlags.disable(name)",
-      "description": "Turn a flag on for everyone, or flip the global kill-switch off \u2014 live, no redeploy",
+      "description": "Turn a flag on for everyone, or flip the global kill-switch off — live, no redeploy",
       "keywords": [
         "feature flag",
         "enable",
@@ -1010,7 +1010,7 @@
       "category": "JSON",
       "path": "/docs/builtins/json#def-to-json",
       "signature": "value.to_json",
-      "description": "Instance-method form of JSON.stringify \u2014 works on hashes, arrays, and primitives",
+      "description": "Instance-method form of JSON.stringify — works on hashes, arrays, and primitives",
       "keywords": [
         "json",
         "to_json",
@@ -4068,7 +4068,7 @@
       "category": "Utility",
       "path": "/docs/utility/encoding#method-decode",
       "signature": "Encoding.decode(input, label)",
-      "description": "Decode bytes or a string from a charset (latin1, iso-8859-1, windows-1252, \u2026) into a UTF-8 string",
+      "description": "Decode bytes or a string from a charset (latin1, iso-8859-1, windows-1252, …) into a UTF-8 string",
       "keywords": [
         "encoding",
         "decode",
@@ -4088,7 +4088,7 @@
       "category": "Utility",
       "path": "/docs/utility/encoding#method-encode",
       "signature": "Encoding.encode(string, label)",
-      "description": "Encode a UTF-8 string into bytes in a charset (latin1, iso-8859-1, windows-1252, \u2026)",
+      "description": "Encode a UTF-8 string into bytes in a charset (latin1, iso-8859-1, windows-1252, …)",
       "keywords": [
         "encoding",
         "encode",
@@ -4238,7 +4238,7 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
+      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
       "keywords": [
         "params",
         "global",
@@ -4767,7 +4767,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.html_entities()",
-      "description": "Encode every non-ASCII char as a numeric HTML entity (\u00e9 to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
+      "description": "Encode every non-ASCII char as a numeric HTML entity (é to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
       "keywords": [
         "string",
         "html_entities",
@@ -4790,7 +4790,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -6093,7 +6093,7 @@
       "category": "Hash",
       "path": "/docs/language/hashes#method-update",
       "signature": "hash.update(other)",
-      "description": "Alias for merge \u2014 merges another hash",
+      "description": "Alias for merge — merges another hash",
       "keywords": [
         "hash",
         "update",
@@ -7852,7 +7852,7 @@
       "category": "File",
       "path": "/docs/builtins/file#section-trusted-class",
       "signature": "Trusted",
-      "description": "Unjailed file I/O class \u2014 mirrors File but skips the filesystem jail and O_NOFOLLOW symlink guard. For trusted server-side paths only.",
+      "description": "Unjailed file I/O class — mirrors File but skips the filesystem jail and O_NOFOLLOW symlink guard. For trusted server-side paths only.",
       "keywords": [
         "file",
         "io",
@@ -9693,7 +9693,7 @@
       "category": "Session",
       "path": "/docs/security/sessions",
       "signature": "SOLI_SESSION_DRIVER=cookie",
-      "description": "Client-side sessions sealed with AES-256-GCM \u2014 survive restarts, work across hosts, no session database",
+      "description": "Client-side sessions sealed with AES-256-GCM — survive restarts, work across hosts, no session database",
       "keywords": [
         "session",
         "cookie",
@@ -10003,7 +10003,7 @@
       "category": "Array",
       "path": "/docs/language/arrays#array-reject",
       "signature": "array.reject(fn)",
-      "description": "Inverse of filter \u2014 keeps elements where block returns false",
+      "description": "Inverse of filter — keeps elements where block returns false",
       "keywords": [
         "array",
         "reject",
@@ -10042,7 +10042,7 @@
       "category": "Int",
       "path": "/docs/language/integers#method-succ",
       "signature": "int.next",
-      "description": "Alias for .succ \u2014 returns i + 1",
+      "description": "Alias for .succ — returns i + 1",
       "keywords": [
         "int",
         "next",
@@ -11747,7 +11747,7 @@
       "category": "Database",
       "path": "/docs/database/query-builder#traverse",
       "signature": "record.traverse(EdgeModel, direction?, depth?)",
-      "description": "Graph traversal from a saved record over an edge model \u2014 returns a chainable QueryBuilder over the reachable vertices (direction out/in/any, depth n or [min, max]).",
+      "description": "Graph traversal from a saved record over an edge model — returns a chainable QueryBuilder over the reachable vertices (direction out/in/any, depth n or [min, max]).",
       "keywords": [
         "traverse",
         "traversal",
@@ -11766,7 +11766,7 @@
       "category": "Database",
       "path": "/docs/database/query-builder#shortest-path",
       "signature": "record.shortest_path(other, via: EdgeModel, direction?)",
-      "description": "Shortest path between two records through an edge model \u2014 executes immediately, returns the vertices along the path ([] when unconnected).",
+      "description": "Shortest path between two records through an edge model — executes immediately, returns the vertices along the path ([] when unconnected).",
       "keywords": [
         "shortest_path",
         "shortest path",
@@ -11937,7 +11937,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/routing#listing-routes",
       "signature": "soli routes [folder] [-g PATTERN] [--json]",
-      "description": "Print the app's expanded route table \u2014 every route config/routes.sl and engines register, with named helpers and middleware \u2014 without starting the server.",
+      "description": "Print the app's expanded route table — every route config/routes.sl and engines register, with named helpers and middleware — without starting the server.",
       "keywords": [
         "soli routes",
         "routes",
@@ -11956,7 +11956,7 @@
       "category": "Development Tools",
       "path": "/docs/development-tools/linting#section-type-check",
       "signature": "soli check [paths...]",
-      "description": "Static type-check Soli code without executing it \u2014 whole-project, CI-friendly, exits non-zero on type errors.",
+      "description": "Static type-check Soli code without executing it — whole-project, CI-friendly, exits non-zero on type errors.",
       "keywords": [
         "soli check",
         "type check",
@@ -11990,7 +11990,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#def-encrypt",
       "signature": "Crypto.encrypt(plaintext, key?)",
-      "description": "AES-256-GCM authenticated encryption; returns base64 nonce\u2016ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
+      "description": "AES-256-GCM authenticated encryption; returns base64 nonce‖ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
       "keywords": [
         "encrypt",
         "aes",
@@ -12070,7 +12070,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/streaming#section-pubsub",
       "signature": "sse_subscribe(req, topic)",
-      "description": "Open a long-lived SSE connection subscribed to a topic. Async \u2014 does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
+      "description": "Open a long-lived SSE connection subscribed to a topic. Async — does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
       "keywords": [
         "sse_subscribe",
         "pub/sub",
@@ -12106,7 +12106,7 @@
       "category": "File",
       "path": "/docs/builtins/pdf#section-serving",
       "signature": "file_write_base64(path, b64)",
-      "description": "Decode a base64 string and write the raw bytes to a file \u2014 the natural partner to pdf_render/pdf_facturx and other builtins that return base64.",
+      "description": "Decode a base64 string and write the raw bytes to a file — the natural partner to pdf_render/pdf_facturx and other builtins that return base64.",
       "keywords": [
         "base64",
         "write file",
@@ -12161,7 +12161,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-facturx-from-invoice",
       "signature": "pdf_facturx_from_invoice(template, invoice, options?)",
-      "description": "Render a Factur-X PDF/A-3b from a typed invoice document \u2014 generates the CII XML and computes totals and the VAT breakdown from the line items.",
+      "description": "Render a Factur-X PDF/A-3b from a typed invoice document — generates the CII XML and computes totals and the VAT breakdown from the line items.",
       "keywords": [
         "pdf",
         "facturx",
@@ -12182,7 +12182,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-from-markdown",
       "signature": "pdf_from_markdown(markdown, options?)",
-      "description": "Render a designed PDF straight from a Markdown string \u2014 headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
+      "description": "Render a designed PDF straight from a Markdown string — headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
       "keywords": [
         "pdf",
         "markdown",
@@ -12233,7 +12233,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
       "signature": "pdf_pages(pdf, selection)",
-      "description": "Keep a subset of pages from a PDF \u2014 a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
+      "description": "Keep a subset of pages from a PDF — a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
       "keywords": [
         "pdf",
         "pages",
@@ -12250,7 +12250,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
       "signature": "pdf_stamp(pdf, text, options?)",
-      "description": "Stamp text \u2014 a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) \u2014 onto an existing PDF's pages. Returns base64.",
+      "description": "Stamp text — a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) — onto an existing PDF's pages. Returns base64.",
       "keywords": [
         "pdf",
         "stamp",
@@ -12304,7 +12304,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
       "signature": "pdf_sign(pdf, options)",
-      "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature \u2014 the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
+      "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature — the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
       "keywords": [
         "pdf",
         "sign",
@@ -12322,7 +12322,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
       "signature": "pdf_verify(pdf)",
-      "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } \u2014 valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
+      "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } — valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
       "keywords": [
         "pdf",
         "verify",
@@ -12340,7 +12340,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Embed SVG logos and icons in a PDF \u2014 the image element auto-detects and rasterises SVG so vector art stays crisp at any size.",
+      "description": "Embed SVG logos and icons in a PDF — the image element auto-detects and rasterises SVG so vector art stays crisp at any size.",
       "keywords": [
         "pdf",
         "svg",
@@ -12447,7 +12447,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "bookmarkLevel nests outline entries under the last shallower one \u2014 hierarchical sidebar navigation like heading levels.",
+      "description": "bookmarkLevel nests outline entries under the last shallower one — hierarchical sidebar navigation like heading levels.",
       "keywords": [
         "pdf",
         "bookmarks",
@@ -12479,7 +12479,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "#PAGE_OF:anchor# resolves to the page number of an anchored paragraph \u2014 clickable tables of contents with real page numbers.",
+      "description": "#PAGE_OF:anchor# resolves to the page number of an anchored paragraph — clickable tables of contents with real page numbers.",
       "keywords": [
         "pdf",
         "table of contents",
@@ -12547,7 +12547,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Force a new page in the PDF content flow with { \"type\": \"page_break\" } \u2014 replaces the move-y overflow trick.",
+      "description": "Force a new page in the PDF content flow with { \"type\": \"page_break\" } — replaces the move-y overflow trick.",
       "keywords": [
         "pdf",
         "page break",
@@ -12645,7 +12645,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points \u2014 single- or multi-series (grouped/stacked bars, multi-line), with legends and value-axis gridlines.",
+      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points — single- or multi-series (grouped/stacked bars, multi-line), with legends and value-axis gridlines.",
       "keywords": [
         "pdf",
         "chart",
@@ -12767,7 +12767,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-typed-invoice",
-      "description": "Typed invoice allowances (BG-20 discounts), charges (BG-21 shipping/fees, fixed or percent), payment_terms (BT-20) and credit notes (type_code 381) \u2014 computed into the VAT breakdown and the CII XML; exposed to templates as discounts[]/charges[] and total.discount/charges/taxable.",
+      "description": "Typed invoice allowances (BG-20 discounts), charges (BG-21 shipping/fees, fixed or percent), payment_terms (BT-20) and credit notes (type_code 381) — computed into the VAT breakdown and the CII XML; exposed to templates as discounts[]/charges[] and total.discount/charges/taxable.",
       "keywords": [
         "pdf",
         "invoice",
@@ -12872,7 +12872,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#having",
       "signature": "qb.having(\"total > @min\", { \"min\": 1000 })",
-      "description": "Post-COLLECT filter over bare group fields / aggregate aliases. Developer-trusted string like string-form where \u2014 never build it from user input.",
+      "description": "Post-COLLECT filter over bare group fields / aggregate aliases. Developer-trusted string like string-form where — never build it from user input.",
       "keywords": [
         "having",
         "group filter",
@@ -12905,7 +12905,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.median(field).first",
-      "description": "Median aggregation terminal \u2014 like sum/avg, chain .first. p50 only: SolidB has no PERCENTILE function.",
+      "description": "Median aggregation terminal — like sum/avg, chain .first. p50 only: SolidB has no PERCENTILE function.",
       "keywords": [
         "median",
         "p50",
@@ -12921,7 +12921,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.stddev(field).first",
-      "description": "Standard-deviation aggregation terminal \u2014 chain .first.",
+      "description": "Standard-deviation aggregation terminal — chain .first.",
       "keywords": [
         "stddev",
         "standard deviation",
@@ -12936,7 +12936,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.variance(field).first",
-      "description": "Variance aggregation terminal \u2014 chain .first.",
+      "description": "Variance aggregation terminal — chain .first.",
       "keywords": [
         "variance",
         "statistics",
@@ -12950,7 +12950,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.count_distinct(field).first",
-      "description": "Count of distinct values of a field \u2014 aggregation terminal, chain .first; also available as an aggregate() func and a columnar aggregate op.",
+      "description": "Count of distinct values of a field — aggregation terminal, chain .first; also available as an aggregate() func and a columnar aggregate op.",
       "keywords": [
         "count_distinct",
         "distinct",
@@ -12965,7 +12965,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#columnar-models",
       "signature": "columnar compression: \"lz4\"",
-      "description": "Declare a columnar-store model \u2014 a separate column-oriented engine (own HTTP API, no document CRUD, no SDBQL FOR). Compression lz4 (default) or none.",
+      "description": "Declare a columnar-store model — a separate column-oriented engine (own HTTP API, no document CRUD, no SDBQL FOR). Compression lz4 (default) or none.",
       "keywords": [
         "columnar",
         "column store",
@@ -13016,7 +13016,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#columnar-models",
       "signature": "Model.query({ \"columns\": [...], \"filter\": {...}, \"limit\": n })",
-      "description": "Fetch rows from a columnar store: column projection, at most one filter (eq/ne/gt/gte/lt/lte/in), limit \u2014 no sort.",
+      "description": "Fetch rows from a columnar store: column projection, at most one filter (eq/ne/gt/gte/lt/lte/in), limit — no sort.",
       "keywords": [
         "query",
         "columnar",
@@ -13079,7 +13079,7 @@
       "category": "Database",
       "path": "/docs/database/search#index-dsl",
       "signature": "vector_index \"embedding\", dimension: 1536, metric: \"cosine\"",
-      "description": "Declare an HNSW vector index on an embedding field \u2014 similar() then pushes down to ANN search. Optional m:, ef_construction:, quantization:, name:.",
+      "description": "Declare an HNSW vector index on an embedding field — similar() then pushes down to ANN search. Optional m:, ef_construction:, quantization:, name:.",
       "keywords": [
         "vector_index",
         "vector",
@@ -13148,7 +13148,7 @@
       "category": "Database",
       "path": "/docs/database/search#fulltext-search",
       "signature": "Model.search(query, { \"field\": ..., \"distance\": n, \"limit\": n, \"highlight\": true })",
-      "description": "Fulltext search over a declared fulltext_index \u2014 eager, ranked results with _search_score; distance for fuzzy, highlight adds _highlighted.",
+      "description": "Fulltext search over a declared fulltext_index — eager, ranked results with _search_score; distance for fuzzy, highlight adds _highlighted.",
       "keywords": [
         "search",
         "fulltext",
@@ -13165,7 +13165,7 @@
       "category": "Database",
       "path": "/docs/database/search#geo-search",
       "signature": "Model.near(lat, lon, { \"limit\": n })",
-      "description": "Geo search sorted by distance (requires geo_index); each result carries _distance in meters. Eager \u2014 no chaining.",
+      "description": "Geo search sorted by distance (requires geo_index); each result carries _distance in meters. Eager — no chaining.",
       "keywords": [
         "near",
         "geo",
@@ -13181,7 +13181,7 @@
       "category": "Database",
       "path": "/docs/database/search#geo-search",
       "signature": "Model.within(lat, lon, radius_meters)",
-      "description": "Geo search returning everything inside a radius in meters (requires geo_index). Eager \u2014 no chaining.",
+      "description": "Geo search returning everything inside a radius in meters (requires geo_index). Eager — no chaining.",
       "keywords": [
         "within",
         "geo",
@@ -13333,7 +13333,7 @@
       "category": "Routing",
       "path": "/docs/core-concepts/routing",
       "signature": "cors(path_pattern, options?) -> Void",
-      "description": "Built-in CORS: declare cross-origin access per path \u2014 preflights answered before routing, allow headers on every response, origin-checked CSRF opt-in.",
+      "description": "Built-in CORS: declare cross-origin access per path — preflights answered before routing, allow headers on every response, origin-checked CSRF opt-in.",
       "keywords": [
         "cors",
         "cross-origin",
@@ -13350,7 +13350,7 @@
       "category": "Controllers",
       "path": "/docs/core-concepts/request-params",
       "signature": "permit(params, shape) -> Hash",
-      "description": "Strong parameters for documents: whitelist-filter a (nested) params hash \u2014 scalars, arrays, nested shapes; everything else is dropped.",
+      "description": "Strong parameters for documents: whitelist-filter a (nested) params hash — scalars, arrays, nested shapes; everything else is dropped.",
       "keywords": [
         "permit",
         "strong parameters",
@@ -13415,7 +13415,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/request-params",
       "signature": "",
-      "description": "Bracket keys nest Rack-style: author[name], tags[], items[][sku] \u2014 form, multipart, and query params alike; filter with permit().",
+      "description": "Bracket keys nest Rack-style: author[name], tags[], items[][sku] — form, multipart, and query params alike; filter with permit().",
       "keywords": [
         "nested params",
         "bracket",
@@ -13770,6 +13770,166 @@
         "logout",
         "close",
         "disconnect"
+      ]
+    },
+    {
+      "title": "embed",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/ai",
+      "signature": "embed(text)",
+      "description": "Generate an embedding vector for text via an OpenAI-compatible endpoint (SOLI_EMBEDDING_API_KEY / SOLI_EMBEDDING_URL / SOLI_EMBEDDING_MODEL).",
+      "keywords": [
+        "embed",
+        "embedding",
+        "vector",
+        "ai",
+        "openai",
+        "semantic",
+        "similarity"
+      ]
+    },
+    {
+      "title": "embed_batch",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/ai",
+      "signature": "embed_batch(texts)",
+      "description": "Generate embedding vectors for an array of texts in one request.",
+      "keywords": [
+        "embed_batch",
+        "embeddings",
+        "batch",
+        "vector",
+        "ai"
+      ]
+    },
+    {
+      "title": "llm_generate",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/ai",
+      "signature": "llm_generate(system, user)",
+      "description": "Generate a chat completion from a system + user prompt via an OpenAI-compatible endpoint (SOLI_LLM_API_KEY / SOLI_LLM_URL / SOLI_LLM_MODEL).",
+      "keywords": [
+        "llm_generate",
+        "llm",
+        "completion",
+        "chat",
+        "gpt",
+        "ai",
+        "generate",
+        "openai"
+      ]
+    },
+    {
+      "title": "out.llm_stream",
+      "type": "method",
+      "category": "Core",
+      "path": "/docs/core-concepts/streaming#section-out",
+      "signature": "out.llm_stream(system, user)",
+      "description": "Inside an sse block, stream an LLM completion token-by-token to the client and return the full answer to persist.",
+      "keywords": [
+        "llm_stream",
+        "streaming llm",
+        "sse",
+        "tokens",
+        "stream",
+        "ai",
+        "chat",
+        "out.llm_stream"
+      ]
+    },
+    {
+      "title": "Model.rag",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#rag",
+      "signature": "Model.rag(question, opts?)",
+      "description": "One-call retrieval-augmented generation: embed the question, ANN-search the vector_index for the top-k rows, build an LLM context, and return { answer, sources }.",
+      "keywords": [
+        "rag",
+        "retrieval augmented generation",
+        "Model.rag",
+        "ai",
+        "vector",
+        "answer",
+        "sources",
+        "llm",
+        "embedding"
+      ]
+    },
+    {
+      "title": "Model.graph_rag",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/search#graph-rag",
+      "signature": "Model.graph_rag(query, { via:, seed_k:, limit: })",
+      "description": "Graph-augmented retrieval: seed with ANN on the vector_index, expand each hit through an edge model, then re-rank the union.",
+      "keywords": [
+        "graph_rag",
+        "graph rag",
+        "Model.graph_rag",
+        "retrieval",
+        "vector",
+        "ai",
+        "edge",
+        "traversal",
+        "rag"
+      ]
+    },
+    {
+      "title": "Model.live_where",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/core-concepts/liveview#reactive-live-queries",
+      "signature": "Model.live_where(filter)",
+      "description": "Reactive live query: runs like where(filter).all() and subscribes the current LiveView, so a later matching write re-renders it automatically (per-row matching; diff gate drops empty frames).",
+      "keywords": [
+        "live_where",
+        "Model.live_where",
+        "reactive",
+        "live query",
+        "liveview",
+        "realtime",
+        "subscribe",
+        "notify"
+      ]
+    },
+    {
+      "title": "broadcast",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/core-concepts/streaming#section-broadcast",
+      "signature": "broadcast(channel, payload)",
+      "description": "Fan a payload out to every WebSocket connection in a channel and every SSE subscriber of the topic of the same name; returns the SSE subscriber count.",
+      "keywords": [
+        "broadcast",
+        "pubsub",
+        "pub/sub",
+        "websocket",
+        "sse",
+        "realtime",
+        "channel",
+        "topic",
+        "push"
+      ]
+    },
+    {
+      "title": "Model.broadcast",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/core-concepts/streaming#section-broadcast",
+      "signature": "Model.broadcast(payload)",
+      "description": "Publish a payload to the model's collection channel over WebSocket and SSE — a shortcut for broadcast() in an after_save callback.",
+      "keywords": [
+        "Model.broadcast",
+        "broadcast",
+        "pubsub",
+        "realtime",
+        "websocket",
+        "sse",
+        "model changes"
       ]
     }
   ]

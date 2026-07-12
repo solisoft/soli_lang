@@ -19,11 +19,16 @@
     ==================================================================== -->
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400">Nothing yet — changes land here between releases.</p>
+    </section>
+
+    <section id="v1-18-0" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
-            <h2 class="text-3xl font-bold text-white">Unreleased</h2>
-            <span class="text-sm font-medium text-lime-400 bg-lime-400/10 border border-lime-400/20 rounded-full px-3 py-0.5">since v1.17.0</span>
+            <h2 class="text-3xl font-bold text-white">v1.18.0</h2>
+            <span class="text-sm font-medium text-gray-400">July 12, 2026</span>
         </div>
-        <p class="text-gray-400 mb-6">What's on <code class="text-cyan-400">main</code> and not yet tagged. Grouped by area; jump to a section:</p>
+        <p class="text-gray-400 mb-6">Grouped by area; jump to a section:</p>
 
         <nav class="flex flex-wrap gap-2 mb-10 text-sm">
             <a href="#u-realtime" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Real-time &amp; LiveView</a>
@@ -118,6 +123,125 @@
                 <li><strong class="text-white">Coverage fix</strong> &mdash; constructor bodies are now attributed to the class's own source file, so coverage reports line up with where the code actually lives.</li>
             </ul>
         </div>
+    </section>
+
+    <!-- ============================ Past releases ============================ -->
+
+    <section id="v1-17-0" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.17.0</h2>
+            <span class="text-sm font-medium text-gray-500">July 7, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Tamper-evidence &amp; ledger crypto</strong> &mdash; <code class="text-cyan-400">Crypto.canonical_json</code>, <code class="text-cyan-400">Crypto.merkle_root</code>, and <code class="text-cyan-400">Crypto.ledger_hash</code> builtins plus <code class="text-cyan-400">Model#to_h</code>; <code>Crypto</code> is now registered in the type-checker.</li>
+            <li><strong class="text-white">Formatter</strong> &mdash; stop injecting blank lines before body comments; wrap over-long signatures and calls.</li>
+        </ul>
+    </section>
+
+    <section id="v1-16-1" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.16.1</h2>
+            <span class="text-sm font-medium text-gray-500">July 6, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Devise-style auth suite</strong> &mdash; <code class="text-cyan-400">soli generate auth</code> scaffolds password reset, email confirmation, remember-me, and account lockout.</li>
+            <li><strong class="text-white">Form builder</strong> &mdash; Rails-style <code class="text-cyan-400">form_with</code> (with block syntax), per-form CSRF tokens, and <code>_method</code> override.</li>
+            <li><strong class="text-white">Strong params &amp; nested params</strong> &mdash; Rack-style bracket nesting across form/multipart/query, <code class="text-cyan-400">fields_for</code> sub-builders, and <code class="text-cyan-400">permit()</code>.</li>
+            <li><strong class="text-white">Built-in CORS</strong> &mdash; <code class="text-cyan-400">cors("/api/*", {...})</code> with preflights and origin-checked CSRF opt-in.</li>
+            <li><strong class="text-white">Signed &amp; encrypted cookie jar</strong> &mdash; <code class="text-cyan-400">set_cookie(..., {"signed"/"encrypted": true})</code> + <code>read_cookie</code>.</li>
+            <li><strong class="text-white">Self-executing bundles</strong> &mdash; <code class="text-cyan-400">soli build --standalone</code> with cross-target runtimes; <code>soli_version</code> minimum-version gate in <code>soli.toml</code>.</li>
+            <li><strong class="text-white">JSONP</strong> read/write (<code>render_jsonp</code>, <code>JSON.parse_jsonp</code>, <code>HTTP.get_jsonp</code>); dev-mode <code>attr_accessible</code> mass-assign-drop warning.</li>
+            <li><strong class="text-white">Fix</strong> &mdash; background-jobs callback route preserved across <code>config/routes.sl</code> hot reload.</li>
+        </ul>
+    </section>
+
+    <section id="v1-16-0" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.16.0</h2>
+            <span class="text-sm font-medium text-gray-500">July 5, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Single-collection inheritance (STI)</strong> &mdash; <code class="text-cyan-400">class Admin &lt; User</code> shares the base's collection with a <code>type</code> discriminator, inheriting its validations, callbacks, relations, and scopes.</li>
+        </ul>
+    </section>
+
+    <section id="v1-15-1" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.15.1</h2>
+            <span class="text-sm font-medium text-gray-500">July 5, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Association writers</strong> &mdash; <code class="text-cyan-400">owner.posts &lt;&lt; record</code> and <code class="text-cyan-400">owner.posts.create({...})</code> stamp the foreign key through the normal save path.</li>
+            <li>Cleared the clippy findings that had sunk the v1.15.0 release CI.</li>
+        </ul>
+    </section>
+
+    <section id="v1-15-0" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.15.0</h2>
+            <span class="text-sm font-medium text-gray-500">July 5, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">ORM associations</strong> &mdash; polymorphic (<code>belongs_to polymorphic:</code> + <code>has_many as:</code>), <code class="text-cyan-400">has_many through:</code>, counter caches (<code>counter_cache:</code>), cascade deletes (<code>dependent:</code>), and dirty tracking (<code>changed?</code>/<code>changes</code>/<code>previous_changes</code>).</li>
+            <li><strong class="text-white">New model layers</strong> &mdash; graph edges + traversal, insert-only timeseries with <code>time_bucket</code>, grouped analytics aggregation, columnar stores, and vector/fulltext/geo search pushdown.</li>
+            <li><strong class="text-white">DOM-aware LiveView morphing</strong> &mdash; widget/focus/scroll state survives patches.</li>
+            <li>Encrypted cookie sessions, the <code class="text-cyan-400">soli routes</code> lister, <code class="text-cyan-400">content_for</code> / named <code>yield</code>, and conditional (<code>if:</code>/<code>unless:</code>) + per-operation (<code>on:</code>) validations.</li>
+        </ul>
+    </section>
+
+    <section id="v1-14-0" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.14.0</h2>
+            <span class="text-sm font-medium text-gray-500">July 5, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">PDF signatures</strong> &mdash; PAdES digital signatures + RFC 3161 trusted timestamps (PAdES-B-T), sign/verify existing PDFs, and a visible signature appearance.</li>
+            <li><strong class="text-white">PDF toolkit</strong> &mdash; read incoming Factur-X (<code>pdf_extract_facturx</code>), <code>pdf_merge</code>/<code>pdf_pages</code>/<code>pdf_stamp</code>, <code>pdf_fill</code> (AcroForm), and <code>pdf_from_markdown</code>.</li>
+            <li><strong class="text-white">Accessible + archival</strong> &mdash; unified PDF/UA (L/Table structure tagging) with PDF/A in one veraPDF-conformant file; tables &amp; charts flow inside columns.</li>
+            <li>Encrypted &amp; protected <code>.soli</code> bundles; <code>soli build</code> accepts flags in any position.</li>
+        </ul>
+    </section>
+
+    <section id="v1-13-8" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.13.8</h2>
+            <span class="text-sm font-medium text-gray-500">July 3, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">In-process background job pool</strong> &mdash; run long jobs on a worker pool without an external queue.</li>
+            <li><strong class="text-white">Solar redesign</strong> &mdash; the landing page and docs were re-themed; PDF/UA semantic tagging (headings, figures + alt, artifacts, XMP) and PDF/A-3b.</li>
+            <li><code class="text-cyan-400">SOLI_HOST</code> to restrict the bind address.</li>
+        </ul>
+    </section>
+
+    <section id="v1-13-7" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.13.7</h2>
+            <span class="text-sm font-medium text-gray-500">July 1, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">PDF performance</strong> &mdash; cache font registries and precompute glyph metrics for faster document rendering.</li>
+        </ul>
+    </section>
+
+    <section id="v1-13-6" class="mb-14 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.13.6</h2>
+            <span class="text-sm font-medium text-gray-500">June 30, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Security</strong> &mdash; patched the <code>ammonia</code> mutation-XSS advisory.</li>
+        </ul>
+    </section>
+
+    <section id="v1-13-5" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-2xl font-bold text-white">v1.13.5</h2>
+            <span class="text-sm font-medium text-gray-500">June 30, 2026</span>
+        </div>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed list-disc pl-5">
+            <li><strong class="text-white">Fix</strong> &mdash; <code class="text-cyan-400">soli db:migrate</code> creates the SoliDB database if it doesn't exist yet, instead of failing with a 404.</li>
+        </ul>
     </section>
 
     <!-- Click-to-zoom lightbox for the diagrams (full viewport) -->
