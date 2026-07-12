@@ -379,7 +379,7 @@ pub fn expand_wildcard_action(
                 }
             }
             // Look for any param that could be the action
-            for (_, value) in params.iter() {
+            for value in params.values() {
                 let action_name = value.trim_start_matches('/');
                 if !action_name.is_empty() && !action_name.contains('/') {
                     // Prefer non-nested paths as action names
@@ -394,7 +394,7 @@ pub fn expand_wildcard_action(
     } else {
         // No controller#action format, check if it's just "*"
         if handler_name == "*" {
-            for (_, value) in params.iter() {
+            for value in params.values() {
                 let action_name = value.trim_start_matches('/');
                 if !action_name.is_empty() {
                     return Some(action_name.to_string());

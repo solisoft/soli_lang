@@ -119,7 +119,7 @@ pub fn exec_graph_rag(
     }
 
     // --- Expand: traverse from each seed through the edge model ---
-    for (_, (seed_val, is_seed, _)) in union.clone().iter() {
+    for (seed_val, is_seed, _) in union.clone().values() {
         if !is_seed {
             continue;
         }

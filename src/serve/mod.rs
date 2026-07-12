@@ -1747,7 +1747,7 @@ fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
     let mut warmed_methods = 0usize;
     for value in vm.globals.values() {
         if let crate::interpreter::value::Value::Class(class) = value {
-            for (_name, method) in class.methods.borrow().iter() {
+            for method in class.methods.borrow().values() {
                 if crate::vm::vm_calls::jit_compile_method(method, global_names.iter().cloned())
                     .is_ok()
                 {

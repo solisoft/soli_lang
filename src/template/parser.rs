@@ -1031,10 +1031,9 @@ fn parse_yield_directive(expr: &str, line: usize) -> Option<Result<TemplateNode,
     }
     let (args, directive) = if let Some(rest) = strip_directive_keyword(expr, "yield") {
         (rest, "yield")
-    } else if let Some(rest) = strip_directive_keyword(expr, "content_for") {
-        (rest, "content_for")
     } else {
-        return None;
+        let rest = strip_directive_keyword(expr, "content_for")?;
+        (rest, "content_for")
     };
     Some(parse_directive_name(args, directive, line).map(|name| TemplateNode::Yield(Some(name))))
 }

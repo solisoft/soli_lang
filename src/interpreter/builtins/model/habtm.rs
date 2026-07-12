@@ -35,10 +35,9 @@ pub enum HabtmAction {
 pub fn match_habtm_method(class_name: &str, method_name: &str) -> Option<HabtmMethodMatch> {
     let (action, suffix) = if let Some(s) = method_name.strip_prefix("add_") {
         (HabtmAction::Add, s)
-    } else if let Some(s) = method_name.strip_prefix("remove_") {
-        (HabtmAction::Remove, s)
     } else {
-        return None;
+        let s = method_name.strip_prefix("remove_")?;
+        (HabtmAction::Remove, s)
     };
 
     for rel in get_relations(class_name) {
