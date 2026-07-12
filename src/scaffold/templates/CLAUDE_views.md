@@ -125,7 +125,7 @@ For named, reusable UI pieces (cards, rows, badges, etc.) prefer the dedicated c
 <%- component("user_card", { "user": user }) %>
 ```
 
-Components are looked up in `app/views/components/` (subdirectories allowed); scaffold one with `soli generate component <name>`. Render a list with `component("user_card", { "collection": users, "as": "user" })` (per-item locals: `user`, `user_index`, `user_counter`). For named slots, use the block form with a slot-builder: `component "card" do |c|` … `c.slot("header") do … end`. See the full "Components" section in the Views documentation.
+Components are looked up in `app/views/components/` (subdirectories allowed); scaffold one with `soli generate component <name>`. Render a list with `component("user_card", { "collection": users, "as": "user" })` (per-item locals: `user`, `user_index`, `user_counter`). For named slots, use the block form with a slot-builder: `component "card" do |c|` … `c.slot("header") do … end`. Declare expected props at the top with `props("title", "value")` (dev warns on a missing one; lint rule `component/props`); memoize an expensive component with `{ "cache": true }`; and in `--dev` browse every component at `/__soli/components` (add a `<%# preview: {json} %>` header for example data). See the full "Components" section in the Views documentation.
 
 Both partials and components inherit the controller's `@instance` variables, so you can read `@current_user` inside them without passing it explicitly (an explicit local of the same name wins).
 

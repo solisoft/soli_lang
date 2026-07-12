@@ -1125,6 +1125,55 @@ to every item:
 </article>
 ```
 
+### Declaring props
+
+Declare the props a component expects with `props(...)` at the top of the
+template. In `--dev`, the renderer warns (in the dev bar's Warnings panel and the
+server console) about any declared prop the caller didn't provide — a quick way
+to catch a forgotten local. It's a no-op in production, and `soli lint` also
+checks the declaration is well-formed (`component/props`):
+
+```erb
+<%# app/views/components/stat_card.html.slv %>
+<% props("label", "value") %>
+<div class="stat">
+  <span class="label"><%= label %></span>
+  <span class="value"><%= number_with_delimiter(value) %></span>
+</div>
+```
+
+Optional props just aren't declared. Inherited `@ivars` count as provided, so a
+prop your controller sets as `@value` won't warn.
+
+### Caching a component
+
+Pass a `"cache"` option to memoize a component's rendered HTML in the KV cache —
+handy for expensive, rarely-changing pieces. `"cache": true` derives the key from
+the data; a string sets an explicit key. `"cache_ttl"` sets the lifetime in
+seconds. Renders that set a cookie/session or read the clock/random are never
+cached, and a cache-backend outage falls back to a normal render:
+
+```erb
+<%- component("pricing_table", { "plan": plan, "cache": true }) %>
+<%- component("footer", { "cache": "site-footer", "cache_ttl": 3600 }) %>
+```
+
+### Component catalog (dev)
+
+With `soli serve --dev`, browse every component at **`/__soli/components`** — a
+Lookbook-style gallery listing each component, its declared props, and a live
+preview. Give a component example data with a leading `<%# preview: {json} %>`
+header:
+
+```erb
+<%# preview: { "label": "Active", "value": 1243 } %>
+<% props("label", "value") %>
+<div class="stat"><%= label %>: <%= number_with_delimiter(value) %></div>
+```
+
+Previews render with built-in helpers plus the `preview` data; app-defined view
+helpers and request context aren't available in the catalog.
+
 ### Components vs partials
 
 | Situation                              | Recommended helper                  |
