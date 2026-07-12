@@ -260,33 +260,6 @@ fn fnv_value(h: &mut u64, v: &crate::interpreter::value::Value) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The dev-mode hot-reload path relies on `clear_cache()` to drop
-    /// stale rendered bodies after a view edit (src/serve/mod.rs worker
-    /// loop). Guard the put → get → clear → miss contract.
-    #[test]
-    fn clear_cache_drops_cached_bodies() {
-        reset_for_new_request();
-        let path = Arc::new(PathBuf::from("app/views/home/index.html.slv"));
-        put(
-            path.clone(),
-            Some("application"),
-            42,
-            "old body".to_string(),
-            String::new(),
-        );
-        assert_eq!(
-            get(path.clone(), Some("application"), 42).map(|c| c.body),
-            Some("old body".to_string())
-        );
-        clear_cache();
-        assert!(get(path, Some("application"), 42).is_none());
-    }
-}
-
 fn fnv_hash_key(h: &mut u64, k: &crate::interpreter::value::HashKey) {
     use crate::interpreter::value::HashKey;
     // Match the per-variant tag bytes used by `HashKey::hash` so the
@@ -334,5 +307,32 @@ fn fnv_hash_key(h: &mut u64, k: &crate::interpreter::value::HashKey) {
                 *h = h.wrapping_mul(FNV_PRIME);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The dev-mode hot-reload path relies on `clear_cache()` to drop
+    /// stale rendered bodies after a view edit (src/serve/mod.rs worker
+    /// loop). Guard the put → get → clear → miss contract.
+    #[test]
+    fn clear_cache_drops_cached_bodies() {
+        reset_for_new_request();
+        let path = Arc::new(PathBuf::from("app/views/home/index.html.slv"));
+        put(
+            path.clone(),
+            Some("application"),
+            42,
+            "old body".to_string(),
+            String::new(),
+        );
+        assert_eq!(
+            get(path.clone(), Some("application"), 42).map(|c| c.body),
+            Some("old body".to_string())
+        );
+        clear_cache();
+        assert!(get(path, Some("application"), 42).is_none());
     }
 }
