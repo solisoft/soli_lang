@@ -1332,9 +1332,68 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                 return Ok(Value::String(out.into()));
             }
 
+            // Fragment caching (scalar form): a "cache" option memoizes the
+            // rendered HTML in the KV cache. `"cache": "key"` uses an explicit
+            // key; `"cache": true` derives one from the data. `"cache_ttl"` sets
+            // the TTL. Best-effort — any cache error falls through to a normal
+            // render, and only side-effect-free renders are stored.
+            let cache_opt = opt_value(&data, "cache");
+            let cache_ttl = opt_int(&data, "cache_ttl").map(|n| n as u64);
+            // Strip the control keys so they neither leak into the component as
+            // locals nor perturb the auto cache key.
+            let data = if cache_opt.is_some() {
+                match &data {
+                    Value::Hash(h) => {
+                        let mut m: HashPairs = HashPairs::default();
+                        for (k, v) in h.borrow().iter() {
+                            let ctrl = matches!(k, HashKey::String(s)
+                                if s.as_ref() == "cache" || s.as_ref() == "cache_ttl");
+                            if !ctrl {
+                                m.insert(k.clone(), v.clone());
+                            }
+                        }
+                        Value::Hash(Rc::new(RefCell::new(m)))
+                    }
+                    other => other.clone(),
+                }
+            } else {
+                data
+            };
+            let cache_key = match &cache_opt {
+                None => None,
+                Some(Value::String(k)) => Some(format!("component:{}:{}", name, k)),
+                Some(_) => Some(format!(
+                    "component:{}:{}",
+                    name,
+                    crate::template::response_cache::data_signature(&data)
+                )),
+            };
+            if let Some(key) = &cache_key {
+                if let Ok(Value::String(html)) =
+                    crate::interpreter::builtins::cache::cache_get_impl(key)
+                {
+                    return Ok(Value::String(html));
+                }
+            }
+
             inject_template_helpers(&data);
             match cache.render_component(&name, &data) {
-                Ok(s) => Ok(Value::String(s.into())),
+                Ok(s) => {
+                    // Store only clean renders — a component that pulled clock/
+                    // random or set a cookie/session must not be memoized.
+                    if let Some(key) = &cache_key {
+                        if !crate::template::response_cache::is_data_dirty()
+                            && !crate::template::response_cache::is_response_dirty()
+                        {
+                            let _ = crate::interpreter::builtins::cache::cache_set_impl(
+                                key,
+                                &Value::String(s.clone().into()),
+                                cache_ttl,
+                            );
+                        }
+                    }
+                    Ok(Value::String(s.into()))
+                }
                 Err(e) => Err(format!("component('{}') failed: {}", name, e)),
             }
         })),
