@@ -16,6 +16,16 @@ use crate::template::parser::{Expr, TemplateNode};
 /// Type alias for partial renderer callbacks to reduce type complexity.
 pub type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
 
+/// How `<%= yield %>` resolves while walking template nodes. In a view /
+/// partial / component the default `yield` pulls `data["content"]` and a
+/// missing *named* yield is an error; in a layout the default `yield` splices
+/// the surrounding page `content` and a missing named yield renders empty.
+#[derive(Clone, Copy)]
+pub(crate) enum YieldMode<'a> {
+    View,
+    Layout { content: &'a str },
+}
+
 /// Render a template AST with the given data context.
 pub fn render_nodes(
     nodes: &[TemplateNode],
@@ -34,13 +44,14 @@ pub fn render_nodes_with_path(
 ) -> Result<String, String> {
     let mut interpreter = core_eval::create_template_interpreter(data);
     let mut output = String::with_capacity(2048);
-    render_inner(
+    render_walker(
         &mut interpreter,
         nodes,
         data,
         partial_renderer,
         template_path,
         &mut output,
+        YieldMode::View,
     )?;
     Ok(output)
 }
@@ -55,26 +66,28 @@ pub fn render_with_interpreter(
     template_path: Option<&str>,
 ) -> Result<String, String> {
     let mut output = String::with_capacity(4096);
-    render_inner(
+    render_walker(
         interpreter,
         nodes,
         data,
         partial_renderer,
         template_path,
         &mut output,
+        YieldMode::View,
     )?;
     Ok(output)
 }
 
 /// Internal render function that writes directly into the output buffer.
 /// Reuses a single interpreter and avoids intermediate String allocations.
-fn render_inner(
+pub(crate) fn render_walker(
     interpreter: &mut Interpreter,
     nodes: &[TemplateNode],
     data: &Value,
     partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
     output: &mut String,
+    yield_mode: YieldMode<'_>,
 ) -> Result<(), String> {
     for node in nodes {
         let node_line = match node {
@@ -116,22 +129,24 @@ fn render_inner(
                     // Auto-call methods so `<% if items.empty? %>` works without parens
                     let cond_value = auto_call_if_callable(interpreter, cond_value)?;
                     if is_truthy(&cond_value) {
-                        render_inner(
+                        render_walker(
                             interpreter,
                             body,
                             data,
                             partial_renderer,
                             template_path,
                             output,
+                            yield_mode,
                         )?;
                     } else if let Some(else_nodes) = else_body {
-                        render_inner(
+                        render_walker(
                             interpreter,
                             else_nodes,
                             data,
                             partial_renderer,
                             template_path,
                             output,
+                            yield_mode,
                         )?;
                     }
                 }
@@ -157,13 +172,14 @@ fn render_inner(
                                         Value::Int(i as i64),
                                     );
                                 }
-                                render_inner(
+                                render_walker(
                                     interpreter,
                                     body,
                                     data,
                                     partial_renderer,
                                     template_path,
                                     output,
+                                    yield_mode,
                                 )?;
                             }
                             core_eval::pop_scope(interpreter);
@@ -176,13 +192,14 @@ fn render_inner(
                                     v.clone(),
                                 ])));
                                 core_eval::define_var(interpreter, var, pair);
-                                render_inner(
+                                render_walker(
                                     interpreter,
                                     body,
                                     data,
                                     partial_renderer,
                                     template_path,
                                     output,
+                                    yield_mode,
                                 )?;
                             }
                             core_eval::pop_scope(interpreter);
@@ -196,35 +213,55 @@ fn render_inner(
                     }
                 }
                 TemplateNode::Yield(name) => {
-                    if let Some(n) = name {
-                        // Support named yields from content_for (e.g. for component named slots or layouts)
-                        if let Some(c) = crate::template::content_store::get(n) {
-                            output.push_str(&c);
-                            return Ok(());
-                        }
-                    } else {
-                        // Support default slot for components via "content" or yield
-                        if let Value::Hash(h) = data {
-                            if let Some(c) = h.borrow().get(&HashKey::String("content".into())) {
-                                write_value_to_output(c, false, output);
-                                return Ok(());
+                    match name {
+                        // Named yield: splice content captured by `content_for`
+                        // (component named slots / layouts). Missing → empty in a
+                        // layout, but an error in a view/component context.
+                        Some(n) => {
+                            if let Some(c) = crate::template::content_store::get(n) {
+                                output.push_str(&c);
+                            } else if matches!(yield_mode, YieldMode::View) {
+                                return Err(
+                                    "yield encountered outside of layout context".to_string()
+                                );
                             }
                         }
+                        // Default yield: the surrounding page content in a layout,
+                        // or the component/partial default slot (`data["content"]`)
+                        // in a view context.
+                        None => match yield_mode {
+                            YieldMode::Layout { content } => output.push_str(content),
+                            YieldMode::View => {
+                                let slot = match data {
+                                    Value::Hash(h) => {
+                                        h.borrow().get(&HashKey::String("content".into())).cloned()
+                                    }
+                                    _ => None,
+                                };
+                                match slot {
+                                    Some(c) => write_value_to_output(&c, false, output),
+                                    None => {
+                                        return Err("yield encountered outside of layout context"
+                                            .to_string())
+                                    }
+                                }
+                            }
+                        },
                     }
-                    return Err("yield encountered outside of layout context".to_string());
                 }
                 TemplateNode::ContentFor { name, body, .. } => {
                     // Capture into the content_for store, not the page output.
                     // Same recursion as the main body: locals/loop vars stay in
                     // scope and interpolations are escaped once, at capture time.
                     let mut captured = String::with_capacity(256);
-                    render_inner(
+                    render_walker(
                         interpreter,
                         body,
                         data,
                         partial_renderer,
                         template_path,
                         &mut captured,
+                        yield_mode,
                     )?;
                     crate::template::content_store::append(name, &captured);
                 }
@@ -245,13 +282,14 @@ fn render_inner(
                         .evaluate(&parts.open_expr)
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     write_value_to_output(&open_html, false, output);
-                    render_inner(
+                    render_walker(
                         interpreter,
                         body,
                         data,
                         partial_renderer,
                         template_path,
                         output,
+                        yield_mode,
                     )?;
                     let close_html = interpreter
                         .evaluate(&parts.close_expr)
@@ -276,13 +314,14 @@ fn render_inner(
 
                     // Render the block body into captured default slot content
                     let mut captured = String::new();
-                    render_inner(
+                    render_walker(
                         interpreter,
                         body,
                         data,
                         partial_renderer,
                         template_path,
                         &mut captured,
+                        yield_mode,
                     )?;
 
                     // Build props data + content for default slot

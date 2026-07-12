@@ -4,14 +4,10 @@
 //! Uses a single interpreter per render call for optimal performance.
 //! Writes directly into a shared output buffer (no intermediate String allocations).
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::{HashKey, HashPairs, Value};
-use crate::span::Span;
+use crate::interpreter::value::Value;
 use crate::template::core_eval;
-use crate::template::parser::{parse_template, Expr, TemplateNode};
+use crate::template::parser::{parse_template, TemplateNode};
 
 /// Type alias for partial renderer callback to reduce type complexity.
 type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
@@ -64,14 +60,14 @@ pub fn render_layout_nodes_with_path(
 ) -> Result<String, String> {
     let mut interpreter = core_eval::create_template_interpreter(data);
     let mut output = String::new();
-    render_layout_inner(
+    crate::template::renderer::render_walker(
         &mut interpreter,
         nodes,
-        content,
         data,
         partial_renderer,
         layout_path,
         &mut output,
+        crate::template::renderer::YieldMode::Layout { content },
     )?;
     Ok(output)
 }
@@ -88,419 +84,24 @@ pub fn render_layout_with_interpreter(
 ) -> Result<String, String> {
     // Pre-allocate: layout wraps content, so output ≈ content + layout overhead
     let mut output = String::with_capacity(content.len() + 2048);
-    render_layout_inner(
+    crate::template::renderer::render_walker(
         interpreter,
         nodes,
-        content,
         data,
         partial_renderer,
         layout_path,
         &mut output,
+        crate::template::renderer::YieldMode::Layout { content },
     )?;
     Ok(output)
-}
-
-/// Internal layout render function that writes directly into the output buffer.
-fn render_layout_inner(
-    interpreter: &mut Interpreter,
-    nodes: &[TemplateNode],
-    content: &str,
-    data: &Value,
-    partial_renderer: PartialRenderer<'_>,
-    layout_path: Option<&str>,
-    output: &mut String,
-) -> Result<(), String> {
-    for node in nodes {
-        let node_line = match node {
-            TemplateNode::Output { line, .. } => Some(*line),
-            TemplateNode::If { line, .. } => Some(*line),
-            TemplateNode::For { line, .. } => Some(*line),
-            TemplateNode::Partial { line, .. } => Some(*line),
-            TemplateNode::CodeBlock { line, .. } => Some(*line),
-            TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
-            TemplateNode::CoreOutput { line, .. } => Some(*line),
-            TemplateNode::ContentFor { line, .. } => Some(*line),
-            TemplateNode::FormWith { line, .. } => Some(*line),
-            TemplateNode::Component { line, .. } => Some(*line),
-            _ => None,
-        };
-
-        let result: Result<(), String> = (|| {
-            match node {
-                TemplateNode::Literal(s) => {
-                    output.push_str(s);
-                }
-                TemplateNode::Output {
-                    expr,
-                    escaped,
-                    line: _,
-                } => {
-                    let value = core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                    write_value_to_output(&value, *escaped, output);
-                }
-                TemplateNode::If {
-                    condition,
-                    body,
-                    else_body,
-                    line: _,
-                } => {
-                    let cond_value = interpreter
-                        .evaluate(condition)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
-                    let cond_value = auto_call_if_callable(interpreter, cond_value)?;
-                    if is_truthy(&cond_value) {
-                        render_layout_inner(
-                            interpreter,
-                            body,
-                            content,
-                            data,
-                            partial_renderer,
-                            layout_path,
-                            output,
-                        )?;
-                    } else if let Some(else_nodes) = else_body {
-                        render_layout_inner(
-                            interpreter,
-                            else_nodes,
-                            content,
-                            data,
-                            partial_renderer,
-                            layout_path,
-                            output,
-                        )?;
-                    }
-                }
-                TemplateNode::For {
-                    var,
-                    index_var,
-                    iterable,
-                    body,
-                    line: _,
-                } => {
-                    let iterable_value = interpreter
-                        .evaluate(iterable)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
-                    match &iterable_value {
-                        Value::Array(arr) => {
-                            core_eval::push_scope(interpreter);
-                            for (i, item) in arr.borrow().iter().enumerate() {
-                                core_eval::define_var(interpreter, var, item.clone());
-                                if let Some(idx_var) = index_var {
-                                    core_eval::define_var(
-                                        interpreter,
-                                        idx_var,
-                                        Value::Int(i as i64),
-                                    );
-                                }
-                                render_layout_inner(
-                                    interpreter,
-                                    body,
-                                    content,
-                                    data,
-                                    partial_renderer,
-                                    layout_path,
-                                    output,
-                                )?;
-                            }
-                            core_eval::pop_scope(interpreter);
-                        }
-                        Value::Hash(hash) => {
-                            core_eval::push_scope(interpreter);
-                            for (k, v) in hash.borrow().iter() {
-                                let pair = Value::Array(Rc::new(RefCell::new(vec![
-                                    k.to_value(),
-                                    v.clone(),
-                                ])));
-                                core_eval::define_var(interpreter, var, pair);
-                                render_layout_inner(
-                                    interpreter,
-                                    body,
-                                    content,
-                                    data,
-                                    partial_renderer,
-                                    layout_path,
-                                    output,
-                                )?;
-                            }
-                            core_eval::pop_scope(interpreter);
-                        }
-                        _ => {
-                            return Err(format!(
-                                "Cannot iterate over {}: expected Array or Hash",
-                                iterable_value.type_name()
-                            ));
-                        }
-                    }
-                }
-                TemplateNode::Yield(None) => {
-                    output.push_str(content);
-                }
-                TemplateNode::Yield(Some(name)) => {
-                    // Splice raw, exactly like the main content above: the
-                    // captured fragment is already-rendered template output
-                    // (interpolations were escaped at capture time). A name
-                    // nothing captured renders as empty, not an error.
-                    if let Some(html) = crate::template::content_store::get(name) {
-                        output.push_str(&html);
-                    }
-                }
-                TemplateNode::ContentFor { name, body, .. } => {
-                    // A layout can capture too (before a later yield in the
-                    // same layout). Same capture-to-store semantics as views.
-                    let mut captured = String::with_capacity(256);
-                    render_layout_inner(
-                        interpreter,
-                        body,
-                        content,
-                        data,
-                        partial_renderer,
-                        layout_path,
-                        &mut captured,
-                    )?;
-                    crate::template::content_store::append(name, &captured);
-                }
-                TemplateNode::FormWith {
-                    parts,
-                    body,
-                    line: _,
-                } => {
-                    // Same semantics as the view renderer: bind the builder
-                    // in a child scope and wrap the body in open()/close().
-                    core_eval::push_scope(interpreter);
-                    let builder = interpreter
-                        .evaluate(&parts.builder_expr)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
-                    core_eval::define_var(interpreter, &parts.var, builder);
-                    let open_html = interpreter
-                        .evaluate(&parts.open_expr)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
-                    write_value_to_output(&open_html, false, output);
-                    render_layout_inner(
-                        interpreter,
-                        body,
-                        content,
-                        data,
-                        partial_renderer,
-                        layout_path,
-                        output,
-                    )?;
-                    let close_html = interpreter
-                        .evaluate(&parts.close_expr)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
-                    write_value_to_output(&close_html, false, output);
-                    core_eval::pop_scope(interpreter);
-                }
-                TemplateNode::Component { parts, body, .. } => {
-                    let name_val = interpreter
-                        .evaluate(&parts.name)
-                        .map_err(|e| format!("Evaluation error in component name: {}", e))?;
-                    let comp_name = match &name_val {
-                        Value::String(s) => s.to_string(),
-                        other => {
-                            return Err(format!(
-                                "component name must evaluate to string, got {}",
-                                other.type_name()
-                            ))
-                        }
-                    };
-
-                    let mut captured = String::new();
-                    render_layout_inner(
-                        interpreter,
-                        body,
-                        content,
-                        data,
-                        partial_renderer,
-                        layout_path,
-                        &mut captured,
-                    )?;
-
-                    let mut comp_map: HashPairs = HashPairs::default();
-                    if let Some(props_expr) = &parts.props {
-                        if let Ok(Value::Hash(h)) = interpreter.evaluate(props_expr) {
-                            for (k, v) in h.borrow().iter() {
-                                comp_map.insert(k.clone(), v.clone());
-                            }
-                        }
-                    }
-                    comp_map.insert(
-                        HashKey::String("content".into()),
-                        Value::String(captured.into()),
-                    );
-                    let comp_data = Value::Hash(Rc::new(RefCell::new(comp_map)));
-
-                    // Resolve like the component() helper (see renderer.rs): a
-                    // `/`- or `.`-bearing name is verbatim; a bare name resolves
-                    // under components/.
-                    let comp_path = if comp_name.contains('/') || comp_name.contains('.') {
-                        comp_name.clone()
-                    } else {
-                        format!("components/{}", comp_name)
-                    };
-                    if let Some(r) = partial_renderer {
-                        output.push_str(&r(&comp_path, &comp_data)?);
-                    } else {
-                        return Err(format!(
-                            "Component rendering not available for '{}'",
-                            comp_name
-                        ));
-                    }
-                }
-                TemplateNode::Partial {
-                    name,
-                    context,
-                    line: _,
-                } => {
-                    if let Some(renderer) = partial_renderer {
-                        let partial_data = if let Some(ctx_expr) = context {
-                            match interpreter.evaluate(ctx_expr) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    let msg = e.to_string();
-                                    if msg.contains("Undefined variable") {
-                                        Value::Null
-                                    } else {
-                                        return Err(format!("Evaluation error: {}", msg));
-                                    }
-                                }
-                            }
-                        } else {
-                            data.clone()
-                        };
-                        output.push_str(&renderer(name, &partial_data)?);
-                    } else {
-                        return Err(format!("Partial rendering not available for '{}'", name));
-                    }
-                }
-                TemplateNode::CodeBlock { expr, line: _ } => match expr {
-                    Expr::Assign(name, value_expr) => {
-                        let value = core_eval::evaluate_with_interpreter(value_expr, interpreter)?;
-                        core_eval::define_var(interpreter, name, value);
-                    }
-                    _ => {
-                        core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                    }
-                },
-                TemplateNode::CoreCodeBlock { stmts, line: _ } => {
-                    for stmt in stmts {
-                        interpreter
-                            .execute(stmt)
-                            .map_err(|e| format!("Evaluation error: {}", e))?;
-                    }
-                }
-                TemplateNode::CoreOutput {
-                    expr,
-                    escaped,
-                    line: _,
-                } => {
-                    let value = match interpreter.evaluate(expr) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            let msg = e.to_string();
-                            if msg.contains("Undefined variable") {
-                                Value::Null
-                            } else {
-                                return Err(format!("Evaluation error: {}", msg));
-                            }
-                        }
-                    };
-                    // Auto-call methods/functions with no args (parentheses optional in templates)
-                    let value = auto_call_if_callable(interpreter, value)?;
-                    write_value_to_output(&value, *escaped, output);
-                }
-            }
-            Ok(())
-        })();
-
-        if let Err(e) = result {
-            if let Some(path) = layout_path {
-                if !e.contains(".html.slv")
-                    && !e.contains(".slv")
-                    && !e.contains(".html.erb")
-                    && !e.contains(".erb")
-                {
-                    if let Some(line) = node_line {
-                        return Err(format!("{} at {}:{}", e, path, line));
-                    }
-                    return Err(format!("{} in {}", e, path));
-                }
-            }
-            return Err(e);
-        }
-    }
-
-    Ok(())
-}
-
-/// Write a Value directly to the output buffer, applying HTML escaping if needed.
-/// Avoids intermediate String allocations for Int/Float/Bool (which can't contain HTML chars).
-#[inline]
-fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
-    use std::fmt::Write;
-    match value {
-        Value::String(s) => {
-            if escaped {
-                output.push_str(&crate::template::renderer::html_escape(s));
-            } else {
-                output.push_str(s);
-            }
-        }
-        Value::Int(n) => {
-            let _ = write!(output, "{}", n);
-        }
-        Value::Float(n) => {
-            let _ = write!(output, "{}", n);
-        }
-        Value::Bool(b) => {
-            let _ = write!(output, "{}", b);
-        }
-        Value::Null => {}
-        Value::Array(arr) => {
-            let arr = arr.borrow();
-            for (i, item) in arr.iter().enumerate() {
-                if i > 0 {
-                    output.push_str(", ");
-                }
-                write_value_to_output(item, escaped, output);
-            }
-        }
-        Value::Hash(_) => output.push_str("[Hash]"),
-        _ => {
-            let _ = write!(output, "{}", value);
-        }
-    }
-}
-
-/// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
-/// This allows templates to omit parentheses for no-arg method calls: `<%= now.to_iso %>`.
-#[inline]
-fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<Value, String> {
-    match &value {
-        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => interpreter
-            .call_value(value, vec![], Span::default())
-            .map_err(|e| format!("Evaluation error: {}", e)),
-        _ => Ok(value),
-    }
-}
-
-/// Check if a value is truthy
-#[inline]
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,
-        Value::Null => false,
-        Value::Int(0) => false,
-        Value::String(s) if s.is_empty() => false,
-        Value::Array(arr) if arr.borrow().is_empty() => false,
-        Value::Hash(hash) if hash.borrow().is_empty() => false,
-        _ => true,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interpreter::value::{HashKey, HashPairs};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let hash: HashPairs = pairs
@@ -591,5 +192,22 @@ mod tests {
         let layout = "<% content_for \"foot\" do %><footer></footer><% end %><%= yield \"foot\" %>";
         let result = render_with_layout(layout, "", &make_hash(vec![]), None).unwrap();
         assert_eq!(result, "<footer></footer>");
+    }
+
+    #[test]
+    fn layout_escapes_non_primitive_display_values() {
+        // Regression: a non-primitive `<%= %>` value (Instance/Class/DateTime)
+        // must be HTML-escaped in layout output, matching the view renderer.
+        // Before the walker was unified, layout wrote these raw — an XSS gap.
+        use crate::interpreter::value::{Class, Instance};
+        let class = Rc::new(Class {
+            name: "Widget".to_string(),
+            ..Default::default()
+        });
+        let widget = Value::Instance(Rc::new(RefCell::new(Instance::new(class))));
+        let layout = "<body><%= widget %></body>";
+        let data = make_hash(vec![("widget", widget)]);
+        let result = render_with_layout(layout, "", &data, None).unwrap();
+        assert_eq!(result, "<body>&lt;Widget instance&gt;</body>");
     }
 }
