@@ -1096,7 +1096,14 @@ fn view_sub_row(id: u32, depth: u32, name: &str, us: u64, total_us: u64, color: 
 /// The template is the natural fingerprint for an N+1: only the bind values
 /// differ between repeated calls, so the `query` field is identical across
 /// every iteration of the offending loop.
-fn detect_n_plus_one(queries: &[LoggedQuery], threshold: usize) -> Vec<(String, usize, u64)> {
+///
+/// Returned tuples are `(template, count, total_duration_us)`. Reused by the
+/// test runner (via the `x-soli-test-n1` header) so a spec's
+/// `assert_no_n_plus_one` uses the exact same detection as the dev-bar badge.
+pub(crate) fn detect_n_plus_one(
+    queries: &[LoggedQuery],
+    threshold: usize,
+) -> Vec<(String, usize, u64)> {
     use std::collections::HashMap;
     let mut groups: HashMap<&str, (usize, u64)> = HashMap::new();
     for q in queries {

@@ -6691,6 +6691,35 @@ fn handle_request(
                         .push(("x-soli-test-assigns-partial".to_string(), "1".to_string()));
                 }
             }
+            // Ship the AQL query count + any N+1 groups back to the test-runner
+            // process so `assert_query_count` / `assert_no_n_plus_one` can inspect
+            // them across the process boundary. The query log is a thread-local on
+            // this worker; snapshot it here (before we cross back to hyper) and
+            // reuse the dev bar's own detector so a spec sees exactly what the
+            // dev-bar badge would flag. The runner always runs the server with
+            // `--dev`, so the log is populated.
+            {
+                use crate::interpreter::builtins::model::query_log;
+                let queries = query_log::snapshot();
+                resp.headers.push((
+                    "x-soli-test-query-count".to_string(),
+                    queries.len().to_string(),
+                ));
+                let n1_groups = dev_bar::detect_n_plus_one(&queries, 2);
+                if !n1_groups.is_empty() {
+                    let arr: Vec<serde_json::Value> = n1_groups
+                        .iter()
+                        .map(|(template, count, _total_us)| {
+                            serde_json::json!({ "query": template, "count": count })
+                        })
+                        .collect();
+                    let b64 = base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        serde_json::Value::Array(arr).to_string().as_bytes(),
+                    );
+                    resp.headers.push(("x-soli-test-n1".to_string(), b64));
+                }
+            }
         }
         // Inject the dev bar into HTML responses when running --dev. The bar
         // is rendered here on the worker thread because the AQL query log is

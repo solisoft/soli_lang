@@ -457,6 +457,69 @@ assert_not(render_template());
 > keeps working) but its value is `null`. Assert on the keys, or render a
 > smaller slice, in that case.
 
+## Query Assertions (N+1 detection)
+
+Every response from `get()` / `post()` / `request()` carries how many AQL
+queries the request executed and which — if any — templates fired in a loop.
+The test server records this from the same query log that powers the dev bar's
+N+1 badge, so a spec catches the exact regressions you'd see in `--dev`.
+
+Two keys are exposed on the response hash:
+
+- `response["query_count"]` — the number of AQL queries the request ran.
+- `response["n_plus_one"]` — an array of `{"query": <template>, "count": <n>}`
+  for every query template that fired **2 or more times** (empty when clean).
+
+### assert_no_n_plus_one
+
+Fails the test if any query template repeated — the signature of a query issued
+inside a loop that should have been batched. Preload the association (or batch
+with `FILTER doc.field IN @ids`) and the assertion passes.
+
+```soli
+test("posts index does not N+1", fn() {
+  response = get("/posts");
+  assert_eq(res_status(response), 200);
+  assert_no_n_plus_one(response);
+});
+```
+
+When it fails, the message names each offending template and how many times it
+ran, so you can grep for it:
+
+```
+N+1 detected: 1 template(s) fired in a loop (batch with `FILTER doc.field IN @ids`):
+  25x  FOR doc IN authors FILTER doc._key == @key RETURN doc
+```
+
+### assert_query_count / assert_max_queries
+
+Assert an exact or upper-bound query count for an endpoint. `assert_query_count`
+pins the number precisely; `assert_max_queries` is friendlier for endpoints
+whose baseline can shift as the schema grows.
+
+```soli
+test("dashboard stays within its query budget", fn() {
+  response = get("/dashboard");
+  assert_query_count(response, 3);   # exactly three queries
+  assert_max_queries(response, 5);   # or: no more than five
+});
+```
+
+Both accept the response hash. `assert_query_count` also accepts a bare `Int`
+if you've already pulled the count out yourself.
+
+> **Detection threshold.** A template counts as N+1 at **2** repetitions —
+> matching the dev bar — because HABTM/`through` lookups start at two (one per
+> parent). If an endpoint legitimately issues a repeated query you don't want to
+> batch, use `assert_max_queries` to bound the total instead of
+> `assert_no_n_plus_one`.
+
+> **Instrumentation.** These keys are populated by the `--dev` test server that
+> `soli test` runs, so they're always present in request specs. Calling the
+> assertions on a value that isn't an instrumented response raises a clear
+> error rather than passing silently.
+
 ## Complete Examples
 
 ### Testing a CRUD Controller

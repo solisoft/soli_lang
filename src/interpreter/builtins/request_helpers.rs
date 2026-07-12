@@ -328,6 +328,12 @@ fn http_request(
     // reports false for this request.
     let mut test_view_path: Option<String> = None;
     let mut test_assigns_json: Option<String> = None;
+    // AQL query instrumentation (dev/test-runner server): surfaced on the
+    // response as `query_count` + `n_plus_one` for assert_query_count /
+    // assert_no_n_plus_one. Stripped from the header hash so they don't leak
+    // into res_headers().
+    let mut test_query_count: Option<i64> = None;
+    let mut test_n1: Option<Value> = None;
 
     let mut header_pairs: HashPairs = HashPairs::default();
     for (name, value) in response_headers {
@@ -347,6 +353,20 @@ fn http_request(
         if name.eq_ignore_ascii_case("x-soli-test-assigns-partial") {
             // Internal marker (locals were too large to ship in full); not
             // surfaced to user tests. Strip it.
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-soli-test-query-count") {
+            test_query_count = value.parse::<i64>().ok();
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-soli-test-n1") {
+            test_n1 = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                value.as_bytes(),
+            )
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|json| crate::interpreter::value::json_to_value(json).ok());
             continue;
         }
         header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
@@ -371,6 +391,18 @@ fn http_request(
         HashKey::String("method".into()),
         Value::String(method.to_string().into()),
     );
+    // Query instrumentation from a dev/test-runner server. `query_count` is
+    // always present when the server tagged the response; `n_plus_one` is an
+    // array of {query, count} for every AQL template that fired >= 2x in the
+    // request (empty when clean). assert_query_count / assert_no_n_plus_one
+    // read these keys.
+    if let Some(count) = test_query_count {
+        response_hash.insert(HashKey::String("query_count".into()), Value::Int(count));
+        response_hash.insert(
+            HashKey::String("n_plus_one".into()),
+            test_n1.unwrap_or_else(|| Value::Array(Rc::new(RefCell::new(Vec::new())))),
+        );
+    }
 
     Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
 }

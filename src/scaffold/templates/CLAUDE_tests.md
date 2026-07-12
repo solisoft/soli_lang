@@ -89,6 +89,27 @@ assert_match(string, regex)        # regex match
 assert_contains(arr_or_str, item)  # array/string containment
 assert_hash_has_key(hash, key)
 assert_json(string)                # parses as valid JSON
+
+# Request specs — assert on the queries the endpoint ran (see below)
+assert_no_n_plus_one(response)     # fails if an AQL template fired in a loop
+assert_query_count(response, n)    # exactly n queries
+assert_max_queries(response, n)    # at most n queries
+```
+
+### Guarding against N+1 in request specs
+
+Every `get`/`post`/… response carries `response["query_count"]` and
+`response["n_plus_one"]` (recorded by the `--dev` test server, same detection
+as the dev bar's N+1 badge). Assert on them to keep a list/index endpoint from
+regressing into a query-per-row loop:
+
+```soli
+test("posts index does not N+1", fn() {
+    let response = get("/posts")
+    assert_eq(res_status(response), 200)
+    assert_no_n_plus_one(response)     # preload with includes(...) if this trips
+    assert_max_queries(response, 3)    # or pin a budget
+})
 ```
 
 ### `expect(...)` DSL

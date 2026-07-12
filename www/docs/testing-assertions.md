@@ -71,6 +71,31 @@ assert_not_nil(response.body, "response should have body");
 
 **Returns:** `{passed: boolean, message: string, expected: "not nil", actual: Any}`
 
+### assert_no_n_plus_one(response)
+
+Asserts the request that produced `response` did not trigger an N+1 query
+pattern (the same AQL template firing 2+ times in a loop). Uses the same
+detection as the dev bar's N+1 badge. Pass the response from `get()` / `post()`.
+
+```soli
+response = get("/posts");
+assert_no_n_plus_one(response);
+```
+
+### assert_query_count(response, n) / assert_max_queries(response, n)
+
+Assert the request ran exactly `n` (or at most `n`) AQL queries — a query
+budget for the endpoint.
+
+```soli
+response = get("/dashboard");
+assert_query_count(response, 3);   # exactly three
+assert_max_queries(response, 5);   # at most five
+```
+
+See [E2E Controller Testing → Query Assertions](testing-e2e.md#query-assertions-n1-detection)
+for details.
+
 ## Expect API
 
 Soli provides a chainable `expect()` API for more expressive assertions:

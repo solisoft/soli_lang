@@ -20,7 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400">Nothing yet — changes land here between releases.</p>
+
+        <!-- Testing -->
+        <h3 id="u2-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">N+1 &amp; query-budget assertions</strong> &mdash; request specs can now fail on database regressions. <code class="text-cyan-400">assert_no_n_plus_one(response)</code> fails when the same AQL template fired 2+ times in a loop (the same detection behind the dev bar's N+1 badge); <code class="text-cyan-400">assert_query_count(response, n)</code> and <code class="text-cyan-400">assert_max_queries(response, n)</code> hold an endpoint to a query budget. Every response also exposes <code class="text-cyan-400">response["query_count"]</code> and <code class="text-cyan-400">response["n_plus_one"]</code> for custom checks.</li>
+            </ul>
+        </div>
     </section>
 
     <section id="v1-18-0" class="mb-16 scroll-mt-24">

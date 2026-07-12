@@ -632,6 +632,38 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                 </section>
             </div>
             <p class="text-gray-500 text-xs mt-4">Very large locals (&approx;48&nbsp;KB+) degrade to a keys-only <code>assigns()</code>: keys present, values <code>null</code>.</p>
+
+            <h3 class="text-lg font-semibold text-white mb-3 mt-8">Query Assertions (E2E)</h3>
+            <p class="text-gray-400 text-sm mb-4">Every response records the AQL queries the request ran (from the same log behind the dev bar's N+1 badge). Assert against it to catch a query issued in a loop, or to hold an endpoint to a query budget. See the <a href="/docs/core-concepts/testing" class="text-amber-400 hover:text-amber-300">testing guide</a>.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-assert-no-n-plus-one" class="scroll-mt-20">
+                    <a href="#def-assert-no-n-plus-one" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_no_n_plus_one(res)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Fails if any AQL template fired 2+ times (a loop that should be batched)</p>
+                </section>
+
+                <section id="def-assert-query-count" class="scroll-mt-20">
+                    <a href="#def-assert-query-count" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_query_count(res, n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts the request ran exactly <code>n</code> queries</p>
+                </section>
+
+                <section id="def-assert-max-queries" class="scroll-mt-20">
+                    <a href="#def-assert-max-queries" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_max_queries(res, n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts the request ran at most <code>n</code> queries</p>
+                </section>
+
+                <section id="def-query-count-key" class="scroll-mt-20">
+                    <a href="#def-query-count-key" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">res["query_count"] / res["n_plus_one"]</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Raw count and <code>{query, count}</code> groups behind the assertions</p>
+                </section>
+            </div>
         </div>
     </section>
 

@@ -527,6 +527,46 @@ assert_eq(res_status(response), 200)</code></pre>
             </p>
         </div>
 
+        <h2 class="text-2xl font-bold text-white mb-6">Query Assertions (N+1 detection)</h2>
+        <p class="text-gray-400 mb-4">Every response carries the AQL queries the request executed &mdash; recorded from the same query log that powers the dev bar's N+1 badge. Assert against it to catch a loop that should have been batched, or to hold an endpoint to a query budget.</p>
+
+        <div class="grid-cols-1 md:grid-cols-2 gap-4 mb-6" style="display: grid;">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">assert_no_n_plus_one(res)</code>
+                <p class="text-sm text-gray-400 mt-1">Fails if any AQL template fired 2+ times (a loop that should be batched)</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">assert_query_count(res, n)</code>
+                <p class="text-sm text-gray-400 mt-1">Asserts the request ran exactly <code>n</code> queries</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">assert_max_queries(res, n)</code>
+                <p class="text-sm text-gray-400 mt-1">Asserts the request ran at most <code>n</code> queries</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res["query_count"]</code> / <code class="text-emerald-300 font-bold">res["n_plus_one"]</code>
+                <p class="text-sm text-gray-400 mt-1">Raw count and the <code>{query, count}</code> groups behind the assertions</p>
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">test("posts index does not N+1", fn() {
+  response = get("/posts")
+  assert_eq(res_status(response), 200)
+  assert_no_n_plus_one(response)      # fails if the view loops a per-row query
+  assert_max_queries(response, 3)     # hold the endpoint to a query budget
+})</code></pre>
+            </div>
+        </div>
+
+        <div class="mb-12 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+            <p class="text-yellow-300 text-sm">
+                <strong>Threshold.</strong> A template counts as N+1 at <strong>2</strong> repetitions, matching the dev bar &mdash; HABTM/<code>through</code> lookups start at two. If an endpoint legitimately repeats a query, bound it with <code>assert_max_queries</code> instead of <code>assert_no_n_plus_one</code>. These keys are populated by the <code>--dev</code> test server <code>soli test</code> runs, so they're always present in request specs.
+            </p>
+        </div>
+
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
@@ -670,6 +710,30 @@ assert_equal("hello", str, "string should match")</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a value is not nil.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id");</code></pre>
+            </div>
+        </section>
+
+        <section id="def-assert-no-n-plus-one" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-no-n-plus-one" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_no_n_plus_one(response)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts the request that produced <code>response</code> triggered no N+1 query (the same AQL template firing 2+ times). Same detection as the dev bar's badge.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">response = get("/posts")
+assert_no_n_plus_one(response)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-assert-query-count" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-query-count" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_query_count(response, n)</code> /
+                    <code class="font-mono text-amber-400">assert_max_queries(response, n)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts the request ran exactly (or at most) <code>n</code> AQL queries &mdash; a query budget for the endpoint.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">response = get("/dashboard")
+assert_query_count(response, 3)   # exactly three
+assert_max_queries(response, 5)   # at most five</code></pre>
             </div>
         </section>
 
