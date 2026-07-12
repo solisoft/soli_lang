@@ -1997,6 +1997,77 @@ impl Model {
             })),
         );
 
+        // Model.live_where(filter) — reactive live query. Behaves exactly like
+        // `where(filter).all()` (runs the query, returns the instances array),
+        // but ALSO subscribes the currently-rendering LiveView to the queried
+        // collection, so a later write to it re-renders the view. Outside a
+        // LiveView render the subscribe is a no-op, so `live_where` is a safe
+        // drop-in for `.all()` anywhere. See `crate::live::live_query`.
+        native_static_methods.insert(
+            "live_where".to_string(),
+            Rc::new(NativeFunction::new("Model.live_where", Some(3), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let (filter, bind_vars): (String, StdHashMap<String, serde_json::Value>) =
+                    match args.get(1) {
+                        Some(Value::Hash(hash)) => {
+                            if args.get(2).is_some() {
+                                return Err("Model.live_where(Hash) takes a single argument; \
+                                    the bind-vars hash is only valid with the string filter form"
+                                    .to_string());
+                            }
+                            build_safe_filter_from_hash(hash, "live_where")?
+                        }
+                        Some(Value::String(s)) => {
+                            let filter = s.clone();
+                            let binds = match args.get(2) {
+                                Some(Value::Hash(hash)) => {
+                                    let mut map = StdHashMap::new();
+                                    for (k, v) in hash.borrow().iter() {
+                                        if let HashKey::String(key) = k {
+                                            map.insert(
+                                                key.to_string(),
+                                                ensure_string_form_bind_value(v, key, "live_where")?,
+                                            );
+                                        }
+                                    }
+                                    map
+                                }
+                                Some(other) => {
+                                    return Err(format!(
+                                        "Model.live_where() expects hash for bind variables, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                                None => StdHashMap::new(),
+                            };
+                            (filter.to_string(), binds)
+                        }
+                        Some(other) => {
+                            return Err(format!(
+                                "Model.live_where() expects a Hash filter or a string filter expression, got {}",
+                                other.type_name()
+                            ))
+                        }
+                        None => {
+                            return Err("Model.live_where() requires a filter argument".to_string())
+                        }
+                    };
+
+                // Record the subscription before `collection` is moved into the
+                // builder (no-op when not inside a LiveView render).
+                crate::live::live_query::subscribe(&collection);
+
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
+                qb.set_filter(filter, bind_vars);
+
+                // One-shot: run the query and return the instances, like `.all()`.
+                Ok(super::query::execute_query_builder(&qb))
+            })),
+        );
+
         // Model.mock_query_result(query, results_array) - Register mock DB response for testing
         use super::crud::register_query_mock;
         native_static_methods.insert(

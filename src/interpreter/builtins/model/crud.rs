@@ -119,11 +119,25 @@ pub struct TransactionState {
     pub tx_id: String,
     pub database: String,
     pub host: String,
+    /// Collections written during this transaction. Uncommitted rows aren't
+    /// visible to readers, so live-query wakes are deferred to commit time and
+    /// fired once per collection here (dropped on rollback).
+    pub affected: std::collections::HashSet<String>,
 }
 
 /// Get the current transaction ID if one is active.
 pub fn get_current_tx_id() -> Option<String> {
     CURRENT_TX.with(|tx| tx.borrow().as_ref().map(|t| t.tx_id.clone()))
+}
+
+/// Record that `collection` was written inside the active transaction, so
+/// `commit_transaction` can wake its live queries after the rows commit.
+fn record_tx_write(collection: &str) {
+    CURRENT_TX.with(|tx| {
+        if let Some(t) = tx.borrow_mut().as_mut() {
+            t.affected.insert(collection.to_string());
+        }
+    });
 }
 
 /// True when a transaction is open on this thread.
@@ -192,6 +206,7 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
                 tx_id: tx_id.clone(),
                 database: database.clone(),
                 host: host.clone(),
+                affected: std::collections::HashSet::new(),
             });
         });
 
@@ -210,7 +225,11 @@ pub fn commit_transaction() -> Result<(), String> {
         database, tx_id
     ));
 
-    run_db_future(async move {
+    // Commit, then hand the tx's affected-collection set back out of the async
+    // block so live-query wakes fire on synchronous ground (no notify inside
+    // the tokio future). On any error the tx state is left for the block-form
+    // runner's defensive `clear_current_tx`.
+    let affected: Vec<String> = run_db_future(async move {
         let client = get_http_client().clone();
         let response = send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
             .await
@@ -223,11 +242,20 @@ pub fn commit_transaction() -> Result<(), String> {
             return Err(format!("Commit transaction failed: {} - {}", status, body));
         }
 
-        CURRENT_TX.with(|tx| {
-            tx.borrow_mut().take();
+        let affected = CURRENT_TX.with(|tx| {
+            tx.borrow_mut()
+                .take()
+                .map(|t| t.affected.into_iter().collect::<Vec<_>>())
+                .unwrap_or_default()
         });
-        Ok(())
-    })
+        Ok(affected)
+    })?;
+
+    // Rows are now visible: wake any LiveView subscribed to a written collection.
+    for collection in affected {
+        crate::live::live_query::notify_change(&collection);
+    }
+    Ok(())
 }
 
 /// Rollback the current transaction.
@@ -1089,11 +1117,18 @@ pub fn exec_insert(
     let url = document_base_url(collection);
     let result = exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone()));
 
-    if let Err(ref e) = result {
-        if is_missing_collection_or_database_error(e) {
+    let result = match &result {
+        Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            return exec_document_request(reqwest::Method::POST, url, Some(document));
+            exec_document_request(reqwest::Method::POST, url, Some(document))
         }
+        _ => result,
+    };
+    // Wake any LiveView with a matching live query (no-op when none; only
+    // reached on the non-transaction path — the tx short-circuit above returns
+    // first, and `commit_transaction` fires notify for committed rows instead).
+    if result.is_ok() {
+        crate::live::live_query::notify_change(collection);
     }
     result
 }
@@ -1139,11 +1174,15 @@ pub fn exec_update(
     );
     let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
-    if let Err(ref e) = result {
-        if is_missing_collection_or_database_error(e) {
+    let result = match &result {
+        Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            return exec_document_request(reqwest::Method::PUT, url, Some(document));
+            exec_document_request(reqwest::Method::PUT, url, Some(document))
         }
+        _ => result,
+    };
+    if result.is_ok() {
+        crate::live::live_query::notify_change(collection);
     }
     result
 }
@@ -1235,11 +1274,15 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
     );
     let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 
-    if let Err(ref e) = result {
-        if is_missing_collection_or_database_error(e) {
+    let result = match &result {
+        Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            return exec_document_request(reqwest::Method::DELETE, url, None);
+            exec_document_request(reqwest::Method::DELETE, url, None)
         }
+        _ => result,
+    };
+    if result.is_ok() {
+        crate::live::live_query::notify_change(collection);
     }
     result
 }
@@ -1269,7 +1312,11 @@ pub fn exec_insert_tx(
             "/_api/database/{}/transaction/{}/document/{}",
             database, tx_id, collection
         ));
-        exec_document_request(reqwest::Method::POST, url, Some(document))
+        let result = exec_document_request(reqwest::Method::POST, url, Some(document));
+        if result.is_ok() {
+            record_tx_write(collection);
+        }
+        result
     } else {
         exec_insert(collection, key, document)
     }
@@ -1311,7 +1358,11 @@ pub fn exec_update_tx(
             collection,
             encode_key_for_url(key)
         ));
-        exec_document_request(reqwest::Method::PUT, url, Some(document))
+        let result = exec_document_request(reqwest::Method::PUT, url, Some(document));
+        if result.is_ok() {
+            record_tx_write(collection);
+        }
+        result
     } else {
         exec_update(collection, key, document, false)
     }
@@ -1330,7 +1381,11 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
             collection,
             encode_key_for_url(key)
         ));
-        exec_document_request(reqwest::Method::DELETE, url, None)
+        let result = exec_document_request(reqwest::Method::DELETE, url, None);
+        if result.is_ok() {
+            record_tx_write(collection);
+        }
+        result
     } else {
         exec_delete(collection, key)
     }

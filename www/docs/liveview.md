@@ -200,6 +200,30 @@ If you return the bare form on a tick, the timer keeps running at its previous i
 
 If a tick fires while the previous handler call is still running, the tick is dropped (rather than queued) so a slow handler doesn't snowball. Ticks stop automatically when the WebSocket closes.
 
+## Reactive live queries
+
+A tick polls on a timer; a **live query** pushes only when the data actually changes. Call `Model.live_where(filter)` inside a LiveView handler instead of `where(filter).all()`: it runs the same query **and** subscribes this LiveView to the collection. When any request later writes to that collection, the framework re-runs the handler and pushes a patch — no polling, no manual pub/sub.
+
+```soli
+# app/controllers/live_controller.sl
+def posts_board(event_data: Any) -> Any {
+  # Re-queries on connect and on every live_query_changed wake. Because the
+  # render is diffed server-side, an unrelated write produces an empty diff
+  # and no frame reaches the client.
+  { "posts": Post.live_where({ "published": true }) }
+}
+```
+
+Nothing else is required: writing a `Post` from an ordinary controller (`Post.create(...)`, `post.save()`, `post.destroy()`) wakes every board viewing it. `live_where` returns the same instances as `where(...).all()`, so a template that iterated the old result needs no changes.
+
+Outside a LiveView render `live_where` is exactly `where(...).all()` — the subscription is a no-op — so it's a safe drop-in.
+
+**v1 semantics:**
+
+- **Per-collection, not per-row.** Any write to `posts` wakes every `posts` subscriber; the server-side diff gate makes an over-broad wake harmless (no visible change → empty diff → no push). Matching the changed row against each subscriber's `filter` before waking is a planned refinement.
+- **Single-process.** Subscriptions live in server memory, like LiveView instances themselves. A write in one process doesn't wake subscribers in another — multi-process deployments need an external bus. (See [Current limitations](#current-limitations).)
+- **Transaction-aware.** Writes inside a `transaction { }` block wake subscribers on **commit**, not per statement, so viewers never see uncommitted rows; a rolled-back transaction wakes no one.
+
 ## Current limitations
 
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:

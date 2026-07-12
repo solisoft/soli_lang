@@ -115,6 +115,9 @@ impl LiveRegistry {
     pub fn unregister(&self, id: &str) {
         let mut views = self.views.lock().unwrap();
         views.remove(id);
+        // Drop any live-query subscriptions this LiveView held, so a write to
+        // the collection can't keep waking a disconnected view.
+        crate::live::live_query::unsubscribe_all(id);
     }
 
     pub fn get(&self, id: &str) -> Option<LiveViewInstance> {
@@ -132,6 +135,7 @@ impl LiveRegistry {
 
         for id in expired {
             views.remove(&id);
+            crate::live::live_query::unsubscribe_all(&id);
         }
     }
 

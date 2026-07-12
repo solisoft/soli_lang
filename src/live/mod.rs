@@ -4,6 +4,7 @@
 
 pub mod component;
 pub mod diff;
+pub mod live_query;
 pub mod parser;
 pub mod socket;
 pub mod view;

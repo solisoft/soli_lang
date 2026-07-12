@@ -4460,6 +4460,12 @@ fn handle_liveview_event(
                 }
             };
 
+        // Mark this LiveView as the one rendering, so any `Model.live_where`
+        // the handler runs subscribes it to the queried collection. The guard
+        // clears the thread-local when the handler call returns.
+        let _lv_query_guard =
+            crate::live::live_query::set_current(instance.id.clone(), component.clone());
+
         // Call the handler function
         match interpreter.call_value(handler, vec![event_value], Span::default()) {
             Ok(result) => {
@@ -4606,6 +4612,30 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
 
     crate::live::socket::set_tick_task(&instance.id, join.abort_handle());
     instance.tick_interval_ms = Some(requested);
+}
+
+/// Wake a set of LiveViews after a DB write matched their live query. Enqueues
+/// one synthetic `live_query_changed` event per subscriber onto the LiveView
+/// event bus (mirroring `apply_tick_interval`'s throwaway `oneshot`); the worker
+/// re-runs each handler and `render_and_send_patch` drops the frame if the diff
+/// is empty. Called from `crate::live::live_query::notify_change`. No-op before
+/// the bus is initialized (e.g. non-server processes) or when realtime is off.
+pub(crate) fn enqueue_live_query_changed(subscribers: Vec<(String, String)>) {
+    let Some(tx) = LV_EVENT_TX.get() else {
+        return;
+    };
+    for (liveview_id, component) in subscribers {
+        let (response_tx, _response_rx) = oneshot::channel();
+        // try_send: a backed-up worker drops this wake rather than block the
+        // write path; the next write catches up.
+        let _ = tx.try_send(LiveViewEventData {
+            liveview_id,
+            component,
+            event: "live_query_changed".to_string(),
+            params: serde_json::json!({}),
+            response_tx,
+        });
+    }
 }
 
 /// Fallback handler for LiveView events (for backwards compatibility)
