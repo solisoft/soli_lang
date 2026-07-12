@@ -224,6 +224,50 @@ Outside a LiveView render `live_where` is exactly `where(...).all()` — the sub
 - **Single-process.** Subscriptions live in server memory, like LiveView instances themselves. A write in one process doesn't wake subscribers in another — multi-process deployments need an external bus. (See [Current limitations](#current-limitations).)
 - **Transaction-aware.** Writes inside a `transaction { }` block wake subscribers on **commit**, not per statement, so viewers never see uncommitted rows; a rolled-back transaction wakes no one.
 
+## Streams
+
+A full re-render diffs the whole component; for an **append-only or large list** (a chat log, an activity feed, a leaderboard) that's wasteful — every new row re-diffs every old one. A **stream** instead sends targeted DOM ops (`append` / `prepend` / `insert` / `remove` / `reset`) that the client applies directly to a container, without re-rendering the list.
+
+Render the container **empty** (its items live outside the diff, so patches never fight the streamed nodes), give it a stable `id`, and return a `stream` sub-hash from the handler:
+
+```erb
+<!-- app/views/live/feed.html.slv -->
+<div data-liveview-id="<%= id %>">
+  <ul id="messages"></ul>   <!-- streamed into; stays empty in the render -->
+</div>
+```
+
+```soli
+# app/controllers/live_controller.sl
+def feed(event_data) {
+  if event_data["event"] == "new_message" {
+    msg = event_data["params"]
+    # Append one row — no re-render of the existing list.
+    return {
+      "stream": {
+        "container": "messages",
+        "ops": [
+          { "op": "append", "id": "msg-#{msg["id"]}", "html": "<li id=\"msg-#{msg["id"]}\">#{h(msg["text"])}</li>" }
+        ]
+      }
+    }
+  }
+  { "count": 0 }   # connect: initial state
+}
+```
+
+The returned hash may carry `state` **and** `stream` together (update some state *and* stream rows), or `stream` alone (state untouched). Op reference:
+
+| Op | Fields | Effect |
+|----|--------|--------|
+| `append` | `id`, `html` | Add as the container's last child (re-adding an existing `id` moves it) |
+| `prepend` | `id`, `html` | Add as the first child |
+| `insert` | `id`, `html`, `before?` | Insert before the child `before` (append if omitted/missing) |
+| `remove` | `id` | Remove the element with that id |
+| `reset` | — | Clear the container |
+
+`container` is hoisted on the `stream` hash and applies to every op (an op may override it with its own `container`). Rows should carry a stable `id` so re-adds de-dupe and `remove` can find them. Because streamed nodes are outside the diff shadow, a reconnect re-mounts from the initial (empty) render — re-drive the stream on `connect` if the list must survive a reconnect.
+
 ## Current limitations
 
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:

@@ -400,6 +400,24 @@ def posts_board(event_data: Any) -&gt; Any {
         </ul>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Streams</h2>
+    <p class="text-gray-400 mb-6">A full re-render diffs the whole component; for an append-only or large list (a chat log, feed, leaderboard) that re-diffs every old row on each new one. A <strong class="text-white">stream</strong> instead sends targeted DOM ops that the client applies directly to a container &mdash; no list re-render. Render the container <strong class="text-white">empty</strong> (its items stay out of the diff, so patches never fight the streamed nodes), give it a stable <code class="text-cyan-400">id</code>, and return a <code class="text-cyan-400">stream</code> sub-hash from the handler:</p>
+    <pre data-filename="app/controllers/live_controller.sl"><code class="language-soli text-sm">def feed(event_data) {
+  if event_data["event"] == "new_message" {
+    msg = event_data["params"]
+    return {
+      "stream": {
+        "container": "messages",
+        "ops": [
+          { "op": "append", "id": "msg-#{msg["id"]}", "html": "&lt;li id=\"msg-#{msg["id"]}\"&gt;#{h(msg["text"])}&lt;/li&gt;" }
+        ]
+      }
+    }
+  }
+  { "count": 0 }   # connect: initial state
+}</code></pre>
+    <p class="text-gray-400 my-6">The returned hash may carry <code class="text-cyan-400">state</code> <strong class="text-white">and</strong> <code class="text-cyan-400">stream</code> together, or <code class="text-cyan-400">stream</code> alone (state untouched). Ops: <code class="text-cyan-400">append</code>/<code class="text-cyan-400">prepend</code> (<code>id</code>, <code>html</code>), <code class="text-cyan-400">insert</code> (<code>id</code>, <code>html</code>, <code>before?</code>), <code class="text-cyan-400">remove</code> (<code>id</code>), <code class="text-cyan-400">reset</code>. <code class="text-cyan-400">container</code> is hoisted on the <code class="text-cyan-400">stream</code> hash and applies to every op. Rows should carry a stable <code>id</code> so re-adds de-dupe and <code>remove</code> can find them. Streamed nodes live outside the diff shadow, so a reconnect re-mounts from the empty render &mdash; re-drive the stream on <code class="text-cyan-400">connect</code> if the list must survive one.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Performance</h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">

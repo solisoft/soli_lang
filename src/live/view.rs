@@ -15,11 +15,60 @@ pub type LiveViewId = String;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
-    Render { html: String, liveview_id: String },
-    Patch { liveview_id: String, diff: String },
-    Redirect { url: String },
-    Error { message: String },
+    Render {
+        html: String,
+        liveview_id: String,
+    },
+    Patch {
+        liveview_id: String,
+        diff: String,
+    },
+    /// Targeted collection updates (append/prepend/insert/remove/reset) applied
+    /// directly to a container by id — no full-list re-render or diff. The
+    /// container's items stay out of the diff shadow so patches don't fight the
+    /// streamed DOM (Phoenix LiveView streams / Turbo Streams model).
+    Stream {
+        liveview_id: String,
+        ops: Vec<StreamOp>,
+    },
+    Redirect {
+        url: String,
+    },
+    Error {
+        message: String,
+    },
     HeartbeatAck,
+}
+
+/// One stream mutation targeting a container (`container`) and, for inserts, a
+/// keyed child (`id`). `html` is the rendered item markup for add ops.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum StreamOp {
+    /// Append `html` as the container's last child (or move it there if `id` exists).
+    Append {
+        container: String,
+        id: String,
+        html: String,
+    },
+    /// Prepend `html` as the container's first child.
+    Prepend {
+        container: String,
+        id: String,
+        html: String,
+    },
+    /// Insert `html` before the child with id `before` (append if `before` is absent/missing).
+    Insert {
+        container: String,
+        id: String,
+        html: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+    },
+    /// Remove the element with id `id`.
+    Remove { id: String },
+    /// Clear all children of the container.
+    Reset { container: String },
 }
 
 /// A single LiveView instance.
@@ -158,3 +207,39 @@ impl LiveRegistry {
 /// Global LiveView registry.
 pub static LIVE_REGISTRY: std::sync::LazyLock<LiveRegistry> =
     std::sync::LazyLock::new(LiveRegistry::new);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_message_serializes_to_client_wire_shape() {
+        // The client matches `msg.type` (lowercased) and each op's `op` tag —
+        // lock that contract so a rename can't silently break the JS.
+        let msg = ServerMessage::Stream {
+            liveview_id: "sess:board".to_string(),
+            ops: vec![
+                StreamOp::Append {
+                    container: "posts".to_string(),
+                    id: "post-7".to_string(),
+                    html: "<li>hi</li>".to_string(),
+                },
+                StreamOp::Remove {
+                    id: "post-1".to_string(),
+                },
+            ],
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "Stream");
+        assert_eq!(json["liveview_id"], "sess:board");
+        assert_eq!(json["ops"][0]["op"], "append");
+        assert_eq!(json["ops"][0]["container"], "posts");
+        assert_eq!(json["ops"][0]["id"], "post-7");
+        assert_eq!(json["ops"][0]["html"], "<li>hi</li>");
+        assert_eq!(json["ops"][1]["op"], "remove");
+        assert_eq!(json["ops"][1]["id"], "post-1");
+        // Remove carries no container/html.
+        assert!(json["ops"][1].get("container").is_none());
+    }
+}

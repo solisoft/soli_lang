@@ -4471,32 +4471,53 @@ fn handle_liveview_event(
             Ok(result) => {
                 // The handler may return either of two shapes:
                 //   1. `{ ...state }`        — used directly as the new state
-                //   2. `{ "state": {...},
-                //        "tick_interval": N }` — wrapped form; `state` is the
-                //      new state, `tick_interval` (ms) controls the tick timer
+                //   2. `{ "state": {...}, "tick_interval": N, "stream": {...} }`
+                //      — wrapped form; `state` (optional) is the new state,
+                //      `tick_interval` (ms) controls the tick timer, and `stream`
+                //      carries targeted container ops pushed as a Stream message.
                 match &result {
                     Value::Null => {
                         return handle_liveview_event_fallback(data, &mut instance);
                     }
                     Value::Hash(_) => {
                         let json = value_to_json(&result);
-                        let (new_state_json, tick_interval) = unwrap_handler_return(json);
+                        let (new_state_json, tick_interval, stream) = unwrap_handler_return(json);
 
-                        // Preserve the id across state replacement
-                        let mut state = new_state_json;
-                        if let (
-                            serde_json::Value::Object(old),
-                            serde_json::Value::Object(new_obj),
-                        ) = (&instance.state, &mut state)
-                        {
-                            if let Some(id) = old.get("id") {
-                                new_obj.insert("id".to_string(), id.clone());
+                        // Replace state only when the handler supplied one (a
+                        // stream-only emission leaves the current state intact).
+                        if let Some(mut state) = new_state_json {
+                            // Preserve the id across state replacement
+                            if let (
+                                serde_json::Value::Object(old),
+                                serde_json::Value::Object(new_obj),
+                            ) = (&instance.state, &mut state)
+                            {
+                                if let Some(id) = old.get("id") {
+                                    new_obj.insert("id".to_string(), id.clone());
+                                }
                             }
+                            instance.state = state;
                         }
-                        instance.state = state;
 
                         // Apply tick scheduling change (if any)
                         apply_tick_interval(&mut instance, tick_interval);
+
+                        // Push targeted collection ops straight to the client
+                        // (append/prepend/remove/…). Streamed rows live outside
+                        // the diff shadow, so this never fights render patches.
+                        if let Some(stream_val) = stream {
+                            let ops = build_stream_ops(&stream_val);
+                            if !ops.is_empty() {
+                                use crate::live::view::LIVE_REGISTRY;
+                                let _ = LIVE_REGISTRY.send(
+                                    &instance.id,
+                                    crate::live::view::ServerMessage::Stream {
+                                        liveview_id: instance.id.clone(),
+                                        ops,
+                                    },
+                                );
+                            }
+                        }
                     }
                     _ => {
                         // Unexpected return type, fall back
@@ -4526,31 +4547,112 @@ fn handle_liveview_event(
     render_and_send_patch(&component, &mut instance)
 }
 
-/// Unwrap the handler return value. If it has the wrapped form
-/// `{ "state": {...}, "tick_interval": N }`, returns the inner state object
-/// and the tick interval. Otherwise returns the value as-is and no interval.
+/// Unwrap the handler return value. The wrapped form
+/// `{ "state": {...}, "tick_interval": N, "stream": {...} }` yields the inner
+/// state (or `None` to keep the current state, for a stream-only emission), the
+/// tick interval, and the raw stream sub-hash. The bare form (no `state` object
+/// and no `stream` key) is the new state itself.
 ///
 /// `tick_interval` interpretation:
 ///   * key absent → `None`     (don't touch the running timer)
 ///   * value 0    → `Some(0)`  (stop the timer)
 ///   * value > 0  → `Some(ms)` (start or replace the timer)
-fn unwrap_handler_return(json: serde_json::Value) -> (serde_json::Value, Option<u64>) {
+#[allow(clippy::type_complexity)]
+fn unwrap_handler_return(
+    json: serde_json::Value,
+) -> (
+    Option<serde_json::Value>,
+    Option<u64>,
+    Option<serde_json::Value>,
+) {
     // Caller only invokes this with a hash result, but be defensive.
     let mut map = match json {
         serde_json::Value::Object(m) => m,
-        other => return (other, None),
+        other => return (Some(other), None, None),
     };
 
-    // The wrapped shape requires `state` to be an object. Anything else is
-    // treated as the bare-state shape (current behavior): the whole hash
-    // is the new state, no tick change.
-    if !map.get("state").is_some_and(|v| v.is_object()) {
-        return (serde_json::Value::Object(map), None);
+    let has_state_obj = map.get("state").is_some_and(|v| v.is_object());
+    let has_stream = map.contains_key("stream");
+
+    // Bare shape (no `state` object and no `stream`): the whole hash is the new
+    // state, no tick change, no stream.
+    if !has_state_obj && !has_stream {
+        return (Some(serde_json::Value::Object(map)), None, None);
     }
 
-    let state = map.remove("state").unwrap_or(serde_json::json!({}));
+    // Wrapped shape. A missing `state` (stream-only emission) leaves the current
+    // state untouched (`None`), rather than wiping it to `{}`.
+    let state = if has_state_obj {
+        map.remove("state")
+    } else {
+        None
+    };
     let tick_interval = map.get("tick_interval").and_then(|v| v.as_u64());
-    (state, tick_interval)
+    let stream = map.remove("stream");
+    (state, tick_interval, stream)
+}
+
+/// Build the typed `StreamOp`s from a handler's `stream` sub-hash, of shape
+/// `{ "container": "<id>", "ops": [ { "op": "append"|"prepend"|"insert"|
+/// "remove"|"reset", "id": "<dom-id>", "html": "<markup>", "before"? }, … ] }`.
+/// The container hoisted at the top applies to every op; malformed ops are
+/// skipped.
+fn build_stream_ops(stream: &serde_json::Value) -> Vec<crate::live::view::StreamOp> {
+    use crate::live::view::StreamOp;
+    let container = stream
+        .get("container")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let Some(ops) = stream.get("ops").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(ops.len());
+    for op in ops {
+        let kind = op.get("op").and_then(|v| v.as_str()).unwrap_or_default();
+        let id = op
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let html = op
+            .get("html")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        // Per-op container override, else the hoisted one.
+        let container = op
+            .get("container")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| container.clone());
+        let built = match kind {
+            "append" => StreamOp::Append {
+                container,
+                id,
+                html,
+            },
+            "prepend" => StreamOp::Prepend {
+                container,
+                id,
+                html,
+            },
+            "insert" => StreamOp::Insert {
+                container,
+                id,
+                html,
+                before: op
+                    .get("before")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            },
+            "remove" => StreamOp::Remove { id },
+            "reset" => StreamOp::Reset { container },
+            _ => continue, // unknown op — skip
+        };
+        out.push(built);
+    }
+    out
 }
 
 /// Reconcile the requested tick interval with the instance's currently
@@ -7973,9 +8075,10 @@ mod tests {
     #[test]
     fn unwrap_bare_state_shape_returns_whole_hash() {
         let json = serde_json::json!({ "count": 7, "name": "alice" });
-        let (state, tick) = unwrap_handler_return(json.clone());
-        assert_eq!(state, json);
+        let (state, tick, stream) = unwrap_handler_return(json.clone());
+        assert_eq!(state, Some(json));
         assert_eq!(tick, None);
+        assert!(stream.is_none());
     }
 
     /// SEC-044: an appending proxy chain reaches the app as
@@ -8007,16 +8110,16 @@ mod tests {
             "state": { "count": 3 },
             "tick_interval": 50,
         });
-        let (state, tick) = unwrap_handler_return(json);
-        assert_eq!(state, serde_json::json!({ "count": 3 }));
+        let (state, tick, _) = unwrap_handler_return(json);
+        assert_eq!(state, Some(serde_json::json!({ "count": 3 })));
         assert_eq!(tick, Some(50));
     }
 
     #[test]
     fn unwrap_wrapped_shape_without_tick_interval_returns_none() {
         let json = serde_json::json!({ "state": { "x": 1 } });
-        let (state, tick) = unwrap_handler_return(json);
-        assert_eq!(state, serde_json::json!({ "x": 1 }));
+        let (state, tick, _) = unwrap_handler_return(json);
+        assert_eq!(state, Some(serde_json::json!({ "x": 1 })));
         assert_eq!(tick, None);
     }
 
@@ -8025,8 +8128,8 @@ mod tests {
         // A user setting `"state": 42` doesn't look like the wrapped form — we
         // treat the whole hash as the new state to avoid silently dropping it.
         let json = serde_json::json!({ "state": 42, "tick_interval": 50 });
-        let (state, tick) = unwrap_handler_return(json.clone());
-        assert_eq!(state, json);
+        let (state, tick, _) = unwrap_handler_return(json.clone());
+        assert_eq!(state, Some(json));
         assert_eq!(tick, None);
     }
 
@@ -8036,8 +8139,47 @@ mod tests {
             "state": { "x": 1 },
             "tick_interval": 0,
         });
-        let (_, tick) = unwrap_handler_return(json);
+        let (_, tick, _) = unwrap_handler_return(json);
         assert_eq!(tick, Some(0));
+    }
+
+    #[test]
+    fn unwrap_stream_only_keeps_state_and_extracts_ops() {
+        // A stream-only emission (no `state` key) must not wipe the state.
+        let json = serde_json::json!({
+            "stream": { "container": "posts", "ops": [
+                { "op": "append", "id": "post-7", "html": "<li>hi</li>" }
+            ] }
+        });
+        let (state, tick, stream) = unwrap_handler_return(json);
+        assert_eq!(state, None); // keep current state
+        assert_eq!(tick, None);
+        assert!(stream.is_some());
+    }
+
+    #[test]
+    fn build_stream_ops_parses_all_op_kinds() {
+        use crate::live::view::StreamOp;
+        let stream = serde_json::json!({
+            "container": "posts",
+            "ops": [
+                { "op": "append",  "id": "post-7", "html": "<li>a</li>" },
+                { "op": "prepend", "id": "post-8", "html": "<li>b</li>" },
+                { "op": "insert",  "id": "post-9", "html": "<li>c</li>", "before": "post-7" },
+                { "op": "remove",  "id": "post-1" },
+                { "op": "reset" },
+                { "op": "bogus",   "id": "x" }
+            ]
+        });
+        let ops = build_stream_ops(&stream);
+        assert_eq!(ops.len(), 5); // bogus op skipped
+        assert!(
+            matches!(&ops[0], StreamOp::Append { container, id, .. } if container == "posts" && id == "post-7")
+        );
+        assert!(matches!(&ops[1], StreamOp::Prepend { .. }));
+        assert!(matches!(&ops[2], StreamOp::Insert { before: Some(b), .. } if b == "post-7"));
+        assert!(matches!(&ops[3], StreamOp::Remove { id } if id == "post-1"));
+        assert!(matches!(&ops[4], StreamOp::Reset { container } if container == "posts"));
     }
 
     #[test]

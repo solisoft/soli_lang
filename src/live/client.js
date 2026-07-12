@@ -486,6 +486,11 @@
                     this.emit('patch', msg.diff);
                     break;
 
+                case 'stream':
+                    this.applyStream(msg.ops || []);
+                    this.emit('stream', msg.ops);
+                    break;
+
                 case 'redirect':
                     window.location.href = msg.url;
                     break;
@@ -514,6 +519,60 @@
             if (!root) return;
             morph(root, html);
             this.emit('morphed', root);
+            this.bindEvents();
+        }
+
+        /**
+         * Parse an HTML string for a stream op into a single element node,
+         * inerting any scripts. Returns null on empty/invalid markup.
+         */
+        parseStreamNode(html) {
+            const tpl = document.createElement('template');
+            tpl.innerHTML = (html || '').trim();
+            const node = tpl.content.firstElementChild;
+            return node ? prepareIncoming(node) : null;
+        }
+
+        /**
+         * Apply targeted collection ops (append/prepend/insert/remove/reset)
+         * directly to a container by id — outside the diff shadow, so streamed
+         * rows don't fight render patches. Re-adding an existing id moves it.
+         */
+        applyStream(ops) {
+            for (const op of ops || []) {
+                try {
+                    if (op.op === 'remove') {
+                        const el = document.getElementById(op.id);
+                        if (el) el.remove();
+                        continue;
+                    }
+                    if (op.op === 'reset') {
+                        const c = document.getElementById(op.container);
+                        if (c) c.replaceChildren();
+                        continue;
+                    }
+                    const container = document.getElementById(op.container);
+                    if (!container) continue;
+                    const node = this.parseStreamNode(op.html);
+                    if (!node) continue;
+                    // De-dupe by id: drop any existing node so we re-insert once.
+                    if (op.id) {
+                        const existing = document.getElementById(op.id);
+                        if (existing) existing.remove();
+                    }
+                    if (op.op === 'prepend') {
+                        container.insertBefore(node, container.firstChild);
+                    } else if (op.op === 'insert') {
+                        const ref = op.before ? document.getElementById(op.before) : null;
+                        container.insertBefore(node, ref); // null ref -> append
+                    } else {
+                        container.appendChild(node); // append (default)
+                    }
+                } catch (e) {
+                    console.error('[LiveView] stream op failed:', e, op);
+                }
+            }
+            // Bind soli-* handlers on freshly inserted nodes.
             this.bindEvents();
         }
 
