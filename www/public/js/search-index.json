@@ -29,7 +29,7 @@
       "category": "Views",
       "path": "/docs/core-concepts/views",
       "signature": "<% content_for \"name\" do %> ... <% end %> / <%= yield \"name\" %>",
-      "description": "Capture named content blocks in a view or partial and splice them into the layout with a named yield; content_for?(\"name\") gates conditional layout sections.",
+      "description": "Capture named content blocks with content_for / yield. Also covers partials, the component(name, data) helper for reusable pieces, and the paginate() view helper for list navigation.",
       "keywords": [
         "content_for",
         "yield",
@@ -39,7 +39,12 @@
         "named content",
         "head scripts",
         "sidebar",
-        "capture"
+        "capture",
+        "partial",
+        "component",
+        "paginate",
+        "pagination",
+        "view helper"
       ]
     },
     {
@@ -13371,6 +13376,40 @@
       ]
     },
     {
+      "title": "paginate",
+      "type": "function",
+      "category": "Views",
+      "path": "/docs/core-concepts/views",
+      "signature": "paginate(pagination, options?)",
+      "description": "Render pagination navigation (prev/next, page numbers) from the result of Model.paginate() or a query builder. Supports path, param, window size, and extra classes.",
+      "keywords": [
+        "paginate",
+        "pagination",
+        "pager",
+        "page",
+        "next",
+        "previous",
+        "view helper"
+      ]
+    },
+    {
+      "title": "component",
+      "type": "function",
+      "category": "Views",
+      "path": "/docs/core-concepts/views",
+      "signature": "component(name, data?)",
+      "description": "Render a reusable component partial from app/views/components/<name>.html.slv (or with explicit path). Lightweight view composition helper.",
+      "keywords": [
+        "component",
+        "components",
+        "reusable",
+        "partial",
+        "view composition",
+        "card",
+        "widget"
+      ]
+    },
+    {
       "title": "Nested Parameters",
       "type": "guide",
       "category": "Core Concepts",
@@ -13384,6 +13423,353 @@
         "tags[]",
         "rack",
         "parse"
+      ]
+    },
+    {
+      "title": "POP3",
+      "type": "class",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3",
+      "signature": "Pop3",
+      "description": "Read email over POP3(S): connect, list, fetch and parse messages into structured hashes.",
+      "keywords": [
+        "pop3",
+        "email",
+        "mail",
+        "inbox",
+        "read email",
+        "receive email",
+        "fetch mail",
+        "mailbox",
+        "rfc822"
+      ]
+    },
+    {
+      "title": "Pop3.new",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-new-method",
+      "signature": "Pop3.new(host, user, password, opts?)",
+      "description": "Connect and authenticate to a POP3 server (implicit TLS on port 995 by default).",
+      "keywords": [
+        "pop3",
+        "connect",
+        "login",
+        "tls",
+        "mailbox",
+        "new"
+      ]
+    },
+    {
+      "title": "pop3.stat",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.stat()",
+      "description": "Message count and total size of the mailbox.",
+      "keywords": [
+        "pop3",
+        "stat",
+        "count",
+        "size"
+      ]
+    },
+    {
+      "title": "pop3.list",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.list()",
+      "description": "Per-message id and size list.",
+      "keywords": [
+        "pop3",
+        "list",
+        "messages"
+      ]
+    },
+    {
+      "title": "pop3.fetch",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.fetch(id)",
+      "description": "Fetch and parse one message into a structured hash.",
+      "keywords": [
+        "pop3",
+        "fetch",
+        "read message",
+        "retr"
+      ]
+    },
+    {
+      "title": "pop3.fetch_all",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.fetch_all()",
+      "description": "Fetch and parse all messages (capped by SOLI_POP3_MAX_MESSAGES).",
+      "keywords": [
+        "pop3",
+        "fetch_all",
+        "download mail",
+        "all messages"
+      ]
+    },
+    {
+      "title": "pop3.delete",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.delete(id)",
+      "description": "Mark a message for deletion (applied on quit).",
+      "keywords": [
+        "pop3",
+        "delete",
+        "dele",
+        "remove"
+      ]
+    },
+    {
+      "title": "pop3.quit",
+      "type": "method",
+      "category": "POP3",
+      "path": "/docs/builtins/pop3#pop3-methods",
+      "signature": "mail.quit()",
+      "description": "Commit deletions and close the connection.",
+      "keywords": [
+        "pop3",
+        "quit",
+        "close",
+        "disconnect"
+      ]
+    },
+    {
+      "title": "IMAP",
+      "type": "class",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap",
+      "signature": "Imap",
+      "description": "Read email over IMAP4rev1: select a mailbox, search and fetch server-side, with structured message parsing.",
+      "keywords": [
+        "imap",
+        "email",
+        "mail",
+        "inbox",
+        "read email",
+        "receive email",
+        "mailbox",
+        "folders",
+        "imap4",
+        "rfc822"
+      ]
+    },
+    {
+      "title": "Imap.new",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-new-method",
+      "signature": "Imap.new(host, user, password, opts?)",
+      "description": "Connect and authenticate to an IMAP server (implicit TLS on port 993 by default).",
+      "keywords": [
+        "imap",
+        "connect",
+        "login",
+        "tls",
+        "new"
+      ]
+    },
+    {
+      "title": "imap.select",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.select(mailbox = \"INBOX\")",
+      "description": "Select a mailbox and return its status (exists, recent, unseen, uidvalidity, uidnext, flags).",
+      "keywords": [
+        "imap",
+        "select",
+        "mailbox",
+        "inbox",
+        "open folder",
+        "exists"
+      ]
+    },
+    {
+      "title": "imap.mailboxes",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.mailboxes()",
+      "description": "List all mailboxes/folders with their delimiter and flags.",
+      "keywords": [
+        "imap",
+        "mailboxes",
+        "folders",
+        "list",
+        "list folders"
+      ]
+    },
+    {
+      "title": "imap.search",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-search",
+      "signature": "mail.search(criteria = \"ALL\")",
+      "description": "Return sequence numbers matching an IMAP search key (UNSEEN, FROM, SINCE, ...).",
+      "keywords": [
+        "imap",
+        "search",
+        "query",
+        "unseen",
+        "unread",
+        "filter mail"
+      ]
+    },
+    {
+      "title": "imap.uid_search",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-search",
+      "signature": "mail.uid_search(criteria = \"ALL\")",
+      "description": "Return UIDs matching an IMAP search key.",
+      "keywords": [
+        "imap",
+        "uid_search",
+        "uid",
+        "search",
+        "query"
+      ]
+    },
+    {
+      "title": "imap.fetch",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.fetch(seq)",
+      "description": "Fetch and parse a message by sequence number (does not set \\Seen).",
+      "keywords": [
+        "imap",
+        "fetch",
+        "read message",
+        "sequence"
+      ]
+    },
+    {
+      "title": "imap.fetch_uid",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.fetch_uid(uid)",
+      "description": "Fetch and parse a message by UID (does not set \\Seen).",
+      "keywords": [
+        "imap",
+        "fetch_uid",
+        "uid",
+        "read message"
+      ]
+    },
+    {
+      "title": "imap.fetch_all",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.fetch_all()",
+      "description": "Fetch all messages in the selected mailbox (capped by SOLI_IMAP_MAX_MESSAGES).",
+      "keywords": [
+        "imap",
+        "fetch_all",
+        "download mail",
+        "all messages"
+      ]
+    },
+    {
+      "title": "imap.mark_seen",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.mark_seen(seq)",
+      "description": "Add the \\Seen flag (mark as read); mark_unseen removes it.",
+      "keywords": [
+        "imap",
+        "mark_seen",
+        "mark_unseen",
+        "read",
+        "unread",
+        "flag",
+        "seen"
+      ]
+    },
+    {
+      "title": "imap.delete",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.delete(seq)",
+      "description": "Mark a message \\Deleted (removed on expunge).",
+      "keywords": [
+        "imap",
+        "delete",
+        "deleted",
+        "flag",
+        "remove"
+      ]
+    },
+    {
+      "title": "imap.expunge",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.expunge()",
+      "description": "Permanently remove \\Deleted messages.",
+      "keywords": [
+        "imap",
+        "expunge",
+        "purge",
+        "delete permanently"
+      ]
+    },
+    {
+      "title": "imap.copy",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.copy(seq, mailbox)",
+      "description": "Copy a message into another mailbox.",
+      "keywords": [
+        "imap",
+        "copy",
+        "mailbox",
+        "folder"
+      ]
+    },
+    {
+      "title": "imap.move",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.move(seq, mailbox)",
+      "description": "Move a message to another mailbox (RFC 6851 MOVE).",
+      "keywords": [
+        "imap",
+        "move",
+        "mailbox",
+        "folder",
+        "archive",
+        "trash"
+      ]
+    },
+    {
+      "title": "imap.logout",
+      "type": "method",
+      "category": "IMAP",
+      "path": "/docs/builtins/imap#imap-methods",
+      "signature": "mail.logout()",
+      "description": "Close the connection.",
+      "keywords": [
+        "imap",
+        "logout",
+        "close",
+        "disconnect"
       ]
     }
   ]

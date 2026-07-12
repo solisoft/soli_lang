@@ -51,6 +51,7 @@
     --color-teal-300: oklch(85.5% 0.138 181.071);
     --color-teal-400: oklch(77.7% 0.152 181.912);
     --color-teal-500: oklch(70.4% 0.14 182.503);
+    --color-cyan-100: oklch(95.6% 0.045 203.388);
     --color-cyan-200: oklch(91.7% 0.08 205.041);
     --color-cyan-300: oklch(86.5% 0.127 207.078);
     --color-cyan-400: oklch(78.9% 0.154 211.53);
@@ -2201,6 +2202,12 @@
   .bg-cyan-500 {
     background-color: var(--color-cyan-500);
   }
+  .bg-cyan-500\/5 {
+    background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 5%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-cyan-500) 5%, transparent);
+    }
+  }
   .bg-cyan-500\/10 {
     background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3390,6 +3397,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       color: color-mix(in oklab, currentcolor 60%, transparent);
     }
+  }
+  .text-cyan-100 {
+    color: var(--color-cyan-100);
   }
   .text-cyan-200 {
     color: var(--color-cyan-200);
