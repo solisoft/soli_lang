@@ -310,6 +310,11 @@ pub(crate) struct RequestData {
     /// diffs it at handling time to expose queue wait. `None` when logging
     /// is off so the no-logging hot path keeps zero clock reads.
     pub(crate) enqueued_at: Option<std::time::Instant>,
+    /// True when this request is a dev-bar replay of a previously captured
+    /// request (`POST /__solidev/replay/:id`). The worker skips the per-form
+    /// CSRF token check for replays — a rotated session token would otherwise
+    /// 403 a faithful re-dispatch. Always false for real client traffic.
+    pub(crate) replay: bool,
     pub(crate) response_tx: oneshot::Sender<WorkerResponse>,
 }
 
@@ -3027,6 +3032,15 @@ async fn handle_hyper_request(
                 });
             }
         }
+        // Replay a captured request server-side to reproduce a bug. Re-dispatches
+        // the stored raw request through the real worker path (fresh request id,
+        // handler re-runs). The `/_`-prefixed path is exempt from the origin gate
+        // above, and the replay flag bypasses the worker's per-form CSRF token.
+        if method == "POST" {
+            if let Some(id) = path.strip_prefix("/__solidev/replay/") {
+                return Ok(handle_replay(id, &request_tx).await);
+            }
+        }
         // Component preview catalog (Lookbook-style), dev-only.
         if method == "GET" && path == "/__soli/components" {
             return Ok(handle_component_catalog());
@@ -3204,6 +3218,7 @@ async fn handle_hyper_request(
         multipart_files,
         peer_ip: peer_addr.ip().to_string(),
         enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
+        replay: false,
         response_tx,
     };
 
@@ -6062,6 +6077,23 @@ fn handle_request(
     let method = &data.method;
     let path = &data.path;
 
+    // In --dev, snapshot the raw request now — before headers/query/body are
+    // moved out downstream — so the dev bar's replay button can re-dispatch it
+    // faithfully. Stored in finalize_response keyed by the same request id as
+    // the profiling snapshot. Dev-only, so this clone never costs production.
+    let captured_raw = if dev_mode {
+        Some(dev_store::RawRequest {
+            method: data.method.as_ref().to_string(),
+            path: data.path.clone(),
+            query: data.query.clone(),
+            headers: data.headers.clone(),
+            body: data.body.clone(),
+            peer_ip: data.peer_ip.clone(),
+        })
+    } else {
+        None
+    };
+
     // Built-in readiness probe for blue/green deploys (soli-proxy's health
     // gate). Returns 503 until the session store's backing connection has been
     // warmed, and 200 afterwards. A liveness-only health check (a bare 200
@@ -6174,26 +6206,34 @@ fn handle_request(
     // gate ran before the body was read; this second gate runs where the
     // session lives, so a request that carries a token (scaffolded forms and
     // `csrf_field()` embed one) must present this session's token.
-    if let Err(reason) = verify_csrf_token(data, method, path) {
-        set_current_session_id(None);
-        let request_id = Uuid::new_v4().to_string();
-        eprintln!(
-            "[WARN] request_id={} {} {} - 403 CSRF: {}",
-            request_id, method, path, reason
-        );
-        let error_html = error_pages::render_production_error_page(
-            403,
-            "CSRF verification failed. Reload the page and resubmit the form.",
-            &request_id,
-        );
-        return ResponseData {
-            status: 403,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/html; charset=utf-8".to_string(),
-            )],
-            body: error_html.into_bytes(),
-        };
+    //
+    // Dev-bar replays skip this gate: a replay re-dispatches a captured
+    // request verbatim, but the session's CSRF token may have rotated since
+    // capture, which would 403 an otherwise-faithful replay. Replays only
+    // originate from the dev-only `/__solidev/replay/:id` endpoint (empty in
+    // production), so nothing untrusted can set this flag.
+    if !data.replay {
+        if let Err(reason) = verify_csrf_token(data, method, path) {
+            set_current_session_id(None);
+            let request_id = Uuid::new_v4().to_string();
+            eprintln!(
+                "[WARN] request_id={} {} {} - 403 CSRF: {}",
+                request_id, method, path, reason
+            );
+            let error_html = error_pages::render_production_error_page(
+                403,
+                "CSRF verification failed. Reload the page and resubmit the form.",
+                &request_id,
+            );
+            return ResponseData {
+                status: 403,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                )],
+                body: error_html.into_bytes(),
+            };
+        }
     }
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
@@ -6547,7 +6587,11 @@ fn handle_request(
                 }
             }
 
-            // Stash for the `/__solidev/request/:id` drill-down endpoint.
+            // Stash for the `/__solidev/request/:id` drill-down endpoint, and
+            // the raw request for the `/__solidev/replay/:id` replay button.
+            if let Some(raw) = &captured_raw {
+                dev_store::put_raw(request_id.clone(), raw.clone());
+            }
             dev_store::put(request_id, ctx.clone());
 
             // Inject the bar only into full HTML pages. HTMx partial responses
@@ -7297,6 +7341,114 @@ fn handle_mailer_preview(rel: &str) -> Response<ResponseBody> {
 </head><body>{}</body></html>",
         inner
     ))
+}
+
+/// Dev-only request replay (`POST /__solidev/replay/:id`). Re-dispatches a
+/// previously captured request through the real worker path so a bug can be
+/// reproduced server-side (fresh request id, handler re-runs). Returns the
+/// replayed response tagged with `X-Soli-Replay: 1`; its new
+/// `X-Soli-Request-Id` lets the dev bar retarget its panels to the replay.
+async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<ResponseBody> {
+    let Some(raw) = dev_store::get_raw(id) else {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(full(Bytes::from("unknown or expired request id")))
+            .unwrap();
+    };
+
+    let (response_tx, response_rx) = oneshot::channel();
+    let request_data = RequestData {
+        method: Cow::Owned(raw.method.clone()),
+        path: raw.path.clone(),
+        query: raw.query.clone(),
+        headers: raw.headers.clone(),
+        body: raw.body.clone(),
+        // Multipart re-parsing is punted for v1: a replayed multipart POST
+        // carries the raw body but no pre-parsed fields/files.
+        body_bytes: None,
+        multipart_form: None,
+        multipart_files: None,
+        peer_ip: raw.peer_ip.clone(),
+        enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
+        replay: true,
+        response_tx,
+    };
+
+    // Mirror the main dispatch's non-blocking send loop.
+    let mut pending = Some(request_data);
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
+    let send_ok = loop {
+        if let Some(data) = pending.take() {
+            match request_tx.try_send(data) {
+                Ok(()) => break true,
+                Err(crossbeam::channel::TrySendError::Full(returned)) => {
+                    if tokio::time::Instant::now() >= deadline {
+                        break false;
+                    }
+                    pending = Some(returned);
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                Err(crossbeam::channel::TrySendError::Disconnected(_)) => break false,
+            }
+        }
+    };
+    if !send_ok {
+        return Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(full(Bytes::from("Server busy")))
+            .unwrap();
+    }
+
+    let worker_response = match tokio::time::timeout(
+        Duration::from_secs(server_constants::RESPONSE_WAIT_TIMEOUT_SECS),
+        response_rx,
+    )
+    .await
+    {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(_)) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(full(Bytes::from("worker dropped replay")))
+                .unwrap();
+        }
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::GATEWAY_TIMEOUT)
+                .header("Server", "soliMVC")
+                .body(full(Bytes::from("Gateway Timeout")))
+                .unwrap();
+        }
+    };
+
+    // Materialize the response (streaming replays are collected — dev-only and
+    // small) and tag it so the dev bar can show a replay badge.
+    let (status, headers, body) = match worker_response {
+        WorkerResponse::Buffered(rd) => (rd.status, rd.headers, Bytes::from(rd.body)),
+        WorkerResponse::Stream {
+            status,
+            headers,
+            mut rx,
+        } => {
+            let mut buf = Vec::new();
+            while let Some(chunk) = rx.recv().await {
+                buf.extend_from_slice(&chunk);
+            }
+            (status, headers, Bytes::from(buf))
+        }
+    };
+
+    let mut builder = Response::builder()
+        .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
+        .header("Server", "soliMVC")
+        .header("X-Soli-Replay", "1");
+    for (key, value) in &headers {
+        builder = add_header_checked(builder, key.as_str(), value.as_str());
+    }
+    builder
+        .body(full(body))
+        .unwrap_or_else(|_| Response::new(full(Bytes::from("replay response error"))))
 }
 
 /// Handle source code fetching for dev mode.
@@ -8622,6 +8774,7 @@ mod tests {
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
+            replay: false,
             response_tx: tx,
         }
     }

@@ -1420,6 +1420,7 @@ mod tests {
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
+            replay: false,
             response_tx: tx,
         }
     }
@@ -1520,6 +1521,7 @@ mod tests {
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
+            replay: false,
             response_tx: tx,
         };
         let json = build_redacted_request_data_json(&req, false);

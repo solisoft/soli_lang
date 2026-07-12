@@ -451,6 +451,16 @@ end</code></pre>
             <strong>Click a row</strong> to retarget the <code class="text-orange-400">db</code>, <code class="text-orange-400">http</code>, <code class="text-amber-400">kv</code>, and <code class="text-orange-400">flame</code> panels (and their header badges) to that request — so you can open the flamegraph or query list for a specific XHR call, not just the main page. Every dev response also carries an <code class="text-sky-400">X-Soli-Request-Id</code>; the bar stores each request's snapshot server-side (a small ring buffer of the most recent requests) and the row-click fetches <code class="text-cyan-400">/__solidev/request/:id</code> to re-render its panels in place. The selected row is highlighted; row 0 is always the page itself.
         </p>
 
+        <h3 class="text-xl font-semibold text-white mb-4">Replay a request</h3>
+        <p class="text-gray-400 mb-4">
+            Each row carries a <span class="text-gray-300">&#8635;</span> button. Click it to <strong>replay that request server-side</strong>: the dev server re-dispatches the captured request (same method, path, query, headers, and body) through the real worker path, so the handler runs again — handy for reproducing a bug without re-driving the UI. The bar then retargets its panels to the replay's fresh <code class="text-sky-400">X-Soli-Request-Id</code>, so you see the new run's queries, HTTP calls, and flamegraph immediately. Replayed responses are tagged <code class="text-sky-400">X-Soli-Replay: 1</code>.
+        </p>
+        <div class="my-6 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20">
+            <p class="text-rose-300 text-sm">
+                <strong>Replaying re-runs side effects.</strong> A replayed <code>POST</code> / <code>PATCH</code> / <code>DELETE</code> re-executes its mutation (a second insert, a second charge, …), exactly as if the client had resubmitted. The per-form CSRF token check is skipped for replays (the session token may have rotated since capture), and multipart uploads aren't re-parsed in this version — the raw body is re-sent but file fields arrive empty. Replay only exists under <code>--dev</code>: the capture store is empty in production and the endpoint isn't mounted.
+            </p>
+        </div>
+
         <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <p class="text-amber-300 text-sm">
                 <strong>Production-safe.</strong> The route is recorded behind the same <code>--dev</code> thread-local gate as the other panels, and the <code>X-Soli-Route</code> header is only emitted in dev mode. In production no header is sent and no dev bar (or its script) is injected, so there is zero runtime cost.
