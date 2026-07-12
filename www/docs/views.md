@@ -1104,6 +1104,27 @@ Either form feeds the same named `yield` in the component template:
 
 Named slots are great for things like headers, footers, or sidebars within a component.
 
+### Rendering a collection
+
+Pass a `"collection"` to render the component once per item. Each item is bound
+to a local named after the component (override with `"as"`), and you also get
+`<as>_index` (0-based) and `<as>_counter` (1-based). Any other keys pass through
+to every item:
+
+```erb
+<%- component("post_card", { "collection": posts }) %>
+
+<%# custom local name + a shared prop for every item %>
+<%- component("post_card", { "collection": posts, "as": "post", "compact": true }) %>
+```
+
+```erb
+<!-- app/views/components/post_card.html.slv -->
+<article class="post" data-n="<%= post_counter %>">
+  <h2><%= h(post["title"]) %></h2>
+</article>
+```
+
 ### Components vs partials
 
 | Situation                              | Recommended helper                  |

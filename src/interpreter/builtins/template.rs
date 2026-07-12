@@ -1291,6 +1291,47 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             };
             let data = resolve_futures_in_value(data);
             let cache = get_template_cache()?;
+
+            // Collection form: component("card", { "collection": items, "as": "post", ...rest })
+            // renders the component once per element. Item locals: <as> (default =
+            // the component's base name), <as>_index (0-based), <as>_counter
+            // (1-based). Other keys pass through to every item.
+            if let Some(Value::Array(items)) = opt_value(&data, "collection") {
+                let name_str: &str = &name;
+                let base = name_str.rsplit('/').next().unwrap_or(name_str);
+                let base = base.split('.').next().unwrap_or(base);
+                let as_name = opt_str(&data, "as").unwrap_or_else(|| base.to_string());
+                let mut out = String::new();
+                for (i, item) in items.borrow().iter().enumerate() {
+                    let mut item_map: HashPairs = HashPairs::default();
+                    if let Value::Hash(h) = &data {
+                        for (k, v) in h.borrow().iter() {
+                            let skip = matches!(k, HashKey::String(s)
+                                if s.as_ref() == "collection" || s.as_ref() == "as");
+                            if !skip {
+                                item_map.insert(k.clone(), v.clone());
+                            }
+                        }
+                    }
+                    item_map.insert(HashKey::String(as_name.clone().into()), item.clone());
+                    item_map.insert(
+                        HashKey::String(format!("{}_index", as_name).into()),
+                        Value::Int(i as i64),
+                    );
+                    item_map.insert(
+                        HashKey::String(format!("{}_counter", as_name).into()),
+                        Value::Int(i as i64 + 1),
+                    );
+                    let item_data = Value::Hash(Rc::new(RefCell::new(item_map)));
+                    inject_template_helpers(&item_data);
+                    match cache.render_component(&name, &item_data) {
+                        Ok(s) => out.push_str(&s),
+                        Err(e) => return Err(format!("component('{}') failed: {}", name, e)),
+                    }
+                }
+                return Ok(Value::String(out.into()));
+            }
+
             inject_template_helpers(&data);
             match cache.render_component(&name, &data) {
                 Ok(s) => Ok(Value::String(s.into())),
@@ -1492,6 +1533,32 @@ fn build_pagination_url(base: &str, page: i64, param_name: &str) -> String {
 
 /// Render pagination HTML from the pagination metadata.
 /// Accepts either the full paginate result hash or the inner "pagination" hash.
+/// Read an option value by key from a trailing options hash (`Value::Hash`).
+/// Returns None when `opts` isn't a hash or the key is absent. Shared by the
+/// view helpers (paginate / component) so option reads have one typed home.
+fn opt_value(opts: &Value, key: &str) -> Option<Value> {
+    match opts {
+        Value::Hash(h) => h.borrow().get(&HashKey::String(key.into())).cloned(),
+        _ => None,
+    }
+}
+
+/// Read a string option (`opt_value` + string-type check).
+fn opt_str(opts: &Value, key: &str) -> Option<String> {
+    match opt_value(opts, key) {
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Read an integer option.
+fn opt_int(opts: &Value, key: &str) -> Option<i64> {
+    match opt_value(opts, key) {
+        Some(Value::Int(n)) => Some(n),
+        _ => None,
+    }
+}
+
 fn paginate_html(pag_data: &Value, opts: &Value) -> Result<String, String> {
     // Extract pagination sub object
     let pagination = if let Value::Hash(h) = pag_data {
@@ -1525,50 +1592,18 @@ fn paginate_html(pag_data: &Value, opts: &Value) -> Result<String, String> {
     }
 
     // Options
-    let param = if let Value::Hash(h) = opts {
-        match h.borrow().get(&HashKey::String("param".into())) {
-            Some(Value::String(s)) => s.to_string(),
-            _ => "page".to_string(),
-        }
-    } else {
-        "page".to_string()
-    };
-
-    let window = if let Value::Hash(h) = opts {
-        match h.borrow().get(&HashKey::String("window".into())) {
-            Some(Value::Int(n)) => (*n as usize).clamp(0, 10),
-            _ => 2usize,
-        }
-    } else {
-        2
-    };
-
-    let extra_class = if let Value::Hash(h) = opts {
-        match h.borrow().get(&HashKey::String("class".into())) {
-            Some(Value::String(s)) => format!(" {}", s),
-            _ => String::new(),
-        }
-    } else {
-        String::new()
-    };
-
-    let base_path = if let Value::Hash(h) = opts {
-        match h.borrow().get(&HashKey::String("path".into())) {
-            Some(Value::String(s)) => s.to_string(),
-            _ => {
-                // Try to get current path
-                match current_request_string_field("path") {
-                    Value::String(p) => p.to_string(),
-                    _ => "/".to_string(),
-                }
-            }
-        }
-    } else {
-        match current_request_string_field("path") {
+    let param = opt_str(opts, "param").unwrap_or_else(|| "page".to_string());
+    let window = opt_int(opts, "window")
+        .map(|n| (n as usize).clamp(0, 10))
+        .unwrap_or(2);
+    let extra_class = opt_str(opts, "class")
+        .map(|s| format!(" {}", s))
+        .unwrap_or_default();
+    let base_path =
+        opt_str(opts, "path").unwrap_or_else(|| match current_request_string_field("path") {
             Value::String(p) => p.to_string(),
             _ => "/".to_string(),
-        }
-    };
+        });
 
     let mut links = Vec::new();
 
@@ -2823,6 +2858,19 @@ mod tests {
         assert_eq!(group_integer_str("1234", "."), "1.234");
         // Non-numeric content passes through untouched.
         assert_eq!(group_integer_str("abc", ","), "abc");
+    }
+
+    #[test]
+    fn opt_helpers_read_typed_options() {
+        let mut h: HashPairs = HashPairs::default();
+        h.insert(HashKey::String("param".into()), Value::String("q".into()));
+        h.insert(HashKey::String("window".into()), Value::Int(5));
+        let opts = Value::Hash(Rc::new(RefCell::new(h)));
+        assert_eq!(opt_str(&opts, "param").as_deref(), Some("q"));
+        assert_eq!(opt_int(&opts, "window"), Some(5));
+        assert_eq!(opt_str(&opts, "missing"), None);
+        assert_eq!(opt_int(&opts, "param"), None); // wrong type
+        assert_eq!(opt_str(&Value::Null, "param"), None); // not a hash
     }
 
     #[test]

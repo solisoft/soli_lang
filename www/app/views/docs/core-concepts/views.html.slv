@@ -1078,6 +1078,19 @@ SOLI_NAV=off soli serve .</code></pre>
         </div>
     </div>
 
+    <h3 class="text-xl font-semibold text-white mb-4">Rendering a collection</h3>
+    <p class="text-gray-400 mb-4">
+      Pass a <code>"collection"</code> to render the component once per item. Each item is bound to a local named after the component (override with <code>"as"</code>), plus <code>&lt;as&gt;_index</code> (0-based) and <code>&lt;as&gt;_counter</code> (1-based); other keys pass through to every item.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- component("post_card", { "collection": posts, "as": "post" }) %&gt;
+
+&lt;!-- app/views/components/post_card.html.slv --&gt;
+&lt;article data-n="&lt;%= post_counter %&gt;"&gt;&lt;%= h(post["title"]) %&gt;&lt;/article&gt;</code></pre>
+        </div>
+    </div>
+
     <h3 class="text-xl font-semibold text-white mb-4">Components vs partials</h3>
     <table class="w-full text-sm mb-8">
       <thead>
