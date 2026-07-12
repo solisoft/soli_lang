@@ -24,6 +24,7 @@ get("/docs/getting-started/introduction", "docs#getting_started_introduction")
 get("/docs/getting-started/installation", "docs#getting_started_installation")
 get("/docs/getting-started/configuration", "docs#getting_started_configuration")
 get("/docs/getting-started/comparison", "docs#getting_started_comparison")
+get("/docs/getting-started/changelog", "docs#getting_started_changelog")
 
 # Core Concepts
 get("/docs/core-concepts/routing", "docs#core_concepts_routing")

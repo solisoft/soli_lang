@@ -36,6 +36,10 @@ def getting_started_comparison
     render_docs("docs/getting-started/comparison", "How Soli Compares", "getting_started", "comparison")
 end
 
+def getting_started_changelog
+    render_docs("docs/getting-started/changelog", "Changelog", "getting_started", "changelog")
+end
+
 # ============================================================================
 # Core Concepts
 # ============================================================================

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 250" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="Reactive live queries flow: a write is matched per-row, then only matching LiveViews are woken, diffed, and patched">
+  <defs>
+    <marker id="lqArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6b7280"/>
+    </marker>
+    <style>
+      .box{fill:#0e1319;stroke:#2b333c;rx:10;}
+      .lbl{fill:#e5e7eb;font-size:14px;font-weight:600;}
+      .sub{fill:#9ca3af;font-size:11.5px;}
+      .code{fill:#67e8f9;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;}
+      .flow{stroke:#6b7280;stroke-width:1.6;fill:none;}
+      .accent{fill:#a3e635;font-size:11px;font-weight:600;}
+    </style>
+  </defs>
+
+  <text x="20" y="30" fill="#f3f4f6" font-size="15" font-weight="700">Reactive live queries — a write pushes only where it matters</text>
+
+  <!-- 1. write -->
+  <rect class="box" x="20" y="66" width="150" height="66" rx="10"/>
+  <text class="lbl" x="34" y="92">Another request</text>
+  <text class="code" x="34" y="114">Post.create({...})</text>
+
+  <!-- 2. notify -->
+  <rect class="box" x="212" y="66" width="168" height="66" rx="10"/>
+  <text class="lbl" x="226" y="92">DB write hook</text>
+  <text class="code" x="226" y="114">notify_change(row)</text>
+
+  <!-- 3. per-row match -->
+  <rect class="box" x="422" y="58" width="176" height="84" rx="10" stroke="#a3e635"/>
+  <text class="lbl" x="436" y="84">Per-row match</text>
+  <text class="sub" x="436" y="104">row satisfies each</text>
+  <text class="sub" x="436" y="120"><tspan class="code" font-size="11.5">live_where</tspan> filter?</text>
+
+  <!-- 4. wake + diff -->
+  <rect class="box" x="640" y="42" width="160" height="58" rx="10"/>
+  <text class="lbl" x="654" y="66">Wake + diff</text>
+  <text class="sub" x="654" y="85">vs last render</text>
+
+  <!-- 5. browser -->
+  <rect class="box" x="640" y="120" width="160" height="72" rx="10" stroke="#22d3ee"/>
+  <text class="lbl" x="654" y="146">Browser updates</text>
+  <text class="sub" x="654" y="166">morph patch — focus,</text>
+  <text class="sub" x="654" y="182">scroll, widgets kept</text>
+
+  <!-- flows -->
+  <path class="flow" d="M170 99 H206" marker-end="url(#lqArrow)"/>
+  <path class="flow" d="M380 99 H416" marker-end="url(#lqArrow)"/>
+  <path class="flow" d="M598 88 C620 82 622 74 634 71" marker-end="url(#lqArrow)"/>
+  <text class="accent" x="612" y="58">match</text>
+  <path class="flow" d="M720 100 V114" marker-end="url(#lqArrow)"/>
+
+  <!-- no-match dead end -->
+  <path class="flow" d="M510 142 V176 H360" stroke-dasharray="4 4" marker-end="url(#lqArrow)"/>
+  <text x="374" y="196" fill="#6b7280" font-size="11">no match → no wake (nothing sent)</text>
+
+  <text x="20" y="238" fill="#6b7280" font-size="11">Over-broad wakes are harmless too: the server-side diff drops any frame with no visible change.</text>
+</svg>
