@@ -475,6 +475,8 @@ When you add, change, or remove a feature visible to Soli users (a new builtin, 
 
 3. **`www/app/views/docs/getting-started/comparison.html.slv`** — the "How Soli Compares" page states what Soli has, what it lacks, and how it stacks up against Rails/Laravel/Phoenix/Django. Any code change that adds a capability listed there as missing, removes one listed as present, or shifts a maturity claim MUST update this page in the same change. A stale comparison page is worse than none — its credibility rests on being honest and current.
 
+4. **`www/app/views/docs/getting-started/changelog.html.slv`** — the docs-site changelog (route `docs#getting_started_changelog`). It is **hand-authored** — NOT rendered from `CHANGELOG.md` — and organized by version, with the current cycle as the top `<h2>` **Unreleased** `<section>` grouped by area (real-time, AI, API, ORM, dev tools, web, auth/security, PDF, language, performance, fixes) plus an in-page category jump-nav. When you ship a user-facing feature, add a concise but well-documented entry under the matching area of the **Unreleased** section (this is in addition to the repo-root `CHANGELOG.md`). Version headings are `<h2>` so the docs layout's "On this page" rail lists releases and scales; a comment in the file marks where a new version `<section>` goes. Diagrams live in `www/public/images/changelog/*.svg` and use a click-to-zoom lightbox — add one when a visual explains a complex feature better than prose. See the **Releasing** section for how the Unreleased block is promoted when a version is cut.
+
 Use `#` for comments inside Soli code blocks in both `.md` and `.slv` (the `//` style was standardized away — see `www/app/views/docs/CLAUDE.md` recent activity).
 
 ## Imports
@@ -547,6 +549,15 @@ Use `scripts/release.sh` to create a new release. It bumps `Cargo.toml`, commits
 ```
 
 The CI verifies that the tag version matches `Cargo.toml` before publishing. Never create version tags manually — always use the release script to keep them in sync.
+
+### Update the changelog page when releasing
+
+Two changelogs exist: the repo-root `CHANGELOG.md` (canonical, commit-level, read by tooling) and the docs-site page `www/app/views/docs/getting-started/changelog.html.slv` (hand-authored, curated, user-facing). The docs page's **Unreleased** section holds only what's on `main` since the last tag (`git log v<last>..HEAD`) — not the whole `CHANGELOG.md` `[Unreleased]` backlog, which is stale.
+
+When you cut a version, in the same change:
+1. On the docs page, add a new `<section id="vX-Y-Z">` **above** the Unreleased block (see the comment marker in the file), with an `<h2>` heading `vX.Y.Z <span>— YYYY-MM-DD</span>` and the release's notable user-facing entries (keep the same area grouping), then reset the **Unreleased** section to empty for the next cycle. Version `<h2>`s auto-populate the "On this page" rail.
+2. Keep it curated — notable, user-facing changes only; the exhaustive per-commit list stays in `CHANGELOG.md`.
+3. To decide what's genuinely unreleased, diff against the last tag (`git log v<last>..HEAD`), not `CHANGELOG.md`'s `[Unreleased]` section.
 
 ## Key Files
 

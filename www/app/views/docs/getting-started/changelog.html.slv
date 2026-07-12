@@ -4,48 +4,44 @@
             <span class="bg-gradient-to-r from-lime-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Changelog</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Notable changes to Soli, newest first. Each release is a section below &mdash;
-            the <strong class="text-white">Unreleased</strong> block collects everything on
-            <code class="text-cyan-400">main</code> since the last tag. For the raw commit-level
-            history see <code class="text-cyan-400">CHANGELOG.md</code> in the repository.
+            Notable changes to Soli, newest first. Each release is a section below; the
+            <strong class="text-white">Unreleased</strong> block collects what's landed on
+            <code class="text-cyan-400">main</code> since the last tag. For the full
+            commit-level history see <code class="text-cyan-400">CHANGELOG.md</code> in the repository.
         </p>
     </div>
 
     <!-- ===================================================================
          Add a new <section id="vX-Y-Z"> ... </section> ABOVE "Unreleased"
-         (newest first) when a version is cut. Version headings are <h2> so
-         they appear in the "On this page" rail automatically.
+         (newest first) when a version is cut, promoting the Unreleased entries
+         into it and resetting Unreleased. Version headings are <h2> so they
+         appear in the "On this page" rail automatically.
     ==================================================================== -->
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">Unreleased</h2>
-            <span class="text-sm font-medium text-lime-400 bg-lime-400/10 border border-lime-400/20 rounded-full px-3 py-0.5">in progress</span>
+            <span class="text-sm font-medium text-lime-400 bg-lime-400/10 border border-lime-400/20 rounded-full px-3 py-0.5">since v1.17.0</span>
         </div>
-        <p class="text-gray-400 mb-6">The current development cycle. Grouped by area; jump to a section:</p>
+        <p class="text-gray-400 mb-6">What's on <code class="text-cyan-400">main</code> and not yet tagged. Grouped by area; jump to a section:</p>
 
         <nav class="flex flex-wrap gap-2 mb-10 text-sm">
             <a href="#u-realtime" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Real-time &amp; LiveView</a>
             <a href="#u-ai" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">AI &amp; Search</a>
             <a href="#u-api" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">API</a>
-            <a href="#u-orm" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Models &amp; ORM</a>
+            <a href="#u-components" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">View Components</a>
             <a href="#u-devtools" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Developer Tools</a>
-            <a href="#u-web" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Controllers, Views &amp; Serving</a>
-            <a href="#u-auth" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Auth, Sessions &amp; Security</a>
-            <a href="#u-pdf" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">PDF &amp; Documents</a>
-            <a href="#u-lang" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Language &amp; Runtime</a>
-            <a href="#u-perf" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Performance</a>
-            <a href="#u-fixes" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Fixes</a>
+            <a href="#u-mail" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Mail</a>
+            <a href="#u-testing" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-gray-300 hover:text-white hover:border-white/20">Testing</a>
         </nav>
 
         <!-- Real-time & LiveView -->
         <h3 id="u-realtime" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Real-time &amp; LiveView</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Reactive live queries</strong> &mdash; <code class="text-cyan-400">Model.live_where(filter)</code> inside a LiveView handler runs the query like <code class="text-cyan-400">where(filter).all()</code> <em>and</em> subscribes the view, so a later write re-renders it automatically. Per-row matching wakes only subscribers a flat-equality filter's changed row satisfies (numeric-aware; <code>null</code> matches a missing field); the string form, deletes, and transaction commits wake conservatively, and transaction writes wake on commit. Single-process.</li>
-                <li><strong class="text-white">LiveView collection streams</strong> &mdash; a handler can return a <code class="text-cyan-400">stream</code> sub-hash to push targeted DOM ops (<code>append</code>/<code>prepend</code>/<code>insert</code>/<code>remove</code>/<code>reset</code>) straight to a container by id instead of re-rendering the whole list (Phoenix streams / Turbo Streams model). Streamed rows live outside the diff shadow, so patches never fight them &mdash; ideal for chat logs, feeds, leaderboards.</li>
+                <li><strong class="text-white">Reactive live queries</strong> &mdash; <code class="text-cyan-400">Model.live_where(filter)</code> inside a LiveView handler runs the query like <code class="text-cyan-400">where(filter).all()</code> <em>and</em> subscribes the view, so a later write re-renders it automatically. <strong class="text-white">Per-row matching</strong> wakes only subscribers a flat-equality filter's changed row satisfies (numeric-aware; <code>null</code> matches a missing field); the string form, deletes, and transaction commits wake conservatively, and transaction writes wake on commit. Single-process.</li>
+                <li><strong class="text-white">LiveView collection streams</strong> &mdash; a handler can return a <code class="text-cyan-400">stream</code> sub-hash to push targeted DOM ops (<code>append</code>/<code>prepend</code>/<code>insert</code>/<code>remove</code>/<code>reset</code>) straight to a container by id instead of re-rendering the whole list (Phoenix streams / Turbo Streams model). Streamed rows live outside the diff shadow &mdash; ideal for chat logs, feeds, leaderboards.</li>
                 <li><strong class="text-white">Unified <code class="text-amber-400">broadcast()</code></strong> &mdash; <code class="text-cyan-400">broadcast(channel, payload)</code> (and the <code class="text-cyan-400">Model.broadcast(payload)</code> shortcut) fans a payload out to every WebSocket connection in a channel <em>and</em> every SSE subscriber of the topic of the same name, in one call. Non-string payloads auto-serialize to JSON; returns the SSE subscriber count.</li>
-                <li><strong class="text-white">DOM-aware LiveView patching</strong> &mdash; the server ships positional line splices against a client-held shadow of the exact previous render, and the client <strong class="text-white">morphs</strong> the live region in place, so focus, caret, scroll, and widget state (Alpine, charts) survive every patch. New <code>soli-key</code> (list identity) and <code>soli-ignore</code> (client-owned subtree) attributes, a "user wins" rule for focused form fields, and a <code>resync</code> recovery message. The ~7 KB client is embedded in the binary and served at <code class="text-cyan-400">/live/client.js</code> &mdash; always protocol-matched, zero setup.</li>
             </ul>
             <figure class="mt-6 grid gap-6 md:grid-cols-2">
                 <div>
@@ -63,9 +59,10 @@
         <h3 id="u-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI &amp; Search</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Embeddings &amp; generation builtins</strong> &mdash; <code class="text-cyan-400">embed(text)</code> / <code class="text-cyan-400">embed_batch(texts)</code> and <code class="text-cyan-400">llm_generate(system, user)</code> talk to any OpenAI-compatible endpoint (configured via <code>SOLI_EMBEDDING_*</code> / <code>SOLI_LLM_*</code>), keeping credentials out of app code.</li>
                 <li><strong class="text-white">One-call RAG</strong> &mdash; <code class="text-cyan-400">Model.rag(question[, opts])</code> embeds the question, ANN-searches the <code>vector_index</code> for the top-k rows, builds an LLM context from each row's text field, and returns <code class="text-cyan-400">{ answer, sources }</code>.</li>
                 <li><strong class="text-white">Streaming LLM</strong> &mdash; inside an <code class="text-cyan-400">sse</code> block, <code class="text-cyan-400">out.llm_stream(system, user)</code> streams a completion token-by-token to the client and returns the full answer to persist.</li>
-                <li><strong class="text-white">Vector, fulltext &amp; geo search pushdown</strong> &mdash; <code class="text-cyan-400">vector_index</code> runs <code>similar()</code> on SolidB's HNSW index (text embeds client-side, a numeric vector skips embedding, <code>where(...).similar(...)</code> over-fetches then filters); <code class="text-cyan-400">fulltext_index</code> + <code>Model.search()</code> returns ranked instances with <code>_search_score</code>/highlights; <code class="text-cyan-400">geo_index</code> + <code>near</code>/<code>within</code> return <code>_distance</code>. Declared indexes are ensured at dev boot and via <code class="text-cyan-400">soli db:indexes</code>.</li>
+                <li><strong class="text-white">Graph-augmented retrieval</strong> &mdash; <code class="text-cyan-400">Model.graph_rag(query, { via:, seed_k:, limit: })</code> seeds with ANN on the vector index, expands each hit through an edge model, then re-ranks the union &mdash; retrieval that reaches related context one hop away.</li>
             </ul>
             <figure class="mt-6">
                 <img src="/images/changelog/rag.svg" alt="Model.rag pipeline: embed the question, ANN-search the vector index, build context from the top rows, generate an answer, and return answer plus sources" class="changelog-zoom w-full rounded-lg border border-white/10 bg-[#0b0d0f] cursor-zoom-in transition hover:border-white/25" loading="lazy" tabindex="0" role="button" aria-label="Enlarge diagram">
@@ -77,30 +74,20 @@
         <h3 id="u-api" class="text-xl font-semibold text-white mb-4 scroll-mt-24">API</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Opt-in OpenAPI</strong> &mdash; <code class="text-cyan-400">SOLI_OPENAPI=1</code> exposes an OpenAPI 3 spec generated from the routes at <code class="text-cyan-400">/openapi.json</code> and a Scalar API-reference UI at <code class="text-cyan-400">/openapi</code> (<code>:id</code> &rarr; <code>{id}</code> path params, <code>controller#action</code> operationId, controller tags). 404 unless enabled; served in every environment once on. <code class="text-cyan-400">SOLI_OPENAPI_TITLE</code> sets the title.</li>
-                <li><strong class="text-white">Built-in CORS</strong> &mdash; <code class="text-cyan-400">cors("/api/*", {...})</code> answers preflights before routing, stamps allow headers (+ <code>Vary: Origin</code>) onto every response, and an allowed <code>Origin</code> passes the same-origin CSRF gate for that path.</li>
-                <li><strong class="text-white">Content negotiation</strong> &mdash; <code class="text-cyan-400">respond_to</code> handles multiple formats (html, json, &hellip;) from one action.</li>
+                <li><strong class="text-white">Opt-in OpenAPI</strong> &mdash; <code class="text-cyan-400">SOLI_OPENAPI=1</code> exposes an OpenAPI 3 spec generated from the routes at <code class="text-cyan-400">/openapi.json</code> and a Scalar API-reference UI at <code class="text-cyan-400">/openapi</code> (<code>:id</code> &rarr; <code>{id}</code> path params, <code>controller#action</code> operationId, controller tags). 404 unless enabled; served in every environment once on, like <code>/_metrics</code>. <code class="text-cyan-400">SOLI_OPENAPI_TITLE</code> sets the title.</li>
             </ul>
         </div>
 
-        <!-- Models & ORM -->
-        <h3 id="u-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Models &amp; ORM</h3>
+        <!-- View Components -->
+        <h3 id="u-components" class="text-xl font-semibold text-white mb-4 scroll-mt-24">View Components</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Single-collection inheritance (STI)</strong> &mdash; <code class="text-cyan-400">class Admin &lt; User</code> shares the base's collection with a <code>type</code> discriminator; subclass writes stamp <code>type</code>, rows hydrate as their stored type, and subclass queries are type-scoped (including descendants). Validations, callbacks, relations, scopes, soft-delete, enums, and state machines all copy down.</li>
-                <li><strong class="text-white">Association writers</strong> &mdash; <code class="text-cyan-400">owner.posts &lt;&lt; record</code> and <code class="text-cyan-400">owner.posts.create({...})</code> stamp the foreign key automatically (both halves for polymorphic <code>as:</code>), routed through the normal save path (validations, callbacks, counter caches, dirty tracking).</li>
-                <li><strong class="text-white">Polymorphic associations</strong> &mdash; <code class="text-cyan-400">belongs_to "commentable", polymorphic: true</code> and <code class="text-cyan-400">has_many "comments", as: "commentable"</code>, now fully implemented on both sides including <code>includes</code>, counter caches, and <code>dependent:</code>.</li>
-                <li><strong class="text-white"><code class="text-amber-400">has_many through:</code></strong> &mdash; traverses an intermediate relation and returns a chainable QueryBuilder filtered by a single-query membership subquery (no N+1); <code>user.teams &lt;&lt; team</code> creates the join row HABTM-style.</li>
-                <li><strong class="text-white">Counter caches</strong> &mdash; <code class="text-cyan-400">belongs_to "post", counter_cache: true</code> maintains <code>posts.comments_count</code> via an If-Match CAS loop on create/delete/FK-reassignment (soft-delete aware); <code>Model.reset_counters</code> recounts.</li>
-                <li><strong class="text-white">Cascade deletes</strong> &mdash; <code class="text-cyan-400">dependent: "delete"</code> (per-row, callbacks + nested cascades), <code>"delete_all"</code> (one bulk REMOVE), and <code>"nullify"</code>, with Rails-style ordering, a cycle guard, and a depth cap. Hard deletes only.</li>
-                <li><strong class="text-white">Dirty tracking</strong> &mdash; <code>changed?</code>, <code>changed</code>, <code>changes</code>, <code>previous_changes</code>, and <code>attribute_was("field")</code>, value-based (enum-aware) with a baseline that seeds on load and resets on successful writes.</li>
-                <li><strong class="text-white">Graph models</strong> &mdash; <code class="text-cyan-400">edge from:, to:</code> marks a model an edge collection; <code class="text-cyan-400">record.traverse(Follow, depth: [1,3], direction:)</code> returns a chainable QueryBuilder and <code class="text-cyan-400">record.shortest_path(other, via:)</code> runs a BFS.</li>
-                <li><strong class="text-white">Timeseries models</strong> &mdash; <code class="text-cyan-400">timeseries retention: "30d"</code> makes a collection insert-only (UUIDv7 keys); <code class="text-cyan-400">time_bucket</code> aggregation and <code class="text-cyan-400">prune</code> retention.</li>
-                <li><strong class="text-white">Analytics aggregation</strong> &mdash; multi-key <code>group_by</code>, multi-aggregate <code>aggregate</code>, <code>having</code>, and <code>median</code>/<code>stddev</code>/<code>variance</code>/<code>count_distinct</code> terminals over the soft-delete scope.</li>
-                <li><strong class="text-white">Columnar models</strong> &mdash; <code class="text-cyan-400">columnar</code> + typed <code>column</code> declarations back a model with SolidB's columnar (LZ4) engine: <code>insert_rows</code>, <code>aggregate</code>, <code>query</code>, and column indexes.</li>
-                <li><strong class="text-white">Conditional validations</strong> &mdash; <code class="text-cyan-400">validates(field, { on: "create", if:, unless: })</code> restricts a rule to an operation or gates it on the record's data.</li>
-                <li><strong class="text-white">Recursive auto-loading</strong> &mdash; <code>app/models/</code>, <code>app/services/</code>, and <code>app/policies/</code> are walked into subdirectories (nested files load without <code>import</code>; hot-reload is recursive too).</li>
-                <li><strong class="text-white">Symbol DSL shorthand</strong> &mdash; callbacks/relations accept symbols (<code>before_save :method</code>, <code>has_many :posts</code>); class-body macros accept Ruby-style named-argument command form.</li>
+                <li><strong class="text-white">Component system</strong> &mdash; reusable ERB view components (<code class="text-cyan-400">component "card", title: X do &hellip; end</code>) with a default slot from the block body and named slots via a slot-builder block (<code class="text-cyan-400">do |c| c.slot("header") do &hellip; end end</code>).</li>
+                <li><strong class="text-white">Collection rendering</strong> &mdash; <code class="text-cyan-400">component("card", {"collection": items, "as": "post"})</code> renders once per item with per-item <code>&lt;as&gt;</code> / <code>&lt;as&gt;_index</code> / <code>&lt;as&gt;_counter</code> locals.</li>
+                <li><strong class="text-white">Fragment caching</strong> &mdash; <code class="text-cyan-400">component(&hellip;, {"cache": key, "cache_ttl": n})</code> memoizes rendered output through the KV cache (best-effort, only when the render isn't request-dirty).</li>
+                <li><strong class="text-white">Declared props</strong> &mdash; <code class="text-cyan-400">props("a", "b")</code> documents a component's inputs; missing/unknown props surface as dev-bar + console warnings, and a <code class="text-cyan-400">component/props</code> lint rule checks well-formedness.</li>
+                <li><strong class="text-white"><code class="text-amber-400">@ivar</code> propagation</strong> &mdash; controller instance variables (<code>@current_user</code>, <code>@posts</code>) flow into partials and components automatically, without threading them through every <code>render</code>.</li>
+                <li><strong class="text-white"><code class="text-amber-400">soli generate component</code></strong> plus <code class="text-cyan-400">paginate</code> and <code class="text-cyan-400">number_with_delimiter</code> view helpers.</li>
             </ul>
         </div>
 
@@ -109,89 +96,26 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Database browser</strong> &mdash; dev-only <code class="text-cyan-400">/__soli/db</code>: browse collections, paginate rows, view a document as JSON, and run a read-only SDBQL query (mutating queries rejected, collection names allow-listed).</li>
-                <li><strong class="text-white">Mailer preview gallery</strong> &mdash; dev-only <code class="text-cyan-400">/__soli/mailers</code> renders each email body in an iframe with example data from a <code>&lt;%# preview: {json} %&gt;</code> header.</li>
+                <li><strong class="text-white">Component preview catalog</strong> &mdash; dev-only <code class="text-cyan-400">/__soli/components</code> lists view components with their declared props and a live preview (example data from a <code>&lt;%# preview: {json} %&gt;</code> header).</li>
+                <li><strong class="text-white">Mailer preview gallery</strong> &mdash; dev-only <code class="text-cyan-400">/__soli/mailers</code> renders each email body in an iframe with the same <code>&lt;%# preview %&gt;</code> convention.</li>
                 <li><strong class="text-white">Request replay</strong> &mdash; a ↻ button on each dev-bar request row re-dispatches a captured request through the real worker path to reproduce a bug server-side (CSRF skipped, tagged <code>X-Soli-Replay: 1</code>).</li>
-                <li><strong class="text-white">Component preview catalog</strong> &mdash; dev-only <code class="text-cyan-400">/__soli/components</code> lists view components with their declared props and a live preview.</li>
-                <li><strong class="text-white"><code class="text-amber-400">soli routes</code></strong> &mdash; prints the fully expanded route table (method, path, <code>controller#action</code>, helper, middleware, WS) without starting the server; <code>-g</code> filter and <code>--json</code>.</li>
-                <li><strong class="text-white">Dev bar</strong> &mdash; a hierarchical flamegraph, per-template and per-middleware render breakdown, a requests panel capturing every XHR/htmx call, and per-request query/HTTP/KV logs.</li>
             </ul>
         </div>
 
-        <!-- Controllers, Views & Serving -->
-        <h3 id="u-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Controllers, Views &amp; Serving</h3>
+        <!-- Mail -->
+        <h3 id="u-mail" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Mail</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Instant Navigation</strong> &mdash; Turbo-Drive-style body swapping, on by default: same-origin link clicks fetch + swap <code>&lt;body&gt;</code> in place (reusing the hover-prefetch cache), merging title/stylesheets/meta and managing history, with <code>soli:visit</code>/<code>soli:load</code> hooks and opt-in View Transitions. Opt out per link/page or via <code>SOLI_NAV=off</code>.</li>
-                <li><strong class="text-white">Form builder</strong> &mdash; <code class="text-cyan-400">form_with(record)</code> derives the action/verb, embeds the CSRF token, and prefills escaped values through <code>text_field</code>/<code>select</code>/<code>check_box</code>/&hellip;; <code>error_summary</code>/<code>errors_for</code>, <code>button_to</code>, <code>csrf_field</code>, plus block syntax and <code class="text-cyan-400">fields_for</code> nested sub-builders.</li>
-                <li><strong class="text-white">Rack-style nested params</strong> &mdash; bracket keys nest across form, multipart, and query params (<code>author[name]</code>, <code>tags[]</code>, <code>items[][sku]</code>), depth-capped.</li>
-                <li><strong class="text-white">Strong parameters</strong> &mdash; <code class="text-cyan-400">permit(params, shape)</code> whitelists documents (scalars, arrays, nested hashes, arrays of hashes); dev-mode warns on the <code>attr_accessible</code> intersection.</li>
-                <li><strong class="text-white">Per-action layouts</strong> &mdash; map layouts to actions in the controller <code>static {}</code> block (<code>this.layout("print", only:)</code> / <code>except:</code>), inherited by subclasses.</li>
-                <li><strong class="text-white"><code class="text-amber-400">content_for</code> / named <code class="text-amber-400">yield</code></strong> &mdash; a view or partial captures a named block that the layout splices back, closing the per-page <code>&lt;head&gt;</code> gap; <code>content_for?("name")</code> gates conditional sections.</li>
-                <li><strong class="text-white">Method override + per-form CSRF tokens</strong> &mdash; HTML forms carrying <code>_method</code> dispatch as PUT/PATCH/DELETE; session-backed <code>csrf_token()</code> verified constant-time on top of the Origin/Referer gate (<code>SOLI_CSRF_TOKENS=require</code>).</li>
-                <li><strong class="text-white">Slow-request logging</strong> &mdash; <code class="text-cyan-400">SOLI_SLOW_REQUEST_MS</code> prints a full <code>[SLOW]</code> detail block (with the queue-wait split) for requests over the threshold; production <code>SOLI_LOG</code> channels.</li>
-                <li><strong class="text-white">URL-driven image transforms</strong> &mdash; model-level uploader DSL with auto-routed attachment endpoints and on-the-fly transforms.</li>
+                <li><strong class="text-white">IMAP client</strong> &mdash; an <code class="text-cyan-400">Imap</code> builtin mirroring the existing POP3 client (connect, list, fetch, search) over shared mail-parsing internals, so apps can read mailboxes as well as send.</li>
             </ul>
         </div>
 
-        <!-- Auth, Sessions & Security -->
-        <h3 id="u-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth, Sessions &amp; Security</h3>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
-            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Devise-style auth generator</strong> &mdash; <code class="text-cyan-400">soli generate auth</code> scaffolds login/signup plus <strong class="text-white">password reset</strong>, <strong class="text-white">email confirmation</strong>, <strong class="text-white">remember-me</strong> (HttpOnly digest-stored token), and <strong class="text-white">account lockout</strong>, with an <code>AuthMailer</code> and idempotent routes/migrations.</li>
-                <li><strong class="text-white">Cookie attributes</strong> &mdash; <code class="text-cyan-400">set_cookie(name, value, options?)</code> sets <code>max_age</code>/<code>expires</code>/<code>http_only</code>/<code>secure</code>/<code>same_site</code>/<code>path</code>/<code>domain</code>, validated against injection.</li>
-                <li><strong class="text-white">Encrypted client-side sessions</strong> &mdash; <code class="text-cyan-400">SOLI_SESSION_DRIVER=cookie</code> seals the whole session into an AES-256-GCM cookie (HKDF-derived from <code>SOLI_SESSION_SECRET</code>): survives restarts, works across hosts, zero infra.</li>
-                <li><strong class="text-white">Signed/encrypted cookie jar</strong> &mdash; <code class="text-cyan-400">set_cookie(..., {"signed"/"encrypted": true})</code> + <code>read_cookie</code> (HMAC-SHA256 / AES-256-GCM, name-bound, embedded expiry).</li>
-                <li><strong class="text-white">Encrypted &amp; protected bundles</strong> &mdash; <code class="text-cyan-400">soli build --encrypt</code> produces an AES-256-GCM <code>.soli</code> with a boot-time / key-server key (remote kill-switch); <code>--protect</code> replaces <code>.sl</code> source with compiled binary AST, extracted to RAM-backed <code>/dev/shm</code>.</li>
-                <li><strong class="text-white">Security hardening</strong> &mdash; mailer header-injection defense (CR/LF/NUL rejected), Zip-Slip-validated bundle extraction, loopback-only dev REPL, Bleichenbacher-safe PAdES verification, a decompression-bomb cap on <code>Deflate.inflate</code>, POSIX-quoted <code>soli deploy</code> ssh args, <code>quick-xml</code> upgraded for two RUSTSEC DoS advisories, cookie name/value validation, <code>.md</code>-view URL neutralization + non-String auto-escape, JWT <code>nbf</code> enforcement, and percent-encoded SoliDB document keys.</li>
-            </ul>
-        </div>
-
-        <!-- PDF & Documents -->
-        <h3 id="u-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF &amp; Documents</h3>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
-            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Multi-series charts</strong> &mdash; a chart's <code>values</code> array draws grouped or stacked bars / multiple lines with a shared legend; opt-in gridlines + tick labels.</li>
-                <li><strong class="text-white">Data-driven templates</strong> &mdash; <code class="text-cyan-400">repeat</code> lays out a block once per array item and <code class="text-cyan-400">if</code>/<code class="text-cyan-400">unless</code> conditionally render, so documents go data-driven beyond table rows.</li>
-                <li><strong class="text-white">Color everywhere</strong> &mdash; <code>options.color</code> colors a whole paragraph / list / footer, and <code>options.background</code> paints a page background beneath watermark and content.</li>
-                <li><strong class="text-white">Compression</strong> &mdash; embedded images and content/font streams are Flate-compressed (lossless), dropping a five-page report from ~2.3 MB to ~110 KB (~20&times;).</li>
-            </ul>
-        </div>
-
-        <!-- Language & Runtime -->
-        <h3 id="u-lang" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language &amp; Runtime</h3>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
-            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">ID generators</strong> &mdash; <code class="text-cyan-400">uuid_v4</code>/<code>uuid_v7</code>, <code class="text-cyan-400">ulid</code>, and <code class="text-cyan-400">nanoid(size?, alphabet?)</code> (plus the <code>UUID</code>/<code>ULID</code>/<code>NanoID</code> classes).</li>
-                <li><strong class="text-white">Background jobs &amp; webhooks</strong> &mdash; <code class="text-cyan-400">enqueue()</code>/<code>Job</code>/<code>async</code>, a cron DSL, and a <code class="text-cyan-400">Webhook</code> job class with <code>X-Webhook-Signature</code> HMAC signing.</li>
-                <li><strong class="text-white">More language surface</strong> &mdash; <code>Int#to_s(base)</code> radix conversion, <code>url_encode</code>/<code>url_decode</code>, postfix <code class="text-cyan-400">rescue</code> for inline fallbacks, Ruby-style <code>begin</code>/<code>rescue</code> aliases, array <code>index_of</code>/<code>each_with_index</code>, and explicit empty-parens calls on zero-arg builtin methods in both engines.</li>
-                <li><strong class="text-white">VM engine parity</strong> &mdash; the bytecode VM (production mode) now runs primitive method dispatch, native instance classes, user-defined classes, <code>super(...)</code> chaining, <code>try</code>/<code>catch</code>/<code>rescue</code> over native errors, and list/hash comprehensions natively &mdash; whole categories that previously fell back to the tree-walker per request. Backed by a tree-walker-vs-VM differential harness that surfaced a class of control-flow / local-assignment bugs.</li>
-                <li><strong class="text-white">i18n table cache</strong> &mdash; <code class="text-cyan-400">I18n.cache_table</code>/<code>I18n.cached_table</code> memoize a locale's translation table per worker thread (cleared on hot-reload).</li>
-            </ul>
-        </div>
-
-        <!-- Performance -->
-        <h3 id="u-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
-            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">Interpreter dispatch</strong> &mdash; unified member-call dispatch evaluates the receiver once (array fast path, <code>array_ops</code> &minus;8%); direct instance-method invocation binds <code>this</code> without a bound-<code>Function</code> deep-clone (monomorphic calls &minus;52%, polymorphic &minus;40%); <code>is_model_subclass()</code> memoized and instance fields on ahash.</li>
-                <li><strong class="text-white">Inline small strings</strong> &mdash; <code>Value::String</code> uses <code>ecow::EcoString</code>: strings &le;15 bytes stay inline, longer ones are O(1)-clone refcounted (~5&times; faster large-string passing, ~+17% throughput on realistic requests).</li>
-                <li><strong class="text-white">VM calls</strong> &mdash; function/method calls ~30% faster on call-heavy code (fib(32) 0.72s&rarr;0.51s); for-in iterates strings/hashes/arrays/ranges without upfront materialization.</li>
-                <li><strong class="text-white">Serving</strong> &mdash; single-pass header materialization, Cookie parsed once per request, SoliDB connection keep-warm (<code>SOLI_DB_POOL_IDLE_SECS</code>/<code>SOLI_DB_KEEP_WARM</code>) for both the model DB and the session store, and opt-in Prometheus timing via <code>SOLI_METRICS</code>.</li>
-                <li><strong class="text-white">Test runner</strong> &mdash; per-run DB reset ~200&times; faster (truncate vs drop+recreate), pre-created worker-DB collections, and a shared SolidB JWT to avoid login storms under <code>--jobs</code>.</li>
-            </ul>
-        </div>
-
-        <!-- Fixes -->
-        <h3 id="u-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Notable Fixes</h3>
+        <!-- Testing -->
+        <h3 id="u-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
-                <li><strong class="text-white">WebSocket upgrades restored</strong> &mdash; the h1/h2c auto-detect regression broke every WebSocket (routes, LiveView, live reload, presence); serving now performs the HTTP/1.1 upgrade after a 101.</li>
-                <li><strong class="text-white">Generated scaffold views work end-to-end</strong> &mdash; row links / delete forms use <code>_key</code>, the new-form action is correct, <code>_method</code> is honored, and the error block reads the ORM's real <code>_errors</code> shape.</li>
-                <li><strong class="text-white">Method receivers evaluate once</strong> &mdash; <code>make().map(f)</code> no longer calls <code>make()</code> twice; <code>arr.sort(comparator)</code> that mutates the receiver no longer panics.</li>
-                <li><strong class="text-white">Auto-render honors the registered layout</strong> and ships <code>ETag</code>/<code>Cache-Control</code>/prefetch like explicit <code>render()</code>; the WS registry no longer holds its lock across <code>send().await</code>.</li>
-                <li><strong class="text-white">Named args on builtin-method receivers</strong> (QueryBuilder chaining) collapse into a trailing options hash instead of being silently dropped.</li>
-                <li><strong class="text-white">Migrations bootstrap the database</strong> &mdash; <code>soli db:migrate</code> creates the target SoliDB database when absent instead of 404-ing.</li>
-                <li><strong class="text-white">Build resolves <code>time</code> unlocked</strong> &mdash; capped <code>time &lt; 0.3.52</code> so an unlocked <code>cargo install</code> compiles <code>cookie</code>; and DateTime/Duration method-map + <code>Duration.between</code> unit bugs fixed.</li>
+                <li><strong class="text-white">Factories, transactional examples &amp; time freezing</strong> &mdash; define reusable record factories, wrap examples in a rolled-back transaction for isolation, and freeze the clock inside a test for deterministic time-dependent assertions.</li>
+                <li><strong class="text-white">Coverage fix</strong> &mdash; constructor bodies are now attributed to the class's own source file, so coverage reports line up with where the code actually lives.</li>
             </ul>
         </div>
     </section>

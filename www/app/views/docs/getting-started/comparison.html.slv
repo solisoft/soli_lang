@@ -203,7 +203,7 @@
         <div class="p-6 rounded-xl bg-red-500/10 border border-red-500/20">
             <h3 class="text-lg font-semibold text-red-400 mb-3">Reach for something else if you need</h3>
             <ul class="list-disc pl-5 text-red-200/80 text-sm space-y-2">
-                <li>SQL, or any existing relational database &mdash; today Soli means SoliDB</li>
+                <li>SQL, or an existing SQL database (PostgreSQL, MySQL, SQLite) &mdash; today Soli means SoliDB (itself a relational database, just not SQL)</li>
                 <li>A generic, zero-build admin UI (Django-style) &mdash; Soli's bet is agents + scaffolding for bespoke admins instead</li>
                 <li>Phoenix-LiveView-depth realtime UI, or a rich SPA toolchain</li>
                 <li>A large third-party package ecosystem</li>
