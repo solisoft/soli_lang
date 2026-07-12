@@ -218,9 +218,9 @@ Nothing else is required: writing a `Post` from an ordinary controller (`Post.cr
 
 Outside a LiveView render `live_where` is exactly `where(...).all()` — the subscription is a no-op — so it's a safe drop-in.
 
-**v1 semantics:**
+**Semantics:**
 
-- **Per-collection, not per-row.** Any write to `posts` wakes every `posts` subscriber; the server-side diff gate makes an over-broad wake harmless (no visible change → empty diff → no push). Matching the changed row against each subscriber's `filter` before waking is a planned refinement.
+- **Per-row matching.** A flat-equality hash filter (`live_where({"published": true})`) is remembered as its field→value map, and a write only wakes subscribers the changed row actually satisfies — so publishing a *draft* post doesn't re-render a board filtered to `published: true`. Numbers compare by value (a stored `5.0` matches a bound `5`); `null` matches a missing field. Filters we can't decompose — the **string form** (`live_where("doc.views > @n", {n: 100})`), **deletes** (no row body), and **transaction commits** (only collection names survive) — wake conservatively (every subscriber), and the diff gate still drops any frame with no visible change.
 - **Single-process.** Subscriptions live in server memory, like LiveView instances themselves. A write in one process doesn't wake subscribers in another — multi-process deployments need an external bus. (See [Current limitations](#current-limitations).)
 - **Transaction-aware.** Writes inside a `transaction { }` block wake subscribers on **commit**, not per statement, so viewers never see uncommitted rows; a rolled-back transaction wakes no one.
 

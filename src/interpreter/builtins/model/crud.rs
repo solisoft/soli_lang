@@ -251,9 +251,10 @@ pub fn commit_transaction() -> Result<(), String> {
         Ok(affected)
     })?;
 
-    // Rows are now visible: wake any LiveView subscribed to a written collection.
+    // Rows are now visible: wake subscribers to any written collection. The tx
+    // only tracked collection names, not the per-row docs, so wake conservatively.
     for collection in affected {
-        crate::live::live_query::notify_change(&collection);
+        crate::live::live_query::notify_change(&collection, None);
     }
     Ok(())
 }
@@ -1120,15 +1121,16 @@ pub fn exec_insert(
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            exec_document_request(reqwest::Method::POST, url, Some(document))
+            exec_document_request(reqwest::Method::POST, url, Some(document.clone()))
         }
         _ => result,
     };
-    // Wake any LiveView with a matching live query (no-op when none; only
-    // reached on the non-transaction path — the tx short-circuit above returns
-    // first, and `commit_transaction` fires notify for committed rows instead).
+    // Wake any LiveView whose live query matches the written row (no-op when
+    // none; only reached on the non-transaction path — the tx short-circuit
+    // above returns first, and `commit_transaction` fires notify for committed
+    // rows instead). `document` is the just-written row for per-row matching.
     if result.is_ok() {
-        crate::live::live_query::notify_change(collection);
+        crate::live::live_query::notify_change(collection, Some(&document));
     }
     result
 }
@@ -1177,12 +1179,13 @@ pub fn exec_update(
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            exec_document_request(reqwest::Method::PUT, url, Some(document))
+            exec_document_request(reqwest::Method::PUT, url, Some(document.clone()))
         }
         _ => result,
     };
+    // PUT is a full replace, so `document` holds every field — match on it.
     if result.is_ok() {
-        crate::live::live_query::notify_change(collection);
+        crate::live::live_query::notify_change(collection, Some(&document));
     }
     result
 }
@@ -1281,8 +1284,9 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
         }
         _ => result,
     };
+    // Delete carries no row body, so wake conservatively (matcher gets `None`).
     if result.is_ok() {
-        crate::live::live_query::notify_change(collection);
+        crate::live::live_query::notify_change(collection, None);
     }
     result
 }

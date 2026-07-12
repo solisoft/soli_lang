@@ -2010,15 +2010,23 @@ impl Model {
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
-                let (filter, bind_vars): (String, StdHashMap<String, serde_json::Value>) =
-                    match args.get(1) {
+                // For the hash form the binds map IS the flat field==value
+                // matcher, so we can wake only rows that satisfy it. The string
+                // form is opaque SDBQL -> `None` (wake conservatively).
+                let (filter, bind_vars, matcher): (
+                    String,
+                    StdHashMap<String, serde_json::Value>,
+                    crate::live::live_query::Matcher,
+                ) = match args.get(1) {
                         Some(Value::Hash(hash)) => {
                             if args.get(2).is_some() {
                                 return Err("Model.live_where(Hash) takes a single argument; \
                                     the bind-vars hash is only valid with the string filter form"
                                     .to_string());
                             }
-                            build_safe_filter_from_hash(hash, "live_where")?
+                            let (filter, binds) = build_safe_filter_from_hash(hash, "live_where")?;
+                            let matcher = Some(binds.clone());
+                            (filter, binds, matcher)
                         }
                         Some(Value::String(s)) => {
                             let filter = s.clone();
@@ -2043,7 +2051,7 @@ impl Model {
                                 }
                                 None => StdHashMap::new(),
                             };
-                            (filter.to_string(), binds)
+                            (filter.to_string(), binds, None)
                         }
                         Some(other) => {
                             return Err(format!(
@@ -2058,7 +2066,7 @@ impl Model {
 
                 // Record the subscription before `collection` is moved into the
                 // builder (no-op when not inside a LiveView render).
-                crate::live::live_query::subscribe(&collection);
+                crate::live::live_query::subscribe(&collection, matcher);
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_filter(filter, bind_vars);
