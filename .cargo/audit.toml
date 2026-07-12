@@ -51,4 +51,23 @@ ignore = [
     # (then `cargo update -p calamine -p umya-spreadsheet && cargo audit`).
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+
+    # proc-macro-error 1.0.4 — unmaintained proc-macro (build-time only, no
+    # runtime risk). Reached transitively through the PDF font stack:
+    # printpdf → allsorts 0.16 → ouroboros 0.17 (which pins proc-macro-error;
+    # ouroboros >=0.18 switched to proc-macro-error2). Unblocked when allsorts
+    # bumps ouroboros to >=0.18.
+    "RUSTSEC-2024-0370",
+
+    # rustybuzz 0.20.1 — unmaintained text-shaping crate, no runtime risk.
+    # Transitive via resvg/usvg 0.45 (SVG rendering for soli-pdf). Removing it
+    # means bumping the resvg/usvg stack, which risks the PDF SVG renderer.
+    # Unblocked when resvg ships a release on a maintained rustybuzz.
+    "RUSTSEC-2026-0206",
+
+    # ttf-parser 0.25.1 — unmaintained font parser, no runtime risk. Transitive
+    # via resvg/usvg/fontdb and lopdf (PDF + SVG font handling). Same upgrade
+    # path (and risk) as rustybuzz above; unblocked when resvg/lopdf move to a
+    # maintained ttf-parser.
+    "RUSTSEC-2026-0192",
 ]
