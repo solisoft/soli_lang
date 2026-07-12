@@ -93,6 +93,21 @@ es.addEventListener("alert", e =&gt; toast(e.data))</code></pre>
         </div>
     </section>
 
+    <!-- Unified broadcast -->
+    <section id="section-broadcast" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">One call, both transports: <code class="text-amber-400">broadcast</code></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">broadcast(channel, payload)</code> fans <code class="text-cyan-400">payload</code> out to <strong class="text-white">both</strong> the <a href="/docs/core-concepts/websockets" class="text-amber-400 hover:text-amber-300">WebSocket</a> channel and the SSE topic of the same name &mdash; so a page listens over whichever transport it uses and you publish once. Non-string payloads auto-serialize to JSON; it returns the SSE subscriber count. Call it from any controller, job, or model callback.</p>
+            <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">def create(req)
+  post = Post.create(permit(params, {"title": true}))
+  # Reaches WS clients in room "posts" AND SSE subscribers of topic "posts".
+  broadcast("posts", { "event": "created", "id": post.id, "title": post.title })
+  redirect("/posts/#{post.id}")
+end</code></pre>
+            <p class="text-gray-400 mt-3">Models carry a shortcut: <code class="text-cyan-400">Post.broadcast(payload)</code> publishes to the model's collection channel (<code class="text-cyan-400">"posts"</code>) &mdash; ideal in an <code class="text-cyan-400">after_save</code> callback so every write pushes a change event to subscribed clients. This is a general pub/sub primitive; for a LiveView that re-renders on writes, prefer <a href="/docs/core-concepts/liveview#reactive-live-queries" class="text-amber-400 hover:text-amber-300">reactive live queries</a> instead.</p>
+        </div>
+    </section>
+
     <!-- When to use -->
     <section id="section-when" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">When to use what</h2>

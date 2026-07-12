@@ -115,6 +115,13 @@ fn broadcast_bytes(topic: &str, bytes: Vec<u8>) -> usize {
     delivered
 }
 
+/// Broadcast `data` as an SSE frame to every subscriber of `topic`. Public
+/// entry point for cross-module broadcasters (e.g. the `broadcast(...)` builtin
+/// / `Model.broadcast`). Non-blocking; returns the number delivered.
+pub fn broadcast_sse(topic: &str, data: &str, event: Option<&str>) -> usize {
+    broadcast_bytes(topic, format_sse(data, event).into_bytes())
+}
+
 /// Number of live subscribers on `topic` (best-effort; prunes closed ones).
 fn subscriber_count(topic: &str) -> usize {
     let mut subs = SUBSCRIBERS.lock().unwrap();
@@ -479,6 +486,19 @@ mod tests {
         drop(rx2); // client 2 disconnects
         assert_eq!(broadcast_bytes(topic, b"y".to_vec()), 1); // only rx1; rx2 pruned
         assert_eq!(subscriber_count(topic), 1);
+    }
+
+    #[test]
+    fn broadcast_sse_delivers_a_framed_event() {
+        let topic = "unit_topic_broadcast_sse";
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        register_subscriber(topic, tx);
+        // Public wrapper: frames the payload and fans out. Returns the count.
+        assert_eq!(broadcast_sse(topic, "{\"id\":7}", None), 1);
+        let frame = String::from_utf8(rx.try_recv().unwrap()).unwrap();
+        assert_eq!(frame, "data: {\"id\":7}\n\n");
+        // No subscribers on an unknown topic -> zero delivered.
+        assert_eq!(broadcast_sse("unit_topic_none", "x", None), 0);
     }
 
     #[test]

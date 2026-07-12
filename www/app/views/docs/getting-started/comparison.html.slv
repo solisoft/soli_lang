@@ -62,7 +62,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Realtime</td>
-                        <td class="py-3 px-4 text-gray-400">WebSocket rooms + presence tracking, SSE (handler-driven <code>sse(req)</code> <em>and</em> async pub/sub <code>sse_broadcast</code>), LiveView (early; DOM-morphing patches) with reactive live queries (<code>Model.live_where</code> auto-pushes on writes), live reload in dev</td>
+                        <td class="py-3 px-4 text-gray-400">WebSocket rooms + presence tracking, SSE (handler-driven <code>sse(req)</code> <em>and</em> async pub/sub <code>sse_broadcast</code>), one-call <code>broadcast()</code> to WS + SSE together, LiveView (early; DOM-morphing patches) with reactive live queries (<code>Model.live_where</code> auto-pushes on writes), live reload in dev</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Auth &amp; security</td>

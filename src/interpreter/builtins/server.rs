@@ -1506,6 +1506,32 @@ pub fn get_ws_registry() -> std::sync::Arc<crate::serve::websocket::WebSocketReg
     crate::serve::websocket::get_ws_registry()
 }
 
+/// Fan an already-serialized `message` out to both the WebSocket channel and
+/// the SSE topic named `channel`. Shared by the `broadcast(...)` builtin and
+/// `Model.broadcast`. WS delivery is async/fire-and-forget; SSE is synchronous.
+/// Returns the number of SSE subscribers the message was delivered to.
+pub fn broadcast_message(channel: &str, message: &str) -> usize {
+    // WS fan-out only when a server is running; skip gracefully otherwise so a
+    // script/test calling broadcast() doesn't panic on the missing handle.
+    if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
+        let registry = get_ws_registry();
+        let ws_channel = channel.to_string();
+        let ws_message = message.to_string();
+        handle.spawn(async move {
+            registry
+                .broadcast_to_channel(&ws_channel, &ws_message)
+                .await;
+        });
+    }
+    crate::interpreter::builtins::streaming::broadcast_sse(channel, message, None)
+}
+
+/// Serialize a broadcast payload to a wire string (strings pass through; other
+/// values JSON-encode), shared by `broadcast` / `Model.broadcast`.
+pub fn broadcast_payload_to_string(value: &Value, fn_name: &str) -> Result<String, String> {
+    ws_message_to_string(value, fn_name)
+}
+
 /// Register WebSocket server functions in the given environment.
 pub fn register_websocket_builtins(env: &mut Environment) {
     // Note: The websocket() DSL function is defined in routes.sl via router_websocket()
@@ -1584,6 +1610,28 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             });
 
             Ok(Value::Null)
+        })),
+    );
+
+    // broadcast(channel, payload) - Unified pub/sub: fan `payload` out to every
+    // WebSocket connection in the channel AND every SSE subscriber of the topic
+    // of the same name. One call reaches both transports, so a page can listen
+    // over whichever it uses. Non-string payloads auto-serialize to JSON.
+    // Returns the SSE subscriber count delivered to (WS fan-out is async).
+    env.define(
+        "broadcast".to_string(),
+        Value::NativeFunction(NativeFunction::new("broadcast", Some(2), |args| {
+            let channel = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "broadcast() expects string channel, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let message = ws_message_to_string(&args[1], "broadcast")?;
+            Ok(Value::Int(broadcast_message(&channel, &message) as i64))
         })),
     );
 

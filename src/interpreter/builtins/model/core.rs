@@ -2068,6 +2068,29 @@ impl Model {
             })),
         );
 
+        // Model.broadcast(payload) — publish `payload` to the model's collection
+        // channel over WebSocket AND SSE, so any subscribed client (raw WS, SSE,
+        // htmx) gets model-change events. A convenience over the top-level
+        // `broadcast(channel, payload)` with channel = the collection name.
+        // Returns the SSE subscriber count. Non-string payloads JSON-encode.
+        native_static_methods.insert(
+            "broadcast".to_string(),
+            Rc::new(NativeFunction::new("Model.broadcast", Some(2), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let channel = class_name_to_collection(&class.name);
+                let payload = args
+                    .get(1)
+                    .ok_or_else(|| "Model.broadcast() requires a payload argument".to_string())?;
+                let message = crate::interpreter::builtins::server::broadcast_payload_to_string(
+                    payload,
+                    "Model.broadcast",
+                )?;
+                let delivered =
+                    crate::interpreter::builtins::server::broadcast_message(&channel, &message);
+                Ok(Value::Int(delivered as i64))
+            })),
+        );
+
         // Model.mock_query_result(query, results_array) - Register mock DB response for testing
         use super::crud::register_query_mock;
         native_static_methods.insert(

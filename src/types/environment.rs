@@ -87,6 +87,16 @@ impl TypeEnvironment {
             },
         );
 
+        // broadcast(channel, payload) -> Int — pub/sub fan-out to the WS channel
+        // and SSE topic of the same name; returns the SSE subscriber count.
+        self.functions.insert(
+            "broadcast".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::Int),
+            },
+        );
+
         // input(String?) -> String
         self.functions.insert(
             "input".to_string(),

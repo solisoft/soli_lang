@@ -890,6 +890,13 @@ pub fn get_runtime_handle() -> &'static tokio::runtime::Handle {
         .expect("WS runtime handle not initialized")
 }
 
+/// Get the global tokio runtime handle, or `None` if no server is running.
+/// Lets broadcasters skip the WebSocket fan-out gracefully in non-server
+/// contexts (scripts, tests) instead of panicking.
+pub fn try_runtime_handle() -> Option<&'static tokio::runtime::Handle> {
+    WS_RUNTIME_HANDLE.get()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

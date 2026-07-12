@@ -445,6 +445,11 @@ function renderUserList() {
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_broadcast_room("room:lobby", payload)</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-mono text-white mb-2" id="broadcast">broadcast(channel, payload)</h4>
+                <p class="text-sm text-gray-400 mb-3">Fan <code>payload</code> out to the WebSocket channel <strong class="text-white">and</strong> the <a href="/docs/core-concepts/streaming#section-broadcast" class="text-amber-400 hover:text-amber-300">SSE topic</a> of the same name, so clients on either transport receive it. Non-string payloads auto-serialize to JSON; returns the SSE subscriber count. <code>Model.broadcast(payload)</code> is a shortcut that publishes to the model's collection channel.</p>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>broadcast("room:lobby", { "event": "joined", "user": name })</code></pre>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-mono text-white mb-2" id="ws_close">ws_close(connection_id, reason)</h4>
                 <p class="text-sm text-gray-400 mb-3">Close a connection with a reason string. Returns <code>null</code>.</p>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_close(conn_id, "Session expired")</code></pre>
