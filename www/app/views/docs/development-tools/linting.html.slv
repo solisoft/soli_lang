@@ -209,6 +209,17 @@ return not_found() if post.nil?
 # Good
 post = Post.find(id)</code></pre>
             </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-amber-400 font-mono text-sm">component/props</code>
+                <p class="text-gray-400 mt-2">A component's <code>props(...)</code> declaration must use string-literal names with no duplicates. Missing/unknown props are checked at render time in <code>--dev</code>, not by lint.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
+props("title", "title")   # duplicate
+props("title", x)         # not a string literal
+
+# Good
+props("title", "value")</code></pre>
+            </div>
         </div>
     </section>
 

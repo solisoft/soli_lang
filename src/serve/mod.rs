@@ -24,6 +24,7 @@ pub mod route_log;
 mod router;
 mod server_constants;
 pub mod span_log;
+pub mod template_warnings;
 mod uploads_prelude;
 pub mod view_log;
 pub mod websocket;
@@ -1821,6 +1822,8 @@ fn worker_loop(
     // The span flamegraph stays dev-only — it's a visualization the prod
     // log block doesn't consume, and it's the heaviest of the gates.
     span_log::set_enabled(dev_mode);
+    // Component prop warnings are a dev-only surface (dev bar + console).
+    template_warnings::set_enabled(dev_mode);
 
     // Matched route per request — feeds the dev bar's "requests" panel and the
     // `X-Soli-Route` response header the client patch reads.
@@ -6028,6 +6031,7 @@ fn handle_request(
         view_log::clear();
         span_log::clear();
         route_log::clear();
+        template_warnings::clear();
     }
 
     // E2E test client: clear any render captured by a prior request on this
@@ -6503,6 +6507,7 @@ fn handle_request(
                 middlewares: middleware_log::snapshot(),
                 views: view_log::snapshot(),
                 spans: span_log::snapshot(),
+                warnings: template_warnings::snapshot(),
             };
 
             // Feed coarse totals into the always-on Prometheus metrics (Phase A).

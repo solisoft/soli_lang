@@ -1264,6 +1264,25 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // props("name", "name", ...) declares the props a component expects. In
+    // --dev the renderer warns (dev bar + console) about any declared prop the
+    // caller didn't provide. No-op outside a component render; also lint-checked
+    // (`component/props`). Returns nothing — use as a statement: `<% props("title") %>`.
+    env.define(
+        "props".to_string(),
+        Value::NativeFunction(NativeFunction::new("props", None, |args| {
+            let names: Vec<String> = args
+                .iter()
+                .filter_map(|a| match a {
+                    Value::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .collect();
+            crate::template::declared_props::declare(names);
+            Ok(Value::Null)
+        })),
+    );
+
     // Component helper for reusable view pieces (better composition than deep partial nesting).
     // Looks for app/views/components/<name>.html.slv (or a path containing /).
     // data: hash of locals passed to the component.

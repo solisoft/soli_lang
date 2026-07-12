@@ -10,6 +10,7 @@
 
 pub mod content_store;
 pub mod core_eval;
+pub mod declared_props;
 pub mod helpers;
 pub mod layout;
 pub mod parser;
@@ -344,6 +345,12 @@ impl TemplateCache {
         // no-op outside a class-controller request (function handlers, tests).
         crate::interpreter::builtins::template::inject_controller_instance_vars(data);
 
+        // In --dev, record the props a component declares (`props(...)`) so we can
+        // warn about any it wasn't given. Component includes only; a stack frame
+        // keeps nested components isolated. Zero cost in production.
+        let props_frame = (is_component && crate::serve::template_warnings::is_enabled())
+            .then(crate::template::declared_props::push_frame);
+
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
@@ -354,6 +361,32 @@ impl TemplateCache {
             Some(&partial_renderer),
             Some(&template_path_str),
         )?;
+
+        // Diff declared props against the data the component received; a declared
+        // prop absent from the data (including inherited @ivars) is likely a bug.
+        if props_frame.is_some() {
+            let declared = crate::template::declared_props::current();
+            if !declared.is_empty() {
+                let present: std::collections::HashSet<String> = match data {
+                    Value::Hash(h) => h
+                        .borrow()
+                        .iter()
+                        .filter_map(|(k, _)| match k {
+                            crate::interpreter::value::HashKey::String(s) => Some(s.to_string()),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => std::collections::HashSet::new(),
+                };
+                let mut missing: Vec<&String> = declared.difference(&present).collect();
+                missing.sort();
+                for prop in missing {
+                    let msg = format!("component \"{}\": missing prop \"{}\"", name, prop);
+                    eprintln!("[soli] {}", msg);
+                    crate::serve::template_warnings::record(msg);
+                }
+            }
+        }
 
         // If the include is a markdown file, convert to HTML. URL-neutralizing
         // converter — the ERB pass already escaped interpolated data (see the
@@ -1735,6 +1768,48 @@ mod tests {
         let out = cache.render("index", &Value::Null, Some(None)).unwrap();
         assert_eq!(out.trim(), "<header>HEAD</header><main>BODY</main>");
 
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn component_missing_prop_records_warning() {
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        crate::serve::template_warnings::clear();
+        crate::serve::template_warnings::set_enabled(true);
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        let components = views.join("components");
+        fs::create_dir_all(&components).unwrap();
+        // Declares two props; the render is only given `title`.
+        fs::write(
+            components.join("card.html.slv"),
+            "<% props(\"title\", \"value\") %><h3><%= title %></h3>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let mut data = HashPairs::default();
+        data.insert(HashKey::String("title".into()), Value::String("Hi".into()));
+        let data = Value::Hash(Rc::new(RefCell::new(data)));
+        let _ = cache.render_component("card", &data).unwrap();
+
+        let warnings = crate::serve::template_warnings::snapshot();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("missing prop \"value\"")),
+            "expected a missing-prop warning, got {:?}",
+            warnings
+        );
+        // `title` was provided, so it must not warn.
+        assert!(!warnings.iter().any(|w| w.contains("\"title\"")));
+
+        crate::serve::template_warnings::set_enabled(false);
+        crate::serve::template_warnings::clear();
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
     }

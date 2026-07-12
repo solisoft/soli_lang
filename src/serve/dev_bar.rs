@@ -107,6 +107,10 @@ pub struct DevBarContext {
     /// mode. Each span carries (id, parent, name, kind, start_us,
     /// end_us, meta).
     pub spans: Vec<SpanRecord>,
+    /// Developer warnings raised during render (e.g. a component declared a
+    /// prop that wasn't provided). Empty in non-dev mode. Shown in the
+    /// Warnings panel + a header badge.
+    pub warnings: Vec<String>,
 }
 
 /// Render the dev bar for a single stored request, used by the
@@ -444,6 +448,38 @@ fn render_bar(ctx: &DevBarContext) -> String {
         ""
     };
 
+    // Developer warnings raised during render (e.g. component missing prop). An
+    // always-visible red block at the top of the panels + a badge on the pill.
+    let warnings_panel = if ctx.warnings.is_empty() {
+        String::new()
+    } else {
+        let mut items = String::new();
+        for w in &ctx.warnings {
+            items.push_str(&format!(
+                "<li style=\"padding:0.2rem 0;color:#ffb86c;\">{}</li>",
+                html_escape(w)
+            ));
+        }
+        format!(
+            "<div id=\"__solidev_warnings\" style=\"border-top:1px solid #30363d;background:#2a0d0f;border-left:3px solid #ff6b6b;padding:0.5rem 0.75rem;\">\
+<div style=\"margin-bottom:0.375rem;font-size:10px;color:#ff6b6b;letter-spacing:0.08em;\">\u{26a0} {} WARNING{}</div>\
+<ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.25rem;font-size:11px;\">{}</ol>\
+</div>",
+            ctx.warnings.len(),
+            if ctx.warnings.len() == 1 { "" } else { "S" },
+            items,
+        )
+    };
+    let warn_minimized_badge = if ctx.warnings.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<span style=\"color:#ffb86c;font-weight:600;margin-left:0.375rem;\" title=\"{} warning(s) \u{b7} click to open dev bar\">\u{26a0}{}</span>",
+            ctx.warnings.len(),
+            ctx.warnings.len(),
+        )
+    };
+
     let q_btn_extra = if q_count > 0 {
         format!(
             "<span style=\"color:#8b949e;\"> · </span><span style=\"color:#b8e986;\">{}</span>{}",
@@ -634,8 +670,8 @@ fn render_bar(ctx: &DevBarContext) -> String {
 <span style=\"color:#30363d;\">|</span>\
 <button type=\"button\" id=\"__solidev_fb\" class=\"__solidev_mob\" title=\"click to expand the flamegraph (hierarchical timing per phase + per Soli function)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z\"/></svg><span class=\"__solidev_label\">flame</span> <span id=\"__solidev_flame_count\" style=\"color:#b8e986;\">{flame_count}s</span></button>\
 </div>\
-</div>{requests_panel}<div id=\"__solidev_panels\">{breakdown_panel}{queries_panel}{http_panel}{kv_panel}{flame_panel}</div></aside>\
-<button type=\"button\" id=\"__solidev_show\" aria-label=\"Show dev bar\" style=\"display:none;position:fixed;bottom:0.5rem;right:0.5rem;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;padding:0.25rem 0.5rem;border-radius:0.25rem;background:#0b0d0f;color:#f0c674;border:1px solid #30363d;letter-spacing:0.05em;cursor:pointer;\">DEV{n1_minimized_badge}</button>\
+</div>{requests_panel}<div id=\"__solidev_panels\">{warnings_panel}{breakdown_panel}{queries_panel}{http_panel}{kv_panel}{flame_panel}</div></aside>\
+<button type=\"button\" id=\"__solidev_show\" aria-label=\"Show dev bar\" style=\"display:none;position:fixed;bottom:0.5rem;right:0.5rem;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;padding:0.25rem 0.5rem;border-radius:0.25rem;background:#0b0d0f;color:#f0c674;border:1px solid #30363d;letter-spacing:0.05em;cursor:pointer;\">DEV{n1_minimized_badge}{warn_minimized_badge}</button>\
 <script>(function(){{var __dups=document.querySelectorAll('aside#__solidev_bar');for(var __i=0;__i<__dups.length-1;__i++){{if(__dups[__i].parentNode)__dups[__i].parentNode.removeChild(__dups[__i]);}}var bar=document.getElementById('__solidev_bar');var open=document.getElementById('__solidev_show');if(!bar||!open)return;var origPad=document.body.style.paddingBottom;function syncPad(){{if(bar.style.display==='none'){{document.body.style.paddingBottom=origPad;return;}}document.body.style.paddingBottom=bar.offsetHeight+'px';}}function setHidden(h){{if(h){{bar.style.display='none';open.style.display='inline-flex';try{{sessionStorage.setItem('__solidev_hidden','1');}}catch(e){{}}}}else{{bar.style.display='';open.style.display='none';try{{sessionStorage.removeItem('__solidev_hidden');}}catch(e){{}}}}syncPad();}}var hidden=false;try{{hidden=sessionStorage.getItem('__solidev_hidden')==='1';}}catch(e){{}}setHidden(hidden);if(typeof ResizeObserver!=='undefined'){{try{{new ResizeObserver(syncPad).observe(bar);}}catch(e){{}}}}window.addEventListener('resize',syncPad);var c=document.getElementById('__solidev_close');if(c)c.addEventListener('click',function(){{setHidden(true);}});open.addEventListener('click',function(){{setHidden(false);}});var db=document.getElementById('__solidev_db');if(db){{db.addEventListener('click',function(){{var qp=document.getElementById('__solidev_queries');if(qp)qp.style.display=qp.style.display==='none'?'block':'none';}});}}var hb=document.getElementById('__solidev_hb');if(hb){{hb.addEventListener('click',function(){{var hp=document.getElementById('__solidev_http');if(hp)hp.style.display=hp.style.display==='none'?'block':'none';}});}}var kb=document.getElementById('__solidev_kb');if(kb){{kb.addEventListener('click',function(){{var kp=document.getElementById('__solidev_kv');if(kp)kp.style.display=kp.style.display==='none'?'block':'none';}});}}var rb=document.getElementById('__solidev_rb');if(rb){{rb.addEventListener('click',function(){{var rp=document.getElementById('__solidev_phases');if(rp)rp.style.display=rp.style.display==='none'?'block':'none';}});}}var mwt=document.getElementById('__solidev_mw_toggle');var mws=document.getElementById('__solidev_mw_subrows');var mwc=document.getElementById('__solidev_mw_chev');if(mwt&&mws){{mwt.addEventListener('click',function(){{var hidden=mws.style.display==='none';mws.style.display=hidden?'':'none';if(mwc)mwc.textContent=hidden?'▼':'▶';}});}}var vwt=document.getElementById('__solidev_view_toggle');var vws=document.getElementById('__solidev_view_subrows');var vwc=document.getElementById('__solidev_view_chev');if(vwt&&vws){{vwt.addEventListener('click',function(){{var hidden=vws.style.display==='none';vws.style.display=hidden?'':'none';if(vwc)vwc.textContent=hidden?'▼':'▶';}});}}var fb=document.getElementById('__solidev_fb');if(fb){{fb.addEventListener('click',function(){{var fp=document.getElementById('__solidev_flame');if(fp)fp.style.display=fp.style.display==='none'?'block':'none';}});}}var fchart=document.getElementById('__solidev_flame_chart');var flist=document.getElementById('__solidev_flame_list');if(fchart){{var totalUs=parseFloat(fchart.getAttribute('data-total'))||1;var rects=fchart.querySelectorAll('.__solidev_rect');function applyZoom(viewStart,viewW){{rects.forEach(function(r){{var s=parseFloat(r.getAttribute('data-start'));var w=parseFloat(r.getAttribute('data-w'));var rs=s-viewStart;var re=rs+w;if(re<=0||rs>=viewW){{r.style.display='none';return;}}r.style.display='';var cs=Math.max(0,rs);var ce=Math.min(viewW,re);r.style.left=(cs/viewW*100)+'%';r.style.width=Math.max(0.001,(ce-cs)/viewW*100)+'%';}});}}function highlightRect(rect,on){{if(!rect)return;rect.style.outline=on?'2px solid #ffffff':'';rect.style.outlineOffset=on?'-2px':'';}}function highlightRow(li,on){{if(!li)return;li.style.background=on?'#1c1f23':'';if(on)li.scrollIntoView({{block:'nearest',behavior:'smooth'}});}}rects.forEach(function(r){{r.addEventListener('click',function(ev){{ev.stopPropagation();applyZoom(parseFloat(r.getAttribute('data-start')),parseFloat(r.getAttribute('data-w')));}});r.addEventListener('mouseenter',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,true);highlightRect(r,true);}});r.addEventListener('mouseleave',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,false);highlightRect(r,false);}});}});fchart.addEventListener('dblclick',function(){{applyZoom(0,totalUs);}});if(flist){{flist.querySelectorAll('li[data-idx]').forEach(function(li){{li.addEventListener('mouseenter',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,true);highlightRect(rect,true);}});li.addEventListener('mouseleave',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,false);highlightRect(rect,false);}});li.addEventListener('click',function(){{applyZoom(parseFloat(li.getAttribute('data-start')),parseFloat(li.getAttribute('data-w')));}});}});}}}}var vrows=document.querySelectorAll('#__solidev_bar [data-solidev-view-idx]');if(vrows.length){{var ov=null,lbl=null,markerCache=null,autoScroll=false;function ensureOverlay(){{if(ov)return;ov=document.createElement('div');ov.id='__solidev_view_outline';ov.style.cssText='position:absolute;pointer-events:none;outline:2px solid #b8e986;outline-offset:-2px;background:rgba(184,233,134,0.12);z-index:2147483645;display:none;border-radius:2px;';document.body.appendChild(ov);lbl=document.createElement('div');lbl.style.cssText='position:absolute;pointer-events:none;font-family:JetBrains Mono,ui-monospace,monospace;font-size:10px;background:#0b0d0f;color:#b8e986;border:1px solid #b8e986;padding:1px 6px;border-radius:3px;z-index:2147483645;display:none;white-space:nowrap;';document.body.appendChild(lbl);}}function buildCache(){{if(markerCache)return markerCache;markerCache={{}};var w=document.createTreeWalker(document.body,NodeFilter.SHOW_COMMENT,null);var n;while(n=w.nextNode()){{var v=n.nodeValue||'';var m=v.match(/^solidev:(view|partial|layout):(start|end) id=(\\d+)/);if(!m)continue;var id=m[3];if(!markerCache[id])markerCache[id]={{}};markerCache[id][m[2]]=n;}}return markerCache;}}function ensureVisible(rect){{var barH=(bar&&bar.style.display!=='none')?bar.offsetHeight:0;var vh=window.innerHeight||document.documentElement.clientHeight;var visBottom=vh-barH;var pad=24;var needsUp=rect.top<pad;var needsDown=rect.top>visBottom-pad||(rect.bottom>visBottom&&rect.height<visBottom-2*pad);if(!needsUp&&!needsDown)return false;autoScroll=true;var sy=window.scrollY||window.pageYOffset||0;var targetY=sy+rect.top-Math.max(80,(visBottom-rect.height)/2);if(targetY<0)targetY=0;window.scrollTo({{top:targetY,left:window.scrollX||0,behavior:'auto'}});setTimeout(function(){{autoScroll=false;}},0);return true;}}function showFor(id,name){{var pair=buildCache()[id];if(!pair||!pair.start||!pair.end)return;var range=document.createRange();try{{range.setStartAfter(pair.start);range.setEndBefore(pair.end);}}catch(e){{return;}}var rect=range.getBoundingClientRect();if(rect.width===0&&rect.height===0)return;if(ensureVisible(rect)){{rect=range.getBoundingClientRect();}}ensureOverlay();var sx=window.scrollX||window.pageXOffset||0;var sy=window.scrollY||window.pageYOffset||0;ov.style.display='block';ov.style.left=(rect.left+sx)+'px';ov.style.top=(rect.top+sy)+'px';ov.style.width=rect.width+'px';ov.style.height=rect.height+'px';lbl.textContent=name;lbl.style.display='block';lbl.style.left=(rect.left+sx)+'px';lbl.style.top=Math.max(0,rect.top+sy-18)+'px';}}function hideOv(){{if(autoScroll)return;if(ov)ov.style.display='none';if(lbl)lbl.style.display='none';}}vrows.forEach(function(li){{li.addEventListener('mouseenter',function(){{var id=li.getAttribute('data-solidev-view-idx');var n=li.getAttribute('data-solidev-view-name');if(!n){{var nameEl=li.querySelector('span[title]');n=nameEl?nameEl.textContent:'';}}showFor(id,n);}});li.addEventListener('mouseleave',hideOv);}});}}{net_patch}if(!window.__solidevSwapHook){{window.__solidevSwapHook=1;var __clean=function(){{var bars=document.querySelectorAll('aside#__solidev_bar');for(var i=0;i<bars.length-1;i++){{if(bars[i].parentNode)bars[i].parentNode.removeChild(bars[i]);}}var b=bars[bars.length-1];if(b){{document.body.style.paddingBottom=(b.style.display==='none')?'':(b.offsetHeight+'px');}}}};document.addEventListener('htmx:afterSwap',__clean);document.addEventListener('soli:load',__clean);}}document.addEventListener('keydown',function(e){{if(e.altKey&&(e.key==='d'||e.key==='D')){{e.preventDefault();setHidden(bar.style.display!=='none');}}}});}})();</script>",
         marker = MARKER,
         request_id = html_escape(&ctx.request_id),
@@ -652,6 +688,8 @@ fn render_bar(ctx: &DevBarContext) -> String {
         q_btn_extra = q_btn_extra,
         db_label_color = db_label_color,
         n1_minimized_badge = n1_minimized_badge,
+        warnings_panel = warnings_panel,
+        warn_minimized_badge = warn_minimized_badge,
         h_count = h_count,
         h_btn_extra = h_btn_extra,
         kv_count = kv_count,
@@ -1171,6 +1209,7 @@ mod tests {
             views: vec![],
             spans: vec![],
             kv_calls: vec![],
+            warnings: vec![],
         }
     }
 

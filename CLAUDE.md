@@ -284,6 +284,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `idiom/prefer-blank` - prefer `.blank?` / `.present?` over comparing to `""`
 - `idiom/prefer-includes` - replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?`
 - `idiom/manual-find-guard` - drop the nil-check after `Model.find` (it raises on a miss; use `find_by`/`first_by` for "or nil")
+- `component/props` - a component's `props(...)` declaration must use string-literal names with no duplicates
 
 ## MVC Pattern
 

@@ -3795,6 +3795,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `idiom/prefer-blank` | Prefer `.blank?` / `.present?` over comparing to an empty string (`.blank?` also covers nil) |
 | `idiom/prefer-includes` | Replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?` |
 | `idiom/manual-find-guard` | Drop the nil-check after `Model.find` — it raises on a miss (handled as a 404); use `find_by`/`first_by` for "or nil" |
+| `component/props` | A component's `props(...)` declaration must use string-literal names with no duplicates |
 
 ### Suppressing Warnings
 
