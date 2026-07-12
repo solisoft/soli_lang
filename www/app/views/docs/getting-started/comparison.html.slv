@@ -78,7 +78,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Tooling</td>
-                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, app-aware TUI REPL (<code>soli</code> in an app dir loads your models + DB &mdash; a <code>rails console</code>), <code>soli routes</code> route lister, scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code>, self-executing app binaries (<code>soli build --standalone</code>, cross-target)</td>
+                        <td class="py-3 px-4 text-gray-400">Parallel test runner with per-worker isolated DB + coverage gate (HTML/JSON/Cobertura), formatter, linter, static type checker (<code>soli check</code>), LSP + editor plugins, app-aware TUI REPL (<code>soli</code> in an app dir loads your models + DB &mdash; a <code>rails console</code>), <code>soli routes</code> route lister, opt-in OpenAPI spec + Scalar API reference (<code>SOLI_OPENAPI</code>), scaffold/auth/mailer generators, engines (mountable sub-apps), <code>soli deploy</code>, self-executing app binaries (<code>soli build --standalone</code>, cross-target)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Long tail</td>

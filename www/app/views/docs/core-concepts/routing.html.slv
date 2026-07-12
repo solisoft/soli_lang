@@ -605,6 +605,14 @@ soli routes --json</code></pre>
         <li><code>--json</code> emits <code>[{"method", "path", "handler", "name", "middleware"}]</code> objects &mdash; stable input for scripts and coding agents.</li>
     </ul>
 
+    <h2 class="text-2xl font-bold text-white mb-6" id="openapi">OpenAPI (<code>SOLI_OPENAPI</code>)</h2>
+    <p class="text-gray-400 mb-4">Set <code class="text-cyan-400">SOLI_OPENAPI=1</code> and the server exposes an OpenAPI 3 spec generated from your routes, plus a <a href="https://scalar.com" class="text-amber-400 hover:text-amber-300">Scalar</a> API-reference UI over it:</p>
+    <pre class="mb-4"><code class="language-bash text-sm">SOLI_OPENAPI=1 soli serve
+#   GET /openapi.json   -&gt; the spec
+#   GET /openapi        -&gt; browsable API reference</code></pre>
+    <p class="text-gray-400 mb-4">Every route becomes a path + method; a <code class="text-cyan-400">:id</code> segment becomes a required <code class="text-cyan-400">{id}</code> path parameter, the <code class="text-cyan-400">controller#action</code> is the <code>operationId</code>/summary, and the controller is the tag so operations group by controller. <code class="text-cyan-400">SOLI_OPENAPI_TITLE</code> sets the document title.</p>
+    <p class="text-gray-400 mb-12">Soli actions take an untyped <code class="text-cyan-400">req</code> and there's no annotation layer, so the spec is <strong class="text-white">structural</strong> &mdash; the endpoints that exist and their path params, not request/response body schemas. The endpoints are <strong class="text-white">opt-in</strong> (404 unless <code>SOLI_OPENAPI</code> is set) and, once on, served in every environment like <code>/_metrics</code>. The <code>/openapi</code> UI loads Scalar from a CDN (needs browser network access; the raw <code>/openapi.json</code> doesn't).</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">

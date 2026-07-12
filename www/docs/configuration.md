@@ -37,6 +37,8 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_DEFAULT_URL_SCHEME` | Scheme used with `SOLI_DEFAULT_URL_HOST`. | `http` |
 | `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. Requires `SOLI_DEV_REPL_SECRET` (SEC-051) — the server refuses to start otherwise. | `false` |
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
+| `SOLI_OPENAPI` | Set to `1`/`true` to expose an OpenAPI 3 spec at `/openapi.json` (generated from the routes) and a Scalar API-reference UI at `/openapi`. Opt-in (404 otherwise); served in every environment once on. See [Routing → OpenAPI](routing.md#openapi-soli_openapi). | unset |
+| `SOLI_OPENAPI_TITLE` | Title of the generated OpenAPI document. | `Soli API` |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
 
 ### Parsing And Security Limits

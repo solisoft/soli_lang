@@ -284,6 +284,22 @@ Sample output:
 The `--json` form emits `[{"method", "path", "handler", "name", "middleware"}]`
 objects, one per route — stable input for scripts and coding agents.
 
+## OpenAPI (`SOLI_OPENAPI`)
+
+Set `SOLI_OPENAPI=1` and the server exposes an [OpenAPI 3](https://spec.openapis.org/oas/v3.0.3) spec generated from your routes, plus a [Scalar](https://scalar.com) API-reference UI over it:
+
+```bash
+SOLI_OPENAPI=1 soli serve            # then:
+#   GET /openapi.json   -> the spec
+#   GET /openapi        -> browsable API reference
+```
+
+Every route becomes a path + method; a `:id` segment becomes a required `{id}` path parameter, the `controller#action` is the `operationId`/summary, and the controller is the tag (so operations group by controller). `SOLI_OPENAPI_TITLE` sets the document title (default `"Soli API"`).
+
+Because Soli actions take an untyped `req` and there is no annotation layer, the spec is **structural** — it lists what endpoints exist and their path params, not request/response body schemas. It's a discoverability aid and a client-generation seed, not a hand-authored contract.
+
+The endpoints are **opt-in** (404 unless `SOLI_OPENAPI` is set) and, once enabled, are served in every environment — production included, like `/_metrics`. The `/openapi` UI loads Scalar from a CDN, so that page needs network access in the browser (the raw `/openapi.json` does not).
+
 ## Best Practices
 
 1. Use RESTful conventions for CRUD operations

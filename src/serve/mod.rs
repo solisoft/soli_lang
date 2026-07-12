@@ -16,6 +16,7 @@ mod live_reload_ws; // WebSocket-based live reload
 pub(crate) mod middleware;
 pub mod middleware_log;
 pub mod nav;
+pub mod openapi;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
@@ -6260,6 +6261,39 @@ fn handle_request(
             } else {
                 b"warming".to_vec()
             },
+        };
+    }
+
+    // Opt-in OpenAPI (SOLI_OPENAPI): the spec + a Scalar UI over it, built from
+    // the app's registered routes (a per-worker thread-local, hence answered
+    // here on the worker rather than the async layer). Always-on when enabled,
+    // production included. 404 when disabled so it's invisible by default.
+    if method == "GET" && (path == "/openapi.json" || path == "/openapi") {
+        if !openapi::openapi_enabled() {
+            return ResponseData {
+                status: 404,
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+                body: b"Not Found".to_vec(),
+            };
+        }
+        return if path == "/openapi.json" {
+            ResponseData {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "application/json; charset=utf-8".to_string(),
+                )],
+                body: openapi::generate_spec_json().into_bytes(),
+            }
+        } else {
+            ResponseData {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                )],
+                body: openapi::ui_page().into_bytes(),
+            }
         };
     }
 
