@@ -32,6 +32,12 @@ pub enum Command {
         actions: Vec<String>,
         folder: String,
     },
+    /// `soli generate component <name> [folder]` — scaffold a view component
+    /// (app/views/components/<name>.html.slv).
+    GenerateComponent {
+        name: String,
+        folder: String,
+    },
     Serve {
         folder: String,
         port: u16,
@@ -190,6 +196,7 @@ pub fn print_usage() {
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli generate auth [folder]");
+    eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
@@ -221,6 +228,9 @@ pub fn print_usage() {
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
+    eprintln!(
+        "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
+    );
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
     eprintln!("                       --encrypt      Encrypt the bundle (AES-256-GCM; key from");
@@ -442,9 +452,28 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "component" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("generate component requires a name (e.g. stats_card)");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        let name = args[i].clone();
+                        i += 1;
+                        // Optional trailing folder (name itself may contain `/`
+                        // for a subdirectory component, so it is not the folder).
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateComponent { name, folder };
+                        return options;
+                    }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, mailer)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, mailer, component)",
                             subcommand
                         );
                         print_usage();

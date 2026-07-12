@@ -557,6 +557,16 @@ pub fn run_generate_mailer(name: &str, actions: &[String], folder: &str) {
     }
 }
 
+pub fn run_generate_component(name: &str, folder: &str) {
+    match solilang::scaffold::create_component(folder, name) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_engine(action: &EngineAction) {
     match action {
         EngineAction::Create { name } => match solilang::scaffold::create_engine(name) {

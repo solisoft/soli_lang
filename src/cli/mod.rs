@@ -28,6 +28,9 @@ pub fn run() {
             actions,
             folder,
         } => commands::run_generate_mailer(name, actions, folder),
+        Command::GenerateComponent { name, folder } => {
+            commands::run_generate_component(name, folder)
+        }
         Command::DbMigrate { action, folder } => commands::run_db_migrate(action, folder),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
         Command::DbIndexes { folder } => commands::run_db_indexes(folder),
