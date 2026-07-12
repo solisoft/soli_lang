@@ -117,6 +117,7 @@ articles.each_with_index(fn(article, i) {
   "You summarize support tickets in one sentence.",
   ticket.body
 )</code></pre>
+                <p class="text-gray-400 mt-4"><strong class="text-white">Streaming:</strong> inside an <a href="/docs/core-concepts/streaming" class="text-amber-400 hover:text-amber-300"><code>sse</code></a> block, <code class="text-amber-400">out.llm_stream(system, user)</code> streams the completion token-by-token to the browser and returns the full answer. For an answer grounded in your own data, retrieve context first with <a href="/docs/database/search#rag" class="text-amber-400 hover:text-amber-300"><code>Model.rag</code></a> (embed &rarr; ANN &rarr; generate, returning <code>{ answer, sources }</code>).</p>
             </div>
         </section>
     </section>

@@ -404,6 +404,36 @@ pub fn run_stream_block(
 // Registration
 // ---------------------------------------------------------------------------
 
+/// `out.llm_stream(system, user)` — stream an LLM completion token-by-token
+/// into this SSE/chunked response. Each content delta is emitted as it arrives
+/// (an SSE `data:` frame in SSE mode, raw text otherwise); returns the full
+/// accumulated answer so the handler can persist it. Stops early if the client
+/// disconnects. Errors when the LLM isn't configured.
+fn out_llm_stream(args: Vec<Value>) -> Result<Value, String> {
+    let (id, sse) = instance_fields(&args).ok_or_else(|| {
+        "out.llm_stream(system, user) must be called on a stream emitter".to_string()
+    })?;
+    let system = as_text(args.get(1));
+    let user = match args.get(2) {
+        Some(_) => as_text(args.get(2)),
+        None => return Err("out.llm_stream(system, user) requires a user prompt".to_string()),
+    };
+    let full = crate::generation::generate_completion_stream(&system, &user, |token| {
+        let bytes = if sse {
+            format_sse(token, None).into_bytes()
+        } else {
+            token.as_bytes().to_vec()
+        };
+        send_chunk(id, bytes)
+    });
+    match full {
+        Some(text) => Ok(Value::String(text.into())),
+        None => Err("out.llm_stream: LLM not configured or the request failed \
+             (set SOLI_LLM_API_KEY / SOLI_LLM_URL)"
+            .to_string()),
+    }
+}
+
 pub fn register_streaming_builtins(env: &mut Environment) {
     let mut methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
     methods.insert(
@@ -413,6 +443,14 @@ pub fn register_streaming_builtins(env: &mut Environment) {
     methods.insert(
         "write".to_string(),
         Rc::new(NativeFunction::new("StreamOut.write", Some(1), out_write)),
+    );
+    methods.insert(
+        "llm_stream".to_string(),
+        Rc::new(NativeFunction::new(
+            "StreamOut.llm_stream",
+            None,
+            out_llm_stream,
+        )),
     );
     let class = Rc::new(Class {
         name: "StreamOut".to_string(),

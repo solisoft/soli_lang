@@ -259,3 +259,90 @@ pub fn attach_score(value: Value, score: f64) -> Value {
 pub fn raw_rows_to_values(rows: &[serde_json::Value]) -> Vec<Value> {
     rows.iter().map(json_to_value).collect()
 }
+
+/// Options for `Model.rag`.
+pub struct RagOptions {
+    /// The vector-index field to search (default `"embedding"`).
+    pub field: String,
+    /// The document field whose text builds the LLM context (default `"content"`).
+    pub text_field: String,
+    /// How many rows to retrieve as context (default `5`).
+    pub k: usize,
+    /// The system prompt for the answer (has a sensible RAG default).
+    pub system: String,
+}
+
+impl Default for RagOptions {
+    fn default() -> Self {
+        Self {
+            field: "embedding".to_string(),
+            text_field: "content".to_string(),
+            k: 5,
+            system: "You are a helpful assistant. Answer the question using only the \
+                 provided context. If the context does not contain the answer, say you \
+                 don't know."
+                .to_string(),
+        }
+    }
+}
+
+/// Retrieval-augmented generation over a collection: embed `question`, ANN-search
+/// the vector index for the top-`k` rows, build an LLM context from each row's
+/// `text_field`, and generate an answer. Returns `{ "answer": String, "sources":
+/// [instances] }`. Requires a `vector_index` on `field` (retrieval), embeddings
+/// (`SOLI_EMBEDDING_*`), and an LLM (`SOLI_LLM_*`).
+pub fn exec_rag(
+    class: &Rc<Class>,
+    class_name: &str,
+    collection: &str,
+    question: &str,
+    opts: &RagOptions,
+) -> Result<Value, String> {
+    use crate::interpreter::value::{HashKey, HashPairs};
+
+    let vindex =
+        super::registry::get_vector_index_for_field(class_name, &opts.field).ok_or_else(|| {
+            format!(
+                "{}.rag requires a `vector_index` declaration on field '{}'",
+                class_name, opts.field
+            )
+        })?;
+
+    let query_vec = crate::embedding::generate_embedding(question).ok_or_else(|| {
+        "rag: embedding failed — set SOLI_EMBEDDING_API_KEY (and SOLI_EMBEDDING_URL/MODEL)"
+            .to_string()
+    })?;
+
+    let hits = exec_vector_search(collection, &vindex.name, &query_vec, opts.k, None)?;
+
+    let mut context = String::new();
+    let mut sources: Vec<Value> = Vec::with_capacity(hits.len());
+    for (i, hit) in hits.iter().enumerate() {
+        if let Some(text) = hit.document.get(&opts.text_field).and_then(|v| v.as_str()) {
+            if !text.is_empty() {
+                context.push_str(&format!("[{}] {}\n\n", i + 1, text));
+            }
+        }
+        sources.push(json_doc_to_instance(class, &hit.document));
+    }
+
+    let user = format!(
+        "Context:\n{}\nQuestion: {}\n\nAnswer using only the context above.",
+        context, question
+    );
+    let answer = crate::generation::generate_completion(&opts.system, &user).ok_or_else(|| {
+        "rag: LLM not configured or request failed — set SOLI_LLM_API_KEY / SOLI_LLM_URL"
+            .to_string()
+    })?;
+
+    let mut result = HashPairs::default();
+    result.insert(
+        HashKey::String("answer".into()),
+        Value::String(answer.into()),
+    );
+    result.insert(
+        HashKey::String("sources".into()),
+        Value::Array(Rc::new(RefCell::new(sources))),
+    );
+    Ok(Value::Hash(Rc::new(RefCell::new(result))))
+}

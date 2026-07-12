@@ -67,8 +67,17 @@ end</code></pre>
             <div class="text-sm text-gray-400 space-y-1">
                 <div><code class="text-amber-400">out.emit(data, event?)</code> &mdash; one SSE event; multi-line <code>data</code> is split into multiple <code>data:</code> lines. Returns <code class="text-orange-400">Bool</code> (false = client gone).</div>
                 <div><code class="text-amber-400">out.write(data)</code> &mdash; a raw body chunk, no framing (for <code>stream</code>).</div>
+                <div><code class="text-amber-400">out.llm_stream(system, user)</code> &mdash; stream an LLM completion token-by-token into this response (each delta emitted as it arrives); returns the full answer so you can persist it. Stops early if the client disconnects.</div>
             </div>
             <p class="text-gray-400 mt-3 text-sm">Named <code>emit</code>, not <code>send</code>, because <code>send</code> is the universal metaprogramming method.</p>
+            <pre data-filename="app/controllers/chat_controller.sl" class="mt-4"><code class="language-soli text-sm"># Stream an answer over SSE — tokens reach the browser as they generate.
+def ask(req)
+  sse(req) do |out|
+    answer = out.llm_stream("You are concise.", req["query"]["q"])
+    ChatLog.create({ "q": req["query"]["q"], "a": answer })
+  end
+end</code></pre>
+            <p class="text-gray-400 mt-3 text-sm">Needs an LLM configured (<code class="text-cyan-400">SOLI_LLM_API_KEY</code> / <code class="text-cyan-400">SOLI_LLM_URL</code>). To stream an answer grounded in your data, retrieve context first with <a href="/docs/database/search#rag" class="text-amber-400 hover:text-amber-300"><code>Model.rag</code></a> / <code>Model.similar</code>, then build the prompt and call <code>out.llm_stream</code>.</p>
         </div>
     </section>
 

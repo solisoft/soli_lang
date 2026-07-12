@@ -3893,6 +3893,50 @@ impl Model {
             })),
         );
 
+        // Model.rag(question[, {field:, text_field:, k:, system:}]) — one-call
+        // retrieval-augmented generation: embed the question, ANN-search the
+        // vector index for the top-k rows, build a context from each row's
+        // text_field, and answer with the LLM. Returns { answer, sources }.
+        native_static_methods.insert(
+            "rag".to_string(),
+            Rc::new(NativeFunction::new("Model.rag", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let question = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err(format!("{}.rag expects a question string", class_name)),
+                };
+
+                let mut opts = super::search::RagOptions::default();
+                if let Some(Value::Hash(h)) = args.get(2) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in h.borrow().iter() {
+                        let key = match k {
+                            HashKey::String(s) => s.to_string(),
+                            _ => continue,
+                        };
+                        match (key.as_str(), v) {
+                            ("field", Value::String(s)) => opts.field = s.to_string(),
+                            ("text_field", Value::String(s)) => opts.text_field = s.to_string(),
+                            ("k", Value::Int(n)) if *n > 0 => opts.k = *n as usize,
+                            ("system", Value::String(s)) => opts.system = s.to_string(),
+                            (other, _) => {
+                                return Err(format!(
+                                    "rag() unknown/invalid option '{}': expected field:, \
+                                     text_field:, k:, or system:",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                }
+
+                super::search::exec_rag(&class, &class_name, &collection, &question, &opts)
+            })),
+        );
+
         // Model.near(lat, lon[, options]) / Model.within(lat, lon, radius) —
         // geo queries over the declared `geo_index` field. Results carry
         // `_distance` (meters).

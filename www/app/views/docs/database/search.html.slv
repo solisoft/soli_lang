@@ -232,6 +232,34 @@ product.traverse(CompatibleWith).similar("accessories", "embedding", 5).all</cod
         </table>
     </div>
 
+    <h2 id="rag" class="text-2xl font-bold text-white mb-6">One-call RAG (<code>rag</code>)</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-cyan-400">Model.rag(question)</code> is retrieval-augmented generation in one call: it embeds the question, ANN-searches the <code>vector_index</code> for the top-k rows, builds an LLM context from each row's text field, and returns the generated answer plus the source rows.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">result = Article.rag("How do I rotate the signing key?")
+result["answer"]    # the LLM's answer, grounded in your data
+result["sources"]   # the Article instances used as context</code></pre>
+        </div>
+    </div>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs text-gray-500 uppercase bg-white/5">
+                <tr><th class="px-4 py-3">Option</th><th class="px-4 py-3">Default</th><th class="px-4 py-3">Description</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-4 py-3 font-mono text-amber-300">field</td><td class="px-4 py-3"><code>embedding</code></td><td class="px-4 py-3">Vector-index field to search</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">text_field</td><td class="px-4 py-3"><code>content</code></td><td class="px-4 py-3">Field whose text builds the context</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">k</td><td class="px-4 py-3">5</td><td class="px-4 py-3">Rows retrieved as context</td></tr>
+                <tr><td class="px-4 py-3 font-mono text-amber-300">system</td><td class="px-4 py-3">RAG prompt</td><td class="px-4 py-3">System prompt for the answer</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Needs a <code>vector_index</code> (retrieval), embeddings (<code class="text-cyan-400">SOLI_EMBEDDING_API_KEY</code>), and an LLM (<code class="text-cyan-400">SOLI_LLM_API_KEY</code>/<code class="text-cyan-400">SOLI_LLM_URL</code>). For a <strong class="text-white">streamed</strong> answer, pair retrieval with <a href="/docs/core-concepts/streaming" class="text-amber-400 hover:underline"><code>out.llm_stream</code></a> inside an <code>sse</code> block.
+    </p>
+
     <h2 id="hybrid-search" class="text-2xl font-bold text-white mb-6">Hybrid Search (not exposed yet)</h2>
     <p class="text-gray-400 mb-12">
         Combined vector + fulltext ranking is <strong class="text-white">not</strong> exposed through the ORM &mdash; the database's HTTP endpoint for it is still a stub. The raw-SDBQL escape hatch is SolidB's <code>HYBRID_SEARCH</code> function via <code>db.query(...)</code> / <code>@sdbql{}</code>; see the <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-amber-400 hover:underline">SolidB Hybrid Search docs</a> for its signature and tuning.

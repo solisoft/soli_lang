@@ -218,6 +218,26 @@ You can also compose manually: `seed.traverse(Edge).similar(query, field, k)`.
 See [Models — Graph RAG](models.md#graph-rag) for options and metadata fields
 (`_graph_seed`, `_graph_hops`).
 
+## One-call RAG (`rag`)
+
+`Model.rag(question)` is retrieval-augmented generation in a single call: it
+embeds the question, ANN-searches the `vector_index` for the top-k rows, builds
+an LLM context from each row's text field, and returns the generated answer
+plus the source rows:
+
+```soli
+result = Article.rag("How do I rotate the signing key?")
+result["answer"]     # the LLM's answer, grounded in your data
+result["sources"]    # the Article instances used as context
+```
+
+Options: `field` (embedding field, default `"embedding"`), `text_field` (the
+field whose text builds the context, default `"content"`), `k` (rows retrieved,
+default `5`), and `system` (the system prompt). It needs a `vector_index` for
+retrieval, embeddings configured (`SOLI_EMBEDDING_API_KEY`), and an LLM
+(`SOLI_LLM_API_KEY` / `SOLI_LLM_URL`). For a **streamed** answer, pair retrieval
+with [`out.llm_stream`](streaming.md) inside an `sse` block.
+
 ## Pipeline notes (fulltext / hybrid / geo)
 
 `search`, `hybrid`, `near`, and `within` bypass the SDBQL query pipeline:
