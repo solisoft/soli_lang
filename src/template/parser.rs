@@ -155,6 +155,10 @@ pub struct FormWithParts {
 pub struct ComponentParts {
     pub name: crate::ast::expr::Expr,
     pub props: Option<crate::ast::expr::Expr>,
+    /// Block variable in `component "x" do |c|` (the slot-builder). `None` for a
+    /// bare `do`. `c.slot("name") do … end` calls in the body are desugared to
+    /// `ContentFor` at parse time, so this var is a parse-time marker only.
+    pub var: Option<String>,
 }
 
 /// A node in the template AST.
@@ -307,17 +311,60 @@ fn form_with_block_parts(code: &str) -> Option<(&str, String, bool)> {
     }
 }
 
-/// Detect `component "name", props do` or `component("name", props) do` openers.
-/// Returns the head (the call part before "do").
-fn component_block_parts(code: &str) -> Option<&str> {
+/// Detect `component "name", props do [|c|]` or `component("name", props) do [|c|]`
+/// openers. Returns `(head, block-var)` where `head` is the call part before `do`
+/// and block-var is the optional `|c|` slot-builder binding (mirrors form_with).
+fn component_block_parts(code: &str) -> Option<(&str, Option<String>)> {
     let code = code.trim();
-    if let Some(rest) = code.strip_suffix("do") {
-        let head = rest.trim_end();
-        if head.starts_with("component") {
-            return Some(head);
+    let (before_var, var) = if let Some(rest) = code.strip_suffix('|') {
+        let bar = rest.rfind('|')?;
+        let name = rest[bar + 1..].trim();
+        let valid = !name.is_empty()
+            && !name.starts_with(|c: char| c.is_ascii_digit())
+            && name.chars().all(|c| c.is_alphanumeric() || c == '_');
+        if !valid {
+            return None;
         }
+        (rest[..bar].trim_end(), Some(name.to_string()))
+    } else {
+        (code, None)
+    };
+    let head = before_var.strip_suffix("do")?.trim_end();
+    if head.starts_with("component") {
+        Some((head, var))
+    } else {
+        None
     }
-    None
+}
+
+/// Detect a slot-builder opener `<var>.slot("name") do` inside a component block
+/// whose block variable is `var`. Returns the raw `slot(...)` args (e.g. `"name"`).
+fn slot_block_open<'a>(code: &'a str, var: &str) -> Option<&'a str> {
+    let inner = code.trim().strip_suffix("do")?.trim_end();
+    let prefix = format!("{}.slot(", var);
+    inner
+        .strip_prefix(prefix.as_str())?
+        .strip_suffix(')')
+        .map(str::trim)
+}
+
+/// Whether `code` is a slot-builder opener `<ident>.slot(...) do` for *some*
+/// identifier. Used by the tokenizer to fold such openers to `Code` tokens
+/// regardless of tag style; the component body parser then validates the
+/// receiver against the actual block variable via [`slot_block_open`].
+fn is_slot_block_opener(code: &str) -> bool {
+    let Some(inner) = code.trim().strip_suffix("do") else {
+        return false;
+    };
+    let inner = inner.trim_end();
+    let Some(dot) = inner.find(".slot(") else {
+        return false;
+    };
+    let ident = &inner[..dot];
+    !ident.is_empty()
+        && !ident.starts_with(|c: char| c.is_ascii_digit())
+        && ident.chars().all(|c| c.is_alphanumeric() || c == '_')
+        && inner.ends_with(')')
 }
 
 /// Tokenize the template source into a sequence of tokens.
@@ -395,11 +442,12 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
             } else if tag_content == "end"
                 || form_with_block_parts(&tag_content).is_some()
                 || component_block_parts(&tag_content).is_some()
+                || is_slot_block_opener(&tag_content)
             {
-                // `form_with(...) do |f|` and `component ... do` block openers and their `end` read
-                // naturally as output tags (`<%- %>` / `<%= %>`, Rails-style).
-                // Normalize them to Code tokens so the block dispatcher sees
-                // them regardless of tag style.
+                // `form_with(...) do |f|`, `component ... do [|c|]`, `c.slot(...) do`
+                // block openers and their `end` read naturally as output tags
+                // (`<%- %>` / `<%= %>`, Rails-style). Normalize them to Code tokens
+                // so the block dispatcher sees them regardless of tag style.
                 tokens.push(Token::Code(tag_content, tag_line));
             } else if is_raw {
                 tokens.push(Token::OutputRaw(tag_content, tag_line));
@@ -1082,7 +1130,7 @@ fn parse_component_block(
     tokens: &[Token],
     open_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
-    let head = match &tokens[0] {
+    let (head, block_var) = match &tokens[0] {
         Token::Code(code, _) => component_block_parts(code)
             .ok_or_else(|| format!("Expected component block at line {}", open_line))?,
         _ => return Err(format!("Expected component block at line {}", open_line)),
@@ -1170,6 +1218,7 @@ fn parse_component_block(
                             parts: Box::new(ComponentParts {
                                 name: name_expr,
                                 props: props_expr,
+                                var: block_var,
                             }),
                             body,
                             line: open_line,
@@ -1197,6 +1246,14 @@ fn parse_component_block(
                     let (nested_comp, consumed) = parse_component_block(&tokens[i..], *line)?;
                     body.push(nested_comp);
                     i += consumed;
+                } else if let Some(slot_args) =
+                    block_var.as_deref().and_then(|v| slot_block_open(code, v))
+                {
+                    // `c.slot("name") do … end` -> ContentFor capture (named slot).
+                    let slot_name = parse_directive_name(slot_args, "slot", *line)?;
+                    let (nested_slot, consumed) = parse_slot_block(&tokens[i..], slot_name, *line)?;
+                    body.push(nested_slot);
+                    i += consumed;
                 } else {
                     let stmts = parse_core_code(code, *line)?;
                     body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
@@ -1213,6 +1270,68 @@ fn parse_component_block(
     Err(format!(
         "Unclosed component block at line {} - missing 'end'",
         open_line
+    ))
+}
+
+/// Parse a `<% c.slot("name") do %> ... <% end %>` slot block (the slot-builder
+/// form inside a component). Desugars to a `ContentFor` node so it shares the
+/// content_for store and the `yield "name"` machinery. Mirrors
+/// `parse_content_for_block`.
+fn parse_slot_block(
+    tokens: &[Token],
+    slot_name: String,
+    slot_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    let mut body = Vec::new();
+    let mut i = 1; // Skip the `c.slot(...) do` opener token
+
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::Code(code, line) => {
+                let code = code.trim();
+
+                if code == "end" {
+                    return Ok((
+                        TemplateNode::ContentFor {
+                            name: slot_name,
+                            body,
+                            line: slot_line,
+                        },
+                        i + 1,
+                    ));
+                } else if let Some(rest) = code.strip_prefix("if ") {
+                    let condition = parse_core_expr(rest.trim(), *line)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
+                    body.push(nested_if);
+                    i += consumed;
+                } else if code.starts_with("for ") {
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
+                    body.push(nested_for);
+                    i += consumed;
+                } else if is_content_for_code(code) {
+                    let (nested_cf, consumed) = parse_content_for_block(&tokens[i..], *line)?;
+                    body.push(nested_cf);
+                    i += consumed;
+                } else if form_with_block_parts(code).is_some() {
+                    let (nested_fw, consumed) = parse_form_with_block(&tokens[i..], *line)?;
+                    body.push(nested_fw);
+                    i += consumed;
+                } else {
+                    let stmts = parse_core_code(code, *line)?;
+                    body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
+                    i += 1;
+                }
+            }
+            token => {
+                body.push(parse_output_token(token)?);
+                i += 1;
+            }
+        }
+    }
+
+    Err(format!(
+        "Unclosed slot block at line {} - missing 'end'",
+        slot_line
     ))
 }
 
@@ -2338,6 +2457,20 @@ mod tests {
         assert!(!extracted.contains("content_for"));
         assert!(!extracted.contains("yield"));
         // The synthesized source must be parseable Soli.
+        let tokens = crate::lexer::Scanner::new(&extracted)
+            .scan_tokens()
+            .unwrap();
+        crate::parser::Parser::new(tokens).parse().unwrap();
+    }
+
+    #[test]
+    fn test_extract_lintable_code_handles_slot_builder() {
+        // The `|c|` block var binds and `c.slot(...) do … end` is a real
+        // method-call-with-block — the extracted source must parse so `soli lint`
+        // runs cleanly instead of choking on the slot syntax.
+        let src = "<%- component \"card\" do |c| %>\n<%- c.slot(\"header\") do %>\n<h1>Hi</h1>\n<% end %>\nBody\n<%- end %>";
+        let extracted = extract_lintable_code(src).unwrap();
+        assert!(extracted.contains("c.slot"));
         let tokens = crate::lexer::Scanner::new(&extracted)
             .scan_tokens()
             .unwrap();

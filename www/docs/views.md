@@ -1079,6 +1079,22 @@ For named slots, use `content_for` inside the block and `yield "name"` (or `cont
 <%- end %>
 ```
 
+Or, more ergonomically, bind a **slot-builder** with `do |c|` and call
+`c.slot("name")` — it desugars to the same `content_for` capture, so it's just
+a clearer way to spell named slots (call `c.slot(...)` at the top level of the
+block):
+
+```erb
+<%- component "card", title: "With header" do |c| %>
+  <%- c.slot("header") do %>
+    <strong>Header content</strong>
+  <%- end %>
+  Body
+<%- end %>
+```
+
+Either form feeds the same named `yield` in the component template:
+
 ```erb
 <div class="card">
   <header><%= yield "header" %></header>

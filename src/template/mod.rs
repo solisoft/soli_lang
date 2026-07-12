@@ -1676,6 +1676,38 @@ mod tests {
     }
 
     #[test]
+    fn component_slot_builder_named_slots() {
+        // The slot-builder `do |c| … c.slot("x") do … end` desugars to
+        // content_for and feeds `yield "x"` — same result as the content_for
+        // form, and folds correctly from a raw `<%- … do %>` tag.
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        let components = views.join("components");
+        fs::create_dir_all(&components).unwrap();
+        fs::write(
+            components.join("panel.html.slv"),
+            "<header><%= yield \"header\" %></header><main><%= yield %></main>",
+        )
+        .unwrap();
+        fs::write(
+            views.join("index.html.slv"),
+            "<%- component \"panel\" do |c| %><%- c.slot(\"header\") do %>HEAD<% end %>BODY<%- end %>",
+        )
+        .unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("index", &Value::Null, Some(None)).unwrap();
+        assert_eq!(out.trim(), "<header>HEAD</header><main>BODY</main>");
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
     fn component_named_slot_via_content_for() {
         // A `content_for "x"` inside the component block feeds `yield "x"` in
         // the component template (named slots); the remaining body feeds the

@@ -1067,8 +1067,16 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
 
     <p class="text-gray-400 mb-4">
-      For named slots, use <code>content_for "name" do</code> inside the block and <code>yield "name"</code> in the template.
+      For named slots, use <code>content_for "name" do</code> inside the block and <code>yield "name"</code> in the template. Or bind a <strong class="text-white">slot-builder</strong> with <code>do |c|</code> and call <code>c.slot("name")</code> at the top level of the block &mdash; it desugars to the same <code>content_for</code> capture:
     </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- component "card", title: "With header" do |c| %&gt;
+  &lt;%- c.slot("header") do %&gt;&lt;strong&gt;Header&lt;/strong&gt;&lt;%- end %&gt;
+  Body
+&lt;%- end %&gt;</code></pre>
+        </div>
+    </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Components vs partials</h3>
     <table class="w-full text-sm mb-8">
