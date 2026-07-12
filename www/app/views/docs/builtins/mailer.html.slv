@@ -77,6 +77,18 @@ OrderMailer.receipt(order, invoice).deliver_later</code></pre>
         </div>
     </section>
 
+    <!-- Previewing -->
+    <section id="previewing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Previewing <span class="text-sm font-normal text-gray-500">(dev)</span></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">With <code class="text-cyan-400">soli serve --dev</code>, browse every mailer view at <code class="text-amber-400">/__soli/mailers</code> &mdash; a gallery that renders each <code class="text-cyan-400">&lt;mailer&gt;/&lt;action&gt;</code> HTML body in an iframe, so you can iterate on an email without sending one. Each entry links to <code class="text-amber-400">/__soli/mailers/&lt;mailer&gt;/&lt;action&gt;</code> for a full-page preview.</p>
+            <p class="text-gray-400 mb-3">The preview renders the view directly (not the action), so give it example data with a leading <code class="text-cyan-400">&lt;%# preview: {json} %&gt;</code> header &mdash; the same convention as the <a href="/docs/core-concepts/views#component-catalog" class="text-cyan-400 hover:text-white transition-colors">component catalog</a>:</p>
+            <pre data-filename="app/views/user_mailer/welcome.html.slv"><code class="language-erb text-sm">&lt;%# preview: { "user": { "name": "Ada Lovelace" } } %&gt;
+&lt;h1&gt;Welcome, &lt;%= h(user.name) %&gt;!&lt;/h1&gt;</code></pre>
+            <p class="text-gray-400 mt-3">Previews render the HTML part only (no layout) with built-in helpers plus the <code class="text-cyan-400">preview</code> data; the action's real instance variables and request context aren't available. The gallery is dev-only &mdash; the routes don't exist in production.</p>
+        </div>
+    </section>
+
     <!-- Sending -->
     <section id="sending" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Sending</h2>

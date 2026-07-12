@@ -79,6 +79,28 @@ OrderMailer.receipt(order, invoice).deliver_later
 Omitted arguments arrive as `nil` (default parameter values are not applied),
 so pass every argument explicitly or fold them into a single hash.
 
+## Previewing (dev)
+
+With `soli serve --dev`, browse every mailer view at **`/__soli/mailers`** — a
+gallery listing each `<mailer>/<action>` and rendering its HTML body in an
+iframe, so you can iterate on an email without sending one. Each entry links to
+**`/__soli/mailers/<mailer>/<action>`** for a full-page preview.
+
+Because the preview renders the view directly (not the action), give it example
+data with a leading `<%# preview: {json} %>` header — the same convention as the
+[component catalog](views.md#component-catalog-dev):
+
+```erb
+<%# preview: { "user": { "name": "Ada Lovelace" } } %>
+<h1>Welcome, <%= h(user.name) %>!</h1>
+```
+
+Previews render the HTML part only (no layout) with built-in helpers plus the
+`preview` data; the action's real instance variables and request context aren't
+available. Views with no `preview` header still list, but show a render error
+where they reference missing locals. The gallery is dev-only — the routes don't
+exist in production.
+
 ## Attachments
 
 Pass an `attachments` array to `mail`, or chain `attach` / `attach_base64` on the

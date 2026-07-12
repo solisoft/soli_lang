@@ -3036,6 +3036,15 @@ async fn handle_hyper_request(
                 return Ok(handle_component_preview(name));
             }
         }
+        // Mailer preview gallery, dev-only.
+        if method == "GET" && path == "/__soli/mailers" {
+            return Ok(handle_mailer_catalog());
+        }
+        if method == "GET" {
+            if let Some(rel) = path.strip_prefix("/__soli/mailers/") {
+                return Ok(handle_mailer_preview(rel));
+            }
+        }
     }
 
     // Coverage dump endpoint: only active when the parent process asked us
@@ -6994,12 +7003,15 @@ fn html_ok(html: String) -> Response<ResponseBody> {
         .unwrap()
 }
 
-/// Read a component's raw `.html.slv` source (VFS-aware).
-fn component_raw_source(views_dir: &std::path::Path, name: &str) -> Option<String> {
-    let path = views_dir
-        .join("components")
-        .join(format!("{}.html.slv", name));
+/// Read a view template's raw `.html.slv` source by views-relative path (VFS-aware).
+fn view_raw_source(views_dir: &std::path::Path, rel: &str) -> Option<String> {
+    let path = views_dir.join(format!("{}.html.slv", rel));
     vfs_read_to_string(&path.to_string_lossy()).ok()
+}
+
+/// Read a component's raw `.html.slv` source.
+fn component_raw_source(views_dir: &std::path::Path, name: &str) -> Option<String> {
+    view_raw_source(views_dir, &format!("components/{}", name))
 }
 
 /// Extract example preview data from a leading `<%# preview: {json} %>` header;
@@ -7063,16 +7075,17 @@ fn component_declared_props(raw: &str) -> Vec<String> {
     out
 }
 
-fn catalog_shell(body: &str) -> String {
+fn catalog_shell(heading: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} Components</title>\
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} {heading}</title>\
 <style>body{{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;background:#08090b;color:#c9d1d9;padding:1.5rem;}}\
 h1{{font-size:14px;letter-spacing:0.08em;color:#8b949e;font-weight:600;margin:0 0 0.25rem;}}\
 a:hover{{text-decoration:underline;}}</style></head>\
-<body><h1>SOLI \u{b7} COMPONENT CATALOG</h1>\
+<body><h1>SOLI \u{b7} {heading}</h1>\
 <p style=\"font-size:11px;color:#8b949e;margin:0 0 1.25rem;\">Dev-only. Previews render with built-in helpers plus any \
 <code>&lt;%# preview: {{...}} %&gt;</code> data; app-defined view helpers and request context aren't available here.</p>\
 {body}</body></html>",
+        heading = heading,
         body = body,
     )
 }
@@ -7082,10 +7095,13 @@ fn handle_component_catalog() -> Response<ResponseBody> {
     let cache = match crate::interpreter::builtins::template::get_template_cache() {
         Ok(c) => c,
         Err(e) => {
-            return html_ok(catalog_shell(&format!(
-                "<p style=\"color:#ff6b6b\">Template cache unavailable: {}</p>",
-                dev_bar::html_escape(&e)
-            )))
+            return html_ok(catalog_shell(
+                "COMPONENT CATALOG",
+                &format!(
+                    "<p style=\"color:#ff6b6b\">Template cache unavailable: {}</p>",
+                    dev_bar::html_escape(&e)
+                ),
+            ))
         }
     };
     let views_dir = cache.views_dir().to_path_buf();
@@ -7109,6 +7125,7 @@ fn handle_component_catalog() -> Response<ResponseBody> {
 
     if names.is_empty() {
         return html_ok(catalog_shell(
+            "COMPONENT CATALOG",
             "<p style=\"color:#8b949e\">No components found in <code>app/views/components/</code>.</p>",
         ));
     }
@@ -7135,10 +7152,13 @@ fn handle_component_catalog() -> Response<ResponseBody> {
 </div>",
         ));
     }
-    html_ok(catalog_shell(&format!(
-        "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;\">{}</div>",
-        cards
-    )))
+    html_ok(catalog_shell(
+        "COMPONENT CATALOG",
+        &format!(
+            "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;\">{}</div>",
+            cards
+        ),
+    ))
 }
 
 /// Dev-only single-component preview (`GET /__soli/components/<name>`), used by
@@ -7166,6 +7186,114 @@ fn handle_component_preview(name: &str) -> Response<ResponseBody> {
         "<!doctype html><html><head><meta charset=\"utf-8\">\
 <link rel=\"stylesheet\" href=\"/css/application.css\">\
 <style>body{{margin:0;padding:1rem;font-family:system-ui,sans-serif;}}</style>\
+</head><body>{}</body></html>",
+        inner
+    ))
+}
+
+/// From a flat list of view file paths (as returned by `vfs_walk_dir`), pick the
+/// sorted, deduped `<mailer>/<action>` names: `.html.slv` files directly under a
+/// `*_mailer/` directory. The `.text.slv` companions don't end in `.html.slv`,
+/// so they're excluded; unsafe/traversal names are dropped.
+fn mailer_view_names(files: &[String], prefix: &str) -> Vec<String> {
+    let mut names: Vec<String> = files
+        .iter()
+        .filter(|f| f.ends_with(".html.slv"))
+        .filter_map(|f| {
+            let rel = f
+                .strip_prefix(prefix)
+                .unwrap_or(f)
+                .trim_end_matches(".html.slv")
+                .to_string();
+            let (dir, _action) = rel.split_once('/')?;
+            if dir.ends_with("_mailer") {
+                Some(rel)
+            } else {
+                None
+            }
+        })
+        .filter(|n| crate::template::is_safe_template_name(n))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Dev-only mailer preview gallery index (`GET /__soli/mailers`). Lists every
+/// `app/views/<name>_mailer/<action>.html.slv` view and previews each in an
+/// iframe — the email equivalent of the component catalog.
+fn handle_mailer_catalog() -> Response<ResponseBody> {
+    let cache = match crate::interpreter::builtins::template::get_template_cache() {
+        Ok(c) => c,
+        Err(e) => {
+            return html_ok(catalog_shell(
+                "MAILER PREVIEWS",
+                &format!(
+                    "<p style=\"color:#ff6b6b\">Template cache unavailable: {}</p>",
+                    dev_bar::html_escape(&e)
+                ),
+            ))
+        }
+    };
+    let views_dir = cache.views_dir().to_path_buf();
+    let dir_str = views_dir.to_string_lossy().to_string();
+    let prefix = format!("{}/", dir_str.trim_end_matches('/'));
+    let names = mailer_view_names(&vfs_walk_dir(&dir_str).unwrap_or_default(), &prefix);
+
+    if names.is_empty() {
+        return html_ok(catalog_shell(
+            "MAILER PREVIEWS",
+            "<p style=\"color:#8b949e\">No mailer views found. Generate one with \
+<code>soli generate mailer user welcome</code>.</p>",
+        ));
+    }
+
+    let mut cards = String::new();
+    for rel in &names {
+        let esc = dev_bar::html_escape(rel);
+        cards.push_str(&format!(
+            "<div style=\"border:1px solid #30363d;border-radius:6px;overflow:hidden;\">\
+<div style=\"padding:0.5rem 0.75rem;border-bottom:1px solid #30363d;background:#0b0d0f;\">\
+<a href=\"/__soli/mailers/{esc}\" style=\"color:#8be9fd;text-decoration:none;font-weight:600;\">{esc}</a>\
+</div>\
+<iframe src=\"/__soli/mailers/{esc}\" style=\"width:100%;height:320px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
+</div>",
+        ));
+    }
+    html_ok(catalog_shell(
+        "MAILER PREVIEWS",
+        &format!(
+            "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1rem;\">{}</div>",
+            cards
+        ),
+    ))
+}
+
+/// Dev-only single mailer preview (`GET /__soli/mailers/<mailer>/<action>`),
+/// used by the gallery iframes and directly linkable. Renders the HTML body
+/// only (no layout), with example data from a `<%# preview: {json} %>` header.
+fn handle_mailer_preview(rel: &str) -> Response<ResponseBody> {
+    if !crate::template::is_safe_template_name(rel) {
+        return html_ok("<!doctype html><p>invalid mailer template</p>".to_string());
+    }
+    let inner = match crate::interpreter::builtins::template::get_template_cache() {
+        Ok(cache) => {
+            let raw = view_raw_source(cache.views_dir(), rel).unwrap_or_default();
+            let data = component_preview_data(&raw);
+            match cache.render(rel, &data, Some(None)) {
+                Ok(html) => html,
+                Err(e) => format!(
+                    "<pre style=\"color:#b00\">render error: {}</pre>",
+                    dev_bar::html_escape(&e)
+                ),
+            }
+        }
+        Err(e) => format!("template cache unavailable: {}", dev_bar::html_escape(&e)),
+    };
+    // Mailer bodies bring their own markup; render them on a plain white page.
+    html_ok(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+<style>body{{margin:0;padding:1rem;font-family:system-ui,sans-serif;background:#fff;color:#111;}}</style>\
 </head><body>{}</body></html>",
         inner
     ))
@@ -7628,6 +7756,37 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn mailer_view_names_selects_mailer_html_views() {
+        let prefix = "/app/views/";
+        let files = vec![
+            "/app/views/user_mailer/welcome.html.slv".to_string(),
+            "/app/views/user_mailer/welcome.text.slv".to_string(), // text companion — excluded
+            "/app/views/order_mailer/shipped.html.slv".to_string(),
+            "/app/views/components/card.html.slv".to_string(), // not a mailer dir
+            "/app/views/home/index.html.slv".to_string(),      // not a mailer dir
+            "/app/views/user_mailer/welcome.html.slv".to_string(), // dup
+        ];
+        let names = mailer_view_names(&files, prefix);
+        assert_eq!(
+            names,
+            vec![
+                "order_mailer/shipped".to_string(),
+                "user_mailer/welcome".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn mailer_view_names_empty_when_no_mailers() {
+        let prefix = "/app/views/";
+        let files = vec![
+            "/app/views/components/card.html.slv".to_string(),
+            "/app/views/home/index.html.slv".to_string(),
+        ];
+        assert!(mailer_view_names(&files, prefix).is_empty());
+    }
 
     #[test]
     fn unwrap_bare_state_shape_returns_whole_hash() {
