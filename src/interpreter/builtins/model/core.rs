@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Function, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, NativeFunction, SoliStr, Value};
 
 pub use super::db_config::{
     db_url, force_refresh_jwt_token, get_api_key, get_basic_auth, get_cursor_url,
@@ -419,6 +419,23 @@ pub fn get_collection_from_class(args: &[Value]) -> Result<String, String> {
             other.type_name()
         )),
         None => Err("Missing class argument".to_string()),
+    }
+}
+
+/// Extract a required string-or-symbol argument at `idx` as a `SoliStr`.
+///
+/// Collapses the identical `match args.get(idx) { String | Symbol => clone,
+/// other => type error, None => missing-arg error }` block repeated across the
+/// model DSL statics. `method` is the DSL name shown in the message (include
+/// `()` where the caller does); `what` names the argument, e.g. "field name".
+fn arg_str_or_sym(args: &[Value], idx: usize, method: &str, what: &str) -> Result<SoliStr, String> {
+    match args.get(idx) {
+        Some(Value::String(s)) | Some(Value::Symbol(s)) => Ok(s.clone()),
+        Some(other) => Err(format!(
+            "{method} expects string or symbol {what}, got {}",
+            other.type_name()
+        )),
+        None => Err(format!("{method} requires {what} argument")),
     }
 }
 
@@ -1211,17 +1228,7 @@ impl Model {
             Rc::new(NativeFunction::new("Model.validates", Some(3), |args| {
                 let class_name = get_class_name_from_class(&args)?;
 
-                let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(Value::Symbol(s)) => s.clone(),
-                    Some(other) => {
-                        return Err(format!(
-                            "validates() expects string or symbol field name, got {}",
-                            other.type_name()
-                        ))
-                    }
-                    None => return Err("validates() requires field argument".to_string()),
-                };
+                let field = arg_str_or_sym(&args, 1, "validates()", "field name")?;
 
                 let options = match args.get(2) {
                     Some(Value::Hash(hash)) => hash.borrow().clone(),
@@ -1257,23 +1264,8 @@ impl Model {
                 callback_name.clone(),
                 Rc::new(NativeFunction::new(&method_name, Some(2), move |args| {
                     let class_name = get_class_name_from_class(&args)?;
-                    let method_name = match args.get(1) {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(Value::Symbol(s)) => s.clone(),
-                        Some(other) => {
-                            return Err(format!(
-                                "{}() expects string or symbol method name, got {}",
-                                callback_name,
-                                other.type_name()
-                            ))
-                        }
-                        None => {
-                            return Err(format!(
-                                "{}() requires method name argument",
-                                callback_name
-                            ))
-                        }
-                    };
+                    let method_name =
+                        arg_str_or_sym(&args, 1, &format!("{}()", callback_name), "method name")?;
                     register_callback(&class_name, &callback_name, &method_name);
                     Ok(Value::Null)
                 })),
@@ -1314,17 +1306,7 @@ impl Model {
                 rel_method.to_string(),
                 Rc::new(NativeFunction::new(&method_label, None, move |args| {
                     let class_name = get_class_name_from_class(&args)?;
-                    let name = match args.get(1) {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(Value::Symbol(s)) => s.clone(),
-                        Some(other) => {
-                            return Err(format!(
-                                "relation expects string or symbol name, got {}",
-                                other.type_name()
-                            ))
-                        }
-                        None => return Err("relation requires a name argument".to_string()),
-                    };
+                    let name = arg_str_or_sym(&args, 1, "relation", "name")?;
 
                     // Optional config hash: class_name/foreign_key overrides
                     // plus dependent:/through:/source:/counter_cache: (validated
@@ -5230,17 +5212,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("validates", Some(3), |args| {
             let class_name = get_class_name_from_class(&args)?;
 
-            let field = match args.get(1) {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Symbol(s)) => s.clone(),
-                Some(other) => {
-                    return Err(format!(
-                        "validates() expects string or symbol field name, got {}",
-                        other.type_name()
-                    ))
-                }
-                None => return Err("validates() requires field argument".to_string()),
-            };
+            let field = arg_str_or_sym(&args, 1, "validates()", "field name")?;
 
             let options = match args.get(2) {
                 Some(Value::Hash(hash)) => hash.borrow().clone(),
@@ -5293,23 +5265,12 @@ pub fn register_model_builtins(env: &mut Environment) {
                 Some(2),
                 move |args| {
                     let class_name = get_class_name_from_class(&args)?;
-                    let method_name = match args.get(1) {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(Value::Symbol(s)) => s.clone(),
-                        Some(other) => {
-                            return Err(format!(
-                                "{}() expects string or symbol method name, got {}",
-                                callback_name_for_closure,
-                                other.type_name()
-                            ))
-                        }
-                        None => {
-                            return Err(format!(
-                                "{}() requires method name argument",
-                                callback_name_for_closure
-                            ))
-                        }
-                    };
+                    let method_name = arg_str_or_sym(
+                        &args,
+                        1,
+                        &format!("{}()", callback_name_for_closure),
+                        "method name",
+                    )?;
                     register_callback(&class_name, &callback_name_for_closure, &method_name);
                     Ok(Value::Null)
                 },
@@ -6147,17 +6108,7 @@ pub fn register_model_builtins(env: &mut Environment) {
             method_name.clone(),
             Value::NativeFunction(NativeFunction::new(&method_name, None, move |args| {
                 let class_name = get_class_name_from_class(&args)?;
-                let name = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(Value::Symbol(s)) => s.clone(),
-                    Some(other) => {
-                        return Err(format!(
-                            "relation expects string or symbol name, got {}",
-                            other.type_name()
-                        ))
-                    }
-                    None => return Err("relation requires a name argument".to_string()),
-                };
+                let name = arg_str_or_sym(&args, 1, "relation", "name")?;
 
                 let options = parse_relation_options(args.get(2), &rel_type)?;
 
@@ -6176,19 +6127,7 @@ pub fn register_model_builtins(env: &mut Environment) {
             None,
             |args| {
                 let class_name = get_class_name_from_class(&args)?;
-                let name = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(Value::Symbol(s)) => s.clone(),
-                    Some(other) => {
-                        return Err(format!(
-                            "has_and_belongs_to_many expects string or symbol name, got {}",
-                            other.type_name()
-                        ))
-                    }
-                    None => {
-                        return Err("has_and_belongs_to_many requires a name argument".to_string())
-                    }
-                };
+                let name = arg_str_or_sym(&args, 1, "has_and_belongs_to_many", "name")?;
 
                 let options =
                     parse_relation_options(args.get(2), &RelationType::HasAndBelongsToMany)?;
