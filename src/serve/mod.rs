@@ -17,6 +17,7 @@ pub(crate) mod middleware;
 pub mod middleware_log;
 pub mod nav;
 pub mod openapi;
+mod origin;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
@@ -222,6 +223,8 @@ use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
+
+use self::origin::{first_forwarded_token, normalize_request_authority, origin_authority};
 
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
@@ -3781,56 +3784,6 @@ fn websocket_request_authority(headers: &hyper::HeaderMap) -> Option<String> {
         .map(first_forwarded_token)
         .map(normalize_request_authority)
         .filter(|host| !host.is_empty())
-}
-
-fn origin_authority(origin: &str) -> Option<String> {
-    let origin = origin.trim();
-    let (scheme, rest) = origin
-        .strip_prefix("http://")
-        .map(|rest| ("http", rest))
-        .or_else(|| origin.strip_prefix("https://").map(|rest| ("https", rest)))?;
-    let authority = rest.split('/').next().unwrap_or("");
-    if authority.is_empty() {
-        return None;
-    }
-
-    Some(normalize_origin_authority(authority, scheme))
-}
-
-fn normalize_origin_authority(authority: &str, scheme: &str) -> String {
-    let authority = normalize_authority(authority);
-    match (scheme, authority.as_str()) {
-        ("http", value) if value.ends_with(":80") => value.trim_end_matches(":80").to_string(),
-        ("https", value) if value.ends_with(":443") => value.trim_end_matches(":443").to_string(),
-        _ => authority,
-    }
-}
-
-fn normalize_request_authority(authority: &str) -> String {
-    let authority = normalize_authority(authority);
-    if authority.ends_with(":80") {
-        return authority.trim_end_matches(":80").to_string();
-    }
-    if authority.ends_with(":443") {
-        return authority.trim_end_matches(":443").to_string();
-    }
-    authority
-}
-
-fn normalize_authority(authority: &str) -> String {
-    authority.trim().trim_end_matches('.').to_ascii_lowercase()
-}
-
-/// SEC-044: pick the first comma-separated token from a forwarded-header
-/// value (`X-Forwarded-Proto`, `X-Forwarded-Host`). Some proxies append
-/// instead of overwriting, so a request with `X-Forwarded-Host: real,
-/// attacker` would otherwise reach our scheme/host code as the whole
-/// concatenated string. The leftmost entry — written by the *outermost*
-/// trusted proxy in a chain — is the canonical value once `trust_proxy`
-/// is enabled. Empty input or empty first token returns `""`, which lets
-/// callers fall back to defaults without an extra branch.
-fn first_forwarded_token(value: &str) -> &str {
-    value.split(',').next().unwrap_or("").trim()
 }
 
 /// Handle WebSocket upgrade request.
