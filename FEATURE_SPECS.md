@@ -305,29 +305,16 @@ Total: $\(total)
 
 ---
 
-## 8. Async/Await
+## 8. Async/Await — Removed
 
-### Syntax
+The `async`/`await` **keywords** were never implemented (they only ever panicked
+in the interpreter) and have been removed from the language. To resolve a future
+(e.g. the handle returned by `System.run(...)`), call the **`await()` builtin**
+as an ordinary function:
+
 ```soli
-let result = await some_async_operation();
-
-// With error handling
-let result = try {
-    await risky_async_call()
-} catch error {
-    default_value
-}
-```
-
-### Async Functions
-```soli
-async fn fetch_data(url: String) -> Any {
-    let response = await http_get(url);
-    return json_parse(response);
-}
-
-// Calling async functions
-let data = await fetch_data("https://api.example.com/data");
+let future = System.run("echo hello");
+let result = await(future);   # await(...) is a builtin call, not a keyword
 ```
 
 ---
@@ -508,7 +495,6 @@ pub fn public_fn() { }
 4. **Phase 4 (Modern Features) - COMPLETED**
    - Spread/Rest operators
    - Comprehensions
-   - Async/Await
    - Nullish Coalescing Operator (`??`)
    - Percent Literal Arrays (`%w[]`, `%i[]`, `%n[]`)
 
@@ -948,22 +934,6 @@ let result = match users {
     [{name, age: a}, ...rest] if a > 28 => name + " and " + str(len(rest)) + " others",
     users => "Found " + str(len(users)) + " users",
 };
-```
-
-### Async with Error Handling
-```soli
-async fn fetch_user(id: String) -> Any {
-    try {
-        let user = await db.get("users", id);
-        return match user {
-            null => throw UserNotFoundError.new(id),
-            user => user,
-        };
-    } catch error {
-        log_error(error);
-        return null;
-    }
-}
 ```
 
 ### Spread + Comprehensions

@@ -150,11 +150,11 @@ impl Vm {
                 if let Some(method) = class.find_static_method(name) {
                     return Ok(Value::Function(method));
                 }
-                // Static method access (VM-compiled) — needed when the call
-                // site can't use the CallMethod fast path, e.g. named-arg
-                // calls like `Status.Pending(reason: "x")`, which compile the
-                // callee via GetProperty then Op::Call (reordering by the
-                // closure's param names).
+                // Static method access (VM-compiled) — used when the call site
+                // can't use the CallMethod fast path (a static method resolved
+                // via GetProperty then Op::Call). Named-argument calls are
+                // compiled as a fallback and run in the interpreter, so they
+                // never reach this path.
                 if let Some(closure) = class.find_vm_static_method(name) {
                     return Ok(Value::VmClosure(closure));
                 }

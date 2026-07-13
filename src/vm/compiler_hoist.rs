@@ -165,10 +165,7 @@ impl Scan {
                 self.expr(right);
             }
             ExprKind::Unary { operand, .. } => self.expr(operand),
-            ExprKind::Grouping(e)
-            | ExprKind::Await(e)
-            | ExprKind::Spread(e)
-            | ExprKind::Throw(e) => self.expr(e),
+            ExprKind::Grouping(e) | ExprKind::Spread(e) | ExprKind::Throw(e) => self.expr(e),
             ExprKind::Call { callee, arguments } => {
                 self.expr(callee);
                 self.arguments(arguments);

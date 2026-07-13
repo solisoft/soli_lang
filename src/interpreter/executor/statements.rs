@@ -565,8 +565,8 @@ impl Interpreter {
         let constructor = decl.constructor.as_ref().map(|ctor| {
             Rc::new(Function {
                 name: "new".to_string(),
-                params: ctor.params.clone(),
-                body: ctor.body.clone(),
+                params: ctor.params.clone().into(),
+                body: ctor.body.clone().into(),
                 closure: method_env.clone(),
                 is_method: true,
                 span: Some(ctor.span),

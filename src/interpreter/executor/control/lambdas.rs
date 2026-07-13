@@ -20,8 +20,8 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         let func = Function {
             name: "<lambda>".to_string(),
-            params: params.to_vec(),
-            body: body.to_vec(),
+            params: params.to_vec().into(),
+            body: body.to_vec().into(),
             closure: self.environment.clone(),
             is_method: false,
             span: Some(span),

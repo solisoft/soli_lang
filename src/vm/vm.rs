@@ -1825,11 +1825,10 @@ impl Vm {
                 }
 
                 Op::Nop => {}
-                Op::NamedArg(_) => {}
 
-                Op::Import(idx) => {
-                    let _path = self.read_string_constant_owned(idx);
-                }
+                // Imports are resolved before VM execution; the opcode is a
+                // no-op marker at runtime.
+                Op::Import(_) => {}
 
                 // --- Combined compare+jump ---
                 Op::TestLessEqualJump(offset) => {
@@ -2277,46 +2276,6 @@ impl Vm {
                         _ => true,
                     };
                     self.stack.push(Value::Bool(result));
-                }
-                Op::GetAndIncrLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let idx = base + slot as usize;
-                    let old_val = std::mem::replace(&mut self.stack[idx], Value::Null);
-                    match old_val {
-                        Value::Int(n) => {
-                            self.stack[idx] = Value::Int(n + 1);
-                            self.stack.push(old_val);
-                        }
-                        Value::Float(n) => {
-                            self.stack[idx] = Value::Float(n + 1.0);
-                            self.stack.push(old_val);
-                        }
-                        _ => {
-                            let span = self.current_span();
-                            let result = self.op_add(old_val, Value::Int(1), span).unwrap();
-                            self.stack[idx] = result;
-                        }
-                    }
-                }
-                Op::GetAndDecrLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let idx = base + slot as usize;
-                    let old_val = std::mem::replace(&mut self.stack[idx], Value::Null);
-                    match old_val {
-                        Value::Int(n) => {
-                            self.stack[idx] = Value::Int(n - 1);
-                            self.stack.push(old_val);
-                        }
-                        Value::Float(n) => {
-                            self.stack[idx] = Value::Float(n - 1.0);
-                            self.stack.push(old_val);
-                        }
-                        _ => {
-                            let span = self.current_span();
-                            let result = self.op_subtract(old_val, Value::Int(1), span).unwrap();
-                            self.stack[idx] = result;
-                        }
-                    }
                 }
                 Op::SwapSetLocal(slot) => {
                     let new_val = self.pop();

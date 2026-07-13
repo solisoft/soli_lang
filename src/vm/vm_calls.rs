@@ -28,9 +28,9 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
 
     let func_decl = FunctionDecl {
         name: func.name.clone(),
-        params: func.params.clone(),
+        params: func.params.to_vec(),
         return_type: None,
-        body: func.body.clone(),
+        body: func.body.to_vec(),
         span: func.span.unwrap_or_default(),
     };
 

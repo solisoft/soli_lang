@@ -222,7 +222,7 @@ impl Linter {
                 }
             }
 
-            ExprKind::Await(inner) | ExprKind::Spread(inner) | ExprKind::Throw(inner) => {
+            ExprKind::Spread(inner) | ExprKind::Throw(inner) => {
                 self.lint_expr(inner);
             }
 

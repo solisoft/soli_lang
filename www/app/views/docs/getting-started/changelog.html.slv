@@ -43,6 +43,22 @@
                 <li><strong class="text-white"><code class="text-cyan-400">soli test --fail-on-n1</code></strong> &mdash; a suite-wide N+1 tripwire. With the flag, any <code class="text-cyan-400">get()</code>/<code class="text-cyan-400">post()</code>/<code class="text-cyan-400">request()</code> that triggers an N+1 fails its test automatically &mdash; the same detection and message as <code class="text-cyan-400">assert_no_n_plus_one</code>, but with no per-test call and no spec edits. Clean and uninstrumented responses are untouched, so it never trips spuriously; wire it into CI to catch a query regression the moment it lands, even in specs that predate the check.</li>
             </ul>
         </div>
+
+        <!-- Language -->
+        <h3 id="u2-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Removed the dead <code class="text-cyan-400">async</code>/<code class="text-cyan-400">await</code> keywords</strong> &mdash; they were never implemented (writing <code class="text-cyan-400">await &lt;expr&gt;</code> hit an internal panic), so this deletes unreachable surface only. The <code class="text-cyan-400">await()</code> builtin that resolves a future (e.g. the handle from <code class="text-cyan-400">System.run(&hellip;)</code>) is unchanged &mdash; <code class="text-cyan-400">await(x)</code> is now an ordinary function call, and <code class="text-cyan-400">async</code>/<code class="text-cyan-400">await</code> are freed as identifiers.</li>
+            </ul>
+        </div>
+
+        <!-- Fixes -->
+        <h3 id="u2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">VM named-argument robustness</strong> &mdash; named-argument calls (<code class="text-cyan-400">f(x: 1)</code>, <code class="text-cyan-400">x |&gt; f(a: 1)</code>) now compile as a clean fallback to the tree-walking interpreter instead of emitting broken bytecode that could misdispatch to the wrong function or panic a worker thread. Results were always correct via the interpreter; this removes the crash/misdispatch edge in the compiled engine.</li>
+            </ul>
+        </div>
     </section>
 
     <section id="v1-18-0" class="mb-16 scroll-mt-24">

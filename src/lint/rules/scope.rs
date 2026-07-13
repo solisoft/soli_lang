@@ -381,7 +381,7 @@ fn check_expr(
         ExprKind::Unary { operand, .. } => {
             check_expr(operand, defined, program, diagnostics, reported);
         }
-        ExprKind::Grouping(inner) | ExprKind::Spread(inner) | ExprKind::Await(inner) => {
+        ExprKind::Grouping(inner) | ExprKind::Spread(inner) => {
             check_expr(inner, defined, program, diagnostics, reported);
         }
         ExprKind::Call { callee, arguments } => {
@@ -680,7 +680,7 @@ fn collect_assigned_in_expr(expr: &Expr, out: &mut HashSet<String>) {
             collect_assigned_in_expr(right, out);
         }
         ExprKind::Unary { operand, .. } => collect_assigned_in_expr(operand, out),
-        ExprKind::Grouping(e) | ExprKind::Spread(e) | ExprKind::Await(e) | ExprKind::Throw(e) => {
+        ExprKind::Grouping(e) | ExprKind::Spread(e) | ExprKind::Throw(e) => {
             collect_assigned_in_expr(e, out);
         }
         ExprKind::Rescue { expr, fallback } => {
@@ -811,9 +811,7 @@ fn collect_pattern_bindings(body: &Expr, out: &mut HashSet<String>) {
                 walk(right, out);
             }
             ExprKind::Unary { operand, .. } => walk(operand, out),
-            ExprKind::Grouping(inner) | ExprKind::Spread(inner) | ExprKind::Await(inner) => {
-                walk(inner, out)
-            }
+            ExprKind::Grouping(inner) | ExprKind::Spread(inner) => walk(inner, out),
             _ => {}
         }
     }

@@ -76,13 +76,38 @@ impl TypeChecker {
         })
     }
 
-    /// Check await expression.
-    pub(crate) fn check_await_expr(&mut self, _expr: &Expr) -> TypeResult<Type> {
-        unimplemented!("Await expressions not yet implemented")
-    }
-
     /// Check throw expression.
-    pub(crate) fn check_throw_expr(&mut self, _expr: &Expr) -> TypeResult<Type> {
-        unimplemented!("Throw expressions not yet implemented")
+    ///
+    /// `throw` parses to a statement (`StmtKind::Throw`), so this expression
+    /// form is currently unreachable from the grammar. Handle it gracefully
+    /// anyway — type-check the thrown value and treat the throw as producing
+    /// no usable value (`Any`) — rather than panicking, in case a future
+    /// grammar change ever routes a throw expression here.
+    pub(crate) fn check_throw_expr(&mut self, expr: &Expr) -> TypeResult<Type> {
+        self.check_expr(expr)?;
+        Ok(Type::Any)
+    }
+}
+
+#[cfg(test)]
+mod throw_check_tests {
+    use super::*;
+
+    // `throw` parses to a statement (`StmtKind::Throw`), so `ExprKind::Throw`
+    // is unreachable from the grammar. If a throw expression ever reaches the
+    // checker it must be handled gracefully (it used to be `unimplemented!()`,
+    // which would panic). This pins the graceful path.
+    #[test]
+    fn throw_expression_type_checks_gracefully() {
+        let span = Span::new(0, 0, 1, 0);
+        let throw = Expr::new(
+            ExprKind::Throw(Box::new(Expr::new(ExprKind::Null, span))),
+            span,
+        );
+        let mut checker = TypeChecker::new();
+        let ty = checker
+            .check_expr(&throw)
+            .expect("throw expression must type-check gracefully, not panic");
+        assert_eq!(ty, Type::Any);
     }
 }

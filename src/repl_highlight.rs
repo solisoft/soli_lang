@@ -65,9 +65,10 @@ impl SyntaxHighlighter {
 
             Let | Const | Fn | Return | If | Else | Elsif | While | For | In | Class | Extends
             | Implements | Interface | New | This | Super | Public | Private | Protected
-            | Static | Try | Catch | Finally | Throw | Not | Async | Await | Match | Case
-            | When | End | Unless | Import | Export | From | As | Int | Float | Bool | String
-            | Void => text.bright_yellow().bold().to_string(),
+            | Static | Try | Catch | Finally | Throw | Not | Match | Case | When | End | Unless
+            | Import | Export | From | As | Int | Float | Bool | String | Void => {
+                text.bright_yellow().bold().to_string()
+            }
 
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
             | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe

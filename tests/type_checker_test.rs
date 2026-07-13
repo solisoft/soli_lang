@@ -793,13 +793,16 @@ fn bug_member_access_on_new_instance_is_silently_accepted() {
     );
 }
 
-// Note: we initially had tests for `throw` and `await` *as expressions* and
-// for `if` *as expression* — the corresponding type-checker code paths
-// (`check_throw_expr`, `check_await_expr`, `check_if_expr` strict-Bool
-// branch) exist but appear unreachable from the current grammar:
-//   - the parser rejects `let x = throw "...";` and `let x = if c {..} else {..};`
-//   - `await` is parsed as the bare identifier "await", not `ExprKind::Await`
-// If those grammar features are added later, those checker paths will
-// suddenly become live — at which point `check_throw_expr` and
-// `check_await_expr` will panic with `unimplemented!()`. Worth fixing
-// pre-emptively, or removing the dead code.
+// Note: we initially had tests for `throw` *as an expression* and for `if`
+// *as expression* — the corresponding type-checker code paths
+// (`check_throw_expr`, `check_if_expr` strict-Bool branch) exist but appear
+// unreachable from the current grammar: the parser rejects
+// `let x = throw "...";` and `let x = if c {..} else {..};`. If those grammar
+// features are added later, those checker paths will suddenly become live — at
+// which point `check_throw_expr` will panic with `unimplemented!()`. Worth
+// fixing pre-emptively, or removing the dead code.
+//
+// The parallel `await` case is gone: the `await`/`async` keywords and the dead
+// `ExprKind::Await` variant were removed. `await(...)` is now an ordinary call
+// to the `await()` builtin, so no `ExprKind::Await` / `check_await_expr` path
+// exists to become live.

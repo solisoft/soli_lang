@@ -87,7 +87,6 @@ fn expr_creates_closures(expr: &Expr) -> bool {
         }
         ExprKind::Unary { operand, .. } => expr_creates_closures(operand),
         ExprKind::Grouping(e)
-        | ExprKind::Await(e)
         | ExprKind::Spread(e)
         | ExprKind::Throw(e)
         | ExprKind::PostfixIncrement(e)

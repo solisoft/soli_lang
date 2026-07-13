@@ -969,8 +969,12 @@ impl fmt::Display for Value {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub params: Vec<Parameter>,
-    pub body: Vec<Stmt>,
+    // `Rc<[..]>` so binding `this` (which rebuilds a `Function` from an existing
+    // method on every call) is an O(1) refcount bump instead of a deep clone of
+    // the whole parameter list / method-body AST. Built once from the AST via
+    // `from_decl`/`from_method`; never mutated after construction.
+    pub params: Rc<[Parameter]>,
+    pub body: Rc<[Stmt]>,
     pub closure: Rc<RefCell<Environment>>,
     pub is_method: bool,
     pub span: Option<Span>,
@@ -997,8 +1001,8 @@ impl Default for Function {
     fn default() -> Self {
         Self {
             name: String::new(),
-            params: Vec::new(),
-            body: Vec::new(),
+            params: Vec::new().into(),
+            body: Vec::new().into(),
             closure: Rc::new(RefCell::new(Environment::new())),
             is_method: false,
             span: None,
@@ -1019,8 +1023,8 @@ impl Function {
     ) -> Self {
         Self {
             name: decl.name.clone(),
-            params: decl.params.clone(),
-            body: decl.body.clone(),
+            params: decl.params.clone().into(),
+            body: decl.body.clone().into(),
             closure,
             is_method: false,
             span: Some(decl.span),
@@ -1039,8 +1043,8 @@ impl Function {
     ) -> Self {
         Self {
             name: decl.name.clone(),
-            params: decl.params.clone(),
-            body: decl.body.clone(),
+            params: decl.params.clone().into(),
+            body: decl.body.clone().into(),
             closure,
             is_method: true,
             span: Some(decl.span),

@@ -40,8 +40,6 @@ const KEYWORDS: &[&str] = &[
     "is",
     "isnt",
     "yield",
-    "async",
-    "await",
     "static",
     "public",
     "private",

@@ -587,10 +587,6 @@ impl Printer<'_> {
             ExprKind::ListComprehension { .. } | ExprKind::HashComprehension { .. } => {
                 self.write_source_span(expr.span.start, expr.span.end);
             }
-            ExprKind::Await(inner) => {
-                self.write("await ");
-                self.print_expr(inner);
-            }
             ExprKind::Spread(inner) => {
                 self.write("...");
                 self.print_expr(inner);

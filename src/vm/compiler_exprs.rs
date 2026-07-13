@@ -201,10 +201,6 @@ impl Compiler {
             } => {
                 self.compile_sdql_block(query, interpolations, line)?;
             }
-            ExprKind::Await(inner) => {
-                // Compile the inner expression — awaiting is handled at runtime
-                self.compile_expr(inner)?;
-            }
             ExprKind::Spread(inner) => {
                 self.compile_expr(inner)?;
                 self.emit(Op::Spread, line);
@@ -535,20 +531,23 @@ impl Compiler {
         self.compile_expr(callee)?;
 
         let mut argc = 0u8;
-        let mut has_named = false;
         for arg in arguments {
             match arg {
                 Argument::Positional(expr) => {
                     self.compile_expr(expr)?;
                     argc += 1;
                 }
-                Argument::Named(named) => {
-                    has_named = true;
-                    // Push name marker then value
-                    let name_idx = self.add_string_constant(&named.name);
-                    self.emit(Op::NamedArg(name_idx), line);
-                    self.compile_expr(&named.value)?;
-                    argc += 2; // marker + value
+                Argument::Named(_) => {
+                    // The VM calling convention cannot reorder named arguments
+                    // by the callee's parameter names at runtime, so there is no
+                    // correct bytecode to emit here (the old Op::NamedArg was a
+                    // no-op that corrupted argc and could misdispatch or panic).
+                    // Bail out so the handler falls back to the tree-walking
+                    // interpreter, which resolves named args correctly.
+                    return Err(CompileError::new(
+                        "Named arguments are not supported in compiled mode",
+                        crate::span::Span::new(0, 0, line, 0),
+                    ));
                 }
                 Argument::Block(expr) => {
                     // Compile block as closure argument
@@ -558,7 +557,6 @@ impl Compiler {
             }
         }
 
-        let _ = has_named; // Named arg reordering handled by VM at call time
         self.emit(Op::Call(argc), line);
         Ok(())
     }
@@ -596,11 +594,14 @@ impl Compiler {
                     self.compile_expr(expr)?;
                     argc += 1;
                 }
-                Argument::Named(named) => {
-                    let name_idx = self.add_string_constant(&named.name);
-                    self.emit(Op::NamedArg(name_idx), line);
-                    self.compile_expr(&named.value)?;
-                    argc += 2;
+                Argument::Named(_) => {
+                    // Named arguments require runtime reordering by the callee's
+                    // parameter names, which the VM does not do; bail out so this
+                    // call runs in the tree-walking interpreter instead.
+                    return Err(CompileError::new(
+                        "Named arguments are not supported in compiled mode",
+                        crate::span::Span::new(0, 0, line, 0),
+                    ));
                 }
                 Argument::Block(expr) => {
                     self.compile_expr(expr)?;
@@ -666,11 +667,13 @@ impl Compiler {
                             self.compile_expr(expr)?;
                             argc += 1;
                         }
-                        Argument::Named(named) => {
-                            let name_idx = self.add_string_constant(&named.name);
-                            self.emit(Op::NamedArg(name_idx), line);
-                            self.compile_expr(&named.value)?;
-                            argc += 2;
+                        Argument::Named(_) => {
+                            // Named args need runtime reordering the VM doesn't
+                            // do; fall back to the tree-walking interpreter.
+                            return Err(CompileError::new(
+                                "Named arguments are not supported in compiled mode",
+                                crate::span::Span::new(0, 0, line, 0),
+                            ));
                         }
                         Argument::Block(expr) => {
                             self.compile_expr(expr)?;
@@ -734,11 +737,14 @@ impl Compiler {
                     self.compile_expr(expr)?;
                     argc += 1;
                 }
-                Argument::Named(named) => {
-                    let name_idx = self.add_string_constant(&named.name);
-                    self.emit(Op::NamedArg(name_idx), line);
-                    self.compile_expr(&named.value)?;
-                    argc += 2;
+                Argument::Named(_) => {
+                    // Named arguments require runtime reordering by the callee's
+                    // parameter names, which the VM does not do; bail out so this
+                    // call runs in the tree-walking interpreter instead.
+                    return Err(CompileError::new(
+                        "Named arguments are not supported in compiled mode",
+                        crate::span::Span::new(0, 0, line, 0),
+                    ));
                 }
                 Argument::Block(expr) => {
                     self.compile_expr(expr)?;
@@ -1329,6 +1335,67 @@ mod grouped_compile_tests {
         assert!(
             !compiles("grouped(fn() { Post.all })"),
             "the literal block form must fail VM compilation so it falls back to the interpreter"
+        );
+    }
+}
+
+#[cfg(test)]
+mod named_args_compile_tests {
+    //! Named-argument calls must NOT compile in the bytecode VM. The VM calling
+    //! convention cannot reorder arguments by the callee's parameter names at
+    //! runtime, so the compiler rejects them (a `CompileError`) and the
+    //! production request path's VM→interpreter fallback runs them on the
+    //! tree-walker, which reorders named args correctly. The old code emitted a
+    //! no-op `Op::NamedArg` that over-counted `argc` and could misdispatch to
+    //! the wrong callee or panic the worker on stack underflow. These tests pin
+    //! the deterministic-fallback contract across all four call-compilation
+    //! paths (plain call, print fallback, pipeline, `new`); positional calls
+    //! must still compile.
+    use crate::vm::compiler::Compiler;
+
+    fn compiles(src: &str) -> bool {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).is_ok()
+    }
+
+    #[test]
+    fn named_arg_call_is_rejected_for_interpreter_fallback() {
+        assert!(
+            !compiles("def add(a, b) { return a + b }\nprint(add(b: 2, a: 1))"),
+            "a call with named args must fail VM compilation so it falls back to the interpreter"
+        );
+    }
+
+    #[test]
+    fn named_arg_to_print_is_rejected() {
+        assert!(
+            !compiles("print(msg: \"hi\")"),
+            "named args to print must fail VM compilation (print-fallback path)"
+        );
+    }
+
+    #[test]
+    fn named_arg_in_pipeline_is_rejected() {
+        assert!(
+            !compiles("def scale(x, factor) { return x * factor }\nprint(5 |> scale(factor: 3))"),
+            "a pipeline call with named args must fail VM compilation"
+        );
+    }
+
+    #[test]
+    fn positional_calls_still_compile() {
+        assert!(
+            compiles("def add(a, b) { return a + b }\nprint(add(1, 2))"),
+            "positional calls must still compile to bytecode"
+        );
+        assert!(
+            compiles("print(\"hi\")"),
+            "positional print must still compile to bytecode"
+        );
+        assert!(
+            compiles("def scale(x, factor) { return x * factor }\nprint(5 |> scale(3))"),
+            "positional pipeline calls must still compile"
         );
     }
 }

@@ -215,9 +215,14 @@ impl Interpreter {
                 condition.as_deref(),
             ),
 
-            // Await and Spread
-            ExprKind::Await(_) => unimplemented!("Await expressions not yet implemented"),
-            ExprKind::Spread(_) => unimplemented!("Spread expressions not yet implemented"),
+            // Spread — only valid inside an array/hash literal, where it is
+            // handled during literal evaluation before reaching this dispatch.
+            // Reaching here means a spread appeared in an unsupported position;
+            // return a clean error instead of panicking. See `spread_eval_tests`.
+            ExprKind::Spread(_) => Err(RuntimeError::General {
+                message: "spread (...) is only valid inside an array or hash literal".to_string(),
+                span: expr.span,
+            }),
 
             // Throw expression
             ExprKind::Throw(value) => {
@@ -743,4 +748,27 @@ impl Interpreter {
 /// Check if a built-in method can be called with zero arguments.
 fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
     super::calls::method_registry::is_zero_arg_method(method_name, receiver)
+}
+
+#[cfg(test)]
+mod spread_eval_tests {
+    use super::*;
+
+    // `ExprKind::Spread` is produced by the parser only inside array/hash
+    // literals, where it's consumed during literal evaluation. If it ever
+    // reaches the generic expression dispatch it must return a clean error,
+    // NOT panic (it used to be `unimplemented!()`, which aborted the worker).
+    #[test]
+    fn spread_in_unsupported_position_errors_instead_of_panicking() {
+        let span = Span::new(0, 0, 1, 0);
+        let spread = Expr::new(
+            ExprKind::Spread(Box::new(Expr::new(ExprKind::Null, span))),
+            span,
+        );
+        let mut interpreter = Interpreter::new();
+        assert!(
+            interpreter.evaluate(&spread).is_err(),
+            "a spread in an unsupported position must return an error, not panic"
+        );
+    }
 }

@@ -187,9 +187,6 @@ pub enum ExprKind {
         condition: Option<Box<Expr>>,
     },
 
-    /// Await expression: await expr
-    Await(Box<Expr>),
-
     /// Spread expression: ...expr (for arrays/hashes)
     Spread(Box<Expr>),
 

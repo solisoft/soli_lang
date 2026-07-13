@@ -735,9 +735,9 @@ fn token_class(kind: &crate::lexer::token::TokenKind) -> &'static str {
         Null => "tok-null",
         Let | Const | Fn | Return | If | Else | Elsif | While | For | In | Class | Extends
         | Implements | Interface | New | This | SelfKeyword | Super | Public | Private
-        | Protected | Static | Try | Catch | Finally | Throw | Not | Async | Await | Match
-        | Case | When | Do | End | Unless | Then | Import | Export | From | As | Int | Float
-        | Bool | String | Void | Decimal => "tok-kw",
+        | Protected | Static | Try | Catch | Finally | Throw | Not | Match | Case | When | Do
+        | End | Unless | Then | Import | Export | From | As | Int | Float | Bool | String
+        | Void | Decimal => "tok-kw",
         Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
         | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
         | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread | Range

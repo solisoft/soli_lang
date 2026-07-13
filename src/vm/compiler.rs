@@ -188,7 +188,7 @@ impl Compiler {
             has_superclass: func.defining_superclass.is_some(),
         });
 
-        for param in &func.params {
+        for param in func.params.iter() {
             compiler.add_local(param.name.clone(), false);
         }
         compiler.proto.arity = func
@@ -593,7 +593,7 @@ fn stack_effect(op: Op) -> i32 {
         ForIter(_) | ForIterRange(_) => 1,
         // I/O: pop n, push the Null result.
         Print(n) => 1 - n as i32,
-        NamedArg(_) | Import(_) => 0,
+        Import(_) => 0,
         JsonParse | JsonStringify => 0,
         // Peephole super-instructions (not emitted during the tracked pass; values
         // for completeness). Hash*Const directly-emitted variants are exact.
@@ -627,8 +627,6 @@ fn stack_effect(op: Op) -> i32 {
         | IsZeroLocal(_)
         | NotZeroLocal(_)
         | GetAndNullLocal(_)
-        | GetAndIncrLocal(_)
-        | GetAndDecrLocal(_)
         | NotLocal(_)
         | NegateLocal(_)
         | GetGlobalNullCheck(_) => 1,

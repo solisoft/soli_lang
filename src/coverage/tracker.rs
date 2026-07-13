@@ -779,9 +779,6 @@ impl CoverageTracker {
                     self.collect_lines_from_expr(path, lines, cond);
                 }
             }
-            Await(expr) => {
-                self.collect_lines_from_expr(path, lines, expr);
-            }
             Spread(expr) => {
                 self.collect_lines_from_expr(path, lines, expr);
             }

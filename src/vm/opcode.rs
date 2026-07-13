@@ -175,11 +175,6 @@ pub enum Op {
     /// Print N values from the stack.
     Print(u8),
 
-    // --- Named arguments ---
-    /// Push a named argument marker with name constant index.
-    /// The VM uses this to reorder arguments for function calls.
-    NamedArg(u16),
-
     // --- Import ---
     /// Import a module by path constant index.
     Import(u16),
@@ -299,10 +294,6 @@ pub enum Op {
     IsZeroLocal(u16),
     /// Check if local != 0, push bool
     NotZeroLocal(u16),
-    /// Get local, push it, then increment it (common in for loops: i, i+=1)
-    GetAndIncrLocal(u16),
-    /// Get local, push it, then decrement it
-    GetAndDecrLocal(u16),
     /// Set local to value from stack and push old value
     SwapSetLocal(u16),
     /// Get global and check if null/undefined in one op

@@ -554,9 +554,8 @@ impl TuiRepl {
             }
             Let | Const | Fn | Return | If | Else | Elsif | While | For | In | Class | Extends
             | Implements | Interface | New | This | Super | Public | Private | Protected
-            | Static | Try | Catch | Finally | Throw | Not | Async | Await | Match | Case
-            | When | End | Unless | Import | Export | From | As | Int | Float | Bool | String
-            | Void => {
+            | Static | Try | Catch | Finally | Throw | Not | Match | Case | When | End | Unless
+            | Import | Export | From | As | Int | Float | Bool | String | Void => {
                 format!("\x1b[1;93m{}\x1b[0m", text) // Bright yellow bold
             }
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
@@ -1500,8 +1499,6 @@ impl TuiRepl {
 
         let keywords = [
             "as",
-            "async",
-            "await",
             "begin",
             "break",
             "case",

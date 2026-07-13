@@ -394,12 +394,6 @@ impl Parser {
                 ))
             }
 
-            // Allow 'await' keyword to be used as a function call: await(future)
-            TokenKind::Await => Ok(Expr::new(
-                ExprKind::Variable("await".to_string()),
-                start_span,
-            )),
-
             // Primitive type keywords (Int, Float, Bool, Decimal, String) double
             // as expressions referencing the registered class globals, so users
             // can do `Int.class_eval do define_method(:double) { ... } end` or
@@ -543,8 +537,7 @@ impl Parser {
             | TokenKind::Fn
             | TokenKind::Class
             | TokenKind::Interface
-            | TokenKind::Match
-            | TokenKind::Await => true,
+            | TokenKind::Match => true,
             TokenKind::RightBrace => false, // Empty hash {}, not block
             TokenKind::LeftBrace => self.is_nested_block_expression(),
             _ => false,
@@ -649,8 +642,7 @@ impl Parser {
                 | Some(TokenKind::Fn)
                 | Some(TokenKind::Class)
                 | Some(TokenKind::Interface)
-                | Some(TokenKind::Match)
-                | Some(TokenKind::Await) => {
+                | Some(TokenKind::Match) => {
                     return true;
                 }
                 Some(_) | None => {
