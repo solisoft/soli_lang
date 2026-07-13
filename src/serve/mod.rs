@@ -221,7 +221,6 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
-use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
 use crate::error::RuntimeError;
@@ -3427,19 +3426,6 @@ async fn handle_hyper_request(
 }
 
 /// Check if the request is a WebSocket upgrade request.
-#[allow(dead_code)]
-fn is_websocket_upgrade(req: &Request<Incoming>) -> bool {
-    if req.method() != hyper::Method::GET {
-        return false;
-    }
-
-    if let Some(upgrade_header) = req.headers().get(header::UPGRADE) {
-        return upgrade_header == "websocket";
-    }
-
-    false
-}
-
 fn forbidden_websocket_origin_response() -> Response<ResponseBody> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
@@ -3978,130 +3964,6 @@ async fn handle_websocket_upgrade(
 
     // Return the upgrade response directly
     Ok(box_full(response))
-}
-
-/// Handle WebSocket stream for a single connection.
-#[allow(dead_code)]
-async fn handle_websocket_stream<S>(
-    mut stream: WebSocketStream<S>,
-    ws_rx: &mut tokio::sync::mpsc::Receiver<Result<tungstenite::Message, tungstenite::Error>>,
-    connection_id: Uuid,
-    ws_registry: Arc<WebSocketRegistry>,
-    path: String,
-    ws_event_tx: channel::Sender<WebSocketEventData>,
-) where
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
-{
-    // Create a oneshot channel for sending events to interpreter and getting actions back
-    let (response_tx, response_rx) = oneshot::channel();
-
-    // Send connect event to interpreter thread
-    let connect_event = WebSocketEventData {
-        path: path.clone(),
-        connection_id,
-        event_type: "connect".to_string(),
-        message: None,
-        channel: None,
-        response_tx,
-    };
-
-    // Silently ignore send errors
-    let _ = ws_event_tx.send(connect_event);
-
-    // Wait for handler response (don't block forever, max 5 seconds)
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS),
-        response_rx,
-    )
-    .await;
-
-    // Send ping to client
-    let _ = stream.send(tungstenite::Message::Ping(vec![])).await;
-
-    // Create a loop to handle both incoming messages and outgoing messages
-    let (mut ws_sender, mut ws_receiver) = stream.split();
-
-    // Forward messages from ws_rx to the WebSocket
-    let forward_task = async {
-        while let Some(msg) = ws_rx.recv().await {
-            if let Err(e) = ws_sender
-                .send(msg.unwrap_or(tungstenite::Message::Close(None)))
-                .await
-            {
-                eprintln!("WebSocket send error: {}", e);
-                break;
-            }
-        }
-    };
-
-    // Handle incoming messages
-    let receive_task = async {
-        while let Some(result) = ws_receiver.next().await {
-            match result {
-                Ok(msg) => {
-                    if msg.is_close() {
-                        break;
-                    }
-
-                    if msg.is_pong() {
-                        continue;
-                    }
-
-                    if let Ok(text) = msg.to_text() {
-                        // Create oneshot channel for this message event
-                        let (msg_response_tx, msg_response_rx) = oneshot::channel();
-
-                        // Send message event to interpreter thread
-                        let event = WebSocketEventData {
-                            path: path.clone(),
-                            connection_id,
-                            event_type: "message".to_string(),
-                            message: Some(text.to_string()),
-                            channel: None,
-                            response_tx: msg_response_tx,
-                        };
-
-                        if let Err(e) = ws_event_tx.send(event) {
-                            eprintln!("Failed to send WebSocket message event: {}", e);
-                        }
-
-                        // Wait for handler response (don't block forever, max 5 seconds)
-                        let _ = tokio::time::timeout(
-                            std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS),
-                            msg_response_rx,
-                        )
-                        .await;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("WebSocket receive error: {}", e);
-                    break;
-                }
-            }
-        }
-    };
-
-    // Wait for either task to complete
-    tokio::select! {
-        _ = forward_task => {},
-        _ = receive_task => {},
-    }
-
-    // Clean up: unregister and send disconnect event
-    ws_registry.unregister(&connection_id).await;
-
-    // Send disconnect event to interpreter thread
-    let (disconnect_response_tx, _) = oneshot::channel();
-    let disconnect_event = WebSocketEventData {
-        path: path.clone(),
-        connection_id,
-        event_type: "disconnect".to_string(),
-        message: None,
-        channel: None,
-        response_tx: disconnect_response_tx,
-    };
-
-    let _ = ws_event_tx.send(disconnect_event);
 }
 
 /// Handle a WebSocket event by calling the handler function.
@@ -6083,24 +5945,6 @@ fn setup_controller_context(
     crate::interpreter::builtins::controller::registry::setup_controller_context(
         controller, req, params, session, headers, cookies,
     );
-}
-
-/// Call a controller method with the request hash.
-#[allow(dead_code)]
-fn call_controller_method(
-    request_hash: &Value,
-    method_name: &str,
-    interpreter: &mut Interpreter,
-) -> Result<Value, String> {
-    // Look up the function in the environment and call it with the request hash
-    let method_value = match interpreter.environment.borrow().get(method_name) {
-        Some(v) => v.clone(),
-        None => return Err(format!("Method '{}' not found", method_name)),
-    };
-
-    interpreter
-        .call_value(method_value, vec![request_hash.clone()], Span::default())
-        .map_err(|e| format!("Error calling method: {}", e))
 }
 
 // Thread-local cache for PascalCase controller names to avoid per-request string allocation.
