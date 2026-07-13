@@ -66,6 +66,17 @@ const CASES: &[(&str, &str)] = &[
         "let a = [1, 2, 3]\nfor x in a { if x < 3 { a.push(x + 10) } }\nprint(a)",
     ),
     (
+        // Recursive flatten (+ explicit depth) must agree across engines — the
+        // VM used to flatten only one level and reject a depth argument. Pins
+        // the shared `array_ops` implementation.
+        "array_flatten_recursive",
+        "print([[1, [2]], 3].flatten())\nprint([1, [2, [3, [4]]]].flatten(1))",
+    ),
+    (
+        "array_uniq_compact",
+        "print([1, 2, 2, 3, 1].uniq())\nprint([1, null, 2, null].compact())",
+    ),
+    (
         // Range with a negative/empty span must not iterate.
         "for_range_empty",
         "let s = 0\nfor v in 5..5 { s = s + 1 }\nfor v in 5..2 { s = s + 1 }\nprint(s)",

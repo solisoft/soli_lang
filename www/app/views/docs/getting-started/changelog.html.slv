@@ -57,6 +57,7 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">VM named-argument robustness</strong> &mdash; named-argument calls (<code class="text-cyan-400">f(x: 1)</code>, <code class="text-cyan-400">x |&gt; f(a: 1)</code>) now compile as a clean fallback to the tree-walking interpreter instead of emitting broken bytecode that could misdispatch to the wrong function or panic a worker thread. Results were always correct via the interpreter; this removes the crash/misdispatch edge in the compiled engine.</li>
+                <li><strong class="text-white">Recursive <code class="text-cyan-400">flatten</code> in the VM</strong> &mdash; <code class="text-cyan-400">array.flatten()</code> under the compiled engine now flattens fully (and accepts an optional depth), matching the interpreter. It previously flattened only one level, so <code class="text-cyan-400">[[1, [2]], 3].flatten()</code> returned <code class="text-cyan-400">[1, [2], 3]</code> instead of <code class="text-cyan-400">[1, 2, 3]</code>. Both engines now share one implementation, pinned by differential tests.</li>
             </ul>
         </div>
     </section>

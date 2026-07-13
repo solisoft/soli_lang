@@ -1689,12 +1689,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let mut result = Vec::new();
-        for item in items {
-            if !result.contains(item) {
-                result.push(item.clone());
-            }
-        }
+        let result = super::array_ops::uniq_values(items);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
@@ -1769,11 +1764,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let result: Vec<Value> = items
-            .iter()
-            .filter(|v| !matches!(v, Value::Null))
-            .cloned()
-            .collect();
+        let result = super::array_ops::compact_values(items);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
@@ -1823,34 +1814,7 @@ impl Interpreter {
             },
             _ => return Err(RuntimeError::wrong_arity(1, arguments.len(), span)),
         };
-
-        fn flatten_recursive(
-            arr: &[Value],
-            current_depth: usize,
-            max_depth: Option<usize>,
-        ) -> Vec<Value> {
-            if let Some(max) = max_depth {
-                if current_depth >= max {
-                    return arr.to_vec();
-                }
-            }
-
-            let mut result = Vec::new();
-            for item in arr {
-                if let Value::Array(inner) = item {
-                    result.extend(flatten_recursive(
-                        &inner.borrow(),
-                        current_depth + 1,
-                        max_depth,
-                    ));
-                } else {
-                    result.push(item.clone());
-                }
-            }
-            result
-        }
-
-        let result = flatten_recursive(items, 0, depth);
+        let result = super::array_ops::flatten_values(items, depth);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 

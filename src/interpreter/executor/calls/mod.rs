@@ -1,5 +1,6 @@
 //! Call expression modules.
 
+pub(crate) mod array_ops;
 pub(crate) mod bool_methods;
 mod cascade;
 pub(crate) mod decimal_methods;

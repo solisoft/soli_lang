@@ -220,15 +220,8 @@ impl Vm {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                let items = arr.borrow();
-                let mut seen = Vec::new();
-                let mut result = Vec::new();
-                for item in items.iter() {
-                    if !seen.contains(item) {
-                        seen.push(item.clone());
-                        result.push(item.clone());
-                    }
-                }
+                let result =
+                    crate::interpreter::executor::calls::array_ops::uniq_values(&arr.borrow());
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "intersection" => {
@@ -282,28 +275,31 @@ impl Vm {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                let items = arr.borrow();
-                let result: Vec<Value> = items
-                    .iter()
-                    .filter(|v| !matches!(v, Value::Null))
-                    .cloned()
-                    .collect();
+                let result =
+                    crate::interpreter::executor::calls::array_ops::compact_values(&arr.borrow());
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "flatten" => {
-                if !args.is_empty() {
-                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
-                }
-                let items = arr.borrow();
-                let mut result = Vec::new();
-                for item in items.iter() {
-                    match item {
-                        Value::Array(inner) => {
-                            result.extend(inner.borrow().iter().cloned());
+                // Match the tree-walker: recursive flatten with an optional
+                // non-negative depth. (This arm used to flatten only one level
+                // and reject any argument.)
+                let max_depth = match args.len() {
+                    0 => None,
+                    1 => match &args[0] {
+                        Value::Int(n) if *n >= 0 => Some(*n as usize),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "flatten expects a non-negative integer",
+                                span,
+                            ))
                         }
-                        _ => result.push(item.clone()),
-                    }
-                }
+                    },
+                    _ => return Err(RuntimeError::wrong_arity(1, args.len(), span)),
+                };
+                let result = crate::interpreter::executor::calls::array_ops::flatten_values(
+                    &arr.borrow(),
+                    max_depth,
+                );
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "concat" => {
