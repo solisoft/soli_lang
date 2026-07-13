@@ -261,16 +261,7 @@ pub fn register_assertions(env: &mut Environment) {
                     });
                     Ok(Value::Int(1))
                 } else {
-                    let detail = groups
-                        .iter()
-                        .map(|(template, count)| format!("  {}x  {}", count, template))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    Err(format!(
-                        "N+1 detected: {} template(s) fired in a loop (batch with `FILTER doc.field IN @ids`):\n{}",
-                        groups.len(),
-                        detail
-                    ))
+                    Err(n_plus_one_failure_message(&groups))
                 }
             },
         )),
@@ -343,7 +334,10 @@ fn query_count_of(value: &Value) -> Result<i64, String> {
 
 /// Read the N+1 groups off a response hash's `n_plus_one` array as
 /// `(template, count)` pairs.
-fn n_plus_one_of(value: &Value) -> Result<Vec<(String, i64)>, String> {
+///
+/// `pub(crate)` so the `--fail-on-n1` guard in `request_helpers` runs the
+/// exact same detection as the `assert_no_n_plus_one` assertion.
+pub(crate) fn n_plus_one_of(value: &Value) -> Result<Vec<(String, i64)>, String> {
     let hash = match value {
         Value::Hash(h) => h,
         _ => {
@@ -375,6 +369,22 @@ fn n_plus_one_of(value: &Value) -> Result<Vec<(String, i64)>, String> {
         }
     }
     Ok(groups)
+}
+
+/// Format the `(template, count)` N+1 groups into the failure message shared
+/// by `assert_no_n_plus_one` and the `--fail-on-n1` global guard, so both
+/// report an N+1 identically.
+pub(crate) fn n_plus_one_failure_message(groups: &[(String, i64)]) -> String {
+    let detail = groups
+        .iter()
+        .map(|(template, count)| format!("  {}x  {}", count, template))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "N+1 detected: {} template(s) fired in a loop (batch with `FILTER doc.field IN @ids`):\n{}",
+        groups.len(),
+        detail
+    )
 }
 
 const NO_INSTRUMENTATION: &str =
@@ -488,6 +498,32 @@ mod tests {
         assert!(
             err.contains("at most 5 queries but 7 ran"),
             "message was: {err}"
+        );
+    }
+
+    #[test]
+    fn fail_on_n1_guard_shares_detection_and_message() {
+        // The `--fail-on-n1` guard (in request_helpers) reads the response via
+        // `n_plus_one_of` and formats with `n_plus_one_failure_message` — the
+        // exact pair `assert_no_n_plus_one` uses. A dirty response yields
+        // groups + the shared message; a clean one yields no groups so the
+        // guard stays quiet.
+        let dirty = response(6, &[("FOR d IN comments FILTER d.post == @k RETURN d", 3)]);
+        let groups = n_plus_one_of(&dirty).expect("instrumented response");
+        assert_eq!(groups.len(), 1);
+        let msg = n_plus_one_failure_message(&groups);
+        assert!(msg.contains("N+1 detected"), "message was: {msg}");
+        assert!(
+            msg.contains("3x"),
+            "message should include the count: {msg}"
+        );
+
+        let clean = response(2, &[]);
+        assert!(
+            n_plus_one_of(&clean)
+                .expect("instrumented response")
+                .is_empty(),
+            "a clean response must produce no N+1 groups"
         );
     }
 

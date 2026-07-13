@@ -561,11 +561,20 @@ assert_eq(res_status(response), 200)</code></pre>
             </div>
         </div>
 
-        <div class="mb-12 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+        <div class="mb-8 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
             <p class="text-yellow-300 text-sm">
                 <strong>Threshold.</strong> A template counts as N+1 at <strong>2</strong> repetitions, matching the dev bar &mdash; HABTM/<code>through</code> lookups start at two. If an endpoint legitimately repeats a query, bound it with <code>assert_max_queries</code> instead of <code>assert_no_n_plus_one</code>. These keys are populated by the <code>--dev</code> test server <code>soli test</code> runs, so they're always present in request specs.
             </p>
         </div>
+
+        <h3 class="text-xl font-bold text-white mb-3">Fail the whole suite: <code class="text-amber-400">--fail-on-n1</code></h3>
+        <p class="text-gray-400 mb-4">An assertion only catches an N+1 where you remember to write it. To make the entire suite an N+1 tripwire &mdash; without touching a single spec &mdash; run:</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli test --fail-on-n1</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">Every <code>get()</code> / <code>post()</code> / <code>request()</code> that triggers an N+1 fails its test automatically, using the exact same detection and message as <code>assert_no_n_plus_one</code>. Clean and uninstrumented responses are untouched, so it never fails a spec spuriously. It composes with <code>--jobs</code>, <code>--coverage</code>, and the rest &mdash; wire it into CI to catch a query regression the moment it lands, even in specs that predate the check.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 

@@ -112,6 +112,11 @@ test("posts index does not N+1", fn() {
 })
 ```
 
+To guard the *whole* suite without per-test calls, run `soli test --fail-on-n1`:
+every request that triggers an N+1 fails its test automatically, with the same
+message as `assert_no_n_plus_one`. Wire it into CI to catch regressions in specs
+that predate the check.
+
 ### `expect(...)` DSL
 
 For people who prefer reading left-to-right:

@@ -82,6 +82,10 @@ response = get("/posts");
 assert_no_n_plus_one(response);
 ```
 
+To enforce this across every request spec without per-test calls, run
+`soli test --fail-on-n1` — any response that triggers an N+1 fails its test
+with the same message.
+
 ### assert_query_count(response, n) / assert_max_queries(response, n)
 
 Assert the request ran exactly `n` (or at most `n`) AQL queries — a query

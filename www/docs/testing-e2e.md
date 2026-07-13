@@ -520,6 +520,30 @@ if you've already pulled the count out yourself.
 > assertions on a value that isn't an instrumented response raises a clear
 > error rather than passing silently.
 
+### Guarding the whole suite: `--fail-on-n1`
+
+`assert_no_n_plus_one` catches an N+1 only where you remember to call it. To
+turn the whole suite into an N+1 tripwire — without editing a single spec — run:
+
+```bash
+soli test --fail-on-n1
+```
+
+Every `get()` / `post()` / `request()` that triggers an N+1 fails its test
+automatically, using the exact same detection (and error message) as
+`assert_no_n_plus_one`:
+
+```
+✗ posts index responds 200: N+1 detected: 1 template(s) fired in a loop
+  (batch with `FILTER doc.field IN @ids`):
+  12x  FOR c IN comments FILTER c.post == @key RETURN c
+```
+
+Clean and uninstrumented responses are untouched, so the flag never fails a
+spec spuriously. It composes with everything else (`--jobs`, `--coverage`, …) —
+wire it into CI to catch a query regression the moment it lands, even in specs
+that predate the check.
+
 ## Complete Examples
 
 ### Testing a CRUD Controller

@@ -62,6 +62,11 @@ pub enum Command {
         /// Opt-in via `--show-uncovered` — by default the report only shows
         /// the per-file percentages so the summary stays scannable.
         show_uncovered: bool,
+        /// Fail any request spec whose response triggered an N+1 query
+        /// pattern, without a per-test `assert_no_n_plus_one`. Opt-in via
+        /// `--fail-on-n1`; a project-wide guard over the same detection the
+        /// dev-bar N+1 badge uses.
+        fail_on_n1: bool,
     },
     DbMigrate {
         action: DbMigrateAction,
@@ -198,7 +203,7 @@ pub fn print_usage() {
     eprintln!("       soli generate auth [folder]");
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
@@ -307,6 +312,7 @@ pub fn print_usage() {
     eprintln!("  soli test spec.sl             Run specific test file");
     eprintln!("  soli test --coverage          Run tests with coverage");
     eprintln!("  soli test --jobs=4            Run tests with 4 workers");
+    eprintln!("  soli test --fail-on-n1        Fail any request spec that triggers an N+1");
     eprintln!("  soli db:migrate up            Run pending migrations");
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
@@ -981,6 +987,7 @@ pub fn parse_args() -> Options {
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
                 let mut show_uncovered = false;
+                let mut fail_on_n1 = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
                         // Support `--coverage=html`, `--coverage=json,xml`,
@@ -1051,6 +1058,9 @@ pub fn parse_args() -> Options {
                             "--show-uncovered" => {
                                 show_uncovered = true;
                             }
+                            "--fail-on-n1" => {
+                                fail_on_n1 = true;
+                            }
                             "--coverage-min" => {
                                 i += 1;
                                 if i >= args.len() {
@@ -1085,6 +1095,7 @@ pub fn parse_args() -> Options {
                     coverage_min: if no_coverage { None } else { coverage_min },
                     no_coverage,
                     show_uncovered,
+                    fail_on_n1,
                 };
                 return options;
             }

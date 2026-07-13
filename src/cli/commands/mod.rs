@@ -1058,6 +1058,7 @@ pub fn run_deploy(folder: Option<&str>) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_test(
     paths: &[String],
     jobs: Option<usize>,
@@ -1065,6 +1066,7 @@ pub fn run_test(
     coverage_min: Option<f64>,
     no_coverage: bool,
     show_uncovered: bool,
+    fail_on_n1: bool,
 ) {
     test_runner::run_test(
         paths,
@@ -1073,6 +1075,7 @@ pub fn run_test(
         coverage_min,
         no_coverage,
         show_uncovered,
+        fail_on_n1,
     );
 }
 

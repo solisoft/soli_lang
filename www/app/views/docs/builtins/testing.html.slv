@@ -663,6 +663,13 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Raw count and <code>{query, count}</code> groups behind the assertions</p>
                 </section>
+
+                <section id="def-fail-on-n1" class="scroll-mt-20">
+                    <a href="#def-fail-on-n1" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">soli test --fail-on-n1</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Suite-wide guard: fails any request spec that triggers an N+1, no per-test <code>assert_no_n_plus_one</code> needed</p>
+                </section>
             </div>
         </div>
     </section>

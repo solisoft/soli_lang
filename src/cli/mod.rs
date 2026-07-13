@@ -79,6 +79,7 @@ pub fn run() {
             coverage_min,
             no_coverage,
             show_uncovered,
+            fail_on_n1,
         } => commands::run_test(
             paths,
             *jobs,
@@ -86,6 +87,7 @@ pub fn run() {
             *coverage_min,
             *no_coverage,
             *show_uncovered,
+            *fail_on_n1,
         ),
         Command::Engine { action } => commands::run_engine(action),
         Command::Lsp => commands::run_lsp(),

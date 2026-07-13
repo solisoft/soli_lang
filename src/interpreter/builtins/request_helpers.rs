@@ -3,11 +3,27 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 use super::test_server::get_test_server_port;
+
+/// `--fail-on-n1` guard. Armed process-wide by the test runner (see
+/// `cli::commands::test_runner::run_test`); every request spec's response is
+/// checked at the `http_request` choke point below and fails the test if an
+/// N+1 query pattern fired — no per-test `assert_no_n_plus_one` needed.
+static FAIL_ON_N1: AtomicBool = AtomicBool::new(false);
+
+/// Arm the `--fail-on-n1` guard for this (test-runner) process.
+pub fn enable_fail_on_n1() {
+    FAIL_ON_N1.store(true, Ordering::SeqCst);
+}
+
+fn fail_on_n1_enabled() -> bool {
+    FAIL_ON_N1.load(Ordering::Relaxed)
+}
 
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
@@ -404,7 +420,21 @@ fn http_request(
         );
     }
 
-    Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
+    let response = Value::Hash(Rc::new(RefCell::new(response_hash)));
+
+    // `--fail-on-n1`: fail the spec here if this request triggered an N+1,
+    // reusing the exact detection + message behind `assert_no_n_plus_one`. An
+    // uninstrumented response (`n_plus_one_of` errors) is treated as clean so
+    // the guard never fails spuriously on non-request assertions.
+    if fail_on_n1_enabled() {
+        if let Ok(groups) = super::assertions::n_plus_one_of(&response) {
+            if !groups.is_empty() {
+                return Err(super::assertions::n_plus_one_failure_message(&groups));
+            }
+        }
+    }
+
+    Ok(response)
 }
 
 fn extract_string(value: &Value, context: &str) -> Result<String, String> {

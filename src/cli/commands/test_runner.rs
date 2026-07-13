@@ -277,6 +277,7 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_test(
     paths: &[String],
     jobs: Option<usize>,
@@ -284,6 +285,7 @@ pub fn run_test(
     coverage_min: Option<f64>,
     no_coverage: bool,
     show_uncovered: bool,
+    fail_on_n1: bool,
 ) {
     let test_paths: Vec<PathBuf> = if paths.is_empty() {
         vec![std::env::current_dir()
@@ -315,6 +317,15 @@ pub fn run_test(
     // `SOLI_INTERNAL_TEST_RUNNER` which `main.rs` translates into the
     // same in-process flag.
     solilang::interpreter::builtins::http_class::enable_ssrf_test_mode();
+
+    // `--fail-on-n1`: arm the process-local guard so every request spec that
+    // triggers an N+1 fails without a per-test `assert_no_n_plus_one`. The
+    // check lives at the response-building choke point in `request_helpers`;
+    // test files run in worker threads of this same runner process, so a
+    // process-global flag reaches them (same shape as the SSRF flag above).
+    if fail_on_n1 {
+        solilang::interpreter::builtins::request_helpers::enable_fail_on_n1();
+    }
     let app_dir = resolve_app_dir(&test_path, test_path.is_file());
 
     if let Err(msg) = solilang::module::enforce_min_soli_version(&app_dir) {
