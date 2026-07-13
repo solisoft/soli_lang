@@ -1164,6 +1164,16 @@ impl Model {
             })),
         );
 
+        // rerank(query, docs[, { field:, limit: }]) -> reordered Array
+        // Client-side lexical reranking by query-token overlap — no LLM, no
+        // server round-trip. Reorder rows from similar/graph_rag/hybrid by a phrase.
+        env.define(
+            "rerank".to_string(),
+            Value::NativeFunction(NativeFunction::new("rerank", None, |args| {
+                super::rerank::exec_rerank(&args)
+            })),
+        );
+
         // llm_generate(system, user) -> String
         // Chat completion via an OpenAI-compatible endpoint (SOLI_LLM_* config).
         env.define(

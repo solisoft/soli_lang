@@ -21,11 +21,26 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
+        <!-- AI & Search -->
+        <h3 id="u2-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI &amp; Search</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Client-side reranking</strong> &mdash; <code class="text-cyan-400">rerank(query, rows[, { field:, limit: }])</code> reorders an array of retrieved records by query-token overlap &mdash; most relevant first, ties stable. Pure and offline (no LLM, no server round-trip), so it's a cheap second pass after <code class="text-cyan-400">similar</code> / <code class="text-cyan-400">hybrid</code> / <code class="text-cyan-400">graph_rag</code> when you want to bias the order toward a phrase.</li>
+                <li><strong class="text-white">Server-side auto-embeddings</strong> &mdash; declare <code class="text-cyan-400">embedding_source</code> on a vector index and SolidB embeds inserted text itself on a background worker (off the write path &mdash; bulk and driver inserts never block), so you can skip the per-model <code class="text-cyan-400">before_save embed(...)</code> hook.</li>
+                <li><strong class="text-white">New raw-SDBQL retrieval surface</strong> &mdash; reachable via <code class="text-cyan-400">db.query</code> / <code class="text-cyan-400">@sdbql{}</code> and now documented: filtered <code class="text-cyan-400">VECTOR_SEARCH(&hellip;, { filter })</code>, LLM/lexical <code class="text-cyan-400">RERANK</code>, stored <code class="text-cyan-400">RAG_PIPELINE</code>, point-in-time <code class="text-cyan-400">DOC_AS_OF</code> / <code class="text-cyan-400">DOC_HISTORY</code>, and self-refreshing <code class="text-cyan-400">CREATE MATERIALIZED VIEW &hellip; REFRESH "5m"</code>.</li>
+            </ul>
+            <figure class="mt-6">
+                <img src="/images/changelog/rerank.svg" alt="rerank pipeline: take retrieved rows, score each by query-token overlap offline, reorder most-relevant first, and keep the top-k" class="changelog-zoom w-full rounded-lg border border-white/10 bg-[#0b0d0f] cursor-zoom-in transition hover:border-white/25" loading="lazy" tabindex="0" role="button" aria-label="Enlarge diagram">
+                <figcaption class="text-xs text-gray-500 mt-2">rerank(): score retrieved rows by query-token overlap, reorder most-relevant first, keep the top-k &mdash; offline, no LLM.</figcaption>
+            </figure>
+        </div>
+
         <!-- Testing -->
         <h3 id="u2-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">N+1 &amp; query-budget assertions</strong> &mdash; request specs can now fail on database regressions. <code class="text-cyan-400">assert_no_n_plus_one(response)</code> fails when the same AQL template fired 2+ times in a loop (the same detection behind the dev bar's N+1 badge); <code class="text-cyan-400">assert_query_count(response, n)</code> and <code class="text-cyan-400">assert_max_queries(response, n)</code> hold an endpoint to a query budget. Every response also exposes <code class="text-cyan-400">response["query_count"]</code> and <code class="text-cyan-400">response["n_plus_one"]</code> for custom checks.</li>
+                <li><strong class="text-white"><code class="text-cyan-400">soli test --fail-on-n1</code></strong> &mdash; a suite-wide N+1 tripwire. With the flag, any <code class="text-cyan-400">get()</code>/<code class="text-cyan-400">post()</code>/<code class="text-cyan-400">request()</code> that triggers an N+1 fails its test automatically &mdash; the same detection and message as <code class="text-cyan-400">assert_no_n_plus_one</code>, but with no per-test call and no spec edits. Clean and uninstrumented responses are untouched, so it never trips spuriously; wire it into CI to catch a query regression the moment it lands, even in specs that predate the check.</li>
             </ul>
         </div>
     </section>

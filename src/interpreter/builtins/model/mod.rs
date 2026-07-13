@@ -285,6 +285,7 @@ pub mod query;
 pub mod query_log;
 mod registry;
 pub mod relations;
+pub mod rerank;
 pub mod scopes;
 pub mod search;
 pub mod state_machine;

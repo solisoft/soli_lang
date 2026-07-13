@@ -86,6 +86,10 @@ Article.similar("q", "embedding", 5, { "exact": true })
   so fewer than `k` rows may come back.
 - `{ "exact": true }` is the escape hatch: exact client-side cosine over the
   filtered rows, at fetch-everything cost.
+- Raw-SDBQL equivalent with a server-side metadata filter:
+  `VECTOR_SEARCH(coll, index, @vec, k, { filter: { tenant: "acme" }, overfetch: 4 })`
+  via `db.query(...)` — the filter is applied on the server after ANN candidate
+  selection, returning `[{ doc, score }, ...]`.
 
 ### Generating embeddings (`embed` / `embed_batch`)
 
@@ -121,6 +125,15 @@ Both use the same `SOLI_EMBEDDING_*` configuration as `.similar()` (see
 [the embedding configuration](database.md)); they raise if
 `SOLI_EMBEDDING_API_KEY` is unset. Keys and endpoints live in the environment,
 not in app code — one place to review where text is sent.
+
+**Server-side alternative — auto-embeddings.** Instead of embedding documents in
+app code, you can declare `embedding_source` on the vector index and let SolidB
+generate vectors itself: insert plain text and the server embeds it on a
+background worker (off the write path — bulk and driver inserts never block).
+Configured on the index (`embedding_source`, `embedding_provider`,
+`embedding_model`) via a migration or the vector-index API; the provider keys
+live in the database `_env`, not the Soli app. Use this when you'd rather not
+run a `before_save embed(...)` hook on every model.
 
 ## Fulltext Search (`search`)
 
@@ -237,6 +250,30 @@ default `5`), and `system` (the system prompt). It needs a `vector_index` for
 retrieval, embeddings configured (`SOLI_EMBEDDING_API_KEY`), and an LLM
 (`SOLI_LLM_API_KEY` / `SOLI_LLM_URL`). For a **streamed** answer, pair retrieval
 with [`out.llm_stream`](streaming.md) inside an `sse` block.
+
+## Reranking (`rerank`)
+
+`rerank(query, rows [, { field:, limit: }])` reorders an array of already-
+retrieved records by how many query tokens each one's text contains — most
+relevant first. It's pure and offline (no LLM, no server round-trip), so it's a
+cheap second pass after `similar` / `hybrid` / `graph_rag` when you want to bias
+the order toward a phrase:
+
+```soli
+rows = Article.similar("vector databases", "embedding", 20)
+top5 = rerank("hnsw index tuning", rows, { "field": "content", "limit": 5 })
+```
+
+- `field` — which field to rank on. Omitted, it probes `content` / `text` /
+  `summary` / `body` / `title`.
+- `limit` — keep only the top N after reordering.
+- Ties keep their original order, so a no-signal query returns the input
+  unchanged.
+
+For **LLM-based** reranking (a model reorders the candidates) or a stored
+retrieve→rerank pipeline, drop to raw SDBQL: SolidB's
+`RERANK(query, docs, { mode: "llm" })` and `RAG_PIPELINE(name, @vec)` via
+`db.query(...)` / `@sdbql{}`.
 
 ## Pipeline notes (fulltext / hybrid / geo)
 

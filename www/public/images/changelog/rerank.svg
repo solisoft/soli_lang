@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 210" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="rerank pipeline: take retrieved rows, score each by query-token overlap offline, reorder most-relevant first, and keep the top-k">
+  <defs>
+    <marker id="rrArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6b7280"/>
+    </marker>
+    <style>
+      .box{fill:#0e1319;stroke:#2b333c;}
+      .lbl{fill:#e5e7eb;font-size:13px;font-weight:600;}
+      .sub{fill:#9ca3af;font-size:11px;}
+      .code{fill:#67e8f9;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;}
+      .flow{stroke:#6b7280;stroke-width:1.6;fill:none;}
+      .score{fill:#9ca3af;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;}
+    </style>
+  </defs>
+
+  <text x="20" y="30" fill="#f3f4f6" font-size="15" font-weight="700">Reranking — <tspan class="code" font-size="14">rerank(query, rows)</tspan></text>
+
+  <!-- query -->
+  <rect class="box" x="20" y="66" width="120" height="60" rx="10" stroke="#fbbf24"/>
+  <text class="lbl" x="34" y="92">Query</text>
+  <text class="sub" x="34" y="110">"hnsw tuning"</text>
+
+  <!-- retrieved rows (unordered) -->
+  <rect class="box" x="176" y="66" width="130" height="60" rx="10"/>
+  <text class="lbl" x="190" y="92">Rows</text>
+  <text class="sub" x="190" y="110">similar / hybrid</text>
+
+  <!-- score by token overlap -->
+  <rect class="box" x="342" y="66" width="150" height="60" rx="10" stroke="#22d3ee"/>
+  <text class="lbl" x="356" y="92">Score</text>
+  <text class="sub" x="356" y="110">token overlap · offline</text>
+
+  <!-- reorder + top-k -->
+  <rect class="box" x="528" y="66" width="130" height="60" rx="10" stroke="#a3e635"/>
+  <text class="lbl" x="542" y="92">Reorder</text>
+  <text class="sub" x="542" y="110">sort desc · top-k</text>
+
+  <!-- result: ranked rows -->
+  <rect class="box" x="694" y="48" width="206" height="96" rx="10" stroke="#34d399"/>
+  <text class="lbl" x="710" y="72">Ranked</text>
+  <text class="score" x="710" y="94">row&#160;·&#160;3&#160;&#8195;most relevant</text>
+  <text class="score" x="710" y="112">row&#160;·&#160;2</text>
+  <text class="score" x="710" y="130">row&#160;·&#160;0&#160;&#8195;ties keep order</text>
+
+  <!-- flows -->
+  <path class="flow" d="M140 96 H170" marker-end="url(#rrArrow)"/>
+  <path class="flow" d="M306 96 H336" marker-end="url(#rrArrow)"/>
+  <path class="flow" d="M492 96 H522" marker-end="url(#rrArrow)"/>
+  <path class="flow" d="M658 96 H688" marker-end="url(#rrArrow)"/>
+
+  <text x="20" y="182" fill="#6b7280" font-size="11">Pure and offline — no LLM, no server round-trip. A cheap second pass after <tspan class="code" font-size="11">similar</tspan> / <tspan class="code" font-size="11">hybrid</tspan> / <tspan class="code" font-size="11">graph_rag</tspan> to bias order toward a phrase.</text>
+</svg>

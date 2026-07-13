@@ -101,6 +101,7 @@ Article.similar("q", "embedding", 5, { "exact": true })</code></pre>
             <li>HNSW results are <strong>approximate</strong> &mdash; ordering can differ from exact cosine similarity, especially among close scores.</li>
             <li>With chained filters, the database returns ANN <em>candidates</em> first (4&times;k, capped at 400) and your filters are applied <strong>after</strong> candidate selection &mdash; so fewer than <code>k</code> rows may come back.</li>
             <li><code>{ "exact": true }</code> is the escape hatch: exact client-side cosine over the filtered rows, at fetch-everything cost.</li>
+            <li>Raw-SDBQL equivalent with a <strong>server-side</strong> metadata filter (applied after ANN candidate selection): <code>VECTOR_SEARCH(coll, index, @vec, k, { filter: { tenant: "acme" }, overfetch: 4 })</code> via <code>db.query(...)</code> &mdash; returns <code>{ doc, score }</code> rows.</li>
         </ul>
     </div>
 
@@ -133,9 +134,15 @@ articles.each_with_index(fn(article, i) {
 })</code></pre>
         </div>
     </div>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-6">
         Both use the same <code>SOLI_EMBEDDING_*</code> configuration as <code>.similar()</code>; they raise if <code>SOLI_EMBEDDING_API_KEY</code> is unset. Keys and endpoints live in the environment, not in app code &mdash; one place to review where text is sent.
     </p>
+    <div class="my-8 p-6 rounded-xl bg-white/5 border border-white/10 mb-12">
+        <h4 class="text-lg font-semibold text-white mb-2">Server-side alternative: auto-embeddings</h4>
+        <p class="text-gray-400 text-sm">
+            Instead of embedding documents in app code, declare <code class="text-amber-300">embedding_source</code> on the vector index and let SolidB embed inserted text itself &mdash; on a background worker, <strong class="text-white">off the write path</strong>, so bulk and driver inserts never block. Configure it on the index (<code>embedding_source</code>, <code>embedding_provider</code>, <code>embedding_model</code>) via a migration or the vector-index API; provider keys live in the database <code>_env</code>. Use it when you'd rather not run a <code>before_save embed(...)</code> hook on every model.
+        </p>
+    </div>
 
     <h2 id="fulltext-search" class="text-2xl font-bold text-white mb-6">Fulltext Search (<code>search</code>)</h2>
     <p class="text-gray-400 mb-4">
@@ -258,6 +265,25 @@ result["sources"]   # the Article instances used as context</code></pre>
     </div>
     <p class="text-gray-400 mb-12">
         Needs a <code>vector_index</code> (retrieval), embeddings (<code class="text-cyan-400">SOLI_EMBEDDING_API_KEY</code>), and an LLM (<code class="text-cyan-400">SOLI_LLM_API_KEY</code>/<code class="text-cyan-400">SOLI_LLM_URL</code>). For a <strong class="text-white">streamed</strong> answer, pair retrieval with <a href="/docs/core-concepts/streaming" class="text-amber-400 hover:underline"><code>out.llm_stream</code></a> inside an <code>sse</code> block.
+    </p>
+
+    <h2 id="rerank" class="text-2xl font-bold text-white mb-6">Reranking (<code>rerank</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">rerank(query, rows[, { field:, limit: }])</code> reorders an array of already-retrieved records by how many query tokens each one's text contains &mdash; most relevant first. It's pure and offline (no LLM, no server round-trip), so it's a cheap second pass after <code>similar</code> / <code>graph_rag</code> when you want to bias the order toward a phrase.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">rows = Article.similar("vector databases", "embedding", 20)
+top5 = rerank("hnsw index tuning", rows, { "field": "content", "limit": 5 })</code></pre>
+        </div>
+    </div>
+    <ul class="space-y-3 text-gray-400 mb-6">
+        <li><code class="text-amber-300">field</code> &mdash; which field to rank on. Omitted, it probes <code>content</code> / <code>text</code> / <code>summary</code> / <code>body</code> / <code>title</code>.</li>
+        <li><code class="text-amber-300">limit</code> &mdash; keep only the top N after reordering.</li>
+        <li>Ties keep their original order, so a no-signal query returns the input unchanged.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        For <strong class="text-white">LLM-based</strong> reranking (a model reorders the candidates) or a stored retrieve&rarr;rerank pipeline, drop to raw SDBQL: SolidB's <code>RERANK(query, docs, { mode: "llm" })</code> and <code>RAG_PIPELINE(name, @vec)</code> via <code>db.query(...)</code> / <code>@sdbql{}</code>.
     </p>
 
     <h2 id="hybrid-search" class="text-2xl font-bold text-white mb-6">Hybrid Search (not exposed yet)</h2>

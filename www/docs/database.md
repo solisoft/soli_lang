@@ -277,6 +277,30 @@ The `@sdbql{}` block supports:
 
 > `@sdql{}` is accepted as a legacy alias for `@sdbql{}`. New code should use `@sdbql{}` to match the language name (SDBQL).
 
+#### Server SDBQL features without an ORM wrapper
+
+Some SolidB capabilities have no dedicated Soli method yet — reach them with raw
+SDBQL via `db.query(...)` or `@sdbql{}`:
+
+```soli
+# Time-travel: read a document as it was at a past time (needs versioning
+# enabled on the collection). Timestamp is epoch millis or an RFC3339 string.
+old = db.query("RETURN DOC_AS_OF(@c, @k, @t)",
+               { "c": "orders", "k": "o1", "t": "2026-07-01T00:00:00Z" })
+history = db.query("RETURN DOC_HISTORY(@c, @k)", { "c": "orders", "k": "o1" })
+
+# Filtered vector search (server-side metadata filter after ANN):
+hits = db.query("RETURN VECTOR_SEARCH(@c, @i, @v, 10, { filter: { tenant: @t } })",
+                { "c": "docs", "i": "emb", "v": query_vector, "t": "acme" })
+
+# Scheduled materialized view — refreshes itself every 5 minutes:
+db.query("CREATE MATERIALIZED VIEW top_products REFRESH \"5m\" AS " +
+         "FOR p IN products FILTER p.sales > 100 SORT p.sales DESC RETURN p")
+```
+
+Returns raw documents/values (not model instances). See the
+[SDBQL reference](https://solidb.solisoft.net/docs) for the full function list.
+
 #### When to Use Each Syntax
 
 | Approach | Use Case |

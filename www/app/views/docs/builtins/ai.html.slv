@@ -120,6 +120,38 @@ articles.each_with_index(fn(article, i) {
                 <p class="text-gray-400 mt-4"><strong class="text-white">Streaming:</strong> inside an <a href="/docs/core-concepts/streaming" class="text-amber-400 hover:text-amber-300"><code>sse</code></a> block, <code class="text-amber-400">out.llm_stream(system, user)</code> streams the completion token-by-token to the browser and returns the full answer. For an answer grounded in your own data, retrieve context first with <a href="/docs/database/search#rag" class="text-amber-400 hover:text-amber-300"><code>Model.rag</code></a> (embed &rarr; ANN &rarr; generate, returning <code>{ answer, sources }</code>).</p>
             </div>
         </section>
+
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3 mt-8">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m-9 4h13M17 8l4 4-4 4" />
+                </svg>
+            </span>
+            rerank(query, rows)
+        </h2>
+
+        <section id="def-rerank" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-rerank" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">rerank(query, rows[, { field:, limit: }])</code>
+                </a>
+                <p class="text-gray-400 mb-3">Reorder an array of already-retrieved records by how many query tokens each one's text contains &mdash; most relevant first. Pure and offline (no LLM, no server round-trip), so it's a cheap second pass after <code class="text-amber-400">similar</code> / <code class="text-amber-400">hybrid</code> / <code class="text-amber-400">graph_rag</code> to bias the order toward a phrase.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">query</code> : <code class="text-orange-400">String</code> - the phrase to rank by</div>
+                    <div><code class="text-amber-400">rows</code> : <code class="text-orange-400">Array</code> - records to reorder (model instances or hashes)</div>
+                    <div><code class="text-amber-400">field</code> : <code class="text-orange-400">String</code> - text field to rank on (optional; defaults to the first non-empty of <code>content</code> / <code>text</code> / <code>summary</code> / <code>body</code> / <code>title</code>)</div>
+                    <div><code class="text-amber-400">limit</code> : <code class="text-orange-400">Int</code> - keep only the top N after reordering (optional)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">Array</code> - the same records, reordered most-relevant first (ties keep input order)
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">rows = Article.similar("vector databases", "embedding", 20)
+top5 = rerank("hnsw index tuning", rows, { "field": "content", "limit": 5 })</code></pre>
+                <p class="text-gray-400 mt-4">For <strong class="text-white">LLM-based</strong> reranking or a stored retrieve&rarr;rerank pipeline, drop to raw SDBQL: <code class="text-amber-400">RERANK(query, docs, { mode: "llm" })</code> and <code class="text-amber-400">RAG_PIPELINE(name, @vec)</code> via <code class="text-amber-400">db.query</code>.</p>
+            </div>
+        </section>
     </section>
 
     <!-- Configuration -->
