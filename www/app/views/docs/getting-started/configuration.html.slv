@@ -48,6 +48,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
                     <tr><td class="py-3 px-4"><code>SOLI_HOST</code></td><td class="py-3 px-4">IP address the server binds to. Set <code>127.0.0.1</code> to keep a dev server off the LAN (only local processes can connect); the default listens on all interfaces. An invalid value is a startup error.</td><td class="py-3 px-4"><code>0.0.0.0</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_WORKERS</code></td><td class="py-3 px-4">Number of request-handling worker threads. Each worker is a full interpreter copy (its own parsed app &plus; builtins), so this is the primary lever on baseline RSS: pin it low (e.g. <code>2</code>) on many-core boxes to cap memory from duplicated interpreter state &plus; the tokio runtime. Defaults to the number of CPU cores.</td><td class="py-3 px-4">CPU cores</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_REQUEST_LOG</code></td><td class="py-3 px-4">Enables per-request <code>[LOG] METHOD PATH - STATUS (Xms)</code> lines on stdout when set to <code>1</code> or <code>true</code>. Always on under <code>--dev</code>. Alias for <code>SOLI_LOG=access</code>.</td><td class="py-3 px-4"><code>false</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_LOG</code></td><td class="py-3 px-4">Comma-separated production log channels: <code>access</code> (the request line), <code>query</code> (AQL queries with binds &plus; duration), <code>http</code> (outgoing <code>HTTP.*</code> calls), <code>timing</code> (middleware/view/phase breakdown), or <code>all</code>. Each detail channel prints an indented block under the access line and implies <code>access</code>. Surfaces the rich per-request diagnostics &mdash; otherwise gated to <code>--dev</code> &mdash; without paying for full dev mode.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_SLOW_REQUEST_MS</code></td><td class="py-3 px-4">Slow-request threshold in milliseconds. A request whose total time (queue wait &plus; handler) reaches it prints a full <code>[SLOW]</code> detail block &mdash; every <code>SOLI_LOG</code> channel plus the queue-wait split &mdash; while faster requests stay silent. Composes with <code>SOLI_LOG</code>.</td><td class="py-3 px-4">unset</td></tr>
@@ -140,6 +141,28 @@ SOLI_SLOW_REQUEST_MS=100 soli serve</code></pre>
         <p class="text-gray-400">
             Pooled SoliDB connections idle out after <code>SOLI_DB_POOL_IDLE_SECS</code> (default 90s). On a quiet server, a request arriving after a longer gap used to pay a fresh DNS &plus; TCP (&plus; TLS for remote hosts) connect mid-request &mdash; visible as intermittent latency spikes. When a DB is configured, <code>soli serve</code> now runs a periodic read-only <code>RETURN 1</code> ping that keeps a live connection pooled at all times (and pre-warms the model DB at boot). Disable it with <code>SOLI_DB_KEEP_WARM=0</code>.
         </p>
+
+        <h3 class="text-xl font-bold text-white mt-8 mb-4">Keeping memory low</h3>
+        <p class="text-gray-400 mb-4">
+            <code>soli serve</code> runs a pool of worker <strong class="text-white">threads</strong> in one process, and each worker holds its own copy of the parsed app plus the full builtin surface (<code>Rc</code>-based values can&rsquo;t be shared across threads). So baseline RSS scales with the worker count and &mdash; for apps with lots of code or large in-memory data such as i18n locale tables &mdash; with the size of that app. The levers, cheapest first:
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Lever</th><th class="py-3 px-4">Effect</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_WORKERS=N</code></td><td class="py-3 px-4">The biggest one &mdash; each worker is a full interpreter copy. On a many-core box a small app still spawns one worker per core; pin <code>2</code> (or <code>1</code> for a low-traffic service) to cut baseline RSS proportionally.</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOB_WORKERS=1</code> (or <code>0</code>)</td><td class="py-3 px-4">The background-job pool is a second set of full interpreters. It defaults to <code>1</code>; <code>0</code> runs jobs inline with no extra interpreter.</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOB_VIEW_HELPERS=0</code></td><td class="py-3 px-4">Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don&rsquo;t render helper-using templates.</td></tr>
+                    <tr><td class="py-3 px-4"><code>MIMALLOC_PURGE_DELAY=0</code></td><td class="py-3 px-4">mimalloc returns freed pages to the OS promptly instead of after its default delay &mdash; trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more <code>madvise</code>/decommit syscalls under churny allocation.</td></tr>
+                    <tr><td class="py-3 px-4">Fewer/lazier locales</td><td class="py-3 px-4">If most of an app&rsquo;s per-worker memory is i18n tables, load only the locales you serve (or move them to <code>config/locales/*.yml</code>, which the framework loads <strong class="text-white">once</strong> process-wide into a shared store rather than per-worker).</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400">
+            The boot process also builds one extra interpreter to register the shared route/model/controller/template registries before workers start; it is now reclaimed immediately after boot rather than parked for the process lifetime.
+        </p>
     </section>
 
     <section class="mb-12">
@@ -228,7 +251,8 @@ SOLI_SLOW_REQUEST_MS=100 soli serve</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_DEFAULT_QUEUE</code></td><td class="py-3 px-4">Queue used when no queue is specified.</td><td class="py-3 px-4"><code>default</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_CALLBACK_URL</code></td><td class="py-3 px-4">Base URL SolidB calls when a job fires.</td><td class="py-3 px-4"><code>http://127.0.0.1:3000/_jobs/run</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_SECRET</code></td><td class="py-3 px-4"><strong>Required.</strong> HMAC-SHA256 key used to sign and verify job callbacks (<code>X-Job-Signature</code> header). If unset, <code>/_jobs/run/:name</code> is not registered &mdash; see <a class="text-amber-400 hover:underline" href="/docs/jobs#security-signed-callbacks">Jobs / Signed Callbacks</a>.</td><td class="py-3 px-4">unset</td></tr>
-                    <tr><td class="py-3 px-4"><code>SOLI_JOB_WORKERS</code></td><td class="py-3 px-4">Size of the in-process pool that runs jobs marked <code>static background: Bool = true</code>. <code>0</code> disables backgrounding (all jobs run inline) &mdash; see <a class="text-amber-400 hover:underline" href="/docs/jobs#long-running-jobs-background-pool">Jobs / Long-Running Jobs</a>.</td><td class="py-3 px-4"><code>2</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOB_WORKERS</code></td><td class="py-3 px-4">Size of the in-process pool that runs jobs marked <code>static background: Bool = true</code>. Each worker is a full interpreter copy, so the default is conservative; raise it for higher background throughput, or set <code>0</code> to disable backgrounding (all jobs run inline) &mdash; see <a class="text-amber-400 hover:underline" href="/docs/jobs#long-running-jobs-background-pool">Jobs / Long-Running Jobs</a>.</td><td class="py-3 px-4"><code>1</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOB_VIEW_HELPERS</code></td><td class="py-3 px-4">Whether background-job interpreters load view helpers (which include an app's i18n locale tables &mdash; often the largest per-interpreter cost). Set <code>0</code> to skip them when no job renders a helper-using template, dropping that memory from every job interpreter.</td><td class="py-3 px-4">enabled</td></tr>
                 </tbody>
             </table>
         </div>

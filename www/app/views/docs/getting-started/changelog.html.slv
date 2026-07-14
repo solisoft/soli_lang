@@ -23,6 +23,25 @@
         <p class="text-gray-400 text-sm leading-relaxed">Nothing yet &mdash; changes land here as they merge to <code class="text-cyan-400">main</code>, then promote to a version section on release.</p>
     </section>
 
+    <section id="v1-20-0" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.20.0</h2>
+            <span class="text-sm font-medium text-gray-400">July 14, 2026</span>
+        </div>
+
+        <!-- Performance & Memory -->
+        <h3 id="v20-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance &amp; Memory</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Smaller runtime values</strong> &mdash; <code class="text-cyan-400">size_of::&lt;Value&gt;()</code> dropped <strong class="text-white">64&nbsp;&rarr;&nbsp;24 bytes</strong> (&minus;62%): the native-function and method variants are now behind a pointer. Every array cell, hash slot, model-row field and env binding is one <code>Value</code>, so this shrinks runtime memory across the whole interpreter.</li>
+                <li><strong class="text-white">Smaller AST</strong> &mdash; parsed nodes shrank (<code class="text-cyan-400">Expr</code> 144&nbsp;&rarr;&nbsp;80&nbsp;B, <code class="text-cyan-400">Stmt</code> 360&nbsp;&rarr;&nbsp;200&nbsp;B) by narrowing source spans to 32-bit and boxing the large declaration and lambda payloads. Each worker holds its own copy of the parsed app, so per-worker RSS drops proportionally to app size &mdash; biggest for code- or i18n-heavy apps. Compile-time <code>size_of</code> guards keep the wins from regressing.</li>
+                <li><strong class="text-white">Boot interpreter reclaimed</strong> &mdash; the extra interpreter built only to register the shared route/model/controller/template registries before workers start is now freed right after boot, instead of sitting idle (holding all builtins + the parsed app + i18n tables) for the process lifetime.</li>
+                <li><strong class="text-white">Leaner background jobs</strong> &mdash; <code class="text-cyan-400">SOLI_JOB_VIEW_HELPERS=0</code> skips view helpers (incl. i18n locale tables) in job interpreters, the default job-pool size is now <code>1</code>, and a new <a class="text-amber-400 hover:underline" href="/docs/configuration#keeping-memory-low">Keeping memory low</a> guide documents <code class="text-cyan-400">SOLI_WORKERS</code> and friends &mdash; the worker count is the primary lever on baseline RSS.</li>
+                <li><strong class="text-white">Fix: <code class="text-cyan-400">SOLI_WORKERS</code> is now honored</strong> &mdash; the CLI previously ignored the env var (only the <code>--workers</code> flag was read, defaulting to CPU cores), so operators on many-core boxes couldn&rsquo;t cap the worker count from the environment. On a 16-core box this alone takes a locale-heavy app from ~311&nbsp;MB (16 default workers) to ~66&nbsp;MB at <code class="text-cyan-400">SOLI_WORKERS=2</code>; <code>--workers</code> still overrides.</li>
+            </ul>
+        </div>
+    </section>
+
     <section id="v1-19-0" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">v1.19.0</h2>

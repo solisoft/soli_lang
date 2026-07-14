@@ -25,6 +25,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SOLI_HOST` | IP address the server binds to. Set `127.0.0.1` to keep a dev server off the LAN (only local processes can connect); the default listens on all interfaces. An invalid value is a startup error. | `0.0.0.0` |
+| `SOLI_WORKERS` | Number of request-handling worker threads. Each worker is a full interpreter copy (its own parsed app + builtins), so this is the primary lever on baseline RSS: pin it low (e.g. `2`) on many-core boxes to cap memory from duplicated interpreter state + the tokio runtime. Defaults to the number of CPU cores. | CPU cores |
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
 | `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration), `http` (outgoing `HTTP.*` calls), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
 | `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
@@ -135,6 +136,26 @@ a periodic read-only `RETURN 1` ping that keeps a live connection pooled at
 all times (and pre-warms the model DB at boot). Disable it with
 `SOLI_DB_KEEP_WARM=0`.
 
+### Keeping memory low
+
+`soli serve` runs a pool of worker **threads** in one process, and each worker
+holds its own copy of the parsed app plus the full builtin surface (`Rc`-based
+values can't be shared across threads). So baseline RSS scales with the worker
+count, and — for apps with lots of code or large in-memory data (e.g. i18n
+locale tables) — with the size of that app. The levers, cheapest first:
+
+| Lever | Effect |
+|-------|--------|
+| `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. On a many-core box a small app still spawns one worker per core; pin `2` (or `1` for a low-traffic service) to cut baseline RSS proportionally. |
+| `SOLI_JOB_WORKERS=1` (or `0`) | The background-job pool is a second set of full interpreters. It defaults to `1`; `0` runs jobs inline with no extra interpreter. |
+| `SOLI_JOB_VIEW_HELPERS=0` | Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don't render helper-using templates. |
+| `MIMALLOC_PURGE_DELAY=0` | mimalloc returns freed pages to the OS promptly instead of after its default delay — trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more `madvise`/decommit syscalls under churny allocation. |
+| Fewer/lazier locales | If most of an app's per-worker memory is i18n tables, load only the locales you serve (or move them to `config/locales/*.yml`, which the framework loads **once** process-wide into a shared store rather than per-worker). |
+
+The boot process also builds one extra interpreter to register the shared
+route/model/controller/template registries before workers start; it is now
+reclaimed immediately after boot rather than parked for the process lifetime.
+
 ## Hardening
 
 These knobs control how the request edge handles untrusted input. See the
@@ -193,7 +214,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
 | `SOLI_JOBS_CALLBACK_URL` | Base URL SolidB calls when a job fires. | `http://127.0.0.1:3000/_jobs/run` |
 | `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). If unset, `/_jobs/run/:name` is not registered — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks). | unset |
-| `SOLI_JOB_WORKERS` | Size of the in-process pool that runs jobs marked `static background: Bool = true`. `0` disables backgrounding (all jobs run inline) — see [Jobs / Long-Running Jobs](jobs.md#long-running-jobs-background-pool). | `2` |
+| `SOLI_JOB_WORKERS` | Size of the in-process pool that runs jobs marked `static background: Bool = true`. Each worker is a full interpreter copy, so the default is conservative; raise it for higher background throughput, or set `0` to disable backgrounding (all jobs run inline) — see [Jobs / Long-Running Jobs](jobs.md#long-running-jobs-background-pool). | `1` |
+| `SOLI_JOB_VIEW_HELPERS` | Whether background-job interpreters load view helpers (which include an app's i18n locale tables — often the largest per-interpreter cost). Set `0` to skip them when no job renders a helper-using template, dropping that memory from every job interpreter. | enabled |
 
 ## Cache And KV
 
