@@ -525,7 +525,7 @@ impl CoverageTracker {
     }
 
     fn collect_lines_from_stmt(&mut self, path: &PathBuf, lines: &[&str], stmt: &crate::ast::Stmt) {
-        let line_num = stmt.span.line;
+        let line_num = stmt.span.line_usize();
         if line_num > 0 && line_num <= lines.len() {
             let source_line = lines[line_num - 1].to_string();
             self.register_executable_line(path, line_num, source_line);
@@ -631,7 +631,7 @@ impl CoverageTracker {
     }
 
     fn collect_lines_from_expr(&mut self, path: &PathBuf, lines: &[&str], expr: &crate::ast::Expr) {
-        let line_num = expr.span.line;
+        let line_num = expr.span.line_usize();
         if line_num > 0 && line_num <= lines.len() {
             let source_line = lines[line_num - 1].to_string();
             self.register_executable_line(path, line_num, source_line);

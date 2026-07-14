@@ -1,22 +1,50 @@
 //! Source location tracking for error reporting.
 
 /// A span represents a range in the source code.
+///
+/// Fields are `u32` (not `usize`): a `Span` is embedded in every AST node, so
+/// halving it from 32B to 16B shrinks `Expr`/`Stmt`/`TypeAnnotation` across the
+/// whole parsed AST — the largest per-worker allocation. Source files never
+/// approach 4GiB, so `u32` offsets/line/column are always sufficient. The
+/// constructor still takes `usize` (the lexer/parser count in `usize`) and
+/// casts, so callers are unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Span {
-    pub start: usize,
-    pub end: usize,
-    pub line: usize,
-    pub column: usize,
+    pub start: u32,
+    pub end: u32,
+    pub line: u32,
+    pub column: u32,
 }
 
 impl Span {
     pub fn new(start: usize, end: usize, line: usize, column: usize) -> Self {
         Self {
-            start,
-            end,
-            line,
-            column,
+            start: start as u32,
+            end: end as u32,
+            line: line as u32,
+            column: column as u32,
         }
+    }
+
+    /// `usize` accessors — the fields are `u32` for compactness, but most
+    /// consumers (source slicing, line/column arithmetic, LSP positions) work
+    /// in `usize`. These chain cleanly (`span.start_usize().min(len)`) where a
+    /// bare `as usize` cast would hit operator-precedence traps.
+    #[inline]
+    pub fn start_usize(&self) -> usize {
+        self.start as usize
+    }
+    #[inline]
+    pub fn end_usize(&self) -> usize {
+        self.end as usize
+    }
+    #[inline]
+    pub fn line_usize(&self) -> usize {
+        self.line as usize
+    }
+    #[inline]
+    pub fn column_usize(&self) -> usize {
+        self.column as usize
     }
 
     /// Create a span that covers from this span to another.
@@ -33,6 +61,9 @@ impl Span {
         }
     }
 }
+
+/// Size guard — `Span` is embedded in every AST node; keep it at two words.
+const _: () = assert!(std::mem::size_of::<Span>() <= 16);
 
 impl std::fmt::Display for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -315,8 +315,11 @@ pub enum Value {
     Instance(Rc<RefCell<Instance>>),
     /// Future value (async result that auto-resolves when used)
     Future(Arc<Mutex<FutureState>>),
-    /// Method on a value (array/hash) - captures receiver and method name
-    Method(ValueMethod),
+    /// Method on a value (array/hash) - captures receiver and method name.
+    /// Behind an `Rc` so the variant is pointer-sized: `Method` is the largest
+    /// inline payload otherwise, and it's a transient block receiver (the hot
+    /// `arr.map(fn)` path bypasses it), so the extra refcount is cold.
+    Method(Rc<ValueMethod>),
     /// Breakpoint marker - triggers debug mode when encountered
     Breakpoint,
     /// Continue marker - used by next() alias for continue in loops
@@ -337,6 +340,15 @@ pub enum Value {
     /// `builtins::model::batch`). Resolved transparently at read points
     /// (`evaluate_variable`, member access, `value_to_json`, `Display`).
     Deferred(Rc<RefCell<DeferredCell>>),
+}
+
+impl Value {
+    /// Construct a `Value::Method`, boxing the receiver+name into the `Rc`
+    /// the variant now holds so the variant stays pointer-sized.
+    #[inline]
+    pub fn method(vm: ValueMethod) -> Value {
+        Value::Method(Rc::new(vm))
+    }
 }
 
 /// Backing cell for a [`Value::Deferred`]. `resolved` is `None` until the
@@ -1085,13 +1097,28 @@ impl Function {
     }
 }
 
-/// A native/builtin function.
+/// A native/builtin function. Newtype over `Rc<NativeFunctionInner>` so the
+/// `Value::NativeFunction` variant is pointer-sized (8B) instead of inlining
+/// the ~64B payload into every `Value` (arrays, hashes, model rows, env
+/// bindings all pay `size_of::<Value>()`). All field access flows through
+/// `Deref`, so existing `.name` / `.arity` / `.func` / `.is_auto_invocable`
+/// reads and `Value::NativeFunction(f) => …` patterns compile unchanged.
 #[derive(Clone)]
-pub struct NativeFunction {
+pub struct NativeFunction(Rc<NativeFunctionInner>);
+
+pub struct NativeFunctionInner {
     pub name: String,
     pub arity: Option<usize>, // None means variadic
     pub func: Rc<dyn Fn(Vec<Value>) -> Result<Value, String>>,
     pub is_auto_invocable: bool, // Can be called without parentheses
+}
+
+impl std::ops::Deref for NativeFunction {
+    type Target = NativeFunctionInner;
+    #[inline]
+    fn deref(&self) -> &NativeFunctionInner {
+        &self.0
+    }
 }
 
 impl NativeFunction {
@@ -1099,24 +1126,33 @@ impl NativeFunction {
     where
         F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
     {
-        Self {
-            name: name.into(),
-            arity,
-            func: Rc::new(func),
-            is_auto_invocable: false,
-        }
+        Self::new_with_auto(name, arity, false, func)
     }
 
     pub fn new_auto_invocable<F>(name: impl Into<String>, arity: Option<usize>, func: F) -> Self
     where
         F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
     {
-        Self {
+        Self::new_with_auto(name, arity, true, func)
+    }
+
+    /// Construct with an explicit `is_auto_invocable` flag — for wrapper
+    /// functions that inherit the flag from the method they bind.
+    pub fn new_with_auto<F>(
+        name: impl Into<String>,
+        arity: Option<usize>,
+        is_auto_invocable: bool,
+        func: F,
+    ) -> Self
+    where
+        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+    {
+        Self(Rc::new(NativeFunctionInner {
             name: name.into(),
             arity,
             func: Rc::new(func),
-            is_auto_invocable: true,
-        }
+            is_auto_invocable,
+        }))
     }
 }
 
@@ -2798,4 +2834,52 @@ mod value_misc_tests {
         assert!(super::is_safe_serialised_field("digest_format"));
         assert!(super::is_safe_serialised_field("hash_algorithm"));
     }
+
+    // ---------------------------------------------------------------------
+    // Memory-size regression guards.
+    //
+    // `size_of::<Value>()` is paid by every array cell, hash slot, model-row
+    // field, env binding, and VM stack slot; the AST node sizes are paid by
+    // every parsed statement/expression, once per worker thread. These bounds
+    // lock in the memory-footprint reductions so a fat inline variant can't
+    // silently creep back. Run `cargo test size_guards -- --nocapture` to see
+    // the live numbers. Tighten the bounds when a reduction lands.
+    // ---------------------------------------------------------------------
+    #[test]
+    fn size_guards() {
+        use crate::ast::expr::{Expr, ExprKind};
+        use crate::ast::stmt::{Stmt, StmtKind};
+        use crate::ast::types::TypeAnnotation;
+        use crate::span::Span;
+        use std::mem::size_of;
+
+        eprintln!(
+            "size_of::<Value>()          = {}",
+            size_of::<super::Value>()
+        );
+        eprintln!(
+            "size_of::<NativeFunction>() = {}",
+            size_of::<super::NativeFunction>()
+        );
+        eprintln!(
+            "size_of::<ValueMethod>()    = {}",
+            size_of::<super::ValueMethod>()
+        );
+        eprintln!("size_of::<Span>()           = {}", size_of::<Span>());
+        eprintln!("size_of::<Expr>()           = {}", size_of::<Expr>());
+        eprintln!("size_of::<ExprKind>()       = {}", size_of::<ExprKind>());
+        eprintln!("size_of::<Stmt>()           = {}", size_of::<Stmt>());
+        eprintln!("size_of::<StmtKind>()       = {}", size_of::<StmtKind>());
+        eprintln!(
+            "size_of::<TypeAnnotation>() = {}",
+            size_of::<TypeAnnotation>()
+        );
+    }
 }
+
+/// Compile-time memory-size guards — see the `size_guards` test for context.
+/// These fail the build if a `Value` variant grows past its budget. Keep them
+/// as tight as the current layout allows; loosen only with a deliberate reason.
+/// Every array cell, hash slot, model-row field, env binding and VM stack slot
+/// is one `Value`, so this is a broad multiplier.
+const _: () = assert!(std::mem::size_of::<Value>() <= 24);

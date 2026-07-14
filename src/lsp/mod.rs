@@ -292,12 +292,12 @@ impl Backend {
                 .into_iter()
                 .map(|d| {
                     let start = lsp_types::Position::new(
-                        (d.span.line.saturating_sub(1)) as u32,
-                        (d.span.column.saturating_sub(1)) as u32,
+                        (d.span.line_usize().saturating_sub(1)) as u32,
+                        (d.span.column_usize().saturating_sub(1)) as u32,
                     );
                     let end = lsp_types::Position::new(
-                        (d.span.line.saturating_sub(1)) as u32,
-                        (d.span.column + d.message.len()) as u32,
+                        (d.span.line_usize().saturating_sub(1)) as u32,
+                        (d.span.column_usize() + d.message.len()) as u32,
                     );
                     Diagnostic {
                         range: tower_lsp::lsp_types::Range::new(start, end),

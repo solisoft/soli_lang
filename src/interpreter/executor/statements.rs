@@ -23,11 +23,11 @@ impl Interpreter {
         if let Some(ref path) = source_path {
             if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {
-                    guard.record_line_hit(path, stmt.span.line);
+                    guard.record_line_hit(path, stmt.span.line_usize());
                 }
             } else if let Some(global) = crate::coverage::get_global_coverage_tracker() {
                 if let Ok(guard) = global.lock() {
-                    guard.record_line_hit(path, stmt.span.line);
+                    guard.record_line_hit(path, stmt.span.line_usize());
                 }
             }
         }
@@ -43,7 +43,8 @@ impl Interpreter {
                         .as_ref()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|| "unknown".to_string());
-                    stack_trace.insert(0, format!("break() at {}:{}", file, expr.span.line));
+                    stack_trace
+                        .insert(0, format!("break() at {}:{}", file, expr.span.line_usize()));
                     return Err(RuntimeError::Breakpoint {
                         span: expr.span,
                         env_json,

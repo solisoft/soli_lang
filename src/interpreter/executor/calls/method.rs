@@ -219,7 +219,7 @@ impl Interpreter {
     /// Call a method on a Value.
     pub(crate) fn call_method(
         &mut self,
-        method: ValueMethod,
+        method: Rc<ValueMethod>,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -230,23 +230,25 @@ impl Interpreter {
             Value::Hash(ref hash) => {
                 self.call_hash_method_on_rc(hash, &method.method_name, arguments, span)
             }
-            Value::QueryBuilder(qb) => {
-                self.call_query_builder_method(qb, &method.method_name, arguments, span)
+            Value::QueryBuilder(ref qb) => {
+                self.call_query_builder_method(qb.clone(), &method.method_name, arguments, span)
             }
-            Value::String(s) => {
+            Value::String(ref s) => {
                 if let Some(result) =
-                    self.call_string_method_borrowed(&s, &method.method_name, &arguments, span)
+                    self.call_string_method_borrowed(s, &method.method_name, &arguments, span)
                 {
                     result
                 } else {
-                    self.call_string_method(&s, &method.method_name, arguments, span)
+                    self.call_string_method(s, &method.method_name, arguments, span)
                 }
             }
             Value::Int(n) => self.call_int_method(n, &method.method_name, arguments, span),
             Value::Float(n) => self.call_float_method(n, &method.method_name, arguments, span),
             Value::Bool(b) => self.call_bool_method(b, &method.method_name, arguments, span),
             Value::Null => self.call_null_method(&method.method_name, arguments, span),
-            Value::Decimal(d) => self.call_decimal_method(d, &method.method_name, arguments, span),
+            Value::Decimal(ref d) => {
+                self.call_decimal_method(d.clone(), &method.method_name, arguments, span)
+            }
             Value::Class(ref class) => match (class.name.as_str(), method.method_name.as_str()) {
                 ("Cache", "fetch") => self.cache_fetch(arguments, span),
                 _ => Err(RuntimeError::type_error(

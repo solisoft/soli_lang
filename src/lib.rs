@@ -453,7 +453,12 @@ fn extract_test_from_call(
                 params,
                 return_type,
                 body,
-            } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
+            } => create_function_value(
+                params.clone(),
+                return_type.as_deref().cloned(),
+                body.clone(),
+                span,
+            ),
             _ => return None,
         },
         Argument::Block(block_expr) => {
@@ -463,7 +468,12 @@ fn extract_test_from_call(
                     params,
                     return_type,
                     body,
-                } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
+                } => create_function_value(
+                    params.clone(),
+                    return_type.as_deref().cloned(),
+                    body.clone(),
+                    span,
+                ),
                 _ => return None,
             }
         }
@@ -507,7 +517,12 @@ fn ast_expr_to_value(expr: &ast::Expr) -> Value {
             params,
             return_type,
             body,
-        } => create_function_value(params.clone(), return_type.clone(), body.clone(), expr.span),
+        } => create_function_value(
+            params.clone(),
+            return_type.as_deref().cloned(),
+            body.clone(),
+            expr.span,
+        ),
         _ => Value::Null,
     }
 }

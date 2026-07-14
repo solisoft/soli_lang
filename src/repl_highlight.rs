@@ -42,12 +42,12 @@ impl SyntaxHighlighter {
                 break;
             }
 
-            let token_text = &source[token.span.start..token.span.end];
+            let token_text = &source[token.span.start_usize()..token.span.end_usize()];
             let highlighted = self.colorize_token(token, token_text);
 
-            result.push_str(&source[last_end..token.span.start]);
+            result.push_str(&source[last_end..token.span.start_usize()]);
             result.push_str(&highlighted);
-            last_end = token.span.end;
+            last_end = token.span.end_usize();
         }
 
         result.push_str(&source[last_end..]);

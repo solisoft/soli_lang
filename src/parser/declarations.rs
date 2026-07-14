@@ -163,7 +163,7 @@ impl Parser {
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
-            StmtKind::Function(FunctionDecl {
+            StmtKind::function(FunctionDecl {
                 name,
                 params,
                 return_type,
@@ -202,7 +202,7 @@ impl Parser {
         if self.match_token(&TokenKind::End) {
             let span = start_span.merge(&self.previous_span());
             return Ok(Stmt::new(
-                StmtKind::Class(ClassDecl {
+                StmtKind::class(ClassDecl {
                     name,
                     superclass,
                     interfaces,
@@ -269,7 +269,7 @@ impl Parser {
                 // Handle nested class declaration
                 let nested_class = self.class_declaration()?;
                 if let StmtKind::Class(nested_class_decl) = nested_class.kind {
-                    nested_classes.push(nested_class_decl);
+                    nested_classes.push(*nested_class_decl);
                 }
             } else if self.check(&TokenKind::Fn) {
                 methods.push(self.parse_method(visibility, is_static)?);
@@ -289,7 +289,7 @@ impl Parser {
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
-            StmtKind::Class(ClassDecl {
+            StmtKind::class(ClassDecl {
                 name,
                 superclass,
                 interfaces,
@@ -386,7 +386,7 @@ impl Parser {
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
-            StmtKind::Enum(EnumDecl {
+            StmtKind::enum_decl(EnumDecl {
                 name,
                 variants,
                 methods,
@@ -804,7 +804,7 @@ impl Parser {
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
-            StmtKind::Interface(InterfaceDecl {
+            StmtKind::interface(InterfaceDecl {
                 name,
                 methods,
                 span,

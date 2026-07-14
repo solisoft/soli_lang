@@ -28,7 +28,7 @@ impl Interpreter {
     /// Evaluate an expression.
     /// This is the main dispatch method that delegates to specialized evaluators.
     pub(crate) fn evaluate(&mut self, expr: &Expr) -> RuntimeResult<Value> {
-        self.record_coverage(expr.span.line);
+        self.record_coverage(expr.span.line_usize());
 
         match &expr.kind {
             // Literals
@@ -677,14 +677,9 @@ impl Interpreter {
         // Check built-in type methods (Value::Method)
         if let Value::Method(ref method) = val {
             if is_zero_arg_builtin_method(&method.method_name, &method.receiver) {
-                return self.call_method(
-                    crate::interpreter::value::ValueMethod {
-                        receiver: method.receiver.clone(),
-                        method_name: method.method_name.clone(),
-                    },
-                    vec![],
-                    span,
-                );
+                // `method` is already an `Rc<ValueMethod>` — clone the Rc
+                // (cheap) instead of deep-copying receiver + name.
+                return self.call_method(method.clone(), vec![], span);
             }
             return Ok(val);
         }

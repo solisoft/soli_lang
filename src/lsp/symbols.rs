@@ -44,7 +44,7 @@ impl SymbolTable {
     pub fn find_at_position(&self, pos: usize) -> Option<&ScopedSymbol> {
         self.symbols
             .iter()
-            .find(|s| s.symbol.span.start <= pos && pos <= s.symbol.span.end)
+            .find(|s| s.symbol.span.start_usize() <= pos && pos <= s.symbol.span.end_usize())
     }
 
     pub fn find_by_name(&self, name: &str) -> Vec<&ScopedSymbol> {
@@ -91,8 +91,8 @@ fn build_symbols_recursive(
                         type_name: None,
                         scope_level: *scope_level,
                     },
-                    scope_start: stmt.span.start,
-                    scope_end: stmt.span.end,
+                    scope_start: stmt.span.start_usize(),
+                    scope_end: stmt.span.end_usize(),
                 });
                 if let Some(expr) = initializer {
                     extract_symbols_from_expr(expr, table, *scope_level);
@@ -109,8 +109,8 @@ fn build_symbols_recursive(
                         type_name: None,
                         scope_level: *scope_level,
                     },
-                    scope_start: stmt.span.start,
-                    scope_end: stmt.span.end,
+                    scope_start: stmt.span.start_usize(),
+                    scope_end: stmt.span.end_usize(),
                 });
                 extract_symbols_from_expr(initializer, table, *scope_level);
             }
@@ -123,8 +123,8 @@ fn build_symbols_recursive(
                         type_name: None,
                         scope_level: *scope_level,
                     },
-                    scope_start: stmt.span.start,
-                    scope_end: stmt.span.end,
+                    scope_start: stmt.span.start_usize(),
+                    scope_end: stmt.span.end_usize(),
                 });
 
                 *scope_level += 1;
@@ -137,8 +137,8 @@ fn build_symbols_recursive(
                             type_name: Some(format!("{:?}", param.type_annotation)),
                             scope_level: *scope_level,
                         },
-                        scope_start: param.span.start,
-                        scope_end: param.span.end,
+                        scope_start: param.span.start_usize(),
+                        scope_end: param.span.end_usize(),
                     });
                 }
                 build_symbols_recursive(&func_decl.body, table, scope_level);
@@ -153,8 +153,8 @@ fn build_symbols_recursive(
                         type_name: Some(class_decl.name.clone()),
                         scope_level: *scope_level,
                     },
-                    scope_start: stmt.span.start,
-                    scope_end: stmt.span.end,
+                    scope_start: stmt.span.start_usize(),
+                    scope_end: stmt.span.end_usize(),
                 });
 
                 *scope_level += 1;
@@ -167,8 +167,8 @@ fn build_symbols_recursive(
                             type_name: Some(format!("{:?}", field.type_annotation)),
                             scope_level: *scope_level,
                         },
-                        scope_start: field.span.start,
-                        scope_end: field.span.end,
+                        scope_start: field.span.start_usize(),
+                        scope_end: field.span.end_usize(),
                     });
                 }
                 for method in &class_decl.methods {
@@ -180,8 +180,8 @@ fn build_symbols_recursive(
                             type_name: None,
                             scope_level: *scope_level,
                         },
-                        scope_start: method.span.start,
-                        scope_end: method.span.end,
+                        scope_start: method.span.start_usize(),
+                        scope_end: method.span.end_usize(),
                     });
 
                     *scope_level += 1;
@@ -194,8 +194,8 @@ fn build_symbols_recursive(
                                 type_name: Some(format!("{:?}", param.type_annotation)),
                                 scope_level: *scope_level,
                             },
-                            scope_start: param.span.start,
-                            scope_end: param.span.end,
+                            scope_start: param.span.start_usize(),
+                            scope_end: param.span.end_usize(),
                         });
                     }
                     build_symbols_recursive(&method.body, table, scope_level);
@@ -255,8 +255,8 @@ fn extract_symbols_from_expr(expr: &crate::ast::Expr, table: &mut SymbolTable, s
                         type_name: Some(format!("{:?}", param.type_annotation)),
                         scope_level: inner_level,
                     },
-                    scope_start: param.span.start,
-                    scope_end: param.span.end,
+                    scope_start: param.span.start_usize(),
+                    scope_end: param.span.end_usize(),
                 });
             }
             build_symbols_recursive(body, table, &mut inner_level);

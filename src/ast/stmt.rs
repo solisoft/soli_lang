@@ -89,17 +89,19 @@ pub enum StmtKind {
         finally_block: Option<Box<Stmt>>,
     },
 
-    /// Function declaration
-    Function(FunctionDecl),
+    /// Function declaration. Boxed: `FunctionDecl`/`ClassDecl` are large
+    /// (many `Vec`s + `Option`s), and an unboxed variant sets `size_of::<Stmt>()`
+    /// for *every* statement in every parsed body. Boxing keeps `Stmt` small.
+    Function(Box<FunctionDecl>),
 
     /// Class declaration
-    Class(ClassDecl),
+    Class(Box<ClassDecl>),
 
     /// Enum declaration
-    Enum(EnumDecl),
+    Enum(Box<EnumDecl>),
 
     /// Interface declaration
-    Interface(InterfaceDecl),
+    Interface(Box<InterfaceDecl>),
 
     /// Import declaration: import "path" or import { items } from "path"
     Import(ImportDecl),
@@ -107,6 +109,28 @@ pub enum StmtKind {
     /// Export declaration: export fn/class/let
     Export(Box<Stmt>),
 }
+
+impl StmtKind {
+    /// Boxing constructors for the large decl variants — centralize the
+    /// `Box::new` so call sites read like the old unboxed form.
+    pub fn function(decl: FunctionDecl) -> StmtKind {
+        StmtKind::Function(Box::new(decl))
+    }
+    pub fn class(decl: ClassDecl) -> StmtKind {
+        StmtKind::Class(Box::new(decl))
+    }
+    pub fn enum_decl(decl: EnumDecl) -> StmtKind {
+        StmtKind::Enum(Box::new(decl))
+    }
+    pub fn interface(decl: InterfaceDecl) -> StmtKind {
+        StmtKind::Interface(Box::new(decl))
+    }
+}
+
+/// Size guard — a `Stmt` is allocated per parsed statement in every
+/// `Rc<[Stmt]>` function/method body, once per worker. Keep the large decl
+/// variants boxed. See the `size_guards` test in `interpreter::value`.
+const _: () = assert!(std::mem::size_of::<Stmt>() <= 200);
 
 /// An import specifier (what to import from a module).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

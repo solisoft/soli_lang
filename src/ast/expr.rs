@@ -151,9 +151,12 @@ pub enum ExprKind {
     NullishCoalescing { left: Box<Expr>, right: Box<Expr> },
 
     /// Lambda/anonymous function: |x, y| { stmt; }
+    /// `return_type` is boxed: an inline `Option<TypeAnnotation>` (~64B) made
+    /// `Lambda` the largest `ExprKind` variant and thus set `size_of::<Expr>()`
+    /// for every expression node. Boxing it (rare, usually `None`) shrinks Expr.
     Lambda {
         params: Vec<Parameter>,
-        return_type: Option<TypeAnnotation>,
+        return_type: Option<Box<TypeAnnotation>>,
         body: Vec<Stmt>,
     },
 
@@ -199,6 +202,12 @@ pub enum ExprKind {
         fallback: Box<Expr>,
     },
 }
+
+/// Size guard — an `Expr` is allocated per parsed expression (and embedded
+/// inline in `Argument`/`InterpolatedPart` and every `Expr`-holding `StmtKind`),
+/// so its size multiplies across every worker's AST. Keep fat payloads boxed.
+/// See the `size_guards` test in `interpreter::value` for the live numbers.
+const _: () = assert!(std::mem::size_of::<Expr>() <= 80);
 
 /// Part of an interpolated string.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

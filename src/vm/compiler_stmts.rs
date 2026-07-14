@@ -17,7 +17,7 @@ impl Compiler {
         // tracked height here so the comprehension clean-position gate is
         // correct regardless of any drift during the prior statement.
         self.resync_stack_height();
-        let line = stmt.span.line;
+        let line = stmt.span.line as usize;
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 self.compile_expr(expr)?;
@@ -408,7 +408,7 @@ impl Compiler {
         }
 
         // Declare locals introduced by bare assignment (optional-`let`) up front.
-        self.hoist_locals(body, body[0].span.line);
+        self.hoist_locals(body, body[0].span.line as usize);
 
         let last_idx = body.len() - 1;
         for (i, stmt) in body.iter().enumerate() {
@@ -417,7 +417,7 @@ impl Compiler {
                 // and emit Return so the value is returned implicitly
                 if let StmtKind::Expression(expr) = &stmt.kind {
                     self.compile_expr(expr)?;
-                    self.emit(Op::Return, stmt.span.line);
+                    self.emit(Op::Return, stmt.span.line as usize);
                     return Ok(());
                 }
             }

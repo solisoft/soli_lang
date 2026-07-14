@@ -35,7 +35,7 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
     };
 
     let program = Program::new(vec![Stmt {
-        kind: StmtKind::Function(func_decl),
+        kind: StmtKind::function(func_decl),
         span: func.span.unwrap_or_default(),
         source_path: None,
     }]);

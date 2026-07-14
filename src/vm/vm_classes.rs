@@ -199,7 +199,7 @@ impl Vm {
                 if let Some(val) = hash.get(&key) {
                     Ok(val.clone())
                 } else {
-                    Ok(Value::Method(ValueMethod {
+                    Ok(Value::method(ValueMethod {
                         receiver: Box::new(object.clone()),
                         method_name: name.to_string(),
                     }))
@@ -207,7 +207,7 @@ impl Vm {
             }
             Value::Array(_) => {
                 // Array methods like .length, .map, .filter, etc.
-                Ok(Value::Method(ValueMethod {
+                Ok(Value::method(ValueMethod {
                     receiver: Box::new(object.clone()),
                     method_name: name.to_string(),
                 }))
@@ -217,7 +217,7 @@ impl Vm {
                 if name == "length" {
                     Ok(Value::Int(s.len() as i64))
                 } else {
-                    Ok(Value::Method(ValueMethod {
+                    Ok(Value::method(ValueMethod {
                         receiver: Box::new(object.clone()),
                         method_name: name.to_string(),
                     }))
@@ -240,7 +240,7 @@ impl Vm {
                 "nil?" => Ok(Value::Bool(false)),
                 "blank?" => Ok(Value::Bool(false)),
                 "present?" => Ok(Value::Bool(true)),
-                _ => Ok(Value::Method(ValueMethod {
+                _ => Ok(Value::method(ValueMethod {
                     receiver: Box::new(object.clone()),
                     method_name: name.to_string(),
                 })),

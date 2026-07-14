@@ -513,16 +513,16 @@ impl TuiRepl {
                     }
 
                     // Add whitespace/content between tokens
-                    if token.span.start > last_end {
-                        result.push_str(&code[last_end..token.span.start]);
+                    if token.span.start_usize() > last_end {
+                        result.push_str(&code[last_end..token.span.start_usize()]);
                     }
 
                     // Get token text and apply color
-                    let token_text = &code[token.span.start..token.span.end];
+                    let token_text = &code[token.span.start_usize()..token.span.end_usize()];
                     let colored = self.colorize_token(&token.kind, token_text);
                     result.push_str(&colored);
 
-                    last_end = token.span.end;
+                    last_end = token.span.end_usize();
                 }
 
                 // Add remaining text

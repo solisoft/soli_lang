@@ -95,12 +95,12 @@ fn position_to_offset(source: &str, position: Position) -> Option<usize> {
 fn lsp_range_from_span(span: Span) -> Range {
     Range {
         start: Position {
-            line: (span.line.saturating_sub(1)) as u32,
-            character: (span.column.saturating_sub(1)) as u32,
+            line: span.line.saturating_sub(1),
+            character: span.column.saturating_sub(1),
         },
         end: Position {
-            line: (span.line.saturating_sub(1)) as u32,
-            character: ((span.column + (span.end - span.start)) as u32),
+            line: span.line.saturating_sub(1),
+            character: span.column + (span.end - span.start),
         },
     }
 }

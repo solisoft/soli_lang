@@ -203,7 +203,7 @@ impl Compiler {
             .count() as u8;
         compiler.proto.param_names = func.params.iter().map(|p| p.name.clone()).collect();
 
-        let line = func.span.map(|s| s.line).unwrap_or(0);
+        let line = func.span.map(|s| s.line as usize).unwrap_or(0);
         compiler.begin_scope();
         compiler.compile_function_body(&func.body)?;
         compiler.end_scope(line);

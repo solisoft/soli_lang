@@ -1548,7 +1548,7 @@ impl Parser {
         Ok(Expr::new(
             ExprKind::Lambda {
                 params,
-                return_type,
+                return_type: return_type.map(Box::new),
                 body,
             },
             span,

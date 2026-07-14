@@ -11,13 +11,13 @@ pub fn get_code_actions(source: &str, range: Range) -> Vec<CodeAction> {
         for diag in diagnostics {
             let diag_range = Range {
                 start: Position {
-                    line: (diag.span.line.saturating_sub(1) as u32).max(range.start.line),
-                    character: (diag.span.column.saturating_sub(1) as u32)
+                    line: (diag.span.line_usize().saturating_sub(1) as u32).max(range.start.line),
+                    character: (diag.span.column_usize().saturating_sub(1) as u32)
                         .max(range.start.character),
                 },
                 end: Position {
-                    line: (diag.span.line.saturating_sub(1) as u32).min(range.end.line),
-                    character: ((diag.span.column + diag.message.len()) as u32)
+                    line: (diag.span.line_usize().saturating_sub(1) as u32).min(range.end.line),
+                    character: ((diag.span.column_usize() + diag.message.len()) as u32)
                         .min(range.end.character),
                 },
             };

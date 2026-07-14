@@ -5,6 +5,12 @@ use std::time::SystemTime;
 /// Default number of worker threads if CPU parallelism cannot be detected
 pub const DEFAULT_WORKER_COUNT: usize = 4;
 
+/// Default number of background-job worker threads (overridable via
+/// `SOLI_JOB_WORKERS`). The job pool is opt-in background work and each worker
+/// is a full interpreter copy, so the default is deliberately conservative —
+/// bump `SOLI_JOB_WORKERS` for higher background throughput.
+pub const DEFAULT_JOB_WORKERS: usize = 1;
+
 /// Capacity per worker for request queue (bounded channels for backpressure)
 pub const CAPACITY_PER_WORKER: usize = 64;
 

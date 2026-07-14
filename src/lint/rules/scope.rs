@@ -258,7 +258,7 @@ fn flag(
     diagnostics: &mut Vec<LintDiagnostic>,
     reported: &mut HashSet<(String, u32, u32)>,
 ) {
-    let key = (name.to_string(), span.line as u32, span.column as u32);
+    let key = (name.to_string(), span.line, span.column);
     if !reported.insert(key) {
         return;
     }

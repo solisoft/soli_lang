@@ -48,23 +48,23 @@ pub fn get_semantic_tokens(source: &str) -> SemanticTokensResult {
         };
 
         let delta_line: u32 = if tokens.is_empty() {
-            scoped.symbol.span.line.saturating_sub(1) as u32
+            scoped.symbol.span.line.saturating_sub(1)
         } else {
             let last_line: u32 = tokens.last().map(|t| t.delta_line).unwrap_or(0);
-            scoped.symbol.span.line as u32 - last_line
+            scoped.symbol.span.line - last_line
         };
 
         let delta_start: u32 = if tokens.is_empty() || delta_line > 0 {
-            scoped.symbol.span.column.saturating_sub(1) as u32
+            scoped.symbol.span.column.saturating_sub(1)
         } else {
             let last_end: u32 = tokens.last().map(|t| t.delta_start + t.length).unwrap_or(0);
-            scoped.symbol.span.column as u32 - last_end
+            scoped.symbol.span.column - last_end
         };
 
         tokens.push(SemanticToken {
             delta_line,
             delta_start,
-            length: (scoped.symbol.span.end - scoped.symbol.span.start) as u32,
+            length: scoped.symbol.span.end - scoped.symbol.span.start,
             token_type: TOKEN_TYPES
                 .iter()
                 .position(|t| *t == token_type)

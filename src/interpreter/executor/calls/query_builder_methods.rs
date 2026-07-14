@@ -89,10 +89,10 @@ impl Interpreter {
             | "take" | "drop" | "zip" | "to_string" | "to_json" | "is_a?" | "to_a" | "to_array" => {
                 let materialized =
                     crate::interpreter::builtins::model::execute_query_builder(&qb.borrow());
-                let method = crate::interpreter::value::ValueMethod {
+                let method = Rc::new(crate::interpreter::value::ValueMethod {
                     receiver: Box::new(materialized),
                     method_name: method_name.to_string(),
-                };
+                });
                 self.call_method(method, arguments, span)
             }
             _ => Err(RuntimeError::NoSuchProperty {

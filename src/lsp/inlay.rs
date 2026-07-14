@@ -12,8 +12,8 @@ pub fn get_inlay_hints(source: &str, table: &SymbolTable) -> Vec<InlayHint> {
                 if let Some(type_name) = &scoped.symbol.type_name {
                     hints.push(InlayHint {
                         position: Position {
-                            line: (scoped.symbol.span.line.saturating_sub(1)) as u32,
-                            character: scoped.symbol.span.end as u32,
+                            line: scoped.symbol.span.line.saturating_sub(1),
+                            character: scoped.symbol.span.end,
                         },
                         label: tower_lsp::lsp_types::InlayHintLabel::String(format!(
                             ": {}",
@@ -31,7 +31,7 @@ pub fn get_inlay_hints(source: &str, table: &SymbolTable) -> Vec<InlayHint> {
             crate::lsp::symbols::SymbolKind::Function if scoped.symbol.name != "init" => {
                 hints.push(InlayHint {
                     position: Position {
-                        line: (scoped.symbol.span.line.saturating_sub(1)) as u32,
+                        line: scoped.symbol.span.line.saturating_sub(1),
                         character: 0,
                     },
                     label: tower_lsp::lsp_types::InlayHintLabel::String(format!(

@@ -289,10 +289,14 @@ impl<'a> Printer<'a> {
         // spuriously insert blank lines on second-pass formatting.
         let mut prev_source_end: usize = 0;
         for (idx, stmt) in program.statements.iter().enumerate() {
-            self.flush_comments_before(stmt.span.line);
+            self.flush_comments_before(stmt.span.line_usize());
             if idx > 0
-                && stmt.span.line > prev_source_end + 1
-                && !comment_fills_gap(self.last_emitted_line, prev_source_end, stmt.span.line)
+                && stmt.span.line_usize() > prev_source_end + 1
+                && !comment_fills_gap(
+                    self.last_emitted_line,
+                    prev_source_end,
+                    stmt.span.line_usize(),
+                )
             {
                 self.blank_line();
             }
@@ -301,7 +305,7 @@ impl<'a> Printer<'a> {
             if let Some(next) = program.statements.get(idx + 1) {
                 if needs_disambiguating_semicolon(self.source, stmt, next)
                     || (self.last_stmt_rewrote_to_postfix
-                        && starts_with_continuation_char(self.source, next.span.start))
+                        && starts_with_continuation_char(self.source, next.span.start_usize()))
                 {
                     let had_newline = self.pop_trailing_newline();
                     self.write(";");
@@ -340,10 +344,14 @@ impl<'a> Printer<'a> {
             // there for why this matters for idempotency.
             let mut prev_source_end: usize = 0;
             for (idx, stmt) in stmts.iter().enumerate() {
-                p.flush_comments_before(stmt.span.line);
+                p.flush_comments_before(stmt.span.line_usize());
                 if idx > 0
-                    && stmt.span.line > prev_source_end + 1
-                    && !comment_fills_gap(p.last_emitted_line, prev_source_end, stmt.span.line)
+                    && stmt.span.line_usize() > prev_source_end + 1
+                    && !comment_fills_gap(
+                        p.last_emitted_line,
+                        prev_source_end,
+                        stmt.span.line_usize(),
+                    )
                 {
                     p.blank_line();
                 }
@@ -352,7 +360,7 @@ impl<'a> Printer<'a> {
                 if let Some(next) = stmts.get(idx + 1) {
                     if needs_disambiguating_semicolon(p.source, stmt, next)
                         || (p.last_stmt_rewrote_to_postfix
-                            && starts_with_continuation_char(p.source, next.span.start))
+                            && starts_with_continuation_char(p.source, next.span.start_usize()))
                     {
                         let had_newline = p.pop_trailing_newline();
                         p.write(";");
@@ -384,9 +392,9 @@ fn comment_fills_gap(last_emitted_line: usize, prev_source_end: usize, stmt_line
 
 /// Return the source line number that contains the last byte of `span`.
 pub(super) fn source_end_line(source: &str, span: crate::span::Span) -> usize {
-    let end = span.end.min(source.len());
-    let start = span.start.min(end);
-    span.line + source[start..end].matches('\n').count()
+    let end = span.end_usize().min(source.len());
+    let start = span.start_usize().min(end);
+    span.line_usize() + source[start..end].matches('\n').count()
 }
 
 /// Soli's parser is greedy across newlines for `[`, `(`, `.` — a line that
@@ -398,7 +406,7 @@ pub(super) fn needs_disambiguating_semicolon(source: &str, current: &Stmt, next:
     if !ends_in_expression(current) {
         return false;
     }
-    starts_with_continuation_char(source, next.span.start)
+    starts_with_continuation_char(source, next.span.start_usize())
 }
 
 fn ends_in_expression(stmt: &Stmt) -> bool {

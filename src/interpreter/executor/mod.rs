@@ -375,8 +375,8 @@ impl Interpreter {
         self.call_stack.push(StackFrame {
             function_name: function_name.to_string(),
             file_path: file_path.clone(),
-            line: span.line,
-            column: span.column,
+            line: span.line_usize(),
+            column: span.column_usize(),
         });
         // Deep-mode flamegraph hook: every Soli function call gets a span.
         // No-op when --dev is off (gated inside push_fn). The source
@@ -384,8 +384,8 @@ impl Interpreter {
         // empty `function_name`) still show *where* in the source they
         // came from in the flamegraph tooltip.
         let meta = file_path.as_ref().map(|p| {
-            if span.line > 0 {
-                format!("{}:{}", p, span.line)
+            if span.line_usize() > 0 {
+                format!("{}:{}", p, span.line_usize())
             } else {
                 p.clone()
             }

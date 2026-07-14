@@ -94,13 +94,13 @@ use super::printer::Printer;
 
 impl Printer<'_> {
     pub(super) fn print_stmt(&mut self, stmt: &Stmt) {
-        self.flush_comments_before(stmt.span.line);
+        self.flush_comments_before(stmt.span.line_usize());
         // A trailing `# soli-lint-disable-line` would be detached from its
         // target line whenever the formatter alters layout (e.g. breaking a
         // long expression across lines), silently disabling the suppression.
         // Rewrite it as `# soli-lint-disable-next-line` placed just above the
         // statement — same effect, robust against line splits.
-        self.rewrite_trailing_lint_disable(stmt.span.line);
+        self.rewrite_trailing_lint_disable(stmt.span.line_usize());
         // Reset the postfix-rewrite flag; the if-branch below sets it back
         // to true when we actually rewrite a block-if to postfix form.
         self.last_stmt_rewrote_to_postfix = false;
@@ -111,7 +111,7 @@ impl Printer<'_> {
         // the opener line rather than from the statement *before* the block —
         // otherwise a comment adjacent to the opener spuriously gains a blank
         // line above it. The end line is still recorded after the body prints.
-        self.record_emitted_line(stmt.span.line);
+        self.record_emitted_line(stmt.span.line_usize());
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // At statement position, `fn` is a function declaration and
@@ -179,7 +179,7 @@ impl Printer<'_> {
                 // Postfix `expr if cond` / `expr unless cond` lowers to the
                 // same StmtKind::If as block `if cond ... end`. Inspect the
                 // source bytes at the statement's start to recover the form.
-                if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start) {
+                if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start_usize()) {
                     self.print_postfix_if(condition, then_branch, kw);
                 } else if let Some(inner) = self.guard_clause_to_rewrite(
                     stmt,
@@ -265,7 +265,7 @@ impl Printer<'_> {
                 self.print_stmt(inner);
             }
         }
-        self.flush_trailing_comments_on(stmt.span.line);
+        self.flush_trailing_comments_on(stmt.span.line_usize());
         let end_line = super::printer::source_end_line(self.source, stmt.span);
         self.record_emitted_line(end_line);
     }
@@ -299,7 +299,7 @@ impl Printer<'_> {
         ) {
             return None;
         }
-        let start_line = if_stmt.span.line;
+        let start_line = if_stmt.span.line_usize();
         let end_line = super::printer::source_end_line(self.source, if_stmt.span);
         if self.has_comments_in_lines(start_line, end_line + 1) {
             return None;
@@ -648,7 +648,7 @@ impl Printer<'_> {
         self.with_indent(|p| {
             // Fields
             for field in &decl.fields {
-                p.flush_comments_before(field.span.line);
+                p.flush_comments_before(field.span.line_usize());
                 p.print_field_decl(field);
             }
             if !decl.fields.is_empty() && (!decl.methods.is_empty() || decl.constructor.is_some()) {
@@ -656,7 +656,7 @@ impl Printer<'_> {
             }
             // Constructor
             if let Some(ctor) = &decl.constructor {
-                p.flush_comments_before(ctor.span.line);
+                p.flush_comments_before(ctor.span.line_usize());
                 p.print_constructor_decl(ctor);
                 if !decl.methods.is_empty() {
                     p.blank_line();
@@ -694,7 +694,7 @@ impl Printer<'_> {
                 // so they're emitted as leading comments to the method,
                 // not picked up later by `print_stmt` and dropped inside
                 // the body before the first statement.
-                p.flush_comments_before(m.span.line);
+                p.flush_comments_before(m.span.line_usize());
                 p.print_method_decl(m);
             }
             // Nested classes
@@ -704,7 +704,7 @@ impl Printer<'_> {
                     if i > 0 {
                         p.blank_line();
                     }
-                    p.flush_comments_before(n.span.line);
+                    p.flush_comments_before(n.span.line_usize());
                     p.print_class_decl(n);
                 }
             }
@@ -720,7 +720,7 @@ impl Printer<'_> {
         self.with_indent(|p| {
             let last = decl.variants.len().saturating_sub(1);
             for (i, variant) in decl.variants.iter().enumerate() {
-                p.flush_comments_before(variant.span.line);
+                p.flush_comments_before(variant.span.line_usize());
                 p.write(&variant.name);
                 if !variant.payload.is_empty() {
                     p.write("(");
@@ -748,7 +748,7 @@ impl Printer<'_> {
                     if i > 0 {
                         p.blank_line();
                     }
-                    p.flush_comments_before(m.span.line);
+                    p.flush_comments_before(m.span.line_usize());
                     p.print_method_decl(m);
                 }
             }

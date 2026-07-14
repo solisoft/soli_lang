@@ -110,12 +110,12 @@ fn get_children_for_symbol(
 fn lsp_range_from_span(span: crate::span::Span) -> Range {
     Range {
         start: Position {
-            line: (span.line.saturating_sub(1)) as u32,
-            character: (span.column.saturating_sub(1)) as u32,
+            line: span.line.saturating_sub(1),
+            character: span.column.saturating_sub(1),
         },
         end: Position {
-            line: (span.line.saturating_sub(1)) as u32,
-            character: ((span.column + (span.end - span.start)) as u32),
+            line: span.line.saturating_sub(1),
+            character: span.column + (span.end - span.start),
         },
     }
 }

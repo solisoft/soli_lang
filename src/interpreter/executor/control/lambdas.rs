@@ -15,7 +15,7 @@ impl Interpreter {
         &mut self,
         params: &[Parameter],
         body: &[Stmt],
-        return_type: &Option<TypeAnnotation>,
+        return_type: &Option<Box<TypeAnnotation>>,
         span: Span,
     ) -> RuntimeResult<Value> {
         let func = Function {
@@ -30,7 +30,7 @@ impl Interpreter {
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
             defining_superclass: None,
-            return_type: return_type.clone(),
+            return_type: return_type.as_deref().cloned(),
             cached_env: std::cell::RefCell::new(None),
             jit_cache: std::cell::RefCell::new(None),
         };

@@ -14,7 +14,7 @@ use super::opcode::Op;
 impl Compiler {
     /// Compile an expression — the result is left on the stack.
     pub fn compile_expr(&mut self, expr: &Expr) -> CompileResult<()> {
-        let line = expr.span.line;
+        let line = expr.span.line as usize;
         match &expr.kind {
             ExprKind::IntLiteral(n) => {
                 self.emit_constant(Constant::Int(*n), line);

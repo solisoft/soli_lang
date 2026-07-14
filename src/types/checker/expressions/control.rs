@@ -35,7 +35,7 @@ impl TypeChecker {
         &mut self,
         body: &[Stmt],
         params: &[Parameter],
-        return_type: &Option<TypeAnnotation>,
+        return_type: &Option<Box<TypeAnnotation>>,
     ) -> TypeResult<Type> {
         self.env.push_scope();
 

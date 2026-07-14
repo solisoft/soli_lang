@@ -663,8 +663,8 @@ pub(crate) fn html_highlight_soli(line: &str) -> String {
         if matches!(tok.kind, TokenKind::Eof) {
             break;
         }
-        let start = tok.span.start.min(line.len());
-        let end = tok.span.end.min(line.len());
+        let start = tok.span.start_usize().min(line.len());
+        let end = tok.span.end_usize().min(line.len());
         if start < cursor || start > line.len() {
             continue;
         }

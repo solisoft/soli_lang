@@ -67,7 +67,7 @@ impl Linter {
 
         let suppressions = suppress::collect_suppressions(&self.source);
         self.diagnostics
-            .retain(|d| !suppressions.suppresses(d.span.line as u32, d.rule));
+            .retain(|d| !suppressions.suppresses(d.span.line, d.rule));
 
         self.diagnostics
             .sort_by_key(|d| (d.span.line, d.span.column));

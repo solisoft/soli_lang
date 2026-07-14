@@ -575,8 +575,11 @@ pub fn serve_folder_with_options_and_workers(
         set_global_coverage_tracker(std::sync::Arc::new(std::sync::Mutex::new(tracker)));
     }
 
-    // Create interpreter
-    let mut interpreter = Interpreter::new();
+    // Create interpreter. Use the serve constructor (no test-only builtins):
+    // this boot interpreter only populates the shared registries before the
+    // worker pool starts and is reclaimed right after (see below), so the
+    // ~9 test DSL modules would be pure waste here.
+    let mut interpreter = Interpreter::new_for_serve();
     // Define the Mailer/Message base classes before any app code that may
     // subclass Mailer (app/mailers/*.sl) loads.
     crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
@@ -802,6 +805,31 @@ pub fn serve_folder_with_options_and_workers(
         crate::interpreter::builtins::server::rebuild_route_index();
     }
     boot_trace("routes loaded");
+
+    // Reclaim the boot interpreter. Its only job was to populate the shared,
+    // process-global registries (routes, controller/model metadata, the
+    // template cache) that the router and worker pool read — it never serves a
+    // request, yet this thread parks forever in the worker-pool join below, so
+    // whatever it still holds (all builtins + the whole parsed app AST + the
+    // 9 i18n locale tables) would be leaked for the process lifetime. Each
+    // worker rebuilds its own interpreter, view helpers and model classes, and
+    // the worker route snapshot is taken from *this* thread's `ROUTES`
+    // thread-local (kept), so the boot thread's other holdings are dead weight.
+    {
+        // Free the largest boot-thread thread-local holdings first (the app's
+        // view helpers, which include the big i18n locale tables, plus the
+        // i18n table cache and the model classes).
+        crate::interpreter::builtins::template::clear_view_helpers();
+        crate::interpreter::builtins::i18n::clear_table_cache();
+        crate::interpreter::builtins::model::clear_model_classes();
+        // Break the global-env <-> top-level-`def` closure cycle (each function
+        // captures the global env as its closure while living in it), otherwise
+        // the drop below is a no-op: `reset_for_call` clears the root scope's
+        // bindings, releasing every `Value::Function`/`Value::Class` back-edge.
+        interpreter.environment.borrow_mut().reset_for_call();
+        drop(interpreter);
+        boot_trace("boot interpreter reclaimed");
+    }
 
     // Public directory for static files
     let public_dir = folder.join("public");
@@ -1613,7 +1641,7 @@ fn run_hyper_server_worker_pool(
         let num_job_workers = std::env::var("SOLI_JOB_WORKERS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(2);
+            .unwrap_or(server_constants::DEFAULT_JOB_WORKERS);
         if jobs_dir.exists() && jobs_secret_set && num_job_workers > 0 {
             background_jobs::start_pool(background_jobs::PoolConfig {
                 models_dir: models_dir.clone(),

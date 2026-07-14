@@ -621,9 +621,18 @@ pub fn parse_args() -> Options {
                 let mut port = 5011u16;
                 let mut dev_mode = false;
                 let mut daemonize = false;
-                let mut workers = std::thread::available_parallelism()
-                    .map(|p| p.get())
-                    .unwrap_or(4);
+                // Worker count: `SOLI_WORKERS` env (the documented baseline-RSS
+                // lever) if set, else the CPU core count. An explicit
+                // `--workers N` below overrides either.
+                let mut workers = std::env::var("SOLI_WORKERS")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or_else(|| {
+                        std::thread::available_parallelism()
+                            .map(|p| p.get())
+                            .unwrap_or(4)
+                    });
                 i += 1;
                 while i < args.len() {
                     if args[i] == "--port" {

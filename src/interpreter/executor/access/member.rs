@@ -82,16 +82,16 @@ pub(crate) fn bind_native_method_to_instance(
 ) -> Value {
     let native_method_clone = native_method.clone();
     let instance_clone = inst.clone();
-    let mut wrapper = NativeFunction::new(
+    let wrapper = NativeFunction::new_with_auto(
         format!("{}.{}", class_name, name),
         native_method.arity,
+        native_method.is_auto_invocable,
         move |args| {
             let mut new_args = vec![Value::Instance(instance_clone.clone())];
             new_args.extend(args.iter().cloned());
             (native_method_clone.func)(new_args)
         },
     );
-    wrapper.is_auto_invocable = native_method.is_auto_invocable;
     Value::NativeFunction(wrapper)
 }
 
@@ -107,10 +107,11 @@ pub(crate) fn bind_native_static_to_model_class(
     let class_val = class_val.clone();
     let original_func = native_method.func.clone();
     let method_name = name.to_string();
-    let bound_func = NativeFunction {
-        name: format!("bound_{}", name),
-        arity: None, // Variadic - don't check arity at VM level
-        func: Rc::new(move |args| {
+    let bound_func = NativeFunction::new_with_auto(
+        format!("bound_{}", name),
+        None, // Variadic - don't check arity at VM level
+        native_method.is_auto_invocable,
+        move |args| {
             // Columnar models have no document API — reject the inherited
             // document statics here (the one choke point shared by the
             // tree-walker and the VM) with an honest pointer at the
@@ -129,9 +130,8 @@ pub(crate) fn bind_native_static_to_model_class(
             let mut full_args = vec![class_val.clone()];
             full_args.extend(args);
             original_func(full_args)
-        }),
-        is_auto_invocable: native_method.is_auto_invocable,
-    };
+        },
+    );
     Value::NativeFunction(bound_func)
 }
 
@@ -1268,7 +1268,7 @@ impl Interpreter {
                 .is_some()
             {
                 drop(inst_ref);
-                return Ok(Value::Method(ValueMethod {
+                return Ok(Value::method(ValueMethod {
                     receiver: Box::new(Value::Instance(inst.clone())),
                     method_name: name.to_string(),
                 }));
@@ -1301,7 +1301,7 @@ impl Interpreter {
                         // `<field>_url` on a multiple uploader is meaningless
                         // — caller wants `<field>_urls`. Fall through.
                     } else {
-                        return Ok(Value::Method(ValueMethod {
+                        return Ok(Value::method(ValueMethod {
                             receiver: Box::new(Value::Instance(inst.clone())),
                             method_name: name.to_string(),
                         }));
@@ -1497,7 +1497,7 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         // Cache.fetch needs interpreter-level dispatch for block execution
         if class.name == "Cache" && name == "fetch" {
-            return Ok(Value::Method(ValueMethod {
+            return Ok(Value::method(ValueMethod {
                 receiver: Box::new(class_val.clone()),
                 method_name: "fetch".to_string(),
             }));
@@ -2039,7 +2039,7 @@ impl Interpreter {
             | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" | "delete"
             | "delete_at" | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?"
             | "one?" | "values_at" | "count" | "intersection" | "union" | "difference" => {
-                Ok(Value::Method(ValueMethod {
+                Ok(Value::method(ValueMethod {
                     receiver: Box::new(obj_val),
                     method_name: name.to_string(),
                 }))
@@ -2090,7 +2090,7 @@ impl Interpreter {
             | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" | "shift"
             | "flatten" | "values_at" | "key" | "has_value?" | "value?" | "to_h" | "keep_if"
             | "delete_if" | "update" | "all?" | "any?" | "assoc" | "rassoc" | "fetch_values"
-            | "each_key" | "each_value" => Ok(Value::Method(ValueMethod {
+            | "each_key" | "each_value" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
@@ -2147,7 +2147,7 @@ impl Interpreter {
             | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"
             | "compact_blank" | "flatten" | "last" | "empty?" | "includes?" | "contains"
             | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "to_string" | "to_json"
-            | "to_a" | "to_array" => Ok(Value::Method(ValueMethod {
+            | "to_a" | "to_array" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
@@ -2218,7 +2218,7 @@ impl Interpreter {
             | "truncate" | "parse_json" | "to_h" | "to_sym" | "slugify" | "html_entities" | "camelize"
             | "casecmp" | "casecmp?" | "prepend" | "chop" | "ascii_only?" | "succ" | "next"
             // Universal method with args
-            | "is_a?" => Ok(Value::Method(ValueMethod {
+            | "is_a?" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
@@ -2281,7 +2281,7 @@ impl Interpreter {
             // `to_s`/`to_string` with 0 args is auto-invoked via
             // is_zero_arg_builtin_method; with 1 arg it's a radix conversion.
             "times" | "upto" | "downto" | "pow" | "gcd" | "lcm" | "between?" | "clamp"
-            | "is_a?" | "divmod" | "to_s" | "to_string" => Ok(Value::Method(ValueMethod {
+            | "is_a?" | "divmod" | "to_s" | "to_string" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Int(n)),
                 method_name: name.to_string(),
             })),
@@ -2331,7 +2331,7 @@ impl Interpreter {
             // Methods that support both 0-arg (auto-invoked) and with-arg forms,
             // or methods that always require args — all go through ValueMethod.
             // `round` with 0 args is auto-invoked via is_zero_arg_builtin_method.
-            "round" | "between?" | "clamp" | "is_a?" | "divmod" => Ok(Value::Method(ValueMethod {
+            "round" | "between?" | "clamp" | "is_a?" | "divmod" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Float(n)),
                 method_name: name.to_string(),
             })),
@@ -2361,7 +2361,7 @@ impl Interpreter {
             "to_i" | "to_int" => Ok(Value::Int(if b { 1 } else { 0 })),
             "inspect" => Ok(Value::String(b.to_string().into())),
             // Method with args
-            "is_a?" => Ok(Value::Method(ValueMethod {
+            "is_a?" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Bool(b)),
                 method_name: name.to_string(),
             })),
@@ -2393,7 +2393,7 @@ impl Interpreter {
             "to_f" | "to_float" => Ok(Value::Float(0.0)),
             "inspect" => Ok(Value::String("null".into())),
             // Method with args
-            "is_a?" => Ok(Value::Method(ValueMethod {
+            "is_a?" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Null),
                 method_name: name.to_string(),
             })),
@@ -2424,7 +2424,7 @@ impl Interpreter {
             "present?" => Ok(Value::Bool(true)),
             "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
             "inspect" => Ok(Value::String(format!(":{}", s).into())),
-            "is_a?" => Ok(Value::Method(ValueMethod {
+            "is_a?" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Symbol(s.to_string().into())),
                 method_name: name.to_string(),
             })),
@@ -2473,7 +2473,7 @@ impl Interpreter {
             "positive?" => Ok(Value::Bool(val.is_sign_positive() && !val.is_zero())),
             "negative?" => Ok(Value::Bool(val.is_sign_negative() && !val.is_zero())),
             // Methods with args (round supports both 0-arg and 1-arg)
-            "round" | "between?" | "clamp" | "is_a?" => Ok(Value::Method(ValueMethod {
+            "round" | "between?" | "clamp" | "is_a?" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(Value::Decimal(d.clone())),
                 method_name: name.to_string(),
             })),

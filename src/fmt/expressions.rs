@@ -9,8 +9,8 @@ use super::printer::{Printer, MAX_LINE_LENGTH};
 
 /// Return the source text for a span (used for width estimation).
 fn span_source(source: &str, span: crate::span::Span) -> &str {
-    let start = span.start.min(source.len());
-    let end = span.end.min(source.len());
+    let start = span.start_usize().min(source.len());
+    let end = span.end_usize().min(source.len());
     &source[start..end]
 }
 
@@ -235,7 +235,7 @@ impl Printer<'_> {
             // verbatim so semantics are preserved. The lint/runtime layers
             // round-trip these correctly.
             ExprKind::SdqlBlock { .. } => {
-                self.write_source_span(expr.span.start, expr.span.end);
+                self.write_source_span(expr.span.start_usize(), expr.span.end_usize());
             }
             ExprKind::BoolLiteral(b) => self.write(if *b { "true" } else { "false" }),
             ExprKind::Symbol(name) => {
@@ -246,7 +246,7 @@ impl Printer<'_> {
                 // Preserve the user's choice of `nil` vs `null` (Soli accepts
                 // both as synonyms). Falls back to `null` for synthesized
                 // Null AST nodes that aren't tied to source text.
-                if source_starts_with_nil(self.source, expr.span.start) {
+                if source_starts_with_nil(self.source, expr.span.start_usize()) {
                     self.write("nil");
                 } else {
                     self.write("null");
@@ -281,7 +281,9 @@ impl Printer<'_> {
                 // function calls (.all(), .keys()) from variable reads (.all).
                 // But don't ADD parens to bare DSL forms like `soft_delete`
                 // that were written without them in the source.
-                if arguments.is_empty() && !source_has_parens_after(self.source, callee.span.end) {
+                if arguments.is_empty()
+                    && !source_has_parens_after(self.source, callee.span.end_usize())
+                {
                     // bare call, no source parens — skip "()"
                 } else {
                     self.print_arg_list(arguments);
@@ -298,7 +300,7 @@ impl Printer<'_> {
                 // the user wrote by peeking at the source at the object's
                 // start byte.
                 if matches!(object.kind, ExprKind::This)
-                    && source_starts_with_at(self.source, object.span.start)
+                    && source_starts_with_at(self.source, object.span.start_usize())
                 {
                     self.write("@");
                     self.write(name);
@@ -513,7 +515,7 @@ impl Printer<'_> {
                     };
                     let block_end_line = super::printer::source_end_line(self.source, expr.span);
                     let has_inside_comment =
-                        self.has_comments_in_lines(expr.span.line, block_end_line + 1);
+                        self.has_comments_in_lines(expr.span.line_usize(), block_end_line + 1);
                     if !inner_is_lambda && !has_inside_comment {
                         // Width estimate must be source-layout independent (use
                         // `span_inline_width`, not raw `.len()` on the source
@@ -585,7 +587,7 @@ impl Printer<'_> {
                 self.write("}");
             }
             ExprKind::ListComprehension { .. } | ExprKind::HashComprehension { .. } => {
-                self.write_source_span(expr.span.start, expr.span.end);
+                self.write_source_span(expr.span.start_usize(), expr.span.end_usize());
             }
             ExprKind::Spread(inner) => {
                 self.write("...");

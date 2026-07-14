@@ -147,6 +147,17 @@ fn run_pool_worker(id: usize, rx: channel::Receiver<BackgroundJob>, config: Pool
     }
 }
 
+/// Whether background-job interpreters should load view helpers (incl. i18n
+/// locale tables). Defaults to `true`; set `SOLI_JOB_VIEW_HELPERS=0` to skip
+/// them when no job renders a helper-using template — a per-job-interpreter
+/// memory saving.
+fn job_view_helpers_enabled() -> bool {
+    !matches!(
+        std::env::var("SOLI_JOB_VIEW_HELPERS").ok().as_deref(),
+        Some("0") | Some("false") | Some("no")
+    )
+}
+
 /// Load the job-relevant slice of the app into a pool interpreter: templates and
 /// view helpers (jobs may render), the Mailer prelude, models + sibling
 /// services/policies/mailers, the uploads prelude, named-route URL helpers, and
@@ -158,7 +169,13 @@ fn build_job_interpreter(id: usize, interpreter: &mut Interpreter, config: &Pool
     if config.views_dir.exists() {
         template::init_templates(config.views_dir.clone());
     }
-    if config.helpers_dir.exists() {
+    // View helpers (which include an app's i18n locale tables — often the
+    // single largest per-interpreter cost) are only needed if a job renders a
+    // template that calls a helper. Most jobs don't, so this is opt-out via
+    // `SOLI_JOB_VIEW_HELPERS=0` to drop the helper/locale ASTs from every job
+    // interpreter. Default keeps the previous behavior for apps whose mailers
+    // render helper-using templates in a job.
+    if config.helpers_dir.exists() && job_view_helpers_enabled() {
         if let Err(e) = template::load_view_helpers(&config.helpers_dir) {
             eprintln!(
                 "Background job worker {}: error loading view helpers: {}",
