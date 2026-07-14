@@ -20,9 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 text-sm leading-relaxed">Nothing yet &mdash; changes land here as they merge to <code class="text-cyan-400">main</code>, then promote to a version section on release.</p>
+    </section>
+
+    <section id="v1-19-0" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.19.0</h2>
+            <span class="text-sm font-medium text-gray-400">July 14, 2026</span>
+        </div>
 
         <!-- AI & Search -->
-        <h3 id="u2-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI &amp; Search</h3>
+        <h3 id="v19-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI &amp; Search</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Client-side reranking</strong> &mdash; <code class="text-cyan-400">rerank(query, rows[, { field:, limit: }])</code> reorders an array of retrieved records by query-token overlap &mdash; most relevant first, ties stable. Pure and offline (no LLM, no server round-trip), so it's a cheap second pass after <code class="text-cyan-400">similar</code> / <code class="text-cyan-400">hybrid</code> / <code class="text-cyan-400">graph_rag</code> when you want to bias the order toward a phrase.</li>
@@ -36,7 +44,7 @@
         </div>
 
         <!-- Testing -->
-        <h3 id="u2-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <h3 id="v19-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">N+1 &amp; query-budget assertions</strong> &mdash; request specs can now fail on database regressions. <code class="text-cyan-400">assert_no_n_plus_one(response)</code> fails when the same AQL template fired 2+ times in a loop (the same detection behind the dev bar's N+1 badge); <code class="text-cyan-400">assert_query_count(response, n)</code> and <code class="text-cyan-400">assert_max_queries(response, n)</code> hold an endpoint to a query budget. Every response also exposes <code class="text-cyan-400">response["query_count"]</code> and <code class="text-cyan-400">response["n_plus_one"]</code> for custom checks.</li>
@@ -45,7 +53,7 @@
         </div>
 
         <!-- Language -->
-        <h3 id="u2-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <h3 id="v19-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Removed the dead <code class="text-cyan-400">async</code>/<code class="text-cyan-400">await</code> keywords</strong> &mdash; they were never implemented (writing <code class="text-cyan-400">await &lt;expr&gt;</code> hit an internal panic), so this deletes unreachable surface only. The <code class="text-cyan-400">await()</code> builtin that resolves a future (e.g. the handle from <code class="text-cyan-400">System.run(&hellip;)</code>) is unchanged &mdash; <code class="text-cyan-400">await(x)</code> is now an ordinary function call, and <code class="text-cyan-400">async</code>/<code class="text-cyan-400">await</code> are freed as identifiers.</li>
@@ -53,7 +61,7 @@
         </div>
 
         <!-- Fixes -->
-        <h3 id="u2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v19-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">VM named-argument robustness</strong> &mdash; named-argument calls (<code class="text-cyan-400">f(x: 1)</code>, <code class="text-cyan-400">x |&gt; f(a: 1)</code>) now compile as a clean fallback to the tree-walking interpreter instead of emitting broken bytecode that could misdispatch to the wrong function or panic a worker thread. Results were always correct via the interpreter; this removes the crash/misdispatch edge in the compiled engine.</li>
