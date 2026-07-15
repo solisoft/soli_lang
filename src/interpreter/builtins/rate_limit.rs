@@ -11,6 +11,17 @@ lazy_static! {
     static ref RATE_LIMIT_STORE: RwLock<RateLimitStore> = RwLock::new(RateLimitStore::new());
 }
 
+/// Cap on distinct rate-limit keys. Without this, an attacker minting a
+/// fresh key per request (rotating IP spoof, random token, …) grows the
+/// process-global `HashMap` without bound. Once full, inserting a new key
+/// evicts an existing bucket (after reclaiming expired ones) so the store
+/// stays bounded while every live key keeps its own independent counter.
+const MAX_BUCKETS: usize = 10_000;
+
+/// Run expiry cleanup every N write ops so empty buckets are reclaimed
+/// without requiring apps to call `RateLimiter.cleanup()` manually.
+const CLEANUP_EVERY_OPS: u64 = 64;
+
 struct RateLimitBucket {
     requests: Vec<Instant>,
     limit: usize,
@@ -77,16 +88,45 @@ impl RateLimitBucket {
 
 struct RateLimitStore {
     buckets: HashMap<String, RateLimitBucket>,
+    ops_since_cleanup: u64,
 }
 
 impl RateLimitStore {
     fn new() -> Self {
         Self {
             buckets: HashMap::new(),
+            ops_since_cleanup: 0,
+        }
+    }
+
+    fn maybe_auto_cleanup(&mut self) {
+        self.ops_since_cleanup = self.ops_since_cleanup.saturating_add(1);
+        if self.ops_since_cleanup >= CLEANUP_EVERY_OPS {
+            self.ops_since_cleanup = 0;
+            self.cleanup();
         }
     }
 
     fn get_or_create(&mut self, key: &str, limit: usize, window: Duration) -> &mut RateLimitBucket {
+        self.maybe_auto_cleanup();
+
+        if !self.buckets.contains_key(key) && self.buckets.len() >= MAX_BUCKETS {
+            // Reclaim expired buckets first — cheap and usually enough.
+            self.cleanup();
+            // Still full ⇒ a genuine unique-key flood. Evict existing buckets
+            // to make room instead of collapsing every over-cap key into one
+            // shared bucket. Each surviving key keeps its own (limit, window),
+            // so counts are never mixed across keys or rate-limit rules. The
+            // evicted key just restarts its window (fail-open for that one key
+            // — the safe direction), and memory stays bounded at MAX_BUCKETS.
+            while !self.buckets.contains_key(key) && self.buckets.len() >= MAX_BUCKETS {
+                let Some(victim) = self.buckets.keys().next().cloned() else {
+                    break;
+                };
+                self.buckets.remove(&victim);
+            }
+        }
+
         self.buckets
             .entry(key.to_string())
             .or_insert_with(|| RateLimitBucket::new(limit, window))
@@ -545,6 +585,62 @@ mod tests {
     use crate::interpreter::value::HashPairs;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    #[test]
+    fn rate_limit_store_caps_bucket_count() {
+        let mut store = RateLimitStore::new();
+        let window = Duration::from_secs(60);
+        // Fill to the cap with unique keys.
+        for i in 0..MAX_BUCKETS {
+            let key = format!("k{i}");
+            let bucket = store.get_or_create(&key, 10, window);
+            let _ = bucket.is_allowed();
+        }
+        assert!(
+            store.buckets.len() <= MAX_BUCKETS,
+            "bucket count {} exceeded cap",
+            store.buckets.len()
+        );
+        // Flooding more unique keys evicts existing buckets rather than
+        // growing the store or collapsing into a shared bucket. The store
+        // stays capped, and the just-requested key always gets its own
+        // bucket with the caller's own limit/window (no cross-key mixing).
+        for i in 0..100 {
+            let key = format!("flood{i}");
+            let _ = store.get_or_create(&key, 10, window).is_allowed();
+            assert!(
+                store.buckets.len() <= MAX_BUCKETS,
+                "flood should evict, not grow past cap: {}",
+                store.buckets.len()
+            );
+            assert!(
+                store.buckets.contains_key(&key),
+                "the just-requested key must keep its own dedicated bucket"
+            );
+        }
+    }
+
+    #[test]
+    fn rate_limit_auto_cleanup_drops_empty_buckets() {
+        let mut store = RateLimitStore::new();
+        // Zero window → timestamps immediately expire on next retain.
+        let bucket = store.get_or_create("ephemeral", 5, Duration::from_secs(0));
+        let _ = bucket.is_allowed();
+        // Force enough ops to trip auto-cleanup.
+        for i in 0..CLEANUP_EVERY_OPS {
+            let _ = store.get_or_create(&format!("t{i}"), 1, Duration::from_secs(0));
+        }
+        // Expired / empty buckets should have been reclaimed.
+        assert!(
+            !store.buckets.contains_key("ephemeral")
+                || store
+                    .buckets
+                    .get("ephemeral")
+                    .map(|b| b.requests.is_empty())
+                    .unwrap_or(true),
+            "auto-cleanup should reclaim idle buckets"
+        );
+    }
 
     /// Bundled into one test because `TRUST_PROXY_ENABLED` is process-global —
     /// running cases as separate `#[test]` items would race them under

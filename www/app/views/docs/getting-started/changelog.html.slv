@@ -20,7 +20,25 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed">Nothing yet &mdash; changes land here as they merge to <code class="text-cyan-400">main</code>, then promote to a version section on release.</p>
+
+        <!-- Security -->
+        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Rate-limiter memory hardening</strong> &mdash; the process-global rate-limit store is now bounded (10,000 distinct keys) and auto-reclaims expired buckets, so an attacker minting a fresh key per request (rotating spoofed IPs, random tokens) can no longer grow it without limit. When the cap is reached a new key <em class="text-gray-300">evicts</em> an existing bucket rather than sharing one, so every live key keeps its own independent counter &mdash; limits are never mixed across keys or across different rate-limit rules.</li>
+                <li><strong class="text-white">ReDoS limits on every regex-backed string method</strong> &mdash; <code class="text-cyan-400">gsub</code>, <code class="text-cyan-400">match</code>, <code class="text-cyan-400">scan</code>, <code class="text-cyan-400">split</code> and model/format validation now compile patterns through the same size- and nesting-bounded cache the <code class="text-cyan-400">Regex</code> class already used, so a request-controlled pattern can no longer force an unbounded compile. <strong class="text-white">Behavior change:</strong> a pathologically large or deeply-nested (&gt;&nbsp;10) pattern that previously compiled now raises <code class="text-cyan-400">invalid regex: &hellip;</code>.</li>
+                <li><strong class="text-white">Constant-time <code class="text-cyan-400">Crypto.secure_compare</code></strong> &mdash; no longer early-returns on a length mismatch, removing a timing side-channel (length oracle) when comparing CSRF tokens, HMACs and other secrets.</li>
+                <li><strong class="text-white">Static-file symlink hardening</strong> &mdash; the static file server resolves and serves the <em class="text-gray-300">canonical</em> path, closing a TOCTOU window where a symlink planted under <code class="text-cyan-400">public/</code> between the jail check and the open could escape the public root.</li>
+            </ul>
+        </div>
+
+        <!-- Performance & Memory -->
+        <h3 id="unreleased-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance &amp; Memory</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Leaner multipart uploads</strong> &mdash; a <code class="text-cyan-400">multipart/form-data</code> body is no longer also copied into a lossy UTF-8 string alongside its raw bytes and parsed parts (a large upload was triple-buffered). <strong class="text-white">Behavior change:</strong> <code class="text-cyan-400">req["body"]</code> is now empty for multipart requests &mdash; read fields from <code class="text-cyan-400">params</code> / the form hash and files from the uploads API (the raw bytes are still retained). CSRF verification and <code class="text-cyan-400">_method</code> override are unaffected.</li>
+            </ul>
+        </div>
     </section>
 
     <section id="v1-20-0" class="mb-16 scroll-mt-24">

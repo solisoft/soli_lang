@@ -242,18 +242,25 @@ pub(crate) fn hmac_sha256_bytes(message: &[u8], key: &[u8]) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-/// Constant-time byte comparison. Returns false immediately for unequal-length
-/// inputs (length is not secret); for equal-length inputs the running time
-/// depends only on the length, not on the position of any differing byte.
+/// Constant-time string equality for secret values (CSRF tokens, HMACs, …).
+///
+/// Does **not** early-return on length mismatch — that leaks whether lengths
+/// matched. Length inequality is folded into the accumulator, then every
+/// byte of the longer input is walked (missing bytes of the shorter side
+/// compare as `0`). Loop count still depends on `max(len_a, len_b)`, which
+/// is acceptable for fixed-size tokens and preferable to a length oracle.
 pub(crate) fn do_secure_compare(a: &str, b: &str) -> bool {
     let ab = a.as_bytes();
     let bb = b.as_bytes();
-    if ab.len() != bb.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in ab.iter().zip(bb.iter()) {
+    // `!=` as 0/1 so the branch is not a short-circuit on secrets.
+    let mut diff: u8 = u8::from(ab.len() != bb.len());
+    let max = ab.len().max(bb.len());
+    let mut i = 0;
+    while i < max {
+        let x = ab.get(i).copied().unwrap_or(0);
+        let y = bb.get(i).copied().unwrap_or(0);
         diff |= x ^ y;
+        i += 1;
     }
     diff == 0
 }

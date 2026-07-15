@@ -2775,6 +2775,7 @@ async fn handle_hyper_request(
                     .unwrap());
             }
             Ok(Some(file_path)) => {
+                // `file_path` is already canonical (see `resolve_static_file`).
                 let mime_type = server_constants::get_mime_type(&file_path);
 
                 // Production fast path: serve cached CSS/JS bytes loaded at startup.
@@ -2782,9 +2783,7 @@ async fn handle_hyper_request(
                 // (e.g. images, fonts, files added post-startup) falls through to
                 // the disk-read path below.
                 if !dev_mode {
-                    let canonical =
-                        std::fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
-                    if let Some(asset) = asset_cache.get(&canonical) {
+                    if let Some(asset) = asset_cache.get(&file_path) {
                         // Conditional GET: 304 short-circuit on matching ETag.
                         if let Some(if_none_match) = req.headers().get("if-none-match") {
                             if let Ok(client_etag) = if_none_match.to_str() {
@@ -3232,10 +3231,19 @@ async fn handle_hyper_request(
             let content_type = req_content_type.as_deref();
             if let Some(ct) = content_type {
                 if ct.starts_with("multipart/form-data") {
-                    // Parse multipart form data
+                    // Structured view only: form fields + files. Do not also
+                    // allocate a lossy UTF-8 `String` of the raw multipart
+                    // bytes (binary boundary noise) — that triple-buffered
+                    // an 8 MiB body as bytes + string + parsed parts.
+                    // CSRF / `_method` read `multipart_form`; raw body is
+                    // kept in `body_bytes` for any consumer that needs it.
                     let (form_fields, files) = parse_multipart_body(&body_bytes, ct).await;
-                    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                    (body_str, Some(body_bytes), Some(form_fields), Some(files))
+                    (
+                        String::new(),
+                        Some(body_bytes),
+                        Some(form_fields),
+                        Some(files),
+                    )
                 } else {
                     let body_str = String::from_utf8_lossy(&body_bytes).to_string();
                     (body_str, None, None, None)
@@ -7304,9 +7312,14 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
 
 /// Resolve a request path to a static file in the public directory.
 /// Returns:
-///   Ok(Some(path)) - file found and safe to serve
+///   Ok(Some(path)) - file found and safe to serve (**already canonical**)
 ///   Ok(None) - not a static file, fall through to route matching
 ///   Err(()) - path traversal attempt, should return 403
+///
+/// Returns the *canonical* path, not the pre-join candidate. Serving the
+/// non-canonical path after a canonicalize jail check leaves a TOCTOU window
+/// where a symlink planted under `public/` between check and open could
+/// escape the public root.
 fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>, ()> {
     let relative_path = path.trim_start_matches('/');
     let decoded_path = match urlencoding::decode(relative_path) {
@@ -7340,7 +7353,7 @@ fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>,
         return Ok(None); // directory or special file, fall through
     }
 
-    Ok(Some(file_path))
+    Ok(Some(canonical_file))
 }
 
 /// Walk the MVC app directories that the test runner also walks for coverage

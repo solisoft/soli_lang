@@ -39,19 +39,31 @@ pub(crate) fn clear_csrf_skip_patterns() {
     }
 }
 
+/// Match a request path against one `skip_csrf` pattern.
+///
+/// `prefix/*` matches the prefix itself and any child (`prefix/...`).
+/// A trailing bare `*` is a pure prefix match. Otherwise the path must
+/// equal the pattern exactly. Allocation-free on the request hot path.
+fn path_matches_csrf_skip(path: &str, pattern: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix("/*") {
+        path == prefix
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('/'))
+    } else if let Some(prefix) = pattern.strip_suffix('*') {
+        path.starts_with(prefix)
+    } else {
+        path == pattern
+    }
+}
+
 fn csrf_skipped_by_app(path: &str) -> bool {
     let Ok(guard) = CSRF_SKIP_PATTERNS.read() else {
         return false;
     };
-    guard.iter().any(|pattern| {
-        if let Some(prefix) = pattern.strip_suffix("/*") {
-            path == prefix || path.starts_with(&format!("{}/", prefix))
-        } else if let Some(prefix) = pattern.strip_suffix('*') {
-            path.starts_with(prefix)
-        } else {
-            path == pattern
-        }
-    })
+    guard
+        .iter()
+        .any(|pattern| path_matches_csrf_skip(path, pattern))
 }
 
 /// `SOLI_DISABLE_CSRF` operator kill switch — turns off both the
@@ -287,4 +299,36 @@ pub(crate) fn check_csrf_origin(
         return Err("missing both Origin and Referer on cookie-bearing request".to_string());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod skip_pattern_tests {
+    use super::path_matches_csrf_skip;
+
+    #[test]
+    fn prefix_slash_star_matches_path_and_children() {
+        assert!(path_matches_csrf_skip("/api", "/api/*"));
+        assert!(path_matches_csrf_skip("/api/", "/api/*"));
+        assert!(path_matches_csrf_skip("/api/v1", "/api/*"));
+        assert!(path_matches_csrf_skip("/api/v1/hooks", "/api/*"));
+        // Must not match a longer sibling prefix.
+        assert!(!path_matches_csrf_skip("/apis", "/api/*"));
+        assert!(!path_matches_csrf_skip("/other", "/api/*"));
+    }
+
+    #[test]
+    fn exact_path_is_not_prefix() {
+        assert!(path_matches_csrf_skip("/webhook", "/webhook"));
+        assert!(!path_matches_csrf_skip("/webhook/extra", "/webhook"));
+    }
+
+    #[test]
+    fn bare_star_is_prefix_match() {
+        assert!(path_matches_csrf_skip(
+            "/api/legacy/upload",
+            "/api/legacy/*"
+        ));
+        assert!(path_matches_csrf_skip("/apix", "/api*"));
+        assert!(!path_matches_csrf_skip("/xapi", "/api*"));
+    }
 }
