@@ -105,6 +105,19 @@ pub enum Command {
         /// Print the graph as JSON instead of writing to SolidB.
         dry_run: bool,
     },
+    /// `soli graph query "<question>" [folder]` — retrieve the code most
+    /// relevant to a task (semantic seed + graph expansion), for agents.
+    GraphQuery {
+        question: String,
+        folder: String,
+        database: Option<String>,
+        /// Number of seed results (default 6).
+        limit: usize,
+        /// Neighbour-expansion depth (default 1).
+        hops: usize,
+        /// Emit JSON instead of the human-readable summary.
+        json: bool,
+    },
     Lint {
         paths: Vec<String>,
     },
@@ -228,6 +241,7 @@ pub fn print_usage() {
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run]");
+    eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -277,6 +291,7 @@ pub fn print_usage() {
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
+    eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -589,51 +604,131 @@ pub fn parse_args() -> Options {
             }
             "graph" => {
                 i += 1;
-                if i >= args.len() || args[i] != "build" {
-                    eprintln!("graph requires the 'build' subcommand: soli graph build [folder]");
-                    print_usage();
-                    process::exit(64);
-                }
-                i += 1; // consume "build"
-                let mut folder = ".".to_string();
-                let mut folder_set = false;
-                let mut no_embed = false;
-                let mut database: Option<String> = None;
-                let mut dry_run = false;
-                while i < args.len() {
-                    match args[i].as_str() {
-                        "--no-embed" => no_embed = true,
-                        "--dry-run" => dry_run = true,
-                        "--database" => {
-                            i += 1;
-                            if i >= args.len() {
-                                eprintln!("--database requires a name");
-                                process::exit(64);
+                let action = args.get(i).cloned().unwrap_or_default();
+                match action.as_str() {
+                    "build" => {
+                        i += 1; // consume "build"
+                        let mut folder = ".".to_string();
+                        let mut folder_set = false;
+                        let mut no_embed = false;
+                        let mut database: Option<String> = None;
+                        let mut dry_run = false;
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--no-embed" => no_embed = true,
+                                "--dry-run" => dry_run = true,
+                                "--database" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--database requires a name");
+                                        process::exit(64);
+                                    }
+                                    database = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--database=") => {
+                                    database = Some(arg["--database=".len()..].to_string());
+                                }
+                                arg if !arg.starts_with('-') && !folder_set => {
+                                    folder = arg.to_string();
+                                    folder_set = true;
+                                }
+                                other => {
+                                    eprintln!("Unknown option for graph build: {}", other);
+                                    print_usage();
+                                    process::exit(64);
+                                }
                             }
-                            database = Some(args[i].clone());
+                            i += 1;
                         }
-                        arg if arg.starts_with("--database=") => {
-                            database = Some(arg["--database=".len()..].to_string());
+                        options.command = Command::Graph {
+                            folder,
+                            no_embed,
+                            database,
+                            dry_run,
+                        };
+                        return options;
+                    }
+                    "query" => {
+                        i += 1; // consume "query"
+                        let mut positionals: Vec<String> = Vec::new();
+                        let mut database: Option<String> = None;
+                        let mut limit = 6usize;
+                        let mut hops = 1usize;
+                        let mut json = false;
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--json" => json = true,
+                                "--database" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--database requires a name");
+                                        process::exit(64);
+                                    }
+                                    database = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--database=") => {
+                                    database = Some(arg["--database=".len()..].to_string());
+                                }
+                                "--limit" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--limit requires a number");
+                                        process::exit(64);
+                                    }
+                                    limit = args[i].parse().unwrap_or_else(|_| {
+                                        eprintln!("Invalid --limit: {}", args[i]);
+                                        process::exit(64);
+                                    });
+                                }
+                                "--hops" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--hops requires a number");
+                                        process::exit(64);
+                                    }
+                                    hops = args[i].parse().unwrap_or_else(|_| {
+                                        eprintln!("Invalid --hops: {}", args[i]);
+                                        process::exit(64);
+                                    });
+                                }
+                                arg if arg.starts_with('-') => {
+                                    eprintln!("Unknown option for graph query: {}", arg);
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                _ => positionals.push(args[i].clone()),
+                            }
+                            i += 1;
                         }
-                        arg if !arg.starts_with('-') && !folder_set => {
-                            folder = arg.to_string();
-                            folder_set = true;
-                        }
-                        other => {
-                            eprintln!("Unknown option for graph: {}", other);
+                        if positionals.is_empty() {
+                            eprintln!("graph query requires a question: soli graph query \"<question>\" [folder]");
                             print_usage();
                             process::exit(64);
                         }
+                        let question = positionals[0].clone();
+                        let folder = positionals
+                            .get(1)
+                            .cloned()
+                            .unwrap_or_else(|| ".".to_string());
+                        options.command = Command::GraphQuery {
+                            question,
+                            folder,
+                            database,
+                            limit,
+                            hops,
+                            json,
+                        };
+                        return options;
                     }
-                    i += 1;
+                    other => {
+                        eprintln!(
+                            "graph requires a subcommand: build or query (got '{}')",
+                            other
+                        );
+                        print_usage();
+                        process::exit(64);
+                    }
                 }
-                options.command = Command::Graph {
-                    folder,
-                    no_embed,
-                    database,
-                    dry_run,
-                };
-                return options;
             }
             "db:seed" => {
                 // Unlike `db:migrate`, a bare `soli db:seed` is valid and

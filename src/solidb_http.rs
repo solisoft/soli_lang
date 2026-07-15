@@ -635,6 +635,33 @@ impl SoliDBClient {
         Ok(response)
     }
 
+    /// ANN vector search: `POST /_api/database/{db}/vector/{coll}/{index}/search`.
+    /// Returns the raw `results` array (each `{doc_key, score, document}`).
+    pub fn vector_search(
+        &self,
+        collection: &str,
+        index: &str,
+        vector: &[f64],
+        limit: usize,
+        ef_search: Option<usize>,
+    ) -> Result<Vec<Value>, SoliDBError> {
+        let db = self.get_db()?;
+        let mut body = serde_json::json!({ "vector": vector, "limit": limit });
+        if let Some(ef) = ef_search {
+            body["ef_search"] = serde_json::json!(ef);
+        }
+        let path = format!(
+            "/_api/database/{}/vector/{}/{}/search",
+            db, collection, index
+        );
+        let response: Value = self.request(reqwest::Method::POST, &path, Some(&body))?;
+        Ok(response
+            .get("results")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
     pub fn drop_vector_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
         let path = format!("/_api/database/{}/vector/{}/{}", db, collection, name);

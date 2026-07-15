@@ -43,6 +43,14 @@ pub fn run() {
             database,
             dry_run,
         } => commands::run_graph(folder, *no_embed, database.as_deref(), *dry_run),
+        Command::GraphQuery {
+            question,
+            folder,
+            database,
+            limit,
+            hops,
+            json,
+        } => commands::run_graph_query(question, folder, database.as_deref(), *limit, *hops, *json),
         Command::Serve {
             folder,
             port,

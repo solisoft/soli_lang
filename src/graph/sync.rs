@@ -69,7 +69,7 @@ pub fn embed_graph(graph: &mut ProjectGraph) -> Result<usize, String> {
 /// Write the graph into SolidB (drop + recreate collections, indexes, bulk
 /// insert). Assumes embeddings are already attached when `opts.embed`.
 pub fn write_graph(graph: &ProjectGraph, opts: &SyncOptions) -> Result<SyncReport, String> {
-    let (client, database) = connect(opts)?;
+    let (client, database) = connect(opts.database.as_deref())?;
 
     // Clean rebuild. Drops are best-effort (404 on first run is fine).
     let _ = client.drop_collection(NODE_COLLECTION);
@@ -174,15 +174,15 @@ fn bulk_insert(
 
 /// Build a SolidB client from the model-layer config, honoring an optional
 /// database override. Auth priority mirrors `crud.rs`: JWT > API key > basic.
-fn connect(opts: &SyncOptions) -> Result<(SoliDBClient, String), String> {
+/// Shared by the write path and the query path.
+pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), String> {
     let host = format!(
         "{}{}",
         db_config::DB_CONFIG.scheme,
         db_config::DB_CONFIG.host
     );
-    let database = opts
-        .database
-        .clone()
+    let database = database
+        .map(str::to_string)
         .unwrap_or_else(db_config::get_database_name);
     let mut client =
         SoliDBClient::connect(&host).map_err(|e| format!("connect to {}: {}", host, e))?;

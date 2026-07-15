@@ -2015,6 +2015,97 @@ pub fn run_graph(folder: &str, no_embed: bool, database: Option<&str>, dry_run: 
     println!();
 }
 
+/// `soli graph query "<question>" [folder]` — retrieve the code most relevant
+/// to a task from the graph in SolidB (semantic seed + graph expansion), for
+/// agents. `--json` emits a structured result; otherwise a scannable summary.
+pub fn run_graph_query(
+    question: &str,
+    folder: &str,
+    database: Option<&str>,
+    limit: usize,
+    hops: usize,
+    json: bool,
+) {
+    use solilang::graph;
+
+    let app_path = Path::new(folder);
+    solilang::serve::env_loader::load_env_files(app_path);
+    solilang::interpreter::builtins::model::init_db_config();
+
+    let opts = graph::QueryOptions {
+        database: database.map(str::to_string),
+        limit,
+        hops,
+    };
+    let result = match graph::run_query(question, &opts) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("\x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    if json {
+        println!("{}", result.to_pretty_json());
+        return;
+    }
+
+    let noun = if result.results.len() == 1 {
+        "result"
+    } else {
+        "results"
+    };
+    println!();
+    println!(
+        "  \x1b[1mQuery\x1b[0m \"{}\"  \x1b[2m({}, {} {})\x1b[0m",
+        result.query,
+        result.mode,
+        result.results.len(),
+        noun
+    );
+    if result.results.is_empty() {
+        println!();
+        println!("  No matching code found. Has the graph been built? (soli graph build)");
+        println!();
+        return;
+    }
+    for (idx, hit) in result.results.iter().enumerate() {
+        println!();
+        let loc = if hit.file.is_empty() {
+            String::new()
+        } else {
+            format!("  \x1b[2m{}:{}\x1b[0m", hit.file, hit.line)
+        };
+        println!(
+            "  \x1b[1m{}.\x1b[0m \x1b[36m{}\x1b[0m  {}{}  \x1b[2m[{:.2}]\x1b[0m",
+            idx + 1,
+            hit.kind,
+            hit.qualified_name,
+            loc,
+            hit.score
+        );
+        if !hit.signature.is_empty() {
+            println!("     \x1b[2m{}\x1b[0m", hit.signature);
+        }
+        // Show a bounded set of relationships; the rest stay in --json.
+        let shown = hit.neighbors.iter().take(12);
+        for nb in shown {
+            let arrow = if nb.direction == "out" { "→" } else { "←" };
+            println!(
+                "       {} \x1b[33m{:<12}\x1b[0m {}:{}",
+                arrow, nb.edge_kind, nb.kind, nb.name
+            );
+        }
+        if hit.neighbors.len() > 12 {
+            println!(
+                "       \x1b[2m(+{} more relationships)\x1b[0m",
+                hit.neighbors.len() - 12
+            );
+        }
+    }
+    println!();
+}
+
 pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
     let app_path = Path::new(folder);
 

@@ -92,8 +92,55 @@ inference), so an edge is never invented.
 
 ## Querying the graph (for agents)
 
-Agents query SolidB directly. Two moves cover most needs: **find** nodes (by
-name, kind, or semantic similarity), then **traverse** from them.
+### The easy path: `soli graph query`
+
+One command turns a natural-language task into the most relevant code **plus its
+immediate relationships** — the graph-RAG payoff (semantic seed → graph
+expansion) with no AQL to write:
+
+```bash
+soli graph query "where is authentication handled?"
+soli graph query "refund flow" --json --limit 5 --hops 1
+```
+
+It embeds the question, ANN-searches the vector index for seed nodes, and
+expands each seed one hop over the graph (callers, callees, routes, views). If
+the graph was built with `--no-embed` (no vector index) or no embedding key is
+set, it falls back to a keyword-ranked scan, so the command always works.
+
+`--json` emits a structured result an agent can parse directly:
+
+```json
+{
+  "mode": "semantic",
+  "query": "where is authentication handled?",
+  "results": [
+    {
+      "score": 0.82,
+      "kind": "method",
+      "qualified_name": "SessionsController#create",
+      "file": "app/controllers/sessions_controller.sl",
+      "line": 12,
+      "signature": "def create(req: Any) -> Any",
+      "neighbors": [
+        { "direction": "in",  "edge_kind": "routes_to", "kind": "route",  "name": "POST /login" },
+        { "direction": "out", "edge_kind": "calls",     "kind": "method", "name": "User#authenticate" },
+        { "direction": "out", "edge_kind": "renders",   "kind": "view",   "name": "sessions/new" }
+      ]
+    }
+  ]
+}
+```
+
+`--limit N` sets how many seed results to return (default 6); `--hops N` sets the
+neighbour-expansion depth (default 1). The heavy `embedding`/`text` fields are
+never included in the output.
+
+### Raw queries
+
+For anything the command doesn't cover, agents query SolidB directly. Two moves:
+**find** nodes (by name, kind, or semantic similarity), then **traverse** from
+them.
 
 > **Traversal starts** use `soli_graph_nodes/<_key>`, not `n._id` (SolidB's
 > `_id` carries a `db:` prefix that won't match edge endpoints). Build the start

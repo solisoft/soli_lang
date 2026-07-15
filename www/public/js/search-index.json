@@ -5,9 +5,9 @@
       "type": "page",
       "category": "Development Tools",
       "path": "/docs/development-tools/graph",
-      "signature": "soli graph build [folder]",
-      "description": "Extract a graph of your project's source (files, classes, models, controllers, methods, routes, views and their relationships) into SolidB so agents retrieve code by semantic search and graph traversal — graph RAG over your own codebase. Use --no-embed for a structural offline graph, or --dry-run to print JSON.",
-      "keywords": ["soli graph", "graph build", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "dependency graph", "call graph"]
+      "signature": "soli graph build [folder] · soli graph query \"<question>\"",
+      "description": "Build a graph of your project's source (files, classes, models, controllers, methods, routes, views and their relationships) in SolidB, then `soli graph query \"<question>\"` retrieves the most relevant code plus its graph relationships in one call — graph RAG over your own codebase. --no-embed for an offline structural graph, --dry-run to print JSON, --json for agent-parseable query output.",
+      "keywords": ["soli graph", "graph build", "graph query", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "retrieval", "dependency graph", "call graph"]
     },
     {
       "title": "How Soli Compares",

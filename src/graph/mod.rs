@@ -13,8 +13,10 @@
 
 pub mod builder;
 pub mod model;
+pub mod query;
 pub mod sync;
 
 pub use builder::build_graph;
 pub use model::{Edge, Node, ProjectGraph};
+pub use query::{run_query, QueryOptions, QueryResult};
 pub use sync::{embed_graph, write_graph, SyncOptions, SyncReport};
