@@ -37,6 +37,12 @@ pub fn run() {
         Command::Routes { folder, grep, json } => {
             commands::run_routes(folder, grep.as_deref(), *json)
         }
+        Command::Graph {
+            folder,
+            no_embed,
+            database,
+            dry_run,
+        } => commands::run_graph(folder, *no_embed, database.as_deref(), *dry_run),
         Command::Serve {
             folder,
             port,

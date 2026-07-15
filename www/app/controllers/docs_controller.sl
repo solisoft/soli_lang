@@ -209,6 +209,10 @@ def development_tools_linting
     render_docs("docs/development-tools/linting", "Linting", "development_tools", "linting")
 end
 
+def development_tools_graph
+    render_docs("docs/development-tools/graph", "Code Graph", "development_tools", "graph")
+end
+
 # ============================================================================
 # Language Reference
 # ============================================================================

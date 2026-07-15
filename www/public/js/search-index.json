@@ -1,6 +1,15 @@
 {
   "entries": [
     {
+      "title": "soli graph build",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/graph",
+      "signature": "soli graph build [folder]",
+      "description": "Extract a graph of your project's source (files, classes, models, controllers, methods, routes, views and their relationships) into SolidB so agents retrieve code by semantic search and graph traversal — graph RAG over your own codebase. Use --no-embed for a structural offline graph, or --dry-run to print JSON.",
+      "keywords": ["soli graph", "graph build", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "dependency graph", "call graph"]
+    },
+    {
       "title": "How Soli Compares",
       "type": "guide",
       "category": "Getting Started",

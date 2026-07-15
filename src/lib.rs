@@ -15,6 +15,7 @@ pub mod embedding;
 pub mod error;
 pub mod fmt;
 pub mod generation;
+pub mod graph;
 pub mod inflect;
 pub mod interpreter;
 pub mod lexer;

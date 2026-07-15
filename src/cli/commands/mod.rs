@@ -1941,6 +1941,80 @@ pub fn run_routes(folder: &str, grep: Option<&str>, json: bool) {
     }
 }
 
+/// `soli graph build [folder]` — extract the project's code graph and store it
+/// in SolidB (nodes = files/classes/methods/routes/views, edges = imports/
+/// inherits/calls/renders/routes_to/relates), embedding node text so agents can
+/// retrieve code by semantic search and traverse relationships (graph RAG).
+/// `--dry-run` prints the graph as JSON and touches neither SolidB nor the
+/// embedding API.
+pub fn run_graph(folder: &str, no_embed: bool, database: Option<&str>, dry_run: bool) {
+    use solilang::graph;
+
+    let app_path = Path::new(folder);
+
+    let mut project_graph = match graph::build_graph(app_path) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("\x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    if dry_run {
+        println!("{}", project_graph.to_pretty_json());
+        return;
+    }
+
+    // Load `.env` (+ `.env.{APP_ENV}`) and cache the DB config so the graph can
+    // reach SoliDB — same preamble as `db:seed`. JWT is acquired lazily on the
+    // first authenticated call.
+    solilang::serve::env_loader::load_env_files(app_path);
+    solilang::interpreter::builtins::model::init_db_config();
+
+    let embed = !no_embed;
+    if embed {
+        println!();
+        println!(
+            "  \x1b[1mEmbedding {} nodes...\x1b[0m",
+            project_graph.nodes.len()
+        );
+        if let Err(e) = graph::embed_graph(&mut project_graph) {
+            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    }
+
+    let opts = graph::SyncOptions {
+        database: database.map(str::to_string),
+        embed,
+    };
+    let report = match graph::write_graph(&project_graph, &opts) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    let embed_note = if report.embedded {
+        format!(", embedded (dim {})", report.dimension)
+    } else {
+        ", no embeddings".to_string()
+    };
+    println!();
+    println!(
+        "  \x1b[32m→\x1b[0m {} nodes, {} edges{} → SolidB \x1b[1m{}\x1b[0m",
+        report.nodes, report.edges, embed_note, report.database
+    );
+    if project_graph.unresolved_calls > 0 {
+        println!(
+            "  \x1b[2m({} ambiguous function call(s) left unlinked)\x1b[0m",
+            project_graph.unresolved_calls
+        );
+    }
+    println!();
+}
+
 pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
     let app_path = Path::new(folder);
 

@@ -1,0 +1,199 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/development-tools/linting" class="text-gray-400 hover:text-white transition-colors">Development Tools</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Code Graph</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">Code Graph</span>
+            <span class="text-gray-500 text-2xl font-medium">Graph RAG for agents</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            <code>soli graph build</code> extracts a graph of your project's source &mdash; files, classes,
+            models, controllers, methods, functions, routes and views, plus the relationships between them &mdash;
+            and stores it in SolidB. Every node's text is embedded, so AI agents (and your own tools) can retrieve
+            the right code by <strong class="text-white">semantic search</strong> and then
+            <strong class="text-white">traverse relationships</strong> from there. It's a graph RAG index of your
+            own codebase.
+        </p>
+    </div>
+
+    <!-- Building -->
+    <section id="section-build" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Building the graph</h2>
+        <p class="text-gray-400 mb-4">
+            Where <code>Model.rag</code> indexes your <em>application data</em>, this points the same vector +
+            graph machinery at the <em>code itself</em>.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># Build the graph for the app in the current folder
+soli graph build
+
+# Or point at a project folder
+soli graph build path/to/app</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The build is a <strong class="text-white">clean rebuild</strong>: the
+            <code>soli_graph_nodes</code> and <code>soli_graph_edges</code> collections are dropped and recreated
+            every run, so the graph always matches the current source. Re-run it whenever the code changes.
+        </p>
+    </section>
+
+    <!-- Configuration -->
+    <section id="section-config" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration &amp; flags</h2>
+        <p class="text-gray-400 mb-4">
+            By default every node is embedded (vector index included). Configure the embedding provider with the
+            standard variables (OpenAI by default); the graph connects to the
+            <strong class="text-white">same SolidB the app's Models use</strong>
+            (<code>SOLIDB_HOST</code>, <code>SOLIDB_DATABASE</code>, credentials), loaded from your
+            <code>.env</code> just like <code>soli db:seed</code>.
+        </p>
+        <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-2.5 px-4 font-semibold">Variable</th><th class="py-2.5 px-4 font-semibold">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_API_KEY</code></td><td class="py-2.5 px-4"><em>required to embed</em></td></tr>
+                    <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_URL</code></td><td class="py-2.5 px-4"><code>.../v1/embeddings</code></td></tr>
+                    <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_MODEL</code></td><td class="py-2.5 px-4"><code>text-embedding-3-small</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-2.5 px-4 font-semibold">Flag</th><th class="py-2.5 px-4 font-semibold">Effect</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2.5 px-4"><code>--no-embed</code></td><td class="py-2.5 px-4">Structural graph only &mdash; skip embeddings and the vector index (fully offline, no API key).</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>--database NAME</code></td><td class="py-2.5 px-4">Write to a specific database instead of <code>SOLIDB_DATABASE</code>.</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>--dry-run</code></td><td class="py-2.5 px-4">Print the whole graph as JSON to stdout &mdash; writes nothing to SolidB and calls no embedding API. Great for inspection and CI.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># Inspect what would be built, without a database or API key
+soli graph build --dry-run | jq '.nodes | length'</code></pre>
+        </div>
+    </section>
+
+    <!-- Schema -->
+    <section id="section-schema" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Schema</h2>
+        <p class="text-gray-400 mb-4">
+            Two SolidB collections, namespaced so they never clash with your app data.
+            <strong class="text-white">soli_graph_nodes</strong> holds one document per code entity;
+            <code>_key</code> is a sanitized, stable id and the human-readable identity is
+            <code>kind</code> + <code>qualified_name</code> (with <code>file</code>, <code>line</code>,
+            <code>signature</code>, <code>doc</code>, <code>role</code>, and the embedded <code>text</code>/<code>embedding</code>).
+        </p>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">soli_graph_edges</strong> holds one document per relationship as a SolidB
+            edge (<code>_from</code> / <code>_to</code> reference <code>soli_graph_nodes/&lt;key&gt;</code>):
+        </p>
+        <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-2.5 px-4 font-semibold"><code>edge_kind</code></th><th class="py-2.5 px-4 font-semibold">From &rarr; To</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2.5 px-4"><code>defines</code></td><td class="py-2.5 px-4">file &rarr; class/function, class &rarr; method (containment)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>inherits</code></td><td class="py-2.5 px-4">class &rarr; superclass (an <code>external</code> stub for framework bases like <code>Model</code>)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>implements</code></td><td class="py-2.5 px-4">class &rarr; interface</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>imports</code></td><td class="py-2.5 px-4">file &rarr; local file</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>calls</code></td><td class="py-2.5 px-4">method/function &rarr; the function or class-method it calls</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>instantiates</code></td><td class="py-2.5 px-4">method/function &rarr; class it constructs (<code>new X()</code>)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>renders</code></td><td class="py-2.5 px-4">controller action &rarr; view it renders</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>routes_to</code></td><td class="py-2.5 px-4">route &rarr; controller action</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>relates</code></td><td class="py-2.5 px-4">model &rarr; model (<code>has_many</code>/<code>belongs_to</code>/<code>edge</code>; DSL name in <code>relation</code>)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">Precision-first call graph</h4>
+            <p class="text-amber-200/80 text-sm">
+                Class-method calls (<code>User.find(...)</code>), <code>this.method(...)</code>, and unambiguous
+                bare function calls are linked; instance calls on a variable (<code>user.save()</code>) are
+                <strong>not</strong> inferred (no type inference), so an edge is never invented.
+            </p>
+        </div>
+    </section>
+
+    <!-- Querying -->
+    <section id="section-query" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Querying the graph (for agents)</h2>
+        <p class="text-gray-400 mb-4">
+            Agents query SolidB directly. Two moves cover most needs: <strong class="text-white">find</strong>
+            nodes (by name, kind, or semantic similarity), then <strong class="text-white">traverse</strong>
+            from them.
+        </p>
+        <div class="my-6 p-5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <p class="text-blue-200/80 text-sm">
+                Traversal starts use <code>soli_graph_nodes/&lt;_key&gt;</code>, not <code>n._id</code>
+                (SolidB's <code>_id</code> carries a <code>db:</code> prefix that won't match edge endpoints).
+                Build the start with <code>CONCAT("soli_graph_nodes/", n._key)</code>. Traversals support the
+                <code>FOR v, e IN &hellip;</code> (vertex + edge) form.
+            </p>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Find code</h3>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">// All controllers
+FOR n IN soli_graph_nodes FILTER n.kind == "controller" RETURN n.name
+
+// A specific route
+FOR n IN soli_graph_nodes
+  FILTER n.kind == "route" AND n.qualified_name == "sessions#create"
+  RETURN n</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Semantic search (needs embeddings) uses the <code>node_vec</code> vector index &mdash; model the
+            collection from Soli and call <code>similar</code> / <code>graph_rag</code>:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="app/models/code_node.sl"><code class="language-soli text-sm">class CodeNode < Model
+  collection "soli_graph_nodes"
+  vector_index "embedding", dimension: 1536, metric: "cosine"
+end
+
+# "Where is authentication handled?" -> the most relevant code nodes
+let hits = CodeNode.similar("authentication and login", field: "embedding", k: 8)</code></pre>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Traverse relationships</h3>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">// What handles this route, and what does it reach? (route -> action -> calls/renders)
+FOR v, e IN 1..3 OUTBOUND "soli_graph_nodes/route:GET_:login" soli_graph_edges
+  RETURN { via: e.edge_kind, kind: v.kind, name: v.qualified_name }
+
+// Which actions render this view? (reverse edges)
+FOR v, e IN 1..1 INBOUND "soli_graph_nodes/view:posts:index" soli_graph_edges
+  FILTER e.edge_kind == "renders"
+  RETURN v.qualified_name
+
+// What does a controller action call?
+FOR v, e IN 1..2 OUTBOUND "soli_graph_nodes/method:PostsController.create" soli_graph_edges
+  FILTER e.edge_kind IN ["calls", "instantiates"]
+  RETURN v.qualified_name</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Semantic <strong class="text-white">seed &rarr; traverse</strong> (graph RAG) combines both:
+            <code>similar()</code> finds the relevant nodes, then an OUTBOUND/INBOUND traversal expands to their
+            callers, callees, routes and views &mdash; exactly the context an agent needs to make a change.
+        </p>
+        <p class="text-gray-500 text-sm">
+            v1 is a one-shot build &mdash; re-run to refresh (no file-watch yet). See the full reference in
+            <code>www/docs/graph.md</code>.
+        </p>
+    </section>
+</div>

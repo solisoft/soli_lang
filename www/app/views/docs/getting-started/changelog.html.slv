@@ -39,6 +39,14 @@
                 <li><strong class="text-white">Leaner multipart uploads</strong> &mdash; a <code class="text-cyan-400">multipart/form-data</code> body is no longer also copied into a lossy UTF-8 string alongside its raw bytes and parsed parts (a large upload was triple-buffered). <strong class="text-white">Behavior change:</strong> <code class="text-cyan-400">req["body"]</code> is now empty for multipart requests &mdash; read fields from <code class="text-cyan-400">params</code> / the form hash and files from the uploads API (the raw bytes are still retained). CSRF verification and <code class="text-cyan-400">_method</code> override are unaffected.</li>
             </ul>
         </div>
+
+        <!-- Dev tools -->
+        <h3 id="unreleased-devtools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white"><code class="text-cyan-400">soli graph build</code> &mdash; code graph in SolidB for agents (graph RAG)</strong> &mdash; extracts a graph of your project's source (nodes: files, classes, models, controllers, methods, functions, routes, views; edges: <code class="text-cyan-400">defines</code>, <code class="text-cyan-400">inherits</code>, <code class="text-cyan-400">imports</code>, <code class="text-cyan-400">calls</code>, <code class="text-cyan-400">renders</code>, <code class="text-cyan-400">routes_to</code>, <code class="text-cyan-400">relates</code>) into <code class="text-cyan-400">soli_graph_nodes</code> + <code class="text-cyan-400">soli_graph_edges</code>, so agents retrieve code by semantic search and traverse relationships from there. Every node's text is embedded (vector index over <code class="text-cyan-400">embedding</code>); <code class="text-cyan-400">--no-embed</code> builds a purely structural offline graph and <code class="text-cyan-400">--dry-run</code> prints the whole graph as JSON without touching SolidB or the embedding API. Connects to the same SolidB the app's Models use; clean rebuild each run.</li>
+            </ul>
+        </div>
     </section>
 
     <section id="v1-20-0" class="mb-16 scroll-mt-24">
