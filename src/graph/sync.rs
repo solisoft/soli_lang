@@ -14,13 +14,70 @@ use crate::graph::model::{
     ProjectGraph, EDGE_COLLECTION, META_COLLECTION, NODE_COLLECTION, VECTOR_INDEX,
 };
 use crate::interpreter::builtins::model::db_config;
-use crate::solidb_http::SoliDBClient;
+use crate::solidb_http::{SoliDBClient, SoliDBError};
 
 /// Embed at most this many node texts per embedding-API request, so a large
 /// project doesn't blow the provider's per-request input/token limits.
 const EMBED_CHUNK: usize = 96;
 /// Insert at most this many documents per bulk-insert AQL request.
 const INSERT_CHUNK: usize = 200;
+/// A single bulk-mutation chunk is retried this many times before the whole
+/// sync gives up. The DB client has a fixed ~10s per-request timeout, and a
+/// loaded SolidB can exceed it under an embedding-heavy write; a transient
+/// timeout or dropped connection on one chunk out of hundreds must NOT abort
+/// the entire sync and leave the graph half-written (partial nodes, no edges,
+/// no manifest — exactly the inconsistent state a non-destructive sync exists
+/// to avoid).
+const BULK_MAX_ATTEMPTS: u32 = 5;
+
+/// Execute one chunked bulk-mutation with retry + exponential backoff.
+///
+/// On a *retry* (attempt > 1) an "already applied" error is treated as success:
+/// if a previous attempt actually reached SolidB before its response was lost
+/// (client-side timeout), an INSERT now reports a duplicate `_key` and a REMOVE
+/// a missing key — the chunk is in its desired state either way, so we stop
+/// instead of failing the build. The guard on `attempt > 1` keeps a genuine
+/// first-try conflict from being silently swallowed without at least one retry.
+fn bulk_query_with_retry(
+    client: &SoliDBClient,
+    query: &str,
+    bind: &HashMap<String, serde_json::Value>,
+) -> Result<(), SoliDBError> {
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        match client.query(query, Some(bind.clone())) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                if attempt > 1 && is_already_applied(&e.to_string()) {
+                    return Ok(());
+                }
+                if attempt >= BULK_MAX_ATTEMPTS {
+                    return Err(e);
+                }
+                // Back off before retrying: 200ms, 400ms, 800ms, 1600ms.
+                let backoff_ms = 200u64 * (1u64 << (attempt - 1));
+                std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
+            }
+        }
+    }
+}
+
+/// Whether an error message means this chunk's mutation is already in its
+/// desired state server-side — i.e. a prior attempt landed before its response
+/// came back. In this SolidB build a duplicate `_key` INSERT is a no-error
+/// overwrite, so the case that actually surfaces on a retry is a REMOVE of an
+/// already-gone key (`HTTP 404 … DocumentNotFound`). Matching is on the error's
+/// rendered message (its fields are private), consistent with how the sync maps
+/// DB errors to strings elsewhere.
+fn is_already_applied(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("not found")
+        || m.contains("documentnotfound")
+        || m.contains("already exists")
+        || m.contains("duplicate")
+        || m.contains("conflict")
+}
 
 pub struct SyncOptions {
     /// Target database (defaults to `SOLIDB_DATABASE` / `default`).
@@ -187,8 +244,7 @@ fn bulk_insert(
     for chunk in docs.chunks(INSERT_CHUNK) {
         let mut bind = HashMap::new();
         bind.insert("docs".to_string(), serde_json::Value::Array(chunk.to_vec()));
-        client
-            .query(&query, Some(bind))
+        bulk_query_with_retry(client, &query, &bind)
             .map_err(|e| format!("bulk insert into {}: {}", collection, e))?;
         on_chunk(chunk.len());
     }
@@ -570,8 +626,7 @@ fn run_bulk(
     for chunk in docs.chunks(INSERT_CHUNK) {
         let mut bind = HashMap::new();
         bind.insert("docs".to_string(), serde_json::Value::Array(chunk.to_vec()));
-        client
-            .query(query, Some(bind))
+        bulk_query_with_retry(client, query, &bind)
             .map_err(|e| format!("bulk write into {}: {}", collection, e))?;
         on_chunk(chunk.len());
     }
@@ -597,8 +652,7 @@ fn remove_keys(client: &SoliDBClient, collection: &str, keys: &[String]) -> Resu
     for chunk in keys.chunks(INSERT_CHUNK) {
         let mut bind = HashMap::new();
         bind.insert("keys".to_string(), serde_json::json!(chunk));
-        client
-            .query(&query, Some(bind))
+        bulk_query_with_retry(client, &query, &bind)
             .map_err(|e| format!("remove from {}: {}", collection, e))?;
     }
     Ok(())
@@ -664,4 +718,33 @@ pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), 
         client = client.with_basic_auth(&user, &pass);
     }
     Ok((client, database))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_already_applied;
+
+    #[test]
+    fn remove_of_missing_key_counts_as_applied() {
+        // The message a chunked REMOVE surfaces when a prior attempt already
+        // deleted the keys (SolidB: HTTP 404 / DocumentNotFound).
+        let msg = "HTTP 404 Not Found /_api/database/edifice_rag/cursor: \
+                   {\"code\":404,\"error\":\"gone\",\"type\":\"DocumentNotFound\"}";
+        assert!(is_already_applied(msg));
+    }
+
+    #[test]
+    fn duplicate_and_conflict_messages_count_as_applied() {
+        assert!(is_already_applied("document already exists"));
+        assert!(is_already_applied("HTTP 409 Conflict: duplicate key"));
+    }
+
+    #[test]
+    fn transient_transport_error_is_not_applied() {
+        // The exact failure that must be *retried*, not swallowed: a dropped
+        // connection / client timeout mid-sync.
+        let msg = "bulk write into soli_graph_nodes: HTTP request failed: \
+                   error sending request for url (http://localhost:6745/_api/database/edifice_rag/cursor)";
+        assert!(!is_already_applied(msg));
+    }
 }

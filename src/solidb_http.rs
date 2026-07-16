@@ -10,6 +10,17 @@ fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
         code: None,
     })
 }
+
+/// Pull the `result` array out of one cursor batch response, or an empty vec
+/// if it's missing/non-array. Used to accumulate rows while draining a
+/// paginated cursor.
+fn cursor_result_rows(response: &Value) -> Vec<Value> {
+    response
+        .get("result")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default()
+}
 use crate::serve::get_tokio_handle;
 
 // Fallback tokio runtime for SoliDB operations outside of a server context
@@ -518,11 +529,38 @@ impl SoliDBClient {
         }
         let path = format!("/_api/database/{}/cursor", db);
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
-        Ok(response
-            .get("result")
-            .and_then(|r| r.as_array())
-            .cloned()
-            .unwrap_or_default())
+
+        // Drain the cursor to completion. SolidB caps each batch at `batchSize`
+        // (default 1000) and, when more rows remain, returns `has_more: true`
+        // plus a cursor `id` to be followed via `PUT /_api/cursor/{id}`. Reading
+        // only the first batch silently truncates any result set larger than one
+        // batch — e.g. graph sync's `fetch_keys` on a >1000-node graph would miss
+        // the tail keys, misclassify already-stored docs as new, and abort the
+        // rebuild with a duplicate-`_key` INSERT. Following the cursor makes
+        // `query` return the full result set for every caller.
+        let mut results = cursor_result_rows(&response);
+        let mut has_more = response
+            .get("has_more")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let mut cursor_id = response
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        while has_more {
+            let Some(id) = cursor_id.as_deref() else {
+                break;
+            };
+            let batch =
+                self.request(reqwest::Method::PUT, &format!("/_api/cursor/{}", id), None)?;
+            results.extend(cursor_result_rows(&batch));
+            has_more = batch
+                .get("has_more")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            cursor_id = batch.get("id").and_then(Value::as_str).map(str::to_string);
+        }
+        Ok(results)
     }
 
     pub fn explain(
