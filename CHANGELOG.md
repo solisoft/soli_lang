@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.21.1] - 2026-07-16
+
+### Fixed
+
+* **build(ci):** vendor OpenSSL (`ssh2` `vendored-openssl`) so the release CI's linux-arm64 cross-build compiles OpenSSL from source instead of installing `libssl-dev:arm64` from the arm64 multiarch mirror (`ports.ubuntu.com`), which is unreachable from some runners. v1.21.0's arm64 binary failed to build for this reason; v1.21.1 ships the same features with a working release.
+
 ## [1.21.0] - 2026-07-16
 
 ### Security

@@ -22,6 +22,21 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
     </section>
 
+    <section id="v1-21-1" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.21.1</h2>
+            <span class="text-sm font-medium text-gray-400">July 16, 2026</span>
+        </div>
+
+        <!-- Fixes -->
+        <h3 id="v21-1-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">arm64 Linux release build</strong> &mdash; OpenSSL is now vendored (compiled from source), so the linux-arm64 cross-build no longer installs <code class="text-cyan-400">libssl-dev:arm64</code> from the arm64 multiarch mirror (<code class="text-cyan-400">ports.ubuntu.com</code>), which is unreachable from some CI runners. v1.21.1 ships the same features as v1.21.0 with a working release.</li>
+            </ul>
+        </div>
+    </section>
+
     <section id="v1-21-0" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">v1.21.0</h2>
