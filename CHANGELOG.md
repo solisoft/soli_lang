@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-07-16
+
 ### Security
 
 * **security(mailer):** `Mailer` now rejects CR/LF/NUL in every header-bound field (from, subject, to, cc, reply_to, SMTP envelope from, and each recipient) — closes an email/SMTP header-injection vector where a crafted subject or address could smuggle extra headers or SMTP commands
