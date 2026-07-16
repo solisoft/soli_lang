@@ -37,9 +37,32 @@ soli graph build
 soli graph build path/to/app</code></pre>
         </div>
         <p class="text-gray-400 mb-4">
-            The build is a <strong class="text-white">clean rebuild</strong>: the
-            <code>soli_graph_nodes</code> and <code>soli_graph_edges</code> collections are dropped and recreated
-            every run, so the graph always matches the current source. Re-run it whenever the code changes.
+            The build is <strong class="text-white">incremental and non-destructive</strong>. It hashes every
+            source file (MD5), so a re-run when nothing changed is a fast no-op
+            (<code>✓ code graph already up to date</code>). When something changed, it updates SolidB
+            <strong class="text-white">in place</strong> &mdash; inserts new nodes/edges, updates changed ones,
+            prunes removed ones &mdash; rather than dropping the collections, so a concurrent reader never sees an
+            empty graph and <strong class="text-white">unchanged embeddings are reused</strong> (only changed text
+            is re-embedded). Pass <code>--fresh</code> for a full clean rebuild. A progress bar tracks the parse
+            &rarr; embed &rarr; sync phases so a large project doesn't look frozen.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Keeping it fresh automatically (dev)</h3>
+        <p class="text-gray-400 mb-4">
+            Run the dev server with an embedding key configured (<code>SOLI_EMBEDDING_API_KEY</code>) and the
+            graph reindexes itself whenever you save a <code>.sl</code>/<code>.slv</code> file &mdash; no flag
+            needed, it just stays current while you work.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve . --dev   # auto-reindex on (embedding key present)</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            It rides the dev file-watcher (debounced), runs on a background thread (off the request path), and
+            reuses the live route table instead of re-executing <code>routes.sl</code>. It's
+            <strong class="text-white">incremental on the expensive part</strong>: nodes whose text is unchanged
+            keep their existing embedding and only what changed is re-embedded, so a one-file save costs a
+            re-parse and a handful of embeddings &mdash; not thousands &mdash; and the semantic layer stays intact.
+            Set <code>SOLI_GRAPH_WATCH=0</code> to disable, or <code>=1</code> to force it on even without a key.
         </p>
     </section>
 
@@ -71,15 +94,69 @@ soli graph build path/to/app</code></pre>
                     <tr><th class="py-2.5 px-4 font-semibold">Flag</th><th class="py-2.5 px-4 font-semibold">Effect</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-2.5 px-4"><code>--no-embed</code></td><td class="py-2.5 px-4">Structural graph only &mdash; skip embeddings and the vector index (fully offline, no API key).</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>--no-embed</code></td><td class="py-2.5 px-4">Structural graph only &mdash; skip embeddings and the vector index (fully offline, no API key). Existing embeddings are preserved.</td></tr>
                     <tr><td class="py-2.5 px-4"><code>--database NAME</code></td><td class="py-2.5 px-4">Write to a specific database instead of <code>SOLIDB_DATABASE</code>.</td></tr>
                     <tr><td class="py-2.5 px-4"><code>--dry-run</code></td><td class="py-2.5 px-4">Print the whole graph as JSON to stdout &mdash; writes nothing to SolidB and calls no embedding API. Great for inspection and CI.</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>--fresh</code></td><td class="py-2.5 px-4">Force a full clean rebuild (drop + recreate) instead of the default incremental sync &mdash; e.g. after changing the embedding model.</td></tr>
                 </tbody>
             </table>
         </div>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename="Terminal"><code class="language-bash text-sm"># Inspect what would be built, without a database or API key
 soli graph build --dry-run | jq '.nodes | length'</code></pre>
+        </div>
+    </section>
+
+    <!-- Any codebase -->
+    <section id="section-any-codebase" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Any codebase (multi-language)</h2>
+        <p class="text-gray-400 mb-4">
+            <code>soli graph</code> isn't limited to Soli apps &mdash; point it at <strong class="text-white">any
+            repository</strong> and pick which files to index. Storage, embeddings, incremental sync and
+            <code>soli graph query</code> are identical; only the extractor changes. SolidB settings come from the
+            project's <code>.env</code>, just like a Soli app &mdash; a non-Soli repo won't have these, so add them:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename=".env"><code class="language-bash text-sm">SOLIDB_HOST=http://localhost:6745    # required
+SOLIDB_DATABASE=myapp_codegraph      # required (any name; created on first write)
+SOLIDB_USERNAME=admin                # required for auth …
+SOLIDB_PASSWORD=secret               # … (or SOLIDB_JWT / SOLIDB_API_KEY)
+
+# optional — only to embed for semantic search; else use --no-embed
+SOLI_EMBEDDING_API_KEY=sk-...</code></pre>
+        </div>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># index a Rails app: Ruby + templates
+soli graph build /path/to/rails-app --ext rb,erb,slim
+
+# or commit a .soligraph.toml and just run:
+soli graph build</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">Structural extraction (tree-sitter):</strong> Ruby, Python, JavaScript/JSX,
+            TypeScript/TSX, Rust and C# get real <code>class</code>/<code>module</code>/<code>method</code>/<code>function</code>
+            nodes plus <code>inherits</code>, <code>implements</code> and <code>imports</code> edges. Every other
+            extension (<code>.erb</code>, <code>.slim</code>, config, &hellip;) is <strong class="text-white">chunk-embedded</strong>
+            &mdash; split into windows and embedded &mdash; so semantic search still covers it, without structural edges.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename=".soligraph.toml"><code class="language-toml text-sm">extensions  = ["rb", "erb", "slim"]    # what to index
+exclude     = ["spec/", "db/migrate/"] # path substrings to skip
+chunk_lines = 50                       # window for chunk-embedded files</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Flags override the file (<code>--ext</code>, <code>--exclude</code>, <code>--config</code>); sensible
+            directories are skipped by default (<code>.git</code>, <code>node_modules</code>, <code>vendor</code>,
+            <code>tmp</code>, <code>target</code>, dot-dirs, &hellip;).
+        </p>
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">Call graph</h4>
+            <p class="text-amber-200/80 text-sm">
+                Cross-file name resolution is best-effort (unambiguous name match only), so
+                <code>inherits</code>/<code>imports</code> are reliable but a full <code>calls</code> graph isn't
+                attempted for foreign languages. <code>--fresh</code>, <code>--dry-run</code>, <code>--no-embed</code>,
+                incremental MD5 skipping and non-destructive sync all work the same as for Soli apps.
+            </p>
         </div>
     </section>
 
@@ -215,7 +292,8 @@ FOR v, e IN 1..2 OUTBOUND "soli_graph_nodes/method:PostsController.create" soli_
             callers, callees, routes and views &mdash; exactly the context an agent needs to make a change.
         </p>
         <p class="text-gray-500 text-sm">
-            v1 is a one-shot build &mdash; re-run to refresh (no file-watch yet). See the full reference in
+            Re-run <code>soli graph build</code> any time to refresh &mdash; it's incremental (hashes files, skips
+            when unchanged, updates in place), and in dev it auto-reindexes on save. See the full reference in
             <code>www/docs/graph.md</code>.
         </p>
     </section>

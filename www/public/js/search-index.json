@@ -6,8 +6,8 @@
       "category": "Development Tools",
       "path": "/docs/development-tools/graph",
       "signature": "soli graph build [folder] · soli graph query \"<question>\"",
-      "description": "Build a graph of your project's source (files, classes, models, controllers, methods, routes, views and their relationships) in SolidB, then `soli graph query \"<question>\"` retrieves the most relevant code plus its graph relationships in one call — graph RAG over your own codebase. --no-embed for an offline structural graph, --dry-run to print JSON, --json for agent-parseable query output.",
-      "keywords": ["soli graph", "graph build", "graph query", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "retrieval", "dependency graph", "call graph"]
+      "description": "Build a graph of your project's source (files, classes, methods, routes, views and their relationships) in SolidB, then `soli graph query \"<question>\"` retrieves the most relevant code plus its graph relationships in one call — graph RAG over your own codebase. Works on ANY repo (Ruby/Rails, Python, JS/TS, Rust, C# via tree-sitter) with --ext or a .soligraph.toml. --no-embed for an offline structural graph, --dry-run to print JSON, --fresh to rebuild, --json for agent-parseable query output.",
+      "keywords": ["soli graph", "graph build", "graph query", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "retrieval", "dependency graph", "call graph", "tree-sitter", "multi-language", "ruby", "rails", "python", "typescript", "rust", "soligraph.toml", "any codebase"]
     },
     {
       "title": "How Soli Compares",

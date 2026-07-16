@@ -104,6 +104,17 @@ pub enum Command {
         database: Option<String>,
         /// Print the graph as JSON instead of writing to SolidB.
         dry_run: bool,
+        /// Force a full clean rebuild (drop + recreate) instead of the default
+        /// incremental, hash-based, non-destructive sync.
+        fresh: bool,
+        /// Comma-separated file extensions to index (e.g. `rb,erb,slim`). When
+        /// set (or a `.soligraph.toml` is present), the generic multi-language
+        /// extractor is used instead of the Soli-app extractor.
+        ext: Option<String>,
+        /// Comma-separated path substrings to exclude.
+        exclude: Option<String>,
+        /// Path to the config file (default: `.soligraph.toml` in the folder).
+        config: Option<String>,
     },
     /// `soli graph query "<question>" [folder]` — retrieve the code most
     /// relevant to a task (semantic seed + graph expansion), for agents.
@@ -240,7 +251,7 @@ pub fn print_usage() {
     eprintln!("  soli db:seed generate <name> [folder]");
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
-    eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run]");
+    eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
     eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N]");
     eprintln!();
     eprintln!("Commands:");
@@ -613,10 +624,15 @@ pub fn parse_args() -> Options {
                         let mut no_embed = false;
                         let mut database: Option<String> = None;
                         let mut dry_run = false;
+                        let mut fresh = false;
+                        let mut ext: Option<String> = None;
+                        let mut exclude: Option<String> = None;
+                        let mut config: Option<String> = None;
                         while i < args.len() {
                             match args[i].as_str() {
                                 "--no-embed" => no_embed = true,
                                 "--dry-run" => dry_run = true,
+                                "--fresh" => fresh = true,
                                 "--database" => {
                                     i += 1;
                                     if i >= args.len() {
@@ -627,6 +643,39 @@ pub fn parse_args() -> Options {
                                 }
                                 arg if arg.starts_with("--database=") => {
                                     database = Some(arg["--database=".len()..].to_string());
+                                }
+                                "--ext" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--ext requires a comma-separated list");
+                                        process::exit(64);
+                                    }
+                                    ext = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--ext=") => {
+                                    ext = Some(arg["--ext=".len()..].to_string());
+                                }
+                                "--exclude" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--exclude requires a comma-separated list");
+                                        process::exit(64);
+                                    }
+                                    exclude = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--exclude=") => {
+                                    exclude = Some(arg["--exclude=".len()..].to_string());
+                                }
+                                "--config" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--config requires a path");
+                                        process::exit(64);
+                                    }
+                                    config = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--config=") => {
+                                    config = Some(arg["--config=".len()..].to_string());
                                 }
                                 arg if !arg.starts_with('-') && !folder_set => {
                                     folder = arg.to_string();
@@ -645,6 +694,10 @@ pub fn parse_args() -> Options {
                             no_embed,
                             database,
                             dry_run,
+                            fresh,
+                            ext,
+                            exclude,
+                            config,
                         };
                         return options;
                     }

@@ -1,3 +1,4 @@
+mod progress;
 mod test_runner;
 
 use std::env;
@@ -1947,12 +1948,38 @@ pub fn run_routes(folder: &str, grep: Option<&str>, json: bool) {
 /// retrieve code by semantic search and traverse relationships (graph RAG).
 /// `--dry-run` prints the graph as JSON and touches neither SolidB nor the
 /// embedding API.
-pub fn run_graph(folder: &str, no_embed: bool, database: Option<&str>, dry_run: bool) {
+#[allow(clippy::too_many_arguments)]
+pub fn run_graph(
+    folder: &str,
+    no_embed: bool,
+    database: Option<&str>,
+    dry_run: bool,
+    fresh: bool,
+    ext: Option<&str>,
+    exclude: Option<&str>,
+    config_path: Option<&str>,
+) {
     use solilang::graph;
 
     let app_path = Path::new(folder);
 
-    let mut project_graph = match graph::build_graph(app_path) {
+    // Choose the extractor: the generic multi-language path when the user asked
+    // for extensions (via --ext or a .soligraph.toml), otherwise the Soli-app
+    // extractor.
+    let config = graph::GraphConfig::load(app_path, ext, exclude, config_path);
+    let generic = config.has_extensions();
+
+    // Pass 1 (parse) — the CPU-bound phase that scales with project size.
+    let mut build_bar = progress::ProgressBar::new("Building graph");
+    let build_result = if generic {
+        graph::build_generic_graph(app_path, &config, &mut |done, total| {
+            build_bar.set(done, total)
+        })
+    } else {
+        graph::build_graph_with_progress(app_path, &mut |done, total| build_bar.set(done, total))
+    };
+    build_bar.finish();
+    let mut project_graph = match build_result {
         Ok(g) => g,
         Err(e) => {
             eprintln!("\x1b[31mError:\x1b[0m {}", e);
@@ -1972,23 +1999,79 @@ pub fn run_graph(folder: &str, no_embed: bool, database: Option<&str>, dry_run: 
     solilang::interpreter::builtins::model::init_db_config();
 
     let embed = !no_embed;
-    if embed {
-        println!();
-        println!(
-            "  \x1b[1mEmbedding {} nodes...\x1b[0m",
-            project_graph.nodes.len()
-        );
-        if let Err(e) = graph::embed_graph(&mut project_graph) {
-            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-            process::exit(1);
-        }
-    }
-
     let opts = graph::SyncOptions {
         database: database.map(str::to_string),
         embed,
     };
-    let report = match graph::write_graph(&project_graph, &opts) {
+
+    // Default is an incremental, non-destructive sync: skip when nothing
+    // changed, reuse embeddings for unchanged nodes, and upsert/prune instead
+    // of dropping. `--fresh` forces a full clean rebuild.
+    if !fresh && graph::is_up_to_date(&project_graph.file_hashes, database) {
+        println!();
+        println!(
+            "  \x1b[32m✓\x1b[0m code graph already up to date \x1b[2m({} files unchanged)\x1b[0m",
+            project_graph.file_hashes.len()
+        );
+        println!();
+        return;
+    }
+
+    let mut reused = 0usize;
+    let mut reembedded = 0usize;
+
+    // Embedding — the slow, network-bound phase (sequential API round-trips).
+    if fresh {
+        if embed {
+            let mut embed_bar = progress::ProgressBar::new(&format!(
+                "Embedding {} nodes",
+                project_graph.nodes.len()
+            ));
+            let result = graph::embed_graph(&mut project_graph, &mut |done, total| {
+                embed_bar.set(done, total)
+            });
+            embed_bar.finish();
+            if let Err(e) = result {
+                eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                process::exit(1);
+            }
+        }
+    } else {
+        // Reuse cached vectors for unchanged nodes; embed only the deltas.
+        let mut embed_bar = progress::ProgressBar::new("Embedding changed nodes");
+        let result = graph::embed_incremental(&mut project_graph, &opts, &mut |done, total| {
+            embed_bar.set(done, total)
+        });
+        embed_bar.finish();
+        match result {
+            Ok((r, e)) => {
+                reused = r;
+                reembedded = e;
+            }
+            Err(e) => {
+                eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    // Write to SolidB: clean rebuild for --fresh, non-destructive sync otherwise.
+    let mut write_bar = progress::ProgressBar::new(if fresh {
+        "Writing to SolidB"
+    } else {
+        "Syncing to SolidB"
+    });
+    let write_result = if fresh {
+        graph::write_graph(&project_graph, &opts, &mut |done, total| {
+            write_bar.set(done, total)
+        })
+    } else {
+        graph::sync_graph(&project_graph, &opts, &mut |done, total| {
+            write_bar.set(done, total)
+        })
+    };
+    write_bar.finish();
+    let report = match write_result {
         Ok(r) => r,
         Err(e) => {
             eprintln!("  \x1b[31mError:\x1b[0m {}", e);
@@ -1997,14 +2080,19 @@ pub fn run_graph(folder: &str, no_embed: bool, database: Option<&str>, dry_run: 
     };
 
     let embed_note = if report.embedded {
-        format!(", embedded (dim {})", report.dimension)
+        if fresh {
+            format!(", embedded (dim {})", report.dimension)
+        } else {
+            format!(", embeddings: {} reused / {} refreshed", reused, reembedded)
+        }
     } else {
         ", no embeddings".to_string()
     };
+    let verb = if fresh { "rebuilt" } else { "synced" };
     println!();
     println!(
-        "  \x1b[32m→\x1b[0m {} nodes, {} edges{} → SolidB \x1b[1m{}\x1b[0m",
-        report.nodes, report.edges, embed_note, report.database
+        "  \x1b[32m→\x1b[0m {} {} nodes, {} edges{} → SolidB \x1b[1m{}\x1b[0m",
+        verb, report.nodes, report.edges, embed_note, report.database
     );
     if project_graph.unresolved_calls > 0 {
         println!(

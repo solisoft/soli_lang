@@ -1,0 +1,18 @@
+[package]
+name = "soli-codegraph"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-language code-structure extraction (tree-sitter) for the soli graph tool — produces language-agnostic definition/edge records for Ruby, JS/TS, Python, Rust and C#."
+license = "MIT"
+include = ["src/**/*", "Cargo.toml"]
+
+[dependencies]
+tree-sitter = "0.25"
+tree-sitter-ruby = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-c-sharp = "0.23"
+
+[dev-dependencies]

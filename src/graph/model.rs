@@ -15,6 +15,9 @@ use serde::Serialize;
 pub const NODE_COLLECTION: &str = "soli_graph_nodes";
 /// SolidB edge collection holding one document per graph edge.
 pub const EDGE_COLLECTION: &str = "soli_graph_edges";
+/// Small collection holding the build manifest (per-file content hashes) so a
+/// re-run can skip when nothing changed.
+pub const META_COLLECTION: &str = "soli_graph_meta";
 /// Name of the vector index created over `soli_graph_nodes.embedding`.
 pub const VECTOR_INDEX: &str = "node_vec";
 
@@ -40,13 +43,14 @@ pub struct Node {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub signature: String,
     /// Superclass name for classes (`Model`, `ApplicationController`, …).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Always serialized (never skipped) so an incremental UPDATE overwrites it
+    /// to `null` when a class drops its `< Base`.
     pub superclass: Option<String>,
     /// MVC role: model, controller, helper, service, job, middleware, mailer.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub role: String,
-    /// Leading `#`/`//` doc comment, if any.
-    #[serde(skip_serializing_if = "String::is_empty")]
+    /// Leading `#`/`//` doc comment, if any. Always serialized so an incremental
+    /// UPDATE clears it when the comment is removed.
     pub doc: String,
     /// The text embedded for semantic search (`kind`, name, signature, doc,
     /// source snippet).
@@ -90,6 +94,10 @@ pub struct ProjectGraph {
     /// tracked for the summary line.
     #[serde(skip)]
     pub resolved_imports: usize,
+    /// `relpath -> content hash` for every source file, so an incremental
+    /// re-build can skip when nothing changed.
+    #[serde(skip)]
+    pub file_hashes: std::collections::HashMap<String, String>,
 }
 
 impl ProjectGraph {
@@ -111,9 +119,13 @@ impl ProjectGraph {
         serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
     }
 
-    /// Edge document as written to `soli_graph_edges` (`_from`/`_to` refs).
+    /// Edge document as written to `soli_graph_edges` (`_from`/`_to` refs). The
+    /// `_key` is deterministic (a hash of the endpoints/kind/line/relation) so a
+    /// re-build upserts the same edge instead of duplicating it — enabling the
+    /// non-destructive diff sync.
     pub fn edge_document(edge: &Edge) -> serde_json::Value {
         let mut doc = serde_json::json!({
+            "_key": edge_key(edge),
             "_from": format!("{}/{}", NODE_COLLECTION, edge.from),
             "_to": format!("{}/{}", NODE_COLLECTION, edge.to),
             "edge_kind": edge.edge_kind,
@@ -161,7 +173,19 @@ pub fn sanitize_key(id: &str) -> String {
     out
 }
 
-/// Tiny FNV-1a hash — only used to disambiguate over-long truncated keys.
+/// Deterministic `_key` for an edge, so re-builds upsert (not duplicate) it.
+/// Endpoints + kind + line + relation fully identify an edge, including two
+/// distinct call sites to the same target (they differ by line).
+pub fn edge_key(edge: &Edge) -> String {
+    let sig = format!(
+        "{}|{}|{}|{}|{}",
+        edge.from, edge.to, edge.edge_kind, edge.line, edge.relation
+    );
+    format!("e{:016x}", fnv1a(&sig))
+}
+
+/// Tiny FNV-1a hash — used to disambiguate over-long truncated keys and to
+/// derive deterministic edge keys.
 fn fnv1a(s: &str) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in s.bytes() {

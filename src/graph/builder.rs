@@ -27,6 +27,47 @@ use crate::graph::model::{sanitize_key, Edge, Node, ProjectGraph};
 const MAX_SNIPPET: usize = 1200;
 const MAX_TEXT: usize = 2000;
 
+/// One route as plain strings.
+pub struct RouteRef {
+    pub method: String,
+    pub path: String,
+    pub handler: String,
+}
+
+/// A `Send`-safe snapshot of the route table. `Route` itself is `!Send` (it
+/// holds `Value`s in `middleware`), so the dev reindex thread — and any caller
+/// crossing a thread boundary — takes this string-only form instead.
+pub struct RouteSnapshot {
+    pub routes: Vec<RouteRef>,
+    pub websockets: Vec<RouteRef>,
+}
+
+impl RouteSnapshot {
+    /// Build from the route lister's output (used by the standalone CLI path).
+    pub fn from_listing(listing: &crate::serve::route_listing::RouteListing) -> Self {
+        RouteSnapshot {
+            routes: listing
+                .routes
+                .iter()
+                .map(|r| RouteRef {
+                    method: r.method.clone(),
+                    path: r.path_pattern.clone(),
+                    handler: r.handler_name.clone(),
+                })
+                .collect(),
+            websockets: listing
+                .websockets
+                .iter()
+                .map(|w| RouteRef {
+                    method: "WS".to_string(),
+                    path: w.path_pattern.clone(),
+                    handler: w.handler_name.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
 /// A parsed `.sl` file kept around for the body-walk pass.
 struct ParsedFile {
     relpath: String,
@@ -90,16 +131,49 @@ struct GraphBuilder {
 
 /// Build the code-graph for the Soli app rooted at `app_path`.
 pub fn build_graph(app_path: &Path) -> Result<ProjectGraph, String> {
+    build_graph_inner(app_path, None, &mut |_, _| {})
+}
+
+/// Like [`build_graph`], but reports parse progress as `(files_done, total)`
+/// after each source file — the CPU-bound pass that scales with project size.
+pub fn build_graph_with_progress(
+    app_path: &Path,
+    on_progress: &mut dyn FnMut(usize, usize),
+) -> Result<ProjectGraph, String> {
+    build_graph_inner(app_path, None, on_progress)
+}
+
+/// Like [`build_graph`], but with the route table supplied by the caller
+/// instead of executing `config/routes.sl`. Used by the dev-server auto-reindex
+/// so it never re-runs the routing DSL (which would append to the process-global
+/// WebSocket registry the live server depends on).
+pub fn build_graph_with_routes(
+    app_path: &Path,
+    routes: &RouteSnapshot,
+    on_progress: &mut dyn FnMut(usize, usize),
+) -> Result<ProjectGraph, String> {
+    build_graph_inner(app_path, Some(routes), on_progress)
+}
+
+fn build_graph_inner(
+    app_path: &Path,
+    routes: Option<&RouteSnapshot>,
+    on_progress: &mut dyn FnMut(usize, usize),
+) -> Result<ProjectGraph, String> {
     if !app_path.is_dir() {
         return Err(format!("Folder '{}' does not exist", app_path.display()));
     }
 
     let mut builder = GraphBuilder::default();
     let mut parsed: Vec<ParsedFile> = Vec::new();
+    let mut file_hashes: HashMap<String, String> = HashMap::new();
 
     // Pass 1: nodes. `.slv` views are added inline; `.sl` files are parsed and
     // walked, then retained for the body pass.
-    for path in gather_source_files(app_path) {
+    let files = gather_source_files(app_path);
+    let total = files.len();
+    for (index, path) in files.into_iter().enumerate() {
+        on_progress(index + 1, total);
         let relpath = relpath(app_path, &path);
         let role = role_for_path(&relpath);
         let is_view = path.extension().and_then(|e| e.to_str()) == Some("slv");
@@ -107,6 +181,7 @@ pub fn build_graph(app_path: &Path) -> Result<ProjectGraph, String> {
             Ok(s) => s,
             Err(_) => continue,
         };
+        file_hashes.insert(relpath.clone(), md5_hex(&source));
         if is_view {
             builder.add_view(&relpath, &source);
             continue;
@@ -146,15 +221,46 @@ pub fn build_graph(app_path: &Path) -> Result<ProjectGraph, String> {
         builder.walk_bodies(&file.program, &file.relpath, prefix.as_deref());
     }
 
-    // Pass 4: routes.
-    builder.extract_routes(app_path);
+    // Pass 4: routes. Use the caller-supplied table when given (dev reindex);
+    // otherwise execute `config/routes.sl` via the route lister.
+    match routes {
+        Some(snapshot) => builder.extract_routes_from(snapshot),
+        None => {
+            // Executing config/routes.sl runs app code that may print to stdout
+            // (the `soli new` scaffold ends routes.sl with `print("Routes
+            // loaded!")`). Capture and discard that output so the command's
+            // stdout stays clean — critical for `--dry-run` JSON and so it
+            // never collides with the progress bar.
+            let listing = {
+                let _capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+                crate::serve::route_listing::collect_routes(app_path)
+            };
+            if let Ok(listing) = listing {
+                builder.extract_routes_from(&RouteSnapshot::from_listing(&listing));
+            }
+        }
+    }
 
     Ok(ProjectGraph {
         nodes: builder.nodes,
         edges: builder.edges,
         unresolved_calls: builder.unresolved_calls,
         resolved_imports: builder.resolved_imports,
+        file_hashes,
     })
+}
+
+/// Hex-encoded MD5 of a source file's content, used for the incremental-build
+/// manifest (skip a re-build when no file changed).
+pub(crate) fn md5_hex(source: &str) -> String {
+    use md5::{Digest, Md5};
+    let mut hasher = Md5::new();
+    hasher.update(source.as_bytes());
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
 }
 
 impl GraphBuilder {
@@ -989,31 +1095,21 @@ impl GraphBuilder {
 
     // ---- Pass 4: routes ----------------------------------------------------
 
-    fn extract_routes(&mut self, app_path: &Path) {
-        let listing = match crate::serve::route_listing::collect_routes(app_path) {
-            Ok(l) => l,
-            Err(_) => return, // no config/routes.sl — nothing to add
-        };
+    fn extract_routes_from(&mut self, snapshot: &RouteSnapshot) {
         let routes_file = "config/routes.sl".to_string();
         let has_routes_file = self.has_node(&format!("file:{}", routes_file));
 
-        for route in &listing.routes {
+        for route in &snapshot.routes {
             self.add_route_node(
                 &route.method,
-                &route.path_pattern,
-                &route.handler_name,
+                &route.path,
+                &route.handler,
                 &routes_file,
                 has_routes_file,
             );
         }
-        for ws in &listing.websockets {
-            self.add_route_node(
-                "WS",
-                &ws.path_pattern,
-                &ws.handler_name,
-                &routes_file,
-                has_routes_file,
-            );
+        for ws in &snapshot.websockets {
+            self.add_route_node("WS", &ws.path, &ws.handler, &routes_file, has_routes_file);
         }
     }
 

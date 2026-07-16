@@ -34,18 +34,103 @@ from your `.env` just like `soli db:seed`.
 
 | Flag | Effect |
 |------|--------|
-| `--no-embed` | Structural graph only — skip embeddings and the vector index (fully offline, no API key). |
+| `--no-embed` | Structural graph only — skip embeddings and the vector index (fully offline, no API key). Existing embeddings are preserved. |
 | `--database NAME` | Write to a specific database instead of `SOLIDB_DATABASE`. |
 | `--dry-run` | Print the whole graph as JSON to stdout — writes nothing to SolidB and calls no embedding API. Great for inspection and CI. |
+| `--fresh` | Force a full clean rebuild (drop + recreate) instead of the default incremental sync. Use it after changing the embedding model, or to reset. |
 
 ```bash
 # Inspect what would be built, without a database or API key:
 soli graph build --dry-run | jq '.nodes | length, .edges | length'
 ```
 
-The build is a **clean rebuild**: the `soli_graph_nodes` and `soli_graph_edges`
-collections are dropped and recreated each run, so the graph always matches the
-current source. Re-run it whenever the code changes.
+The build is **incremental and non-destructive**. It hashes every source file
+(MD5) into a manifest, so a re-run when nothing changed is a fast no-op
+(`✓ code graph already up to date`). When something did change, it updates SolidB
+**in place** — inserts new nodes/edges, updates changed ones, prunes removed ones
+— rather than dropping the collections, so a concurrent reader never sees an
+empty graph and **unchanged embeddings are reused** (only changed/new node text
+is re-embedded). Pass `--fresh` to force a full clean rebuild. A progress bar
+tracks the parse → embed → sync phases (an in-place bar on a TTY, sparse
+percentage milestones otherwise) so a large project doesn't look frozen.
+
+### Keeping it fresh automatically (dev)
+
+When you run the dev server **with an embedding key configured**
+(`SOLI_EMBEDDING_API_KEY`), the graph reindexes itself whenever you save a
+`.sl`/`.slv` file — no flag needed, it just stays current while you work:
+
+```bash
+soli serve . --dev          # auto-reindex on (embedding key present)
+```
+
+It rides the dev file-watcher (debounced), runs on a background thread (off the
+request path), and reuses the live route table rather than re-executing
+`routes.sl`. Crucially it's **incremental on the expensive part**: it reuses the
+existing embedding for every node whose text is unchanged and only re-embeds
+what actually changed — so a one-file save costs a re-parse and a handful of
+embeddings, not thousands, and your semantic layer stays intact.
+
+Set `SOLI_GRAPH_WATCH=0` to turn it off, or `SOLI_GRAPH_WATCH=1` to force it on
+even without an embedding key (structural-only reindex). The first reindex after
+a server start does a full embed if there's no prior graph; after that it's
+incremental.
+
+## Any codebase (multi-language)
+
+`soli graph` isn't limited to Soli apps — point it at **any repository** and pick
+which files to index. The storage, embeddings, incremental sync, and
+`soli graph query` are identical; only the extractor changes.
+
+```bash
+# index a Rails app: Ruby + templates
+soli graph build /path/to/rails-app --ext rb,erb,slim
+
+# or commit a .soligraph.toml and just run `soli graph build`
+```
+
+SolidB settings come from the project's `.env` (host, database, credentials),
+exactly like a Soli app. A non-Soli repo won't have these, so add them:
+
+```bash
+# .env — required for `soli graph build` to reach SolidB
+SOLIDB_HOST=http://localhost:6745      # required
+SOLIDB_DATABASE=myapp_codegraph        # required (any db name; created on first write)
+SOLIDB_USERNAME=admin                  # required for auth …
+SOLIDB_PASSWORD=secret                 # … (or use SOLIDB_JWT / SOLIDB_API_KEY instead)
+
+# optional — only needed to embed (semantic search). Without it, use --no-embed.
+SOLI_EMBEDDING_API_KEY=sk-...
+```
+
+When you pass `--ext` (or a `.soligraph.toml` is present), the **generic
+multi-language extractor** runs instead of the Soli one.
+
+**Structural extraction (tree-sitter):** Ruby, Python, JavaScript/JSX,
+TypeScript/TSX, Rust, and C# get real `class` / `module` / `method` / `function`
+nodes plus `inherits`, `implements`, and `imports` edges. Every other extension
+(`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into windows
+and embedded — so semantic search still covers it, just without structural
+edges.
+
+### `.soligraph.toml`
+
+```toml
+extensions  = ["rb", "erb", "slim"]   # what to index
+exclude     = ["spec/", "db/migrate/"] # path substrings to skip
+chunk_lines = 50                       # window for chunk-embedded files
+```
+
+Flags override the file: `--ext rb,py`, `--exclude spec/,tmp/`,
+`--config path/to/config.toml`. Sensible directories are skipped by default
+(`.git`, `node_modules`, `vendor`, `tmp`, `log`, `target`, `dist`, `build`,
+`__pycache__`, dot-dirs).
+
+**Note — call graph:** cross-file name resolution is best-effort (an
+unambiguous name match only), so `inherits`/`imports` are reliable but a full
+`calls` graph is not attempted for foreign languages. `--fresh`, `--dry-run`,
+`--no-embed`, incremental MD5 skipping and non-destructive sync all work the
+same as for Soli apps.
 
 ## Schema
 
@@ -202,7 +287,9 @@ callees, routes and views — exactly the context an agent needs to make a chang
 
 ## Notes
 
-- v1 is a one-shot build — re-run it to refresh; there's no file-watch yet.
+- Re-run `soli graph build` any time to refresh — it's incremental (hashes
+  files, skips when unchanged, updates in place). In dev it auto-reindexes on
+  save (see above), so you rarely need to run it by hand.
 - `.slv` views become `view` nodes (their content is embedded too), so
   "find the view that renders X" is a semantic query.
 - The graph is a **superset**: it works on any Soli codebase, but MVC roles

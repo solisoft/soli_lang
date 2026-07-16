@@ -33,13 +33,18 @@ name = "soli"
 path = "src/main.rs"
 
 [features]
-default = ["embedding", "llm"]
+default = ["embedding", "llm", "codegraph"]
 # Coverage is now always enabled at runtime via --coverage flag
-full = ["embedding", "llm"]
+full = ["embedding", "llm", "codegraph"]
 embedding = []
 # LLM text completion via an OpenAI-compatible chat/completions endpoint
 # (src/generation.rs, exposed to Soli as the `llm_generate` builtin).
 llm = []
+# Multi-language code-graph extraction (`soli graph build` on non-Soli repos).
+# Pulls tree-sitter + grammar crates (compiled C, ~+8-10MB). On by default so a
+# normal install works out of the box; drop it (`--no-default-features` set) for
+# a lean standalone runtime that never indexes foreign codebases.
+codegraph = ["dep:soli-codegraph"]
 
 [dependencies]
 thiserror = "1.0"
@@ -244,6 +249,9 @@ mail-builder = "0.4"
 
 # JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
 soli-pdf = { path = "pdf" }
+soli-codegraph = { path = "codegraph", optional = true }
+# `.soligraph.toml` config for `soli graph build` on non-Soli repos.
+toml = "0.8"
 cms = { version = "0.2", features = ["std"] }
 x509-cert = "0.2"
 

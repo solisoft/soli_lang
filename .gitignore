@@ -12,3 +12,7 @@ node_modules
 !.env.example
 .claude/settings.local.json
 tasks*
+
+# codegraph sub-crate build artifacts
+/codegraph/target/
+/codegraph/Cargo.lock

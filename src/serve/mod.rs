@@ -1138,6 +1138,25 @@ fn run_hyper_server_worker_pool(
     let hot_reload_versions = Arc::new(HotReloadVersions::new());
     let hot_reload_versions_for_watcher = hot_reload_versions.clone();
 
+    // Code-graph auto-reindex (dev): keep the SolidB code graph fresh as source
+    // files change. On by default when an embedding key is configured (semantic
+    // search is the whole point of the graph); `SOLI_GRAPH_WATCH=1`/`0` forces
+    // it on/off regardless. The watcher signals a background reindex thread.
+    let graph_watch = dev_mode
+        && match std::env::var("SOLI_GRAPH_WATCH") {
+            Ok(v) => v == "1" || v.eq_ignore_ascii_case("true"),
+            Err(_) => std::env::var("SOLI_EMBEDDING_API_KEY").is_ok(),
+        };
+    let (graph_reindex_tx, graph_reindex_rx): (
+        Option<std::sync::mpsc::Sender<()>>,
+        Option<std::sync::mpsc::Receiver<()>>,
+    ) = if graph_watch {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+
     // Spawn file watcher thread for hot reload (only in dev mode)
     if dev_mode {
         let watch_controllers_dir = controllers_dir.clone();
@@ -1312,6 +1331,18 @@ fn run_hyper_server_worker_pool(
 
                 if changed.is_empty() {
                     continue;
+                }
+
+                // Signal the code-graph reindexer when a `.sl`/`.slv` changed.
+                if let Some(tx) = &graph_reindex_tx {
+                    if changed.iter().any(|p| {
+                        matches!(
+                            p.extension().and_then(|e| e.to_str()),
+                            Some("sl") | Some("slv")
+                        )
+                    }) {
+                        let _ = tx.send(());
+                    }
                 }
 
                 println!("\n🔄 Hot reload triggered for:");
@@ -1516,6 +1547,53 @@ fn run_hyper_server_worker_pool(
     let runtime_handle = runtime_handle_rx
         .recv()
         .expect("Failed to receive runtime handle from tokio thread");
+
+    // Spawn the code-graph reindex worker (dev, opt-in). It reuses the live
+    // route table (never re-executing routes.sl, which would pollute the
+    // process-global WebSocket registry) and does its SolidB + embedding work
+    // off both the request path and the watcher thread.
+    if let Some(reindex_rx) = graph_reindex_rx {
+        let reindex_handle = runtime_handle.clone();
+        let reindex_folder = folder.to_path_buf();
+        // Convert to a `Send` string-only snapshot on this thread — `Route`
+        // holds `Value`s (`!Send`) and can't cross into the worker.
+        let route_snapshot = crate::graph::RouteSnapshot {
+            routes: routes
+                .iter()
+                .map(|r| crate::graph::RouteRef {
+                    method: r.method.clone(),
+                    path: r.path_pattern.clone(),
+                    handler: r.handler_name.clone(),
+                })
+                .collect(),
+            websockets: crate::serve::websocket::get_websocket_routes()
+                .iter()
+                .map(|w| crate::graph::RouteRef {
+                    method: "WS".to_string(),
+                    path: w.path_pattern.clone(),
+                    handler: w.handler_name.clone(),
+                })
+                .collect(),
+        };
+        thread::Builder::new()
+            .name("graph-reindex".into())
+            .spawn(move || {
+                set_tokio_handle(reindex_handle);
+                println!("🔁 code-graph auto-reindex on (embedding key detected; set SOLI_GRAPH_WATCH=0 to disable)");
+                while reindex_rx.recv().is_ok() {
+                    // Coalesce a burst of change signals into one rebuild.
+                    while reindex_rx.try_recv().is_ok() {}
+                    match crate::graph::reindex(&reindex_folder, None, &route_snapshot) {
+                        Ok(r) => println!(
+                            "🔁 code graph reindexed: {} nodes, {} edges ({} reused, {} re-embedded)",
+                            r.nodes, r.edges, r.reused, r.reembedded
+                        ),
+                        Err(e) => eprintln!("⚠️  code-graph reindex failed: {}", e),
+                    }
+                }
+            })
+            .ok();
+    }
 
     // Receive the actual bound port (may differ from requested if it was in use)
     let actual_port = bound_port_rx
