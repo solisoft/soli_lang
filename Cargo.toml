@@ -229,8 +229,14 @@ umya-spreadsheet = "1.0"
 # to compile cookie. Drop the ceiling once cookie ships a release built on time 0.3.52.
 time = ">=0.3.47, <0.3.52"
 
-# SSH support for deploy
-ssh2 = "0.9"
+# SSH support for deploy.
+# `vendored-openssl` compiles OpenSSL from source (statically) instead of
+# linking the system `libssl`. This removes the only reason the release CI's
+# arm64 cross-build needed `libssl-dev:arm64` from the (flaky, sometimes
+# unreachable) `ports.ubuntu.com` multiarch mirror. Feature unification makes
+# every `openssl-sys` consumer in the graph vendored too (e.g. rusoto's
+# native-tls), so no target needs a system OpenSSL.
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 
 # Language Server Protocol (used by `soli lsp`)
 tower-lsp = "0.20"
