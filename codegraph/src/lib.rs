@@ -39,7 +39,7 @@ pub struct Def {
 /// target against the project's definitions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeRef {
-    /// `imports`, `inherits`, `calls`, `implements`.
+    /// `imports`, `inherits`, `implements`, `calls`, `instantiates`.
     pub kind: String,
     /// The referenced name/path as written in source.
     pub target: String,
@@ -85,6 +85,12 @@ mod tests {
         out.edges
             .iter()
             .any(|e| e.kind == kind && e.target == target)
+    }
+
+    fn has_edge_from(out: &Extraction, kind: &str, target: &str, from: &str) -> bool {
+        out.edges
+            .iter()
+            .any(|e| e.kind == kind && e.target == target && e.from_qualified == from)
     }
 
     #[test]
@@ -158,5 +164,19 @@ mod tests {
         assert!(has_edge(&out, "inherits", "Base"));
         assert!(has_edge(&out, "implements", "IAuth"));
         assert!(has_edge(&out, "imports", "System"));
+    }
+
+    #[test]
+    fn csharp_emits_calls_and_instantiates() {
+        let out = defs_extract(
+            "cs",
+            "class Account {\n  public void Save() {\n    var log = new Logger();\n    log.Write(\"x\");\n    Validate();\n    var items = new List<int>();\n  }\n}\n",
+        );
+        // `new Logger()` and a namespace/generic form both reduce to a simple name.
+        assert!(has_edge_from(&out, "instantiates", "Logger", "Account.Save"));
+        assert!(has_edge(&out, "instantiates", "List")); // generic stripped
+        // `log.Write(...)` → callee `Write`; bare `Validate()` → `Validate`.
+        assert!(has_edge_from(&out, "calls", "Write", "Account.Save"));
+        assert!(has_edge_from(&out, "calls", "Validate", "Account.Save"));
     }
 }

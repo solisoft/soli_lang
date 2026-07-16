@@ -248,12 +248,14 @@ impl GenericBuilder {
                 }
             }
         }
-        // Defer by-name edges (need the full project def index).
+        // Defer by-name edges (need the full project def index). The enclosing
+        // def was just interned above, so resolve `from` against real node ids
+        // rather than guessing the kind from the name's shape.
         for edge in edges {
             let from_id = if edge.from_qualified.is_empty() {
                 file_id.clone()
             } else {
-                def_id_for_qualified(&edge.from_qualified, rel)
+                self.resolve_from_id(&edge.from_qualified, rel)
             };
             self.deferred.push((from_id, edge, rel.to_string()));
         }
@@ -314,9 +316,38 @@ impl GenericBuilder {
                         }
                     }
                 }
+                "instantiates" => {
+                    // Link `new Foo()` only to a known project class — never an
+                    // external stub, so framework types (`new List<T>()`) don't
+                    // flood the graph with noise.
+                    if let Some(to) = self.class_by_name.get(&edge.target).cloned() {
+                        self.push_edge(&from_id, &to, "instantiates", "", &rel, edge.line);
+                    }
+                }
                 _ => {}
             }
         }
+    }
+
+    /// Map an enclosing def's qualified name to its interned node id, trying the
+    /// real candidates in id space (`method:` / `class:` / file-scoped
+    /// `function:`) and returning the first that exists. Unlike
+    /// [`def_id_for_qualified`], this doesn't guess the kind from the name's
+    /// shape — so a `.`/`::`-separated method name (C#, Rust) resolves to its
+    /// `method:` node instead of a nonexistent `class:` one. Falls back to the
+    /// shape heuristic when nothing matches, preserving prior behaviour.
+    fn resolve_from_id(&self, qualified: &str, rel: &str) -> String {
+        let candidates = [
+            format!("method:{}", qualified),
+            format!("class:{}", qualified),
+            format!("function:{}#{}", rel, qualified),
+        ];
+        for candidate in candidates {
+            if self.node_ids.contains(&candidate) {
+                return candidate;
+            }
+        }
+        def_id_for_qualified(qualified, rel)
     }
 
     fn resolve_import(&self, importer: &str, target: &str) -> Option<String> {
@@ -470,4 +501,80 @@ fn truncate(s: &str, max: usize) -> String {
         end -= 1;
     }
     s[..end].to_string()
+}
+
+#[cfg(all(test, feature = "codegraph"))]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn cs_config() -> GraphConfig {
+        GraphConfig {
+            extensions: vec!["cs".to_string()],
+            ..Default::default()
+        }
+    }
+
+    fn key_of(graph: &ProjectGraph, kind: &str, qn: &str) -> Option<String> {
+        graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == kind && n.qualified_name == qn)
+            .map(|n| n.key.clone())
+    }
+
+    fn has_edge(
+        graph: &ProjectGraph,
+        from: (&str, &str),
+        to: (&str, &str),
+        edge_kind: &str,
+    ) -> bool {
+        let (Some(f), Some(t)) = (key_of(graph, from.0, from.1), key_of(graph, to.0, to.1)) else {
+            return false;
+        };
+        graph
+            .edges
+            .iter()
+            .any(|e| e.from == f && e.to == t && e.edge_kind == edge_kind)
+    }
+
+    #[test]
+    fn csharp_instantiates_and_calls_resolve_to_the_enclosing_method() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("account.cs"),
+            "class Logger {\n  public void Write(string s) {}\n}\n\
+             class Account {\n  public void Save() {\n    var log = new Logger();\n    log.Write(\"x\");\n    var noise = new System.Text.StringBuilder();\n  }\n}\n",
+        )
+        .unwrap();
+        let graph = build_generic_graph(dir.path(), &cs_config(), &mut |_, _| {}).unwrap();
+
+        // `new Logger()` → instantiates, attributed to `Account.Save` (the method
+        // node, not a nonexistent `class:Account.Save`).
+        assert!(has_edge(
+            &graph,
+            ("method", "Account.Save"),
+            ("class", "Logger"),
+            "instantiates",
+        ));
+        // `log.Write(...)` resolves by unambiguous name to `Logger.Write`.
+        assert!(has_edge(
+            &graph,
+            ("method", "Account.Save"),
+            ("method", "Logger.Write"),
+            "calls",
+        ));
+        // A framework type (`new StringBuilder()`) is not a project class, so it
+        // yields no node and no instantiates edge — `Logger` is the only one.
+        assert!(!graph
+            .nodes
+            .iter()
+            .any(|n| n.qualified_name.contains("StringBuilder")));
+        let instantiates = graph
+            .edges
+            .iter()
+            .filter(|e| e.edge_kind == "instantiates")
+            .count();
+        assert_eq!(instantiates, 1, "only `new Logger()` should resolve");
+    }
 }

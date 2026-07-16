@@ -3,9 +3,10 @@
 //! query strings) and emits language-agnostic [`Def`]/[`EdgeRef`] records.
 //!
 //! Every walker extracts *definitions* (class/module/method/function/…),
-//! *inheritance* (`inherits`/`implements`), and *imports*. Call resolution is
-//! left to the caller (best-effort name matching), so calls are not emitted
-//! here.
+//! *inheritance* (`inherits`/`implements`), and *imports*. The C# walker also
+//! emits by-name `calls` and `instantiates` references from method bodies; the
+//! caller resolves each name against the project's definitions (best-effort,
+//! precision-first). Other languages still emit structure only.
 
 use tree_sitter::{Node, Parser};
 
@@ -598,11 +599,14 @@ fn walk_csharp(node: Node, bytes: &[u8], scope: &mut Vec<String>, out: &mut Extr
                         out,
                         kind,
                         &name,
-                        qn,
+                        qn.clone(),
                         child,
                         format!("{}{}", name, params),
                         None,
                     );
+                    // Scan the body (block or expression-bodied) for calls and
+                    // `new` instantiations, attributed to this member.
+                    csharp_scan_body(child, bytes, &qn, out);
                 }
             }
             "using_directive" => {
@@ -641,6 +645,56 @@ fn csharp_using(node: Node, bytes: &[u8]) -> String {
         }
     }
     String::new()
+}
+
+/// Recursively emit `calls` / `instantiates` by-name references found anywhere
+/// under `node`, attributed to the enclosing member `from_qn`. Text-based name
+/// extraction keeps it robust across grammar versions: the simple (unqualified,
+/// non-generic) name is what the caller resolves against project defs.
+fn csharp_scan_body(node: Node, bytes: &[u8], from_qn: &str, out: &mut Extraction) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "invocation_expression" => {
+                if let Some(func) = child.child_by_field_name("function") {
+                    let name = csharp_last_name(func, bytes);
+                    if is_simple_ident(&name) {
+                        out.edges
+                            .push(edge("calls", &name, from_qn, line_of(child)));
+                    }
+                }
+                // Arguments can hold further calls / `new`s.
+                csharp_scan_body(child, bytes, from_qn, out);
+            }
+            "object_creation_expression" => {
+                if let Some(ty) = child.child_by_field_name("type") {
+                    let name = csharp_last_name(ty, bytes);
+                    if is_simple_ident(&name) {
+                        out.edges
+                            .push(edge("instantiates", &name, from_qn, line_of(child)));
+                    }
+                }
+                csharp_scan_body(child, bytes, from_qn, out);
+            }
+            _ => csharp_scan_body(child, bytes, from_qn, out),
+        }
+    }
+}
+
+/// The simple name a C# type/callee reduces to: strip generic args (`<…>`) and
+/// namespace/receiver qualifiers (`a.b.C` → `C`, `obj.Method` → `Method`).
+fn csharp_last_name(node: Node, bytes: &[u8]) -> String {
+    let raw = text(node, bytes);
+    let base = raw.split('<').next().unwrap_or(raw);
+    base.rsplit('.').next().unwrap_or(base).trim().to_string()
+}
+
+/// A plausible bare identifier — filters out empty or punctuation-bearing
+/// leftovers from the text-based name reduction.
+fn is_simple_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_alphabetic() || c == '_')
+        && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
 // ---- edge helpers ----------------------------------------------------------

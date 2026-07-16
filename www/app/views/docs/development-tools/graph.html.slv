@@ -145,9 +145,11 @@ soli graph build</code></pre>
         <p class="text-gray-400 mb-4">
             <strong class="text-white">Structural extraction (tree-sitter):</strong> Ruby, Python, JavaScript/JSX,
             TypeScript/TSX, Rust and C# get real <code>class</code>/<code>module</code>/<code>method</code>/<code>function</code>
-            nodes plus <code>inherits</code>, <code>implements</code> and <code>imports</code> edges. Every other
-            extension (<code>.erb</code>, <code>.slim</code>, config, &hellip;) is <strong class="text-white">chunk-embedded</strong>
-            &mdash; split into windows and embedded &mdash; so semantic search still covers it, without structural edges.
+            nodes plus <code>inherits</code>, <code>implements</code> and <code>imports</code> edges. <strong class="text-white">C# also gets a call graph</strong>
+            &mdash; method-body <code>calls</code> and <code>new</code>&nbsp;&rarr;&nbsp;<code>instantiates</code> edges, attributed to
+            the enclosing method. Every other extension (<code>.erb</code>, <code>.slim</code>, config, &hellip;) is
+            <strong class="text-white">chunk-embedded</strong> &mdash; split into windows and embedded &mdash; so semantic
+            search still covers it, without structural edges.
         </p>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename=".soligraph.toml"><code class="language-toml text-sm">extensions  = ["rb", "erb", "slim"]    # what to index
@@ -162,10 +164,16 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
         <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <h4 class="text-base font-semibold text-amber-400 mb-2">Call graph</h4>
             <p class="text-amber-200/80 text-sm">
-                Cross-file name resolution is best-effort (unambiguous name match only), so
-                <code>inherits</code>/<code>imports</code> are reliable but a full <code>calls</code> graph isn't
-                attempted for foreign languages. <code>--fresh</code>, <code>--dry-run</code>, <code>--no-embed</code>,
-                incremental MD5 skipping and non-destructive sync all work the same as for Soli apps.
+                Cross-language resolution is <strong class="text-amber-200">precision-first</strong>. For C#, method
+                bodies are walked for <code>calls</code> and <code>new X()</code> <code>instantiates</code> references;
+                an <code>instantiates</code> edge lands only on a <em>project</em> class (framework types like
+                <code>new List&lt;T&gt;()</code> are skipped, never stubbed), and a <code>calls</code> edge lands only
+                when exactly one project method carries that name &mdash; C#'s heavy overloading means shared names
+                (<code>ToString</code>, <code>Add</code>&hellip;) are dropped rather than mis-linked. Treat it as a
+                high-confidence subset, not exhaustive; the other foreign languages emit structure only
+                (<code>inherits</code>/<code>implements</code>/<code>imports</code>). <code>--fresh</code>,
+                <code>--dry-run</code>, <code>--no-embed</code>, incremental MD5 skipping and non-destructive sync all
+                work the same as for Soli apps.
             </p>
         </div>
     </section>

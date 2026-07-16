@@ -115,10 +115,12 @@ multi-language extractor** runs instead of the Soli one.
 
 **Structural extraction (tree-sitter):** Ruby, Python, JavaScript/JSX,
 TypeScript/TSX, Rust, and C# get real `class` / `module` / `method` / `function`
-nodes plus `inherits`, `implements`, and `imports` edges. Every other extension
-(`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into windows
-and embedded — so semantic search still covers it, just without structural
-edges.
+nodes plus `inherits`, `implements`, and `imports` edges. **C# additionally gets
+a call graph** — method-body `calls` and `new` → `instantiates` edges,
+attributed to the enclosing method (see the call-graph note below). Every other
+extension (`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into
+windows and embedded — so semantic search still covers it, just without
+structural edges.
 
 ### `.soligraph.toml`
 
@@ -133,9 +135,17 @@ Flags override the file: `--ext rb,py`, `--exclude spec/,tmp/`,
 (`.git`, `node_modules`, `vendor`, `tmp`, `log`, `target`, `dist`, `build`,
 `__pycache__`, dot-dirs).
 
-**Note — call graph:** cross-file name resolution is best-effort (an
-unambiguous name match only), so `inherits`/`imports` are reliable but a full
-`calls` graph is not attempted for foreign languages. `--fresh`, `--dry-run`,
+**Note — call graph:** cross-language name resolution is **precision-first**.
+For C#, method bodies are walked for `calls` and `new X()` `instantiates`
+references; each is linked only when the target is unambiguous — an
+`instantiates` edge lands only on a **project** class (framework types like
+`new List<T>()` are skipped, never stubbed), and a `calls` edge lands only when
+exactly one project method carries that name (C#'s heavy overloading means
+shared names like `ToString`/`Add` are deliberately dropped rather than
+mis-linked). Precise cross-type resolution would need full semantic/type
+analysis, which tree-sitter alone doesn't provide, so treat the C# call graph as
+a high-confidence subset, not exhaustive. The other foreign languages still emit
+structure only (`inherits`/`implements`/`imports`). `--fresh`, `--dry-run`,
 `--no-embed`, incremental MD5 skipping and non-destructive sync all work the
 same as for Soli apps.
 
