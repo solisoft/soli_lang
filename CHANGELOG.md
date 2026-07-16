@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **fix(graph):** `soli graph build` no longer hangs indefinitely when the embedding endpoint is slow or unreachable. Embedding HTTP requests (which run by default) had no timeout, so a stalled `SOLI_EMBEDDING_URL` — a proxy that accepts the connection but never replies, a wrong URL, a stalled local model server — would block the whole build forever. Requests now time out after `SOLI_EMBEDDING_TIMEOUT_SECS` (default 60s, per request) and fail with an actionable message; `--no-embed` remains the escape hatch. The failure message also distinguishes a missing `SOLI_EMBEDDING_API_KEY` from an endpoint that errored or timed out.
+
 ## [1.21.3] - 2026-07-16
 
 ### Added

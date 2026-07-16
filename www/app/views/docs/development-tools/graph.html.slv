@@ -85,8 +85,18 @@ soli graph build path/to/app</code></pre>
                     <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_API_KEY</code></td><td class="py-2.5 px-4"><em>required to embed</em></td></tr>
                     <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_URL</code></td><td class="py-2.5 px-4"><code>.../v1/embeddings</code></td></tr>
                     <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_MODEL</code></td><td class="py-2.5 px-4"><code>text-embedding-3-small</code></td></tr>
+                    <tr><td class="py-2.5 px-4"><code>SOLI_EMBEDDING_TIMEOUT_SECS</code></td><td class="py-2.5 px-4"><code>60</code> &mdash; per-request timeout; bounds a slow/unreachable endpoint</td></tr>
                 </tbody>
             </table>
+        </div>
+        <div class="my-6 p-5 rounded-xl bg-sky-500/10 border border-sky-500/20">
+            <h4 class="text-base font-semibold text-sky-300 mb-2"><code>soli graph build</code> appears to hang?</h4>
+            <p class="text-sky-200/80 text-sm">
+                It embeds by default, so a slow or unreachable <code>SOLI_EMBEDDING_URL</code> is the usual cause.
+                Each embedding request times out after <code>SOLI_EMBEDDING_TIMEOUT_SECS</code> (default 60s) and
+                fails with a clear message instead of blocking forever. To rule embeddings out entirely, re-run
+                with <code>--no-embed</code>.
+            </p>
         </div>
         <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
             <table class="w-full text-sm text-left">

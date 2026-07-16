@@ -20,6 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+
+        <!-- Fixes -->
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white"><code class="text-cyan-400">soli graph build</code> no longer hangs on a slow embedding endpoint</strong> &mdash; embedding HTTP requests (run by default) had no timeout, so a stalled or unreachable <code class="text-cyan-400">SOLI_EMBEDDING_URL</code> would block the whole build forever. Requests now time out after <code class="text-cyan-400">SOLI_EMBEDDING_TIMEOUT_SECS</code> (default 60s) and fail with an actionable message that distinguishes a missing key from an endpoint that timed out. <code class="text-cyan-400">--no-embed</code> remains the escape hatch.</li>
+            </ul>
+        </div>
     </section>
 
     <section id="v1-21-3" class="mb-16 scroll-mt-24">

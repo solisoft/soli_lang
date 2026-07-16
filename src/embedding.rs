@@ -5,6 +5,22 @@
 //!   SOLI_EMBEDDING_API_KEY=sk-...
 //!   SOLI_EMBEDDING_URL=https://api.openai.com/v1/embeddings (default)
 //!   SOLI_EMBEDDING_MODEL=text-embedding-3-small (default)
+//!   SOLI_EMBEDDING_TIMEOUT_SECS=60 (per-request timeout; bounds a hung endpoint)
+
+/// Overall timeout for a single embedding HTTP call. Without this a slow or
+/// unresponsive endpoint (wrong `SOLI_EMBEDDING_URL`, a proxy that accepts the
+/// connection but never replies, a stalled local model server) would hang
+/// `soli graph build` forever — the request has no other deadline. Override
+/// with `SOLI_EMBEDDING_TIMEOUT_SECS`; `0` or unset falls back to 60s.
+#[cfg(feature = "embedding")]
+fn embedding_timeout() -> std::time::Duration {
+    let secs = std::env::var("SOLI_EMBEDDING_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&s| s > 0)
+        .unwrap_or(60);
+    std::time::Duration::from_secs(secs)
+}
 
 /// Generate an embedding vector for the given text by calling an external API.
 /// Returns None if embedding API is not configured or the call fails.
@@ -22,6 +38,7 @@ pub fn generate_embedding(text: &str) -> Option<Vec<f64>> {
     });
 
     let response = ureq::post(&url)
+        .timeout(embedding_timeout())
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
         .send_json(&body)
@@ -68,6 +85,7 @@ pub fn generate_embeddings_batch(texts: &[String]) -> Option<Vec<Vec<f64>>> {
     });
 
     let response = ureq::post(&url)
+        .timeout(embedding_timeout())
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
         .send_json(&body)

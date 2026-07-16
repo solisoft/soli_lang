@@ -108,13 +108,20 @@ pub fn embed_graph(
     }
     let texts: Vec<String> = graph.nodes.iter().map(|n| n.text.clone()).collect();
     let total = texts.len();
+    // Tailor the failure message: a missing key is a different fix from a key
+    // that is set but whose endpoint errored or timed out.
+    let failure_hint = if std::env::var("SOLI_EMBEDDING_API_KEY").is_err() {
+        "Embedding failed. Set SOLI_EMBEDDING_API_KEY (and SOLI_EMBEDDING_URL / \
+         SOLI_EMBEDDING_MODEL for non-OpenAI providers), or re-run with --no-embed."
+    } else {
+        "Embedding failed: the embedding endpoint errored or timed out (per-request \
+         limit SOLI_EMBEDDING_TIMEOUT_SECS, default 60s). Check SOLI_EMBEDDING_URL / \
+         SOLI_EMBEDDING_MODEL reachability, or re-run with --no-embed."
+    };
     let mut vectors: Vec<Vec<f64>> = Vec::with_capacity(total);
     for chunk in texts.chunks(EMBED_CHUNK) {
-        let part = crate::embedding::generate_embeddings_batch(chunk).ok_or_else(|| {
-            "Embedding failed. Set SOLI_EMBEDDING_API_KEY (and SOLI_EMBEDDING_URL / \
-             SOLI_EMBEDDING_MODEL for non-OpenAI providers), or re-run with --no-embed."
-                .to_string()
-        })?;
+        let part = crate::embedding::generate_embeddings_batch(chunk)
+            .ok_or_else(|| failure_hint.to_string())?;
         vectors.extend(part);
         on_progress(vectors.len(), total);
     }

@@ -25,10 +25,17 @@ embedding provider with the standard variables (OpenAI by default):
 | `SOLI_EMBEDDING_API_KEY` | *(required to embed)* |
 | `SOLI_EMBEDDING_URL` | `https://api.openai.com/v1/embeddings` |
 | `SOLI_EMBEDDING_MODEL` | `text-embedding-3-small` |
+| `SOLI_EMBEDDING_TIMEOUT_SECS` | `60` (per-request; bounds a slow/unreachable endpoint) |
 
 The graph connects to the **same SolidB the app's Models use** (`SOLIDB_HOST`,
 `SOLIDB_DATABASE`, `SOLIDB_USERNAME`/`SOLIDB_PASSWORD` or `SOLIDB_JWT`), loaded
 from your `.env` just like `soli db:seed`.
+
+> **`soli graph build` appears to hang?** It embeds by default, so a slow or
+> unreachable `SOLI_EMBEDDING_URL` is the usual cause. Each embedding request
+> now times out after `SOLI_EMBEDDING_TIMEOUT_SECS` (default 60s) and fails with
+> a clear message instead of blocking forever. To rule embeddings out entirely,
+> re-run with `--no-embed`.
 
 ### Flags
 
