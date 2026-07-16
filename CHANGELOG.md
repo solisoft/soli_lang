@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.21.4] - 2026-07-16
+
+### Added
+
+* **feat(graph):** the multi-language extractor now builds a **C# call graph** — walking method bodies for `calls` and `new X()` `instantiates` edges, attributed to the enclosing method. Precision-first: an `instantiates` edge lands only on a project class (framework types like `new List<T>()` are skipped, never stubbed) and a `calls` edge lands only when exactly one project method carries that name (C# overloading means shared names are dropped, not mis-linked). Also generalizes the enclosing-def resolver so method-scoped edges attribute correctly for `.`/`::`-separated method names (C#, Rust), not just `#`.
+
 ### Fixed
 
 * **fix(graph):** `soli graph build` no longer hangs indefinitely when the embedding endpoint is slow or unreachable. Embedding HTTP requests (which run by default) had no timeout, so a stalled `SOLI_EMBEDDING_URL` — a proxy that accepts the connection but never replies, a wrong URL, a stalled local model server — would block the whole build forever. Requests now time out after `SOLI_EMBEDDING_TIMEOUT_SECS` (default 60s, per request) and fail with an actionable message; `--no-embed` remains the escape hatch. The failure message also distinguishes a missing `SOLI_EMBEDDING_API_KEY` from an endpoint that errored or timed out.
