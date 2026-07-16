@@ -22,6 +22,29 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
     </section>
 
+    <section id="v1-21-2" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.21.2</h2>
+            <span class="text-sm font-medium text-gray-400">July 16, 2026</span>
+        </div>
+
+        <!-- Dev tools -->
+        <h3 id="v21-2-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white"><code class="text-cyan-400">soli graph query --path &lt;prefix&gt;</code></strong> &mdash; scope code retrieval to a subtree (e.g. <code class="text-cyan-400">--path api/</code> or <code class="text-cyan-400">--path app/</code>), so an agent can target one side of a mono-repo without post-filtering the JSON. Only seeds whose <code class="text-cyan-400">file</code> starts with the prefix are returned; neighbours are unaffected. Semantic search over-fetches then filters (so an out-of-path top ranking doesn't starve results), and the keyword fallback filters server-side in AQL.</li>
+            </ul>
+        </div>
+
+        <!-- Fixes -->
+        <h3 id="v21-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white"><code class="text-cyan-400">soli graph build</code> on graphs &gt; 1000 nodes</strong> &mdash; the SolidB client now follows the query cursor to completion instead of reading only the first 1000-row batch. Previously a build of a large codebase aborted with <code class="text-cyan-400">Document with _key '&hellip;' already exists</code> and re-embedded the tail on every run. Bulk mutations in the sync path also gained retry with exponential backoff, so a transient timeout on one chunk no longer aborts the whole sync.</li>
+            </ul>
+        </div>
+    </section>
+
     <section id="v1-21-1" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">v1.21.1</h2>

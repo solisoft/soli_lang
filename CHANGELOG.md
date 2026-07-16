@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.21.2] - 2026-07-16
+
+### Added
+
+* **feat(graph):** `soli graph query` gains `--path <prefix>` to scope retrieval to a subtree (e.g. `--path api/` or `--path app/`), so an agent can target one side of a mono-repo without post-filtering the JSON. Only seeds whose `file` starts with the prefix are returned; neighbours are unaffected. The semantic path over-fetches then filters (so an out-of-path top ranking doesn't starve results), and the keyword fallback filters server-side in AQL.
+
+### Fixed
+
+* **fix(graph):** `SoliDBClient::query` now follows the SolidB cursor to completion instead of reading only the first batch. SolidB caps each cold-cache batch at 1000 rows and returns `has_more` with a continuation cursor, so any query returning >1000 rows silently truncated to 1000. In graph sync this made `soli graph build` abort on graphs larger than 1000 nodes (`Document with _key '…' already exists`) and re-embed the tail on every build; bulk mutations in the sync path also gain retry with exponential backoff so a transient timeout on one chunk no longer aborts the whole sync.
+
 ## [1.21.1] - 2026-07-16
 
 ### Fixed
