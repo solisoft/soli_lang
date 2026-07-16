@@ -21,12 +21,22 @@ use crate::solidb_http::SoliDBClient;
 /// Cap on neighbours returned per seed, to keep output bounded.
 const MAX_NEIGHBORS: usize = 50;
 
+/// When a `--path` filter is active the vector index can't pre-filter, so we
+/// fetch `limit * PATH_OVERFETCH` candidates (capped at `PATH_OVERFETCH_CAP`)
+/// and filter afterwards, so an out-of-path top ranking doesn't starve results.
+const PATH_OVERFETCH: usize = 20;
+const PATH_OVERFETCH_CAP: usize = 500;
+
 pub struct QueryOptions {
     pub database: Option<String>,
     /// Number of seed (most-relevant) nodes to return.
     pub limit: usize,
     /// Neighbour-expansion depth (1 = direct relationships).
     pub hops: usize,
+    /// Keep only seeds whose `file` starts with this path prefix (e.g. `api/`
+    /// or `app/src/`). `None` (or empty) = no path constraint. Lets an agent
+    /// scope retrieval to one side of a mono-repo without post-processing.
+    pub path: Option<String>,
 }
 
 /// A neighbour of a seed node, reached over one edge.
@@ -78,11 +88,14 @@ pub fn run_query(question: &str, opts: &QueryOptions) -> Result<QueryResult, Str
     let (client, _db) = crate::graph::sync::connect(opts.database.as_deref())?;
     let limit = opts.limit.max(1);
     let hops = opts.hops.clamp(1, 3);
+    // Treat an empty `--path` as no filter so callers can pass through a blank
+    // value without accidentally excluding every node.
+    let path = opts.path.as_deref().filter(|p| !p.is_empty());
 
     // Seeds: semantic first, keyword fallback.
-    let (seeds, mode) = match semantic_seeds(&client, question, limit) {
+    let (seeds, mode) = match semantic_seeds(&client, question, limit, path) {
         Some(v) if !v.is_empty() => (v, "semantic"),
-        _ => (keyword_seeds(&client, question, limit)?, "keyword"),
+        _ => (keyword_seeds(&client, question, limit, path)?, "keyword"),
     };
 
     let mut results = Vec::with_capacity(seeds.len());
@@ -114,14 +127,23 @@ pub fn run_query(question: &str, opts: &QueryOptions) -> Result<QueryResult, Str
 
 /// ANN seeds via the `node_vec` vector index. `None` when embeddings are
 /// unavailable or the index doesn't exist (built with `--no-embed`).
+///
+/// With a `path` filter the vector index can't pre-filter, so we over-fetch and
+/// drop non-matching hits afterwards — this keeps `limit` matching seeds when
+/// the top-ranked nodes fall outside the requested path.
 fn semantic_seeds(
     client: &SoliDBClient,
     question: &str,
     limit: usize,
+    path: Option<&str>,
 ) -> Option<Vec<(Value, f64)>> {
     let vector = crate::embedding::generate_embedding(question)?;
+    let fetch = match path {
+        Some(_) => (limit * PATH_OVERFETCH).min(PATH_OVERFETCH_CAP),
+        None => limit,
+    };
     let hits = client
-        .vector_search(NODE_COLLECTION, VECTOR_INDEX, &vector, limit, None)
+        .vector_search(NODE_COLLECTION, VECTOR_INDEX, &vector, fetch, None)
         .ok()?;
     let seeds: Vec<(Value, f64)> = hits
         .into_iter()
@@ -130,6 +152,8 @@ fn semantic_seeds(
             let score = hit.get("score").and_then(|s| s.as_f64()).unwrap_or(0.0);
             Some((doc, score))
         })
+        .filter(|(doc, _)| path_matches(doc, path))
+        .take(limit)
         .collect();
     Some(seeds)
 }
@@ -140,19 +164,32 @@ fn keyword_seeds(
     client: &SoliDBClient,
     question: &str,
     limit: usize,
+    path: Option<&str>,
 ) -> Result<Vec<(Value, f64)>, String> {
     let terms = tokenize(question);
     if terms.is_empty() {
         return Ok(Vec::new());
     }
-    let query = "FOR n IN soli_graph_nodes \
+    // Restrict to the requested path prefix before scoring, so `LIMIT` counts
+    // only in-path nodes (a bound param — injection-safe).
+    let path_filter = if path.is_some() {
+        "FILTER STARTS_WITH(n.file, @path) "
+    } else {
+        ""
+    };
+    let query = format!(
+        "FOR n IN soli_graph_nodes {path_filter}\
          LET s = LENGTH(FOR t IN @terms FILTER CONTAINS(LOWER(n.text), t) RETURN 1) \
-         FILTER s > 0 SORT s DESC LIMIT @lim RETURN MERGE(n, { _score: s })";
+         FILTER s > 0 SORT s DESC LIMIT @lim RETURN MERGE(n, {{ _score: s }})"
+    );
     let mut binds = HashMap::new();
     binds.insert("terms".to_string(), serde_json::json!(terms));
     binds.insert("lim".to_string(), serde_json::json!(limit));
+    if let Some(p) = path {
+        binds.insert("path".to_string(), serde_json::json!(p));
+    }
     let rows = client
-        .query(query, Some(binds))
+        .query(&query, Some(binds))
         .map_err(|e| format!("keyword search failed: {}", e))?;
     Ok(rows
         .into_iter()
@@ -220,6 +257,15 @@ fn tokenize(text: &str) -> Vec<String> {
     out
 }
 
+/// True when `doc`'s `file` starts with `path` (or no path filter is set).
+/// A missing/empty `file` never matches a non-empty prefix.
+fn path_matches(doc: &Value, path: Option<&str>) -> bool {
+    match path {
+        None => true,
+        Some(prefix) => field(doc, "file").starts_with(prefix),
+    }
+}
+
 fn field(doc: &Value, key: &str) -> String {
     doc.get(key)
         .and_then(|v| v.as_str())
@@ -246,5 +292,23 @@ mod tests {
     fn tokenize_dedupes_repeats_and_caps() {
         let terms = tokenize("user User USER order");
         assert_eq!(terms, vec!["user", "order"]);
+    }
+
+    #[test]
+    fn path_matches_honours_prefix_and_none() {
+        let back = serde_json::json!({ "file": "api/Edifice/Invoice.cs" });
+        let front = serde_json::json!({ "file": "app/src/views/Invoice.vue" });
+        // No filter → everything matches.
+        assert!(path_matches(&back, None));
+        assert!(path_matches(&front, None));
+        // Prefix keeps only its side of the mono-repo.
+        assert!(path_matches(&back, Some("api/")));
+        assert!(!path_matches(&front, Some("api/")));
+        assert!(path_matches(&front, Some("app/")));
+        assert!(!path_matches(&back, Some("app/")));
+        // Deeper prefixes narrow further.
+        assert!(path_matches(&front, Some("app/src/views/")));
+        // A missing `file` never matches a non-empty prefix.
+        assert!(!path_matches(&serde_json::json!({}), Some("api/")));
     }
 }

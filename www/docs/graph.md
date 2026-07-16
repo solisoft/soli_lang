@@ -186,6 +186,7 @@ expansion) with no AQL to write:
 ```bash
 soli graph query "where is authentication handled?"
 soli graph query "refund flow" --json --limit 5 --hops 1
+soli graph query "invoice validation" --path api/     # scope to one side of a mono-repo
 ```
 
 It embeds the question, ANN-searches the vector index for seed nodes, and
@@ -218,8 +219,13 @@ set, it falls back to a keyword-ranked scan, so the command always works.
 ```
 
 `--limit N` sets how many seed results to return (default 6); `--hops N` sets the
-neighbour-expansion depth (default 1). The heavy `embedding`/`text` fields are
-never included in the output.
+neighbour-expansion depth (default 1). `--path PREFIX` keeps only seeds whose
+`file` starts with `PREFIX` (e.g. `--path api/` or `--path app/src/`), so an
+agent can target one side of a mono-repo without post-filtering the JSON —
+neighbours are unaffected. The semantic search over-fetches then filters (so an
+out-of-path top ranking doesn't starve results), and the keyword fallback
+filters server-side in AQL. The heavy `embedding`/`text` fields are never
+included in the output.
 
 ### Raw queries
 

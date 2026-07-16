@@ -62,8 +62,17 @@ pub fn run() {
             database,
             limit,
             hops,
+            path,
             json,
-        } => commands::run_graph_query(question, folder, database.as_deref(), *limit, *hops, *json),
+        } => commands::run_graph_query(
+            question,
+            folder,
+            database.as_deref(),
+            *limit,
+            *hops,
+            path.as_deref(),
+            *json,
+        ),
         Command::Serve {
             folder,
             port,

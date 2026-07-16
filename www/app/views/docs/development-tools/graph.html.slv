@@ -216,14 +216,19 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
         </p>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename="Terminal"><code class="language-bash text-sm">soli graph query "where is authentication handled?"
-soli graph query "refund flow" --json --limit 5 --hops 1</code></pre>
+soli graph query "refund flow" --json --limit 5 --hops 1
+soli graph query "invoice validation" --path api/   # scope to one side of a mono-repo</code></pre>
         </div>
         <p class="text-gray-400 mb-4">
             <code>--json</code> emits a structured result an agent parses directly (each seed with
             <code>kind</code>, <code>qualified_name</code>, <code>file</code>/<code>line</code>,
             <code>signature</code>, <code>score</code>, and a <code>neighbors</code> list of
             <code>{direction, edge_kind, kind, name}</code>). <code>--limit</code> sets seed count (default 6),
-            <code>--hops</code> the expansion depth (default 1); the heavy <code>embedding</code>/<code>text</code>
+            <code>--hops</code> the expansion depth (default 1). <code>--path PREFIX</code> keeps only seeds whose
+            <code>file</code> starts with <code>PREFIX</code> (e.g. <code>--path api/</code> or
+            <code>--path app/src/</code>), so an agent can scope retrieval to one side of a mono-repo without
+            post-filtering &mdash; neighbours are unaffected, semantic search over-fetches then filters, and the
+            keyword fallback filters in AQL. The heavy <code>embedding</code>/<code>text</code>
             fields are never included.
         </p>
 

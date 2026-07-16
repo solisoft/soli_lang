@@ -126,6 +126,9 @@ pub enum Command {
         limit: usize,
         /// Neighbour-expansion depth (default 1).
         hops: usize,
+        /// Keep only results whose file starts with this path prefix
+        /// (e.g. `api/` or `app/`). `None` = no path constraint.
+        path: Option<String>,
         /// Emit JSON instead of the human-readable summary.
         json: bool,
     },
@@ -252,7 +255,7 @@ pub fn print_usage() {
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
-    eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N]");
+    eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -302,7 +305,7 @@ pub fn print_usage() {
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
-    eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents");
+    eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX to scope to a subtree");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -707,6 +710,7 @@ pub fn parse_args() -> Options {
                         let mut database: Option<String> = None;
                         let mut limit = 6usize;
                         let mut hops = 1usize;
+                        let mut path: Option<String> = None;
                         let mut json = false;
                         while i < args.len() {
                             match args[i].as_str() {
@@ -744,6 +748,17 @@ pub fn parse_args() -> Options {
                                         process::exit(64);
                                     });
                                 }
+                                "--path" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!("--path requires a path prefix");
+                                        process::exit(64);
+                                    }
+                                    path = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--path=") => {
+                                    path = Some(arg["--path=".len()..].to_string());
+                                }
                                 arg if arg.starts_with('-') => {
                                     eprintln!("Unknown option for graph query: {}", arg);
                                     print_usage();
@@ -769,6 +784,7 @@ pub fn parse_args() -> Options {
                             database,
                             limit,
                             hops,
+                            path,
                             json,
                         };
                         return options;

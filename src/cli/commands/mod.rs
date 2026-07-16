@@ -2112,6 +2112,7 @@ pub fn run_graph_query(
     database: Option<&str>,
     limit: usize,
     hops: usize,
+    path: Option<&str>,
     json: bool,
 ) {
     use solilang::graph;
@@ -2124,6 +2125,7 @@ pub fn run_graph_query(
         database: database.map(str::to_string),
         limit,
         hops,
+        path: path.map(str::to_string),
     };
     let result = match graph::run_query(question, &opts) {
         Ok(r) => r,
@@ -2143,13 +2145,18 @@ pub fn run_graph_query(
     } else {
         "results"
     };
+    let scope = match path {
+        Some(p) if !p.is_empty() => format!(", path {}", p),
+        _ => String::new(),
+    };
     println!();
     println!(
-        "  \x1b[1mQuery\x1b[0m \"{}\"  \x1b[2m({}, {} {})\x1b[0m",
+        "  \x1b[1mQuery\x1b[0m \"{}\"  \x1b[2m({}, {} {}{})\x1b[0m",
         result.query,
         result.mode,
         result.results.len(),
-        noun
+        noun,
+        scope
     );
     if result.results.is_empty() {
         println!();
