@@ -22,6 +22,22 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
     </section>
 
+    <section id="v1-21-3" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.21.3</h2>
+            <span class="text-sm font-medium text-gray-400">July 16, 2026</span>
+        </div>
+
+        <!-- Dev tools -->
+        <h3 id="v21-3-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Richer code-graph edges</strong> &mdash; <code class="text-cyan-400">soli graph build</code> now links instance method calls on locally typed variables (<code class="text-cyan-400">let u = new User()</code>, typed lets, <code class="text-cyan-400">User.find</code> / factories), <code class="text-cyan-400">partial(...)</code> / view&rarr;partial <code class="text-cyan-400">renders</code>, <code class="text-cyan-400">redirect("/path")</code> as <code class="text-cyan-400">redirects</code> to matching routes, and bare <code class="text-cyan-400">super(...)</code> / <code class="text-cyan-400">super.method(...)</code> to the parent method. Local type tracking is flow-aware: reassigning a tracked local to a value with no known class drops its type, and a bare <code class="text-cyan-400">partial("form")</code> in a view resolves against that view's own directory first. Still precision-first: unbound receivers stay unlinked.</li>
+                <li><strong class="text-white"><code class="text-cyan-400">soli graph query --kind</code> + better agent output</strong> &mdash; filter seeds by node kind (<code class="text-cyan-400">--kind method,controller</code>); each seed includes a truncated <code class="text-cyan-400">snippet</code> (the human summary shows real doc/body context, not repeated metadata); keyword fallback weights name/qualified_name over body text; neighbours are ordered with structural edges first (<code class="text-cyan-400">routes_to</code>, <code class="text-cyan-400">calls</code>, <code class="text-cyan-400">renders</code>, &hellip;); a <code class="text-cyan-400">redirect</code> to a path served by several verbs prefers the <code class="text-cyan-400">GET</code> route.</li>
+            </ul>
+        </div>
+    </section>
+
     <section id="v1-21-2" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">v1.21.2</h2>

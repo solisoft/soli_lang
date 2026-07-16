@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.21.3] - 2026-07-16
+
+### Added
+
+* **feat(graph):** richer Soli code-graph edges — instance method calls on locally typed variables (`let u = new User()`, typed lets, `User.find` / factories), `partial(...)` and view→partial `renders`, `redirect("/path")` as `redirects` to matching routes, and bare `super(...)` / `super.method(...)` to the parent method when present. Local type tracking is flow-aware: reassigning a tracked local to a value with no known class drops its type, and a bare `partial("form")` in a view resolves against that view's own directory first. Still precision-first: unbound receivers stay unlinked.
+* **feat(graph):** `soli graph query --kind method,controller` filters seeds by node kind; results include a truncated `snippet` for agent context (the human summary shows real doc/body context, not repeated metadata); keyword fallback weights name/qualified_name over body text; neighbours are ordered with structural edges first (`routes_to`, `calls`, `renders`, `redirects`, …); a `redirect` to a path served by several verbs prefers the `GET` route.
+
 ## [1.21.2] - 2026-07-16
 
 ### Added
