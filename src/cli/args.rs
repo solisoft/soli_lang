@@ -129,6 +129,8 @@ pub enum Command {
         /// Keep only results whose file starts with this path prefix
         /// (e.g. `api/` or `app/`). `None` = no path constraint.
         path: Option<String>,
+        /// Comma-separated node kinds to keep (e.g. `method,controller`).
+        kind: Option<String>,
         /// Emit JSON instead of the human-readable summary.
         json: bool,
     },
@@ -255,7 +257,7 @@ pub fn print_usage() {
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
-    eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX]");
+    eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX] [--kind KINDS]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -305,7 +307,7 @@ pub fn print_usage() {
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
-    eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX to scope to a subtree");
+    eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX / --kind KINDS to filter");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -711,6 +713,7 @@ pub fn parse_args() -> Options {
                         let mut limit = 6usize;
                         let mut hops = 1usize;
                         let mut path: Option<String> = None;
+                        let mut kind: Option<String> = None;
                         let mut json = false;
                         while i < args.len() {
                             match args[i].as_str() {
@@ -759,6 +762,19 @@ pub fn parse_args() -> Options {
                                 arg if arg.starts_with("--path=") => {
                                     path = Some(arg["--path=".len()..].to_string());
                                 }
+                                "--kind" => {
+                                    i += 1;
+                                    if i >= args.len() {
+                                        eprintln!(
+                                            "--kind requires a comma-separated list (e.g. method,controller)"
+                                        );
+                                        process::exit(64);
+                                    }
+                                    kind = Some(args[i].clone());
+                                }
+                                arg if arg.starts_with("--kind=") => {
+                                    kind = Some(arg["--kind=".len()..].to_string());
+                                }
                                 arg if arg.starts_with('-') => {
                                     eprintln!("Unknown option for graph query: {}", arg);
                                     print_usage();
@@ -785,6 +801,7 @@ pub fn parse_args() -> Options {
                             limit,
                             hops,
                             path,
+                            kind,
                             json,
                         };
                         return options;

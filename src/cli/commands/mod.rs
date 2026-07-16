@@ -2106,6 +2106,7 @@ pub fn run_graph(
 /// `soli graph query "<question>" [folder]` — retrieve the code most relevant
 /// to a task from the graph in SolidB (semantic seed + graph expansion), for
 /// agents. `--json` emits a structured result; otherwise a scannable summary.
+#[allow(clippy::too_many_arguments)]
 pub fn run_graph_query(
     question: &str,
     folder: &str,
@@ -2113,6 +2114,7 @@ pub fn run_graph_query(
     limit: usize,
     hops: usize,
     path: Option<&str>,
+    kind: Option<&str>,
     json: bool,
 ) {
     use solilang::graph;
@@ -2121,11 +2123,13 @@ pub fn run_graph_query(
     solilang::serve::env_loader::load_env_files(app_path);
     solilang::interpreter::builtins::model::init_db_config();
 
+    let kinds = kind.map(graph::parse_kinds).unwrap_or_default();
     let opts = graph::QueryOptions {
         database: database.map(str::to_string),
         limit,
         hops,
         path: path.map(str::to_string),
+        kinds,
     };
     let result = match graph::run_query(question, &opts) {
         Ok(r) => r,
@@ -2145,9 +2149,21 @@ pub fn run_graph_query(
     } else {
         "results"
     };
-    let scope = match path {
-        Some(p) if !p.is_empty() => format!(", path {}", p),
-        _ => String::new(),
+    let mut scope_parts = Vec::new();
+    if let Some(p) = path {
+        if !p.is_empty() {
+            scope_parts.push(format!("path {}", p));
+        }
+    }
+    if let Some(k) = kind {
+        if !k.is_empty() {
+            scope_parts.push(format!("kind {}", k));
+        }
+    }
+    let scope = if scope_parts.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", scope_parts.join(", "))
     };
     println!();
     println!(
@@ -2181,6 +2197,33 @@ pub fn run_graph_query(
         );
         if !hit.signature.is_empty() {
             println!("     \x1b[2m{}\x1b[0m", hit.signature);
+        }
+        if !hit.snippet.is_empty() {
+            // One line of context for humans; full snippet is in --json. The
+            // composed snippet begins with the synthetic `<kind> <qualified>`
+            // header and signature already printed above, so skip those and
+            // surface the doc/body instead of duplicated metadata.
+            let header = format!("{} {}", hit.kind, hit.qualified_name);
+            let context: String = hit
+                .snippet
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && *line != header && *line != hit.signature)
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" · ");
+            if !context.is_empty() {
+                let context = if context.chars().count() > 120 {
+                    let mut end = 117;
+                    while end > 0 && !context.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}…", &context[..end])
+                } else {
+                    context
+                };
+                println!("     \x1b[2m{}\x1b[0m", context);
+            }
         }
         // Show a bounded set of relationships; the rest stay in --json.
         let shown = hit.neighbors.iter().take(12);

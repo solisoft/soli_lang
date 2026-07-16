@@ -24,7 +24,7 @@ pub use builder::{
 pub use config::GraphConfig;
 pub use generic::build_generic_graph;
 pub use model::{Edge, Node, ProjectGraph};
-pub use query::{run_query, QueryOptions, QueryResult};
+pub use query::{parse_kinds, run_query, QueryOptions, QueryResult};
 pub use sync::{
     embed_graph, embed_incremental, is_up_to_date, reindex, sync_graph, write_graph, ReindexReport,
     SyncOptions, SyncReport,

@@ -186,7 +186,8 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
                     <tr><td class="py-2.5 px-4"><code>imports</code></td><td class="py-2.5 px-4">file &rarr; local file</td></tr>
                     <tr><td class="py-2.5 px-4"><code>calls</code></td><td class="py-2.5 px-4">method/function &rarr; the function or class-method it calls</td></tr>
                     <tr><td class="py-2.5 px-4"><code>instantiates</code></td><td class="py-2.5 px-4">method/function &rarr; class it constructs (<code>new X()</code>)</td></tr>
-                    <tr><td class="py-2.5 px-4"><code>renders</code></td><td class="py-2.5 px-4">controller action &rarr; view it renders</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>renders</code></td><td class="py-2.5 px-4">controller action &rarr; view (<code>render</code>/<code>partial</code>); view &rarr; partial view</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>redirects</code></td><td class="py-2.5 px-4">method/function &rarr; route whose path matches <code>redirect("/path")</code> (prefers the <code>GET</code> route when a path is served by several verbs)</td></tr>
                     <tr><td class="py-2.5 px-4"><code>routes_to</code></td><td class="py-2.5 px-4">route &rarr; controller action</td></tr>
                     <tr><td class="py-2.5 px-4"><code>relates</code></td><td class="py-2.5 px-4">model &rarr; model (<code>has_many</code>/<code>belongs_to</code>/<code>edge</code>; DSL name in <code>relation</code>)</td></tr>
                 </tbody>
@@ -194,11 +195,22 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
         </div>
         <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <h4 class="text-base font-semibold text-amber-400 mb-2">Precision-first call graph</h4>
-            <p class="text-amber-200/80 text-sm">
-                Class-method calls (<code>User.find(...)</code>), <code>this.method(...)</code>, and unambiguous
-                bare function calls are linked; instance calls on a variable (<code>user.save()</code>) are
-                <strong>not</strong> inferred (no type inference), so an edge is never invented.
+            <p class="text-amber-200/80 text-sm mb-3">
+                Linked when high-confidence: class-method calls (<code>User.find(...)</code>),
+                <code>this.method(...)</code>, bare <code>super(...)</code>/<code>super.method(...)</code>,
+                unambiguous bare functions, and instance calls on a <strong>locally typed</strong> variable
+                (<code>let u = new User()</code>, <code>let u: User = &hellip;</code>, or
+                <code>let u = User.find(...)</code> then <code>u.authenticate(...)</code>). Unbound receivers
+                (<code>user.save()</code> with no known class) stay unlinked &mdash; an edge is never invented.
+                Reassigning a tracked local to a value with no known class drops its type, and a bare
+                <code>partial("form")</code> in a view resolves against that view's own directory first.
             </p>
+            <pre data-filename="sessions_controller.sl"><code class="language-soli text-sm">def create(req: Any) -&gt; Any {
+  let user = User.find_by("email", req["email"])  # binds user &rarr; User
+  user.authenticate(req["password"])              # calls &rarr; User#authenticate
+  partial("sessions/form")                        # renders &rarr; sessions/_form
+  return redirect("/dashboard")                   # redirects &rarr; matching route
+}</code></pre>
         </div>
     </section>
 
@@ -212,24 +224,27 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
             its immediate relationships</strong> &mdash; the graph-RAG payoff (semantic seed &rarr; graph
             expansion) with no AQL to write. It embeds the question, ANN-searches the vector index for seeds, and
             expands each one hop (callers, callees, routes, views). Built with <code>--no-embed</code> or no
-            embedding key? It falls back to a keyword-ranked scan, so it always works.
+            embedding key? It falls back to a <strong class="text-white">weighted</strong> keyword-ranked scan
+            (name/qualified_name beat body text), so it always works.
         </p>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename="Terminal"><code class="language-bash text-sm">soli graph query "where is authentication handled?"
 soli graph query "refund flow" --json --limit 5 --hops 1
-soli graph query "invoice validation" --path api/   # scope to one side of a mono-repo</code></pre>
+soli graph query "invoice validation" --path api/   # scope to one side of a mono-repo
+soli graph query "login" --kind method,controller   # only those node kinds</code></pre>
         </div>
         <p class="text-gray-400 mb-4">
             <code>--json</code> emits a structured result an agent parses directly (each seed with
             <code>kind</code>, <code>qualified_name</code>, <code>file</code>/<code>line</code>,
-            <code>signature</code>, <code>score</code>, and a <code>neighbors</code> list of
-            <code>{direction, edge_kind, kind, name}</code>). <code>--limit</code> sets seed count (default 6),
-            <code>--hops</code> the expansion depth (default 1). <code>--path PREFIX</code> keeps only seeds whose
-            <code>file</code> starts with <code>PREFIX</code> (e.g. <code>--path api/</code> or
-            <code>--path app/src/</code>), so an agent can scope retrieval to one side of a mono-repo without
-            post-filtering &mdash; neighbours are unaffected, semantic search over-fetches then filters, and the
-            keyword fallback filters in AQL. The heavy <code>embedding</code>/<code>text</code>
-            fields are never included.
+            <code>signature</code>, truncated <code>snippet</code>, <code>score</code>, and a
+            <code>neighbors</code> list of <code>{direction, edge_kind, kind, name, signature?}</code>).
+            <code>--limit</code> sets seed count (default 6), <code>--hops</code> the expansion depth
+            (default 1). <code>--path PREFIX</code> keeps only seeds whose <code>file</code> starts with
+            <code>PREFIX</code>; <code>--kind KINDS</code> keeps only seeds whose <code>kind</code> is in the
+            comma-separated list (e.g. <code>method,controller,route</code>). Neighbours are unaffected and
+            ordered with structural edges first (<code>routes_to</code>, <code>calls</code>,
+            <code>renders</code>, <code>redirects</code>, &hellip;). Semantic search over-fetches then filters;
+            the keyword fallback filters in AQL. The heavy <code>embedding</code> field is never included.
         </p>
 
         <h3 class="text-lg font-semibold text-white mb-3">Raw queries</h3>

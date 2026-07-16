@@ -7,13 +7,18 @@
 //! Passes:
 //! 1. **nodes** — one node per file / class / method / function / enum /
 //!    interface, plus `defines` edges (containment) and the raw import /
-//!    inherit / implement / relation records.
+//!    inherit / implement / relation records. Views record `partial("…")`
+//!    string targets for a post-pass.
 //! 2. **resolve structure** — turn inherit/implement/relation records into
-//!    edges (creating `external` stub nodes for out-of-project bases).
+//!    edges (creating `external` stub nodes for out-of-project bases); link
+//!    view → partial `renders` edges once every view node exists.
 //! 3. **calls** — walk method/function bodies for high-confidence `calls`,
-//!    `instantiates` and `renders` edges.
+//!    `instantiates`, `renders` (incl. `partial`), and deferred `redirects`
+//!    edges. Local class bindings (`new User()`, typed lets, model finders)
+//!    unlock precision-first instance method edges.
 //! 4. **routes** — one `route` node per registered route + `routes_to` edges
-//!    into the controller action (or the controller unit as a fallback).
+//!    into the controller action (or the controller unit as a fallback);
+//!    then resolve deferred `redirects` against route paths.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -22,7 +27,20 @@ use crate::ast::expr::{Argument, Expr, ExprKind};
 use crate::ast::stmt::{
     ClassDecl, EnumDecl, FunctionDecl, InterfaceDecl, MethodDecl, Program, Stmt, StmtKind,
 };
+use crate::ast::types::TypeKind;
 use crate::graph::model::{sanitize_key, Edge, Node, ProjectGraph};
+
+/// Model / class static methods whose return value is treated as an instance
+/// of the receiver class for local type tracking.
+const CLASS_INSTANCE_FACTORIES: &[&str] = &[
+    "find",
+    "find_by",
+    "first",
+    "first_by",
+    "create",
+    "new",
+    "find_or_create_by",
+];
 
 const MAX_SNIPPET: usize = 1200;
 const MAX_TEXT: usize = 2000;
@@ -96,6 +114,10 @@ struct ControllerUnit {
 struct WalkCtx {
     caller_id: String,
     enclosing_class: Option<String>,
+    /// Simple method name (`authenticate`) for bare `super(...)` resolution.
+    enclosing_method: Option<String>,
+    /// Superclass name of the enclosing class (`ApplicationController`).
+    superclass: Option<String>,
     /// Controller key used to expand bare `render("index")` calls.
     render_prefix: Option<String>,
     relpath: String,
@@ -112,11 +134,17 @@ struct GraphBuilder {
     // Resolution indexes.
     class_by_name: HashMap<String, String>,
     functions_by_name: HashMap<String, Vec<String>>,
+    /// Exact route path → route node id (first registration wins).
+    route_by_path: HashMap<String, String>,
 
     // Deferred structural records resolved in pass 2.
     inherits: Vec<(String, String, String, u32)>, // (child_id, super_name, relpath, line)
     implements: Vec<(String, String, String, u32)>, // (child_id, iface_name, relpath, line)
     relations: Vec<(String, String, String, String, u32)>, // (class_id, target, dsl, relpath, line)
+    /// View partial targets collected during pass 1: (view_id, target, file, line).
+    view_partials: Vec<(String, String, String, u32)>,
+    /// `redirect(path)` sites resolved after routes exist: (caller, path, file, line).
+    deferred_redirects: Vec<(String, String, String, u32)>,
 
     // Per-file bookkeeping for controller-unit resolution.
     controller_files: Vec<String>,
@@ -211,6 +239,8 @@ fn build_graph_inner(
 
     // Pass 2: resolve inherit/implement/relation records into edges.
     builder.resolve_structure();
+    // View → partial `renders` edges once every view node is interned.
+    builder.link_view_partials();
 
     // Controller units (needs all nodes from pass 1).
     builder.build_controller_units();
@@ -240,6 +270,8 @@ fn build_graph_inner(
             }
         }
     }
+    // `redirect(path)` edges need the route index built above.
+    builder.resolve_redirects();
 
     Ok(ProjectGraph {
         nodes: builder.nodes,
@@ -396,6 +428,81 @@ impl GraphBuilder {
                 embedding: vec![],
             },
         );
+        // Record partial("…") targets; resolved after every view is interned.
+        for (target, line) in scan_partial_calls(source) {
+            self.view_partials
+                .push((id.clone(), target, relpath.to_string(), line));
+        }
+    }
+
+    /// Emit view → partial `renders` edges for every recorded `partial("…")`.
+    fn link_view_partials(&mut self) {
+        let partials = std::mem::take(&mut self.view_partials);
+        for (view_id, target, file, line) in partials {
+            let normalized = normalize_view_name(&target);
+            // A bare `partial("form")` resolves relative to the including view's
+            // own directory first (like controller `render` with a prefix),
+            // then falls back to the name as given.
+            let resolved = if normalized.contains('/') {
+                self.resolve_view_id(&normalized)
+            } else {
+                view_dir(&view_id)
+                    .and_then(|dir| self.resolve_view_id(&format!("{}/{}", dir, normalized)))
+                    .or_else(|| self.resolve_view_id(&normalized))
+            };
+            let Some(to) = resolved else {
+                continue;
+            };
+            // Avoid self-loops when a template names itself by mistake.
+            if to == view_id {
+                continue;
+            }
+            self.push_edge(&view_id, &to, "renders", "", &file, line);
+        }
+    }
+
+    /// Resolve a deferred `redirect(path)` against the route path index.
+    fn resolve_redirects(&mut self) {
+        let redirects = std::mem::take(&mut self.deferred_redirects);
+        for (caller_id, path, relpath, line) in redirects {
+            let clean = path.split('?').next().unwrap_or(path.as_str());
+            if let Some(route_id) = self.route_by_path.get(clean).cloned() {
+                self.push_edge(&caller_id, &route_id, "redirects", "", &relpath, line);
+            }
+        }
+    }
+
+    /// Map a logical view name (`posts/form` or `posts/_form`) onto an existing
+    /// view node id, trying underscore and non-underscore variants.
+    fn resolve_view_id(&self, logical: &str) -> Option<String> {
+        let direct = format!("view:{}", logical);
+        if self.has_node(&direct) {
+            return Some(direct);
+        }
+        if let Some((dir, base)) = logical.rsplit_once('/') {
+            if let Some(stripped) = base.strip_prefix('_') {
+                let without = format!("view:{}/{}", dir, stripped);
+                if self.has_node(&without) {
+                    return Some(without);
+                }
+            } else {
+                let with = format!("view:{}/_{}", dir, base);
+                if self.has_node(&with) {
+                    return Some(with);
+                }
+            }
+        } else if let Some(stripped) = logical.strip_prefix('_') {
+            let without = format!("view:{}", stripped);
+            if self.has_node(&without) {
+                return Some(without);
+            }
+        } else {
+            let with = format!("view:_{}", logical);
+            if self.has_node(&with) {
+                return Some(with);
+            }
+        }
+        None
     }
 
     /// Extract a top-level declaration (unwrapping `export`).
@@ -791,10 +898,13 @@ impl GraphBuilder {
                 let ctx = WalkCtx {
                     caller_id: format!("function:{}#{}", relpath, decl.name),
                     enclosing_class: None,
+                    enclosing_method: Some(decl.name.clone()),
+                    superclass: None,
                     render_prefix: render_prefix.map(str::to_string),
                     relpath: relpath.to_string(),
                 };
-                self.walk_block(&decl.body, &ctx);
+                let mut locals = HashMap::new();
+                self.walk_block(&decl.body, &ctx, &mut locals);
             }
             StmtKind::Class(decl) => self.walk_class_bodies(decl, None, relpath, render_prefix),
             StmtKind::Enum(decl) => {
@@ -802,10 +912,13 @@ impl GraphBuilder {
                     let ctx = WalkCtx {
                         caller_id: format!("method:{}#{}", decl.name, m.name),
                         enclosing_class: Some(decl.name.clone()),
+                        enclosing_method: Some(m.name.clone()),
+                        superclass: None,
                         render_prefix: render_prefix.map(str::to_string),
                         relpath: relpath.to_string(),
                     };
-                    self.walk_block(&m.body, &ctx);
+                    let mut locals = HashMap::new();
+                    self.walk_block(&m.body, &ctx, &mut locals);
                 }
             }
             _ => {}
@@ -823,76 +936,121 @@ impl GraphBuilder {
             Some(p) => format!("{}::{}", p, decl.name),
             None => decl.name.clone(),
         };
+        let superclass = decl.superclass.clone();
         if let Some(ctor) = &decl.constructor {
             let ctx = WalkCtx {
                 caller_id: format!("method:{}#new", qualified),
                 enclosing_class: Some(qualified.clone()),
+                enclosing_method: Some("new".to_string()),
+                superclass: superclass.clone(),
                 render_prefix: render_prefix.map(str::to_string),
                 relpath: relpath.to_string(),
             };
-            self.walk_block(&ctor.body, &ctx);
+            let mut locals = HashMap::new();
+            self.walk_block(&ctor.body, &ctx, &mut locals);
         }
         for m in &decl.methods {
             let ctx = WalkCtx {
                 caller_id: format!("method:{}#{}", qualified, m.name),
                 enclosing_class: Some(qualified.clone()),
+                enclosing_method: Some(m.name.clone()),
+                superclass: superclass.clone(),
                 render_prefix: render_prefix.map(str::to_string),
                 relpath: relpath.to_string(),
             };
-            self.walk_block(&m.body, &ctx);
+            let mut locals = HashMap::new();
+            self.walk_block(&m.body, &ctx, &mut locals);
         }
         for nested in &decl.nested_classes {
             self.walk_class_bodies(nested, Some(&qualified), relpath, render_prefix);
         }
     }
 
-    fn walk_block(&mut self, stmts: &[Stmt], ctx: &WalkCtx) {
+    fn walk_block(&mut self, stmts: &[Stmt], ctx: &WalkCtx, locals: &mut HashMap<String, String>) {
         for stmt in stmts {
-            self.walk_stmt(stmt, ctx);
+            self.walk_stmt(stmt, ctx, locals);
         }
     }
 
-    fn walk_stmt(&mut self, stmt: &Stmt, ctx: &WalkCtx) {
+    fn walk_stmt(&mut self, stmt: &Stmt, ctx: &WalkCtx, locals: &mut HashMap<String, String>) {
         match &stmt.kind {
-            StmtKind::Expression(e) => self.walk_expr(e, ctx),
+            StmtKind::Expression(e) => self.walk_expr(e, ctx, locals),
             StmtKind::Let {
-                initializer: Some(e),
-                ..
-            } => self.walk_expr(e, ctx),
-            StmtKind::Const { initializer, .. } => self.walk_expr(initializer, ctx),
-            StmtKind::Block(stmts) => self.walk_block(stmts, ctx),
+                name,
+                type_annotation,
+                initializer,
+            } => {
+                if let Some(e) = initializer {
+                    self.walk_expr(e, ctx, locals);
+                }
+                // Prefer an explicit Named type annotation; fall back to
+                // inferring from the initializer (`new User()`, `User.find`).
+                // A re-declaration with no inferable class clears any prior
+                // binding, so a shadowed name never keeps a stale type.
+                let inferred = type_annotation
+                    .as_ref()
+                    .and_then(named_class_type)
+                    .filter(|c| self.class_by_name.contains_key(c))
+                    .or_else(|| initializer.as_ref().and_then(|e| self.class_from_expr(e)));
+                bind_local(locals, name, inferred);
+            }
+            StmtKind::Const {
+                name,
+                type_annotation,
+                initializer,
+            } => {
+                self.walk_expr(initializer, ctx, locals);
+                let inferred = type_annotation
+                    .as_ref()
+                    .and_then(named_class_type)
+                    .filter(|c| self.class_by_name.contains_key(c))
+                    .or_else(|| self.class_from_expr(initializer));
+                bind_local(locals, name, inferred);
+            }
+            // Nested scopes: clone so bindings inside don't leak outward.
+            StmtKind::Block(stmts) => {
+                let mut nested = locals.clone();
+                self.walk_block(stmts, ctx, &mut nested);
+            }
             StmtKind::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                self.walk_expr(condition, ctx);
-                self.walk_stmt(then_branch, ctx);
+                self.walk_expr(condition, ctx, locals);
+                let mut then_locals = locals.clone();
+                self.walk_stmt(then_branch, ctx, &mut then_locals);
                 if let Some(e) = else_branch {
-                    self.walk_stmt(e, ctx);
+                    let mut else_locals = locals.clone();
+                    self.walk_stmt(e, ctx, &mut else_locals);
                 }
             }
             StmtKind::While { condition, body } => {
-                self.walk_expr(condition, ctx);
-                self.walk_stmt(body, ctx);
+                self.walk_expr(condition, ctx, locals);
+                let mut nested = locals.clone();
+                self.walk_stmt(body, ctx, &mut nested);
             }
             StmtKind::For { iterable, body, .. } => {
-                self.walk_expr(iterable, ctx);
-                self.walk_stmt(body, ctx);
+                self.walk_expr(iterable, ctx, locals);
+                let mut nested = locals.clone();
+                self.walk_stmt(body, ctx, &mut nested);
             }
-            StmtKind::Return(Some(e)) => self.walk_expr(e, ctx),
-            StmtKind::Throw(e) => self.walk_expr(e, ctx),
+            StmtKind::Return(Some(e)) => self.walk_expr(e, ctx, locals),
+            StmtKind::Throw(e) => self.walk_expr(e, ctx, locals),
             StmtKind::Try {
                 try_block,
                 catch_clauses,
                 finally_block,
             } => {
-                self.walk_stmt(try_block, ctx);
+                let mut try_locals = locals.clone();
+                self.walk_stmt(try_block, ctx, &mut try_locals);
                 for c in catch_clauses {
-                    self.walk_stmt(&c.body, ctx);
+                    let mut catch_locals = locals.clone();
+                    self.walk_stmt(&c.body, ctx, &mut catch_locals);
                 }
                 if let Some(f) = finally_block {
-                    self.walk_stmt(f, ctx);
+                    let mut finally_locals = locals.clone();
+                    self.walk_stmt(f, ctx, &mut finally_locals);
                 }
             }
             // Nested function/class declarations inside a body are rare; their
@@ -901,13 +1059,13 @@ impl GraphBuilder {
         }
     }
 
-    fn walk_expr(&mut self, expr: &Expr, ctx: &WalkCtx) {
+    fn walk_expr(&mut self, expr: &Expr, ctx: &WalkCtx, locals: &mut HashMap<String, String>) {
         match &expr.kind {
             ExprKind::Call { callee, arguments } => {
-                self.resolve_call(callee, arguments, expr.span.line, ctx);
-                self.walk_expr(callee, ctx);
+                self.resolve_call(callee, arguments, expr.span.line, ctx, locals);
+                self.walk_expr(callee, ctx, locals);
                 for a in arguments {
-                    self.walk_argument(a, ctx);
+                    self.walk_argument(a, ctx, locals);
                 }
             }
             ExprKind::New {
@@ -927,7 +1085,7 @@ impl GraphBuilder {
                     }
                 }
                 for a in arguments {
-                    self.walk_argument(a, ctx);
+                    self.walk_argument(a, ctx, locals);
                 }
             }
             ExprKind::Binary { left, right, .. }
@@ -935,62 +1093,82 @@ impl GraphBuilder {
             | ExprKind::LogicalOr { left, right }
             | ExprKind::NullishCoalescing { left, right }
             | ExprKind::Pipeline { left, right } => {
-                self.walk_expr(left, ctx);
-                self.walk_expr(right, ctx);
+                self.walk_expr(left, ctx, locals);
+                self.walk_expr(right, ctx, locals);
             }
-            ExprKind::Unary { operand, .. } => self.walk_expr(operand, ctx),
+            ExprKind::Unary { operand, .. } => self.walk_expr(operand, ctx, locals),
             ExprKind::Grouping(e)
             | ExprKind::Spread(e)
             | ExprKind::Throw(e)
             | ExprKind::PostfixIncrement(e)
-            | ExprKind::PostfixDecrement(e) => self.walk_expr(e, ctx),
+            | ExprKind::PostfixDecrement(e) => self.walk_expr(e, ctx, locals),
             ExprKind::Member { object, .. } | ExprKind::SafeMember { object, .. } => {
-                self.walk_expr(object, ctx)
+                self.walk_expr(object, ctx, locals)
             }
-            ExprKind::QualifiedName { qualifier, .. } => self.walk_expr(qualifier, ctx),
+            ExprKind::QualifiedName { qualifier, .. } => self.walk_expr(qualifier, ctx, locals),
             ExprKind::Index { object, index } => {
-                self.walk_expr(object, ctx);
-                self.walk_expr(index, ctx);
+                self.walk_expr(object, ctx, locals);
+                self.walk_expr(index, ctx, locals);
             }
             ExprKind::Assign { target, value } => {
-                self.walk_expr(target, ctx);
-                self.walk_expr(value, ctx);
+                self.walk_expr(target, ctx, locals);
+                self.walk_expr(value, ctx, locals);
+                // Reassigning a bare local updates (or clears) its tracked type
+                // so a later `local.method()` never resolves against a class the
+                // variable no longer holds.
+                if let ExprKind::Variable(name) = &target.kind {
+                    let inferred = self.class_from_expr(value);
+                    bind_local(locals, name, inferred);
+                }
             }
             ExprKind::CompoundAssign { target, value, .. } => {
-                self.walk_expr(target, ctx);
-                self.walk_expr(value, ctx);
+                self.walk_expr(target, ctx, locals);
+                self.walk_expr(value, ctx, locals);
             }
             ExprKind::Array(items) => {
                 for e in items {
-                    self.walk_expr(e, ctx);
+                    self.walk_expr(e, ctx, locals);
                 }
             }
             ExprKind::Hash(pairs) => {
                 for (k, v) in pairs {
-                    self.walk_expr(k, ctx);
-                    self.walk_expr(v, ctx);
+                    self.walk_expr(k, ctx, locals);
+                    self.walk_expr(v, ctx, locals);
                 }
             }
-            ExprKind::Block(stmts) => self.walk_block(stmts, ctx),
-            ExprKind::Lambda { body, .. } => self.walk_block(body, ctx),
+            ExprKind::Block(stmts) => {
+                let mut nested = locals.clone();
+                self.walk_block(stmts, ctx, &mut nested);
+            }
+            ExprKind::Lambda { body, .. } => {
+                let mut nested = locals.clone();
+                self.walk_block(body, ctx, &mut nested);
+            }
             ExprKind::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                self.walk_expr(condition, ctx);
-                self.walk_expr(then_branch, ctx);
+                self.walk_expr(condition, ctx, locals);
+                // Clone per branch so a binding made in one branch doesn't leak
+                // into the other branch or past the expression (matches the
+                // statement-level `if`).
+                let mut then_locals = locals.clone();
+                self.walk_expr(then_branch, ctx, &mut then_locals);
                 if let Some(e) = else_branch {
-                    self.walk_expr(e, ctx);
+                    let mut else_locals = locals.clone();
+                    self.walk_expr(e, ctx, &mut else_locals);
                 }
             }
             ExprKind::Match { expression, arms } => {
-                self.walk_expr(expression, ctx);
+                self.walk_expr(expression, ctx, locals);
                 for arm in arms {
+                    // Each arm gets its own scope; bindings don't leak across arms.
+                    let mut arm_locals = locals.clone();
                     if let Some(g) = &arm.guard {
-                        self.walk_expr(g, ctx);
+                        self.walk_expr(g, ctx, &mut arm_locals);
                     }
-                    self.walk_expr(&arm.body, ctx);
+                    self.walk_expr(&arm.body, ctx, &mut arm_locals);
                 }
             }
             ExprKind::ListComprehension {
@@ -999,10 +1177,10 @@ impl GraphBuilder {
                 condition,
                 ..
             } => {
-                self.walk_expr(element, ctx);
-                self.walk_expr(iterable, ctx);
+                self.walk_expr(element, ctx, locals);
+                self.walk_expr(iterable, ctx, locals);
                 if let Some(c) = condition {
-                    self.walk_expr(c, ctx);
+                    self.walk_expr(c, ctx, locals);
                 }
             }
             ExprKind::HashComprehension {
@@ -1012,38 +1190,102 @@ impl GraphBuilder {
                 condition,
                 ..
             } => {
-                self.walk_expr(key, ctx);
-                self.walk_expr(value, ctx);
-                self.walk_expr(iterable, ctx);
+                self.walk_expr(key, ctx, locals);
+                self.walk_expr(value, ctx, locals);
+                self.walk_expr(iterable, ctx, locals);
                 if let Some(c) = condition {
-                    self.walk_expr(c, ctx);
+                    self.walk_expr(c, ctx, locals);
                 }
             }
             ExprKind::Rescue { expr, fallback } => {
-                self.walk_expr(expr, ctx);
-                self.walk_expr(fallback, ctx);
+                self.walk_expr(expr, ctx, locals);
+                self.walk_expr(fallback, ctx, locals);
             }
             _ => {}
         }
     }
 
-    fn walk_argument(&mut self, arg: &Argument, ctx: &WalkCtx) {
+    fn walk_argument(
+        &mut self,
+        arg: &Argument,
+        ctx: &WalkCtx,
+        locals: &mut HashMap<String, String>,
+    ) {
         match arg {
-            Argument::Positional(e) | Argument::Block(e) => self.walk_expr(e, ctx),
-            Argument::Named(named) => self.walk_expr(&named.value, ctx),
+            Argument::Positional(e) | Argument::Block(e) => self.walk_expr(e, ctx, locals),
+            Argument::Named(named) => self.walk_expr(&named.value, ctx, locals),
         }
     }
 
-    /// Resolve a single call site into a `calls` or `renders` edge, when it is
-    /// high-confidence. Everything else is left untouched.
-    fn resolve_call(&mut self, callee: &Expr, arguments: &[Argument], line: u32, ctx: &WalkCtx) {
+    /// High-confidence class type of an expression for local binding.
+    /// Only `new Class(...)` and known-class factory statics (`User.find`).
+    fn class_from_expr(&self, expr: &Expr) -> Option<String> {
+        match &expr.kind {
+            ExprKind::New { class_expr, .. } => {
+                let name = simple_name(class_expr)?;
+                if self.class_by_name.contains_key(&name) {
+                    Some(name)
+                } else {
+                    None
+                }
+            }
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Member { object, name }
+                    if CLASS_INSTANCE_FACTORIES.contains(&name.as_str()) =>
+                {
+                    if let ExprKind::Variable(recv) = &object.kind {
+                        if self.class_by_name.contains_key(recv) {
+                            return Some(recv.clone());
+                        }
+                    }
+                    None
+                }
+                _ => None,
+            },
+            ExprKind::Grouping(inner) => self.class_from_expr(inner),
+            _ => None,
+        }
+    }
+
+    /// Resolve a single call site into a `calls` / `renders` / deferred
+    /// `redirects` edge, when it is high-confidence. Everything else is left
+    /// untouched.
+    fn resolve_call(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        line: u32,
+        ctx: &WalkCtx,
+        locals: &HashMap<String, String>,
+    ) {
         match &callee.kind {
-            // `render("view", ...)` inside a controller action.
-            ExprKind::Variable(name) if name == "render" => {
+            // `render("view", ...)` / `partial("view", ...)` inside a controller.
+            ExprKind::Variable(name) if name == "render" || name == "partial" => {
                 if let Some(view) = render_target(arguments, ctx.render_prefix.as_deref()) {
-                    let to = format!("view:{}", view);
-                    if self.has_node(&to) {
+                    if let Some(to) = self.resolve_view_id(&view) {
                         self.push_edge(&ctx.caller_id, &to, "renders", "", &ctx.relpath, line);
+                    }
+                }
+            }
+            // `redirect("/path")` — deferred until routes are indexed.
+            ExprKind::Variable(name) if name == "redirect" => {
+                if let Some(path) = first_string_or_symbol(arguments) {
+                    self.deferred_redirects.push((
+                        ctx.caller_id.clone(),
+                        path,
+                        ctx.relpath.clone(),
+                        line,
+                    ));
+                }
+            }
+            // Bare `super(...)` → parent method of the same name.
+            ExprKind::Super => {
+                if let (Some(super_name), Some(method)) =
+                    (ctx.superclass.as_ref(), ctx.enclosing_method.as_ref())
+                {
+                    let target = format!("method:{}#{}", super_name, method);
+                    if self.has_node(&target) {
+                        self.push_edge(&ctx.caller_id, &target, "calls", "", &ctx.relpath, line);
                     }
                 }
             }
@@ -1060,10 +1302,9 @@ impl GraphBuilder {
                     }
                 }
             }
-            // `Klass.method(...)` (static) or `this.method(...)`.
+            // `Klass.method(...)` (static), `this.method(...)`,
+            // `local.method(...)` (typed local), or `super.method(...)`.
             ExprKind::Member { object, name } => match &object.kind {
-                // Call on a known class → its method (or the class as a fallback
-                // when the method isn't one we extracted).
                 ExprKind::Variable(recv) if self.class_by_name.contains_key(recv) => {
                     let target = format!("method:{}#{}", recv, name);
                     if self.has_node(&target) {
@@ -1072,9 +1313,41 @@ impl GraphBuilder {
                         self.push_edge(&ctx.caller_id, &class_id, "calls", "", &ctx.relpath, line);
                     }
                 }
+                ExprKind::Variable(recv) => {
+                    // Instance call on a locally-typed variable — method only
+                    // (no class fallback; avoids inventing edges for Hashes).
+                    if let Some(class) = locals.get(recv) {
+                        let target = format!("method:{}#{}", class, name);
+                        if self.has_node(&target) {
+                            self.push_edge(
+                                &ctx.caller_id,
+                                &target,
+                                "calls",
+                                "",
+                                &ctx.relpath,
+                                line,
+                            );
+                        }
+                    }
+                }
                 ExprKind::This => {
                     if let Some(class) = &ctx.enclosing_class {
                         let target = format!("method:{}#{}", class, name);
+                        if self.has_node(&target) {
+                            self.push_edge(
+                                &ctx.caller_id,
+                                &target,
+                                "calls",
+                                "",
+                                &ctx.relpath,
+                                line,
+                            );
+                        }
+                    }
+                }
+                ExprKind::Super => {
+                    if let Some(super_name) = &ctx.superclass {
+                        let target = format!("method:{}#{}", super_name, name);
                         if self.has_node(&target) {
                             self.push_edge(
                                 &ctx.caller_id,
@@ -1141,6 +1414,19 @@ impl GraphBuilder {
                 embedding: vec![],
             },
         );
+        // Index the path for `redirect(path)` matching. A redirect targets a
+        // GET route, so prefer GET when several verbs share a path; otherwise
+        // the first registration wins.
+        let is_get = method.eq_ignore_ascii_case("GET");
+        match self.route_by_path.get(path) {
+            None => {
+                self.route_by_path.insert(path.to_string(), id.clone());
+            }
+            Some(existing) if is_get && !existing.starts_with("route:GET ") => {
+                self.route_by_path.insert(path.to_string(), id.clone());
+            }
+            Some(_) => {}
+        }
         if link_file {
             let file_id = format!("file:{}", routes_file);
             self.push_edge(&file_id, &id, "defines", "", routes_file, 0);
@@ -1281,22 +1567,101 @@ fn view_logical_name(relpath: &str) -> String {
     }
 }
 
-/// Normalize a `render(...)` string argument into a view logical name.
+/// Normalize a `render(...)` / `partial(...)` string argument into a view
+/// logical name (`posts/index`, `sessions/_form`).
 fn render_target(arguments: &[Argument], prefix: Option<&str>) -> Option<String> {
     let arg = first_string_or_symbol(arguments)?;
-    // Strip template suffixes: `home/index.html` / `x.slv` → `home/index` / `x`.
-    let mut name = arg.as_str();
-    for suffix in [".slv", ".html", ".erb"] {
-        name = name.strip_suffix(suffix).unwrap_or(name);
-    }
+    let name = normalize_view_name(&arg);
     if name.contains('/') {
-        Some(name.to_string())
+        Some(name)
     } else {
         match prefix {
             Some(p) => Some(format!("{}/{}", p, name)),
-            None => Some(name.to_string()),
+            None => Some(name),
         }
     }
+}
+
+/// Directory of a `view:<dir>/<name>` id, if any (`view:posts/index` → `posts`).
+fn view_dir(view_id: &str) -> Option<&str> {
+    view_id
+        .strip_prefix("view:")?
+        .rsplit_once('/')
+        .map(|(dir, _)| dir)
+}
+
+/// Strip template suffixes from a view/partial path argument.
+fn normalize_view_name(arg: &str) -> String {
+    let mut name = arg;
+    for suffix in [".slv", ".html", ".erb"] {
+        name = name.strip_suffix(suffix).unwrap_or(name);
+    }
+    name.to_string()
+}
+
+/// Record `name`'s tracked class, or clear a stale one when the value has no
+/// inferable class (e.g. reassigned to a hash or DB row). Keeps local type
+/// tracking precise across re-declaration and reassignment.
+fn bind_local(locals: &mut HashMap<String, String>, name: &str, class: Option<String>) {
+    match class {
+        Some(c) => {
+            locals.insert(name.to_string(), c);
+        }
+        None => {
+            locals.remove(name);
+        }
+    }
+}
+
+/// Extract a Named class type from an annotation (`User`, `User?`).
+fn named_class_type(ann: &crate::ast::types::TypeAnnotation) -> Option<String> {
+    match &ann.kind {
+        TypeKind::Named(name) => Some(name.clone()),
+        TypeKind::Nullable(inner) => named_class_type(inner),
+        _ => None,
+    }
+}
+
+/// Scan a template/source string for `partial("…")` / `partial('…')` call sites.
+/// Line numbers are 1-based. Deliberately lightweight — no full template parse.
+fn scan_partial_calls(source: &str) -> Vec<(String, u32)> {
+    let mut out = Vec::new();
+    let bytes = source.as_bytes();
+    let mut search_from = 0;
+    while let Some(rel) = source[search_from..].find("partial(") {
+        let abs = search_from + rel;
+        search_from = abs + "partial(".len();
+        // Require a word boundary before `partial` so a method or helper whose
+        // name merely ends in `partial(` (`render_partial(`, `my_partial(`)
+        // doesn't masquerade as the `partial(...)` builtin.
+        if abs > 0 {
+            let prev = bytes[abs - 1];
+            if prev == b'_' || prev.is_ascii_alphanumeric() {
+                continue;
+            }
+        }
+        // 1-based line of the match start.
+        let line = source[..abs].bytes().filter(|&b| b == b'\n').count() as u32 + 1;
+        let mut i = search_from;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+            let quote = bytes[i];
+            i += 1;
+            let start = i;
+            while i < bytes.len() && bytes[i] != quote && bytes[i] != b'\n' {
+                i += 1;
+            }
+            if i < bytes.len() && bytes[i] == quote {
+                let name = &source[start..i];
+                if !name.is_empty() {
+                    out.push((name.to_string(), line));
+                }
+            }
+        }
+    }
+    out
 }
 
 fn first_string_or_symbol(arguments: &[Argument]) -> Option<String> {
@@ -1603,5 +1968,253 @@ mod tests {
             .nodes
             .iter()
             .any(|n| n.kind == "view" && n.qualified_name == "sessions/new"));
+    }
+
+    #[test]
+    fn instance_call_via_new_binding() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/user.sl",
+            "class User < Model\n  def authenticate(password: String) -> Bool {\n    return true;\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/sessions_controller.sl",
+            "def create(req: Any) -> Any {\n  let u = new User();\n  u.authenticate(\"x\");\n  return null;\n}\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(
+            &graph,
+            "sessions#create",
+            "User#authenticate",
+            "calls"
+        ));
+    }
+
+    #[test]
+    fn instance_call_via_type_annotation() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/user.sl",
+            "class User < Model\n  def save() -> Bool {\n    return true;\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/users_controller.sl",
+            "def update(req: Any) -> Any {\n  let u: User = null;\n  u.save();\n  return null;\n}\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(&graph, "users#update", "User#save", "calls"));
+    }
+
+    #[test]
+    fn instance_call_via_model_finder() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/user.sl",
+            "class User < Model\n  def authenticate(password: String) -> Bool {\n    return true;\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/sessions_controller.sl",
+            "def create(req: Any) -> Any {\n  let u = User.find(1);\n  u.authenticate(\"x\");\n  return null;\n}\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(
+            &graph,
+            "sessions#create",
+            "User#authenticate",
+            "calls"
+        ));
+    }
+
+    #[test]
+    fn unbound_instance_call_stays_unlinked() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/user.sl",
+            "class User < Model\n  def save() -> Bool {\n    return true;\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/users_controller.sl",
+            // `u` is never typed — precision-first: no edge.
+            "def update(req: Any) -> Any {\n  let u = req[\"user\"];\n  u.save();\n  return null;\n}\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(!has_edge(&graph, "users#update", "User#save", "calls"));
+    }
+
+    #[test]
+    fn partial_and_redirect_edges_from_controller() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/controllers/sessions_controller.sl",
+            "def create(req: Any) -> Any {\n  partial(\"sessions/form\");\n  return redirect(\"/login\");\n}\n",
+        );
+        write(
+            dir.path(),
+            "app/views/sessions/_form.html.slv",
+            "<form></form>\n",
+        );
+        write(
+            dir.path(),
+            "config/routes.sl",
+            "post(\"/login\", \"sessions#create\");\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(
+            &graph,
+            "sessions#create",
+            "sessions/_form",
+            "renders"
+        ));
+        // redirect → route: match by path; route qualified_name is the handler.
+        let create_key = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "function" && n.name == "create")
+            .unwrap()
+            .key
+            .clone();
+        let route_key = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "route" && n.name == "POST /login")
+            .unwrap()
+            .key
+            .clone();
+        assert!(graph
+            .edges
+            .iter()
+            .any(|e| { e.from == create_key && e.to == route_key && e.edge_kind == "redirects" }));
+    }
+
+    #[test]
+    fn super_call_links_parent_method() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/person.sl",
+            "class Person < Model\n  def greet() -> String {\n    return \"hi\";\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/models/employee.sl",
+            "class Employee < Person\n  def greet() -> String {\n    return super();\n  }\nend\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(&graph, "Employee#greet", "Person#greet", "calls"));
+    }
+
+    #[test]
+    fn view_partial_edge() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/views/posts/index.html.slv",
+            "<% partial(\"posts/form\") %>\n",
+        );
+        write(
+            dir.path(),
+            "app/views/posts/_form.html.slv",
+            "<form></form>\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(&graph, "posts/index", "posts/_form", "renders"));
+    }
+
+    #[test]
+    fn scan_partial_calls_finds_quoted_names() {
+        let hits = scan_partial_calls("before\n<% partial(\"posts/form\") %>\npartial('x')");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].0, "posts/form");
+        assert_eq!(hits[0].1, 2);
+        assert_eq!(hits[1].0, "x");
+    }
+
+    #[test]
+    fn scan_partial_calls_ignores_suffix_matches() {
+        // `render_partial(` ends in `partial(` but is a different call.
+        let hits = scan_partial_calls("render_partial(\"x\")\npartial(\"y\")");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, "y");
+    }
+
+    #[test]
+    fn reassigned_local_drops_stale_class_edge() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/user.sl",
+            "class User < Model\n  def save() -> Bool {\n    return true;\n  }\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/users_controller.sl",
+            // `u` is a User, then reassigned to a non-class value; the later
+            // `u.save()` must NOT resolve against User#save.
+            "def update(req: Any) -> Any {\n  let u = User.find(1);\n  u = req[\"user\"];\n  u.save();\n  return null;\n}\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(!has_edge(&graph, "users#update", "User#save", "calls"));
+    }
+
+    #[test]
+    fn view_bare_partial_resolves_in_same_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/views/posts/index.html.slv",
+            // No directory in the name — resolves against posts/.
+            "<% partial(\"form\") %>\n",
+        );
+        write(
+            dir.path(),
+            "app/views/posts/_form.html.slv",
+            "<form></form>\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(&graph, "posts/index", "posts/_form", "renders"));
+    }
+
+    #[test]
+    fn redirect_prefers_get_route_over_post() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/controllers/sessions_controller.sl",
+            "def create(req: Any) -> Any {\n  return redirect(\"/login\");\n}\n",
+        );
+        write(
+            dir.path(),
+            "config/routes.sl",
+            // POST is registered first, but the redirect must target GET /login.
+            "post(\"/login\", \"sessions#create\");\nget(\"/login\", \"sessions#new\");\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        let create_key = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "function" && n.name == "create")
+            .unwrap()
+            .key
+            .clone();
+        let get_route_key = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "route" && n.name == "GET /login")
+            .unwrap()
+            .key
+            .clone();
+        assert!(graph
+            .edges
+            .iter()
+            .any(|e| e.from == create_key && e.to == get_route_key && e.edge_kind == "redirects"));
     }
 }

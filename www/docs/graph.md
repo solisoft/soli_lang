@@ -166,14 +166,43 @@ One document per relationship, as a SolidB edge (`_from` / `_to` reference
 | `imports` | file → local file |
 | `calls` | method/function → the function or class-method it calls |
 | `instantiates` | method/function → class it constructs (`new X()`) |
-| `renders` | controller action → view it renders |
+| `renders` | controller action → view (`render` / `partial`); view → partial view |
+| `redirects` | method/function → route whose path matches `redirect("/path")` (prefers the `GET` route when a path is served by several verbs) |
 | `routes_to` | route → controller action |
 | `relates` | model → model (`has_many` / `belongs_to` / `edge`; the DSL name is in `relation`) |
 
-Call-graph resolution is **precision-first**: class-method calls
-(`User.find(...)`), `this.method(...)`, and unambiguous bare function calls are
-linked; instance calls on a variable (`user.save()`) are not inferred (no type
-inference), so an edge is never invented.
+Call-graph resolution is **precision-first**. Linked when high-confidence:
+
+- class-method calls (`User.find(...)`), `this.method(...)`, bare `super(...)` /
+  `super.method(...)` when the parent method exists
+- unambiguous bare function calls
+- instance calls on a **locally typed** variable only: `let u = new User()`,
+  `let u: User = …`, or `let u = User.find(...)` (and other model factories
+  like `find_by` / `create`) then `u.authenticate(...)`
+
+Unbound receivers (`user.save()` when `user` has no known class) stay
+unlinked — an edge is never invented. Reassigning a tracked local to a value
+with no known class (`user = req["row"]`) drops its type, so a later
+`user.save()` won't resolve against a class the variable no longer holds. A bare
+`partial("form")` inside a view resolves against that view's own directory
+first, then falls back to the name as given.
+
+Example of edges a typical controller action produces:
+
+```soli
+# app/controllers/sessions_controller.sl
+def create(req: Any) -> Any {
+    let user = User.find_by("email", req["email"])  # binds user → User
+    user.authenticate(req["password"])              # calls → User#authenticate
+    partial("sessions/form")                        # renders → sessions/_form (or form)
+    return redirect("/dashboard")                   # redirects → matching route
+}
+```
+
+```soli
+# app/views/sessions/new.html.slv — also scanned for partials
+<% partial("sessions/form") %>
+```
 
 ## Querying the graph (for agents)
 
@@ -187,12 +216,14 @@ expansion) with no AQL to write:
 soli graph query "where is authentication handled?"
 soli graph query "refund flow" --json --limit 5 --hops 1
 soli graph query "invoice validation" --path api/     # scope to one side of a mono-repo
+soli graph query "login" --kind method,controller     # only those node kinds
 ```
 
 It embeds the question, ANN-searches the vector index for seed nodes, and
 expands each seed one hop over the graph (callers, callees, routes, views). If
 the graph was built with `--no-embed` (no vector index) or no embedding key is
-set, it falls back to a keyword-ranked scan, so the command always works.
+set, it falls back to a **weighted** keyword-ranked scan (name/qualified_name
+beats body text), so the command always works.
 
 `--json` emits a structured result an agent can parse directly:
 
@@ -208,6 +239,7 @@ set, it falls back to a keyword-ranked scan, so the command always works.
       "file": "app/controllers/sessions_controller.sl",
       "line": 12,
       "signature": "def create(req: Any) -> Any",
+      "snippet": "method SessionsController#create …",
       "neighbors": [
         { "direction": "in",  "edge_kind": "routes_to", "kind": "route",  "name": "POST /login" },
         { "direction": "out", "edge_kind": "calls",     "kind": "method", "name": "User#authenticate" },
@@ -218,14 +250,20 @@ set, it falls back to a keyword-ranked scan, so the command always works.
 }
 ```
 
-`--limit N` sets how many seed results to return (default 6); `--hops N` sets the
-neighbour-expansion depth (default 1). `--path PREFIX` keeps only seeds whose
-`file` starts with `PREFIX` (e.g. `--path api/` or `--path app/src/`), so an
-agent can target one side of a mono-repo without post-filtering the JSON —
-neighbours are unaffected. The semantic search over-fetches then filters (so an
-out-of-path top ranking doesn't starve results), and the keyword fallback
-filters server-side in AQL. The heavy `embedding`/`text` fields are never
-included in the output.
+| Flag | Effect |
+|------|--------|
+| `--limit N` | seed results (default 6) |
+| `--hops N` | neighbour-expansion depth (default 1, max 3) |
+| `--path PREFIX` | keep only seeds whose `file` starts with `PREFIX` |
+| `--kind KINDS` | keep only seeds whose `kind` is in the comma-separated list (`method,controller,route`, …) |
+| `--json` | structured result for agents |
+
+`--path` / `--kind` only filter seeds; neighbours are unaffected. Semantic search
+over-fetches then filters (so an out-of-filter top ranking doesn't starve
+results); the keyword fallback filters server-side in AQL. Each seed includes a
+truncated `snippet` of node text for agent context. Neighbours are ordered with
+structural edges first (`routes_to`, `calls`, `renders`, `redirects`, …). The
+heavy `embedding` field is never included in the output.
 
 ### Raw queries
 

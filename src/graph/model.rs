@@ -69,7 +69,7 @@ pub struct Edge {
     /// Target node key.
     pub to: String,
     /// defines, inherits, implements, imports, calls, instantiates, renders,
-    /// routes_to, relates.
+    /// redirects, routes_to, relates.
     pub edge_kind: String,
     /// Association name for `relates` edges (has_many, belongs_to, …).
     #[serde(skip_serializing_if = "String::is_empty")]

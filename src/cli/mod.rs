@@ -63,6 +63,7 @@ pub fn run() {
             limit,
             hops,
             path,
+            kind,
             json,
         } => commands::run_graph_query(
             question,
@@ -71,6 +72,7 @@ pub fn run() {
             *limit,
             *hops,
             path.as_deref(),
+            kind.as_deref(),
             *json,
         ),
         Command::Serve {
