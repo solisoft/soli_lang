@@ -302,8 +302,9 @@ impl Vm {
     /// receivers. Compiled (VmClosure) methods run under the method calling
     /// convention — the receiver stays in the callee slot and becomes
     /// `this` — and empty-parens calls on plain values behave like bare
-    /// access (tree-walker parity). Everything else goes through property
-    /// lookup + call_value.
+    /// access (tree-walker parity). Native instance methods invoke directly
+    /// (no per-call bound-wrapper alloc). Everything else goes through
+    /// property lookup + call_value.
     pub(crate) fn call_method_slow_path(
         &mut self,
         receiver_idx: usize,
@@ -342,6 +343,54 @@ impl Vm {
                 .push(CallFrame::new(closure, stack_base, Some(defining_class)));
             return Ok(());
         }
+
+        // Direct native instance-method call: skip bind_native_method_to_instance
+        // (which allocated a fresh NativeFunction + closure on every call).
+        // Fields shadow methods — same order as instance_member_access.
+        //
+        // Model subclasses are excluded: lifecycle callbacks (`before_save`,
+        // …) only fire through the tree-walker's interceptors. Calling the
+        // native here would silently skip them — same EngineFallback carve-out
+        // as `op_get_property` (see vm_classes.rs).
+        if let Value::Instance(inst) = &self.stack[receiver_idx] {
+            let (native, is_model) = {
+                let inst_ref = inst.borrow();
+                if inst_ref.fields.contains_key(name) {
+                    (None, false)
+                } else {
+                    let is_model = inst_ref.class.is_model_subclass();
+                    (inst_ref.class.find_native_method(name), is_model)
+                }
+            };
+            if let Some(native) = native {
+                let span = self.current_span();
+                if is_model {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("model instance method '{}'", name),
+                        span,
+                    ));
+                }
+                if let Some(expected) = native.arity {
+                    if argc != expected {
+                        return Err(RuntimeError::wrong_arity(expected, argc, span));
+                    }
+                }
+                let user_args: Vec<Value> =
+                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                let inst = inst.clone();
+                let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
+                let result =
+                    crate::interpreter::executor::access::member::call_native_instance_method(
+                        &inst, &native, &user_args,
+                    )
+                    .map_err(|e| RuntimeError::new(e, span))?;
+                drop(_native_span);
+                self.stack.truncate(receiver_idx);
+                self.stack.push(result);
+                return Ok(());
+            }
+        }
+
         let span = self.current_span();
         let object = self.stack[receiver_idx].clone();
         let method_val = self.op_get_property(&object, name, span)?;

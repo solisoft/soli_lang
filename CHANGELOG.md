@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(vm/interpreter):** direct native instance-method invocation — `obj.native_method(args)` (and `super.native_method(args)`) no longer allocates a bound `NativeFunction` wrapper on every call. The receiver is prepended and the underlying native runs in place (same calling convention as before). Method-as-value access (`m = obj.method`) still binds a wrapper. Covers the bytecode VM `CallMethod` path and the tree-walker call dispatcher. Model-subclass instance natives still `EngineFallback` on the VM so lifecycle callbacks fire in the tree-walker (unchanged carve-out).
+
 ## [1.21.4] - 2026-07-16
 
 ### Added

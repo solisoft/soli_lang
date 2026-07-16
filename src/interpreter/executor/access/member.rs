@@ -95,6 +95,30 @@ pub(crate) fn bind_native_method_to_instance(
     Value::NativeFunction(wrapper)
 }
 
+/// Invoke a native instance method with the receiver prepended, without
+/// allocating a bound `NativeFunction` wrapper.
+///
+/// Native instance methods use the calling convention `args[0] = receiver`
+/// (see `bind_native_method_to_instance`). Direct call sites
+/// (`obj.method(args)`, `super.method(args)`) go through this helper so they
+/// skip the per-call wrapper allocation; method-as-value access
+/// (`m = obj.method`) still uses the binder above.
+///
+/// Arity is **not** checked here — callers validate the user-facing argc
+/// (excluding the receiver) against `native.arity`, matching the bound
+/// wrapper's arity semantics.
+#[inline]
+pub(crate) fn call_native_instance_method(
+    inst: &Rc<RefCell<Instance>>,
+    native: &NativeFunction,
+    user_args: &[Value],
+) -> Result<Value, String> {
+    let mut args = Vec::with_capacity(user_args.len() + 1);
+    args.push(Value::Instance(inst.clone()));
+    args.extend_from_slice(user_args);
+    (native.func)(args)
+}
+
 /// Bind a Model subclass's native static method to the class value: model
 /// statics (`User.create`, `User.where`, …) expect the class as `args[0]`
 /// so they can resolve the collection. Shared by the tree-walker

@@ -1653,17 +1653,34 @@ impl Vm {
                         let result = self.run_jit_method_to_completion(&method, argc, span)?;
                         self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
-                        // Native method: bind the receiver and call.
+                        // Direct native call — same helper as CallMethod, no
+                        // per-call bound-wrapper allocation. Model subclasses
+                        // still EngineFallback so lifecycle callbacks fire in
+                        // the tree-walker (see op_get_property carve-out).
                         let receiver = self.stack[receiver_idx].clone();
                         if let Value::Instance(ref inst) = receiver {
-                            let bound = crate::interpreter::executor::access::member::bind_native_method_to_instance(
-                                inst,
-                                &superclass.name,
-                                &name,
-                                &native,
-                            );
-                            self.stack[receiver_idx] = bound;
-                            self.call_value(argc, span)?;
+                            if inst.borrow().class.is_model_subclass() {
+                                return Err(RuntimeError::EngineFallback(
+                                    format!("model instance method '{}'", name),
+                                    span,
+                                ));
+                            }
+                            if let Some(expected) = native.arity {
+                                if argc != expected {
+                                    return Err(RuntimeError::wrong_arity(expected, argc, span));
+                                }
+                            }
+                            let user_args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                            let _native_span =
+                                crate::serve::span_log::maybe_instrument_native(&native.name);
+                            let result = crate::interpreter::executor::access::member::call_native_instance_method(
+                                inst, &native, &user_args,
+                            )
+                            .map_err(|e| RuntimeError::new(e, span))?;
+                            drop(_native_span);
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
                         } else {
                             return Err(RuntimeError::type_error(
                                 "super method called on non-instance",
@@ -3452,10 +3469,10 @@ mod tests {
     #[test]
     fn test_vm_native_instance_method_binding() {
         // Native instance methods (DateTime/Duration pattern) must receive
-        // the instance as args[0] — op_get_property binds the receiver via
-        // bind_native_method_to_instance. Bare access on a zero-arg native
-        // auto-invokes (op_get_property_member), parens form goes through
-        // CallMethod; both must see the receiver.
+        // the instance as args[0]. Bare access on a zero-arg native
+        // auto-invokes (op_get_property_member / bind wrapper); the parens
+        // form goes through CallMethod's direct native path (no per-call
+        // wrapper). Both must see the receiver.
         use crate::interpreter::value::{Class, Instance};
         use std::collections::HashMap;
 
@@ -3472,6 +3489,24 @@ mod tests {
                         .unwrap_or(Value::Null)),
                     _ => Err("Box.val called without receiver".to_string()),
                 }
+            })),
+        );
+        native_methods.insert(
+            "add".to_string(),
+            Rc::new(NativeFunction::new("Box.add", Some(1), |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("Box.add called without receiver".to_string()),
+                };
+                let base = match this.borrow().fields.get("v") {
+                    Some(Value::Int(n)) => *n,
+                    _ => 0,
+                };
+                let n = match args.get(1) {
+                    Some(Value::Int(n)) => *n,
+                    _ => return Err("Box.add expects an int".to_string()),
+                };
+                Ok(Value::Int(base + n))
             })),
         );
         let class = Rc::new(Class {
@@ -3492,6 +3527,43 @@ mod tests {
             vm.execute(&module.main).expect("vm error");
             assert_eq!(vm.globals.get("x"), Some(&Value::Int(7)), "{}", source);
         }
+
+        // One-arg native via CallMethod direct path
+        let tokens = Scanner::new("let x = obj.add(3);")
+            .scan_tokens()
+            .expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("obj".to_string(), obj.clone());
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Int(10)));
+
+        // Field shadows native of the same name
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_methods.insert(
+            "score".to_string(),
+            Rc::new(NativeFunction::new("Box.score", Some(0), |_args| {
+                Ok(Value::Int(999))
+            })),
+        );
+        let class = Rc::new(Class {
+            name: "Box".to_string(),
+            native_methods,
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        instance.fields.insert("score".to_string(), Value::Int(42));
+        let obj = Value::Instance(Rc::new(RefCell::new(instance)));
+        let tokens = Scanner::new("let x = obj.score();")
+            .scan_tokens()
+            .expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("obj".to_string(), obj);
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Int(42)));
     }
 
     #[test]

@@ -526,6 +526,48 @@ impl Interpreter {
                             return self.call_string_method(&s, name, arg_values, span);
                         }
                         Value::Instance(inst) if !is_universal_instance_member(name) => {
+                            // Prefer native instance methods (same order as
+                            // instance_member_access: fields → native → user).
+                            // Natives apply to models too (`save`, `update`, …);
+                            // user-method direct call stays non-model only so
+                            // relation/translated-field access keeps the slow path.
+                            let direct_native = {
+                                let inst_ref = inst.borrow();
+                                if inst_ref.fields.contains_key(name.as_str()) {
+                                    None
+                                } else {
+                                    inst_ref.class.find_native_method(name)
+                                }
+                            };
+                            if let Some(native) = direct_native {
+                                let inst = inst.clone();
+                                let mut arg_values = Vec::with_capacity(arguments.len());
+                                for arg in arguments {
+                                    if let Argument::Positional(expr) = arg {
+                                        arg_values.push(self.evaluate(expr)?);
+                                    }
+                                }
+                                if let Some(expected) = native.arity {
+                                    if arg_values.len() != expected {
+                                        return Err(RuntimeError::wrong_arity(
+                                            expected,
+                                            arg_values.len(),
+                                            span,
+                                        ));
+                                    }
+                                }
+                                let _native_span =
+                                    crate::serve::span_log::maybe_instrument_native(&native.name);
+                                let result = crate::interpreter::executor::access::member::call_native_instance_method(
+                                    &inst, &native, &arg_values,
+                                )
+                                .map_err(|msg| RuntimeError::General {
+                                    message: msg,
+                                    span,
+                                })?;
+                                drop(_native_span);
+                                return Ok(result);
+                            }
                             let direct_method = {
                                 let inst_ref = inst.borrow();
                                 if !inst_ref.class.is_model_subclass()
