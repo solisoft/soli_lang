@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Soli code graph RAG: source code becomes nodes and edges in SolidB with embeddings, a natural-language query seeds semantic hits, then one-hop graph expansion returns related routes, methods, and views for an agent.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amberLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="seedGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrDim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4b5563"/>
+    </marker>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <!-- Title -->
+  <text x="48" y="52" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="30" font-weight="700" fill="#f4f4f5">Graph RAG over your own codebase</text>
+  <text x="48" y="82" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">
+    <tspan font-family="ui-monospace, monospace" fill="#f59e0b">soli graph build</tspan>
+    indexes structure + embeddings ·
+    <tspan font-family="ui-monospace, monospace" fill="#f59e0b">soli graph query</tspan>
+    retrieves by meaning, then walks the edges
+  </text>
+
+  <!-- ========== LEFT: source → graph ========== -->
+  <g>
+    <rect x="40" y="118" width="300" height="410" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="60" y="148" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#9ca3af" letter-spacing="0.04em">1 · BUILD</text>
+    <text x="60" y="174" font-family="ui-monospace, monospace" font-size="13" fill="#f59e0b">soli graph build</text>
+
+    <!-- mini file tree -->
+    <g font-family="ui-monospace, monospace" font-size="11.5" fill="#6b7280">
+      <text x="60" y="210">app/controllers/</text>
+      <text x="76" y="232" fill="#c3e88d">sessions_controller.sl</text>
+      <text x="60" y="254">app/models/</text>
+      <text x="76" y="276" fill="#c3e88d">user.sl</text>
+      <text x="60" y="298">app/views/sessions/</text>
+      <text x="76" y="320" fill="#c3e88d">new.html.slv</text>
+      <text x="60" y="342">config/routes.sl</text>
+    </g>
+
+    <!-- arrow down -->
+    <path d="M190 360 L190 388" stroke="#f59e0b" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- graph nodes cluster -->
+    <circle cx="120" cy="430" r="22" fill="#161a22" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="120" y="434" text-anchor="middle" font-family="ui-monospace, monospace" font-size="10" fill="#86efac">route</text>
+
+    <circle cx="190" cy="470" r="26" fill="#1a1410" stroke="#f59e0b" stroke-width="2" filter="url(#soft)"/>
+    <circle cx="190" cy="470" r="26" fill="#1a1410" stroke="#f59e0b" stroke-width="2"/>
+    <text x="190" y="474" text-anchor="middle" font-family="ui-monospace, monospace" font-size="10" fill="#fcd34d">method</text>
+
+    <circle cx="270" cy="430" r="22" fill="#161a22" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="270" y="434" text-anchor="middle" font-family="ui-monospace, monospace" font-size="10" fill="#7dd3fc">model</text>
+
+    <path d="M140 440 L168 458" stroke="#4b5563" stroke-width="1.5" marker-end="url(#arrDim)"/>
+    <path d="M214 458 L250 440" stroke="#4b5563" stroke-width="1.5" marker-end="url(#arrDim)"/>
+    <text x="148" y="452" font-family="ui-monospace, monospace" font-size="9" fill="#6b7280">routes_to</text>
+    <text x="218" y="452" font-family="ui-monospace, monospace" font-size="9" fill="#6b7280">calls</text>
+
+    <text x="60" y="510" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">nodes + edges → SolidB</text>
+    <text x="60" y="528" font-family="ui-monospace, monospace" font-size="11" fill="#4b5563">soli_graph_nodes · soli_graph_edges</text>
+  </g>
+
+  <!-- flow arrow 1 → 2 -->
+  <path d="M352 320 L388 320" stroke="url(#amberLine)" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ========== CENTER: query + expand ========== -->
+  <g>
+    <rect x="400" y="118" width="300" height="410" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="420" y="148" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#9ca3af" letter-spacing="0.04em">2 · RETRIEVE</text>
+    <text x="420" y="174" font-family="ui-monospace, monospace" font-size="13" fill="#f59e0b">soli graph query</text>
+
+    <!-- query bubble -->
+    <rect x="420" y="198" width="260" height="44" rx="10" fill="#0b0d0f" stroke="#3a2f14"/>
+    <text x="436" y="226" font-family="system-ui, sans-serif" font-size="13" fill="#e5e7eb">“where is authentication handled?”</text>
+
+    <!-- seed -->
+    <text x="420" y="272" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">① Semantic seed (vector ANN)</text>
+    <rect x="420" y="288" width="260" height="48" rx="10" fill="#1a1410" stroke="#f59e0b" stroke-width="1.5"/>
+    <circle cx="444" cy="312" r="8" fill="#f59e0b"/>
+    <text x="462" y="308" font-family="ui-monospace, monospace" font-size="12" fill="#fcd34d">SessionsController#create</text>
+    <text x="462" y="326" font-family="system-ui, sans-serif" font-size="11" fill="#6b7280">score 0.82 · method</text>
+
+    <!-- expand -->
+    <text x="420" y="368" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">② One-hop graph expansion</text>
+    <g font-family="ui-monospace, monospace" font-size="11.5">
+      <rect x="420" y="384" width="260" height="28" rx="6" fill="#0f1319" stroke="#2b3038"/>
+      <text x="434" y="403" fill="#22c55e">in</text>
+      <text x="456" y="403" fill="#6b7280">routes_to</text>
+      <text x="530" y="403" fill="#d1d5db">POST /login</text>
+
+      <rect x="420" y="420" width="260" height="28" rx="6" fill="#0f1319" stroke="#2b3038"/>
+      <text x="434" y="439" fill="#38bdf8">out</text>
+      <text x="464" y="439" fill="#6b7280">calls</text>
+      <text x="514" y="439" fill="#d1d5db">User#authenticate</text>
+
+      <rect x="420" y="456" width="260" height="28" rx="6" fill="#0f1319" stroke="#2b3038"/>
+      <text x="434" y="475" fill="#38bdf8">out</text>
+      <text x="464" y="475" fill="#6b7280">renders</text>
+      <text x="530" y="475" fill="#d1d5db">sessions/new</text>
+    </g>
+
+    <text x="420" y="512" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">Meaning finds the seed · edges fill the story</text>
+  </g>
+
+  <!-- flow arrow 2 → 3 -->
+  <path d="M712 320 L748 320" stroke="url(#amberLine)" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ========== RIGHT: agent context ========== -->
+  <g>
+    <rect x="760" y="118" width="224" height="410" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="780" y="148" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#9ca3af" letter-spacing="0.04em">3 · AGENT</text>
+    <text x="780" y="174" font-family="system-ui, sans-serif" font-size="13" fill="#cbd5e1">Grounded context</text>
+
+    <rect x="780" y="198" width="184" height="280" rx="10" fill="#0b0d0f" stroke="#2b3038"/>
+    <g font-family="ui-monospace, monospace" font-size="11">
+      <text x="796" y="224" fill="#6b7280">--json</text>
+      <text x="796" y="252" fill="#c792ea">{</text>
+      <text x="832" y="252" fill="#82aaff">"results"</text><text x="896" y="252" fill="#8b929e">: [</text>
+      <text x="808" y="276" fill="#8b929e">{</text>
+      <text x="820" y="300" fill="#f59e0b">"kind"</text><text x="868" y="300" fill="#8b929e">: method,</text>
+      <text x="820" y="324" fill="#f59e0b">"file"</text><text x="860" y="324" fill="#c3e88d"> "…/sessions…"</text>
+      <text x="820" y="348" fill="#f59e0b">"neighbors"</text><text x="900" y="348" fill="#8b929e">: 3</text>
+      <text x="808" y="372" fill="#8b929e">}</text>
+      <text x="796" y="396" fill="#8b929e">]</text>
+      <text x="796" y="432" fill="#22c55e">// no hallucinated</text>
+      <text x="796" y="452" fill="#22c55e">// paths or APIs</text>
+    </g>
+
+    <text x="780" y="512" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">Same SolidB as Models</text>
+  </g>
+</svg>

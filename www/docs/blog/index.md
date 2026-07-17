@@ -7,6 +7,13 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
+<a href="/docs/blog/code-graph-rag"><img src="/images/blog/code-graph-rag.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Code Graph RAG"></a>
+<br>
+<strong><a href="/docs/blog/code-graph-rag">Code Graph RAG: A Map for Agents</a></strong><br>
+<small>soli graph build indexes structure + embeddings in SolidB; soli graph query seeds by meaning and walks edges so agents see the full neighbourhood.</small>
+</div>
+
+<div>
 <a href="/docs/blog/rag-product-discovery"><img src="/images/blog/rag-product-discovery.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="RAG Product Discovery"></a>
 <br>
 <strong><a href="/docs/blog/rag-product-discovery">RAG Product Discovery in Soli</a></strong><br>
