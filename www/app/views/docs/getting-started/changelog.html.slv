@@ -20,9 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 text-sm leading-relaxed">Nothing yet &mdash; changes landing on <code class="text-cyan-400">main</code> since v1.22.0 will appear here.</p>
+    </section>
+
+    <section id="v1-22-0" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.22.0</h2>
+            <span class="text-sm font-medium text-gray-400">July 19, 2026</span>
+        </div>
 
         <!-- Language -->
-        <h3 id="unreleased-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <h3 id="v22-0-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white"><code class="text-cyan-400">break</code> is now a loop keyword</strong> &mdash; exits the innermost enclosing <code class="text-cyan-400">while</code> or <code class="text-cyan-400">for</code> loop, with postfix conditions (<code class="text-cyan-400">break if cond</code> / <code class="text-cyan-400">break unless cond</code>). It propagates correctly out of nested blocks, <code class="text-cyan-400">if</code> branches and <code class="text-cyan-400">try</code>/<code class="text-cyan-400">catch</code> (a <code class="text-cyan-400">finally</code> block still runs before the loop exits), and is absorbed at the function boundary &mdash; a <code class="text-cyan-400">break</code> inside a lambda or function body does not break an outer loop. Not compiled by the bytecode VM: a handler containing <code class="text-cyan-400">break</code> falls back to the tree-walking interpreter automatically (same precedent as safe navigation <code class="text-cyan-400">&amp;.</code>), so it is fully functional but not JIT-compiled. See <a href="/docs/language/control-flow#kw-break" class="text-cyan-400 hover:text-cyan-300 underline">Control Flow</a>.</li>
@@ -31,9 +39,10 @@
         </div>
 
         <!-- Performance -->
-        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <h3 id="v22-0-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Much faster <code class="text-cyan-400">soli graph build</code> re-syncs</strong> &mdash; each node document now carries a deterministic content hash covering all of its stored fields and its embedding. On a re-sync, nodes whose hash is unchanged are skipped entirely instead of being re-written. Because SolidB re-serializes the whole node vector index on every write batch, a typical incremental sync (a handful of nodes changed) collapses from roughly one full-index rewrite per 200 nodes down to a couple. The vector index is also built <em>after</em> the initial bulk load rather than before, so a first build pays a single index build instead of a re-serialize per insert chunk. Graphs written by an older build are upgraded transparently on the next sync.</li>
                 <li><strong class="text-white">Direct native instance-method calls</strong> &mdash; <code class="text-cyan-400">obj.native_method(args)</code> (and <code class="text-cyan-400">super.native_method(args)</code>) no longer allocates a bound <code class="text-cyan-400">NativeFunction</code> wrapper on every call. The receiver is prepended and the underlying native runs in place (same calling convention as before). Method-as-value access (<code class="text-cyan-400">m = obj.method</code>) still binds a wrapper. Covers the bytecode VM <code class="text-cyan-400">CallMethod</code> path and the tree-walker call dispatcher. Model-subclass instance natives still fall back to the tree-walker on the VM so lifecycle callbacks fire (unchanged carve-out). On a hot <code class="text-cyan-400">DateTime</code> accessor loop: about <strong class="text-white">1.55&times;</strong> faster on the tree-walker and <strong class="text-white">1.62&times;</strong> on the VM (~&minus;36% / &minus;38% wall time).</li>
             </ul>
         </div>

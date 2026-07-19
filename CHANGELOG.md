@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-07-19
+
 ### Added
 
 * **feat(lang):** `break` is now a real loop keyword (lexer keyword + `StmtKind::Break`) — it exits the innermost enclosing `while` or `for` loop and supports postfix conditions (`break if cond` / `break unless cond`). It propagates correctly out of nested blocks, `if` branches, and `try`/`catch` (a `finally` block still runs before the loop exits). A `break` inside a lambda or function body does **not** break an outer loop — it is absorbed at the function boundary. Not supported in compiled/VM mode: a handler containing `break` falls back to the tree-walking interpreter automatically (same precedent as safe navigation `&.`), so it is fully functional but not JIT-compiled.
@@ -13,6 +15,7 @@
 ### Performance
 
 * **perf(vm/interpreter):** direct native instance-method invocation — `obj.native_method(args)` (and `super.native_method(args)`) no longer allocates a bound `NativeFunction` wrapper on every call. The receiver is prepended and the underlying native runs in place (same calling convention as before). Method-as-value access (`m = obj.method`) still binds a wrapper. Covers the bytecode VM `CallMethod` path and the tree-walker call dispatcher. Model-subclass instance natives still `EngineFallback` on the VM so lifecycle callbacks fire in the tree-walker (unchanged carve-out).
+* **perf(graph):** `soli graph build` re-syncs are dramatically cheaper. Each node document now carries a deterministic content hash (`chash`) covering all stored fields and the embedding; on sync, nodes whose hash is unchanged are skipped entirely instead of being re-`UPDATE`d. Because SolidB re-serializes the whole node vector index on every write batch, a typical incremental re-sync (a handful of nodes changed) collapses from ~N/200 update batches to a couple. The vector index is also created *after* the initial bulk load rather than before, so a first build pays one index build instead of a full-index re-serialize per insert chunk. Nodes written by an older build carry no hash and take one `UPDATE` that repopulates it.
 
 ## [1.21.4] - 2026-07-16
 
