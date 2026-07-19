@@ -1530,6 +1530,9 @@
   .grow {
     flex-grow: 1;
   }
+  .border-collapse {
+    border-collapse: collapse;
+  }
   .translate-x-0 {
     --tw-translate-x: 0;
     translate: var(--tw-translate-x) var(--tw-translate-y);
@@ -1871,6 +1874,12 @@
   .border-none {
     --tw-border-style: none;
     border-style: none;
+  }
+  .border-amber-400\/20 {
+    border-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-amber-400) 20%, transparent);
+    }
   }
   .border-amber-400\/30 {
     border-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 30%, transparent);

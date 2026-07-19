@@ -1,0 +1,1095 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-5">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins/pdf" class="text-gray-400 hover:text-white transition-colors">PDF &amp; Factur-X</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            <span class="text-white">Layout editor</span>
+        </nav>
+        <h1 class="text-3xl font-bold tracking-tight text-white sm:text-4xl mb-3">Layout editor</h1>
+        <p class="text-lg text-gray-300 leading-7 max-w-3xl">
+            Build a template by structure rather than by hand-writing JSON. Pick an element on the left, set its properties in the middle, watch the real engine render it on the right. The JSON below is the file &mdash; it is the editor's only state, so anything you author here you can save, commit and hand-edit later.
+        </p>
+        <p class="text-sm text-gray-400 mt-4 max-w-3xl rounded-lg border border-amber-400/20 bg-amber-500/5 px-4 py-3">
+            <strong class="text-white">This editor is for documents that flow.</strong> Invoices, quotes and statements grow with their data, so their elements are ordered rather than positioned &mdash; which is what this tree edits. If you want to place things freely on the page instead, open the full-screen <a href="/docs/builtins/pdf-studio" class="text-amber-300 hover:underline">PDF Studio</a>: a canvas with a tool rail, rulers and guides, where you draw and drag elements over the real rendered page.
+        </p>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="ed-toolbar">
+        <label class="ed-field-inline">
+            <span>Start from</span>
+            <select id="ed-sample" class="ed-input">
+                <option value="">Blank document</option>
+                <option value="invoice_compliant">Compliant invoice</option>
+                <option value="invoice_minimal">Minimal invoice</option>
+                <option value="invoice_subscription">Subscription invoice</option>
+                <option value="credit_note">Credit note</option>
+                <option value="quote_sections">Sectioned quote</option>
+                <option value="quote_options">Quote with options</option>
+                <option value="invoice">Starter invoice</option>
+                <option value="quote">Starter quote</option>
+            </select>
+        </label>
+        <div class="ed-spacer"></div>
+        <span id="ed-status" class="ed-status">Ready</span>
+        <button id="ed-render" type="button" class="ed-btn ed-btn-primary">Render</button>
+        <button id="ed-copy" type="button" class="ed-btn">Copy JSON</button>
+        <button id="ed-download" type="button" class="ed-btn">Download</button>
+    </div>
+
+    <!-- Three panes -->
+    <div class="ed-grid">
+        <!-- Structure -->
+        <section class="ed-pane" aria-label="Document structure">
+            <header class="ed-pane-head">
+                <span>Structure</span>
+                <div class="ed-pane-actions">
+                    <button id="ed-up" type="button" class="ed-mini" title="Move up" aria-label="Move selected element up">&uarr;</button>
+                    <button id="ed-down" type="button" class="ed-mini" title="Move down" aria-label="Move selected element down">&darr;</button>
+                    <button id="ed-dup" type="button" class="ed-mini" title="Duplicate" aria-label="Duplicate selected element">&plus;&plus;</button>
+                    <button id="ed-del" type="button" class="ed-mini ed-mini-danger" title="Delete" aria-label="Delete selected element">&times;</button>
+                </div>
+            </header>
+            <div id="ed-tree" class="ed-tree" role="tree"></div>
+            <div class="ed-add">
+                <label class="ed-field-inline">
+                    <span>Add</span>
+                    <select id="ed-add-type" class="ed-input">
+                        <optgroup label="Containers">
+                            <option value="box">box &mdash; panel that fits its content</option>
+                            <option value="repeat">repeat &mdash; one copy per array item</option>
+                            <option value="if">if &mdash; conditional block</option>
+                            <option value="unless">unless &mdash; inverse conditional</option>
+                            <option value="columns">columns &mdash; multi-column flow</option>
+                        </optgroup>
+                        <optgroup label="Content">
+                            <option value="paragraph">paragraph</option>
+                            <option value="table">table</option>
+                            <option value="list">list</option>
+                            <option value="image">image</option>
+                            <option value="chart">chart</option>
+                            <option value="qr">qr</option>
+                            <option value="barcode">barcode</option>
+                        </optgroup>
+                        <optgroup label="Spacing &amp; rules">
+                            <option value="move">move &mdash; shift the cursor</option>
+                            <option value="hr">hr &mdash; horizontal rule</option>
+                            <option value="rect">rect &mdash; raw rectangle</option>
+                            <option value="page_break">page_break</option>
+                        </optgroup>
+                    </select>
+                </label>
+                <button id="ed-add" type="button" class="ed-btn ed-btn-sm">Insert</button>
+            </div>
+            <p class="ed-hint">Inserts after the selection, or inside it when a container is selected.</p>
+        </section>
+
+        <!-- Properties -->
+        <section class="ed-pane" aria-label="Properties">
+            <header class="ed-pane-head"><span id="ed-prop-title">Properties</span></header>
+            <div id="ed-props" class="ed-props"></div>
+        </section>
+
+        <!-- Preview -->
+        <section class="ed-pane" aria-label="Preview">
+            <header class="ed-pane-head">
+                <span>Preview</span>
+                <span id="ed-timing" class="ed-timing"></span>
+            </header>
+            <iframe id="ed-preview" title="PDF preview" class="ed-preview"></iframe>
+        </section>
+    </div>
+
+    <!-- JSON drawer -->
+    <div class="ed-drawer">
+        <div class="ed-tabs" role="tablist">
+            <button id="ed-tab-tpl" type="button" class="ed-tab ed-tab-on" role="tab" aria-selected="true">template.json</button>
+            <button id="ed-tab-data" type="button" class="ed-tab" role="tab" aria-selected="false">data.json</button>
+            <span class="ed-spacer"></span>
+            <span id="ed-json-note" class="ed-hint">Read-only &mdash; the editor above is the source of truth.</span>
+        </div>
+        <textarea id="ed-json" class="ed-json" spellcheck="false" readonly></textarea>
+        <textarea id="ed-data" class="ed-json" spellcheck="false" hidden></textarea>
+    </div>
+
+    <section id="section-notes" class="scroll-mt-20 mt-12">
+        <h2 class="text-2xl font-bold text-white mb-4">How it maps to the template language</h2>
+        <p class="text-gray-400 mb-4 max-w-3xl">The editor is a projection of the JSON, not a separate document format &mdash; there is no lock-in and no lossy export. Two elements do most of the structural work:</p>
+        <ul class="ed-notes">
+            <li><strong class="text-white"><code>box</code></strong> is the container. It flows its children in normal top-to-bottom order, then paints its background and border at the size the content actually measured, and drops the cursor below itself. Use it for panels, callouts, totals blocks and signature areas &mdash; anywhere you would otherwise have hand-computed a <code>rect</code> height and a compensating <code>move</code>.</li>
+            <li><strong class="text-white"><code>repeat</code></strong> is the detail band: it renders its children once per item of the array named in <code>data</code>, with <code>${field}</code> scoped to that item. Repeats <strong>nest</strong> &mdash; a <code>repeat</code> over <code>sections</code> can contain a <code>repeat</code> over <code>lines</code>, which is how grouped line items with per-group subtotals are built.</li>
+            <li><strong class="text-white"><code>if</code> / <code>unless</code></strong> gate a block on a field being truthy, or equal to a literal when <code>equals</code> is set.</li>
+        </ul>
+        <p class="text-gray-400 mt-4 max-w-3xl text-sm">A table whose structure the property panel cannot represent (merged cells, differing header and body column counts, rich cell content) is shown read-only rather than rewritten &mdash; the editor never rewrites something it cannot round-trip. Full element reference in <a href="/docs/builtins/pdf" class="text-teal-300 hover:underline">PDF &amp; Factur-X</a>; finished documents in <a href="/docs/builtins/pdf-templates" class="text-teal-300 hover:underline">Invoice &amp; Quote Templates</a>.</p>
+    </section>
+</div>
+
+<style>
+.ed-toolbar {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    padding: .6rem .75rem; margin-bottom: .75rem;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: .6rem;
+}
+.ed-spacer { flex: 1 1 auto; }
+.ed-status {
+    font-size: .78rem; font-family: ui-monospace, monospace; color: #9ca3af;
+    max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ed-status.err { color: #fb7185; }
+.ed-status.ok  { color: #5eead4; }
+.ed-timing { font-size: .7rem; font-family: ui-monospace, monospace; color: #6b7280; }
+
+.ed-btn, .ed-mini {
+    font-size: .78rem; padding: .32rem .7rem; border-radius: .45rem;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.05); color: #d1d5db; cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.ed-btn:hover, .ed-mini:hover { background: rgba(255,255,255,.12); color: #fff; }
+.ed-btn-sm { padding: .25rem .6rem; }
+.ed-btn-primary { background: rgba(20,184,166,.16); border-color: rgba(45,212,191,.28); color: #99f6e4; }
+.ed-btn-primary:hover { background: rgba(20,184,166,.28); color: #fff; }
+.ed-mini { padding: .15rem .42rem; font-size: .8rem; line-height: 1.1; }
+.ed-mini-danger:hover { background: rgba(244,63,94,.22); color: #fecdd3; }
+.ed-btn:focus-visible, .ed-mini:focus-visible, .ed-input:focus-visible, .ed-tab:focus-visible {
+    outline: 2px solid #5eead4; outline-offset: 2px;
+}
+
+.ed-field-inline { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; color: #9ca3af; }
+.ed-input {
+    background: rgba(0,0,0,.35); color: #e5e7eb;
+    border: 1px solid rgba(255,255,255,.14); border-radius: .4rem;
+    padding: .28rem .5rem; font-size: .78rem; max-width: 100%;
+}
+.ed-input:focus { border-color: rgba(45,212,191,.5); outline: none; }
+
+.ed-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr);
+    gap: .75rem;
+}
+.ed-pane {
+    display: flex; flex-direction: column; min-width: 0;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: .6rem; overflow: hidden;
+}
+.ed-pane-head {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .45rem .65rem;
+    font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: #9ca3af; background: rgba(255,255,255,.04);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.ed-pane-actions { display: flex; gap: .25rem; }
+
+.ed-tree { height: 430px; overflow: auto; padding: .4rem; }
+.ed-node {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .22rem .45rem; border-radius: .35rem;
+    font-size: .78rem; color: #cbd5e1; cursor: pointer;
+    border: 1px solid transparent; width: 100%; text-align: left; background: none;
+}
+.ed-node:hover { background: rgba(255,255,255,.06); }
+.ed-node.sel { background: rgba(20,184,166,.16); border-color: rgba(45,212,191,.3); color: #fff; }
+.ed-node:focus-visible { outline: 2px solid #5eead4; outline-offset: -2px; }
+.ed-kind {
+    font-family: ui-monospace, monospace; font-size: .68rem;
+    padding: .04rem .3rem; border-radius: .25rem;
+    background: rgba(255,255,255,.08); color: #94a3b8; flex: 0 0 auto;
+}
+.ed-node.sel .ed-kind { background: rgba(0,0,0,.3); color: #99f6e4; }
+.ed-kind.c { background: rgba(99,102,241,.22); color: #c7d2fe; }   /* container */
+.ed-kind.r { background: rgba(245,158,11,.2); color: #fcd34d; }    /* repeat/cond */
+.ed-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; font-size: .72rem; }
+.ed-group-label {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .08em;
+    color: #6b7280; padding: .3rem .45rem .1rem;
+}
+
+.ed-add { display: flex; gap: .4rem; align-items: center; padding: .5rem .6rem .2rem; border-top: 1px solid rgba(255,255,255,.08); }
+.ed-add .ed-input { flex: 1 1 auto; min-width: 0; }
+.ed-hint { font-size: .68rem; color: #6b7280; padding: .25rem .65rem .55rem; }
+
+.ed-props { height: 430px; overflow: auto; padding: .6rem .65rem; }
+.ed-row { margin-bottom: .55rem; }
+.ed-row label { display: block; font-size: .68rem; color: #9ca3af; margin-bottom: .18rem; }
+.ed-row input[type=text], .ed-row input[type=number], .ed-row select, .ed-row textarea {
+    width: 100%; background: rgba(0,0,0,.35); color: #e5e7eb;
+    border: 1px solid rgba(255,255,255,.14); border-radius: .4rem;
+    padding: .3rem .5rem; font-size: .78rem;
+}
+.ed-row textarea { min-height: 58px; resize: vertical; font-family: ui-monospace, monospace; font-size: .72rem; }
+.ed-row input:focus, .ed-row select:focus, .ed-row textarea:focus { border-color: rgba(45,212,191,.5); outline: none; }
+.ed-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.ed-row .ed-help { font-size: .64rem; color: #6b7280; margin-top: .15rem; }
+.ed-sec {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; color: #6b7280;
+    margin: .9rem 0 .4rem; padding-bottom: .2rem; border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.ed-empty { color: #6b7280; font-size: .78rem; padding: 1rem .2rem; }
+.ed-warn {
+    font-size: .7rem; color: #fcd34d; background: rgba(245,158,11,.1);
+    border: 1px solid rgba(245,158,11,.25); border-radius: .4rem; padding: .45rem .55rem; margin-bottom: .6rem;
+}
+
+.ed-cols { border: 1px solid rgba(255,255,255,.1); border-radius: .4rem; overflow: hidden; margin-bottom: .4rem; }
+.ed-col { display: grid; grid-template-columns: 1fr 1fr 52px 60px 26px; gap: .3rem; padding: .3rem; align-items: center; }
+.ed-col + .ed-col { border-top: 1px solid rgba(255,255,255,.07); }
+.ed-col input, .ed-col select { font-size: .7rem !important; padding: .22rem .35rem !important; }
+.ed-col-head { font-size: .6rem; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; }
+
+.ed-preview { width: 100%; height: 486px; border: 0; background: #fff; display: block; }
+
+.ed-drawer { margin-top: .75rem; border: 1px solid rgba(255,255,255,.1); border-radius: .6rem; overflow: hidden; }
+.ed-tabs { display: flex; align-items: center; gap: .3rem; padding: .35rem .5rem; background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.08); }
+.ed-tab {
+    font-size: .72rem; padding: .25rem .6rem; border-radius: .35rem;
+    background: none; border: 1px solid transparent; color: #9ca3af; cursor: pointer;
+    font-family: ui-monospace, monospace;
+}
+.ed-tab-on { background: rgba(255,255,255,.08); color: #fff; border-color: rgba(255,255,255,.12); }
+.ed-json {
+    width: 100%; height: 230px; resize: vertical; border: 0; outline: none;
+    background: rgba(0,0,0,.35); color: #cbd5e1;
+    font-family: ui-monospace, monospace; font-size: .72rem; line-height: 1.55;
+    padding: .6rem .75rem; display: block;
+}
+.ed-notes { list-style: none; padding: 0; display: grid; gap: .6rem; max-width: 52rem; }
+.ed-notes li {
+    font-size: .82rem; color: #9ca3af; line-height: 1.65;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+    border-left: 3px solid rgba(45,212,191,.4);
+    border-radius: 0 .5rem .5rem 0; padding: .6rem .8rem;
+}
+
+@media (max-width: 1100px) {
+    .ed-grid { grid-template-columns: 1fr 1fr; }
+    .ed-grid > :nth-child(3) { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+    .ed-grid { grid-template-columns: 1fr; }
+    .ed-grid > :nth-child(3) { grid-column: auto; }
+    .ed-tree, .ed-props { height: 300px; }
+}
+</style>
+
+<script>
+// PDF layout editor. Inline (not external) so it re-runs on the docs site's
+// instant-nav <body> swaps, matching the playground. Written without JS
+// template literals so the view engine never sees a ${...} sequence.
+(function () {
+  "use strict";
+  if (!document.getElementById("ed-tree")) return;
+
+  var RENDER_URL = "/docs/builtins/pdf-playground/render";
+
+  // --- model -----------------------------------------------------------------
+  // The whole editor state is the template object plus a selection path. A path
+  // is a list of keys/indices from the template root, e.g. ["content",0,"content",2].
+  var tpl = blank();
+  var dataText = '{\n  "data": {}\n}';
+  var sel = null;
+  var timer = null;
+  var lastUrl = null;
+
+  function blank() {
+    return {
+      fonts: ["titillium"],
+      options: { header_height: 0 },
+      content: [
+        { type: "paragraph", value: "New document",
+          options: { fontSize: 20, fontWeight: "bold" } }
+      ]
+    };
+  }
+
+  // Which child arrays each container element owns, in display order.
+  var CONTAINERS = {
+    box: ["content"],
+    repeat: ["content"],
+    columns: ["content"],
+    "if": ["content", "else"],
+    unless: ["content", "else"]
+  };
+
+  function isContainer(t) { return Object.prototype.hasOwnProperty.call(CONTAINERS, t); }
+
+  function getAt(path) {
+    var cur = tpl;
+    for (var i = 0; i < path.length; i++) {
+      if (cur === undefined || cur === null) return undefined;
+      cur = cur[path[i]];
+    }
+    return cur;
+  }
+  function parentArray(path) { return getAt(path.slice(0, -1)); }
+  function indexOf(path) { return path[path.length - 1]; }
+  function samePath(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  // --- element defaults ------------------------------------------------------
+
+  function makeElement(type) {
+    switch (type) {
+      case "box":
+        return { type: "box", padding: 12, fill: "F5F7FA", content: [
+          { type: "paragraph", value: "Panel", options: { fontSize: 10 } } ] };
+      case "repeat":
+        return { type: "repeat", data: "items", content: [
+          { type: "paragraph", value: "${name}", options: { fontSize: 10 } } ] };
+      case "if":
+        return { type: "if", when: "flag", content: [
+          { type: "paragraph", value: "Shown when set", options: { fontSize: 10 } } ] };
+      case "unless":
+        return { type: "unless", when: "flag", content: [
+          { type: "paragraph", value: "Shown when unset", options: { fontSize: 10 } } ] };
+      case "columns":
+        return { type: "columns", count: 2, gap: 12, content: [
+          { type: "paragraph", value: "Column flow", options: { fontSize: 10 } } ] };
+      case "paragraph":
+        return { type: "paragraph", value: "Text", options: { fontSize: 10 } };
+      case "table":
+        return { type: "table", data: "items",
+          header_columns: [
+            col("DESCRIPTION", 300, "left", true), col("AMOUNT", 181, "right", true) ],
+          rows: [ [ col("${name}", 300, "left", false), col("${amount}", 181, "right", false) ] ],
+          options: { padding_x: 6, padding_y: 6 } };
+      case "list":
+        return { type: "list", marker: "•", indent: 12,
+          items: ["First item", "Second item"], options: { fontSize: 10 } };
+      case "image":
+        return { type: "image", value: "", width: 120 };
+      case "chart":
+        return { type: "chart", kind: "bar", data: "series", label: "name",
+          value: "amount", width: 300, height: 160, legend: true };
+      case "qr":
+        return { type: "qr", kind: "text", value: "https://example.com", width: 90 };
+      case "barcode":
+        return { type: "barcode", symbology: "code128", value: "123456789012",
+          width: 160, height: 50 };
+      case "move":   return { type: "move", y: 12 };
+      case "hr":     return { type: "hr", color: "D4D4D4", thickness: 0.5 };
+      case "rect":   return { type: "rect", width: 481, height: 40, fill: "EEEEEE" };
+      case "page_break": return { type: "page_break" };
+      default: return { type: type };
+    }
+  }
+
+  function col(text, width, alignment, bold) {
+    var c = { text: text, width: width, fontSize: bold ? 8 : 10, alignment: alignment };
+    if (bold) c.fontWeight = "bold";
+    c.borderSides = { top: "false", bottom: "false", left: "false", right: "false" };
+    return c;
+  }
+
+  // --- tree ------------------------------------------------------------------
+
+  function labelFor(el) {
+    if (!el || typeof el !== "object") return "";
+    switch (el.type) {
+      case "paragraph": return trim(el.value || spansText(el) || "");
+      case "repeat":    return "over " + (el.data || "?");
+      case "table":     return el.data ? "bound to " + el.data : "static";
+      case "if":
+      case "unless":    return el.when ? el.when + (el.equals != null ? " = " + el.equals : "") : "";
+      case "box":       return el.fill ? "#" + el.fill : "";
+      case "move":      return "x " + (el.x || 0) + "  y " + (el.y || 0);
+      case "chart":     return el.kind || "bar";
+      case "list":      return (el.items || []).length + " items";
+      case "image":     return trim(el.value || "");
+      case "columns":   return (el.count || 2) + " columns";
+      default:          return "";
+    }
+  }
+  function spansText(el) {
+    if (!el.spans) return "";
+    return el.spans.map(function (s) { return s.text || ""; }).join("");
+  }
+  function trim(s) { s = String(s); return s.length > 34 ? s.slice(0, 33) + "…" : s; }
+
+  function renderTree() {
+    var host = document.getElementById("ed-tree");
+    host.textContent = "";
+    ["header", "content", "footer"].forEach(function (key) {
+      var arr = tpl[key];
+      if (key !== "content" && (!arr || !arr.length)) return;
+      if (!arr) { tpl[key] = arr = []; }
+      var lbl = document.createElement("div");
+      lbl.className = "ed-group-label";
+      lbl.textContent = key === "content" ? "content" : key + " band";
+      host.appendChild(lbl);
+      arr.forEach(function (el, i) { host.appendChild(nodeFor(el, [key, i], 0)); });
+    });
+  }
+
+  function nodeFor(el, path, depth) {
+    var wrap = document.createDocumentFragment();
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ed-node" + (samePath(path, sel) ? " sel" : "");
+    btn.style.paddingLeft = (0.45 + depth * 0.75) + "rem";
+    btn.setAttribute("role", "treeitem");
+
+    var kind = document.createElement("span");
+    var t = el && el.type ? el.type : "?";
+    kind.className = "ed-kind" + (t === "repeat" || t === "if" || t === "unless" ? " r"
+                                : isContainer(t) ? " c" : "");
+    kind.textContent = t;
+    btn.appendChild(kind);
+
+    var lab = document.createElement("span");
+    lab.className = "ed-label";
+    lab.textContent = labelFor(el);
+    btn.appendChild(lab);
+
+    btn.addEventListener("click", function () { select(path); });
+    wrap.appendChild(btn);
+
+    if (isContainer(t)) {
+      CONTAINERS[t].forEach(function (childKey) {
+        var kids = el[childKey];
+        if (!kids || !kids.length) return;
+        if (childKey === "else") {
+          var e = document.createElement("div");
+          e.className = "ed-group-label";
+          e.style.paddingLeft = (0.45 + (depth + 1) * 0.75) + "rem";
+          e.textContent = "else";
+          wrap.appendChild(e);
+        }
+        kids.forEach(function (child, i) {
+          wrap.appendChild(nodeFor(child, path.concat([childKey, i]), depth + 1));
+        });
+      });
+    }
+    return wrap;
+  }
+
+  function select(path) { sel = path; renderTree(); renderProps(); }
+
+  /// The first element of the first non-empty band, so the panel opens on
+  /// something rather than on "nothing selected".
+  function firstElementPath() {
+    var bands = ["content", "header", "footer"];
+    for (var i = 0; i < bands.length; i++) {
+      var arr = tpl[bands[i]];
+      if (arr && arr.length) return [bands[i], 0];
+    }
+    return null;
+  }
+
+  // --- property panel --------------------------------------------------------
+
+  function row(label, help) {
+    var d = document.createElement("div");
+    d.className = "ed-row";
+    if (label) {
+      var l = document.createElement("label");
+      l.textContent = label;
+      d.appendChild(l);
+    }
+    if (help) { d._help = help; }
+    return d;
+  }
+  function attachHelp(d) {
+    if (d._help) {
+      var h = document.createElement("div");
+      h.className = "ed-help";
+      h.textContent = d._help;
+      d.appendChild(h);
+    }
+    return d;
+  }
+
+  // `get`/`set` read and write the live element, so edits mutate the model.
+  function textField(host, label, get, set, help, placeholder) {
+    var d = row(label, help);
+    var i = document.createElement("input");
+    i.type = "text";
+    i.value = get() == null ? "" : String(get());
+    if (placeholder) i.placeholder = placeholder;
+    i.addEventListener("input", function () { set(i.value); touched(); });
+    d.appendChild(i); attachHelp(d); host.appendChild(d);
+  }
+  function numField(host, label, get, set, help, step) {
+    var d = row(label, help);
+    var i = document.createElement("input");
+    i.type = "number";
+    if (step) i.step = step;
+    i.value = get() == null ? "" : String(get());
+    i.addEventListener("input", function () {
+      set(i.value === "" ? undefined : parseFloat(i.value)); touched();
+    });
+    d.appendChild(i); attachHelp(d); host.appendChild(d);
+  }
+  function selectField(host, label, options, get, set, help) {
+    var d = row(label, help);
+    var s = document.createElement("select");
+    options.forEach(function (o) {
+      var op = document.createElement("option");
+      op.value = o[0]; op.textContent = o[1];
+      s.appendChild(op);
+    });
+    s.value = get() == null ? "" : String(get());
+    s.addEventListener("change", function () { set(s.value === "" ? undefined : s.value); touched(); });
+    d.appendChild(s); attachHelp(d); host.appendChild(d);
+  }
+  function areaField(host, label, get, set, help) {
+    var d = row(label, help);
+    var t = document.createElement("textarea");
+    t.value = get();
+    t.spellcheck = false;
+    t.addEventListener("input", function () { set(t.value); touched(); });
+    d.appendChild(t); attachHelp(d); host.appendChild(d);
+  }
+  function section(host, title) {
+    var s = document.createElement("div");
+    s.className = "ed-sec";
+    s.textContent = title;
+    host.appendChild(s);
+  }
+  function pair(host) {
+    var d = document.createElement("div");
+    d.className = "ed-row-2";
+    host.appendChild(d);
+    return d;
+  }
+
+  var ALIGN = [["", "(inherit)"], ["left", "left"], ["center", "center"],
+               ["right", "right"], ["justify", "justify"]];
+  var WEIGHT = [["", "normal"], ["bold", "bold"]];
+
+  function renderProps() {
+    var host = document.getElementById("ed-props");
+    var title = document.getElementById("ed-prop-title");
+    host.textContent = "";
+    var el = sel ? getAt(sel) : null;
+    if (!el) {
+      title.textContent = "Properties";
+      var p = document.createElement("div");
+      p.className = "ed-empty";
+      p.textContent = "Select an element in the structure panel to edit it.";
+      host.appendChild(p);
+      return;
+    }
+    title.textContent = el.type;
+
+    var t = el.type;
+    if (t === "paragraph") {
+      if (el.spans) {
+        warn(host, "This paragraph uses rich spans, which the panel cannot edit without flattening them. Text is shown read-only; edit colours and sizes per span in the JSON.");
+        var ro = row("Text (read-only)");
+        var i = document.createElement("input");
+        i.type = "text"; i.value = spansText(el); i.readOnly = true;
+        ro.appendChild(i); host.appendChild(ro);
+      } else {
+        textField(host, "Text", function () { return el.value; },
+          function (v) { el.value = v; },
+          "Use ${path} to pull a value from the data document.");
+      }
+      section(host, "Style");
+      var g = pair(host);
+      numField(g, "Size (pt)", function () { return opt(el).fontSize; },
+        function (v) { opt(el).fontSize = v; }, null, "0.5");
+      selectField(g, "Weight", WEIGHT, function () { return opt(el).fontWeight; },
+        function (v) { opt(el).fontWeight = v; });
+      var g2 = pair(host);
+      selectField(g2, "Alignment", ALIGN, function () { return opt(el).alignment; },
+        function (v) { opt(el).alignment = v; });
+      textField(g2, "Colour (hex)", function () { return opt(el).color; },
+        function (v) { opt(el).color = v || undefined; }, null, "111111");
+    }
+
+    else if (t === "box") {
+      section(host, "Layout");
+      var b1 = pair(host);
+      numField(b1, "Padding (pt)", function () {
+        return typeof el.padding === "number" ? el.padding : undefined;
+      }, function (v) { el.padding = v; },
+        typeof el.padding === "object" ? "Per-side padding set in JSON" : null);
+      numField(b1, "Width (pt)", function () { return el.width; },
+        function (v) { el.width = v; }, "Blank = full content width");
+      numField(host, "Gap below (pt)", function () { return el.gap; },
+        function (v) { el.gap = v; });
+      section(host, "Appearance");
+      var b2 = pair(host);
+      textField(b2, "Fill (hex)", function () { return el.fill; },
+        function (v) { el.fill = v || undefined; }, null, "F5F7FA");
+      textField(b2, "Border (hex)", function () { return el.border; },
+        function (v) { el.border = v || undefined; }, null, "D7E0EC");
+      var b3 = pair(host);
+      numField(b3, "Border width", function () { return el.borderWidth; },
+        function (v) { el.borderWidth = v; }, null, "0.1");
+      numField(b3, "Radius (pt)", function () { return el.radius; },
+        function (v) { el.radius = v; });
+      textField(host, "Dash", function () { return (el.dash || []).join(","); },
+        function (v) {
+          var parts = v.split(",").map(function (n) { return parseFloat(n); })
+                       .filter(function (n) { return !isNaN(n); });
+          el.dash = parts.length ? parts : undefined;
+        }, "Comma-separated on/off lengths, e.g. 4,3");
+    }
+
+    else if (t === "repeat") {
+      textField(host, "Data array", function () { return el.data; },
+        function (v) { el.data = v; },
+        "Path to an array. Inside another repeat this resolves against the current item first, so nested groups work.");
+    }
+
+    else if (t === "if" || t === "unless") {
+      textField(host, "Field", function () { return el.when; },
+        function (v) { el.when = v; }, "Path tested for truthiness.");
+      textField(host, "Equals (optional)", function () { return el.equals; },
+        function (v) { el.equals = v || undefined; },
+        "When set, compares the field to this literal instead.");
+    }
+
+    else if (t === "columns") {
+      var c1 = pair(host);
+      numField(c1, "Count", function () { return el.count; }, function (v) { el.count = v; });
+      numField(c1, "Gap (pt)", function () { return el.gap; }, function (v) { el.gap = v; });
+    }
+
+    else if (t === "table") {
+      textField(host, "Data array", function () { return el.data; },
+        function (v) { el.data = v || undefined; },
+        "Blank for a static table; otherwise the body row repeats per item.");
+      renderTableCols(host, el);
+      section(host, "Spacing");
+      var tp = pair(host);
+      numField(tp, "Padding X", function () { return (el.options || {}).padding_x; },
+        function (v) { topt(el).padding_x = v; });
+      numField(tp, "Padding Y", function () { return (el.options || {}).padding_y; },
+        function (v) { topt(el).padding_y = v; });
+      section(host, "Header band");
+      var th = pair(host);
+      textField(th, "Fill (hex)", function () { return hstyle(el).fillColor; },
+        function (v) { hstyle(el).fillColor = v || undefined; });
+      textField(th, "Text (hex)", function () { return hstyle(el).textColor; },
+        function (v) { hstyle(el).textColor = v || undefined; });
+    }
+
+    else if (t === "list") {
+      areaField(host, "Items (one per line)", function () {
+        return (el.items || []).map(function (it) {
+          return typeof it === "string" ? it : JSON.stringify(it);
+        }).join("\n");
+      }, function (v) {
+        el.items = v.split("\n").filter(function (s) { return s.trim() !== ""; });
+      });
+      var l1 = pair(host);
+      textField(l1, "Marker", function () { return el.marker; }, function (v) { el.marker = v; });
+      numField(l1, "Indent (pt)", function () { return el.indent; }, function (v) { el.indent = v; });
+      selectField(host, "Ordered", [["", "no"], ["yes", "yes"]],
+        function () { return el.ordered ? "yes" : ""; },
+        function (v) { el.ordered = v === "yes" ? true : undefined; });
+      numField(host, "Font size", function () { return opt(el).fontSize; },
+        function (v) { opt(el).fontSize = v; });
+    }
+
+    else if (t === "chart") {
+      selectField(host, "Kind", [["bar", "bar"], ["line", "line"], ["pie", "pie"], ["donut", "donut"]],
+        function () { return el.kind; }, function (v) { el.kind = v; });
+      textField(host, "Data array", function () { return el.data; }, function (v) { el.data = v; });
+      var ch = pair(host);
+      textField(ch, "Label field", function () { return el.label; }, function (v) { el.label = v; });
+      textField(ch, "Value field", function () { return el.value; }, function (v) { el.value = v; },
+        "Values must be JSON numbers, not formatted strings.");
+      var ch2 = pair(host);
+      numField(ch2, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; });
+      numField(ch2, "Height (pt)", function () { return el.height; }, function (v) { el.height = v; });
+      selectField(host, "Legend", [["yes", "yes"], ["", "no"]],
+        function () { return el.legend === false ? "" : "yes"; },
+        function (v) { el.legend = v === "yes"; });
+    }
+
+    else if (t === "image") {
+      textField(host, "Source", function () { return el.value; }, function (v) { el.value = v; },
+        "http(s), file:// or a data: URI. Remote fetching is disabled in this preview.");
+      var im = pair(host);
+      numField(im, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; });
+      numField(im, "Height (pt)", function () { return el.height; }, function (v) { el.height = v; });
+      textField(host, "Alt text", function () { return el.alt; }, function (v) { el.alt = v || undefined; });
+    }
+
+    else if (t === "qr") {
+      selectField(host, "Kind", [["text", "text"], ["epc", "epc (scan to pay)"]],
+        function () { return el.kind; }, function (v) { el.kind = v; });
+      if (el.kind === "epc") {
+        textField(host, "Payee name", function () { return el.name; }, function (v) { el.name = v; });
+        textField(host, "IBAN", function () { return el.iban; }, function (v) { el.iban = v; });
+        textField(host, "BIC", function () { return el.bic; }, function (v) { el.bic = v; });
+        var q = pair(host);
+        textField(q, "Amount", function () { return el.amount; }, function (v) { el.amount = v; });
+        textField(q, "Remittance", function () { return el.remittance; }, function (v) { el.remittance = v; });
+      } else {
+        textField(host, "Value", function () { return el.value; }, function (v) { el.value = v; });
+      }
+      numField(host, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; },
+        "QR does not advance the cursor — follow it with a move.");
+    }
+
+    else if (t === "barcode") {
+      selectField(host, "Symbology",
+        [["code128", "code128"], ["ean13", "ean13"], ["ean8", "ean8"], ["code39", "code39"]],
+        function () { return el.symbology; }, function (v) { el.symbology = v; });
+      textField(host, "Value", function () { return el.value; }, function (v) { el.value = v; });
+      var bc = pair(host);
+      numField(bc, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; });
+      numField(bc, "Height (pt)", function () { return el.height; }, function (v) { el.height = v; });
+    }
+
+    else if (t === "move") {
+      var mv = pair(host);
+      numField(mv, "x (pt)", function () { return el.x; }, function (v) { el.x = v; });
+      numField(mv, "y (pt)", function () { return el.y; }, function (v) { el.y = v; },
+        "Positive y moves down.");
+    }
+
+    else if (t === "hr") {
+      var hr = pair(host);
+      textField(hr, "Colour (hex)", function () { return el.color; }, function (v) { el.color = v; });
+      numField(hr, "Thickness", function () { return el.thickness; },
+        function (v) { el.thickness = v; }, null, "0.1");
+      numField(host, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; },
+        "Blank = full content width");
+    }
+
+    else if (t === "rect") {
+      warn(host, "rect does not advance the cursor and needs a hand-computed height. For a panel that fits its own content, use a box instead.");
+      var r1 = pair(host);
+      numField(r1, "Width (pt)", function () { return el.width; }, function (v) { el.width = v; });
+      numField(r1, "Height (pt)", function () { return el.height; }, function (v) { el.height = v; });
+      var r2 = pair(host);
+      textField(r2, "Fill (hex)", function () { return el.fill; }, function (v) { el.fill = v || undefined; });
+      textField(r2, "Border (hex)", function () { return el.border; }, function (v) { el.border = v || undefined; });
+    }
+
+    else if (t === "page_break") {
+      var pb = document.createElement("div");
+      pb.className = "ed-empty";
+      pb.textContent = "Starts a new page here. Inside a columns block it breaks the column instead.";
+      host.appendChild(pb);
+    }
+
+    else {
+      warn(host, "No property form for this element type yet — edit it in the JSON below.");
+    }
+  }
+
+  function warn(host, msg) {
+    var w = document.createElement("div");
+    w.className = "ed-warn";
+    w.textContent = msg;
+    host.appendChild(w);
+  }
+  function opt(el) { if (!el.options) el.options = {}; return el.options; }
+  function topt(el) { if (!el.options) el.options = {}; return el.options; }
+  function hstyle(el) {
+    if (!el.options) el.options = {};
+    if (!el.options.header) el.options.header = {};
+    return el.options.header;
+  }
+
+  // A table is editable in the panel only when header and body describe the
+  // same simple columns. Anything richer (colspan, rich cell content, mismatched
+  // counts) is left strictly alone rather than rewritten into a shape it isn't.
+  function simpleTable(el) {
+    var body = (el.rows && el.rows.length === 1) ? el.rows[0] : null;
+    if (!body) return null;
+    var head = el.header_columns || [];
+    if (head.length && head.length !== body.length) return null;
+    var ok = body.concat(head).every(function (c) {
+      return c && typeof c === "object" && !c.content && !c.colspan;
+    });
+    return ok ? body : null;
+  }
+
+  function renderTableCols(host, el) {
+    var body = simpleTable(el);
+    section(host, "Columns");
+    if (!body) {
+      warn(host, "This table has a custom structure (merged cells, rich content, or differing header and body columns). It is left as-is — edit it in the JSON below.");
+      return;
+    }
+    var head = el.header_columns || [];
+    var box = document.createElement("div");
+    box.className = "ed-cols";
+
+    var hdr = document.createElement("div");
+    hdr.className = "ed-col";
+    ["Header", "Body", "Width", "Align", ""].forEach(function (h) {
+      var s = document.createElement("div");
+      s.className = "ed-col-head"; s.textContent = h;
+      hdr.appendChild(s);
+    });
+    box.appendChild(hdr);
+
+    body.forEach(function (bc, i) {
+      var hc = head[i];
+      var r = document.createElement("div");
+      r.className = "ed-col";
+
+      var hi = document.createElement("input");
+      hi.type = "text"; hi.value = hc ? (hc.text || "") : "";
+      hi.disabled = !hc;
+      hi.addEventListener("input", function () { if (hc) { hc.text = hi.value; touched(); } });
+      r.appendChild(hi);
+
+      var bi = document.createElement("input");
+      bi.type = "text"; bi.value = bc.text || "";
+      bi.addEventListener("input", function () { bc.text = bi.value; touched(); });
+      r.appendChild(bi);
+
+      var wi = document.createElement("input");
+      wi.type = "number"; wi.value = bc.width == null ? "" : bc.width;
+      wi.addEventListener("input", function () {
+        var v = wi.value === "" ? undefined : parseFloat(wi.value);
+        bc.width = v; if (hc) hc.width = v; touched();
+      });
+      r.appendChild(wi);
+
+      var ai = document.createElement("select");
+      [["left", "L"], ["center", "C"], ["right", "R"]].forEach(function (o) {
+        var op = document.createElement("option");
+        op.value = o[0]; op.textContent = o[1];
+        ai.appendChild(op);
+      });
+      ai.value = bc.alignment || "left";
+      ai.addEventListener("change", function () {
+        bc.alignment = ai.value; if (hc) hc.alignment = ai.value; touched();
+      });
+      r.appendChild(ai);
+
+      var del = document.createElement("button");
+      del.type = "button"; del.className = "ed-mini ed-mini-danger"; del.textContent = "×";
+      del.title = "Remove column";
+      del.addEventListener("click", function () {
+        body.splice(i, 1);
+        if (head.length) head.splice(i, 1);
+        touched(); renderProps();
+      });
+      r.appendChild(del);
+
+      box.appendChild(r);
+    });
+    host.appendChild(box);
+
+    var add = document.createElement("button");
+    add.type = "button"; add.className = "ed-btn ed-btn-sm";
+    add.textContent = "Add column";
+    add.addEventListener("click", function () {
+      body.push(col("${field}", 80, "left", false));
+      if (head.length) head.push(col("NEW", 80, "left", true));
+      touched(); renderProps();
+    });
+    host.appendChild(add);
+
+    var sum = body.reduce(function (a, c) { return a + (c.width || 0); }, 0);
+    var note = document.createElement("div");
+    note.className = "ed-help";
+    note.style.marginTop = ".35rem";
+    note.textContent = "Widths total " + Math.round(sum) + " pt. The content column is 481 pt at default margins.";
+    host.appendChild(note);
+  }
+
+  // --- structure edits -------------------------------------------------------
+
+  function insert() {
+    var type = document.getElementById("ed-add-type").value;
+    var el = makeElement(type);
+    if (!sel) {
+      tpl.content.push(el);
+      select(["content", tpl.content.length - 1]);
+      touched(); return;
+    }
+    var target = getAt(sel);
+    // A selected container receives the new element as its last child; anything
+    // else gets it as the next sibling.
+    if (target && isContainer(target.type)) {
+      if (!target.content) target.content = [];
+      target.content.push(el);
+      select(sel.concat(["content", target.content.length - 1]));
+    } else {
+      var arr = parentArray(sel);
+      var i = indexOf(sel);
+      arr.splice(i + 1, 0, el);
+      select(sel.slice(0, -1).concat([i + 1]));
+    }
+    touched();
+  }
+
+  function removeSel() {
+    if (!sel) return;
+    var arr = parentArray(sel);
+    var i = indexOf(sel);
+    arr.splice(i, 1);
+    sel = arr.length ? sel.slice(0, -1).concat([Math.min(i, arr.length - 1)]) : null;
+    renderTree(); renderProps(); touched();
+  }
+
+  function moveSel(delta) {
+    if (!sel) return;
+    var arr = parentArray(sel);
+    var i = indexOf(sel);
+    var j = i + delta;
+    if (j < 0 || j >= arr.length) return;
+    var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    select(sel.slice(0, -1).concat([j]));
+    touched();
+  }
+
+  function duplicateSel() {
+    if (!sel) return;
+    var arr = parentArray(sel);
+    var i = indexOf(sel);
+    arr.splice(i + 1, 0, JSON.parse(JSON.stringify(arr[i])));
+    select(sel.slice(0, -1).concat([i + 1]));
+    touched();
+  }
+
+  // --- json + preview --------------------------------------------------------
+
+  // Drop only `undefined` (a field the panel cleared). Empty strings are load
+  // bearing in this format: a spacer cell is `{"text": "", "width": 271}`, and
+  // removing its `text` leaves an object matching neither variant of the
+  // untagged Cell enum, so the whole template fails to parse.
+  function pruneUndefined(v) {
+    if (Array.isArray(v)) return v.map(pruneUndefined);
+    if (v && typeof v === "object") {
+      var out = {};
+      Object.keys(v).forEach(function (k) {
+        if (v[k] === undefined) return;
+        out[k] = pruneUndefined(v[k]);
+      });
+      return out;
+    }
+    return v;
+  }
+
+  function templateJson() { return JSON.stringify(pruneUndefined(tpl), null, 2); }
+
+  function touched() {
+    document.getElementById("ed-json").value = templateJson();
+    schedule();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(preview, 400);
+  }
+
+  function status(msg, kind) {
+    var s = document.getElementById("ed-status");
+    s.textContent = msg;
+    s.className = "ed-status" + (kind ? " " + kind : "");
+  }
+
+  function b64ToBlob(b64) {
+    var bin = atob(b64.trim()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  function preview() {
+    var body = new URLSearchParams();
+    body.set("template", templateJson());
+    body.set("data", document.getElementById("ed-data").value || "{}");
+    status("Rendering…");
+    fetch(RENDER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    }).then(function (res) {
+      var ms = res.headers.get("X-Render-Ms");
+      return res.text().then(function (t) { return { ok: res.ok, text: t, ms: ms }; });
+    }).then(function (r) {
+      if (!r.ok) { status(r.text.split("\n")[0].slice(0, 90), "err"); return; }
+      if (lastUrl) URL.revokeObjectURL(lastUrl);
+      lastUrl = URL.createObjectURL(b64ToBlob(r.text));
+      document.getElementById("ed-preview").src = lastUrl;
+      status("Rendered", "ok");
+      document.getElementById("ed-timing").textContent = r.ms ? r.ms + " ms engine" : "";
+    }).catch(function (e) { status(String(e), "err"); });
+  }
+
+  // --- samples ---------------------------------------------------------------
+
+  function loadSample(name) {
+    if (!name) {
+      tpl = blank();
+      dataText = '{\n  "data": {}\n}';
+      document.getElementById("ed-data").value = dataText;
+      sel = firstElementPath(); renderTree(); renderProps(); touched();
+      return;
+    }
+    status("Loading…");
+    Promise.all([
+      fetch("/pdf-samples/" + name + ".template.json").then(function (r) { return r.text(); }),
+      fetch("/pdf-samples/" + name + ".data.json").then(function (r) { return r.text(); })
+    ]).then(function (parts) {
+      tpl = JSON.parse(parts[0]);
+      if (!tpl.content) tpl.content = [];
+      document.getElementById("ed-data").value = parts[1];
+      sel = firstElementPath(); renderTree(); renderProps(); touched();
+    }).catch(function (e) { status("Could not load sample: " + e, "err"); });
+  }
+
+  // --- wiring ----------------------------------------------------------------
+
+  document.getElementById("ed-add").addEventListener("click", insert);
+  document.getElementById("ed-del").addEventListener("click", removeSel);
+  document.getElementById("ed-up").addEventListener("click", function () { moveSel(-1); });
+  document.getElementById("ed-down").addEventListener("click", function () { moveSel(1); });
+  document.getElementById("ed-dup").addEventListener("click", duplicateSel);
+  document.getElementById("ed-render").addEventListener("click", preview);
+  document.getElementById("ed-sample").addEventListener("change", function (e) {
+    loadSample(e.target.value);
+  });
+  document.getElementById("ed-data").addEventListener("input", schedule);
+
+  document.getElementById("ed-copy").addEventListener("click", function () {
+    navigator.clipboard.writeText(templateJson()).then(function () {
+      status("Template JSON copied", "ok");
+    }, function () { status("Copy failed", "err"); });
+  });
+
+  document.getElementById("ed-download").addEventListener("click", function () {
+    var blob = new Blob([templateJson()], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "template.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  var tabTpl = document.getElementById("ed-tab-tpl");
+  var tabData = document.getElementById("ed-tab-data");
+  function showTab(which) {
+    var isTpl = which === "tpl";
+    document.getElementById("ed-json").hidden = !isTpl;
+    document.getElementById("ed-data").hidden = isTpl;
+    tabTpl.className = "ed-tab" + (isTpl ? " ed-tab-on" : "");
+    tabData.className = "ed-tab" + (isTpl ? "" : " ed-tab-on");
+    tabTpl.setAttribute("aria-selected", isTpl ? "true" : "false");
+    tabData.setAttribute("aria-selected", isTpl ? "false" : "true");
+    document.getElementById("ed-json-note").textContent = isTpl
+      ? "Read-only — the editor above is the source of truth."
+      : "Editable — the values your ${...} placeholders resolve against.";
+  }
+  tabTpl.addEventListener("click", function () { showTab("tpl"); });
+  tabData.addEventListener("click", function () { showTab("data"); });
+
+  // Boot: the sectioned quote shows nested repeats and a box, which is the most
+  // instructive starting point.
+  document.getElementById("ed-data").value = dataText;
+  document.getElementById("ed-sample").value = "quote_sections";
+  loadSample("quote_sections");
+})();
+</script>

@@ -21,6 +21,25 @@ pub struct RenderOutput {
 }
 
 /// Render a template + data document to PDF bytes, collecting warnings.
+/// Lay out a template and report **where every element landed**, without
+/// producing a PDF.
+///
+/// A visual editor cannot compute this itself: a flowing element's position
+/// depends on everything before it, which only the layout engine knows. This is
+/// what lets an editor hit-test the rendered page.
+pub fn layout_boxes(
+    template_json: &[u8],
+    data_json: &[u8],
+    opts: &RenderOptions,
+) -> Result<Vec<crate::draw::ElementBox>> {
+    let template = Template::parse(template_json)?;
+    let data = DataDocument::parse(data_json)?;
+    let fonts = FontRegistry::cached(&opts.font_dirs, &template.fonts)?;
+    let engine = Engine::new(&template, &fonts, opts);
+    let (doc, _warnings) = engine.layout(&template, &data)?;
+    Ok(doc.element_boxes)
+}
+
 pub fn render_with_warnings(
     template_json: &[u8],
     data_json: &[u8],

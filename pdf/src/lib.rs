@@ -35,13 +35,14 @@ pub mod template;
 pub mod text;
 
 pub use attachments::{extract_attachments, extract_facturx, Attachment};
+pub use draw::ElementBox;
 pub use encrypt::EncryptOptions;
 pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
 pub use forms::fill_form;
 pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use manipulate::{merge, select_pages, stamp, StampOptions};
-pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
+pub use render::{layout_boxes, render_to_bytes, render_with_warnings, RenderOutput};
 pub use sign::{
     embed_cms, extract_signatures, prepare_signature, ExtractedSignature, PreparedSignature,
     SignAppearance, SignMeta, DEFAULT_PLACEHOLDER_LEN,

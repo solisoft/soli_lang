@@ -17,21 +17,34 @@
       "deposit": "30%",
       "note": "Prices assume the premises are vacant and accessible on weekdays between 07:00 and 17:00. Asbestos survey, if required, is quoted separately."
     },
-    "rows": [
-      { "kind": "section", "name": "01   STRUCTURAL WORK" },
-      { "kind": "line", "name": "Demolition of partition wall, incl. disposal", "qty": "1", "unit": "850.00", "amount": "850.00" },
-      { "kind": "line", "name": "Floor levelling and screed", "qty": "24 m²", "unit": "23.00", "amount": "552.00" },
-      { "kind": "subtotal", "name": "Subtotal, structural work", "amount": "1,402.00" },
-
-      { "kind": "section", "name": "02   PLUMBING" },
-      { "kind": "line", "name": "Hot and cold supply lines to counter", "qty": "1", "unit": "620.00", "amount": "620.00" },
-      { "kind": "line", "name": "Grease trap installation", "qty": "1", "unit": "480.00", "amount": "480.00" },
-      { "kind": "subtotal", "name": "Subtotal, plumbing", "amount": "1,100.00" },
-
-      { "kind": "section", "name": "03   ELECTRICAL" },
-      { "kind": "line", "name": "Three-phase supply to counter", "qty": "1", "unit": "940.00", "amount": "940.00" },
-      { "kind": "line", "name": "Lighting circuit and fixtures", "qty": "18", "unit": "62.00", "amount": "1,116.00" },
-      { "kind": "subtotal", "name": "Subtotal, electrical", "amount": "2,056.00" }
+    "sections": [
+      {
+        "title": "01   STRUCTURAL WORK",
+        "lines": [
+          { "name": "Demolition of partition wall, incl. disposal", "qty": "1", "unit": "850.00", "amount": "850.00" },
+          { "name": "Floor levelling and screed", "qty": "24 m²", "unit": "23.00", "amount": "552.00" }
+        ],
+        "subtotal_label": "Subtotal, structural work",
+        "subtotal": "1,402.00"
+      },
+      {
+        "title": "02   PLUMBING",
+        "lines": [
+          { "name": "Hot and cold supply lines to counter", "qty": "1", "unit": "620.00", "amount": "620.00" },
+          { "name": "Grease trap installation", "qty": "1", "unit": "480.00", "amount": "480.00" }
+        ],
+        "subtotal_label": "Subtotal, plumbing",
+        "subtotal": "1,100.00"
+      },
+      {
+        "title": "03   ELECTRICAL",
+        "lines": [
+          { "name": "Three-phase supply to counter", "qty": "1", "unit": "940.00", "amount": "940.00" },
+          { "name": "Lighting circuit and fixtures", "qty": "18", "unit": "62.00", "amount": "1,116.00" }
+        ],
+        "subtotal_label": "Subtotal, electrical",
+        "subtotal": "2,056.00"
+      }
     ],
     "totals": {
       "net": "€4,558.00",

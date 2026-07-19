@@ -70,7 +70,7 @@
                         <th class="px-3 py-3 font-semibold">Payment QR</th>
                         <th class="px-3 py-3 font-semibold">Signature box</th>
                         <th class="px-3 py-3 font-semibold">Grouped subtotals</th>
-                        <th class="px-3 py-3 font-semibold">Conditional lines</th>
+                        <th class="px-3 py-3 font-semibold">Tick boxes</th>
                         <th class="px-3 py-3 font-semibold">Chart</th>
                         <th class="px-3 py-3 font-semibold">Factur-X</th>
                     </tr>
@@ -94,11 +94,11 @@
                     </tr>
                     <tr>
                         <td class="px-4 py-3"><a href="#quote-sections" class="text-white hover:text-teal-300">Sectioned quote</a></td>
-                        <td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td class="yes">&check;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td>
+                        <td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
                     </tr>
                     <tr>
                         <td class="px-4 py-3"><a href="#quote-options" class="text-white hover:text-teal-300">Quote with options</a></td>
-                        <td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+                        <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td>
                     </tr>
                     <tr>
                         <td class="px-4 py-3"><a href="#invoice-starter" class="text-white hover:text-teal-300">Starter invoice</a></td>
@@ -216,7 +216,7 @@
                 </div>
             </div>
         </div>
-        <p class="text-sm text-gray-400 mt-6 mb-2">The solid total panel is a <code>rect</code> with <code>spans</code> text drawn over it. Cell <code>content</code> arrays have no <code>color</code> field, so white-on-colour has to be done this way &mdash; <code>rect</code> does not advance the cursor, which is what makes the overlay work:</p>
+        <p class="text-sm text-gray-400 mt-6 mb-2">The solid total panel is a <code>rect</code> with <code>spans</code> text drawn over it: cell <code>content</code> arrays have no <code>color</code> field, so white-on-colour has to be done as an overlay, and <code>rect</code> not advancing the cursor is what makes that work. For a panel that should size itself to its contents, reach for <a href="/docs/builtins/pdf-editor" class="text-teal-300 hover:underline">box</a> instead:</p>
         <pre data-filename="credit_note.template.json — total panel"><code class="language-json text-sm">{ "type": "move", "x": 271, "y": 2 },
 { "type": "rect", "width": 210, "height": 42, "fill": "9F1239" },
 { "type": "move", "x": 14, "y": 9 },
@@ -237,7 +237,7 @@
                 <p class="tpl-thesis">The work reads by section.</p>
                 <p class="text-gray-400 text-sm mb-4">Line items grouped into numbered trade sections, each closing with its own subtotal, so a client can approve or challenge one trade without unpicking the whole figure. Ends in a dashed <strong>acceptance box</strong> &mdash; date and signature rules &mdash; because for most trades a returned signed quote <em>is</em> the contract.</p>
                 <ul class="tpl-traits">
-                    <li>Grouped subtotals</li><li>Acceptance box</li><li><code>repeat</code> + <code>if</code></li><li>Deposit terms</li>
+                    <li>Grouped subtotals</li><li>Acceptance box</li><li>Nested <code>repeat</code></li><li>Deposit terms</li>
                 </ul>
                 <div class="tpl-actions">
                     <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=quote_sections">Open in playground</a>
@@ -247,20 +247,25 @@
             </div>
         </div>
         <div class="tpl-note">
-            <p class="font-semibold text-white text-sm mb-1">Grouping recipe &mdash; worth knowing before you try it</p>
-            <p class="text-sm text-gray-400">A data-bound <code>table</code> or a nested <code>repeat</code> <strong>cannot</strong> resolve a relative path against the item it sits inside: <code>"data": "lines"</code> nested inside a <code>repeat</code> over <code>sections</code> silently renders nothing. Flatten the group in your data instead &mdash; one array, each row tagged with a <code>kind</code> &mdash; and branch on it with <code>if</code>. That is exactly what this template does, and it gives you full styling control per row type.</p>
+            <p class="font-semibold text-white text-sm mb-1">Grouping recipe</p>
+            <p class="text-sm text-gray-400">A <code>repeat</code> nested inside another <code>repeat</code> binds to an array <strong>on the current item</strong>, so grouping is expressed directly: an outer repeat over <code>sections</code>, an inner one over that section's own <code>lines</code>. The data stays the shape your application already has &mdash; no flattening, no <code>kind</code> discriminator, no nested <code>if</code> chain. A data-bound <code>table</code> nested inside a <code>repeat</code> resolves the same way.</p>
         </div>
-        <pre data-filename="quote_sections.template.json — one row, three shapes" class="mt-4"><code class="language-json text-sm">{ "type": "repeat", "data": "rows", "content": [
-  { "type": "if", "when": "kind", "equals": "section",
-    "content": [ /* tinted full-width band */ ],
-    "else": [
-      { "type": "if", "when": "kind", "equals": "subtotal",
-        "content": [ /* right-aligned rule + bold figure */ ],
-        "else":    [ /* ordinary description / qty / unit / amount row */ ] } ] } ] }</code></pre>
-        <pre data-filename="quote_sections.data.json — the flattened array" class="mt-3"><code class="language-json text-sm">"rows": [
-  { "kind": "section",  "name": "01   STRUCTURAL WORK" },
-  { "kind": "line",     "name": "Demolition of partition wall", "qty": "1", "unit": "850.00", "amount": "850.00" },
-  { "kind": "subtotal", "name": "Subtotal, structural work", "amount": "1,402.00" }
+        <pre data-filename="quote_sections.template.json — nested repeats" class="mt-4"><code class="language-json text-sm">{ "type": "repeat", "data": "sections", "content": [
+  { "type": "move", "y": 8 },
+  { /* tinted band showing ${title} */ },
+  { "type": "table", "data": "lines",            // ← binds to THIS section's lines
+    "rows": [ [ { "text": "${name}" }, { "text": "${qty}" },
+                { "text": "${unit}" }, { "text": "${amount}" } ] ] },
+  { /* right-aligned rule + ${subtotal} */ }
+] }</code></pre>
+        <pre data-filename="quote_sections.data.json — naturally nested" class="mt-3"><code class="language-json text-sm">"sections": [
+  { "title": "01   STRUCTURAL WORK",
+    "lines": [
+      { "name": "Demolition of partition wall", "qty": "1", "unit": "850.00", "amount": "850.00" },
+      { "name": "Floor levelling and screed",   "qty": "24 m²", "unit": "23.00", "amount": "552.00" }
+    ],
+    "subtotal_label": "Subtotal, structural work",
+    "subtotal": "1,402.00" }
 ]</code></pre>
     </section>
 

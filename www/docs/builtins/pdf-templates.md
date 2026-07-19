@@ -6,14 +6,14 @@ The templates live in `www/public/pdf-samples/` as a `<name>.template.json` + `<
 
 ## Choosing one
 
-| Template | VAT breakdown | Payment QR | Signature box | Grouped subtotals | Conditional lines | Chart | Factur-X |
+| Template | VAT breakdown | Payment QR | Signature box | Grouped subtotals | Tick boxes | Chart | Factur-X |
 |---|---|---|---|---|---|---|---|
 | `invoice_compliant` | ✓ | ✓ | — | — | — | — | ✓ |
 | `invoice_minimal` | — | — | — | — | — | — | — |
 | `invoice_subscription` | — | — | — | — | — | ✓ | — |
 | `credit_note` | ✓ | — | — | — | — | — | ✓ |
-| `quote_sections` | — | — | ✓ | ✓ | ✓ | — | — |
-| `quote_options` | — | — | ✓ | — | — | — | — |
+| `quote_sections` | — | — | ✓ | ✓ | — | — | — |
+| `quote_options` | — | — | — | — | ✓ | — | — |
 | `invoice` (starter) | — | — | — | — | — | — | ✓ |
 | `quote` (starter) | — | — | — | — | — | — | — |
 
@@ -65,7 +65,7 @@ Chart values must be real JSON numbers, not formatted strings:
 
 A band under the header names the invoice being corrected, its date, its original amount and the reason. Amounts are negative throughout. It credits `invoice_compliant`, so the two read as one sequence.
 
-The solid total panel is a `rect` with `spans` text drawn over it. Cell `content` arrays have **no `color` field**, so white-on-colour has to be done this way — and `rect` not advancing the cursor is what makes the overlay work:
+The solid total panel is a `rect` with `spans` text drawn over it: cell `content` arrays have **no `color` field**, so white-on-colour has to be an overlay, and `rect` not advancing the cursor is what makes that work. For a panel that should size itself to its contents, use `box` instead.
 
 ```json
 { "type": "move", "x": 271, "y": 2 },
@@ -80,23 +80,28 @@ The solid total panel is a `rect` with `spans` text drawn over it. Cell `content
 
 Line items grouped into numbered trade sections, each closing with its own subtotal, so a client can approve or challenge one trade without unpicking the whole figure. Ends in a dashed **acceptance box** with date and signature rules.
 
-> **Grouping recipe.** A data-bound `table` or a nested `repeat` **cannot** resolve a relative path against the item it sits inside: `"data": "lines"` nested inside a `repeat` over `sections` silently renders nothing. Flatten the group in your data instead — one array, each row tagged with a `kind` — and branch on it with `if`.
+> **Grouping recipe.** A `repeat` nested inside another `repeat` binds to an array **on the current item**, so grouping is expressed directly — no flattening and no `kind` discriminator. A data-bound `table` nested inside a `repeat` resolves the same way.
 
 ```json
-{ "type": "repeat", "data": "rows", "content": [
-  { "type": "if", "when": "kind", "equals": "section",
-    "content": [ /* tinted full-width band */ ],
-    "else": [
-      { "type": "if", "when": "kind", "equals": "subtotal",
-        "content": [ /* right-aligned rule + bold figure */ ],
-        "else":    [ /* ordinary description / qty / unit / amount row */ ] } ] } ] }
+{ "type": "repeat", "data": "sections", "content": [
+  { "type": "move", "y": 8 },
+  { /* tinted band showing ${title} */ },
+  { "type": "table", "data": "lines",
+    "rows": [ [ { "text": "${name}" }, { "text": "${qty}" },
+                { "text": "${unit}" }, { "text": "${amount}" } ] ] },
+  { /* right-aligned rule + ${subtotal} */ }
+] }
 ```
 
 ```json
-"rows": [
-  { "kind": "section",  "name": "01   STRUCTURAL WORK" },
-  { "kind": "line",     "name": "Demolition of partition wall", "qty": "1", "unit": "850.00", "amount": "850.00" },
-  { "kind": "subtotal", "name": "Subtotal, structural work", "amount": "1,402.00" }
+"sections": [
+  { "title": "01   STRUCTURAL WORK",
+    "lines": [
+      { "name": "Demolition of partition wall", "qty": "1", "unit": "850.00", "amount": "850.00" },
+      { "name": "Floor levelling and screed",   "qty": "24 m²", "unit": "23.00", "amount": "552.00" }
+    ],
+    "subtotal_label": "Subtotal, structural work",
+    "subtotal": "1,402.00" }
 ]
 ```
 
@@ -172,8 +177,9 @@ Needs `pdftoppm` (poppler-utils). Renders page 1 of each sample at 150 DPI, whic
 
 These apply to any template you build on top of these:
 
-- **Layout is tables.** There is no positioning primitive — header bands, meta grids, totals stacks and signature boxes are all `table` elements with `borderSides` set to `"false"`. Column widths in a row must sum to the content width (481 pt at default margins).
-- `rect`, `ellipse`, `line`, `qr`, `barcode` and `image` **do not advance the cursor**; follow each with a `move`. Negative `y` moves up.
+- **Use `box` for panels.** A `box` flows its children, then paints its background and border at the size the content measured, and drops the cursor below itself. It replaces the `rect` + hand-computed height + compensating `move` pattern, and boxes nest. Build one visually in the [layout editor](/docs/builtins/pdf-editor).
+- **Rows are still tables.** There is no free positioning — meta grids, totals stacks and column layouts are `table` elements with `borderSides` set to `"false"`. Column widths in a row must sum to the content width (481 pt at default margins).
+- `rect`, `ellipse`, `line`, `qr`, `barcode` and `image` **do not advance the cursor**; follow each with a `move`. Negative `y` moves up. (`box` does advance.)
 - `rect` border width is `borderWidth` (camelCase). `receipt.template.json` writes `border_width`, which is silently ignored — don't copy that.
 - Table options mix conventions: `header.fillColor` is camelCase, `padding_x` / `padding_y` are snake_case.
 - `borderSides` absent entirely means no borders; present means omitted sides default to `true`.

@@ -14183,6 +14183,51 @@
       "signature": "",
       "description": "Quote template separating base scope from optional line items, with tick boxes and two totals: base only and with all options.",
       "keywords": ["quote", "options", "optional", "add-ons", "tick box", "checkbox", "dual total", "agency", "studio"]
+    },
+    {
+      "title": "Layout editor",
+      "type": "guide",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-editor",
+      "signature": "",
+      "description": "Build a PDF template by structure instead of hand-writing JSON: document tree, per-element property panel, and a live render from the real engine. Exports the template JSON losslessly.",
+      "keywords": ["layout editor", "pdf editor", "wysiwyg", "visual editor", "template builder", "designer", "drag", "structure", "json export", "bands", "repeat zone"]
+    },
+    {
+      "title": "box",
+      "type": "element",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#elements",
+      "signature": "{ \"type\": \"box\", \"padding\": 14, \"fill\": \"F7F9FC\", \"content\": [ … ] }",
+      "description": "PDF container element: lays out its content inside padding, paints fill/border at the measured size, and advances the cursor below itself. Replaces the rect + hand-computed height pattern. Boxes nest.",
+      "keywords": ["box", "panel", "container", "callout", "padding", "fill", "border", "radius", "dash", "gap", "auto height", "measure", "nest"]
+    },
+    {
+      "title": "PDF Studio",
+      "type": "guide",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-studio",
+      "signature": "",
+      "description": "Full-screen visual canvas for PDF templates: draw and move elements directly on the page with the real rendered PDF underneath, define header and footer bands, and export template JSON.",
+      "keywords": ["pdf studio", "wysiwyg", "canvas", "visual editor", "drag", "draw", "move", "toolbox", "header", "footer", "bands", "page layout", "designer", "absolute"]
+    },
+    {
+      "title": "at",
+      "type": "element",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#elements",
+      "signature": "{ \"type\": \"at\", \"x\": 40, \"y\": 120, \"width\": 220, \"content\": [ … ] }",
+      "description": "PDF element that places its content at absolute page coordinates and restores the flow cursor, so placed items are independent of each other and of the surrounding flow.",
+      "keywords": ["at", "absolute", "position", "place", "coordinates", "x", "y", "canvas", "overlay", "free positioning"]
+    },
+    {
+      "title": "pdf_layout_map",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#pdf_layout_map",
+      "signature": "pdf_layout_map(template, data, options?) -> Array",
+      "description": "Lay out a template and report where every element landed (path, kind, page, x, y, w, h) without producing a PDF — what a visual editor needs to hit-test the rendered page.",
+      "keywords": ["pdf_layout_map", "layout map", "element box", "hit test", "bounding box", "editor", "position", "coordinates", "studio"]
     }
   ]
 }

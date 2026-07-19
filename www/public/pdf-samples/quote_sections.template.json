@@ -54,51 +54,42 @@
       "options": { "padding_x": 6, "padding_y": 6 }
     },
 
-    { "type": "repeat", "data": "rows", "content": [
-      { "type": "if", "when": "kind", "equals": "section",
-        "content": [
-          { "type": "move", "y": 8 },
-          {
-            "type": "table",
-            "header_columns": [
-              { "text": "${name}", "width": 481, "fontSize": 9, "fontWeight": "bold", "alignment": "left",
-                "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
-            ],
-            "rows": [],
-            "options": { "header": { "fillColor": "EEF2F6", "textColor": "0E4A5C" }, "padding_x": 8, "padding_y": 5 }
-          }
+    { "type": "repeat", "data": "sections", "content": [
+      { "type": "move", "y": 8 },
+      {
+        "type": "table",
+        "header_columns": [
+          { "text": "${title}", "width": 481, "fontSize": 9, "fontWeight": "bold", "alignment": "left",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
         ],
-        "else": [
-          { "type": "if", "when": "kind", "equals": "subtotal",
-            "content": [
-              {
-                "type": "table",
-                "header_columns": [],
-                "rows": [
-                  [
-                    { "text": "${name}",   "width": 391, "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" },
-                    { "text": "${amount}", "width": 90,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" }
-                  ]
-                ],
-                "options": { "padding_x": 6, "padding_y": 5 }
-              }
-            ],
-            "else": [
-              {
-                "type": "table",
-                "header_columns": [],
-                "rows": [
-                  [
-                    { "text": "${name}",   "width": 271, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
-                    { "text": "${qty}",    "width": 50,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
-                    { "text": "${unit}",   "width": 70,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
-                    { "text": "${amount}", "width": 90,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
-                  ]
-                ],
-                "options": { "padding_x": 6, "padding_y": 3 }
-              }
-            ] }
-        ] }
+        "rows": [],
+        "options": { "header": { "fillColor": "EEF2F6", "textColor": "0E4A5C" }, "padding_x": 8, "padding_y": 5 }
+      },
+      {
+        "type": "table",
+        "data": "lines",
+        "header_columns": [],
+        "rows": [
+          [
+            { "text": "${name}",   "width": 271, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+            { "text": "${qty}",    "width": 50,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+            { "text": "${unit}",   "width": 70,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+            { "text": "${amount}", "width": 90,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+          ]
+        ],
+        "options": { "padding_x": 6, "padding_y": 3 }
+      },
+      {
+        "type": "table",
+        "header_columns": [],
+        "rows": [
+          [
+            { "text": "${subtotal_label}", "width": 391, "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" },
+            { "text": "${subtotal}",       "width": 90,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" }
+          ]
+        ],
+        "options": { "padding_x": 6, "padding_y": 5 }
+      }
     ]},
 
     { "type": "move", "y": 18 },
@@ -126,25 +117,25 @@
     },
 
     { "type": "move", "y": 22 },
-    { "type": "rect", "width": 481, "height": 96, "fill": "FFFFFF", "border": "0E4A5C", "borderWidth": 1, "dash": [4, 3] },
-    { "type": "move", "x": 16, "y": 13 },
-    { "type": "paragraph", "value": "APPROVED FOR WORK", "options": { "fontSize": 9, "fontWeight": "bold", "color": "0E4A5C" } },
-    { "type": "move", "y": 3 },
-    { "type": "paragraph", "value": "Return one signed copy to accept this quote. Work is scheduled on receipt of the signed copy and the ${quote.deposit} deposit.", "options": { "fontSize": 8.5, "color": "51636D" } },
-    { "type": "move", "y": 26 },
-    {
-      "type": "table",
-      "header_columns": [],
-      "rows": [
-        [
-          { "text": "Date", "width": 150, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" },
-          { "text": "", "width": 24, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
-          { "text": "Signature", "width": 275, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" }
-        ]
-      ],
-      "options": { "padding_x": 0, "padding_y": 9 }
-    },
-    { "type": "move", "x": -16, "y": 18 },
+    { "type": "box", "border": "0E4A5C", "borderWidth": 1, "dash": [4, 3], "padding": { "top": 13, "right": 16, "bottom": 14, "left": 16 }, "gap": 18, "content": [
+      { "type": "paragraph", "value": "APPROVED FOR WORK", "options": { "fontSize": 9, "fontWeight": "bold", "color": "0E4A5C" } },
+      { "type": "move", "y": 3 },
+      { "type": "paragraph", "value": "Return one signed copy to accept this quote. Work is scheduled on receipt of the signed copy and the ${quote.deposit} deposit.", "options": { "fontSize": 8.5, "color": "51636D" } },
+      { "type": "move", "y": 26 },
+      {
+        "type": "table",
+        "header_columns": [],
+        "rows": [
+          [
+            { "text": "Date", "width": 150, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" },
+            { "text": "", "width": 24, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+            { "text": "Signature", "width": 275, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" }
+          ]
+        ],
+        "options": { "padding_x": 0, "padding_y": 9 }
+      }
+    ]},
+
     { "type": "paragraph", "value": "${quote.note}", "options": { "fontSize": 8, "color": "6B7B85" } }
   ]
 }

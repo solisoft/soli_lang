@@ -53,6 +53,11 @@ pub struct CellStyle {
     /// from its first column's left edge across the summed widths; following
     /// cells in the row shift right accordingly.
     pub colspan: Option<u32>,
+    /// Number of rows this cell spans (default 1). The slots it covers in the
+    /// following rows are skipped, so those rows supply one fewer cell each.
+    /// The cell is drawn once, at its starting row, tall enough to cover every
+    /// row it spans.
+    pub rowspan: Option<u32>,
 }
 
 /// A simple text cell.

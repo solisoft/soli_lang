@@ -250,6 +250,25 @@ pub struct ImageData {
     pub source_key: Option<u64>,
 }
 
+/// Where one template element ended up on the page.
+///
+/// Emitted so a visual editor can hit-test the rendered document: the engine is
+/// the only thing that knows where a *flowing* element landed, because that
+/// depends on every element before it. `path` addresses the element in the
+/// template (`content.3.content.0`), so several boxes can share one path — a
+/// `repeat` row draws once per item but is authored once.
+#[derive(Debug, Clone)]
+pub struct ElementBox {
+    pub path: String,
+    pub kind: String,
+    /// 0-based page index.
+    pub page: usize,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
 /// A single laid-out page.
 #[derive(Debug, Clone, Default)]
 pub struct RenderedPage {
@@ -273,4 +292,6 @@ pub struct LaidOutDoc {
     pub tagged: bool,
     /// Document language for `/Lang` (tagged output).
     pub lang: Option<String>,
+    /// Where each element landed, for editors that hit-test the output.
+    pub element_boxes: Vec<ElementBox>,
 }

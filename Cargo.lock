@@ -5515,6 +5515,7 @@ dependencies = [
  "walkdir",
  "webp",
  "webpki-roots 1.0.7",
+ "windows-sys 0.59.0",
  "x509-cert",
  "x509-parser",
 ]

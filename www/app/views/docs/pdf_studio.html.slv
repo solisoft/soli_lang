@@ -1,0 +1,2484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Studio — Soli</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+/* ---------------------------------------------------------------------------
+   PDF Studio.
+
+   The palette is print-production vernacular rather than app-chrome default:
+   a warm neutral pasteboard so the sheet reads as paper under a lamp, and the
+   two registration inks doing real work — cyan marks the page margins, magenta
+   marks the header/footer bands. Selection is amber because it has to stay
+   legible both on white paper and on the dark pasteboard.
+
+   Everything is hairlines and small square handles: this is a draughting
+   surface, not a dashboard.
+--------------------------------------------------------------------------- */
+:root {
+  --board:      #26242A;   /* pasteboard */
+  --rail:       #1C1A1F;   /* chrome */
+  --raised:     #302D35;
+  --line:       #3D3944;
+  --ink:        #E8E4EC;
+  --muted:      #8E8895;
+  --faint:      #635D6B;
+  --cyan:       #2BC4D9;   /* margin guides */
+  --magenta:    #E0459B;   /* band guides   */
+  --sel:        #FFB43D;   /* selection     */
+  --danger:     #FF6B6B;
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+/* Viewport units rather than a height:100% chain: in dev the view engine emits
+   an HTML comment ahead of the doctype, which puts the browser in quirks mode
+   where percentage-height inheritance does not resolve. vh is immune. */
+html, body {
+  margin: 0; height: 100vh; overflow: hidden;
+  background: var(--board); color: var(--ink);
+  font-family: var(--ui); font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+
+/* --- shell --- */
+/* `--chrome` is whatever the dev bar occupies at the bottom in development;
+   zero in production. Without it the dev bar sits on top of the status bar and
+   the zoom / page / grid controls are unreachable. */
+.app {
+  display: grid; grid-template-rows: 36px 1fr 26px;
+  height: calc(100vh - var(--chrome, 0px));
+}
+.body { display: grid; grid-template-columns: 52px 1fr 268px; min-height: 0; }
+
+/* --- topbar --- */
+.top {
+  display: flex; align-items: center; gap: 9px; padding: 0 10px;
+  background: var(--rail); border-bottom: 1px solid var(--line);
+  white-space: nowrap; overflow: hidden;
+}
+.top > * { flex: 0 0 auto; }
+
+/* Zoom, paging and the grid live along the bottom, where page-layout tools have
+   always put them. It keeps the top bar for the document itself and stops the
+   two from competing for the same strip. */
+.statusbar {
+  display: flex; align-items: center; gap: 9px; padding: 0 10px;
+  background: var(--rail); border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.statusbar > * { flex: 0 0 auto; }
+.statusbar .sep { height: 14px; }
+.statusbar .readout { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--faint); }
+.brand { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12px; }
+.brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sel); flex: 0 0 auto; }
+.sep { width: 1px; height: 18px; background: var(--line); }
+.grow { flex: 1; }
+
+.tabs { display: flex; gap: 2px; background: #141317; padding: 2px; border-radius: 6px; }
+.tab {
+  background: none; border: 0; padding: 3px 9px; border-radius: 4px;
+  color: var(--muted); font-size: 11px;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.tab .swatch { display: inline-block; width: 6px; height: 6px; border-radius: 1px; margin-right: 6px; vertical-align: 1px; }
+
+.btn {
+  background: var(--raised); border: 1px solid var(--line); border-radius: 5px;
+  padding: 3px 9px; font-size: 11px; line-height: 1.5;
+}
+.btn:hover { background: #3A3641; }
+.btn.primary { background: var(--sel); border-color: var(--sel); color: #251A05; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+
+.zoom { display: flex; align-items: center; gap: 4px; }
+.zoom button {
+  width: 20px; height: 20px; line-height: 1; border-radius: 4px;
+  background: var(--raised); border: 1px solid var(--line);
+}
+.zoom span { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 40px; text-align: center; }
+
+.status { font-family: var(--mono); font-size: 11px; color: var(--muted); max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status.err { color: var(--danger); }
+.status.ok  { color: #6FDDAA; }
+
+/* --- tool rail --- */
+.rail {
+  background: var(--rail); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0;
+}
+.tool {
+  width: 36px; height: 36px; border-radius: 6px; background: none; border: 1px solid transparent;
+  display: grid; place-items: center; color: var(--muted); position: relative;
+}
+.tool:hover { background: var(--raised); color: var(--ink); }
+.tool.on { background: var(--sel); border-color: var(--sel); color: #251A05; }
+.tool svg { width: 17px; height: 17px; }
+.rail .gap { height: 10px; }
+
+/* --- pasteboard --- */
+.board { position: relative; overflow: auto; background: var(--board); }
+.board::-webkit-scrollbar { width: 11px; height: 11px; }
+.board::-webkit-scrollbar-thumb { background: #423E48; border-radius: 6px; border: 3px solid var(--board); }
+
+.stage { position: relative; margin: 46px auto 80px; }
+
+/* rulers, ticked in points because that is the unit the template speaks */
+.ruler { position: absolute; background: var(--rail); color: var(--faint); font-size: 9px; font-family: var(--mono); }
+.ruler-h { left: 0; top: -22px; height: 22px; border-bottom: 1px solid var(--line); }
+.ruler-v { top: 0; left: -22px; width: 22px; border-right: 1px solid var(--line); }
+.ruler canvas { display: block; }
+
+.sheet {
+  position: relative; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35), 0 18px 50px rgba(0,0,0,.45);
+}
+.sheet canvas.render { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* guides: cyan = margins, magenta = header/footer bands */
+.guides { position: absolute; inset: 0; pointer-events: none; }
+.guide-margin { position: absolute; border: 1px dashed rgba(43,196,217,.55); }
+.band {
+  position: absolute; left: 0; right: 0;
+  background: rgba(224,69,155,.05);
+  border-top: 1px dashed rgba(224,69,155,.5);
+  border-bottom: 1px dashed rgba(224,69,155,.5);
+}
+.band-label {
+  position: absolute; right: 5px; top: 3px;
+  font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
+  color: rgba(224,69,155,.85); font-family: var(--mono);
+}
+.band.dim { opacity: .45; }
+/* An empty band is a place, not a thing: hint at it without pretending it has
+   content. */
+.band.empty {
+  background: repeating-linear-gradient(
+    45deg, rgba(224,69,155,.05) 0 6px, transparent 6px 12px);
+  border-style: dotted;
+}
+
+/* the interaction layer sits on top of the rendered page */
+.overlay { position: absolute; inset: 0; }
+.item { position: absolute; border: 1px solid transparent; }
+.item:hover { border-color: rgba(255,180,61,.55); }
+.item.sel { border-color: var(--sel); }
+.item.auto-h { border-bottom-style: dashed; }
+/* Positioned by the engine rather than by you: dotted, and no resize handles. */
+/* No coordinates, so it cannot go anywhere on the page — only up or down the
+   document. The cursor says which of the two you are getting. */
+.item.flow { border-style: dotted; cursor: ns-resize; }
+/* Drawn once per data item: several boxes, one authored element. */
+.item.bound { border-style: dashed; }
+.item.bound:hover { border-color: rgba(224,69,155,.8); }
+.item.bound.sel { border-color: var(--magenta); }
+.item.bound .tag { background: var(--magenta); color: #2A0716; }
+.item.flow:hover { border-color: rgba(43,196,217,.75); }
+.item.flow.sel { border-color: var(--cyan); border-style: dashed; }
+.item.flow .tag { background: var(--cyan); color: #06222A; }
+.item.auto-h.sel { border-style: solid solid dashed solid; }
+.item.locked { pointer-events: none; }
+.item .tag {
+  position: absolute; left: -1px; top: -16px; height: 15px; padding: 0 5px;
+  font-size: 9.5px; font-family: var(--mono); line-height: 15px;
+  background: var(--sel); color: #251A05; border-radius: 2px 2px 0 0;
+  opacity: 0; white-space: nowrap; pointer-events: none;
+}
+.item.sel .tag, .item:hover .tag { opacity: 1; }
+.handle {
+  position: absolute; width: 7px; height: 7px; background: #fff;
+  border: 1px solid var(--sel); border-radius: 1px;
+}
+.h-e  { right: -4px; top: 50%; margin-top: -3.5px; cursor: ew-resize; }
+.h-w  { left: -4px;  top: 50%; margin-top: -3.5px; cursor: ew-resize; }
+.h-s  { bottom: -4px; left: 50%; margin-left: -3.5px; cursor: ns-resize; }
+.h-se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+
+/* Where a dragged element will land in the document order. */
+.dropline {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px solid var(--sel); pointer-events: none;
+}
+.dropline::before {
+  content: ""; position: absolute; left: -4px; top: -4px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--sel);
+}
+
+.marquee { position: absolute; border: 1px solid var(--sel); background: rgba(255,180,61,.12); pointer-events: none; }
+
+/* --- inspector --- */
+.insp { background: var(--rail); border-left: 1px solid var(--line); overflow: auto; }
+.insp h3 {
+  margin: 0; padding: 9px 12px 7px; font-size: 10px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--faint); border-bottom: 1px solid var(--line);
+}
+.insp .pad { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.field { margin-bottom: 8px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+.field input, .field select, .field textarea {
+  width: 100%; background: #141317; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 11.5px;
+  font-family: var(--ui);
+}
+.field input[type=number] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.field textarea { min-height: 54px; resize: vertical; font-family: var(--ui); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--sel); outline: none; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.hint { font-size: 10px; color: var(--faint); margin-top: 4px; line-height: 1.45; }
+.empty { padding: 22px 12px; color: var(--faint); font-size: 11.5px; line-height: 1.6; }
+
+.layers { padding: 4px; }
+.layer {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 5px 7px; border-radius: 4px; background: none; border: 1px solid transparent;
+  color: var(--muted); font-size: 11.5px; text-align: left;
+}
+.layer:hover { background: var(--raised); color: var(--ink); }
+.layer.sel { background: rgba(255,180,61,.14); border-color: rgba(255,180,61,.4); color: var(--ink); }
+.layer .k {
+  font-family: var(--mono); font-size: 9.5px; padding: 1px 4px; border-radius: 2px;
+  background: #141317; color: var(--faint); flex: 0 0 auto;
+}
+.layer.sel .k { color: var(--sel); }
+.layer .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.row-btns { display: flex; gap: 6px; }
+.row-btns .btn { flex: 1; text-align: center; }
+
+
+
+/* A grid drawn on the sheet itself. Two scales so the eye can count: a faint
+   line every step, a stronger one every fifth. */
+.gridlines { position: absolute; inset: 0; pointer-events: none; }
+
+/* Guides that appear only while a drag is snapping, naming what it caught:
+   amber for another element, cyan for a page margin (matching the static
+   margin guides), so the reason for the snap is legible at a glance. */
+.snapline { position: absolute; pointer-events: none; }
+.snapline.v { top: 0; bottom: 0; width: 0; border-left: 1px solid var(--sel); }
+.snapline.h { left: 0; right: 0; height: 0; border-top: 1px solid var(--sel); }
+.snapline.edge.v { border-left-color: var(--cyan); }
+.snapline.edge.h { border-top-color: var(--cyan); }
+
+.viewgrp { display: flex; align-items: center; gap: 4px; }
+.viewgrp .toggle {
+  height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px;
+  background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+}
+.viewgrp .toggle.on { background: var(--sel); border-color: var(--sel); color: #251A05; }
+.viewgrp input.gridsize {
+  width: 38px; height: 20px; background: #141317; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+  font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.alignrow { display: flex; gap: 4px; flex-wrap: wrap; }
+.alignrow button {
+  flex: 1; min-width: 30px; height: 26px; border-radius: 4px; font-size: 12px;
+  background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+}
+.alignrow button:hover { background: #3A3641; color: var(--ink); }
+
+/* Preview mode: everything that is editor rather than document goes away, so
+   what is left on screen is exactly the page. */
+body.preview .rail,
+body.preview .insp,
+body.preview .ruler,
+body.preview .gridlines,
+body.preview .guides,
+body.preview .overlay,
+body.preview .statusbar { display: none !important; }
+body.preview .body { grid-template-columns: 1fr; }
+body.preview .app { grid-template-rows: 36px 1fr; }
+body.preview .stage { margin-top: 24px; }
+body.preview .sheet { box-shadow: 0 4px 12px rgba(0,0,0,.4), 0 24px 60px rgba(0,0,0,.5); }
+body.preview #btn-preview { background: var(--sel); border-color: var(--sel); color: #251A05; }
+
+/* --- table grid editor --- */
+.tmodal {
+  position: fixed; inset: 0; z-index: 60; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(10,9,12,.72); backdrop-filter: blur(2px);
+}
+.tmodal.open { display: flex; }
+.tbox {
+  width: min(1000px, 94vw); max-height: 88vh; display: flex; flex-direction: column;
+  background: var(--rail); border: 1px solid var(--line); border-radius: 9px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+}
+.tbox header {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.tbox header b { font-size: 13px; font-weight: 600; }
+.tbox .scroll { overflow: auto; padding: 14px; }
+.tbox footer {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* The grid is a real table with real colspan/rowspan, so the editor shows the
+   same merges the PDF will: what you arrange here is what the engine draws. */
+table.grid { border-collapse: collapse; }
+table.grid td, table.grid th {
+  border: 1px solid var(--line); padding: 0; vertical-align: top;
+  min-width: 96px; position: relative;
+}
+table.grid th { background: rgba(255,255,255,.05); }
+table.grid td.sel, table.grid th.sel { outline: 2px solid var(--sel); outline-offset: -2px; }
+table.grid input.cell, table.grid textarea.cell {
+  width: 100%; background: none; border: 0; color: var(--ink);
+  padding: 7px 8px; font-size: 11.5px; font-family: var(--ui);
+}
+table.grid input.cell:focus, table.grid textarea.cell:focus { outline: none; background: rgba(255,180,61,.08); }
+table.grid textarea.cell { resize: vertical; line-height: 1.45; }
+table.grid .rowno, table.grid .colno {
+  background: #141317; color: var(--faint); font-family: var(--mono); font-size: 10px;
+  text-align: center; min-width: 30px; padding: 3px 5px; border: 1px solid var(--line);
+}
+table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono);
+  position: absolute; right: 3px; bottom: 2px; pointer-events: none; }
+.tbox .cellbar {
+  display: flex; flex-wrap: wrap; align-items: end; gap: 10px;
+  padding: 10px 14px; border-top: 1px solid var(--line); background: rgba(255,255,255,.02);
+}
+.tbox .cellbar .field { margin: 0; min-width: 74px; }
+.tbox .cellbar .field.wide { min-width: 108px; }
+.bsides { display: flex; gap: 3px; }
+.bsides button {
+  width: 24px; height: 24px; border-radius: 4px; font-size: 10px;
+  background: #141317; border: 1px solid var(--line); color: var(--faint);
+}
+.bsides button.on { background: var(--sel); border-color: var(--sel); color: #251A05; }
+
+/* --- json drawer --- */
+.drawer {
+  position: fixed; left: 52px; right: 268px; bottom: 0; height: 44%;
+  background: #141317; border-top: 1px solid var(--line);
+  display: none; flex-direction: column; z-index: 40;
+}
+.drawer.open { display: flex; }
+.drawer .head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.drawer textarea {
+  flex: 1; width: 100%; border: 0; outline: none; resize: none;
+  background: #141317; color: #C9C3D1; padding: 10px 12px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- topbar -->
+  <div class="top">
+    <div class="brand"><span class="dot"></span>PDF Studio <small>Soli</small></div>
+    <div class="sep"></div>
+
+    <div class="tabs" role="tablist" aria-label="Page zone">
+      <button class="tab on" data-zone="content" role="tab" aria-selected="true">Body</button>
+      <button class="tab" data-zone="header" role="tab" aria-selected="false"><span class="swatch" style="background:var(--magenta)"></span>Header</button>
+      <button class="tab" data-zone="footer" role="tab" aria-selected="false"><span class="swatch" style="background:var(--magenta)"></span>Footer</button>
+    </div>
+
+    <div class="zoom">
+      <button id="undo" title="Undo  (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+      <button id="redo" title="Redo  (Ctrl+Shift+Z)" aria-label="Redo">&#8631;</button>
+    </div>
+
+    <div class="grow"></div>
+    <span id="status" class="status">Ready</span>
+    <button id="btn-preview" class="btn" title="Hide the editing chrome  (P)">Preview</button>
+    <button id="btn-pdf" class="btn" title="Open the rendered PDF in a new tab">PDF</button>
+    <button id="btn-json" class="btn">JSON</button>
+    <button id="btn-save" class="btn primary">Download</button>
+  </div>
+
+  <div class="body">
+    <!-- tool rail -->
+    <div class="rail" role="toolbar" aria-label="Tools">
+      <button class="tool on" data-tool="select" title="Select  (V)" aria-label="Select tool">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.6L9.6 19z"/></svg>
+      </button>
+      <div class="gap"></div>
+      <button class="tool" data-tool="text" title="Text  (T)" aria-label="Text tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 6h14M12 6v13M9 19h6"/></svg>
+      </button>
+      <button class="tool" data-tool="box" title="Box  (B)" aria-label="Box tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="2"/></svg>
+      </button>
+      <button class="tool" data-tool="table" title="Table  (A)" aria-label="Table tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14"/><path d="M3 10h18M9 10v9"/></svg>
+      </button>
+      <button class="tool" data-tool="image" title="Image  (I)" aria-label="Image tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 16l-5-5-6 6"/></svg>
+      </button>
+      <button class="tool" data-tool="line" title="Rule  (R)" aria-label="Rule tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"/></svg>
+      </button>
+      <button class="tool" data-tool="qr" title="QR code  (Q)" aria-label="QR tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 19h2v2h-2z"/></svg>
+      </button>
+      <button class="tool" data-tool="chart" title="Chart  (C)" aria-label="Chart tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      </button>
+      <button class="tool" data-tool="list" title="List  (L)" aria-label="List tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </button>
+      <button class="tool" data-tool="barcode" title="Barcode" aria-label="Barcode tool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14M8 5v14M11 5v14M14 5v14M18 5v14M21 5v14"/></svg>
+      </button>
+    </div>
+
+    <!-- pasteboard -->
+    <div class="board" id="board">
+      <div class="stage" id="stage">
+        <div class="ruler ruler-h" id="ruler-h"><canvas></canvas></div>
+        <div class="ruler ruler-v" id="ruler-v"><canvas></canvas></div>
+        <div class="sheet" id="sheet">
+          <canvas class="render" id="render"></canvas>
+          <div class="gridlines" id="gridlines"></div>
+          <div class="guides" id="guides"></div>
+          <div class="overlay" id="overlay"></div>
+          <div class="guides" id="snapguides"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- inspector -->
+    <div class="insp">
+      <h3 id="insp-title">Document</h3>
+      <div id="insp-body"></div>
+      <h3>Layers</h3>
+      <div class="layers" id="layers"></div>
+    </div>
+  </div>
+
+  <!-- View controls live along the bottom, where page-layout tools put them:
+       it frees the top bar for the document and stops the two competing. -->
+  <div class="statusbar">
+    <div class="zoom">
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <span id="zoom-val">100%</span>
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-fit" title="Fit page" aria-label="Fit page" style="width:auto;padding:0 6px">Fit</button>
+    </div>
+    <div class="sep"></div>
+    <div class="zoom">
+      <button id="page-prev" title="Previous page" aria-label="Previous page">&lsaquo;</button>
+      <span id="page-val">1/1</span>
+      <button id="page-next" title="Next page" aria-label="Next page">&rsaquo;</button>
+    </div>
+    <div class="sep"></div>
+    <div class="viewgrp">
+      <button id="grid-toggle" class="toggle on" title="Show grid  (G)" aria-pressed="true">Grid</button>
+      <input id="grid-size" class="gridsize" type="number" min="1" max="72" step="1" value="6"
+             title="Grid step in points" aria-label="Grid step in points">
+      <button id="snap-toggle" class="toggle on" title="Snap to grid, margins and other elements  (S). Hold Alt to bypass." aria-pressed="true">Snap</button>
+    </div>
+    <div class="grow"></div>
+    <span id="readout" class="readout"></span>
+  </div>
+
+</div>
+
+
+<!-- table grid editor -->
+<div class="tmodal" id="tmodal" role="dialog" aria-modal="true" aria-label="Table editor">
+  <div class="tbox">
+    <header>
+      <b>Table</b>
+      <span class="grow"></span>
+      <label class="ed-field-inline" style="font-size:11px;color:var(--muted)">
+        <input type="checkbox" id="t-hasheader"> header row
+      </label>
+      <span class="sep"></span>
+      <button class="btn" id="t-addcol">+ column</button>
+      <button class="btn" id="t-addrow">+ row</button>
+      <button class="btn" id="t-close">Done</button>
+    </header>
+    <div class="scroll" id="t-grid"></div>
+    <div class="cellbar" id="t-cellbar"></div>
+    <footer>
+      <span class="hint" id="t-hint">Click a cell to edit it. Merges use the engine's own colspan / rowspan.</span>
+    </footer>
+  </div>
+</div>
+
+<!-- JSON drawer -->
+<div class="drawer" id="drawer">
+  <div class="head">
+    <button class="tab on" id="dt-tpl">template.json</button>
+    <button class="tab" id="dt-data">data.json</button>
+    <select id="open-sample" class="ed-input" style="max-width:150px;margin-left:8px" aria-label="Open a sample">
+      <option value="">New document</option>
+      <option value="invoice_compliant">Compliant invoice</option>
+      <option value="invoice_minimal">Minimal invoice</option>
+      <option value="invoice_subscription">Subscription invoice</option>
+      <option value="credit_note">Credit note</option>
+      <option value="quote_sections">Sectioned quote</option>
+      <option value="quote_options">Quote with options</option>
+      <option value="invoice">Starter invoice</option>
+      <option value="quote">Starter quote</option>
+    </select>
+    <div class="grow"></div>
+    <button class="btn" id="btn-paste">Paste</button>
+    <button class="btn" id="btn-copy">Copy</button>
+    <button class="btn" id="drawer-close">Close</button>
+  </div>
+  <textarea id="ta-tpl" spellcheck="false" readonly></textarea>
+  <textarea id="ta-data" spellcheck="false" hidden></textarea>
+</div>
+
+<script>
+// PDF Studio — a canvas layout editor over the Soli PDF engine.
+//
+// Two ideas carry the whole thing:
+//   1. Every placed item compiles to an `at` element, which renders at absolute
+//      page coordinates and restores the flow cursor. That is what makes items
+//      independent: moving one cannot shift another.
+//   2. The sheet shows the REAL rendered PDF underneath the handles, so the
+//      canvas is not a mockup of the output — it is the output, with a
+//      manipulation layer on top.
+//
+// No JS template literals anywhere: the view engine must never see a ${...}.
+(function () {
+  "use strict";
+
+  var RENDER_URL = "/docs/builtins/pdf-playground/render";
+
+  // PDF.js is loaded on demand rather than from <head>. Arriving here through
+  // the docs site's instant navigation swaps only <body>, so a <head> script tag
+  // never executes — the page worked on a hard reload and failed on a click,
+  // which is the same trap the layout already works around for highlight.js.
+  var PDFJS_BASE = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/";
+  var pdfjsReady = null;
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfjsReady) return pdfjsReady;
+    pdfjsReady = new Promise(function (resolve, reject) {
+      var tag = document.createElement("script");
+      tag.src = PDFJS_BASE + "pdf.min.js";
+      tag.onload = function () {
+        if (!window.pdfjsLib) { reject(new Error("pdf.js loaded but exported nothing")); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      };
+      tag.onerror = function () { reject(new Error("could not fetch pdf.js")); };
+      document.head.appendChild(tag);
+    });
+    return pdfjsReady;
+  }
+  var PT = { w: 595.28, h: 841.89 };            // A4 in points
+  var GRID = 6;                                  // snap, in points
+
+  var zoom = 1.1;
+  var zone = "content";                          // content | header | footer
+  var tool = "select";
+  var sel = -1;                                  // index within the active zone
+  var timer = null, pdfDoc = null, renderSeq = 0;
+
+  var tpl = starter();
+
+  // --- model ---------------------------------------------------------------
+
+  function starter() {
+    return {
+      fonts: ["titillium"],
+      options: { header_height: 0 },
+      header: [],
+      footer: [],
+      // Placed flush with the default content box (56.7pt margins) so a new
+      // document starts aligned, and so dragging near the margin snaps to one
+      // unambiguous target rather than to a neighbour a fraction of a point off.
+      content: [
+        at(56.7, 60, 300, { type: "paragraph", value: "Your company",
+          options: { fontSize: 18, fontWeight: "bold", color: "1B3A6B" } }),
+        at(56.7, 86, 300, { type: "paragraph", value: "Tagline or address line",
+          options: { fontSize: 9.5, color: "6B7280" } }),
+        at(378.6, 58, 160, { type: "paragraph", value: "INVOICE",
+          options: { fontSize: 22, fontWeight: "bold", alignment: "right", color: "1B3A6B" } })
+      ]
+    };
+  }
+
+  function at(x, y, w, inner) {
+    return { type: "at", x: r1(x), y: r1(y), width: r1(w), content: [inner] };
+  }
+  function r1(n) { return Math.round(n * 10) / 10; }
+
+  function band() { return tpl[zone] || (tpl[zone] = []); }
+  // An opened template also contains ordinary flow elements. They have no
+  // coordinates, so they get no canvas handles — but they stay selectable and
+  // editable from the Layers list rather than being hidden or silently dropped.
+  function isPlaced(it) { return it && it.type === "at"; }
+
+  // Driven by the data document rather than authored per instance: a `repeat`,
+  // or a table bound to an array. The engine draws it once per item, so the
+  // several boxes on the page are all one authored element — there is nothing
+  // meaningful about dragging "the third row".
+  function isDataBound(it) {
+    var el = inner(it);
+    if (!el) return false;
+    if (el.type === "repeat") return !!el.data;
+    if (el.type === "table") return !!el.data;
+    return false;
+  }
+  function boundTo(it) {
+    var el = inner(it);
+    return el && el.data ? el.data : null;
+  }
+  function item(i) { var b = band(); return i >= 0 && i < b.length ? b[i] : null; }
+  function inner(it) {
+    if (!it) return null;
+    return it.type === "at" ? (it.content && it.content[0]) || null : it;
+  }
+
+  // What a freshly drawn item contains, per tool.
+  function makeInner(t, w, h) {
+    switch (t) {
+      case "text":
+        return { type: "paragraph", value: "Text", options: { fontSize: 11 } };
+      case "box":
+        return { type: "box", fill: "F1F4F8", border: "C9D3E0", borderWidth: 0.8,
+                 radius: 3, padding: 10,
+                 content: [ { type: "paragraph", value: "Panel", options: { fontSize: 10 } } ] };
+      case "table":
+        return { type: "table",
+          header_columns: [ cell("COLUMN", Math.max(60, w - 80), "left", true),
+                            cell("VALUE", 80, "right", true) ],
+          rows: [ [ cell("${name}", Math.max(60, w - 80), "left", false),
+                    cell("${amount}", 80, "right", false) ] ],
+          options: { header: { fillColor: "1B3A6B", textColor: "FFFFFF" },
+                     padding_x: 6, padding_y: 6 } };
+      case "image":
+        return { type: "image", value: "", width: r1(w), height: r1(h), alt: "" };
+      case "line":
+        return { type: "hr", color: "C9D3E0", thickness: 0.8, width: r1(w) };
+      case "qr":
+        return { type: "qr", kind: "text", value: "https://example.com", width: r1(Math.min(w, h)) };
+      case "barcode":
+        return { type: "barcode", symbology: "code128", value: "123456789012",
+                 width: r1(w), height: r1(h) };
+      case "chart":
+        return { type: "chart", kind: "bar", data: "series", label: "name",
+                 value: "amount", width: r1(w), height: r1(h), legend: true };
+      case "list":
+        return { type: "list", marker: "\u2022", indent: 12,
+                 items: ["First item", "Second item"], options: { fontSize: 10 } };
+      default:
+        return { type: "paragraph", value: "Text", options: { fontSize: 11 } };
+    }
+  }
+  function cell(text, width, alignment, bold) {
+    var c = { text: text, width: r1(width), fontSize: bold ? 8 : 10, alignment: alignment };
+    if (bold) c.fontWeight = "bold";
+    c.borderSides = { top: "false", bottom: "false", left: "false", right: "false" };
+    return c;
+  }
+
+  // Drawn height only means something for elements that take one; text and box
+  // measure themselves, so we do not pretend otherwise.
+  function hasHeight(t) {
+    var k = typeof t === "string" ? t : kindOf(t);
+    return k === "image" || k === "barcode" || k === "chart";
+  }
+  function kindOf(it) { var el = inner(it); return el ? el.type : "?"; }
+  function labelOf(it) {
+    var el = inner(it); if (!el) return "";
+    if (el.type === "paragraph") return clip(paraText(el));
+    if (el.type === "box") return el.fill ? "#" + el.fill : "panel";
+    if (el.type === "table") return el.data ? "→ " + el.data : "table";
+    if (el.type === "image") return el.value ? clip(el.value) : "(no source)";
+    if (el.type === "qr" || el.type === "barcode") return clip(el.value || "");
+    return "";
+  }
+  function clip(s) { s = String(s); return s.length > 26 ? s.slice(0, 25) + "…" : s; }
+
+  // Displayed height: real for sized elements, a readable stand-in otherwise.
+  function itemH(it) {
+    var el = inner(it);
+    if (!el) return 18;
+    if (el.height) return el.height;
+    if (el.type === "qr") return el.width || 90;
+    if (el.type === "hr") return 6;
+    if (el.type === "paragraph") {
+      var fs = (el.options && el.options.fontSize) || 11;
+      return Math.max(fs * 1.5, 14);
+    }
+    if (el.type === "box") return 44;
+    if (el.type === "table") return 46;
+    return 20;
+  }
+
+  // --- geometry ------------------------------------------------------------
+
+  function px(pt) { return pt * zoom; }
+  function toPt(v) { return v / zoom; }
+  function snap(v) { return Math.round(v / GRID) * GRID; }
+
+  // --- sheet, rulers, guides ----------------------------------------------
+
+  function layoutStage() {
+    var sheet = document.getElementById("sheet");
+    var stage = document.getElementById("stage");
+    var w = px(PT.w), h = px(PT.h);
+    sheet.style.width = w + "px";
+    sheet.style.height = h + "px";
+    stage.style.width = w + "px";
+    document.getElementById("zoom-val").textContent = Math.round(zoom * 100) + "%";
+    drawRulers(w, h);
+    drawGuides();
+    drawGridOverlay();
+    renderItems();
+  }
+
+  function drawRulers(w, h) {
+    var dpr = window.devicePixelRatio || 1;
+    var rh = document.querySelector("#ruler-h canvas");
+    var rv = document.querySelector("#ruler-v canvas");
+    document.getElementById("ruler-h").style.width = w + "px";
+    document.getElementById("ruler-v").style.height = h + "px";
+
+    function prep(c, cw, ch) {
+      c.width = cw * dpr; c.height = ch * dpr;
+      c.style.width = cw + "px"; c.style.height = ch + "px";
+      var g = c.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, cw, ch);
+      g.strokeStyle = "#635D6B"; g.fillStyle = "#635D6B";
+      g.font = "9px " + getComputedStyle(document.body).getPropertyValue("--mono");
+      g.lineWidth = 1;
+      return g;
+    }
+    // A tick every 10pt, labelled every 50 — dense enough to aim with, sparse
+    // enough to read.
+    var g = prep(rh, w, 22);
+    for (var x = 0; x <= PT.w; x += 10) {
+      var X = Math.round(px(x)) + 0.5, major = x % 50 === 0;
+      g.beginPath(); g.moveTo(X, major ? 10 : 16); g.lineTo(X, 22); g.stroke();
+      if (major && x > 0) g.fillText(String(x), X + 2, 9);
+    }
+    var g2 = prep(rv, 22, h);
+    for (var y = 0; y <= PT.h; y += 10) {
+      var Y = Math.round(px(y)) + 0.5, maj = y % 50 === 0;
+      g2.beginPath(); g2.moveTo(maj ? 10 : 16, Y); g2.lineTo(22, Y); g2.stroke();
+      if (maj && y > 0) {
+        g2.save(); g2.translate(8, Y + 2); g2.rotate(-Math.PI / 2);
+        g2.fillText(String(y), 0, 0); g2.restore();
+      }
+    }
+  }
+
+  function drawGuides() {
+    var host = document.getElementById("guides");
+    host.textContent = "";
+    var m = margins();
+
+    var mg = document.createElement("div");
+    mg.className = "guide-margin";
+    mg.style.left = px(m.left) + "px";
+    mg.style.top = px(m.top) + "px";
+    mg.style.width = px(PT.w - m.left - m.right) + "px";
+    mg.style.height = px(PT.h - m.top - m.bottom) + "px";
+    host.appendChild(mg);
+
+    // Both bands are always drawn. An empty one still has to be visible: it is
+    // where you would put a running header or a page number, and an invisible
+    // zone is not somewhere anyone thinks to aim.
+    var hh = (tpl.options && tpl.options.header_height) || 0;
+    host.appendChild(bandEl(m.top, hh || EMPTY_BAND, "header", hh === 0));
+    var fh = footerHeight();
+    host.appendChild(bandEl(PT.h - m.bottom - (fh || EMPTY_BAND), fh || EMPTY_BAND, "footer", fh === 0));
+  }
+
+  var EMPTY_BAND = 22;          // pt of hint shown for a band holding nothing
+
+  function bandEl(topPt, hPt, name, empty) {
+    var d = document.createElement("div");
+    d.className = "band" + (zone === name ? "" : " dim") + (empty ? " empty" : "");
+    d.style.top = px(topPt) + "px";
+    d.style.height = px(hPt) + "px";
+    var l = document.createElement("div");
+    l.className = "band-label";
+    l.textContent = empty ? name + " · empty" : name;
+    d.appendChild(l);
+    return d;
+  }
+
+  function margins() {
+    var m = tpl.options && tpl.options.margins;
+    var d = 56.693;
+    if (typeof m === "number") return { top: m, right: m, bottom: m, left: m };
+    if (m && typeof m === "object") {
+      return { top: m.top == null ? d : m.top, right: m.right == null ? d : m.right,
+               bottom: m.bottom == null ? d : m.bottom, left: m.left == null ? d : m.left };
+    }
+    return { top: d, right: d, bottom: d, left: d };
+  }
+  // The engine derives the footer band from its content; approximate it here
+  // purely so the guide has somewhere to sit.
+  function footerHeight() {
+    var f = tpl.footer || [];
+    return f.length ? 26 : 0;
+  }
+
+  // --- items ---------------------------------------------------------------
+
+  function renderItems() {
+    var host = document.getElementById("overlay");
+    host.textContent = "";
+    var b = band();
+    b.forEach(function (it, i) {
+      var placed = isPlaced(it);
+      var fb = flowBoxes[i];
+      // A flow element is positioned by the engine, so it is drawn from the
+      // reported box; without one (not yet rendered, or on another page) there
+      // is nothing to hit-test and it stays reachable from the Layers list.
+      if (!placed && (!fb || fb.page !== pageNo - 1)) return;
+      var el = document.createElement("div");
+      el.className = "item" + (i === sel ? " sel" : "") +
+        (placed ? "" : " flow") + (!placed && isDataBound(it) ? " bound" : "");
+      el.style.left = px(placed ? it.x : fb.x) + "px";
+      el.style.top = px(placed ? it.y : fb.y) + "px";
+      el.style.width = px(placed ? (it.width || 120) : fb.w) + "px";
+      el.style.height = px(placed ? itemH(it) : fb.h) + "px";
+      // Only some elements carry their own height; for the rest the engine
+      // decides it from the content, and the editor genuinely does not know it.
+      // Say so with a dashed edge rather than drawing a confident wrong box.
+      if (!hasHeight(it)) el.classList.add("auto-h");
+      el.dataset.i = String(i);
+
+      var tag = document.createElement("div");
+      tag.className = "tag";
+      // The tag states the element's nature, because that is what decides
+      // whether it can be moved and how.
+      tag.textContent = placed
+        ? kindOf(it) + "  " + Math.round(it.x) + "," + Math.round(it.y)
+        : isDataBound(it)
+          ? kindOf(it) + "  \u00d7 " + boundTo(it)
+          : kindOf(it) + "  in flow";
+      el.appendChild(tag);
+
+      if (i === sel && placed) {
+        ["h-w", "h-e", "h-se", "h-s"].forEach(function (cls) {
+          if ((cls === "h-s" || cls === "h-se") && !hasHeight(it)) return;
+          var h = document.createElement("div");
+          h.className = "handle " + cls;
+          h.dataset.h = cls;
+          el.appendChild(h);
+        });
+      }
+      host.appendChild(el);
+    });
+    renderLayers();
+  }
+
+  function renderLayers() {
+    var host = document.getElementById("layers");
+    host.textContent = "";
+    var b = band();
+    if (!b.length) {
+      var e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "Nothing in this zone yet. Pick a tool and drag on the page.";
+      host.appendChild(e);
+      return;
+    }
+    b.forEach(function (it, i) {
+      var btn = document.createElement("button");
+      btn.className = "layer" + (i === sel ? " sel" : "");
+      var k = document.createElement("span");
+      k.className = "k"; k.textContent = kindOf(it);
+      var t = document.createElement("span");
+      t.className = "t";
+      t.textContent = (isPlaced(it) ? "" : isDataBound(it) ? "\u00d7 " + boundTo(it) + " \u00b7 " : "flow \u00b7 ")
+        + labelOf(it);
+      btn.appendChild(k); btn.appendChild(t);
+      btn.addEventListener("click", function () { select(i); });
+      host.appendChild(btn);
+    });
+  }
+
+  function select(i) { sel = i; renderItems(); inspector(); readout(); }
+
+  // --- pointer interaction -------------------------------------------------
+
+  var drag = null;
+
+  document.getElementById("overlay").addEventListener("mousedown", function (e) {
+    var sheet = document.getElementById("sheet").getBoundingClientRect();
+    var x = toPt(e.clientX - sheet.left), y = toPt(e.clientY - sheet.top);
+
+    var handle = e.target.classList && e.target.classList.contains("handle")
+      ? e.target.dataset.h : null;
+    var host = e.target.closest ? e.target.closest(".item") : null;
+
+    if (tool !== "select") {                       // draw a new item
+      var g0 = [];
+      var sx = snapAxis(x, 0, "x", -1, g0), sy = snapAxis(y, 0, "y", -1, g0);
+      drag = { mode: "draw", x0: sx, y0: sy, x1: sx, y1: sy };
+      e.preventDefault();
+      return;
+    }
+    if (handle && sel >= 0) {
+      var it = item(sel);
+      drag = { mode: "resize", h: handle, ox: x, oy: y,
+               x0: it.x, y0: it.y, w0: it.width || 120, h0: itemH(it) };
+      e.preventDefault();
+      return;
+    }
+    if (host) {
+      var i = parseInt(host.dataset.i, 10);
+      select(i);
+      var t = item(i);
+      // What a drag means depends on what the element is. A pinned element has
+      // coordinates, so it moves. A flowing one does not — its position is a
+      // consequence of document order, so dragging it changes that order rather
+      // than tearing it out of the flow. Pinning stays available, but as a
+      // deliberate act rather than a side effect of picking something up.
+      if (isPlaced(t)) {
+        drag = { mode: "move", ox: x - t.x, oy: y - t.y };
+      } else {
+        drag = { mode: "reorder", from: i, to: i };
+      }
+      e.preventDefault();
+      return;
+    }
+    select(-1);
+  });
+
+  window.addEventListener("mousemove", function (e) {
+    if (!drag) return;
+    var sheet = document.getElementById("sheet").getBoundingClientRect();
+    var x = toPt(e.clientX - sheet.left), y = toPt(e.clientY - sheet.top);
+
+    if (drag.mode === "move") {
+      var it = item(sel); if (!it) return;
+      var guides = [];
+      var nx = snapAxis(x - drag.ox, it.width || 0, "x", sel, guides);
+      var ny = snapAxis(y - drag.oy, itemH(it), "y", sel, guides);
+      it.x = r1(clamp(nx, 0, PT.w - 10));
+      it.y = r1(clamp(ny, 0, PT.h - 6));
+      drawSnapGuides(guides);
+      renderItems(); syncGeom();
+    } else if (drag.mode === "resize") {
+      var t = item(sel); if (!t) return;
+      var el = inner(t);
+      var rg = [];
+      if (drag.h === "h-e" || drag.h === "h-se") {
+        // Snap the right edge itself, then derive the width from it.
+        var right = snapAxis(drag.x0 + drag.w0 + (x - drag.ox), 0, "x", sel, rg);
+        t.width = r1(Math.max(20, right - t.x));
+      } else if (drag.h === "h-w") {
+        var left = snapAxis(drag.x0 + (x - drag.ox), 0, "x", sel, rg);
+        left = clamp(left, 0, drag.x0 + drag.w0 - 20);
+        t.width = r1(Math.max(20, drag.x0 + drag.w0 - left));
+        t.x = r1(left);
+      }
+      if ((drag.h === "h-s" || drag.h === "h-se") && hasHeight(t)) {
+        var bottom = snapAxis(t.y + drag.h0 + (y - drag.oy), 0, "y", sel, rg);
+        el.height = r1(Math.max(10, bottom - t.y));
+      }
+      drawSnapGuides(rg);
+      if (el && (el.type === "hr" || el.type === "image" || el.type === "barcode")) {
+        el.width = t.width;
+      }
+      renderItems(); syncGeom();
+    } else if (drag.mode === "reorder") {
+      drag.to = dropSlotAt(y);
+      showDropLine(drag.to);
+    } else if (drag.mode === "draw") {
+      var dg = [];
+      drag.x1 = snapAxis(x, 0, "x", -1, dg);
+      drag.y1 = snapAxis(y, 0, "y", -1, dg);
+      drawSnapGuides(dg);
+      showMarquee(drag);
+    }
+  });
+
+  window.addEventListener("mouseup", function () {
+    clearSnapGuides();
+    hideDropLine();
+    if (!drag) return;
+    if (drag.mode === "reorder") {
+      applyReorder(drag.from, drag.to);
+      drag = null;
+      return;
+    }
+    if (drag.mode === "draw") {
+      hideMarquee();
+      var x = Math.min(drag.x0, drag.x1), y = Math.min(drag.y0, drag.y1);
+      var w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0);
+      // A click rather than a drag still creates something usable.
+      if (w < 12) w = tool === "qr" ? 90 : 200;
+      if (h < 10) h = tool === "qr" ? 90 : 40;
+      band().push(at(x, y, w, makeInner(tool, w, h)));
+      select(band().length - 1);
+      setTool("select");
+      touched();
+    } else {
+      touched();
+    }
+    drag = null;
+  });
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  var marquee = null;
+  function showMarquee(d) {
+    if (!marquee) {
+      marquee = document.createElement("div");
+      marquee.className = "marquee";
+      document.getElementById("overlay").appendChild(marquee);
+    }
+    marquee.style.left = px(Math.min(d.x0, d.x1)) + "px";
+    marquee.style.top = px(Math.min(d.y0, d.y1)) + "px";
+    marquee.style.width = px(Math.abs(d.x1 - d.x0)) + "px";
+    marquee.style.height = px(Math.abs(d.y1 - d.y0)) + "px";
+  }
+  function hideMarquee() { if (marquee) { marquee.remove(); marquee = null; } }
+
+  // --- inspector -----------------------------------------------------------
+
+  function fieldRow(host, label, node, hint) {
+    var f = document.createElement("div");
+    f.className = "field";
+    var l = document.createElement("label");
+    l.textContent = label;
+    f.appendChild(l); f.appendChild(node);
+    if (hint) {
+      var h = document.createElement("div");
+      h.className = "hint"; h.textContent = hint;
+      f.appendChild(h);
+    }
+    host.appendChild(f);
+    return f;
+  }
+  function num(get, set, step) {
+    var i = document.createElement("input");
+    i.type = "number"; i.step = step || "1";
+    i.value = get() == null ? "" : get();
+    i.addEventListener("input", function () {
+      set(i.value === "" ? undefined : parseFloat(i.value));
+      renderItems(); drawGuides(); touched();
+    });
+    return i;
+  }
+  function txt(get, set, ph) {
+    var i = document.createElement("input");
+    i.type = "text"; i.value = get() == null ? "" : get();
+    if (ph) i.placeholder = ph;
+    i.addEventListener("input", function () { set(i.value); touched(); });
+    return i;
+  }
+  function area(get, set) {
+    var t = document.createElement("textarea");
+    t.value = get() == null ? "" : get();
+    t.addEventListener("input", function () { set(t.value); renderItems(); touched(); });
+    return t;
+  }
+  function sel2(opts, get, set) {
+    var s = document.createElement("select");
+    opts.forEach(function (o) {
+      var op = document.createElement("option");
+      op.value = o[0]; op.textContent = o[1];
+      s.appendChild(op);
+    });
+    s.value = get() == null ? "" : get();
+    s.addEventListener("change", function () { set(s.value === "" ? undefined : s.value); touched(); });
+    return s;
+  }
+  function pad(host) { var d = document.createElement("div"); d.className = "pad"; host.appendChild(d); return d; }
+  function pair(host) { var d = document.createElement("div"); d.className = "grid2"; host.appendChild(d); return d; }
+
+  function inspector() {
+    var host = document.getElementById("insp-body");
+    var title = document.getElementById("insp-title");
+    host.textContent = "";
+    var it = item(sel);
+
+    if (!it) { documentInspector(host, title); return; }
+    var el = inner(it);
+    title.textContent = el.type;
+
+    if (!isPlaced(it)) {
+      var fl = document.createElement("div");
+      fl.className = "pad";
+      var note = document.createElement("div");
+      note.className = "hint";
+      note.style.marginBottom = "8px";
+      note.textContent = isDataBound(it)
+        ? "Drawn once per item of \u201c" + boundTo(it) + "\u201d, so the copies on the page "
+          + "are one element — edit it once and every copy follows. It has no position: "
+          + "drag it to move it up or down the document."
+        : "Positioned by the document, not by coordinates. Drag it on the page to move it "
+          + "up or down the order, or set the gap above it below.";
+      fl.appendChild(note);
+
+      // The flow-native nudge: the gap above, which templates express as a
+      // `move`. This is the control that actually corresponds to "move it down
+      // a bit" for something without coordinates.
+      var si = document.createElement("input");
+      si.type = "number"; si.step = "1"; si.min = "0";
+      si.value = spaceBefore(sel);
+      si.addEventListener("change", function () {
+        setSpaceBefore(sel, si.value === "" ? 0 : Math.max(0, parseFloat(si.value) || 0));
+      });
+      fieldRow(fl, "Space before (pt)", si,
+        "The gap above this element, which the template stores as a `move`.");
+
+      var pin = document.createElement("button");
+      pin.className = "btn";
+      pin.style.width = "100%";
+      pin.style.marginTop = "4px";
+      pin.textContent = "Pin to page";
+      pin.title = "Give it fixed coordinates. It leaves the flow, so what follows closes up.";
+      pin.addEventListener("click", function () {
+        if (pinToPage(sel)) { renderItems(); inspector(); readout(); }
+      });
+      fl.appendChild(pin);
+      host.appendChild(fl);
+    }
+    // geometry
+    var g = pad(host);
+    if (!isPlaced(it)) g.remove();
+    var p1 = pair(g);
+    fieldRow(p1, "X (pt)", num(function () { return it.x; }, function (v) { it.x = v; }, "0.5"));
+    fieldRow(p1, "Y (pt)", num(function () { return it.y; }, function (v) { it.y = v; }, "0.5"));
+    var p2 = pair(g);
+    fieldRow(p2, "Width (pt)", num(function () { return it.width; }, function (v) { it.width = v; }, "0.5"));
+    if (hasHeight(it)) {
+      fieldRow(p2, "Height (pt)", num(function () { return el.height; }, function (v) { el.height = v; }, "0.5"));
+    } else {
+      var ah = document.createElement("input");
+      ah.type = "text"; ah.value = "auto"; ah.disabled = true;
+      fieldRow(p2, "Height", ah, "Set by the content.");
+    }
+
+    // per-type
+    var s = pad(host);
+    if (el.type === "paragraph") {
+      // A paragraph is either a plain `value` or a run of styled `spans`; the
+      // shipped templates use spans wherever a line mixes colours or weights,
+      // and reading only `value` showed those as empty.
+      fieldRow(s, "Text",
+        area(function () { return paraText(el); }, function (v) { setParaText(el, v); }),
+        el.spans
+          ? "This line is built from styled spans — editing the text keeps each span's own colour and weight."
+          : "Use ${path} to pull a value from the data document.");
+      var q = pair(s);
+      fieldRow(q, "Size (pt)", num(function () { return el.options && el.options.fontSize; },
+        function (v) { opts(el).fontSize = v; }, "0.5"));
+      fieldRow(q, "Weight", sel2([["", "normal"], ["bold", "bold"]],
+        function () { return el.options && el.options.fontWeight; },
+        function (v) { opts(el).fontWeight = v; }));
+      var q2 = pair(s);
+      fieldRow(q2, "Align", sel2([["left", "left"], ["center", "center"], ["right", "right"], ["justify", "justify"]],
+        function () { return (el.options && el.options.alignment) || "left"; },
+        function (v) { opts(el).alignment = v; }));
+      fieldRow(q2, "Colour", txt(function () { return el.options && el.options.color; },
+        function (v) { opts(el).color = v || undefined; }, "111111"));
+    }
+    else if (el.type === "box") {
+      var b1 = pair(s);
+      fieldRow(b1, "Fill", txt(function () { return el.fill; }, function (v) { el.fill = v || undefined; }, "F1F4F8"));
+      fieldRow(b1, "Border", txt(function () { return el.border; }, function (v) { el.border = v || undefined; }, "C9D3E0"));
+      var b2 = pair(s);
+      fieldRow(b2, "Border w.", num(function () { return el.borderWidth; }, function (v) { el.borderWidth = v; }, "0.1"));
+      fieldRow(b2, "Radius", num(function () { return el.radius; }, function (v) { el.radius = v; }));
+      fieldRow(s, "Padding (pt)", num(function () { return typeof el.padding === "number" ? el.padding : undefined; },
+        function (v) { el.padding = v; }));
+      var inb = el.content && el.content[0];
+      if (inb && inb.type === "paragraph") {
+        fieldRow(s, "Contents", area(function () { return inb.value; }, function (v) { inb.value = v; }));
+      }
+    }
+    else if (el.type === "table") {
+      fieldRow(s, "Data array", txt(function () { return el.data; }, function (v) { el.data = v || undefined; }, "items"),
+        "Blank for a static table; otherwise the row repeats per item.");
+      var h = el.options && el.options.header;
+      var t1 = pair(s);
+      fieldRow(t1, "Header fill", txt(function () { return h && h.fillColor; },
+        function (v) { hdr(el).fillColor = v || undefined; }, "1B3A6B"));
+      fieldRow(t1, "Header text", txt(function () { return h && h.textColor; },
+        function (v) { hdr(el).textColor = v || undefined; }, "FFFFFF"));
+      var open = document.createElement("button");
+      open.className = "btn";
+      open.style.width = "100%";
+      open.textContent = "Edit table…";
+      open.addEventListener("click", function () { openTableEditor(el); });
+      var wrap = document.createElement("div");
+      wrap.className = "field";
+      wrap.appendChild(open);
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = (el.rows || []).length + " row(s), " +
+        columnCount(el) + " column(s). Rows, headers, merges, fills and borders are edited in the grid.";
+      wrap.appendChild(hint);
+      s.appendChild(wrap);
+    }
+    else if (el.type === "image") {
+      fieldRow(s, "Source", txt(function () { return el.value; }, function (v) { el.value = v; },
+        "data: URI or file://"), "Remote fetching is off in this preview.");
+      fieldRow(s, "Alt text", txt(function () { return el.alt; }, function (v) { el.alt = v || undefined; }));
+    }
+    else if (el.type === "hr") {
+      var l1 = pair(s);
+      fieldRow(l1, "Colour", txt(function () { return el.color; }, function (v) { el.color = v; }, "C9D3E0"));
+      fieldRow(l1, "Thickness", num(function () { return el.thickness; }, function (v) { el.thickness = v; }, "0.1"));
+    }
+    else if (el.type === "qr") {
+      fieldRow(s, "Kind", sel2([["text", "text"], ["epc", "EPC (scan to pay)"]],
+        function () { return el.kind; }, function (v) { el.kind = v; inspector(); }));
+      if (el.kind === "epc") {
+        fieldRow(s, "Payee", txt(function () { return el.name; }, function (v) { el.name = v; }));
+        fieldRow(s, "IBAN", txt(function () { return el.iban; }, function (v) { el.iban = v; }));
+        fieldRow(s, "Amount", txt(function () { return el.amount; }, function (v) { el.amount = v; }));
+      } else {
+        fieldRow(s, "Value", txt(function () { return el.value; }, function (v) { el.value = v; }));
+      }
+    }
+    else if (el.type === "barcode") {
+      fieldRow(s, "Symbology", sel2([["code128", "code128"], ["ean13", "ean13"], ["ean8", "ean8"], ["code39", "code39"]],
+        function () { return el.symbology; }, function (v) { el.symbology = v; }));
+      fieldRow(s, "Value", txt(function () { return el.value; }, function (v) { el.value = v; }));
+    }
+
+    // align to the content borders
+    if (isPlaced(it)) {
+      var al = pad(host);
+      var arow = document.createElement("div");
+      arow.className = "alignrow";
+      [["left", "\u21e4", "Left margin"], ["hcenter", "\u2194", "Centre horizontally"],
+       ["right", "\u21e5", "Right margin"], ["top", "\u21e7", "Top margin"],
+       ["vcenter", "\u2195", "Centre vertically"], ["bottom", "\u21e9", "Bottom margin"],
+       ["fitw", "\u2b0c", "Fit content width"]].forEach(function (a3) {
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = a3[1]; b.title = a3[2];
+        b.addEventListener("click", function () { alignTo(a3[0]); });
+        arow.appendChild(b);
+      });
+      fieldRow(al, "Align to page", arow);
+    }
+
+    // actions
+    var a = pad(host);
+    if (isPlaced(it)) {
+      var back = document.createElement("button");
+      back.className = "btn";
+      back.style.width = "100%";
+      back.style.marginBottom = "6px";
+      back.textContent = "Return to flow";
+      back.title = "Unwrap this element so the document positions it again.";
+      back.addEventListener("click", function () { returnToFlow(sel); });
+      a.appendChild(back);
+    }
+    var row = document.createElement("div");
+    row.className = "row-btns";
+    row.appendChild(mkBtn("↑ Fwd", function () { reorder(1); }));
+    row.appendChild(mkBtn("↓ Back", function () { reorder(-1); }));
+    row.appendChild(mkBtn("Duplicate", function () {
+      var copy = JSON.parse(JSON.stringify(it));
+      copy.x += 12; copy.y += 12;
+      band().push(copy); select(band().length - 1); touched();
+    }));
+    row.appendChild(mkBtn("Delete", function () {
+      band().splice(sel, 1); select(-1); touched();
+    }, true));
+    a.appendChild(row);
+  }
+
+  function mkBtn(label, fn, danger) {
+    var b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = label;
+    if (danger) b.style.color = "var(--danger)";
+    b.addEventListener("click", fn);
+    return b;
+  }
+  function opts(el) { if (!el.options) el.options = {}; return el.options; }
+
+  function paraText(el) {
+    if (el.spans) {
+      return el.spans.map(function (sp) { return sp.text == null ? "" : sp.text; }).join("");
+    }
+    return el.value == null ? "" : el.value;
+  }
+  // With several spans there is no single right way to split edited text across
+  // them, so the whole string goes to the first span and the rest are cleared —
+  // styling survives, and the JSON stays honest about what happened.
+  function setParaText(el, str) {
+    if (!el.spans || !el.spans.length) { el.value = str; return; }
+    el.spans[0].text = str;
+    for (var i = 1; i < el.spans.length; i++) el.spans[i].text = "";
+  }
+  function hdr(el) {
+    if (!el.options) el.options = {};
+    if (!el.options.header) el.options.header = {};
+    return el.options.header;
+  }
+
+  function documentInspector(host, title) {
+    title.textContent = "Document";
+    var d = pad(host);
+    var m = margins();
+    var p = pair(d);
+    fieldRow(p, "Margin top", num(function () { return m.top; },
+      function (v) { setMargin("top", v); }, "0.5"));
+    fieldRow(p, "Margin right", num(function () { return m.right; },
+      function (v) { setMargin("right", v); }, "0.5"));
+    var p2 = pair(d);
+    fieldRow(p2, "Margin bottom", num(function () { return m.bottom; },
+      function (v) { setMargin("bottom", v); }, "0.5"));
+    fieldRow(p2, "Margin left", num(function () { return m.left; },
+      function (v) { setMargin("left", v); }, "0.5"));
+
+    var pg = pad(host);
+    var pr = pair(pg);
+    fieldRow(pr, "Page size", sel2(
+      [["a4", "A4"], ["a3", "A3"], ["a5", "A5"], ["letter", "Letter"], ["legal", "Legal"]],
+      function () {
+        var v = tpl.options && tpl.options.page;
+        return typeof v === "string" ? v : "a4";
+      },
+      function (v) {
+        tpl.options.page = v === "a4" ? undefined : v;
+        applyPageSize(); layoutStage(); touched();
+      }));
+    fieldRow(pr, "Orientation", sel2([["portrait", "Portrait"], ["landscape", "Landscape"]],
+      function () { return (tpl.options && tpl.options.orientation) || "portrait"; },
+      function (v) {
+        tpl.options.orientation = v === "portrait" ? undefined : v;
+        applyPageSize(); layoutStage(); touched();
+      }));
+
+    var b = pad(host);
+    fieldRow(b, "Header band height (pt)",
+      num(function () { return tpl.options.header_height; },
+          function (v) { tpl.options.header_height = v || 0; }),
+      "Reserves a band at the top of every page. Elements placed in the Header zone repeat on all pages.");
+    var fh = document.createElement("input");
+    fh.type = "text"; fh.disabled = true;
+    fh.value = (tpl.footer && tpl.footer.length) ? "auto (from content)" : "none";
+    fieldRow(b, "Footer band", fh, "Sized by the engine from the footer's own content.");
+
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "Nothing selected. Pick a tool from the rail and drag on the page, or click an element to edit it.";
+    host.appendChild(e);
+  }
+
+  function setMargin(side, v) {
+    var m = margins();
+    m[side] = v == null ? 0 : v;
+    tpl.options.margins = { top: m.top, right: m.right, bottom: m.bottom, left: m.left };
+    drawGuides(); touched();
+  }
+
+  // Keep the inspector's X/Y/W readouts in step with a drag without rebuilding
+  // the panel (which would steal focus from a field mid-edit).
+  // The status bar carries the live geometry, so the numbers are visible while
+  // dragging without the inspector having to be open on the right element.
+  function readout() {
+    var el = document.getElementById("readout");
+    if (!el) return;
+    var it = item(sel);
+    if (!it) { el.textContent = Math.round(PT.w) + " × " + Math.round(PT.h) + " pt"; return; }
+    if (!isPlaced(it)) {
+      el.textContent = isDataBound(it)
+        ? kindOf(it) + " · one element, drawn per item of " + boundTo(it)
+        : kindOf(it) + " · positioned by the document";
+      return;
+    }
+    el.textContent = kindOf(it) + "   x " + Math.round(it.x) + "   y " + Math.round(it.y) +
+                     "   w " + Math.round(it.width || 0);
+  }
+
+  function syncGeom() {
+    readout();
+    var it = item(sel); if (!it) return;
+    var ins = document.querySelectorAll("#insp-body .pad:first-child input[type=number]");
+    if (ins.length >= 3) {
+      if (document.activeElement !== ins[0]) ins[0].value = it.x;
+      if (document.activeElement !== ins[1]) ins[1].value = it.y;
+      if (document.activeElement !== ins[2]) ins[2].value = it.width;
+    }
+  }
+
+
+
+
+  // --- layout map ------------------------------------------------------------
+  //
+  // Flow elements have no coordinates of their own — where they land depends on
+  // everything before them, which only the engine knows. It reports a box per
+  // drawn element so they can be clicked on the page like placed ones. Without
+  // this, opening a real template gave a canvas where nothing was selectable.
+
+  var LAYOUT_URL = "/docs/builtins/pdf-studio/layout";
+  var flowBoxes = {};              // band index -> {page,x,y,w,h}
+
+  function refreshLayoutMap() {
+    var body = new URLSearchParams();
+    body.set("template", json());
+    body.set("data", document.getElementById("ta-data").value || "{}");
+    return fetch(LAYOUT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    }).then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (boxes) {
+        flowBoxes = {};
+        // Only the band currently being edited, and only its top-level
+        // elements: those are what the Layers list and `sel` address.
+        var prefix = zone + ".";
+        boxes.forEach(function (b) {
+          if (b.path.indexOf(prefix) !== 0) return;
+          var rest = b.path.slice(prefix.length);
+          if (rest.indexOf(".") >= 0) return;      // a nested child
+          var i = parseInt(rest, 10);
+          if (isNaN(i)) return;
+          // A repeat draws one box per item; keep the union so the whole run is
+          // clickable rather than just its first row.
+          var cur = flowBoxes[i];
+          if (!cur) { flowBoxes[i] = { page: b.page, x: b.x, y: b.y, w: b.w, h: b.h }; return; }
+          if (cur.page !== b.page) return;
+          var x2 = Math.max(cur.x + cur.w, b.x + b.w), y2 = Math.max(cur.y + cur.h, b.y + b.h);
+          cur.x = Math.min(cur.x, b.x); cur.y = Math.min(cur.y, b.y);
+          cur.w = x2 - cur.x; cur.h = y2 - cur.y;
+        });
+        renderItems();
+      }).catch(function () { /* selection just stays as it was */ });
+  }
+
+
+
+  // --- reordering a flowing element -----------------------------------------
+  //
+  // A flowing element has no coordinates to change: where it sits is a
+  // consequence of document order. So dragging one moves it in that order, and
+  // the drop line shows the gap it will fall into. This keeps the document a
+  // document — pinning is still there when you actually want an overlay.
+
+  // Boundaries between the elements currently drawn on this page, as
+  // `{ index, y }`: the y each gap sits at, and the slot it inserts before.
+  function flowSlots() {
+    var out = [];
+    band().forEach(function (it, i) {
+      var fb = flowBoxes[i];
+      if (!fb || fb.page !== pageNo - 1) return;
+      out.push({ index: i, top: fb.y, mid: fb.y + fb.h / 2, bottom: fb.y + fb.h });
+    });
+    out.sort(function (a, b) { return a.top - b.top; });
+    return out;
+  }
+
+  function dropSlotAt(yPt) {
+    var slots = flowSlots();
+    if (!slots.length) return drag ? drag.from : 0;
+    for (var i = 0; i < slots.length; i++) {
+      if (yPt < slots[i].mid) return slots[i].index;
+    }
+    return slots[slots.length - 1].index + 1;
+  }
+
+  var dropLine = null;
+  function showDropLine(targetIndex) {
+    var slots = flowSlots();
+    if (!slots.length) return;
+    var yPt;
+    var hit = null;
+    for (var i = 0; i < slots.length; i++) {
+      if (slots[i].index === targetIndex) { hit = slots[i]; break; }
+    }
+    yPt = hit ? hit.top : slots[slots.length - 1].bottom;
+    if (!dropLine) {
+      dropLine = document.createElement("div");
+      dropLine.className = "dropline";
+      document.getElementById("overlay").appendChild(dropLine);
+    }
+    dropLine.style.top = px(yPt) + "px";
+  }
+  function hideDropLine() { if (dropLine) { dropLine.remove(); dropLine = null; } }
+
+  function applyReorder(from, to) {
+    if (to > from) to -= 1;             // removing shifts everything after it
+    if (to === from || from < 0) { renderItems(); return; }
+    var b = band();
+    var moved = b.splice(from, 1)[0];
+    b.splice(to, 0, moved);
+    sel = to;
+    status("Moved to position " + (to + 1) + " in the document", "ok");
+    renderItems(); inspector(); readout(); touched();
+  }
+
+  // --- spacing ---------------------------------------------------------------
+  //
+  // The flow-native way to nudge something is the gap above it, which templates
+  // express as a `move` element. Reading and writing that directly is far more
+  // useful than a coordinate an element in a flow does not have.
+
+  function spaceBefore(i) {
+    var prev = band()[i - 1];
+    return (prev && prev.type === "move") ? (prev.y || 0) : 0;
+  }
+  function setSpaceBefore(i, v) {
+    var b = band(), prev = b[i - 1];
+    var has = prev && prev.type === "move";
+    if (!v) {
+      if (has) { b.splice(i - 1, 1); sel = i - 1; }
+    } else if (has) {
+      prev.y = v;
+    } else {
+      b.splice(i, 0, { type: "move", y: v });
+      sel = i + 1;
+    }
+    renderItems(); inspector(); readout(); touched();
+  }
+
+  // --- pinning ---------------------------------------------------------------
+  //
+  // A flowing element has no coordinates to drag: the engine decides where it
+  // goes. Dragging one therefore *pins* it — it is wrapped in an `at` at the
+  // exact spot the engine last put it, so nothing appears to move at the moment
+  // of conversion, and from then on it is yours to place.
+  //
+  // The trade is real and worth stating plainly: a pinned element leaves the
+  // flow, so whatever followed it closes up the gap. `Return to flow` unwraps it
+  // again, and undo covers both, so nothing here is one-way.
+
+  function pinToPage(i) {
+    var b = band(), el = b[i];
+    if (!el) return null;
+    if (el.type === "at") return el;
+    var fb = flowBoxes[i];
+    if (!fb) {
+      status("Wait for the page to render, then drag", "err");
+      return null;
+    }
+    var wrapped = { type: "at", x: r1(fb.x), y: r1(fb.y), width: r1(fb.w), content: [el] };
+    b[i] = wrapped;
+    status("Pinned to the page — it no longer flows with the document", "ok");
+    touched();
+    return wrapped;
+  }
+
+  function returnToFlow(i) {
+    var b = band(), it = b[i];
+    if (!it || it.type !== "at") return;
+    b[i] = it.content && it.content[0] ? it.content[0] : it;
+    status("Returned to the document flow", "ok");
+    renderItems(); inspector(); readout(); touched();
+  }
+
+  // --- snapping -------------------------------------------------------------
+  //
+  // Two kinds, in priority order: an element's edges snap to the page's content
+  // borders (margins), its centre lines, and the edges of other elements; only
+  // if nothing is within reach does it fall back to the grid. Edge snaps win
+  // because "flush with the margin" is an intention, whereas the grid is just a
+  // default. Hold Alt to place something exactly where the cursor is.
+
+  var snapCfg = { grid: true, size: GRID, snap: true, threshold: 6 };
+  var bypass = false;              // true while Alt is held
+
+  function snapTargets(axis, skipIndex) {
+    var m = margins();
+    var out = axis === "x"
+      ? [ { v: m.left, edge: true }, { v: PT.w - m.right, edge: true },
+          { v: PT.w / 2, edge: true }, { v: 0, edge: true }, { v: PT.w, edge: true } ]
+      : [ { v: m.top, edge: true }, { v: PT.h - m.bottom, edge: true },
+          { v: PT.h / 2, edge: true }, { v: 0, edge: true }, { v: PT.h, edge: true } ];
+    // Header/footer band edges are worth catching too.
+    var hh = (tpl.options && tpl.options.header_height) || 0;
+    if (axis === "y" && hh > 0) out.push({ v: m.top + hh, edge: true });
+
+    band().forEach(function (it, i) {
+      if (i === skipIndex || !isPlaced(it)) return;
+      if (axis === "x") {
+        var w = it.width || 0;
+        out.push({ v: it.x }, { v: it.x + w / 2 }, { v: it.x + w });
+      } else {
+        var h = itemH(it);
+        out.push({ v: it.y }, { v: it.y + h / 2 }, { v: it.y + h });
+      }
+    });
+    return out;
+  }
+
+  // Try the three anchors of the moving box (start / middle / end) against every
+  // target and keep the closest match.
+  function bestSnap(start, size, axis, skipIndex) {
+    if (bypass || !snapCfg.snap) return null;
+    var anchors = [0, size / 2, size];
+    var targets = snapTargets(axis, skipIndex);
+    var best = null;
+    anchors.forEach(function (a) {
+      targets.forEach(function (t) {
+        var delta = t.v - (start + a);
+        var d = Math.abs(delta);
+        if (d <= snapCfg.threshold && (!best || d < best.d)) {
+          best = { d: d, delta: delta, pos: t.v, edge: !!t.edge };
+        }
+      });
+    });
+    return best;
+  }
+
+  function snapAxis(start, size, axis, skipIndex, guides) {
+    var hit = bestSnap(start, size, axis, skipIndex);
+    if (hit) {
+      guides.push({ axis: axis, pos: hit.pos, edge: hit.edge });
+      return start + hit.delta;
+    }
+    if (bypass || !snapCfg.snap || !snapCfg.grid) return start;
+    return Math.round(start / snapCfg.size) * snapCfg.size;
+  }
+
+  function drawSnapGuides(guides) {
+    var host = document.getElementById("snapguides");
+    host.textContent = "";
+    guides.forEach(function (g) {
+      var d = document.createElement("div");
+      d.className = "snapline " + g.axis.replace("x", "v").replace("y", "h") +
+                    (g.edge ? " edge" : "");
+      if (g.axis === "x") d.style.left = px(g.pos) + "px";
+      else d.style.top = px(g.pos) + "px";
+      host.appendChild(d);
+    });
+  }
+  function clearSnapGuides() { document.getElementById("snapguides").textContent = ""; }
+
+  function drawGridOverlay() {
+    var host = document.getElementById("gridlines");
+    if (!snapCfg.grid) { host.style.backgroundImage = "none"; return; }
+    var step = px(snapCfg.size);
+    // Below about 4px the grid turns into a smear; drop it rather than fight it.
+    if (step < 4) { host.style.backgroundImage = "none"; return; }
+    // Faint enough to read the document through: the grid is for aiming, not
+    // for looking at.
+    var minor = "rgba(43,196,217,.055)", major = "rgba(43,196,217,.12)";
+    host.style.backgroundImage =
+      "linear-gradient(to right, " + major + " 1px, transparent 1px)," +
+      "linear-gradient(to bottom, " + major + " 1px, transparent 1px)," +
+      "linear-gradient(to right, " + minor + " 1px, transparent 1px)," +
+      "linear-gradient(to bottom, " + minor + " 1px, transparent 1px)";
+    host.style.backgroundSize =
+      (step * 5) + "px " + (step * 5) + "px," +
+      (step * 5) + "px " + (step * 5) + "px," +
+      step + "px " + step + "px," +
+      step + "px " + step + "px";
+  }
+
+  // --- align to the content borders -----------------------------------------
+
+  function alignTo(where) {
+    var it = item(sel);
+    if (!it || !isPlaced(it)) return;
+    var m = margins(), w = it.width || 0, h = itemH(it);
+    if (where === "left")   it.x = r1(m.left);
+    if (where === "hcenter")it.x = r1((PT.w - w) / 2);
+    if (where === "right")  it.x = r1(PT.w - m.right - w);
+    if (where === "top")    it.y = r1(m.top);
+    if (where === "vcenter")it.y = r1((PT.h - h) / 2);
+    if (where === "bottom") it.y = r1(PT.h - m.bottom - h);
+    if (where === "fitw")   it.width = r1(PT.w - m.left - m.right), it.x = r1(m.left);
+    renderItems(); syncGeom(); touched();
+  }
+
+  // --- table grid editor ---------------------------------------------------
+  //
+  // The grid mirrors the engine's own placement rules: cells are laid into free
+  // column slots left to right, a colspan consumes several slots, and a rowspan
+  // claims its slots in the rows beneath — which is why those rows carry fewer
+  // cells. Rendering it as a real <table> with the same colspan/rowspan means
+  // the editor shows exactly the merges the PDF will.
+
+  var tEl = null;                 // the table element being edited
+  var tSel = null;                // { r, c } into rows[r][c], or {header:true, c}
+
+  function columnCount(el) {
+    var src = (el.header_columns && el.header_columns.length)
+      ? el.header_columns : ((el.rows && el.rows[0]) || []);
+    return src.reduce(function (n, c) { return n + Math.max(1, c.colspan || 1); }, 0);
+  }
+  function colWidths(el) {
+    var src = (el.header_columns && el.header_columns.length)
+      ? el.header_columns : ((el.rows && el.rows[0]) || []);
+    var out = [];
+    src.forEach(function (c) {
+      var span = Math.max(1, c.colspan || 1);
+      var each = (c.width || 80) / span;
+      for (var i = 0; i < span; i++) out.push(each);
+    });
+    return out;
+  }
+
+  // Resolve which slot each cell occupies, exactly as the engine does.
+  function resolveGrid(el) {
+    var rows = el.rows || [];
+    var n = columnCount(el);
+    var occ = [];
+    for (var i = 0; i < rows.length; i++) occ.push(new Array(n).fill(false));
+    var placed = [];
+    rows.forEach(function (row, ri) {
+      var idx = 0, out = [];
+      row.forEach(function (cell, ci) {
+        while (idx < n && occ[ri][idx]) idx++;
+        if (idx >= n) return;
+        var want = Math.min(Math.max(1, cell.colspan || 1), n - idx), span = 1;
+        while (span < want && !occ[ri][idx + span]) span++;
+        var rs = Math.max(1, cell.rowspan || 1);
+        out.push({ cell: cell, ci: ci, slot: idx, colspan: span, rowspan: rs });
+        for (var r = ri + 1; r < Math.min(ri + rs, rows.length); r++) {
+          for (var c = idx; c < Math.min(idx + span, n); c++) occ[r][c] = true;
+        }
+        idx += span;
+      });
+      placed.push(out);
+    });
+    return { placed: placed, occ: occ, cols: n };
+  }
+
+  function openTableEditor(el) {
+    tEl = el;
+    tSel = null;
+    document.getElementById("t-hasheader").checked =
+      !!(el.header_columns && el.header_columns.length);
+    document.getElementById("tmodal").classList.add("open");
+    drawGrid();
+  }
+  function closeTableEditor() {
+    document.getElementById("tmodal").classList.remove("open");
+    tEl = null; tSel = null;
+    renderItems(); inspector();
+  }
+
+  // A cell is either a plain `text` cell or a rich one holding a stack of text
+  // (and possibly image) items. Reading only `text` left every rich cell blank
+  // in the grid — the templates that ship with Soli use the rich form for their
+  // header bands, so the editor appeared to lose their content.
+  function cellText(cell) {
+    if (cell.content) {
+      return cell.content
+        .filter(function (i) { return i.type !== "image"; })
+        .map(function (i) { return i.value == null ? "" : i.value; })
+        .join("\n");
+    }
+    return cell.text == null ? "" : cell.text;
+  }
+
+  function setCellText(cell, str) {
+    if (!cell.content) { cell.text = str; return; }
+    var lines = str.split("\n");
+    var texts = cell.content.filter(function (i) { return i.type !== "image"; });
+    // Update in place so each line keeps its own size and weight.
+    var n = Math.min(lines.length, texts.length);
+    for (var i = 0; i < n; i++) texts[i].value = lines[i];
+    if (lines.length > texts.length) {
+      var proto = texts[texts.length - 1] || { fontSize: 10 };
+      for (var j = texts.length; j < lines.length; j++) {
+        cell.content.push({
+          type: "text", value: lines[j],
+          fontSize: proto.fontSize, fontWeight: proto.fontWeight
+        });
+      }
+    } else if (lines.length < texts.length) {
+      var drop = texts.slice(lines.length);
+      cell.content = cell.content.filter(function (i) { return drop.indexOf(i) < 0; });
+    }
+  }
+
+  function cellInput(cell, onCommit) {
+    // Rich cells stack several lines, so they need a textarea to show them all.
+    var rich = !!cell.content;
+    var i = document.createElement(rich ? "textarea" : "input");
+    i.className = "cell";
+    if (!rich) i.type = "text";
+    else { i.rows = Math.max(2, cellText(cell).split("\n").length); }
+    i.value = cellText(cell);
+    i.addEventListener("input", function () { setCellText(cell, i.value); touched(); });
+    if (onCommit) i.addEventListener("focus", onCommit);
+    return i;
+  }
+
+  function drawGrid() {
+    var host = document.getElementById("t-grid");
+    host.textContent = "";
+    if (!tEl) return;
+    var g = resolveGrid(tEl);
+    var widths = colWidths(tEl);
+
+    var table = document.createElement("table");
+    table.className = "grid";
+
+    // column ruler
+    var head = document.createElement("tr");
+    head.appendChild(el("td", "rowno", ""));
+    for (var c = 0; c < g.cols; c++) {
+      var th = el("td", "colno", String(c + 1) + "  " + Math.round(widths[c] || 0) + "pt");
+      th.title = "Click to remove this column";
+      (function (ci) {
+        th.addEventListener("click", function () { removeColumn(ci); });
+      })(c);
+      head.appendChild(th);
+    }
+    head.appendChild(el("td", "rowno", ""));
+    table.appendChild(head);
+
+    // header row
+    if (tEl.header_columns && tEl.header_columns.length) {
+      var hr = document.createElement("tr");
+      hr.appendChild(el("td", "rowno", "H"));
+      tEl.header_columns.forEach(function (hc, ci) {
+        var th = document.createElement("th");
+        th.colSpan = Math.max(1, hc.colspan || 1);
+        if (tSel && tSel.header && tSel.c === ci) th.className = "sel";
+        th.appendChild(cellInput(hc, function () {
+          tSel = { header: true, c: ci }; markSel(); cellBar();
+        }));
+        hr.appendChild(th);
+      });
+      hr.appendChild(el("td", "rowno", ""));
+      table.appendChild(hr);
+    }
+
+    // body rows
+    (tEl.rows || []).forEach(function (row, ri) {
+      var tr = document.createElement("tr");
+      tr.appendChild(el("td", "rowno", String(ri + 1)));
+      g.placed[ri].forEach(function (p) {
+        var td = document.createElement("td");
+        td.colSpan = p.colspan;
+        td.rowSpan = p.rowspan;
+        if (tSel && !tSel.header && tSel.r === ri && tSel.c === p.ci) td.className = "sel";
+        td.appendChild(cellInput(p.cell, function () {
+          tSel = { r: ri, c: p.ci }; markSel(); cellBar();
+        }));
+        if (p.colspan > 1 || p.rowspan > 1) {
+          var m = el("span", "merged", p.colspan + "×" + p.rowspan);
+          td.appendChild(m);
+        }
+        tr.appendChild(td);
+      });
+      var del = el("td", "rowno", "×");
+      del.title = "Remove this row";
+      del.style.cursor = "pointer";
+      (function (r) { del.addEventListener("click", function () { removeRow(r); }); })(ri);
+      tr.appendChild(del);
+      table.appendChild(tr);
+    });
+
+    host.appendChild(table);
+    cellBar();
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function markSel() { drawGrid(); }
+
+  function selectedCell() {
+    if (!tEl || !tSel) return null;
+    if (tSel.header) return (tEl.header_columns || [])[tSel.c] || null;
+    return ((tEl.rows || [])[tSel.r] || [])[tSel.c] || null;
+  }
+
+  // The strip under the grid edits whichever cell is selected.
+  function cellBar() {
+    var bar = document.getElementById("t-cellbar");
+    bar.textContent = "";
+    var cell = selectedCell();
+    if (!cell) {
+      bar.appendChild(el("span", "hint", "Select a cell to set its span, alignment, fill and borders."));
+      return;
+    }
+    var maxCols = columnCount(tEl);
+
+    fieldRow(bar, "Width (pt)", num(function () { return cell.width; },
+      function (v) { cell.width = v; drawGrid(); }, "1"));
+    fieldRow(bar, "Colspan", num(function () { return cell.colspan || 1; },
+      function (v) { cell.colspan = (v && v > 1) ? Math.min(v, maxCols) : undefined; drawGrid(); }));
+    if (!tSel.header) {
+      fieldRow(bar, "Rowspan", num(function () { return cell.rowspan || 1; },
+        function (v) { cell.rowspan = (v && v > 1) ? v : undefined; drawGrid(); }));
+    }
+    fieldRow(bar, "Align", sel2([["left", "left"], ["center", "center"], ["right", "right"]],
+      function () { return cell.alignment || "left"; },
+      function (v) { cell.alignment = v; })).classList.add("wide");
+    fieldRow(bar, "Bold", sel2([["", "no"], ["bold", "yes"]],
+      function () { return cell.fontWeight || ""; },
+      function (v) { cell.fontWeight = v || undefined; }));
+    fieldRow(bar, "Size", num(function () { return cell.fontSize; },
+      function (v) { cell.fontSize = v; }, "0.5"));
+    fieldRow(bar, "Fill", txt(function () { return cell.fill; },
+      function (v) { cell.fill = v || undefined; }, "hex")).classList.add("wide");
+    fieldRow(bar, "Border col.", txt(function () { return cell.borderColor; },
+      function (v) { cell.borderColor = v || undefined; }, "hex")).classList.add("wide");
+
+    // Borders are per side; the engine reads absent as "no borders at all".
+    var bs = document.createElement("div");
+    bs.className = "bsides";
+    [["top", "T"], ["right", "R"], ["bottom", "B"], ["left", "L"]].forEach(function (sd) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = sd[1];
+      var on = cell.borderSides && String(cell.borderSides[sd[0]]) === "true";
+      if (on) b.className = "on";
+      b.addEventListener("click", function () {
+        if (!cell.borderSides) {
+          cell.borderSides = { top: "false", right: "false", bottom: "false", left: "false" };
+        }
+        var now = String(cell.borderSides[sd[0]]) === "true";
+        cell.borderSides[sd[0]] = now ? "false" : "true";
+        touched(); cellBar();
+      });
+      bs.appendChild(b);
+    });
+    fieldRow(bar, "Borders", bs);
+
+    if (!tSel.header) {
+      var rowBtn = document.createElement("button");
+      rowBtn.className = "btn";
+      rowBtn.textContent = "Apply fill to row";
+      rowBtn.title = "The engine has no row-level fill; this writes the colour onto every cell of the row.";
+      rowBtn.addEventListener("click", function () {
+        (tEl.rows[tSel.r] || []).forEach(function (c) { c.fill = cell.fill; });
+        touched(); drawGrid();
+      });
+      fieldRow(bar, "Row", rowBtn).classList.add("wide");
+    }
+  }
+
+  // --- structural edits ---
+
+  function blankCell(width) {
+    return { text: "", width: width || 80, fontSize: 10, alignment: "left",
+             borderSides: { top: "false", bottom: "false", left: "false", right: "false" } };
+  }
+
+  function addColumn() {
+    if (!tEl) return;
+    var w = 70;
+    if (tEl.header_columns && tEl.header_columns.length) {
+      var hc = blankCell(w); hc.fontWeight = "bold"; hc.fontSize = 8; hc.text = "COLUMN";
+      tEl.header_columns.push(hc);
+    }
+    (tEl.rows || []).forEach(function (row) { row.push(blankCell(w)); });
+    touched(); drawGrid();
+  }
+
+  function removeColumn(slot) {
+    if (!tEl || columnCount(tEl) <= 1) return;
+    var g = resolveGrid(tEl);
+    // Drop the cell occupying this slot in each row; a cell that merely spans
+    // across it loses one column of span instead.
+    (tEl.rows || []).forEach(function (row, ri) {
+      var hit = g.placed[ri].filter(function (p) {
+        return slot >= p.slot && slot < p.slot + p.colspan;
+      })[0];
+      if (!hit) return;
+      if (hit.colspan > 1) {
+        hit.cell.colspan = hit.colspan - 1 > 1 ? hit.colspan - 1 : undefined;
+      } else {
+        row.splice(hit.ci, 1);
+      }
+    });
+    if (tEl.header_columns && tEl.header_columns.length > slot) {
+      tEl.header_columns.splice(slot, 1);
+    }
+    tSel = null; touched(); drawGrid();
+  }
+
+  function addRow() {
+    if (!tEl) return;
+    if (!tEl.rows) tEl.rows = [];
+    var g = resolveGrid(tEl);
+    var widths = colWidths(tEl);
+    // A row beneath an active rowspan needs only the slots still free.
+    var free = [];
+    for (var c = 0; c < g.cols; c++) {
+      var claimed = false;
+      (tEl.rows || []).forEach(function (row, ri) {
+        g.placed[ri].forEach(function (p) {
+          if (ri + p.rowspan > tEl.rows.length && c >= p.slot && c < p.slot + p.colspan) {
+            claimed = true;
+          }
+        });
+      });
+      if (!claimed) free.push(c);
+    }
+    var row = free.map(function (c) { return blankCell(widths[c] || 80); });
+    if (!row.length) row = [blankCell(widths[0] || 80)];
+    tEl.rows.push(row);
+    touched(); drawGrid();
+  }
+
+  function removeRow(ri) {
+    if (!tEl || !tEl.rows || tEl.rows.length <= 1) return;
+    tEl.rows.splice(ri, 1);
+    tSel = null; touched(); drawGrid();
+  }
+
+  function toggleHeader(on) {
+    if (!tEl) return;
+    if (on) {
+      var widths = colWidths(tEl);
+      tEl.header_columns = widths.map(function (w, i) {
+        var c = blankCell(w);
+        c.text = "COLUMN " + (i + 1); c.fontWeight = "bold"; c.fontSize = 8;
+        return c;
+      });
+      if (!tEl.options) tEl.options = {};
+      if (!tEl.options.header) tEl.options.header = { fillColor: "1B3A6B", textColor: "FFFFFF" };
+    } else {
+      tEl.header_columns = [];
+    }
+    tSel = null; touched(); drawGrid();
+  }
+
+  document.getElementById("t-close").addEventListener("click", closeTableEditor);
+  document.getElementById("t-addrow").addEventListener("click", addRow);
+  document.getElementById("t-addcol").addEventListener("click", addColumn);
+  document.getElementById("t-hasheader").addEventListener("change", function (e) {
+    toggleHeader(e.target.checked);
+  });
+  document.getElementById("tmodal").addEventListener("mousedown", function (e) {
+    if (e.target.id === "tmodal") closeTableEditor();
+  });
+
+
+  // --- history -------------------------------------------------------------
+  // Snapshots of the whole template. A canvas without undo is not usable, and
+  // the document is small enough that whole-state snapshots stay cheap.
+  var past = [], future = [], histLast = null;
+
+  function snapshot() {
+    var now = JSON.stringify(tpl);
+    if (now === histLast) return;
+    if (histLast !== null) {
+      past.push(histLast);
+      if (past.length > 80) past.shift();
+      future.length = 0;
+    }
+    histLast = now;
+    refreshHistoryButtons();
+  }
+  function applyState(str) {
+    tpl = JSON.parse(str);
+    histLast = str;
+    sel = -1;
+    layoutStage(); drawGuides(); inspector();
+    document.getElementById("ta-tpl").value = json();
+    clearTimeout(timer); timer = setTimeout(render, 200);
+    refreshHistoryButtons();
+  }
+  function undo() {
+    if (!past.length) return;
+    future.push(histLast);
+    applyState(past.pop());
+  }
+  function redo() {
+    if (!future.length) return;
+    past.push(histLast);
+    applyState(future.pop());
+  }
+  function refreshHistoryButtons() {
+    document.getElementById("undo").disabled = !past.length;
+    document.getElementById("redo").disabled = !future.length;
+  }
+
+  // --- open / paste --------------------------------------------------------
+
+  function loadTemplate(obj, dataText) {
+    tpl = obj;
+    if (!tpl.options) tpl.options = {};
+    if (!tpl.content) tpl.content = [];
+    if (dataText != null) document.getElementById("ta-data").value = dataText;
+    zone = "content";
+    document.querySelectorAll(".tab[data-zone]").forEach(function (o) {
+      var on = o.dataset.zone === "content";
+      o.classList.toggle("on", on);
+      o.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    sel = -1; past.length = 0; future.length = 0; histLast = JSON.stringify(tpl);
+    applyPageSize();
+    layoutStage(); drawGuides(); inspector(); touched();
+    refreshHistoryButtons();
+  }
+
+  function openSample(name) {
+    if (!name) { loadTemplate(starter(), '{\n  "data": {}\n}'); return; }
+    status("Loading…");
+    Promise.all([
+      fetch("/pdf-samples/" + name + ".template.json").then(function (r) { return r.text(); }),
+      fetch("/pdf-samples/" + name + ".data.json").then(function (r) { return r.text(); })
+    ]).then(function (p) {
+      loadTemplate(JSON.parse(p[0]), p[1]);
+      status("Opened " + name, "ok");
+    }).catch(function (e) { status("Could not open: " + e, "err"); });
+  }
+
+  // --- page setup ----------------------------------------------------------
+
+  var PAGE_SIZES = {
+    a4: [595.28, 841.89], a3: [841.89, 1190.55], a5: [419.53, 595.28],
+    letter: [612, 792], legal: [612, 1008]
+  };
+  function applyPageSize() {
+    var spec = tpl.options && tpl.options.page;
+    var dims = PAGE_SIZES.a4;
+    if (typeof spec === "string" && PAGE_SIZES[spec]) dims = PAGE_SIZES[spec];
+    else if (spec && typeof spec === "object" && spec.width) dims = [spec.width, spec.height];
+    var landscape = (tpl.options && tpl.options.orientation) === "landscape";
+    PT.w = landscape ? Math.max(dims[0], dims[1]) : Math.min(dims[0], dims[1]);
+    PT.h = landscape ? Math.min(dims[0], dims[1]) : Math.max(dims[0], dims[1]);
+  }
+
+  // --- z-order -------------------------------------------------------------
+  // Document order is paint order, so "forward" is simply "later in the array".
+
+  function reorder(delta) {
+    if (sel < 0) return;
+    var b = band(), j = sel + delta;
+    if (j < 0 || j >= b.length) return;
+    var tmp = b[sel]; b[sel] = b[j]; b[j] = tmp;
+    sel = j;
+    renderItems(); inspector(); touched();
+  }
+
+  // --- multi-page ----------------------------------------------------------
+
+  var pageNo = 1, pageCount = 1;
+  function setPage(n) {
+    if (!pdfDoc) return;
+    pageNo = Math.max(1, Math.min(pageCount, n));
+    document.getElementById("page-val").textContent = pageNo + "/" + pageCount;
+    paintPage();
+  }
+
+  // --- json + render -------------------------------------------------------
+
+  function prune(v) {
+    if (Array.isArray(v)) return v.map(prune);
+    if (v && typeof v === "object") {
+      var o = {};
+      Object.keys(v).forEach(function (k) { if (v[k] !== undefined) o[k] = prune(v[k]); });
+      return o;
+    }
+    return v;
+  }
+  function json() { return JSON.stringify(prune(tpl), null, 2); }
+
+  function touched() {
+    document.getElementById("ta-tpl").value = json();
+    renderLayers();          // labels derive from the model, so they go stale otherwise
+    snapshot();
+    clearTimeout(timer);
+    timer = setTimeout(render, 320);
+  }
+
+  function status(msg, kind) {
+    var s = document.getElementById("status");
+    s.textContent = msg;
+    s.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function b64ToBytes(b64) {
+    var bin = atob(b64.trim()), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function render() {
+    var body = new URLSearchParams();
+    body.set("template", json());
+    body.set("data", document.getElementById("ta-data").value || "{}");
+    var seq = ++renderSeq;
+    status("Rendering…");
+    fetch(RENDER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        return { ok: res.ok, text: t, ms: res.headers.get("X-Render-Ms") };
+      });
+    }).then(function (r) {
+      if (seq !== renderSeq) return;                 // a newer render won
+      if (!r.ok) { status(r.text.split("\n")[0].slice(0, 80), "err"); return; }
+      lastPdfBytes = b64ToBytes(r.text);
+      refreshLayoutMap();
+      return paint(lastPdfBytes).then(function () {
+        status("Rendered" + (r.ms ? " · " + r.ms + " ms" : ""), "ok");
+      });
+    }).catch(function (e) { status(String(e), "err"); });
+  }
+
+  // Draw the real PDF onto the sheet, under the handles. This is the whole
+  // WYSIWYG claim: the canvas is not a preview of the output, it is the output.
+  function paint(bytes) {
+    return loadPdfJs().then(function (lib) {
+      return lib.getDocument({ data: bytes }).promise;
+    }).then(function (doc) {
+      pdfDoc = doc;
+      pageCount = doc.numPages;
+      if (pageNo > pageCount) pageNo = pageCount;
+      document.getElementById("page-val").textContent = pageNo + "/" + pageCount;
+      return doc.getPage(pageNo);
+    }).then(function (page) {
+      var dpr = window.devicePixelRatio || 1;
+      var vp = page.getViewport({ scale: zoom * dpr });
+      var c = document.getElementById("render");
+      c.width = vp.width; c.height = vp.height;
+      var ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, c.width, c.height);
+      return page.render({ canvasContext: ctx, viewport: vp }).promise;
+    });
+  }
+
+  // Re-draw the current page from the document already parsed, without asking
+  // the server for another render (zoom and page changes need only this).
+  function paintPage() {
+    if (!pdfDoc) return;
+    pdfDoc.getPage(pageNo).then(function (page) {
+      var dpr = window.devicePixelRatio || 1;
+      var vp = page.getViewport({ scale: zoom * dpr });
+      var c = document.getElementById("render");
+      c.width = vp.width; c.height = vp.height;
+      var ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, c.width, c.height);
+      page.render({ canvasContext: ctx, viewport: vp });
+    });
+  }
+
+
+  // --- preview & export ------------------------------------------------------
+
+  var previewing = false;
+  function setPreview(on) {
+    previewing = on;
+    document.body.classList.toggle("preview", on);
+    document.getElementById("btn-preview").setAttribute("aria-pressed", on ? "true" : "false");
+    // The sheet gets wider without the side panels, so re-fit and re-rasterise.
+    if (on) {
+      var b = document.getElementById("board");
+      setZoom(Math.min(2, (b.clientHeight - 90) / PT.h));
+    } else {
+      layoutStage();
+      if (pdfDoc) paintPage();
+    }
+  }
+
+  // Keep the last rendered bytes so "open the PDF" costs nothing extra.
+  var lastPdfBytes = null;
+  function openPdf() {
+    if (!lastPdfBytes) { status("Nothing rendered yet", "err"); return; }
+    var url = URL.createObjectURL(new Blob([lastPdfBytes], { type: "application/pdf" }));
+    window.open(url, "_blank");
+    // Revoke late: the new tab needs the URL to survive its own load.
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  // --- tools, zones, keys --------------------------------------------------
+
+  function setTool(t) {
+    tool = t;
+    document.querySelectorAll(".tool").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.tool === t);
+    });
+    document.getElementById("overlay").style.cursor = t === "select" ? "default" : "crosshair";
+  }
+  document.querySelectorAll(".tool").forEach(function (b) {
+    b.addEventListener("click", function () { setTool(b.dataset.tool); });
+  });
+
+  document.querySelectorAll(".tab[data-zone]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      zone = b.dataset.zone;
+      document.querySelectorAll(".tab[data-zone]").forEach(function (o) {
+        var on = o === b;
+        o.classList.toggle("on", on);
+        o.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      // A header band with no reserved height would silently overlap the body.
+      if (zone === "header" && !(tpl.options.header_height > 0)) {
+        tpl.options.header_height = 64;
+        touched();
+      }
+      sel = -1; drawGuides(); renderItems(); inspector(); refreshLayoutMap();
+    });
+  });
+
+  // g / s / p are view toggles, so tools avoid those letters.
+  var KEYS = { v: "select", t: "text", b: "box", a: "table", i: "image",
+               r: "line", q: "qr", c: "chart", l: "list" };
+  window.addEventListener("keyup", function (e) { if (!e.altKey) bypass = false; });
+  window.addEventListener("keydown", function (e) {
+    if (e.altKey) bypass = true;
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.shiftKey ? redo() : undo();
+      e.preventDefault();
+      return;
+    }
+    if (typing) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === "]") { reorder(1); e.preventDefault(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === "[") { reorder(-1); e.preventDefault(); return; }
+    if ((e.key === "Delete" || e.key === "Backspace") && sel >= 0) {
+      band().splice(sel, 1); select(-1); touched(); e.preventDefault(); return;
+    }
+    if (e.key === "Escape") {
+      if (document.getElementById("tmodal").classList.contains("open")) {
+        closeTableEditor();
+      } else if (previewing) {
+        setPreview(false);
+      } else { select(-1); setTool("select"); }
+      return;
+    }
+    if (e.key.toLowerCase() === "g") { document.getElementById("grid-toggle").click(); return; }
+    if (e.key.toLowerCase() === "s") { document.getElementById("snap-toggle").click(); return; }
+    if (e.key.toLowerCase() === "p") { setPreview(!previewing); return; }
+    if (KEYS[e.key.toLowerCase()]) { setTool(KEYS[e.key.toLowerCase()]); return; }
+    if (sel >= 0 && e.key.indexOf("Arrow") === 0) {
+      var it = item(sel), step = e.shiftKey ? 10 : 1;
+      if (e.key === "ArrowLeft")  it.x = Math.max(0, it.x - step);
+      if (e.key === "ArrowRight") it.x = Math.min(PT.w - 10, it.x + step);
+      if (e.key === "ArrowUp")    it.y = Math.max(0, it.y - step);
+      if (e.key === "ArrowDown")  it.y = Math.min(PT.h - 6, it.y + step);
+      it.x = r1(it.x); it.y = r1(it.y);
+      renderItems(); syncGeom(); touched(); e.preventDefault();
+    }
+  });
+
+  function setZoom(z) {
+    zoom = Math.max(0.35, Math.min(3, z));
+    layoutStage();
+    // The PDF has not changed — re-rasterise the page we already have.
+    if (pdfDoc) paintPage(); else render();
+  }
+  document.getElementById("zoom-in").addEventListener("click", function () { setZoom(zoom + 0.1); });
+  document.getElementById("zoom-out").addEventListener("click", function () { setZoom(zoom - 0.1); });
+  document.getElementById("zoom-fit").addEventListener("click", function () {
+    var b = document.getElementById("board").clientHeight;
+    setZoom((b - 150) / PT.h);
+  });
+
+  // --- drawer, export ------------------------------------------------------
+
+  var drawer = document.getElementById("drawer");
+  document.getElementById("btn-json").addEventListener("click", function () {
+    drawer.classList.toggle("open");
+  });
+  document.getElementById("drawer-close").addEventListener("click", function () {
+    drawer.classList.remove("open");
+  });
+  document.getElementById("dt-tpl").addEventListener("click", function () {
+    document.getElementById("ta-tpl").hidden = false;
+    document.getElementById("ta-data").hidden = true;
+    this.classList.add("on"); document.getElementById("dt-data").classList.remove("on");
+  });
+  document.getElementById("dt-data").addEventListener("click", function () {
+    document.getElementById("ta-tpl").hidden = true;
+    document.getElementById("ta-data").hidden = false;
+    this.classList.add("on"); document.getElementById("dt-tpl").classList.remove("on");
+  });
+  document.getElementById("ta-data").addEventListener("input", function () {
+    clearTimeout(timer); timer = setTimeout(render, 320);
+  });
+
+  document.getElementById("btn-preview").addEventListener("click", function () {
+    setPreview(!previewing);
+  });
+  document.getElementById("btn-pdf").addEventListener("click", openPdf);
+
+  document.getElementById("grid-toggle").addEventListener("click", function () {
+    snapCfg.grid = !snapCfg.grid;
+    this.classList.toggle("on", snapCfg.grid);
+    this.setAttribute("aria-pressed", snapCfg.grid ? "true" : "false");
+    drawGridOverlay();
+  });
+  document.getElementById("snap-toggle").addEventListener("click", function () {
+    snapCfg.snap = !snapCfg.snap;
+    this.classList.toggle("on", snapCfg.snap);
+    this.setAttribute("aria-pressed", snapCfg.snap ? "true" : "false");
+  });
+  document.getElementById("grid-size").addEventListener("input", function () {
+    var v = parseFloat(this.value);
+    if (v > 0) { snapCfg.size = v; drawGridOverlay(); }
+  });
+
+  document.getElementById("undo").addEventListener("click", undo);
+  document.getElementById("redo").addEventListener("click", redo);
+  document.getElementById("open-sample").addEventListener("change", function (e) {
+    openSample(e.target.value);
+  });
+  document.getElementById("page-prev").addEventListener("click", function () { setPage(pageNo - 1); });
+  document.getElementById("page-next").addEventListener("click", function () { setPage(pageNo + 1); });
+
+  document.getElementById("btn-paste").addEventListener("click", function () {
+    var raw = window.prompt("Paste a template JSON to open it:");
+    if (!raw) return;
+    try {
+      loadTemplate(JSON.parse(raw), null);
+      status("Template opened", "ok");
+    } catch (e) { status("Not valid JSON: " + e.message, "err"); }
+  });
+
+  document.getElementById("btn-copy").addEventListener("click", function () {
+    navigator.clipboard.writeText(json()).then(
+      function () { status("Template JSON copied", "ok"); },
+      function () { status("Copy failed", "err"); });
+  });
+  document.getElementById("btn-save").addEventListener("click", function () {
+    var blob = new Blob([json()], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "template.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // --- boot ----------------------------------------------------------------
+
+  // Development injects a fixed bar along the bottom of every page. Reserve its
+  // height, or it sits on top of the status bar and the zoom / page / grid
+  // controls cannot be reached. It is appended after this script runs, so watch
+  // for it rather than assuming it is already there.
+  (function reserveDevBar() {
+    function apply(bar) {
+      var set = function () {
+        document.documentElement.style.setProperty("--chrome", (bar.offsetHeight || 0) + "px");
+      };
+      set();
+      if (window.ResizeObserver) new ResizeObserver(set).observe(bar);
+    }
+    var bar = document.getElementById("__solidev_bar");
+    if (bar) { apply(bar); return; }
+    var obs = new MutationObserver(function () {
+      var b = document.getElementById("__solidev_bar");
+      if (b) { obs.disconnect(); apply(b); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    // Production never injects one; stop watching rather than observing forever.
+    setTimeout(function () { obs.disconnect(); }, 5000);
+  })();
+
+  document.getElementById("ta-data").value = '{\n  "data": {}\n}';
+  applyPageSize();
+  layoutStage();
+  inspector();
+  readout();
+  touched();
+})();
+</script>
+</body>
+</html>

@@ -272,6 +272,24 @@ pub enum Element {
     PageBreak,
     /// A multi-column flow block; resumes full-width flow below it.
     Columns(ColumnsEl),
+    /// A container that lays out `content` inside optional padding and paints a
+    /// background/border sized to what the content actually measured, then
+    /// advances the cursor below itself.
+    ///
+    /// This is the block primitive `rect` never was: `rect` has to be given a
+    /// hand-computed height and does not move the cursor, so panels were built
+    /// as `rect` + `move` + content + a compensating `move` whose numbers had to
+    /// be re-tuned whenever the text changed. A `box` measures itself.
+    #[serde(rename = "box")]
+    Box(BoxEl),
+    /// Place `content` at an absolute position on the page and leave the flow
+    /// cursor exactly where it was.
+    ///
+    /// Everything else in the language is a top-to-bottom flow, which is right
+    /// for documents that grow with their data but cannot express "this sits
+    /// here". `at` is the escape hatch a visual canvas compiles to: each placed
+    /// item is independent, so moving one cannot disturb any other.
+    At(AtEl),
 }
 
 /// A multi-column flow container. Children fill column 1 to the bottom of the
@@ -657,6 +675,62 @@ pub struct RectEl {
     /// Border dash pattern (pt on/off lengths); omit for a solid border.
     #[serde(default)]
     pub dash: Option<Vec<f32>>,
+}
+
+/// A self-measuring container: lays out `content` inset by `padding`, then
+/// paints `fill`/`border` behind it at the measured size and advances the
+/// cursor below. Boxes nest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxEl {
+    /// Elements laid out inside the box, in normal top-to-bottom flow.
+    #[serde(default)]
+    pub content: Vec<Element>,
+    /// Inner padding (pt): a single number, or per-side `{top,right,bottom,left}`.
+    #[serde(default)]
+    pub padding: Option<MarginsSpec>,
+    /// Box width (pt). Defaults to the remaining width of the layout region, so
+    /// an unqualified box spans the content column.
+    #[serde(default)]
+    pub width: Option<f32>,
+    /// Background fill (hex, no `#`); omit for transparent.
+    #[serde(default)]
+    pub fill: Option<String>,
+    /// Border color (hex, no `#`); omit for no border.
+    #[serde(default)]
+    pub border: Option<String>,
+    #[serde(default = "default_stroke_width")]
+    pub border_width: f32,
+    /// Corner radius (pt).
+    #[serde(default)]
+    pub radius: Option<f32>,
+    /// Border dash pattern (pt on/off lengths); omit for solid.
+    #[serde(default)]
+    pub dash: Option<Vec<f32>>,
+    /// Extra space left below the box after it closes (pt).
+    #[serde(default)]
+    pub gap: f32,
+}
+
+/// Absolute placement: render `content` at `(x, y)` measured from the page's
+/// top-left corner, then restore the cursor so the surrounding flow is
+/// untouched. Nests like any other container.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AtEl {
+    /// Distance from the page's left edge, in points (not from the margin —
+    /// a canvas addresses the whole sheet).
+    #[serde(default)]
+    pub x: f32,
+    /// Distance from the page's top edge, in points.
+    #[serde(default)]
+    pub y: f32,
+    /// Wrap width for the placed content. Defaults to the distance from `x` to
+    /// the page's right margin.
+    #[serde(default)]
+    pub width: Option<f32>,
+    #[serde(default)]
+    pub content: Vec<Element>,
 }
 
 /// A stroked line segment, relative to the cursor.

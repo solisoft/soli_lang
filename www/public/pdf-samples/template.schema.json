@@ -369,6 +369,11 @@
         "colspan": {
           "type": "integer"
         },
+        "rowspan": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rows this cell spans. The slots it covers in following rows are skipped, so those rows supply fewer cells."
+        },
         "fill": {
           "$ref": "#/definitions/hex"
         },
@@ -407,7 +412,9 @@
             "if",
             "unless",
             "page_break",
-            "columns"
+            "columns",
+            "box",
+            "at"
           ]
         }
       },
@@ -938,6 +945,114 @@
               },
               "gap": {
                 "type": "number"
+              },
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "box"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              },
+              "padding": {
+                "description": "Inner padding in points: a number, or per-side {top,right,bottom,left}.",
+                "oneOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "top": {
+                        "type": "number"
+                      },
+                      "right": {
+                        "type": "number"
+                      },
+                      "bottom": {
+                        "type": "number"
+                      },
+                      "left": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                ]
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Box width in points. Defaults to the remaining content width."
+              },
+              "fill": {
+                "$ref": "#/definitions/hex"
+              },
+              "border": {
+                "$ref": "#/definitions/hex"
+              },
+              "borderWidth": {
+                "type": "number",
+                "minimum": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "dash": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "gap": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Space left below the box after it closes."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "at"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "Distance from the page's LEFT EDGE in points (not from the margin)."
+              },
+              "y": {
+                "type": "number",
+                "description": "Distance from the page's TOP EDGE in points."
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Wrap width. Defaults to the distance from x to the right margin."
               },
               "content": {
                 "type": "array",

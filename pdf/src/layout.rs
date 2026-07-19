@@ -17,10 +17,10 @@ use crate::geometry::{
 use crate::images;
 use crate::interpolate::{has_page_tokens, interpolate};
 use crate::template::{
-    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, ColumnsEl, Conditional, Element,
-    EllipseEl, FontWeight, HrEl, LineEl, ListEl, ListItem, PageFilter, PageSpec, Paragraph, QrEl,
-    RectEl, RepeatEl, StyledSpan, Table, TableHeaderStyle, Template, TextOptions, VAlign,
-    Watermark,
+    Alignment, AtEl, BarcodeEl, BoxEl, Cell, CellContent, CellStyle, ChartEl, ColumnsEl,
+    Conditional, Element, EllipseEl, FontWeight, HrEl, LineEl, ListEl, ListItem, PageFilter,
+    PageSpec, Paragraph, QrEl, RectEl, RepeatEl, StyledSpan, Table, TableHeaderStyle, Template,
+    TextOptions, VAlign, Watermark,
 };
 use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg, LINE_HEIGHT_FACTOR};
 use crate::RenderOptions;
@@ -76,6 +76,15 @@ pub struct Engine<'a> {
     /// set, the layout region is the CURRENT COLUMN instead of the page body,
     /// and overflow hops to the next column before starting a new page.
     columns: Option<ColumnFlow>,
+    /// Path of the element currently being laid out, e.g. `content.3.content.0`.
+    /// Kept as a stack so containers can push a segment around their children.
+    el_path: Vec<String>,
+    /// Where each element landed, for editors that hit-test the rendered page.
+    element_boxes: Vec<crate::draw::ElementBox>,
+    /// Points shaved off the right edge of the layout region by the enclosing
+    /// `box` chain, so text inside a padded box wraps at the box's inner edge
+    /// rather than the page's. Zero outside any box.
+    inset_right: f32,
     /// Emit a tagged (accessible) PDF. When set, content ops are wrapped in
     /// [`DrawOp::Tagged`] with a structure role.
     tagged: bool,
@@ -183,6 +192,9 @@ impl<'a> Engine<'a> {
             bookmarks: Vec::new(),
             anchors: std::collections::HashMap::new(),
             columns: None,
+            el_path: Vec::new(),
+            element_boxes: Vec::new(),
+            inset_right: 0.0,
             tagged: template.options.tagged,
             content_role: None,
             content_group: None,
@@ -226,6 +238,20 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// Descend into a container's child list for path bookkeeping.
+    fn push_path(&mut self, key: &str, index: usize) {
+        if self.el_path.is_empty() {
+            return; // header/footer bands are not addressed
+        }
+        self.el_path.push(key.to_string());
+        self.el_path.push(index.to_string());
+    }
+    fn pop_path(&mut self) {
+        if self.el_path.len() >= 2 {
+            self.el_path.truncate(self.el_path.len() - 2);
+        }
+    }
+
     // --- layout region (page body, or the current column) ---
 
     /// Left edge of the active layout region.
@@ -237,9 +263,11 @@ impl<'a> Engine<'a> {
 
     /// Right edge of the active layout region.
     fn region_right(&self) -> f32 {
-        self.columns
+        let base = self
+            .columns
             .as_ref()
-            .map_or(self.page.content_right(), |c| c.current_right())
+            .map_or(self.page.content_right(), |c| c.current_right());
+        (base - self.inset_right).max(self.region_left() + 1.0)
     }
 
     /// Bottom of the active layout region (columns share the page bottom).
@@ -301,9 +329,11 @@ impl<'a> Engine<'a> {
         self.begin_page(template, &root);
         // Body text is tagged as `P` by default; headings raise this per block.
         self.content_role = Some(StructRole::Paragraph);
-        for el in &template.content {
+        for (i, el) in template.content.iter().enumerate() {
+            self.el_path = vec!["content".to_string(), i.to_string()];
             self.element(el, data, &root, template)?;
         }
+        self.el_path.clear();
         self.finish_page(template, &root);
 
         // Page background image: behind everything but the background fill.
@@ -318,6 +348,7 @@ impl<'a> Engine<'a> {
         }
 
         let doc = LaidOutDoc {
+            element_boxes: std::mem::take(&mut self.element_boxes),
             page: self.page,
             pages: self.pages,
             images: self.images,
@@ -487,6 +518,41 @@ impl<'a> Engine<'a> {
         root: &Resolver,
         template: &Template,
     ) -> Result<()> {
+        // Note where this element starts so its rendered box can be reported.
+        // Header/footer bands are excluded: they repeat on every page and are
+        // laid out from their own cursor, so a single box would be misleading.
+        let page0 = self.pages.len();
+        let (x0, y0) = (self.cursor.x, self.cursor.y);
+        let record = !self.artifact_mode && !self.el_path.is_empty();
+
+        self.element_inner(el, data, root, template)?;
+
+        if record && self.pages.len() == page0 {
+            let (iw, ih) = intrinsic_size(el);
+            let h = (self.cursor.y - y0).max(ih);
+            let w = iw.unwrap_or_else(|| (self.region_right() - x0).max(0.0));
+            if h > 0.0 && w > 0.0 {
+                self.element_boxes.push(crate::draw::ElementBox {
+                    path: self.el_path.join("."),
+                    kind: element_kind(el).to_string(),
+                    page: page0,
+                    x: x0,
+                    y: y0,
+                    w,
+                    h,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn element_inner(
+        &mut self,
+        el: &Element,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
         match el {
             Element::Paragraph(p) => self.paragraph(p, root, template),
             Element::Move(m) => self.cursor.move_by(m.x, m.y),
@@ -559,7 +625,127 @@ impl<'a> Engine<'a> {
             Element::Unless(c) => self.conditional(c, true, data, root, template)?,
             Element::PageBreak => self.advance_region(template, root),
             Element::Columns(c) => self.columns_el(c, data, root, template)?,
+            Element::Box(b) => self.box_el(b, data, root, template)?,
+            Element::At(a) => self.at_el(a, data, root, template)?,
         }
+        Ok(())
+    }
+
+    /// Lay out a `box`: flow `content` inset by `padding`, measure how tall it
+    /// actually came out, then splice the background/border into the op stream
+    /// *behind* that content and drop the cursor below the box.
+    ///
+    /// Lay out an `at` block: render `content` at an absolute page position,
+    /// then put the cursor back exactly where it was.
+    ///
+    /// Restoring the cursor is the whole point — it makes each placed item
+    /// independent of every other, which is what lets a visual canvas move one
+    /// element without shifting the rest of the document.
+    fn at_el(
+        &mut self,
+        a: &AtEl,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
+        let saved_cursor = self.cursor;
+        let saved_inset = self.inset_right;
+
+        // Coordinates are page-absolute: a canvas addresses the sheet, not the
+        // content box, so margins are the template's business and not the
+        // editor's.
+        let x = a.x.clamp(0.0, self.page.width);
+        let y = a.y.clamp(0.0, self.page.height);
+        self.cursor = Cursor::new(x, y);
+
+        if let Some(w) = a.width.filter(|w| *w > 0.0) {
+            self.inset_right = (self.page.content_right() - (x + w)).max(0.0);
+        }
+
+        for (i, el) in a.content.iter().enumerate() {
+            self.push_path("content", i);
+            let r = self.element(el, data, root, template);
+            self.pop_path();
+            r?;
+        }
+
+        self.inset_right = saved_inset;
+        self.cursor = saved_cursor;
+        Ok(())
+    }
+
+    /// Painting after measuring is why the decoration is inserted at the index
+    /// recorded before the children ran: `DrawOp`s paint in order, so inserting
+    /// there puts the panel underneath its own contents without a second pass.
+    fn box_el(
+        &mut self,
+        b: &BoxEl,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
+        let (pt, pr, pb, pl) = b
+            .padding
+            .as_ref()
+            .map_or((0.0, 0.0, 0.0, 0.0), |p| p.resolve(0.0));
+
+        let x0 = self.cursor.x;
+        let y0 = self.cursor.y;
+        let page_before = self.pages.len();
+        let op_index = self.current.len();
+
+        let width = b
+            .width
+            .filter(|w| *w > 0.0)
+            .unwrap_or_else(|| (self.region_right() - x0).max(1.0));
+
+        // Constrain the children's wrap width to the padded inner box. Saved and
+        // restored so boxes nest.
+        let outer_inset = self.inset_right;
+        self.inset_right = (self.page.content_right() - (x0 + width - pr)).max(outer_inset);
+
+        self.cursor = Cursor::new(x0 + pl, y0 + pt);
+        for (i, el) in b.content.iter().enumerate() {
+            self.push_path("content", i);
+            let r = self.element(el, data, root, template);
+            self.pop_path();
+            r?;
+        }
+
+        self.inset_right = outer_inset;
+
+        let content_bottom = self.cursor.y;
+        let height = (content_bottom - y0 + pb).max(pt + pb);
+
+        if self.pages.len() != page_before {
+            // The content paginated. The recorded op index belongs to a page that
+            // has already been flushed, so splicing there would paint the panel on
+            // the wrong page. Skip the decoration rather than corrupt the output.
+            self.warnings.push(RenderWarning::ElementSkipped {
+                kind: "box".to_string(),
+                reason: "content spans a page break; background and border omitted".to_string(),
+            });
+        } else if b.fill.is_some() || b.border.is_some() {
+            let rect = RectEl {
+                width,
+                height,
+                fill: b.fill.clone(),
+                border: b.border.clone(),
+                border_width: b.border_width,
+                radius: b.radius,
+                dash: b.dash.clone(),
+            };
+            let saved = std::mem::take(&mut self.current);
+            self.cursor = Cursor::new(x0, y0);
+            self.rect(&rect);
+            let mut decoration = std::mem::replace(&mut self.current, saved);
+            // Splice underneath the children, preserving their relative order.
+            for (i, op) in decoration.drain(..).enumerate() {
+                self.current.insert(op_index + i, op);
+            }
+        }
+
+        self.cursor = Cursor::new(x0, y0 + height + b.gap.max(0.0));
         Ok(())
     }
 
@@ -636,8 +822,11 @@ impl<'a> Engine<'a> {
         };
         for item in items {
             let scoped = root.with_scope(item);
-            for el in &r.content {
-                self.element(el, data, &scoped, template)?;
+            for (i, el) in r.content.iter().enumerate() {
+                self.push_path("content", i);
+                let res = self.element(el, data, &scoped, template);
+                self.pop_path();
+                res?;
             }
         }
         Ok(())
@@ -1903,12 +2092,7 @@ impl<'a> Engine<'a> {
 
     // --- tables ---
 
-    fn table(
-        &mut self,
-        t: &Table,
-        root: &Resolver,
-        template: &Template,
-    ) -> Result<()> {
+    fn table(&mut self, t: &Table, root: &Resolver, template: &Template) -> Result<()> {
         let table_left = self.cursor.x;
         let available = (self.region_right() - table_left).max(1.0);
         // Mutable: an intra-table break inside a multi-column block re-bases the
@@ -1961,11 +2145,28 @@ impl<'a> Engine<'a> {
                         root,
                         row_index,
                         footer_h,
+                        &[],
+                        &[],
+                        None,
                     )?;
                 }
             }
         } else {
+            // `rowspan` is resolved before any drawing: a spanning cell has to
+            // know the combined height of the rows it covers, and that is only
+            // knowable once every row height is settled. Literal rows make this
+            // possible — a data-bound table has one template row repeated, so
+            // there is nothing to span.
+            let (masks, span_heights) = self.plan_row_spans(t, &columns, pad_x, pad_y, root);
             for (row_index, row) in t.rows.iter().enumerate() {
+                let empty_mask: Vec<bool> = Vec::new();
+                let mask = masks.get(row_index).unwrap_or(&empty_mask);
+                let empty_spans: Vec<(usize, f32)> = Vec::new();
+                let spans = span_heights
+                    .get(row_index)
+                    .map(|(_, s)| s)
+                    .unwrap_or(&empty_spans);
+                let h = span_heights.get(row_index).map(|(h, _)| *h);
                 self.draw_body_row(
                     row,
                     &mut columns,
@@ -1977,6 +2178,9 @@ impl<'a> Engine<'a> {
                     root,
                     row_index,
                     footer_h,
+                    mask,
+                    spans,
+                    h,
                 )?;
             }
         }
@@ -2007,6 +2211,67 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
+    /// Resolve `rowspan` for a table's literal rows: which column slots each
+    /// row must skip, that row's height, and the full height of any spanning
+    /// cell starting in it.
+    ///
+    /// Returns `(masks, per_row)` where `per_row[i]` is `(height, [(slot, span_height)])`.
+    fn plan_row_spans(
+        &mut self,
+        t: &Table,
+        columns: &[Column],
+        pad_x: f32,
+        pad_y: f32,
+        resolver: &Resolver,
+    ) -> (SpanMasks, SpanRows) {
+        let n = t.rows.len();
+        let ncols = columns.len();
+        let mut masks: Vec<Vec<bool>> = vec![vec![false; ncols]; n];
+        // (row, slot, rows spanned) for every cell that spans more than one row.
+        let mut starts: Vec<(usize, usize, usize)> = Vec::new();
+
+        for ri in 0..n {
+            let placed: Vec<(usize, usize, usize)> =
+                zip_columns_masked(&t.rows[ri], columns, &masks[ri])
+                    .iter()
+                    .map(|p| {
+                        (
+                            p.slot,
+                            p.colspan,
+                            p.cell.style().rowspan.unwrap_or(1).max(1) as usize,
+                        )
+                    })
+                    .collect();
+            for (slot, cols, rows) in placed {
+                if rows <= 1 {
+                    continue;
+                }
+                starts.push((ri, slot, rows));
+                let last = (ri + rows).min(n);
+                let hi = (slot + cols).min(ncols);
+                for mask in masks[(ri + 1)..last].iter_mut() {
+                    for taken in mask[slot..hi].iter_mut() {
+                        *taken = true;
+                    }
+                }
+            }
+        }
+
+        let heights: Vec<f32> = (0..n)
+            .map(|ri| {
+                self.row_height_masked(&t.rows[ri], columns, pad_x, pad_y, resolver, &masks[ri])
+            })
+            .collect();
+
+        let mut per_row: Vec<(f32, Vec<(usize, f32)>)> =
+            heights.iter().map(|h| (*h, Vec::new())).collect();
+        for (ri, slot, rows) in starts {
+            let total: f32 = heights[ri..(ri + rows).min(n)].iter().sum();
+            per_row[ri].1.push((slot, total));
+        }
+        (masks, per_row)
+    }
+
     fn draw_header_row(
         &mut self,
         t: &Table,
@@ -2031,6 +2296,8 @@ impl<'a> Engine<'a> {
             true,
             &t.options.header,
             root,
+            &[],
+            &[],
         );
         self.cursor.y += height;
     }
@@ -2063,6 +2330,8 @@ impl<'a> Engine<'a> {
             false,
             &t.options.header,
             root,
+            &[],
+            &[],
         );
         self.cursor.y += footer_h;
     }
@@ -2080,8 +2349,13 @@ impl<'a> Engine<'a> {
         root: &Resolver,
         row_index: usize,
         footer_h: f32,
+        occupied: &[bool],
+        span_heights: &[(usize, f32)],
+        height_override: Option<f32>,
     ) -> Result<()> {
-        let height = self.row_height(row, columns, pad_x, pad_y, scoped);
+        let height = height_override.unwrap_or_else(|| {
+            self.row_height_masked(row, columns, pad_x, pad_y, scoped, occupied)
+        });
         // Region break: if the row (plus a pending footer band) doesn't fit,
         // stamp the footer as "carried forward", advance to the next region — the
         // next column inside a `columns` block, else a new page — and repeat the
@@ -2127,6 +2401,8 @@ impl<'a> Engine<'a> {
             false,
             &t.options.header,
             scoped,
+            occupied,
+            span_heights,
         );
         self.cursor.y += height;
         Ok(())
@@ -2141,11 +2417,28 @@ impl<'a> Engine<'a> {
         pad_y: f32,
         resolver: &Resolver,
     ) -> f32 {
+        self.row_height_masked(row, columns, pad_x, pad_y, resolver, &[])
+    }
+
+    /// Row height, ignoring column slots already claimed by a `rowspan` from an
+    /// earlier row. A cell that itself spans N rows contributes only its N-th
+    /// share here: it has N rows to live in, so it should not inflate the first
+    /// one to its full content height.
+    fn row_height_masked(
+        &mut self,
+        row: &[Cell],
+        columns: &[Column],
+        pad_x: f32,
+        pad_y: f32,
+        resolver: &Resolver,
+        occupied: &[bool],
+    ) -> f32 {
         let mut max_h = 0.0_f32;
-        for (cell, col) in zip_columns(row, columns) {
-            let inner_w = (col.width - 2.0 * pad_x).max(1.0);
-            let h = self.cell_content_height(cell, inner_w, resolver);
-            max_h = max_h.max(h);
+        for p in zip_columns_masked(row, columns, occupied) {
+            let inner_w = (p.col.width - 2.0 * pad_x).max(1.0);
+            let h = self.cell_content_height(p.cell, inner_w, resolver);
+            let rows = p.cell.style().rowspan.unwrap_or(1).max(1) as f32;
+            max_h = max_h.max(h / rows);
         }
         max_h + 2.0 * pad_y
     }
@@ -2202,8 +2495,13 @@ impl<'a> Engine<'a> {
         is_header: bool,
         header_style: &TableHeaderStyle,
         resolver: &Resolver,
+        occupied: &[bool],
+        span_heights: &[(usize, f32)],
     ) {
-        for (col_idx, (cell, col)) in zip_columns(row, columns).into_iter().enumerate() {
+        for (col_idx, p) in zip_columns_masked(row, columns, occupied)
+            .into_iter()
+            .enumerate()
+        {
             // Tag this cell so its content nests under Table › TR › TD/TH.
             self.content_group = Some(crate::draw::StructGroup::TableCell {
                 seq: self.table_seq,
@@ -2211,13 +2509,20 @@ impl<'a> Engine<'a> {
                 col: col_idx,
                 header: is_header,
             });
+            // A rowspan cell is drawn once, at its own row, tall enough to cover
+            // every row it claims — the heights were resolved before drawing.
+            let h = span_heights
+                .iter()
+                .find(|(slot, _)| *slot == p.slot)
+                .map(|(_, h)| *h)
+                .unwrap_or(row_height);
             self.draw_one_cell(
-                cell,
-                col,
+                p.cell,
+                p.col,
                 pad_x,
                 pad_y,
                 row_top,
-                row_height,
+                h,
                 is_header,
                 header_style,
                 resolver,
@@ -2555,6 +2860,24 @@ fn footer_band_height(template: &Template, _fonts: &FontRegistry) -> f32 {
 }
 
 /// The JSON `type` name of an element, for warnings.
+/// The size an element declares for itself, when it has one. Elements that do
+/// not advance the cursor (`rect`, `qr`, an image…) leave no vertical trace to
+/// measure, so their own dimensions are the only thing that describes them.
+fn intrinsic_size(el: &Element) -> (Option<f32>, f32) {
+    match el {
+        Element::Rect(r) => (Some(r.width), r.height),
+        Element::Ellipse(e) => (Some(e.rx * 2.0), e.ry * 2.0),
+        Element::Qr(q) => (Some(q.width), q.width),
+        Element::Barcode(b) => (Some(b.width), b.height),
+        Element::Image(i) => (
+            if i.width > 0.0 { Some(i.width) } else { None },
+            i.height.max(0.0),
+        ),
+        Element::Line(l) => (Some(l.dx.abs().max(1.0)), l.dy.abs().max(1.0)),
+        _ => (None, 0.0),
+    }
+}
+
 fn element_kind(el: &Element) -> &'static str {
     match el {
         Element::Paragraph(_) => "paragraph",
@@ -2574,6 +2897,8 @@ fn element_kind(el: &Element) -> &'static str {
         Element::Unless(_) => "unless",
         Element::PageBreak => "page_break",
         Element::Columns(_) => "columns",
+        Element::Box(_) => "box",
+        Element::At(_) => "at",
     }
 }
 
@@ -2604,27 +2929,55 @@ fn fit_image(
     }
 }
 
-/// Pair each cell of a row with its (possibly merged) column box. A cell with
-/// `colspan: n` consumes `n` column slots: its box starts at the first
-/// consumed column's left edge and spans the summed widths; following cells
-/// continue from the next free slot. Cells beyond the column count are
-/// dropped, matching the plain-zip semantics colspan generalizes.
-fn zip_columns<'r>(row: &'r [Cell], columns: &[Column]) -> Vec<(&'r Cell, Column)> {
+/// Column-occupancy masks, one per row.
+type SpanMasks = Vec<Vec<bool>>;
+/// Per row: its height, and `(slot, height)` for any cell spanning from it.
+type SpanRows = Vec<(f32, Vec<(usize, f32)>)>;
+
+/// One cell of a row paired with the box it occupies, plus where it sits in the
+/// column grid — the slot index and span are what `rowspan` bookkeeping needs.
+struct Placed<'r> {
+    cell: &'r Cell,
+    col: Column,
+    slot: usize,
+    colspan: usize,
+}
+
+/// Like [`zip_columns`], but skipping column slots already claimed by a
+/// `rowspan` cell from an earlier row. `occupied[i]` marks slot `i` as taken,
+/// so a row under a spanning cell simply supplies one fewer cell.
+fn zip_columns_masked<'r>(
+    row: &'r [Cell],
+    columns: &[Column],
+    occupied: &[bool],
+) -> Vec<Placed<'r>> {
+    let taken = |i: usize| occupied.get(i).copied().unwrap_or(false);
     let mut out = Vec::with_capacity(row.len());
     let mut idx = 0usize;
     for cell in row {
+        while idx < columns.len() && taken(idx) {
+            idx += 1;
+        }
         if idx >= columns.len() {
             break;
         }
-        let span = (cell.style().colspan.unwrap_or(1).max(1) as usize).min(columns.len() - idx);
+        // A span stops at the first slot already claimed from above, so a
+        // colspan and a rowspan can never overlap into the same box.
+        let want = (cell.style().colspan.unwrap_or(1).max(1) as usize).min(columns.len() - idx);
+        let mut span = 1usize;
+        while span < want && !taken(idx + span) {
+            span += 1;
+        }
         let width: f32 = columns[idx..idx + span].iter().map(|c| c.width).sum();
-        out.push((
+        out.push(Placed {
             cell,
-            Column {
+            col: Column {
                 x: columns[idx].x,
                 width,
             },
-        ));
+            slot: idx,
+            colspan: span,
+        });
         idx += span;
     }
     out

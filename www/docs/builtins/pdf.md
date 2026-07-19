@@ -88,6 +88,21 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 
 **Returns:** String — base64-encoded PDF/A-3b bytes.
 
+### pdf_layout_map(template, data, options?)
+
+Lay out a template and report **where every element landed**, without producing a PDF.
+
+A visual editor cannot work this out for itself: a flowing element's position depends on everything before it, so only the layout engine knows it. This is what lets an editor hit-test the rendered page — it is what the [studio](/docs/builtins/pdf-studio) uses to make flowing elements clickable.
+
+**Returns:** Array of Hash — one per *drawn* element: `path`, `kind`, `page` (0-based), `x`, `y`, `w`, `h` (points, top-left origin).
+
+`path` addresses the element in the template (`content.3.content.0`), so several boxes can share one path: a `repeat` is authored once and drawn per item. Header and footer bands are excluded — they repeat on every page from their own cursor, so a single box would be misleading.
+
+```soli
+let boxes = pdf_layout_map(template, data, { "font_dirs": ["font"] })
+boxes.each(fn(b) print("#{b["path"]} at #{b["x"]},#{b["y"]}"))
+```
+
 ### pdf_from_markdown(markdown, options?)
 
 Render a designed PDF straight from a **Markdown** string — *write prose, get a
@@ -491,6 +506,34 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "move", "x": 0, "y": 24 }
 ```
 
+**at** — place `content` at an absolute position on the page, then restore the flow cursor so the surrounding document is untouched. `x` and `y` are measured from the page's **top-left corner**, not from the margin, because a canvas addresses the whole sheet. `width` sets the wrap width (default: from `x` to the right margin).
+
+Everything else in the language is a top-to-bottom flow, which is right for documents that grow with their data but cannot say "this sits here". `at` is the escape hatch, and the element the [visual studio](/docs/builtins/pdf-studio) compiles to: because the cursor is restored, each placed item is independent — moving one can never shift another.
+
+```json
+{ "type": "at", "x": 40, "y": 120, "width": 220, "content": [
+  { "type": "box", "fill": "1B3A6B", "padding": 12, "content": [
+    { "type": "paragraph", "spans": [ { "text": "Placed here", "color": "FFFFFF" } ] }
+  ] }
+] }
+```
+
+Coordinates are clamped to the page, so a stale or dragged-off value lands at the edge rather than vanishing into negative space. Mixing `at` with ordinary flow content in the same document is fine and common: a flowing invoice body with an absolutely placed logo or stamp.
+
+**box** — a container that lays out `content` inside optional `padding`, then paints its `fill`/`border` **at the size the content actually measured**, and advances the cursor below itself. This is the block primitive for panels, callouts, totals blocks and signature areas: unlike `rect`, it needs no hand-computed height and no compensating `move`, so the panel keeps fitting when the text changes. Boxes **nest**, and children wrap at the box's padded inner edge rather than the page margin.
+
+`padding` is a number or per-side `{top,right,bottom,left}`; `width` defaults to the remaining width of the layout region; `gap` leaves space below the box after it closes. `fill`, `border`, `borderWidth`, `radius` and `dash` behave as on `rect`.
+
+```json
+{ "type": "box", "fill": "F7F9FC", "border": "D7E0EC", "borderWidth": 0.8,
+  "radius": 4, "padding": 14, "gap": 16, "content": [
+  { "type": "paragraph", "value": "Payment", "options": { "fontWeight": "bold" } },
+  { "type": "paragraph", "value": "IBAN ${payment.iban}", "options": { "fontSize": 9 } }
+] }
+```
+
+A box whose content spans a page break omits its background and border (and records a warning) rather than painting them on the page the content has already left. Keep decorated boxes to blocks that fit a page; use an undecorated box, or plain flow, for content that must paginate. Build one visually in the [layout editor](/docs/builtins/pdf-editor).
+
 **columns** — a multi-column flow block. Children fill column 1 to the bottom of the content region, then column 2, and so on (**sequential fill**); full-width flow resumes below. `count` (1–6, default 2) and `gap` (pt, default 12). A `page_break` inside is a **column break**; overflowing the last column starts a new page and restarts the set (the running header repeats). Paragraphs, lists, images, **tables and charts** all flow inside — a table that overflows a column continues in the next one with its header repeated. Nested `columns` are flattened.
 
 ```json
@@ -513,7 +556,7 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "image", "value": "file://brand/logo.svg", "width": 120, "alt": "Acme logo" }
 ```
 
-**table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans; a non-empty **`footer_columns`** row closes the table AND repeats just above every intra-table page break (the "carried forward" subtotal band — its cells interpolate against the root data, not row items). `options.stripe` (hex) zebra-stripes every second body row; a cell's own `fill` paints its background (over the stripe — totals, highlights); `colspan` merges a cell across column slots (summary rows); `valign` (`top`/`middle`/`bottom`) positions a cell's content vertically in its row.
+**table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans; a non-empty **`footer_columns`** row closes the table AND repeats just above every intra-table page break (the "carried forward" subtotal band — its cells interpolate against the root data, not row items). `options.stripe` (hex) zebra-stripes every second body row; a cell's own `fill` paints its background (over the stripe — totals, highlights); `colspan` merges a cell across column slots (summary rows); **`rowspan`** merges it down across rows — the slots it claims are skipped in the rows beneath, so those rows supply fewer cells, and the cell is drawn once at its own row tall enough to cover them all (use `valign` to centre it). `rowspan` applies to a table's literal `rows`; a data-bound table repeats one template row, so there is nothing to span.  `valign` (`top`/`middle`/`bottom`) positions a cell's content vertically in its row.
 
 ```json
 { "type": "table", "data": "items",
@@ -610,7 +653,7 @@ A colspan totals row (3 columns, the label spans the first 2):
 
 Two structural elements make the whole document data-driven, not just table rows:
 
-**repeat** — lay out `content` (an array of elements) once per item of the `data` array, with `${field}` scoped to each item (falling back to the root) — the block-level analogue of a data-bound table row. A missing or empty array renders nothing.
+**repeat** — lay out `content` (an array of elements) once per item of the `data` array, with `${field}` scoped to each item (falling back to the root) — the block-level analogue of a data-bound table row. A missing or empty array renders nothing. Repeats **nest**: an inner `repeat` (or a data-bound `table`/`chart`) resolves its `data` path against the **current item** first and the document root second, so an outer repeat over `sections` can contain one over that section's own `lines` — which is how grouped line items with per-group subtotals are built.
 
 ```json
 { "type": "repeat", "data": "invoices", "content": [
