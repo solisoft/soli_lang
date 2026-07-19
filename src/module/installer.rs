@@ -490,6 +490,7 @@ mod tests {
     #[test]
     fn test_cache_dir() {
         let dir = cache_dir();
-        assert!(dir.to_string_lossy().contains(".soli/packages"));
+        // Compare components, not a `/`-joined string: the separator is `\` on Windows.
+        assert!(dir.ends_with(Path::new(".soli").join("packages")));
     }
 }

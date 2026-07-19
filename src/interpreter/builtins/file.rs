@@ -92,7 +92,12 @@ fn resolve_with_jail(path: &str, op: &str, jail: Option<&Path>) -> Result<PathBu
         Some(j) => j,
         None => return Ok(PathBuf::from(path)),
     };
-    let candidate = if Path::new(path).is_absolute() {
+    // `has_root` too: a Windows-rooted-but-prefixless path like `/etc/passwd`
+    // is not `is_absolute`, so it took the `jail.join` branch — where Windows
+    // `join` discards the jail and returns the escaping path anyway. Treat it
+    // as absolute so the canonicalising jail check below is what decides.
+    let raw = Path::new(path);
+    let candidate = if raw.is_absolute() || raw.has_root() {
         PathBuf::from(path)
     } else {
         jail.join(path)

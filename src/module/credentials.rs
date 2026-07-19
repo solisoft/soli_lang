@@ -72,10 +72,12 @@ pub fn save_credentials(creds: &Credentials) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_credentials_path() {
         let path = credentials_path();
-        assert!(path.to_string_lossy().contains(".soli/credentials"));
+        // Compare components, not a `/`-joined string: the separator is `\` on Windows.
+        assert!(path.ends_with(Path::new(".soli").join("credentials")));
     }
 }

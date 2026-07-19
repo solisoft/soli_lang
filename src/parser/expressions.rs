@@ -34,6 +34,17 @@ impl Parser {
                 break;
             }
 
+            // A `[` that opens a new line starts an array-literal statement; it is
+            // never an index into the expression that ended on the previous line.
+            // Without this, `for n in [1, 2]` followed by a body line beginning
+            // `[10, 20].each(...)` parses as `[1, 2][10, 20]`. (Ruby's rule.)
+            // Multi-line `.method` chains are unaffected — they lead with `.`.
+            if self.peek().kind == TokenKind::LeftBracket
+                && self.peek().span.line != self.previous().span.line
+            {
+                break;
+            }
+
             left = self.parse_infix(left, precedence)?;
         }
 

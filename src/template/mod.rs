@@ -1551,10 +1551,8 @@ mod tests {
         // render("shop/index") should find the engine view
         let result = cache.resolve_template_path("shop/index");
         assert!(result.is_ok());
-        assert!(result
-            .unwrap()
-            .to_string_lossy()
-            .contains("engines/shop/app/views"));
+        // Component-wise, not a `/`-joined substring: the separator is `\` on Windows.
+        assert!(result.unwrap().starts_with(&engine_views));
 
         crate::serve::engine_loader::reset_engine_context();
     }
@@ -1577,8 +1575,8 @@ mod tests {
 
         let cache = TemplateCache::new(root.join("app/views"));
         let result = cache.resolve_template_path("shop/index").unwrap();
-        // Main views dir should win
-        assert!(result.to_string_lossy().contains("app/views/shop"));
+        // Main views dir should win. Component-wise: the separator is `\` on Windows.
+        assert!(result.starts_with(&views));
         assert!(!result.to_string_lossy().contains("engines"));
 
         crate::serve::engine_loader::reset_engine_context();

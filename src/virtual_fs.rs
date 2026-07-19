@@ -39,7 +39,13 @@ impl DiskFS {
         }
 
         let candidate = Path::new(path);
-        if candidate.is_absolute() {
+        // `has_root` as well as `is_absolute`: on Windows a VFS key like
+        // `/app/views/x.erb` is rooted but NOT absolute (it carries no `C:`
+        // prefix). Testing only `is_absolute` sent it down the relative branch,
+        // where `root.join(candidate)` DISCARDS the root and yields
+        // `C:\app\views\x.erb` — silently escaping the serve root instead of
+        // being grafted under it.
+        if candidate.is_absolute() || candidate.has_root() {
             // An absolute path already inside the root must be used verbatim:
             // serve-mode callers (the template engine, the static-file
             // handler) build absolute paths by joining the serve folder —
@@ -49,10 +55,19 @@ impl DiskFS {
                 return candidate.to_path_buf();
             }
             // Absolute but outside the root: graft it under the root, which is
-            // what the string version did by concatenation.
-            let relative = candidate
-                .strip_prefix(std::path::Component::RootDir.as_os_str())
-                .unwrap_or(candidate);
+            // what the string version did by concatenation. Drop every leading
+            // prefix/root component — on Windows that is the `C:` prefix AND
+            // the separator — because `join` with anything still rooted would
+            // discard the root and defeat the graft.
+            let relative: PathBuf = candidate
+                .components()
+                .skip_while(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::Prefix(_) | std::path::Component::RootDir
+                    )
+                })
+                .collect();
             return self.root.join(relative);
         }
 
@@ -111,7 +126,7 @@ impl VirtualFileSystem for DiskFS {
 }
 
 /// Render a relative path as a platform-neutral VFS key.
-fn to_vfs_key(path: &Path) -> String {
+pub(crate) fn to_vfs_key(path: &Path) -> String {
     path.components()
         .map(|c| c.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
@@ -329,7 +344,9 @@ mod tests {
 
     #[test]
     fn test_disk_fs_exists() {
-        let fs = DiskFS::new("/tmp");
+        // A real temp dir, not a hardcoded `/tmp`, which does not exist on Windows.
+        let dir = tempfile::tempdir().unwrap();
+        let fs = DiskFS::new(dir.path().to_string_lossy().as_ref());
         assert!(fs.exists("."));
     }
 

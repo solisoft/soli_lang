@@ -1523,4 +1523,46 @@ mod parser_tests {
             }
         }
     }
+
+    #[test]
+    fn test_line_leading_bracket_starts_a_statement_not_an_index() {
+        // A `[` opening a new line is an array literal, never an index into the
+        // expression that ended on the line before. Without that rule the
+        // brace-less `for` head swallowed the body's first statement and this
+        // failed to parse at all (`[1, 2][10, 20]` -> "expected ]").
+        let stmts = parse_stmts("for n in [1, 2]\n  [10, 20].each(fn(x) { x })\nend\n");
+        match &stmts[0] {
+            StmtKind::For { iterable, body, .. } => {
+                assert!(
+                    matches!(iterable.kind, ExprKind::Array(_)),
+                    "for-head must stay the array literal, got {:?}",
+                    iterable.kind
+                );
+                match &body.kind {
+                    StmtKind::Block(stmts) => {
+                        assert_eq!(stmts.len(), 1, "body statement must not be absorbed")
+                    }
+                    other => panic!("expected block body, got {:?}", other),
+                }
+            }
+            other => panic!("expected for statement, got {:?}", other),
+        }
+
+        // Same rule between two ordinary statements.
+        let seq = parse_stmts("let total = 5\n[1, 2].each(fn(x) { x })\n");
+        assert_eq!(seq.len(), 2, "the `[` line must be its own statement");
+
+        // But a genuine index on the SAME line still parses as an index.
+        match parse_stmt("let first = rows[0]\n") {
+            StmtKind::Let {
+                initializer: Some(expr),
+                ..
+            } => assert!(
+                matches!(expr.kind, ExprKind::Index { .. }),
+                "same-line index must still be an index, got {:?}",
+                expr.kind
+            ),
+            other => panic!("expected let, got {:?}", other),
+        }
+    }
 }

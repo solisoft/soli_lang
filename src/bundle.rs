@@ -259,7 +259,12 @@ impl BundleBuilder {
                     let relative = path
                         .strip_prefix(source_dir)
                         .map_err(|e| format!("Failed to compute relative path: {}", e))?;
-                    let relative_str = relative.to_string_lossy().to_string();
+                    // Bundle entry keys are `/`-separated on every platform:
+                    // every consumer (BundleFS lookups, the `app/controllers/`
+                    // and `engines/` prefix checks in `build_protected`) matches
+                    // on `/`. Using the native separator made Windows-built
+                    // bundles silently ship an empty controller registry.
+                    let relative_str = crate::virtual_fs::to_vfs_key(relative);
 
                     let data = std::fs::read(&path)
                         .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;

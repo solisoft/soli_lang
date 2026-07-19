@@ -248,7 +248,12 @@ impl ModuleResolver {
     fn resolve_path(&self, import_path: &str, from_path: &Path) -> Result<PathBuf, ResolveError> {
         // SEC-076: refuse absolute import strings — they bypass `base_dir.join`
         // and let untrusted Soli source read arbitrary readable `.sl` files.
-        if Path::new(import_path).is_absolute() {
+        // `has_root` too: on Windows `/tmp/evil.sl` is rooted but not absolute,
+        // so an `is_absolute`-only test let it through this gate. (The
+        // canonicalizing `validate_within` check downstream still caught it —
+        // this restores the intended first line of defense.)
+        let candidate = Path::new(import_path);
+        if candidate.is_absolute() || candidate.has_root() {
             return Err(ResolveError::ImportError(format!(
                 "Absolute import paths are not allowed: '{}'",
                 import_path

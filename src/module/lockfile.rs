@@ -197,7 +197,10 @@ mod tests {
     #[test]
     fn test_is_satisfied_matching() {
         let mut lock = LockFile::default();
-        let cache_path = PathBuf::from("/tmp"); // exists on most systems
+        // `is_satisfied` requires the cache path to exist; use a real temp dir
+        // rather than a hardcoded `/tmp`, which is absent on Windows.
+        let cache_dir = tempfile::tempdir().unwrap();
+        let cache_path = cache_dir.path().to_path_buf();
         lock.packages.insert(
             "math".to_string(),
             LockEntry {
