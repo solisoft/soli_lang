@@ -139,7 +139,11 @@ pub fn load_or_create_credentials(state_dir: &Path) -> Result<DbCredentials, Str
         .map_err(|e| format!("cannot create {}: {}", state_dir.display(), e))?;
 
     let credentials = DbCredentials {
-        username: "root".to_string(),
+        // Must match the admin account the database creates on an empty
+        // install (`DEFAULT_USER` in its auth module). Any other name simply
+        // does not exist, so every login returns 400 and the app runs with no
+        // database access at all — while otherwise appearing to start fine.
+        username: "admin".to_string(),
         password: random_hex_32(),
     };
     let body = serde_json::json!({
@@ -350,7 +354,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         let first = load_or_create_credentials(&dir).expect("first generate");
-        assert_eq!(first.username, "root");
+        // Not an arbitrary name: it must match the admin account the database
+        // creates on an empty install, or authentication fails at runtime.
+        assert_eq!(first.username, "admin");
         assert_eq!(first.password.len(), 64, "32 random bytes, hex-encoded");
 
         // Stability matters: the password is only honored when the admin user

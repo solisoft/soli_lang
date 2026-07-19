@@ -379,6 +379,13 @@ pub(crate) fn serve_bundle_bytes(
     // `serve_folder` later scans never has one.
     solilang::serve::env_loader::load_env_files(env_dir);
 
+    // A desktop artifact carries its own database and an encrypted app inside
+    // a plain outer bundle, so it needs a different boot sequence: start the
+    // database first, point the model layer at it, then serve the inner app.
+    if solilang::desktop::container::is_desktop_payload(bundle_data) {
+        return desktop::boot(bundle_data, port, dev_mode, workers, origin);
+    }
+
     let encrypted = solilang::bundle::is_encrypted_bundle(bundle_data);
     let bundle_data = if encrypted {
         let (key, source) =
