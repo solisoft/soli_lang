@@ -82,7 +82,43 @@ Base64.encode("\n\t");     # "CQo="</code></pre>
 
 # Decoding preserves original content
 original = "Hello, World!"
-round_trip = Base64.decode(Base64.encode(original))assert_eq(round_trip, original);</code></pre>
+round_trip = Base64.decode(Base64.encode(original))
+assert_eq(round_trip, original);</code></pre>
+                </div>
+            </section>
+
+            <section id="method-urlsafe-encode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-urlsafe-encode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">Base64.urlsafe_encode(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Encodes to the URL-safe alphabet (RFC 4648 &sect;5): <code class="text-amber-300">-</code> and <code class="text-amber-300">_</code> replace <code class="text-amber-300">+</code> and <code class="text-amber-300">/</code>, and the output is never padded with <code class="text-amber-300">=</code>. This is the form required by JWS, JWK, PKCE and JWK thumbprints, so there is deliberately no padding option.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Safe to drop straight into a URL or a JWT segment
+Base64.urlsafe_encode("Hello, World!");   # "SGVsbG8sIFdvcmxkIQ"
+
+# PKCE S256 challenge. Crypto.sha256 returns hex, so decode to raw
+# bytes first — encoding the hex *text* yields a different, wrong value.
+challenge = Base64.urlsafe_encode(Hex.decode(Crypto.sha256(code_verifier)))</code></pre>
+                </div>
+            </section>
+
+            <section id="method-urlsafe-decode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-urlsafe-decode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">Base64.urlsafe_decode(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Decodes URL-safe Base64. Padding is optional &mdash; producers in the wild disagree on whether to strip <code class="text-amber-300">=</code>, so both forms are accepted. Like <code class="text-amber-300">Base64.decode</code>, it returns a String when the bytes are valid UTF-8 and an array of byte integers otherwise.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">Base64.urlsafe_decode("SGVsbG8sIFdvcmxkIQ");    # "Hello, World!"
+Base64.urlsafe_decode("SGVsbG8sIFdvcmxkIQ==");  # same — padding tolerated
+
+# Reading a JWT header without verifying it
+header = JSON.parse(Base64.urlsafe_decode(token.split(".")[0]))</code></pre>
                 </div>
             </section>
         </div>

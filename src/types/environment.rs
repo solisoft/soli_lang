@@ -451,6 +451,36 @@ impl TypeEnvironment {
             },
         );
 
+        // JWT functions. Each takes a trailing optional `options` hash, so the
+        // single `Type::Any` param lifts the arity cap (see calls.rs) rather than
+        // pinning a count these would fail.
+        // jwt_sign(payload, secret, options?) -> String
+        self.functions.insert(
+            "jwt_sign".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // jwt_verify(token, secret, options?) -> Hash (claims, or {error: true, ...})
+        self.functions.insert(
+            "jwt_verify".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // jwt_decode_unsafe(token) -> Hash
+        self.functions.insert(
+            "jwt_decode_unsafe".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
         // uuid_v4() / uuid_v7() -> String
         self.functions.insert(
             "uuid_v4".to_string(),
@@ -1634,6 +1664,8 @@ impl TypeEnvironment {
             "totp_uri",
             "x25519_public_key",
             "x25519_shared_secret",
+            "random_hex",
+            "random_token",
         ];
         let crypto_bool_methods = [
             "secure_compare",
@@ -1641,7 +1673,7 @@ impl TypeEnvironment {
             "password_verify",
             "totp_verify",
         ];
-        let crypto_any_methods = ["ed25519_keypair", "x25519_keypair"];
+        let crypto_any_methods = ["ed25519_keypair", "x25519_keypair", "random_bytes"];
         for (names, ret) in [
             (&crypto_string_methods[..], Type::String),
             (&crypto_bool_methods[..], Type::Bool),
@@ -1661,6 +1693,113 @@ impl TypeEnvironment {
             }
         }
         self.classes.insert("Crypto".to_string(), crypto_class);
+
+        // Base64 class — `encode` returns a String; `decode` returns a String when
+        // the bytes are valid UTF-8 and an Array of byte ints otherwise, so it is
+        // typed `Any`. Both accept a String or a byte array, hence the `Any` param.
+        let mut base64_class = ClassType::new("Base64".to_string());
+        base64_class.methods.insert(
+            "encode".to_string(),
+            MethodInfo {
+                name: "encode".to_string(),
+                params: vec![("data".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        base64_class.methods.insert(
+            "decode".to_string(),
+            MethodInfo {
+                name: "decode".to_string(),
+                params: vec![("data".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        base64_class.methods.insert(
+            "urlsafe_encode".to_string(),
+            MethodInfo {
+                name: "urlsafe_encode".to_string(),
+                params: vec![("data".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        base64_class.methods.insert(
+            "urlsafe_decode".to_string(),
+            MethodInfo {
+                name: "urlsafe_decode".to_string(),
+                params: vec![("data".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Base64".to_string(), base64_class);
+
+        // Hex class — same encode/decode shape as Base64.
+        let mut hex_class = ClassType::new("Hex".to_string());
+        hex_class.methods.insert(
+            "encode".to_string(),
+            MethodInfo {
+                name: "encode".to_string(),
+                params: vec![("data".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        hex_class.methods.insert(
+            "decode".to_string(),
+            MethodInfo {
+                name: "decode".to_string(),
+                params: vec![("hex".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Hex".to_string(), hex_class);
+
+        // RsaKey / X509 — key-material readers. Both return component hashes.
+        let mut rsa_key_class = ClassType::new("RsaKey".to_string());
+        rsa_key_class.methods.insert(
+            "private_from_pem".to_string(),
+            MethodInfo {
+                name: "private_from_pem".to_string(),
+                params: vec![("pem".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("RsaKey".to_string(), rsa_key_class);
+
+        let mut x509_class = ClassType::new("X509".to_string());
+        x509_class.methods.insert(
+            "public_key".to_string(),
+            MethodInfo {
+                name: "public_key".to_string(),
+                params: vec![("cert".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        x509_class.methods.insert(
+            "fingerprint".to_string(),
+            MethodInfo {
+                name: "fingerprint".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("X509".to_string(), x509_class);
 
         // HTTP class
         let mut http_class = ClassType::new("HTTP".to_string());

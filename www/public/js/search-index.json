@@ -14755,6 +14755,96 @@
         "e2e",
         "javascript"
       ]
+    },
+    {
+      "title": "Crypto.random_hex",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-random-hex",
+      "signature": "Crypto.random_hex(n)",
+      "description": "Cryptographically secure random bytes as hex; n is a byte count, so the result is 2n characters",
+      "keywords": [
+        "crypto",
+        "random",
+        "secure",
+        "csprng",
+        "hex",
+        "secret",
+        "key",
+        "entropy"
+      ]
+    },
+    {
+      "title": "Crypto.random_bytes",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-random-bytes",
+      "signature": "Crypto.random_bytes(n)",
+      "description": "Cryptographically secure random bytes as an array of integers",
+      "keywords": [
+        "crypto",
+        "random",
+        "secure",
+        "csprng",
+        "bytes",
+        "entropy"
+      ]
+    },
+    {
+      "title": "Crypto.random_token",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-random-token",
+      "signature": "Crypto.random_token(n = 32)",
+      "description": "Secure random token as unpadded URL-safe Base64 — for OAuth state, PKCE verifiers, authorization codes and refresh tokens",
+      "keywords": [
+        "crypto",
+        "random",
+        "token",
+        "secure",
+        "oauth",
+        "state",
+        "pkce",
+        "csrf",
+        "nonce"
+      ]
+    },
+    {
+      "title": "Base64.urlsafe_encode",
+      "type": "method",
+      "category": "Base64",
+      "path": "/docs/utility/base64#method-urlsafe-encode",
+      "signature": "Base64.urlsafe_encode(value)",
+      "description": "Encode to unpadded URL-safe Base64 (RFC 4648 §5) — the form required by JWS, JWK and PKCE",
+      "keywords": [
+        "base64",
+        "base64url",
+        "urlsafe",
+        "encode",
+        "jwt",
+        "jws",
+        "jwk",
+        "pkce",
+        "rfc4648"
+      ]
+    },
+    {
+      "title": "Base64.urlsafe_decode",
+      "type": "method",
+      "category": "Base64",
+      "path": "/docs/utility/base64#method-urlsafe-decode",
+      "signature": "Base64.urlsafe_decode(value)",
+      "description": "Decode URL-safe Base64, with or without padding",
+      "keywords": [
+        "base64",
+        "base64url",
+        "urlsafe",
+        "decode",
+        "jwt",
+        "jws",
+        "jwk",
+        "pkce"
+      ]
     }
   ]
 }

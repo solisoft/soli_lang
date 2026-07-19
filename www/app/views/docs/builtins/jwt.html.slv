@@ -44,10 +44,18 @@
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">expires_in</code> : <code class="text-orange-400">Int</code> - Token lifetime in seconds</div>
+                    <div><code class="text-amber-400">expires_in</code> : <code class="text-orange-400">Int</code> - Token lifetime in seconds from now</div>
                     <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - HS256, HS384, HS512, RS256, or EdDSA (default: HS256)</div>
                     <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded private key for RS256/EdDSA algorithms</div>
+                    <div><code class="text-amber-400">kid</code> : <code class="text-orange-400">String</code> - Key ID, written to the JWT <strong>header</strong>. Lets a verifier pick the right key out of a JWKS &mdash; this is what makes key rotation possible.</div>
+                    <div><code class="text-amber-400">typ</code> : <code class="text-orange-400">String</code> - Overrides the header <code>typ</code> (default <code>"JWT"</code>). Use <code>"at+jwt"</code> for RFC 9068 access tokens.</div>
+                    <div><code class="text-amber-400">exp</code> : <code class="text-orange-400">Int</code> - Expiration as an <strong>absolute</strong> Unix timestamp. Mutually exclusive with <code>expires_in</code>; supplying both raises, since they are different units.</div>
+                    <div><code class="text-amber-400">nbf</code> : <code class="text-orange-400">Int</code> - Not-before, as an absolute Unix timestamp</div>
+                    <div><code class="text-amber-400">aud</code> : <code class="text-orange-400">String | Array</code> - Audience (RFC 7519 &sect;4.1.3 allows either form)</div>
+                    <div><code class="text-amber-400">iss</code> : <code class="text-orange-400">String</code> - Issuer</div>
+                    <div><code class="text-amber-400">jti</code> : <code class="text-orange-400">String</code> - Unique token ID</div>
                 </div>
+                <p class="text-gray-400 text-sm mt-3">Registered claims come from <code class="text-amber-300">options</code>; everything else in <code class="text-amber-300">payload</code> becomes a custom claim. <code class="text-amber-300">sub</code> is the exception &mdash; it is read from the payload. An option always wins over a same-named payload key.</p>
                 <pre data-filename="HMAC Example"><code class="language-soli text-sm">token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
@@ -60,6 +68,20 @@
   {
     "algorithm": "RS256",
     "key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BBQEw...\n-----END PRIVATE KEY-----"
+  }
+)</code></pre>
+                <pre data-filename="OIDC id_token"><code class="language-soli text-sm"># kid lets the relying party find this key in your JWKS, so you can
+# publish two keys and rotate without invalidating live tokens.
+id_token = jwt_sign(
+  { "sub": user["_key"], "email": user["email"] },
+  "",
+  {
+    "algorithm": "RS256",
+    "key": getenv("SOLI_OIDC_PRIVATE_KEY"),
+    "kid": active_kid,
+    "iss": "https://op.example",
+    "aud": client["client_id"],
+    "expires_in": 600
   }
 )</code></pre>
             </div>
@@ -84,10 +106,22 @@
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - Pin verification to a specific algorithm (<code>HS256</code>, <code>HS384</code>, <code>HS512</code>, <code>RS256</code>, <code>EdDSA</code>). The token's header <code>alg</code> must match exactly or the call rejects.</div>
                     <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded public key for RS256/EdDSA algorithms. When <code>key</code> is provided without an explicit <code>algorithm</code>, the allowed set is <code>RS256</code>&nbsp;/&nbsp;<code>EdDSA</code> only &mdash; HMAC tokens are rejected (the algorithm-confusion attack vector).</div>
+                    <div><code class="text-amber-400">audience</code> : <code class="text-orange-400">String | Array</code> - Expected <code>aud</code>. Setting it makes <code>aud</code> a <strong>required</strong> claim, so a token without one cannot slip through a check you believed was enforced.</div>
+                    <div><code class="text-amber-400">issuer</code> : <code class="text-orange-400">String | Array</code> - Expected <code>iss</code>, likewise required once set.</div>
+                    <div><code class="text-amber-400">subject</code> : <code class="text-orange-400">String</code> - Expected <code>sub</code></div>
+                    <div><code class="text-amber-400">leeway</code> : <code class="text-orange-400">Int</code> - Clock-skew tolerance in seconds (default 60)</div>
                 </div>
                 <p class="text-gray-400 mt-3 text-sm">
                     Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>jwt_verify(token, secret)</code> callers.
                 </p>
+                <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mt-3">
+                    <p class="text-gray-300 text-sm">
+                        <strong class="text-amber-400">Audience is opt-in.</strong> <code>aud</code> is only checked when you pass <code>audience</code>; a token carrying an audience you never asked about verifies normally. Audience is caller-supplied policy, exactly like <code>iss</code>. If you issue tokens for more than one client, pass <code>audience</code> &mdash; otherwise a token minted for client A is accepted by client B.
+                    </p>
+                    <p class="text-gray-300 text-sm mt-2">
+                        Passing <strong>several</strong> expected audiences requires the token to carry <em>all</em> of them, not any one. To accept one of many, verify once per candidate.
+                    </p>
+                </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
@@ -102,7 +136,15 @@ else
 end
 
 # Asymmetric verification: pin the algorithm explicitly.
-result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })</code></pre>
+result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
+
+# Verifying an OIDC id_token: check who issued it and who it was meant for.
+claims = jwt_verify(id_token, "", {
+  "algorithm": "RS256",
+  "key": provider_public_pem,
+  "issuer": "https://op.example",
+  "audience": getenv("OIDC_CLIENT_ID")
+})</code></pre>
             </div>
         </section>
 

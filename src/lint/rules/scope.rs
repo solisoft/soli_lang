@@ -170,6 +170,10 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "hmac",
     "secure_compare",
     "sha256",
+    // JWT builtins
+    "jwt_sign",
+    "jwt_verify",
+    "jwt_decode_unsafe",
     // UUID generation
     "uuid_v4",
     "uuid_v7",

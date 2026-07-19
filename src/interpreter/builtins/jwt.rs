@@ -38,6 +38,33 @@ use crate::interpreter::value::{json_to_value, value_to_json};
 
 const MIN_SECRET_BYTES: usize = 32;
 
+/// Read an option that accepts either a single string or an array of strings
+/// (`aud` and `iss` are both defined that way in RFC 7519).
+fn string_list_option(value: &Value, func: &str, option: &str) -> Result<Vec<String>, String> {
+    match value {
+        Value::String(s) => Ok(vec![s.to_string()]),
+        Value::Array(arr) => arr
+            .borrow()
+            .iter()
+            .map(|v| match v {
+                Value::String(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{}() `{}` array expects strings, got {}",
+                    func,
+                    option,
+                    other.type_name()
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "{}() `{}` expects string or array of strings, got {}",
+            func,
+            option,
+            other.type_name()
+        )),
+    }
+}
+
 /// Get current Unix timestamp.
 fn current_timestamp() -> u64 {
     SystemTime::now()
@@ -71,6 +98,13 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let mut expires_in: Option<u64> = None;
             let mut algorithm = Algorithm::HS256;
             let mut pem_key: Option<String> = None;
+            let mut kid: Option<String> = None;
+            let mut typ: Option<String> = None;
+            let mut absolute_exp: Option<i64> = None;
+            let mut not_before: Option<i64> = None;
+            let mut audience: Option<JsonValue> = None;
+            let mut issuer: Option<String> = None;
+            let mut jwt_id: Option<String> = None;
 
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
@@ -104,11 +138,63 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                         pem_key = Some(k.clone().to_string());
                                     }
                                 }
+                                // Header parameters. `kid` lets a verifier pick
+                                // the right key out of a JWKS, which is what
+                                // makes key rotation possible at all.
+                                "kid" => {
+                                    if let Value::String(k) = v {
+                                        kid = Some(k.to_string());
+                                    }
+                                }
+                                "typ" => {
+                                    if let Value::String(t) = v {
+                                        typ = Some(t.to_string());
+                                    }
+                                }
+                                // Registered claims. `exp` here is an absolute
+                                // Unix timestamp, unlike the relative `expires_in`.
+                                "exp" => {
+                                    if let Value::Int(ts) = v {
+                                        absolute_exp = Some(*ts);
+                                    }
+                                }
+                                "nbf" => {
+                                    if let Value::Int(ts) = v {
+                                        not_before = Some(*ts);
+                                    }
+                                }
+                                // RFC 7519 §4.1.3 allows `aud` to be a single
+                                // string or an array of them.
+                                "aud" => {
+                                    let auds = string_list_option(v, "jwt_sign", "aud")?;
+                                    audience = Some(match auds.len() {
+                                        1 => JsonValue::String(auds[0].clone()),
+                                        _ => JsonValue::Array(
+                                            auds.into_iter().map(JsonValue::String).collect(),
+                                        ),
+                                    });
+                                }
+                                "iss" => {
+                                    if let Value::String(s) = v {
+                                        issuer = Some(s.to_string());
+                                    }
+                                }
+                                "jti" => {
+                                    if let Value::String(s) = v {
+                                        jwt_id = Some(s.to_string());
+                                    }
+                                }
                                 _ => {}
                             }
                         }
                     }
                 }
+            }
+
+            if absolute_exp.is_some() && expires_in.is_some() {
+                return Err("jwt_sign() accepts either `exp` (absolute timestamp) or \
+                            `expires_in` (seconds from now), not both"
+                    .to_string());
             }
 
             // SEC-054: enforce minimum secret length for HMAC algorithms.
@@ -123,29 +209,52 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 ));
             }
 
-            // Build claims
-            let mut data = HashMap::new();
+            // Build claims as a raw JSON object rather than a typed struct, so
+            // `aud` can serialize as either a string or an array. Custom claims
+            // still come from the payload and registered ones from the options,
+            // which keeps the split unambiguous.
+            let mut claims = serde_json::Map::new();
             if let Value::Hash(hash) = payload {
                 for (k, v) in hash.borrow().iter() {
                     if let HashKey::String(key) = k {
                         // Skip reserved claims
                         if **key != *"exp" && **key != *"iat" && **key != *"sub" {
-                            data.insert(key.to_string(), value_to_json(v)?);
+                            claims.insert(key.to_string(), value_to_json(v)?);
                         }
                     }
                 }
             }
 
             let now = current_timestamp();
-            let claims = Claims {
-                sub: extract_string_claim(payload, "sub"),
-                exp: expires_in.map(|secs| now + secs),
-                iat: Some(now),
-                data,
-            };
+            if let Some(sub) = extract_string_claim(payload, "sub") {
+                claims.insert("sub".to_string(), JsonValue::String(sub));
+            }
+            claims.insert("iat".to_string(), JsonValue::from(now));
+            if let Some(exp) = absolute_exp {
+                claims.insert("exp".to_string(), JsonValue::from(exp));
+            } else if let Some(secs) = expires_in {
+                claims.insert("exp".to_string(), JsonValue::from(now + secs));
+            }
+            if let Some(nbf) = not_before {
+                claims.insert("nbf".to_string(), JsonValue::from(nbf));
+            }
+            // Options win over any same-named key carried in the payload.
+            if let Some(aud) = audience {
+                claims.insert("aud".to_string(), aud);
+            }
+            if let Some(iss) = issuer {
+                claims.insert("iss".to_string(), JsonValue::String(iss));
+            }
+            if let Some(jti) = jwt_id {
+                claims.insert("jti".to_string(), JsonValue::String(jti));
+            }
 
             // Create token
-            let header = Header::new(algorithm);
+            let mut header = Header::new(algorithm);
+            header.kid = kid;
+            if let Some(t) = typ {
+                header.typ = Some(t);
+            }
             let encoding_key = build_encoding_key(&algorithm, &secret, pem_key.as_deref())?;
             let token = encode(&header, &claims, &encoding_key)
                 .map_err(|e| format!("Failed to create JWT: {}", e))?;
@@ -193,6 +302,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // bytes as an HMAC secret and have it verified.
             let mut pem_key: Option<String> = None;
             let mut expected_algorithm: Option<Algorithm> = None;
+            let mut expected_audience: Option<Vec<String>> = None;
+            let mut expected_issuer: Option<Vec<String>> = None;
+            let mut expected_subject: Option<String> = None;
+            let mut leeway: Option<u64> = None;
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
@@ -201,6 +314,24 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                 "key" => {
                                     if let Value::String(k) = v {
                                         pem_key = Some(k.clone().to_string());
+                                    }
+                                }
+                                "audience" => {
+                                    expected_audience =
+                                        Some(string_list_option(v, "jwt_verify", "audience")?);
+                                }
+                                "issuer" => {
+                                    expected_issuer =
+                                        Some(string_list_option(v, "jwt_verify", "issuer")?);
+                                }
+                                "subject" => {
+                                    if let Value::String(s) = v {
+                                        expected_subject = Some(s.to_string());
+                                    }
+                                }
+                                "leeway" => {
+                                    if let Value::Int(secs) = v {
+                                        leeway = Some((*secs).max(0) as u64);
                                     }
                                 }
                                 "algorithm" => {
@@ -288,6 +419,34 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // early.
             validation.validate_nbf = true;
 
+            // `aud` is only checked when the caller says what it expects.
+            //
+            // jsonwebtoken defaults `validate_aud` to true, which makes it
+            // reject *any* token carrying an `aud` claim when no expected
+            // audience was configured — so every OIDC id_token failed here
+            // with `InvalidAudience`. Audience is a caller-supplied policy,
+            // exactly like `iss`, and is opt-in for the same reason.
+            //
+            // Note: with several expected audiences jsonwebtoken requires the
+            // token to carry *all* of them (subset semantics), not any one.
+            match &expected_audience {
+                Some(auds) => {
+                    validation.set_audience(auds);
+                    validation.required_spec_claims.insert("aud".to_string());
+                }
+                None => validation.validate_aud = false,
+            }
+            if let Some(issuers) = &expected_issuer {
+                validation.set_issuer(issuers);
+                validation.required_spec_claims.insert("iss".to_string());
+            }
+            if let Some(subject) = expected_subject {
+                validation.sub = Some(subject);
+            }
+            if let Some(secs) = leeway {
+                validation.leeway = secs;
+            }
+
             // Try to decode and verify the token.
             let decoding_key = build_decoding_key(&token_alg, &secret, pem_key.as_deref())?;
             match decode::<Claims>(&token, &decoding_key, &validation) {
@@ -366,6 +525,11 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // `jwt_sign(..., {expires_in: 0})` or by other libraries would
             // be unreadable here.
             validation.required_spec_claims.clear();
+            // Likewise, `Validation::default()` validates `aud`, which made
+            // this helper reject every token carrying an audience — including
+            // every OIDC id_token. Checking audience inside an explicitly
+            // unverified inspection helper is meaningless anyway.
+            validation.validate_aud = false;
 
             match decode::<Claims>(
                 &token,
@@ -663,6 +827,265 @@ mod tests {
             h.insert(HashKey::String((*k).to_string().into()), v.clone());
         }
         Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    const TEST_SECRET: &str = "0123456789abcdef0123456789abcdef";
+
+    /// Sign `payload_pairs` with `sign_opts`, returning the token string.
+    fn sign_with(payload_pairs: &[(&str, Value)], sign_opts: &[(&str, Value)]) -> String {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        let token = (sign.func)(vec![
+            opts(payload_pairs),
+            Value::String(TEST_SECRET.into()),
+            opts(sign_opts),
+        ])
+        .unwrap();
+        match token {
+            Value::String(s) => s.to_string(),
+            other => panic!("expected token string, got {:?}", other),
+        }
+    }
+
+    /// Verify `token` and read one claim (or the `message` of an error hash).
+    fn verify_claim(token: &str, verify_opts: &[(&str, Value)], claim: &str) -> Option<Value> {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+        let result = (verify.func)(vec![
+            Value::String(token.into()),
+            Value::String(TEST_SECRET.into()),
+            opts(verify_opts),
+        ])
+        .unwrap();
+        match result {
+            Value::Hash(h) => h.borrow().get(&HashKey::String(claim.into())).cloned(),
+            other => panic!("expected hash result, got {other:?}"),
+        }
+    }
+
+    /// Regression: jsonwebtoken defaults `validate_aud` to true, so the 2-arg
+    /// form used to reject *every* token carrying an audience — which meant no
+    /// OIDC id_token could be verified at all.
+    #[test]
+    fn jwt_verify_accepts_aud_bearing_token_without_audience_option() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+        let result = (verify.func)(vec![
+            Value::String(token.into()),
+            Value::String(TEST_SECRET.into()),
+        ])
+        .unwrap();
+        let claims = match result {
+            Value::Hash(h) => h,
+            other => panic!("expected hash result, got {other:?}"),
+        };
+        let borrowed = claims.borrow();
+        assert!(
+            borrowed.get(&HashKey::String("error".into())).is_none(),
+            "2-arg verify must not reject an aud-bearing token: {:?}",
+            borrowed
+        );
+        assert_eq!(
+            borrowed.get(&HashKey::String("aud".into())),
+            Some(&Value::String("client1".into()))
+        );
+    }
+
+    #[test]
+    fn jwt_verify_matches_and_rejects_audience() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+
+        assert_eq!(
+            verify_claim(
+                &token,
+                &[("audience", Value::String("client1".into()))],
+                "aud"
+            ),
+            Some(Value::String("client1".into()))
+        );
+        assert_eq!(
+            verify_claim(
+                &token,
+                &[("audience", Value::String("other".into()))],
+                "message"
+            ),
+            Some(Value::String("InvalidAudience".into()))
+        );
+    }
+
+    /// Asking for an audience makes `aud` mandatory, so a token without one
+    /// cannot slip through a check the caller believed was enforced.
+    #[test]
+    fn jwt_verify_requires_aud_when_audience_requested() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[("expires_in", Value::Int(600))],
+        );
+
+        let message = verify_claim(
+            &token,
+            &[("audience", Value::String("client1".into()))],
+            "message",
+        );
+        match message {
+            Some(Value::String(s)) => assert!(s.contains("aud"), "{s}"),
+            other => panic!("expected a missing-claim error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn jwt_verify_matches_and_rejects_issuer() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("iss", Value::String("https://op.test".into())),
+            ],
+        );
+
+        assert_eq!(
+            verify_claim(
+                &token,
+                &[("issuer", Value::String("https://op.test".into()))],
+                "iss"
+            ),
+            Some(Value::String("https://op.test".into()))
+        );
+        assert_eq!(
+            verify_claim(
+                &token,
+                &[("issuer", Value::String("https://evil.test".into()))],
+                "message"
+            ),
+            Some(Value::String("InvalidIssuer".into()))
+        );
+    }
+
+    /// `jwt_decode_unsafe` inspects without verifying, so an audience it was
+    /// never told to expect must not make the token unreadable.
+    #[test]
+    fn jwt_decode_unsafe_reads_aud_bearing_token() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+
+        let env = fresh_env();
+        let decode = jwt_fn(&env, "jwt_decode_unsafe");
+        let result = (decode.func)(vec![Value::String(token.into())]).unwrap();
+        let outer = match result {
+            Value::Hash(h) => h,
+            other => panic!("expected hash result, got {other:?}"),
+        };
+        let claims = match outer.borrow().get(&HashKey::String("claims".into())) {
+            Some(Value::Hash(h)) => h.clone(),
+            other => panic!("expected claims hash, got {other:?}"),
+        };
+        let claims_ref = claims.borrow();
+        assert_eq!(
+            claims_ref.get(&HashKey::String("aud".into())),
+            Some(&Value::String("client1".into()))
+        );
+    }
+
+    /// Without `kid` a relying party cannot pick a key out of a JWKS, so key
+    /// rotation is impossible — assert it reaches the header verbatim.
+    #[test]
+    fn jwt_sign_sets_kid_and_typ_header() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("kid", Value::String("key-1".into())),
+                ("typ", Value::String("at+jwt".into())),
+            ],
+        );
+
+        let header = decode_header(&token).expect("header must parse");
+        assert_eq!(header.kid.as_deref(), Some("key-1"));
+        assert_eq!(header.typ.as_deref(), Some("at+jwt"));
+    }
+
+    /// `aud` is a string or an array per RFC 7519 §4.1.3; both must survive
+    /// the round trip.
+    #[test]
+    fn jwt_sign_supports_array_audience() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                (
+                    "aud",
+                    Value::Array(Rc::new(RefCell::new(vec![
+                        Value::String("a".into()),
+                        Value::String("b".into()),
+                    ]))),
+                ),
+            ],
+        );
+
+        // Subset semantics: the token carries both, so both must be expected.
+        assert!(verify_claim(
+            &token,
+            &[(
+                "audience",
+                Value::Array(Rc::new(RefCell::new(vec![
+                    Value::String("a".into()),
+                    Value::String("b".into()),
+                ])))
+            )],
+            "aud"
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn jwt_sign_accepts_absolute_exp_and_nbf() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("exp", Value::Int(4_102_444_800)),
+                ("nbf", Value::Int(1000)),
+            ],
+        );
+
+        assert_eq!(
+            verify_claim(&token, &[], "exp"),
+            Some(Value::Int(4_102_444_800))
+        );
+        assert_eq!(verify_claim(&token, &[], "nbf"), Some(Value::Int(1000)));
+    }
+
+    /// The two are different units (absolute vs. relative); silently letting
+    /// one win would produce a token expiring at a time the caller never meant.
+    #[test]
+    fn jwt_sign_rejects_exp_with_expires_in() {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        let err = (sign.func)(vec![
+            opts(&[("sub", Value::String("u1".into()))]),
+            Value::String(TEST_SECRET.into()),
+            opts(&[("exp", Value::Int(123)), ("expires_in", Value::Int(60))]),
+        ])
+        .expect_err("exp + expires_in must be rejected");
+        assert!(err.contains("not both"), "{}", err);
     }
 
     /// SEC-091 core attack: an attacker who knows the verifier's RSA

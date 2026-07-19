@@ -265,6 +265,37 @@ pub(crate) fn do_secure_compare(a: &str, b: &str) -> bool {
     diff == 0
 }
 
+/// Upper bound on a single random draw. Nothing in the token/key space needs
+/// more, and a bound keeps a runaway argument from allocating unboundedly.
+const MAX_RANDOM_BYTES: i64 = 1024;
+
+/// Draw `n` cryptographically secure random bytes from the OS entropy source.
+///
+/// `n` is rejected at zero: an empty result silently used as a token or a key
+/// is indistinguishable from a working one at the call site.
+fn do_random_bytes(n: &Value, method: &str) -> Result<Vec<u8>, String> {
+    let count = match n {
+        Value::Int(i) if *i >= 1 && *i <= MAX_RANDOM_BYTES => *i as usize,
+        Value::Int(i) => {
+            return Err(format!(
+                "{}() expects a byte count between 1 and {}, got {}",
+                method, MAX_RANDOM_BYTES, i
+            ))
+        }
+        other => {
+            return Err(format!(
+                "{}() expects int byte count, got {}",
+                method,
+                other.type_name()
+            ))
+        }
+    };
+    let mut bytes = vec![0u8; count];
+    OsRng.fill_bytes(&mut bytes);
+
+    Ok(bytes)
+}
+
 fn do_argon2_hash(password: &[u8]) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -896,6 +927,50 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 Ok(Value::Bool(do_secure_compare(&a, &b)))
             },
         )),
+    );
+
+    // Crypto.random_hex(n) -> String — `n` is a BYTE count, so the result is
+    // 2n characters. Matches `openssl rand -hex 32`, which jwt_sign's own
+    // error message already tells users to run for a 32-byte secret.
+    crypto_static_methods.insert(
+        "random_hex".to_string(),
+        Rc::new(NativeFunction::new("Crypto.random_hex", Some(1), |args| {
+            let bytes = do_random_bytes(&args[0], "Crypto.random_hex")?;
+
+            Ok(Value::String(bytes_to_hex(&bytes).into()))
+        })),
+    );
+
+    // Crypto.random_bytes(n) -> Array[Int]
+    crypto_static_methods.insert(
+        "random_bytes".to_string(),
+        Rc::new(NativeFunction::new(
+            "Crypto.random_bytes",
+            Some(1),
+            |args| {
+                let bytes = do_random_bytes(&args[0], "Crypto.random_bytes")?;
+                let values: Vec<Value> = bytes.iter().map(|&b| Value::Int(b as i64)).collect();
+
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            },
+        )),
+    );
+
+    // Crypto.random_token(n = 32) -> String — unpadded base64url, the form
+    // OAuth/OIDC wants for authorization codes, refresh tokens, `state`,
+    // `nonce` and PKCE verifiers. 32 bytes -> 43 chars -> 256 bits.
+    crypto_static_methods.insert(
+        "random_token".to_string(),
+        Rc::new(NativeFunction::new("Crypto.random_token", None, |args| {
+            let n = args.first().cloned().unwrap_or(Value::Int(32));
+            let bytes = do_random_bytes(&n, "Crypto.random_token")?;
+
+            Ok(Value::String(
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(&bytes)
+                    .into(),
+            ))
+        })),
     );
 
     // Crypto.argon2_hash(password) -> String
@@ -1745,6 +1820,40 @@ pub fn register_crypto_builtins(env: &mut Environment) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn random_hex_length_is_twice_the_byte_count() {
+        let hex = do_random_bytes(&Value::Int(32), "Crypto.random_hex").unwrap();
+        assert_eq!(hex.len(), 32, "n is a byte count, not a character count");
+        let encoded = bytes_to_hex(&hex);
+        assert_eq!(encoded.len(), 64);
+        assert!(encoded.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn random_bytes_differ_between_draws() {
+        let a = do_random_bytes(&Value::Int(32), "Crypto.random_bytes").unwrap();
+        let b = do_random_bytes(&Value::Int(32), "Crypto.random_bytes").unwrap();
+        assert_ne!(a, b, "two draws from the CSPRNG must not collide");
+    }
+
+    /// Zero would hand back an empty token that looks like a working one at
+    /// the call site; the upper bound stops a runaway argument allocating.
+    #[test]
+    fn random_bytes_rejects_out_of_range_counts() {
+        for n in [0, -1, MAX_RANDOM_BYTES + 1] {
+            let err = do_random_bytes(&Value::Int(n), "Crypto.random_bytes")
+                .expect_err("out-of-range byte count must error");
+            assert!(err.contains("between 1 and"), "{}", err);
+        }
+    }
+
+    #[test]
+    fn random_bytes_rejects_non_int_count() {
+        let err = do_random_bytes(&Value::String("32".into()), "Crypto.random_bytes")
+            .expect_err("string byte count must error");
+        assert!(err.contains("expects int byte count"), "{}", err);
+    }
 
     #[test]
     fn canonical_json_sorts_object_keys() {

@@ -161,6 +161,82 @@ end</code></pre>
         </section>
     </section>
 
+    <!-- Secure Random -->
+    <section id="section-secure-random" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
+                </svg>
+            </span>
+            Secure Random
+        </h2>
+
+        <p class="text-gray-400 mb-4">Cryptographically secure random values drawn from the operating system entropy source. All three take a <strong>byte</strong> count, not a character count, and reject anything outside <code class="text-amber-300">1..=1024</code>.</p>
+
+        <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
+            <p class="text-gray-300 text-sm">
+                <strong class="text-red-400">Never use <code>Math.random</code> for secrets.</strong> It is a general-purpose PRNG, not a CSPRNG &mdash; its output is predictable to anyone who observes enough of it. Session tokens, password-reset links, OAuth <code>state</code> and API keys must all come from the functions below.
+            </p>
+        </div>
+
+        <section id="def-random-hex" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-random-hex" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.random_hex(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Random bytes as lowercase hex. <code class="text-amber-300">n</code> is a <strong>byte</strong> count, so the result is <code class="text-amber-300">2n</code> characters &mdash; <code class="text-amber-300">Crypto.random_hex(32)</code> returns a 64-character string, matching <code>openssl rand -hex 32</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> &mdash; number of random bytes</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code></div>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Generate a value for SOLI_ENCRYPTION_KEY or JWT_SECRET
+Crypto.random_hex(32);   # 64 hex characters</code></pre>
+            </div>
+        </section>
+
+        <section id="def-random-bytes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-random-bytes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.random_bytes(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Raw random bytes, for composing with another encoding.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array</code> &mdash; <code class="text-amber-300">n</code> integers in <code class="text-amber-300">0..=255</code></div>
+                <pre data-filename="Example"><code class="language-soli text-sm">Base64.urlsafe_encode(Crypto.random_bytes(32))
+Hex.encode(Crypto.random_bytes(16))</code></pre>
+            </div>
+        </section>
+
+        <section id="def-random-token" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-random-token" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.random_token(n = 32)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Random bytes as unpadded URL-safe Base64. The default 32 bytes gives 256 bits of entropy in 43 URL-safe characters, so the value needs no escaping when it travels in a URL. This is the right primitive for OAuth <code class="text-amber-300">state</code>, PKCE verifiers, authorization codes and refresh tokens.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code></div>
+                <pre data-filename="Example"><code class="language-soli text-sm">state = Crypto.random_token()
+session_set("oauth_state", state)
+
+# Store only the digest, compare in constant time later
+token = Crypto.random_token()
+user.reset_token_digest = Crypto.sha256(token)</code></pre>
+            </div>
+        </section>
+    </section>
+
     <!-- Tamper-Evidence -->
     <section id="section-tamper-evidence" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

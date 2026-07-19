@@ -1595,6 +1595,44 @@ if secure_compare(expected, request_signature)
 end
 ```
 
+### Secure Random
+
+Cryptographically secure random values drawn from the operating system entropy
+source. Do **not** use `Math.random` for anything security-bearing — it is a
+general-purpose PRNG, not a CSPRNG.
+
+All three take a **byte** count, not a character count, and reject anything
+outside `1..=1024`.
+
+#### Crypto.random_hex(n)
+
+**Parameters:**
+- `n` (Int) - number of random **bytes**
+
+**Returns:** String - `2n` lowercase hex characters.
+
+`Crypto.random_hex(32)` produces a 64-character string, matching what
+`openssl rand -hex 32` gives you — the form expected for `SOLI_ENCRYPTION_KEY`
+and `JWT_SECRET`.
+
+#### Crypto.random_bytes(n)
+
+**Returns:** Array - `n` integers in `0..=255`. Compose with
+`Base64.urlsafe_encode` or `Hex.encode` for other representations.
+
+#### Crypto.random_token(n = 32)
+
+**Returns:** String - unpadded URL-safe Base64 of `n` random bytes.
+
+The default 32 bytes gives 256 bits of entropy in 43 URL-safe characters. This
+is the right primitive for OAuth `state`, PKCE verifiers, authorization codes,
+refresh tokens, and any opaque identifier that travels in a URL.
+
+```soli
+state = Crypto.random_token()
+session_set("oauth_state", state)
+```
+
 ### Tamper-Evidence (Hash Chains & Merkle Trees)
 
 Two building blocks for verifiable, append-only data — audit logs, provenance
@@ -1674,6 +1712,17 @@ Base64 encoding and decoding is available via the **Base64 class**:
 
 - `Base64.encode(data)` - Encodes a string to Base64
 - `Base64.decode(data)` - Decodes a Base64 string
+- `Base64.urlsafe_encode(data)` - Encodes to **unpadded** URL-safe Base64 (RFC 4648 §5)
+- `Base64.urlsafe_decode(data)` - Decodes URL-safe Base64, with or without padding
+
+The URL-safe variant uses `-` and `_` in place of `+` and `/` and never emits
+`=` padding — the form required by JWS, JWK, PKCE and JWK thumbprints. Use it
+whenever a value travels in a URL, a JWT, or a JSON Web Key:
+
+```soli
+# PKCE S256 challenge: sha256 returns hex, so decode to bytes before encoding.
+challenge = Base64.urlsafe_encode(Hex.decode(Crypto.sha256(code_verifier)))
+```
 
 See the [Base64 class documentation](/docs/utility/base64) for details.
 
@@ -2120,9 +2169,18 @@ Creates a signed JWT token.
 - `payload` (Hash) - Claims to include in the token
 - `secret` (String) - Secret key for signing. Must be at least **32 bytes** for HMAC algorithms (SEC-054). Asymmetric algorithms (RS256, EdDSA) use PEM keys via the `key` option instead. Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
 - `options` (Hash, optional) - Token options
-  - `expires_in` (Int) - Expiration time in seconds
+  - `expires_in` (Int) - Expiration, in seconds from now
   - `algorithm` (String) - "HS256", "HS384", "HS512", "RS256", or "EdDSA"
   - `key` (String) - PEM-encoded private key for RS256/EdDSA algorithms
+  - `kid` (String) - Key ID, written to the JWT **header**. Lets a verifier pick the right key out of a JWKS, which is what makes key rotation possible.
+  - `typ` (String) - Overrides the header `typ` (default `"JWT"`). Set `"at+jwt"` for RFC 9068 access tokens.
+  - `exp` (Int) - Expiration as an **absolute** Unix timestamp. Mutually exclusive with `expires_in` — supplying both raises, since they are different units and silently picking one would produce a token expiring at a time you never meant.
+  - `nbf` (Int) - Not-before, as an absolute Unix timestamp
+  - `aud` (String or Array) - Audience. RFC 7519 §4.1.3 allows either form.
+  - `iss` (String) - Issuer
+  - `jti` (String) - Unique token ID
+
+Registered claims come from `options`; everything else in `payload` becomes a custom claim. `sub` is the exception — it is read from `payload`. An option always wins over a same-named key in the payload.
 
 **Returns:** String - The JWT token
 
@@ -2132,6 +2190,20 @@ token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
   { "expires_in": 3600 }
+)
+
+# An OIDC id_token, signed with a rotatable key
+id_token = jwt_sign(
+  { "sub": user["_key"], "email": user["email"] },
+  "",
+  {
+    "algorithm": "RS256",
+    "key": getenv("SOLI_OIDC_PRIVATE_KEY"),
+    "kid": active_kid,
+    "iss": "https://op.example",
+    "aud": client["client_id"],
+    "expires_in": 600
+  }
 )
 ```
 
@@ -2145,8 +2217,16 @@ Verifies and decodes a JWT token. **The verifier — not the token — chooses w
 - `options` (Hash, optional) - Verification options
   - `algorithm` (String) - Pin verification to a specific algorithm (`HS256`, `HS384`, `HS512`, `RS256`, `EdDSA`). The token's header `alg` must match exactly or the call rejects with `"token algorithm ... does not match expected"`.
   - `key` (String) - PEM-encoded public key for RS256/EdDSA algorithms. When `key` is provided without an explicit `algorithm`, the allowed set is `RS256` / `EdDSA` only — HMAC tokens are rejected (the algorithm-confusion attack vector).
+  - `audience` (String or Array) - Expected `aud`. When set, `aud` becomes a **required** claim, so a token without one cannot slip through a check you believed was enforced.
+  - `issuer` (String or Array) - Expected `iss`, likewise required once set.
+  - `subject` (String) - Expected `sub`
+  - `leeway` (Int) - Clock-skew tolerance in seconds (default 60)
 
 When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default.
+
+> **Audience is opt-in.** `aud` is only checked when you pass `audience`; a token carrying an audience you never asked about verifies normally. Audience is caller-supplied policy, exactly like `iss`. If you issue tokens for more than one client, pass `audience` — otherwise a token minted for client A is accepted by client B.
+>
+> Passing **several** expected audiences means the token must carry *all* of them, not any one of them. To accept one of many, verify once per candidate.
 
 **Returns:** Hash - Decoded payload, or `{ "error": true, "message": String }` on failure
 
@@ -2162,6 +2242,14 @@ end
 
 # Asymmetric verification: pin the algorithm explicitly.
 result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
+
+# Verifying an OIDC id_token: check who issued it and who it was meant for.
+claims = jwt_verify(id_token, "", {
+  "algorithm": "RS256",
+  "key": provider_public_pem,
+  "issuer": "https://op.example",
+  "audience": getenv("OIDC_CLIENT_ID")
+})
 ```
 
 ### jwt_decode_unsafe(token)

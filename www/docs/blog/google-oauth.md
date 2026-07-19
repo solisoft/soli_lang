@@ -181,8 +181,9 @@ get "/auth/google/callback", "auth#google_callback"
 
 ```soli
 def generate_state()
-  random_bytes = crypto_random_bytes(32)
-  hex_encode(random_bytes)
+  # 32 bytes of CSPRNG output, base64url-encoded — URL-safe, so it needs no
+  # extra escaping when it goes into the query string below.
+  Crypto.random_token(32)
 end
 
 def google_login
