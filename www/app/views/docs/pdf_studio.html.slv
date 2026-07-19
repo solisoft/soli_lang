@@ -156,12 +156,12 @@ button { font-family: inherit; font-size: inherit; color: inherit; cursor: point
   color: rgba(224,69,155,.85); font-family: var(--mono);
 }
 .band.dim { opacity: .45; }
-/* An empty band is a place, not a thing: hint at it without pretending it has
-   content. */
-.band.empty {
-  background: repeating-linear-gradient(
-    45deg, rgba(224,69,155,.05) 0 6px, transparent 6px 12px);
-  border-style: dotted;
+/* No band reserved: mark the boundary the body starts at, and nothing more.
+   An area drawn here would cover body content and misrepresent where it is. */
+.band.none {
+  background: none;
+  border-top: 1px dotted rgba(224,69,155,.55);
+  border-bottom: 0;
 }
 
 /* the interaction layer sits on top of the rendered page */
@@ -787,25 +787,31 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
     mg.style.height = px(PT.h - m.top - m.bottom) + "px";
     host.appendChild(mg);
 
-    // Both bands are always drawn. An empty one still has to be visible: it is
-    // where you would put a running header or a page number, and an invisible
-    // zone is not somewhere anyone thinks to aim.
+    // Both bands are always indicated, but an empty one is drawn as a boundary
+    // rather than as an area. `header_height: 0` reserves nothing, so the body
+    // starts at the top margin — painting a placeholder band there would sit on
+    // top of real body content and imply those elements were in the header.
     var hh = (tpl.options && tpl.options.header_height) || 0;
-    host.appendChild(bandEl(m.top, hh || EMPTY_BAND, "header", hh === 0));
+    host.appendChild(bandEl(m.top, hh, "header", hh === 0));
     var fh = footerHeight();
-    host.appendChild(bandEl(PT.h - m.bottom - (fh || EMPTY_BAND), fh || EMPTY_BAND, "footer", fh === 0));
+    host.appendChild(bandEl(PT.h - m.bottom - fh, fh, "footer", fh === 0));
   }
-
-  var EMPTY_BAND = 22;          // pt of hint shown for a band holding nothing
 
   function bandEl(topPt, hPt, name, empty) {
     var d = document.createElement("div");
-    d.className = "band" + (zone === name ? "" : " dim") + (empty ? " empty" : "");
+    d.className = "band" + (zone === name ? "" : " dim") + (empty ? " none" : "");
     d.style.top = px(topPt) + "px";
-    d.style.height = px(hPt) + "px";
+    d.style.height = empty ? "0px" : px(hPt) + "px";
     var l = document.createElement("div");
     l.className = "band-label";
-    l.textContent = empty ? name + " · empty" : name;
+    // With no band reserved there is no area to label from the inside, so the
+    // label goes into the page margin — space the document never occupies.
+    if (empty) {
+      l.textContent = name + " · none reserved";
+      l.style.top = name === "header" ? "-13px" : "3px";
+    } else {
+      l.textContent = name;
+    }
     d.appendChild(l);
     return d;
   }
@@ -1017,6 +1023,14 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
       // A click rather than a drag still creates something usable.
       if (w < 12) w = tool === "qr" ? 90 : 200;
       if (h < 10) h = tool === "qr" ? 90 : 40;
+      // Putting something in the header band is the moment to reserve height
+      // for it: without one the engine draws the band over the body. Reserve
+      // just enough for what was drawn, and only if nothing is reserved yet.
+      if (zone === "header" && !(tpl.options.header_height > 0)) {
+        var m0 = margins();
+        tpl.options.header_height = Math.max(24, Math.ceil(y - m0.top + h + 8));
+        status("Reserved a " + tpl.options.header_height + " pt header band", "ok");
+      }
       band().push(at(x, y, w, makeInner(tool, w, h)));
       select(band().length - 1);
       setTool("select");
@@ -2309,11 +2323,8 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
         o.classList.toggle("on", on);
         o.setAttribute("aria-selected", on ? "true" : "false");
       });
-      // A header band with no reserved height would silently overlap the body.
-      if (zone === "header" && !(tpl.options.header_height > 0)) {
-        tpl.options.header_height = 64;
-        touched();
-      }
+      // Looking at a zone must not change the document; the band is reserved
+      // when something is actually put there (see the draw handler).
       sel = -1; drawGuides(); renderItems(); inspector(); refreshLayoutMap();
     });
   });
