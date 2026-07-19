@@ -53,7 +53,8 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
             match interp.execute_block(&func.body, env_clone) {
                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                Ok(crate::interpreter::executor::ControlFlow::Continue)
+                | Ok(crate::interpreter::executor::ControlFlow::Break) => Ok(Value::Null),
                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                     Err(format!("Exception in user method: {}", e))
                 }
@@ -651,7 +652,8 @@ impl Interpreter {
                             match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                Ok(crate::interpreter::executor::ControlFlow::Continue)
+                                | Ok(crate::interpreter::executor::ControlFlow::Break) => {
                                     Ok(Value::Null)
                                 }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
@@ -684,7 +686,8 @@ impl Interpreter {
                             match interpreter.execute_block(&mm_method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                Ok(crate::interpreter::executor::ControlFlow::Continue)
+                                | Ok(crate::interpreter::executor::ControlFlow::Break) => {
                                     Ok(Value::Null)
                                 }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
@@ -889,7 +892,8 @@ impl Interpreter {
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                            Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                            Ok(crate::interpreter::executor::ControlFlow::Continue)
+                            | Ok(crate::interpreter::executor::ControlFlow::Break) => {
                                 Ok(Value::Null)
                             }
                             Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
@@ -1486,7 +1490,8 @@ impl Interpreter {
                     let result = match interpreter.execute_block(&mm_method.body, env_clone) {
                         Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                         Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                        Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                        Ok(crate::interpreter::executor::ControlFlow::Continue)
+                        | Ok(crate::interpreter::executor::ControlFlow::Break) => Ok(Value::Null),
                         Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                             Err(format!("Exception in method_missing: {}", e))
                         }
@@ -1699,7 +1704,8 @@ impl Interpreter {
                             let result = match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                Ok(crate::interpreter::executor::ControlFlow::Continue)
+                                | Ok(crate::interpreter::executor::ControlFlow::Break) => {
                                     Ok(Value::Null)
                                 }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
@@ -1852,7 +1858,8 @@ impl Interpreter {
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                            Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                            Ok(crate::interpreter::executor::ControlFlow::Continue)
+                            | Ok(crate::interpreter::executor::ControlFlow::Break) => {
                                 Ok(Value::Null)
                             }
                             Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
@@ -1940,7 +1947,8 @@ impl Interpreter {
                     match interpreter.execute_block(&mm_method.body, env_clone) {
                         Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                         Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                        Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                        Ok(crate::interpreter::executor::ControlFlow::Continue)
+                        | Ok(crate::interpreter::executor::ControlFlow::Break) => Ok(Value::Null),
                         Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                             Err(format!("Exception in method_missing: {}", e))
                         }

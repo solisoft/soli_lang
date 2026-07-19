@@ -61,7 +61,7 @@
         </h2>
 
         <p class="text-gray-400 mb-6">
-            Use the <code class="text-amber-400">break()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
+            Use the <code class="text-amber-400">debug()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Setting Breakpoints</h3>
@@ -70,14 +70,14 @@
 <pre><code class="language-soli text-sm">def process_user(user_id: Int) -> Hash
   user = database.find(user_id)
   # Set a breakpoint to inspect the user object
-  break()
+  debug()
   if (user == null)
     return {"error": "User not found"}
   end
 
   profile = enrich_profile(user)
   # Another breakpoint to see enriched data
-  break()
+  debug()
   profile
 end</code></pre>
             </div>
@@ -111,7 +111,10 @@ end</code></pre>
                 <div>
                     <h4 class="text-blue-400 font-semibold mb-1">Tip</h4>
                     <p class="text-sm text-gray-300">
-                        Breakpoints only work in development mode. In production, <code class="text-amber-400">break()</code> calls are ignored.
+                        Breakpoints only work in development mode. In production, <code class="text-amber-400">debug()</code> calls are ignored.
+                    </p>
+                    <p class="text-sm text-gray-300 mt-2">
+                        This builtin was previously named <code class="text-amber-400">break()</code>. It was renamed because <code class="text-amber-400">break</code> is now a loop keyword — see <a href="/docs/language/control-flow#kw-break" class="text-amber-400 hover:text-amber-300 underline">Control Flow</a>.
                     </p>
                 </div>
             </div>

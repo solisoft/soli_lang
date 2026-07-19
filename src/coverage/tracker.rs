@@ -542,6 +542,7 @@ impl CoverageTracker {
             Const { initializer, .. } => {
                 self.collect_lines_from_expr(path, lines, initializer);
             }
+            Break => {}
             Block(stmts) => {
                 for s in stmts {
                     self.collect_lines_from_stmt(path, lines, s);

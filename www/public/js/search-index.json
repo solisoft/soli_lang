@@ -3421,7 +3421,27 @@
       "keywords": [
         "loop",
         "exit",
-        "control flow"
+        "control flow",
+        "while",
+        "for",
+        "break if",
+        "break unless"
+      ]
+    },
+    {
+      "title": "debug",
+      "type": "function",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/debugging#breakpoints",
+      "signature": "debug()",
+      "description": "Pause execution and open the interactive debug page (development only; ignored in production). Formerly named break().",
+      "keywords": [
+        "debug",
+        "breakpoint",
+        "debugger",
+        "repl",
+        "inspect",
+        "break()"
       ]
     },
     {

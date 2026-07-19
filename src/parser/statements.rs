@@ -23,6 +23,8 @@ impl Parser {
             self.for_statement()
         } else if self.check(&TokenKind::Return) {
             self.return_statement()
+        } else if self.check(&TokenKind::Break) {
+            self.break_statement()
         } else if self.check(&TokenKind::Throw) {
             self.throw_statement()
         } else if self.check(&TokenKind::Try) {
@@ -183,6 +185,60 @@ impl Parser {
                 index_variable,
                 iterable,
                 body,
+            },
+            span,
+            None,
+        ))
+    }
+
+    fn break_statement(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Break)?;
+        let break_end_line = self.previous_span().line;
+
+        let break_stmt = Stmt::new(
+            StmtKind::Break,
+            start_span.merge(&self.previous_span()),
+            None,
+        );
+
+        // Postfix `break if cond` / `break unless cond`, mirroring `return`.
+        // Same-line check keeps `break` followed by a block-`if` on the next
+        // line from being swallowed as a postfix condition.
+        let negate = if self.check(&TokenKind::If) && self.peek().span.line == break_end_line {
+            false
+        } else if self.check(&TokenKind::Unless) && self.peek().span.line == break_end_line {
+            true
+        } else {
+            self.match_token(&TokenKind::Semicolon);
+            return Ok(break_stmt);
+        };
+
+        self.advance();
+        let has_paren = self.match_token(&TokenKind::LeftParen);
+        let cond = self.expression()?;
+        if has_paren {
+            self.expect(&TokenKind::RightParen)?;
+        }
+        self.match_token(&TokenKind::Semicolon);
+        let span = start_span.merge(&self.previous_span());
+        let condition = if negate {
+            Expr::new(
+                ExprKind::Unary {
+                    operator: crate::ast::expr::UnaryOp::Not,
+                    operand: Box::new(cond),
+                },
+                span,
+            )
+        } else {
+            cond
+        };
+
+        Ok(Stmt::new(
+            StmtKind::If {
+                condition,
+                then_branch: Box::new(break_stmt),
+                else_branch: None,
             },
             span,
             None,

@@ -246,7 +246,54 @@ print(letter);  # "B"</code></pre>
 
     <!-- Break and Continue -->
     <section id="section-next" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Skipping Iterations</h2>
+        <h2 class="text-2xl font-bold text-white mb-4">Exiting and Skipping Iterations</h2>
+
+        <section id="kw-break" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-break" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">break</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Exits the innermost enclosing loop immediately. Works in <code class="text-amber-400">while</code> and <code class="text-amber-400">for</code> loops, and supports postfix conditions.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+for n in numbers
+  break if n > 7
+  print(n)
+end
+# prints: 1, 2, 3, 4, 5, 6, 7
+
+# Do-while equivalent: infinite `while` + `break`
+count = 0
+while true
+  count = count + 1
+  break unless count &lt; 3
+end
+print(count);  # 3</code></pre>
+                <p class="text-gray-400 mt-3 mb-3">
+                    <code class="text-amber-400">break</code> propagates out of nested blocks, <code class="text-amber-400">if</code> branches and <code class="text-amber-400">try</code>/<code class="text-amber-400">catch</code> — a <code class="text-amber-400">finally</code> block still runs before the loop exits. A <code class="text-amber-400">break</code> inside a lambda or function body does <em>not</em> break an outer loop; it is absorbed at the function boundary.
+                </p>
+<pre data-filename="Nested blocks and try/catch"><code class="language-soli text-sm">for path in paths
+  try
+    contents = File.read(path)
+    if contents.blank?
+      break        # exits the for loop, not just the if/try
+    end
+  catch error
+    break          # `finally` still runs first
+  finally
+    print("checked #{path}")
+  end
+end</code></pre>
+                <div class="mt-3 rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
+                    <p class="text-sm text-gray-300">
+                        <span class="text-blue-400 font-semibold">Note:</span>
+                        handlers containing <code class="text-amber-400">break</code> are not compiled by the bytecode VM — they fall back to the tree-walking interpreter automatically (the same precedent as safe navigation <code class="text-amber-400">&amp;.</code>). Behavior is identical; only the JIT path is skipped.
+                    </p>
+                </div>
+            </div>
+        </section>
 
         <section id="kw-continue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">

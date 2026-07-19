@@ -44,7 +44,7 @@ impl Interpreter {
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|| "unknown".to_string());
                     stack_trace
-                        .insert(0, format!("break() at {}:{}", file, expr.span.line_usize()));
+                        .insert(0, format!("debug() at {}:{}", file, expr.span.line_usize()));
                     return Err(RuntimeError::Breakpoint {
                         span: expr.span,
                         env_json,
@@ -126,6 +126,7 @@ impl Interpreter {
                                 ControlFlow::Normal(_) => {}
                                 ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                                 ControlFlow::Continue => {}
+                                ControlFlow::Break => break,
                             }
                         }
                         return Ok(ControlFlow::Normal(Value::Null));
@@ -138,6 +139,7 @@ impl Interpreter {
                         ControlFlow::Normal(_) => {}
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                         ControlFlow::Continue => {}
+                        ControlFlow::Break => break,
                     }
                 }
                 Ok(ControlFlow::Normal(Value::Null))
@@ -149,6 +151,8 @@ impl Interpreter {
                 iterable,
                 body,
             } => self.execute_for_loop(variable, index_variable.as_deref(), iterable, body),
+
+            StmtKind::Break => Ok(ControlFlow::Break),
 
             StmtKind::Return(value) => {
                 let return_value = if let Some(expr) = value {
@@ -220,6 +224,12 @@ impl Interpreter {
                 let throw_value = match try_result {
                     Ok(control_flow) => match control_flow {
                         ControlFlow::Normal(_) | ControlFlow::Continue => None,
+                        ControlFlow::Break => {
+                            if let Some(finally_blk) = finally_block {
+                                self.execute(finally_blk)?;
+                            }
+                            return Ok(ControlFlow::Break);
+                        }
                         ControlFlow::Return(v) => {
                             if let Some(finally_blk) = finally_block {
                                 self.execute(finally_blk)?;
@@ -260,6 +270,12 @@ impl Interpreter {
 
                         match catch_result {
                             Ok(ControlFlow::Normal(_) | ControlFlow::Continue) => {}
+                            Ok(ControlFlow::Break) => {
+                                if let Some(finally_blk) = finally_block {
+                                    self.execute(finally_blk)?;
+                                }
+                                return Ok(ControlFlow::Break);
+                            }
                             Ok(ControlFlow::Return(v)) => {
                                 if let Some(finally_blk) = finally_block {
                                     self.execute(finally_blk)?;
@@ -296,6 +312,7 @@ impl Interpreter {
                     match self.execute(finally_blk)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                        ControlFlow::Break => return Ok(ControlFlow::Break),
                         ControlFlow::Normal(_) | ControlFlow::Continue => {}
                     }
                 }
@@ -460,6 +477,7 @@ impl Interpreter {
                     Err(e) => return Err(e),
                     Ok(ControlFlow::Return(v)) => return Ok(ControlFlow::Return(v)),
                     Ok(ControlFlow::Throw(e)) => return Ok(ControlFlow::Throw(e)),
+                    Ok(ControlFlow::Break) => break,
                     Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
                 }
                 i += 1;
@@ -504,6 +522,7 @@ impl Interpreter {
                     self.environment = prev_env;
                     return Ok(ControlFlow::Throw(e));
                 }
+                Ok(ControlFlow::Break) => break,
                 Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
             }
             i += 1;

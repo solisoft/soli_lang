@@ -137,7 +137,7 @@ fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Res
     let mut interp = Interpreter::default();
     match interp.execute_block(&func.body, env_clone) {
         Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
-        Ok(ControlFlow::Continue) => Ok(true),
+        Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),
         Ok(ControlFlow::Throw(e)) => Err(format!("custom validator threw: {}", e)),
         Err(e) => Err(format!("custom validator error: {}", e)),
     }
@@ -420,7 +420,7 @@ fn invoke_condition(func: &Function, record: &Value) -> Result<bool, String> {
     let mut interp = Interpreter::default();
     match interp.execute_block(&func.body, env_clone) {
         Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
-        Ok(ControlFlow::Continue) => Ok(true),
+        Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),
         Ok(ControlFlow::Throw(e)) => Err(format!("validation condition threw: {}", e)),
         Err(e) => Err(format!("validation condition error: {}", e)),
     }

@@ -55,6 +55,33 @@ println("Hello, " + name)
 
 ---
 
+### Debugging Functions
+
+#### debug()
+
+Triggers a debugger breakpoint: pauses execution and opens the interactive debug
+page, where you can inspect variable state and evaluate arbitrary Soli code.
+Only active in development mode — in production `debug()` calls are ignored.
+
+**Parameters:** none
+
+**Returns:** a breakpoint value
+
+**Example:**
+```soli
+def process_user(user_id: Int) -> Hash
+  user = User.find(user_id)
+  debug()   # pause here and inspect `user`
+  enrich_profile(user)
+end
+```
+
+> **Renamed:** this builtin was called `break()` before. `break` is now a loop
+> keyword, so the debugger builtin moved to `debug()`. See
+> [Debugging](/docs/development-tools/debugging).
+
+---
+
 ### Type Functions
 
 #### type(value)
@@ -4165,17 +4192,36 @@ I18n.cached_table("ja")   # null  (nothing cached for "ja" yet)
 
 ### break
 
-Exits a loop early.
+Exits the innermost enclosing loop immediately. Works in both `while` and `for`
+loops, and supports postfix conditions (`break if cond` / `break unless cond`).
+
+`break` propagates out of nested blocks, `if` branches and `try`/`catch` — a
+`finally` block still runs before the loop exits. A `break` inside a lambda or
+function body does **not** break an outer loop; it is absorbed at the function
+boundary.
 
 **Example:**
 ```soli
 for i in range(0, 10)
-  if i == 5
-    break
-  end
+  break if i == 5
   println(i)
 end
+# prints: 0, 1, 2, 3, 4
+
+# Also valid inside `while`, and out of nested blocks
+idx = 0
+while true
+  if items[idx].nil?
+    break
+  end
+  idx = idx + 1
+end
 ```
+
+> **Note:** handlers containing `break` are not compiled by the bytecode VM —
+> they fall back to the tree-walking interpreter automatically (the same
+> precedent as safe navigation `&.`). Behavior is identical; only the JIT path
+> is skipped.
 
 ### next
 

@@ -48,6 +48,7 @@ pub(crate) enum ControlFlow {
     Return(Value),
     Throw(Value),
     Continue,
+    Break,
 }
 
 /// The Solilang interpreter.
@@ -454,6 +455,9 @@ impl Interpreter {
                 Ok(ControlFlow::Throw(_)) => break,
                 Ok(ControlFlow::Normal(_)) => {}
                 Ok(ControlFlow::Continue) => break,
+                // Stop running statements and hand `Break` to the caller so it
+                // reaches the enclosing loop.
+                Ok(ControlFlow::Break) => break,
             }
         }
         self.environment = previous;
@@ -476,6 +480,9 @@ impl Interpreter {
                 Ok(ControlFlow::Throw(_)) => break,
                 Ok(ControlFlow::Normal(_)) => {}
                 Ok(ControlFlow::Continue) => break,
+                // Stop running statements and hand `Break` to the caller so it
+                // reaches the enclosing loop.
+                Ok(ControlFlow::Break) => break,
             }
         }
 
@@ -594,7 +601,9 @@ impl Interpreter {
         let result = match self.execute_block_in(&func.body, call_env_rc) {
             Ok(ControlFlow::Normal(v)) => Ok(v),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
-            Ok(ControlFlow::Continue) => Ok(Value::Null),
+            // A stray `break` outside a loop stops the body; it must not escape
+            // the call boundary.
+            Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(Value::Null),
             Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
                 message: format!("Unhandled exception: {}", e),
                 span: Span::default(),

@@ -231,6 +231,10 @@ impl Printer<'_> {
                 }
                 self.newline();
             }
+            StmtKind::Break => {
+                self.write("break");
+                self.newline();
+            }
             StmtKind::Throw(expr) => {
                 self.write("throw ");
                 self.print_expr(expr);
@@ -352,6 +356,7 @@ impl Printer<'_> {
                 self.write("throw ");
                 self.print_expr(e);
             }
+            StmtKind::Break => self.write("break"),
             // Block-bodied postfix should not exist (parser wraps a single
             // statement in Expression/Return/Throw). Fall back to recursing
             // through `print_stmt` to be safe.

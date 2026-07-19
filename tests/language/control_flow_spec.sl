@@ -987,3 +987,106 @@ describe("MVC controller patterns", fn() {
         assert_eq(server["status"], "ready");
     });
 });
+
+describe("Break Statement", fn() {
+    test("break exits a while loop", fn() {
+        let i = 0;
+        while (true) {
+            i = i + 1;
+            if (i >= 3) {
+                break;
+            }
+        }
+        assert_eq(i, 3);
+    });
+
+    test("break exits a for loop over an array", fn() {
+        let seen = [];
+        for n in [1, 2, 3, 4, 5] {
+            if (n > 3) {
+                break;
+            }
+            seen.push(n);
+        }
+        assert_eq(seen, [1, 2, 3]);
+    });
+
+    test("break exits a for loop over a range", fn() {
+        let total = 0;
+        for x in 1..100 {
+            total = total + x;
+            if (total > 10) {
+                break;
+            }
+        }
+        assert_eq(total, 15);
+    });
+
+    test("postfix break if", fn() {
+        let count = 0;
+        for y in [1, 2, 3, 4, 5] {
+            break if y > 3;
+            count = count + 1;
+        }
+        assert_eq(count, 3);
+    });
+
+    test("postfix break unless", fn() {
+        let count = 0;
+        for y in [1, 2, 3, 4] {
+            break unless y < 3;
+            count = count + 1;
+        }
+        assert_eq(count, 2);
+    });
+
+    test("break only exits the innermost loop", fn() {
+        let pairs = [];
+        for a in [1, 2] {
+            for b in [10, 20, 30] {
+                break if b == 20;
+                pairs.push([a, b]);
+            }
+        }
+        assert_eq(pairs, [[1, 10], [2, 10]]);
+    });
+
+    test("break inside try runs finally then exits the loop", fn() {
+        let log = [];
+        for v in [1, 2, 3] {
+            try {
+                log.push(v);
+                break if v == 2;
+            } finally {
+                log.push("f");
+            }
+        }
+        assert_eq(log, [1, "f", 2, "f"]);
+    });
+
+    test("break inside a lambda is absorbed at the function boundary", fn() {
+        // It stops the lambda body, but must not break the enclosing for loop.
+        let seen = [];
+        for n in [1, 2] {
+            [10, 20, 30].each(fn(x) {
+                break;
+                seen.push(x);
+            });
+            seen.push(n);
+        }
+        assert_eq(seen, [1, 2]);
+    });
+
+    test("break inside a nested block still exits the loop", fn() {
+        let seen = [];
+        for n in [1, 2, 3, 4] {
+            if (n > 0) {
+                if (n == 3) {
+                    break;
+                }
+                seen.push(n);
+            }
+        }
+        assert_eq(seen, [1, 2]);
+    });
+});

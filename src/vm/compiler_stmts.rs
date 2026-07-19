@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::ast::stmt::{CatchClause, FunctionDecl, ImportDecl, StmtKind};
 use crate::ast::Stmt;
+use crate::error::CompileError;
 
 use super::chunk::Constant;
 use super::compiler::{CompileResult, Compiler, FunctionType};
@@ -61,6 +62,19 @@ impl Compiler {
                 body,
             } => {
                 self.compile_for(variable, index_variable.as_deref(), iterable, body, line)?;
+            }
+            StmtKind::Break => {
+                // TODO: compile `break` natively. Doing it correctly means
+                // unwinding, at the jump site, everything the loop body pushed:
+                // body locals (Pop/CloseUpvalue above the loop's baseline), the
+                // `for` iterator on `iter_stack`, and any live exception handler
+                // when the `break` sits inside a `try`. Until that is in place,
+                // refuse compilation so the handler falls back to the
+                // tree-walking interpreter, which implements `break` fully.
+                return Err(CompileError::new(
+                    "`break` is not supported in compiled mode",
+                    stmt.span,
+                ));
             }
             StmtKind::Return(expr) => {
                 if let Some(expr) = expr {

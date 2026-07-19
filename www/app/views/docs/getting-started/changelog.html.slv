@@ -21,6 +21,15 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
+        <!-- Language -->
+        <h3 id="unreleased-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white"><code class="text-cyan-400">break</code> is now a loop keyword</strong> &mdash; exits the innermost enclosing <code class="text-cyan-400">while</code> or <code class="text-cyan-400">for</code> loop, with postfix conditions (<code class="text-cyan-400">break if cond</code> / <code class="text-cyan-400">break unless cond</code>). It propagates correctly out of nested blocks, <code class="text-cyan-400">if</code> branches and <code class="text-cyan-400">try</code>/<code class="text-cyan-400">catch</code> (a <code class="text-cyan-400">finally</code> block still runs before the loop exits), and is absorbed at the function boundary &mdash; a <code class="text-cyan-400">break</code> inside a lambda or function body does not break an outer loop. Not compiled by the bytecode VM: a handler containing <code class="text-cyan-400">break</code> falls back to the tree-walking interpreter automatically (same precedent as safe navigation <code class="text-cyan-400">&amp;.</code>), so it is fully functional but not JIT-compiled. See <a href="/docs/language/control-flow#kw-break" class="text-cyan-400 hover:text-cyan-300 underline">Control Flow</a>.</li>
+                <li><strong class="text-red-400">Breaking:</strong> <strong class="text-white">the <code class="text-cyan-400">break()</code> debugger builtin is renamed to <code class="text-cyan-400">debug()</code></strong> &mdash; the name was freed up for the new loop keyword. Same behavior: a zero-arg builtin that triggers a breakpoint and opens the interactive debug page in development, ignored in production. Replace any <code class="text-cyan-400">break()</code> call in your code with <code class="text-cyan-400">debug()</code>. See <a href="/docs/development-tools/debugging" class="text-cyan-400 hover:text-cyan-300 underline">Debugging</a>.</li>
+            </ul>
+        </div>
+
         <!-- Performance -->
         <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">

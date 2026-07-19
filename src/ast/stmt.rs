@@ -79,6 +79,9 @@ pub enum StmtKind {
     /// Return statement: return expr;
     Return(Option<Expr>),
 
+    /// Break statement: break; — exits the innermost enclosing loop.
+    Break,
+
     /// Throw statement: throw expr;
     Throw(Expr),
 

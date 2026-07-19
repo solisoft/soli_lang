@@ -14,6 +14,8 @@ impl TypeChecker {
                 Ok(())
             }
 
+            StmtKind::Break => Ok(()),
+
             StmtKind::Let {
                 name,
                 type_annotation,

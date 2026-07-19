@@ -573,7 +573,7 @@
         var KEYWORDS = {
             keyword: 'def fn if unless then else elsif elif end return let for in while do break continue class extends interface module enum static this self super new import use as try catch rescue ensure finally throw raise yield defer match case when and or not export',
             literal: 'null nil true false',
-            built_in: 'print println puts len str int float bool range push pop keys values render redirect grouped params session_get session_set session_delete session_destroy session_regenerate authorize policy_for current_user signed_in current_action forbidden halt h Model Controller Crypto HTTP JSON Cache Cron FeatureFlags const'
+            built_in: 'print println puts debug len str int float bool range push pop keys values render redirect grouped params session_get session_set session_delete session_destroy session_regenerate authorize policy_for current_user signed_in current_action forbidden halt h Model Controller Crypto HTTP JSON Cache Cron FeatureFlags const'
         };
         var SUBST = { className: 'subst', begin: '\\\\\\(', end: '\\)', keywords: KEYWORDS };
         var STRING = {

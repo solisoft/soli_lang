@@ -264,10 +264,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         })),
     );
 
-    // break() - Trigger a breakpoint for debugging (opens dev page with REPL)
+    // debug() - Trigger a breakpoint for debugging (opens dev page with REPL)
     env.define(
-        "break".to_string(),
-        Value::NativeFunction(NativeFunction::new("break", Some(0), |_args| {
+        "debug".to_string(),
+        Value::NativeFunction(NativeFunction::new("debug", Some(0), |_args| {
             Ok(Value::Breakpoint)
         })),
     );

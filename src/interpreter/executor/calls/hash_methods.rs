@@ -109,7 +109,7 @@ impl Interpreter {
         }
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
-            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
             ControlFlow::Throw(_) => {
                 Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
             }
@@ -135,7 +135,7 @@ impl Interpreter {
         }
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
-            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
             ControlFlow::Throw(_) => {
                 Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
             }

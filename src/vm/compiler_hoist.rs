@@ -68,6 +68,7 @@ impl Scan {
                     self.expr(init);
                 }
             }
+            StmtKind::Break => {}
             StmtKind::Const {
                 name, initializer, ..
             } => {

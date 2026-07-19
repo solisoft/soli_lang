@@ -8,6 +8,8 @@ impl Linter {
         match &stmt.kind {
             StmtKind::Expression(expr) => self.lint_expr(expr),
 
+            StmtKind::Break => {}
+
             StmtKind::Let {
                 name,
                 type_annotation: _,

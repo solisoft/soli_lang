@@ -547,16 +547,22 @@ while idx < len(data) && data[idx] < 4
 end
 print("Sum: " + str(sum));  # 6 (1+2+3)
 
-# Do-while equivalent (using break)
+# Do-while equivalent (infinite `while` + `break`)
 count = 0;
-loop
+while true
   count = count + 1;
   print("Iteration: " + str(count));
-  if count >= 3
-    break;
-  end
+  break if count >= 3;
 end
 ```
+
+`break` exits the innermost enclosing loop immediately. It works in both `while`
+and `for` loops, propagates out of nested blocks, `if` branches and
+`try`/`catch` (a `finally` block still runs before the loop exits), and accepts
+postfix conditions — `break if cond` / `break unless cond`.
+
+A `break` inside a lambda or function body does **not** break an outer loop; it
+is absorbed at the function boundary.
 
 ### For Loops
 
@@ -608,9 +614,7 @@ for n in numbers
   if n % 2 == 0
     next
   end
-  if n > 7
-    break;  # Stop at first number > 7
-  end
+  break if n > 7;  # Stop at first number > 7
   sum = sum + n;
 end
 print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5 = 9

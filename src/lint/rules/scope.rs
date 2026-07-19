@@ -171,6 +171,8 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "halt",
     // Loop control
     "next",
+    // Debugging
+    "debug",
     // Validation framework
     "validate",
     // Upload helpers
@@ -290,6 +292,7 @@ fn check_stmt(
         StmtKind::Const { initializer, .. } => {
             check_expr(initializer, defined, program, diagnostics, reported);
         }
+        StmtKind::Break => {}
         StmtKind::Block(stmts) => {
             for s in stmts {
                 check_stmt(s, defined, program, diagnostics, reported);
@@ -560,6 +563,7 @@ pub fn collect_assigned_in_stmts(stmts: &[Stmt], out: &mut HashSet<String>) {
 
 fn collect_assigned_in_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
     match &stmt.kind {
+        StmtKind::Break => {}
         StmtKind::Let {
             name, initializer, ..
         } => {

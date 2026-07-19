@@ -30,6 +30,7 @@ pub(crate) fn stmt_creates_closures(stmt: &Stmt) -> bool {
             initializer.as_ref().is_some_and(expr_creates_closures)
         }
         StmtKind::Const { initializer, .. } => expr_creates_closures(initializer),
+        StmtKind::Break => false,
         StmtKind::Block(stmts) => body_creates_closures(stmts),
         StmtKind::If {
             condition,

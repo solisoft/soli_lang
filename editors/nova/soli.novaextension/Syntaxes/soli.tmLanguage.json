@@ -107,7 +107,7 @@
       "patterns": [
         {
           "name": "keyword.control.soli",
-          "match": "\\b(if|else|elsif|while|for|in|match|case|when|end|unless|try|catch|finally|throw|return)\\b"
+          "match": "\\b(if|else|elsif|while|for|in|match|case|when|end|unless|try|catch|finally|throw|return|break)\\b"
         },
         {
           "name": "keyword.other.soli",

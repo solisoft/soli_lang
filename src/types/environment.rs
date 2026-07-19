@@ -160,6 +160,15 @@ impl TypeEnvironment {
             },
         );
 
+        // debug() -> Any — trigger a breakpoint (dev-mode REPL); no-op in production.
+        self.functions.insert(
+            "debug".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
         // const_get(String) -> Any — resolve a name (class/function/var) at runtime.
         // Used by the auth Policy layer (`const_get(record.class + "Policy")`).
         self.functions.insert(

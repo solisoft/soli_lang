@@ -19,8 +19,8 @@ describe("Global Functions", fn() {
         assert(t2 >= t1);
     });
 
-    test("break returns breakpoint value", fn() {
-        let result = break();
+    test("debug returns breakpoint value", fn() {
+        let result = debug();
         assert(result != null);
     });
 
