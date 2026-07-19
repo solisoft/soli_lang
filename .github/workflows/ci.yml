@@ -59,6 +59,18 @@ jobs:
       - name: Check
         run: cargo check --locked --all-targets
 
+      # Runs the unit tests, which is where the Windows-specific code lives:
+      # LockFileEx single-instance locking, job objects, and owner-only
+      # directory creation. Those were written and compile-verified from Linux
+      # and have never executed — this is the only place they can.
+      #
+      # Scoped to --lib deliberately. The integration suites shell out, assume
+      # POSIX paths and spawn a database; making them portable is its own piece
+      # of work, and a red job nobody can act on is worse than a narrow green
+      # one that actually gates something.
+      - name: Unit tests
+        run: cargo test --locked --lib
+
   clippy:
     runs-on: ubuntu-latest
     steps:

@@ -132,7 +132,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn acquires_when_free_and_refuses_while_held() {
         let dir = scratch_dir();
         let path = dir.path().join("instance.lock");
@@ -140,8 +139,10 @@ mod tests {
         let first = try_acquire(&path).expect("first acquire must evaluate");
         assert!(first.is_some(), "lock should be free initially");
 
-        // A second attempt from this same process must also be refused: flock
-        // is per-open-file-description, and we deliberately open a new one.
+        // A second attempt from this same process must also be refused. Both
+        // backends key the lock to the open file description / handle rather
+        // than to the process, and we deliberately open a new one — so this
+        // exercises the real contended path on Unix and Windows alike.
         let second = try_acquire(&path).expect("second acquire must evaluate");
         assert!(
             second.is_none(),
@@ -154,7 +155,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn creates_missing_parent_directories() {
         let dir = scratch_dir();
         let path = dir.path().join("nested/deeper/instance.lock");

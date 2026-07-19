@@ -116,6 +116,10 @@ mod tests {
         assert!(dir.is_dir());
     }
 
+    /// On Windows the equivalent assertion would mean reading back the DACL,
+    /// which needs far more API surface than the property is worth here; the
+    /// call succeeding at all exercises the descriptor construction, which is
+    /// the part that can be wrong.
     #[test]
     #[cfg(unix)]
     fn restricts_access_to_the_owner() {

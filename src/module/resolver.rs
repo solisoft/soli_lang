@@ -680,6 +680,8 @@ mod tests {
     }
 
     #[test]
+    // As above: gated wholesale, since the API is absent off Unix.
+    #[cfg(unix)]
     fn rejects_relative_import_escaping_via_symlink() {
         // Layout:
         //   <root>/proj/main.sl
@@ -693,10 +695,7 @@ mod tests {
         write(&proj.join("main.sl"), "");
         write(&outside.join("secret.sl"), "");
 
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&outside, proj.join("escape")).unwrap();
-        #[cfg(not(unix))]
-        return; // skip on non-Unix where symlink semantics differ
 
         let resolver = ModuleResolver::new(&proj);
         let err = resolver

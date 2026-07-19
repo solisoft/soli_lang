@@ -985,6 +985,9 @@ mod tests {
     }
 
     #[test]
+    // Symlink escape is a Unix concern, and `std::os::unix` does not exist
+    // elsewhere — so the whole case is gated rather than its body.
+    #[cfg(unix)]
     fn jailed_symlink_escape_is_rejected_after_canonicalisation() {
         // Symlink leaves the jail; canonicalisation should follow it and
         // the resulting path must fail the `starts_with` check.
@@ -994,9 +997,8 @@ mod tests {
         let target = outer.path().join("secret.txt");
         std::fs::write(&target, "leak").unwrap();
         let link = jail.join("link");
-        // Skip on platforms without symlink support.
         if std::os::unix::fs::symlink(&target, &link).is_err() {
-            return;
+            return; // filesystem without symlink support
         }
         let err = resolve_with_jail("link", "read", Some(&jail)).unwrap_err();
         assert!(err.contains("escapes the app-root jail"), "{}", err);
