@@ -76,6 +76,43 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // Where every element landed. A visual editor cannot work this out itself:
+    // a flowing element's position depends on everything before it, so only the
+    // layout engine knows it. Returns one hash per drawn element — a `repeat`
+    // row yields several boxes sharing one `path`, because it is authored once
+    // and drawn per item.
+    env.define(
+        "pdf_layout_map".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_layout_map", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_layout_map() expects 2 or 3 arguments (template, data, options?), got {}",
+                    args.len()
+                ));
+            }
+            let template = arg_string(&args[0], "pdf_layout_map", "template")?;
+            let data = arg_string(&args[1], "pdf_layout_map", "data")?;
+            let opts = render_options(args.get(2))?;
+            let boxes = soli_pdf::layout_boxes(template.as_bytes(), data.as_bytes(), &opts)
+                .map_err(|e| format!("pdf_layout_map() failed: {e}"))?;
+            let out: Vec<Value> = boxes
+                .into_iter()
+                .map(|b| {
+                    let mut h = HashPairs::default();
+                    h.insert(HashKey::String("path".into()), Value::String(b.path.into()));
+                    h.insert(HashKey::String("kind".into()), Value::String(b.kind.into()));
+                    h.insert(HashKey::String("page".into()), Value::Int(b.page as i64));
+                    h.insert(HashKey::String("x".into()), Value::Float(b.x as f64));
+                    h.insert(HashKey::String("y".into()), Value::Float(b.y as f64));
+                    h.insert(HashKey::String("w".into()), Value::Float(b.w as f64));
+                    h.insert(HashKey::String("h".into()), Value::Float(b.h as f64));
+                    Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(h)))
+                })
+                .collect();
+            Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(out))))
+        })),
+    );
+
     // Markdown → PDF: fold a Markdown document into the layout engine's
     // template and render it. "Write prose, get a designed PDF." Accepts the
     // same render options as `pdf_render` (font_dirs, sign, pdfa, …) plus theme

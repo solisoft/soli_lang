@@ -43,6 +43,22 @@ jobs:
       - name: Run Soli tests
         run: cargo run --locked -- test
 
+  # Keeps the Windows port from silently re-breaking. The crate has no
+  # structural pressure to stay portable, so without a gate the next
+  # unconditional `nix` import or `/`-joined path lands unnoticed and is far
+  # more expensive to find later. Checks only — running the tests needs a
+  # Windows runner, which the release matrix already provides.
+  windows-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check
+        run: cargo check --locked --all-targets
+
   clippy:
     runs-on: ubuntu-latest
     steps:

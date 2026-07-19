@@ -3,7 +3,9 @@ mod progress;
 mod test_runner;
 
 use std::env;
-use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
 use std::process;

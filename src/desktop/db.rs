@@ -95,7 +95,7 @@ impl DbHandle {
     ///
     /// The graceful path matters: RocksDB replays its write-ahead log after an
     /// unclean close, which is slow and reads to a user like corruption.
-    pub fn shutdown(&mut self, grace: Duration) {
+    pub fn shutdown(&mut self, #[cfg_attr(not(unix), allow(unused_variables))] grace: Duration) {
         if !self.is_running() {
             return;
         }

@@ -667,6 +667,15 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_layout_map(template, data, options?) -> Array (one hash per drawn element)
+        self.functions.insert(
+            "pdf_layout_map".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            },
+        );
+
         // pdf_verify(pdf) -> Array (one hash per embedded signature)
         self.functions.insert(
             "pdf_verify".to_string(),

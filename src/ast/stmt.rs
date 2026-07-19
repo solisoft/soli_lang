@@ -133,7 +133,16 @@ impl StmtKind {
 /// Size guard — a `Stmt` is allocated per parsed statement in every
 /// `Rc<[Stmt]>` function/method body, once per worker. Keep the large decl
 /// variants boxed. See the `size_guards` test in `interpreter::value`.
+#[cfg(not(windows))]
 const _: () = assert!(std::mem::size_of::<Stmt>() <= 200);
+// Windows gets 8 more bytes, and it is not this type growing: `Option<PathBuf>`
+// is 24 bytes on Unix, where the niche in `Vec`'s pointer absorbs the
+// discriminant, and 32 on Windows, whose `OsString` representation does not
+// expose that niche. Measured, not assumed. Each platform keeps its own tight
+// bound rather than everyone inheriting the loosest one, so the guard still
+// catches an unboxed variant being added.
+#[cfg(windows)]
+const _: () = assert!(std::mem::size_of::<Stmt>() <= 208);
 
 /// An import specifier (what to import from a module).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

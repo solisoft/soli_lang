@@ -18,7 +18,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 /// Set by the signal handler; polled by the shutdown thread.
 static REQUESTED: AtomicBool = AtomicBool::new(false);
