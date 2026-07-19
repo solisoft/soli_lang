@@ -511,14 +511,16 @@ fn sweep_stale_extractions(base: &Path) {
         else {
             continue;
         };
-        let Ok(pid) = pid_str.parse::<i32>() else {
+        let Ok(pid) = pid_str.parse::<u32>() else {
             continue;
         };
-        if pid as u32 == own_pid {
+        if pid == own_pid {
             continue;
         }
-        // Signal 0 = existence check; ESRCH means the process is gone.
-        if nix::sys::signal::kill(Pid::from_raw(pid), None).is_err() {
+        // Only sweep a directory whose owning process is gone. This used to
+        // call `nix::kill` directly with no cfg gate, which made the whole
+        // module fail to compile off Unix.
+        if !solilang::platform::process::is_alive(pid) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }

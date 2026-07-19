@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub trait VirtualFileSystem: Send + Sync {
     fn read(&self, path: &str) -> Result<Vec<u8>, String>;
@@ -13,80 +13,92 @@ pub trait VirtualFileSystem: Send + Sync {
 }
 
 pub struct DiskFS {
-    root: String,
+    root: PathBuf,
 }
 
 impl DiskFS {
     pub fn new(root: &str) -> Self {
         DiskFS {
-            root: root.to_string(),
+            root: PathBuf::from(root),
         }
     }
 
-    fn resolve(&self, path: &str) -> String {
+    /// Map a VFS path to a real filesystem path.
+    ///
+    /// Uses `Path` operations rather than string concatenation throughout.
+    /// String handling looks equivalent and is not: it hardcodes `/`, so on
+    /// Windows — where the root is `C:\...` — an "absolute" test against `/`
+    /// fails, the under-root check never matches, and the root gets doubled.
+    /// `Path::is_absolute` and `Path::starts_with` are separator-correct on
+    /// every platform, and `starts_with` compares whole components, so a
+    /// sibling directory like `/tmp/soli_1-evil` cannot masquerade as being
+    /// under `/tmp/soli_1`.
+    fn resolve(&self, path: &str) -> PathBuf {
         if path.is_empty() || path == "." || path == "/" {
             return self.root.clone();
         }
-        if path.starts_with('/') {
-            // An absolute path already inside the root must be used
-            // verbatim: serve-mode callers (the template engine, the
-            // static-file handler) build absolute paths by joining the
-            // serve folder — which IS this root — so re-prefixing would
-            // double it (`/tmp/soli_X/tmp/soli_X/app/views/...`).
-            let root = self.root.trim_end_matches('/');
-            if path == root
-                || path
-                    .strip_prefix(root)
-                    .is_some_and(|rest| rest.starts_with('/'))
-            {
-                return path.to_string();
+
+        let candidate = Path::new(path);
+        if candidate.is_absolute() {
+            // An absolute path already inside the root must be used verbatim:
+            // serve-mode callers (the template engine, the static-file
+            // handler) build absolute paths by joining the serve folder —
+            // which IS this root — so re-prefixing would double it
+            // (`/tmp/soli_X/tmp/soli_X/app/views/...`).
+            if candidate == self.root || candidate.starts_with(&self.root) {
+                return candidate.to_path_buf();
             }
-            return format!("{}{}", self.root, path);
+            // Absolute but outside the root: graft it under the root, which is
+            // what the string version did by concatenation.
+            let relative = candidate
+                .strip_prefix(std::path::Component::RootDir.as_os_str())
+                .unwrap_or(candidate);
+            return self.root.join(relative);
         }
-        format!("{}/{}", self.root, path)
+
+        self.root.join(candidate)
     }
 }
 
 impl VirtualFileSystem for DiskFS {
     fn read(&self, path: &str) -> Result<Vec<u8>, String> {
         let full = self.resolve(path);
-        std::fs::read(&full).map_err(|e| format!("Failed to read '{}': {}", full, e))
+        std::fs::read(&full).map_err(|e| format!("Failed to read '{}': {}", full.display(), e))
     }
 
     fn exists(&self, path: &str) -> bool {
-        let full = self.resolve(path);
-        Path::new(&full).exists()
+        self.resolve(path).exists()
     }
 
     fn read_to_string(&self, path: &str) -> Result<String, String> {
         let full = self.resolve(path);
-        std::fs::read_to_string(&full).map_err(|e| format!("Failed to read '{}': {}", full, e))
+        std::fs::read_to_string(&full)
+            .map_err(|e| format!("Failed to read '{}': {}", full.display(), e))
     }
 
     fn walk_dir(&self, dir: &str) -> Result<Vec<String>, String> {
         let full = self.resolve(dir);
-        let path = Path::new(&full);
-        if !path.is_dir() {
-            return Err(format!("Not a directory: {}", full));
+        if !full.is_dir() {
+            return Err(format!("Not a directory: {}", full.display()));
         }
         let mut files = Vec::new();
-        let prefix = if self.root.ends_with('/') {
-            self.root.clone()
-        } else {
-            format!("{}/", self.root)
-        };
-        for entry in walkdir::WalkDir::new(path)
+        for entry in walkdir::WalkDir::new(&full)
             .into_iter()
             .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
         {
             let entry = entry.map_err(|e| format!("Walk error: {}", e))?;
             if entry.file_type().is_file() {
-                let full_path = entry.path().to_string_lossy().to_string();
-                let rel = full_path
-                    .strip_prefix(&prefix)
-                    .unwrap_or(&full_path)
-                    .to_string();
-                files.push(rel);
+                // Strip by path components rather than string prefix: the
+                // string form hardcodes `/`, so on Windows nothing ever
+                // matched and every entry was returned as an absolute path
+                // pretending to be relative.
+                let relative = entry
+                    .path()
+                    .strip_prefix(&self.root)
+                    .unwrap_or(entry.path());
+                // VFS keys stay `/`-separated on every platform so they match
+                // the keys `BundleFS` builds from bundle entries.
+                files.push(to_vfs_key(relative));
             }
         }
         files.sort();
@@ -94,9 +106,16 @@ impl VirtualFileSystem for DiskFS {
     }
 
     fn is_dir(&self, path: &str) -> bool {
-        let full = self.resolve(path);
-        Path::new(&full).is_dir()
+        self.resolve(path).is_dir()
     }
+}
+
+/// Render a relative path as a platform-neutral VFS key.
+fn to_vfs_key(path: &Path) -> String {
+    path.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 const MAGIC: &[u8; 4] = b"SOLB";
@@ -312,6 +331,52 @@ mod tests {
     fn test_disk_fs_exists() {
         let fs = DiskFS::new("/tmp");
         assert!(fs.exists("."));
+    }
+
+    #[test]
+    fn test_disk_fs_walk_dir_returns_relative_slash_separated_keys() {
+        // walk_dir's results are used as VFS keys and must match the keys
+        // BundleFS builds from bundle entries, which are always relative and
+        // '/'-separated. Returning absolute paths here (what the old string
+        // prefix-strip did whenever the separator did not match) makes every
+        // subsequent lookup miss.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.path().join("app/views")).unwrap();
+        std::fs::write(dir.path().join("app/views/a.erb"), b"a").unwrap();
+        std::fs::write(dir.path().join("app/views/b.erb"), b"b").unwrap();
+
+        let fs = DiskFS::new(&root);
+        let found = fs.walk_dir("app/views").unwrap();
+        assert_eq!(found, vec!["app/views/a.erb", "app/views/b.erb"]);
+        for key in &found {
+            assert!(!key.starts_with('/'), "key must be relative: {}", key);
+            // Every key must round-trip back through the same VFS.
+            assert!(fs.exists(key), "walk_dir key must resolve: {}", key);
+        }
+    }
+
+    #[test]
+    fn test_disk_fs_under_root_check_respects_component_boundaries() {
+        // `/root-evil/x` shares `/root` as a *string* prefix but is not under
+        // it. Path::starts_with compares whole components, so it is correctly
+        // treated as outside and grafted under the root instead of being
+        // served verbatim from a sibling directory.
+        let fs = DiskFS::new("/srv/app");
+        assert_eq!(
+            fs.resolve("/srv/app/views/x.erb"),
+            Path::new("/srv/app/views/x.erb")
+        );
+        assert_eq!(
+            fs.resolve("/srv/app-evil/x.erb"),
+            Path::new("/srv/app/srv/app-evil/x.erb")
+        );
+        assert_eq!(
+            fs.resolve("app/views/x.erb"),
+            Path::new("/srv/app/app/views/x.erb")
+        );
+        assert_eq!(fs.resolve("/"), Path::new("/srv/app"));
+        assert_eq!(fs.resolve("."), Path::new("/srv/app"));
     }
 
     #[test]

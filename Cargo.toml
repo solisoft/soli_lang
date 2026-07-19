@@ -146,10 +146,6 @@ aes-gcm = "0.10"
 diff = "0.1.13"
 async-channel = "2.3"
 
-# Daemonize (Unix only)
-daemonize = "0.5"
-nix = { version = "0.29", features = ["signal", "process"] }
-
 # Used for Unix-only `O_NOFOLLOW` open flag in the file builtins (SEC-006a).
 # Already a transitive dep via tokio/etc; promoting it to a direct dep so the
 # constant is reachable without depending on a specific transitive's exports.
@@ -236,7 +232,7 @@ time = ">=0.3.47, <0.3.52"
 # unreachable) `ports.ubuntu.com` multiarch mirror. Feature unification makes
 # every `openssl-sys` consumer in the graph vendored too (e.g. rusoto's
 # native-tls), so no target needs a system OpenSSL.
-ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+# Moved to [target.'cfg(unix)'.dependencies] — see the note there.
 
 # Language Server Protocol (used by `soli lsp`)
 tower-lsp = "0.20"
@@ -260,6 +256,19 @@ soli-codegraph = { path = "codegraph", optional = true }
 toml = "0.8"
 cms = { version = "0.2", features = ["std"] }
 x509-cert = "0.2"
+
+# Unix-only dependencies.
+#
+# These were unconditional, which made the crate impossible to build for
+# Windows at dependency-resolution time — before a single cfg mismatch was even
+# reached. `daemonize` is Unix-only by nature; `nix` wraps POSIX signals; and
+# `ssh2` with `vendored-openssl` compiles OpenSSL from source, which on MSVC
+# additionally needs Perl and NASM. `ssh2` exists solely for `soli deploy`, a
+# server-ops feature a Windows desktop app has no use for.
+[target.'cfg(unix)'.dependencies]
+daemonize = "0.5"
+nix = { version = "0.29", features = ["signal", "process"] }
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
