@@ -1,0 +1,150 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    { "type": "paragraph", "value": "${company.name} · ${company.email} · Quote ${quote.number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "6B7B85" } }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${company.name}", "fontSize": 18, "fontWeight": "bold" },
+            { "type": "text", "value": "${company.tagline}", "fontSize": 9 }
+          ],
+          "width": 300, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "content": [
+            { "type": "text", "value": "QUOTE", "fontSize": 24, "fontWeight": "bold" },
+            { "type": "text", "value": "${quote.number}", "fontSize": 10 }
+          ],
+          "width": 181, "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "0E4A5C", "textColor": "FFFFFF" }, "padding_x": 18, "padding_y": 16 }
+    },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "text": "${quote.project}   ·   Prepared for ${customer.name}, ${customer.city}   ·   Valid until ${quote.valid_until}",
+          "width": 481, "fontSize": 9, "fontWeight": "bold", "alignment": "center",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "EEF2F6", "textColor": "0E4A5C" }, "padding_x": 12, "padding_y": 8 }
+    },
+    { "type": "move", "y": 22 },
+
+    {
+      "type": "table",
+      "header_columns": [
+        { "text": "DESCRIPTION", "width": 271, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "0E4A5C" },
+        { "text": "QTY",         "width": 50,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "0E4A5C" },
+        { "text": "UNIT",        "width": 70,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "0E4A5C" },
+        { "text": "AMOUNT",      "width": 90,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "0E4A5C" }
+      ],
+      "rows": [],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+
+    { "type": "repeat", "data": "rows", "content": [
+      { "type": "if", "when": "kind", "equals": "section",
+        "content": [
+          { "type": "move", "y": 8 },
+          {
+            "type": "table",
+            "header_columns": [
+              { "text": "${name}", "width": 481, "fontSize": 9, "fontWeight": "bold", "alignment": "left",
+                "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+            ],
+            "rows": [],
+            "options": { "header": { "fillColor": "EEF2F6", "textColor": "0E4A5C" }, "padding_x": 8, "padding_y": 5 }
+          }
+        ],
+        "else": [
+          { "type": "if", "when": "kind", "equals": "subtotal",
+            "content": [
+              {
+                "type": "table",
+                "header_columns": [],
+                "rows": [
+                  [
+                    { "text": "${name}",   "width": 391, "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" },
+                    { "text": "${amount}", "width": 90,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "C7D5DC" }
+                  ]
+                ],
+                "options": { "padding_x": 6, "padding_y": 5 }
+              }
+            ],
+            "else": [
+              {
+                "type": "table",
+                "header_columns": [],
+                "rows": [
+                  [
+                    { "text": "${name}",   "width": 271, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+                    { "text": "${qty}",    "width": 50,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+                    { "text": "${unit}",   "width": 70,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+                    { "text": "${amount}", "width": 90,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+                  ]
+                ],
+                "options": { "padding_x": 6, "padding_y": 3 }
+              }
+            ] }
+        ] }
+    ]},
+
+    { "type": "move", "y": 18 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Net total", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.net}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ],
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "VAT ${quote.vat_rate}", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.vat}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ],
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Quoted total", "width": 130, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "0E4A5C" },
+          { "text": "${totals.gross}", "width": 80, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "0E4A5C" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+
+    { "type": "move", "y": 22 },
+    { "type": "rect", "width": 481, "height": 96, "fill": "FFFFFF", "border": "0E4A5C", "borderWidth": 1, "dash": [4, 3] },
+    { "type": "move", "x": 16, "y": 13 },
+    { "type": "paragraph", "value": "APPROVED FOR WORK", "options": { "fontSize": 9, "fontWeight": "bold", "color": "0E4A5C" } },
+    { "type": "move", "y": 3 },
+    { "type": "paragraph", "value": "Return one signed copy to accept this quote. Work is scheduled on receipt of the signed copy and the ${quote.deposit} deposit.", "options": { "fontSize": 8.5, "color": "51636D" } },
+    { "type": "move", "y": 26 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "Date", "width": 150, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" },
+          { "text": "", "width": 24, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Signature", "width": 275, "fontSize": 8, "alignment": "left", "borderSides": { "top": "false", "bottom": "true", "left": "false", "right": "false" }, "borderColor": "0E4A5C" }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 9 }
+    },
+    { "type": "move", "x": -16, "y": 18 },
+    { "type": "paragraph", "value": "${quote.note}", "options": { "fontSize": 8, "color": "6B7B85" } }
+  ]
+}

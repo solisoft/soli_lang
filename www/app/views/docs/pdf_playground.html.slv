@@ -68,7 +68,11 @@
 
   var RENDER_URL = "/docs/builtins/pdf-playground/render";
   var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/";
-  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics", "dynamic", "markdown", "accessible", "features"];
+  // The billing templates have no button of their own — the bar is full. They
+  // are reachable via ?sample=<name> from the templates gallery, and listing
+  // them here is what makes that link resolve.
+  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics", "dynamic", "markdown", "accessible", "features",
+                 "invoice_compliant", "invoice_minimal", "invoice_subscription", "quote_sections", "quote_options", "credit_note"];
   var ED = {}, lastUrl = null, timer = null, statusEl, frame, suspendAuto = false;
 
   function setStatus(text, kind) {
@@ -142,6 +146,12 @@
   var PRESET_KEY = "pg-sample";
   function rememberPreset(name) { try { localStorage.setItem(PRESET_KEY, name); } catch (e) {} }
   function initialPreset() {
+    // ?sample=<name> wins over the remembered one: the templates gallery links
+    // here to open a specific sample, and that intent beats the last visit.
+    try {
+      var asked = new URLSearchParams(window.location.search).get("sample");
+      if (PRESETS.indexOf(asked) >= 0) return asked;
+    } catch (e) {}
     try {
       var saved = localStorage.getItem(PRESET_KEY);
       if (PRESETS.indexOf(saved) >= 0) return saved;

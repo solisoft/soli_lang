@@ -1,0 +1,135 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    { "type": "paragraph", "value": "${studio.name} · ${studio.email} · Quote ${quote.number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "7A7290" } }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${studio.name}", "fontSize": 18, "fontWeight": "bold" },
+            { "type": "text", "value": "${studio.tagline}", "fontSize": 9 }
+          ],
+          "width": 300, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "content": [
+            { "type": "text", "value": "QUOTE", "fontSize": 24, "fontWeight": "bold" },
+            { "type": "text", "value": "${quote.number}", "fontSize": 10 }
+          ],
+          "width": 181, "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "4C3A8A", "textColor": "FFFFFF" }, "padding_x": 18, "padding_y": 16 }
+    },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "text": "${quote.project}   ·   For ${customer.name}   ·   Valid until ${quote.valid_until}",
+          "width": 481, "fontSize": 9, "fontWeight": "bold", "alignment": "center",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "F1EEF9", "textColor": "4C3A8A" }, "padding_x": 12, "padding_y": 8 }
+    },
+    { "type": "move", "y": 22 },
+
+    { "type": "paragraph", "value": "BASE SCOPE", "options": { "fontSize": 9, "fontWeight": "bold", "color": "4C3A8A" } },
+    { "type": "move", "y": 2 },
+    { "type": "paragraph", "value": "Included in the quoted price. No action needed.", "options": { "fontSize": 8.5, "color": "6E6880" } },
+    { "type": "move", "y": 8 },
+    {
+      "type": "table",
+      "data": "base_items",
+      "header_columns": [
+        { "text": "DELIVERABLE", "width": 281, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "QTY",         "width": 50,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "UNIT",        "width": 70,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "AMOUNT",      "width": 80,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 281, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E7E3F0" },
+          { "text": "${qty}",    "width": 50,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E7E3F0" },
+          { "text": "${unit}",   "width": 70,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E7E3F0" },
+          { "text": "${amount}", "width": 80,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E7E3F0" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    { "type": "move", "y": 6 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "Base scope, net", "width": 401, "fontSize": 9.5, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.base_net}", "width": 80, "fontSize": 9.5, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 4 }
+    },
+    { "type": "move", "y": 24 },
+
+    { "type": "paragraph", "value": "OPTIONS", "options": { "fontSize": 9, "fontWeight": "bold", "color": "4C3A8A" } },
+    { "type": "move", "y": 2 },
+    { "type": "paragraph", "value": "Tick the options you want and return this page. Each is priced independently and can be added later.", "options": { "fontSize": 8.5, "color": "6E6880" } },
+    { "type": "move", "y": 8 },
+    {
+      "type": "table",
+      "data": "options",
+      "header_columns": [
+        { "text": "",           "width": 22,  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "OPTION",     "width": 259, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "QTY",        "width": 50,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "UNIT",       "width": 70,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" },
+        { "text": "AMOUNT",     "width": 80,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "4C3A8A" }
+      ],
+      "rows": [
+        [
+          { "text": "",         "width": 22,  "borderSides": { "top": "true", "left": "true", "right": "true", "bottom": "true" }, "borderColor": "4C3A8A", "valign": "middle" },
+          { "text": "${name}",  "width": 259, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${qty}",   "width": 50,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${unit}",  "width": 70,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${amount}","width": 80,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ]
+      ],
+      "options": { "header": { "fillColor": "F1EEF9", "textColor": "4C3A8A" }, "padding_x": 6, "padding_y": 7 }
+    },
+    { "type": "move", "y": 6 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "All options, net", "width": 401, "fontSize": 9.5, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.options_net}", "width": 80, "fontSize": 9.5, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 4 }
+    },
+    { "type": "move", "y": 26 },
+
+    { "type": "rect", "width": 235, "height": 74, "fill": "F4F3F7" },
+    { "type": "move", "x": 246, "y": 0 },
+    { "type": "rect", "width": 235, "height": 74, "fill": "4C3A8A" },
+    { "type": "move", "x": -232, "y": 14 },
+    { "type": "paragraph", "spans": [ { "text": "BASE SCOPE ONLY", "fontWeight": "bold", "color": "6E6880" } ], "options": { "fontSize": 8 } },
+    { "type": "paragraph", "spans": [ { "text": "${totals.base_gross}", "fontWeight": "bold", "color": "2A2438" } ], "options": { "fontSize": 20 } },
+    { "type": "paragraph", "spans": [ { "text": "incl. VAT ${quote.vat_rate} · ${totals.base_vat}", "color": "6E6880" } ], "options": { "fontSize": 8 } },
+    { "type": "move", "x": 246, "y": -44 },
+    { "type": "paragraph", "spans": [ { "text": "WITH ALL OPTIONS", "fontWeight": "bold", "color": "FFFFFF" } ], "options": { "fontSize": 8 } },
+    { "type": "paragraph", "spans": [ { "text": "${totals.all_gross}", "fontWeight": "bold", "color": "FFFFFF" } ], "options": { "fontSize": 20 } },
+    { "type": "paragraph", "spans": [ { "text": "incl. VAT ${quote.vat_rate} · ${totals.all_vat}", "color": "D9D0F0" } ], "options": { "fontSize": 8 } },
+    { "type": "move", "x": -260, "y": 36 },
+    { "type": "paragraph", "value": "${quote.note}", "options": { "fontSize": 8, "color": "7A7290" } }
+  ]
+}

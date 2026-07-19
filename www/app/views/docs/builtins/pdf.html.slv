@@ -52,7 +52,8 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
             </span>
             Samples
         </h2>
-        <p class="text-gray-400 mb-6">Every sample below is one template file rendered with the engine. The visual language is deliberate: solid colour <em>bands</em> (a filled table-header row) and hairline accent <em>rules</em> (cell borders) carry the identity; body text stays disciplined black. The full templates live in <code>pdf/samples/</code>.</p>
+        <p class="text-gray-400 mb-4">Every sample below is one template file rendered with the engine. The visual language is deliberate: solid colour <em>bands</em> (a filled table-header row) and hairline accent <em>rules</em> (cell borders) carry the identity; body text stays disciplined black. The full templates live in <code>pdf/samples/</code>.</p>
+        <p class="text-gray-400 mb-6 rounded-lg border border-teal-400/20 bg-teal-500/5 px-4 py-3 text-sm">Looking for a finished <strong>invoice or quote</strong> to start from? <a href="/docs/builtins/pdf-templates" class="text-teal-300 hover:underline">Invoice &amp; Quote Templates</a> collects eight ready-to-copy billing documents &mdash; compliant and minimal invoices, subscription billing, a credit note, and sectioned or optioned quotes &mdash; each with its data file, preview and a playground link.</p>
 
         <div class="grid gap-6 md:grid-cols-2">
             <!-- Modern invoice -->

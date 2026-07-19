@@ -1,0 +1,37 @@
+{
+  "data": {
+    "studio": {
+      "name": "Fjord & Kessler",
+      "tagline": "Brand and packaging design",
+      "email": "studio@fjordkessler.at"
+    },
+    "customer": {
+      "name": "Ovenhaus Bakery, Vienna"
+    },
+    "quote": {
+      "number": "FK-2025-031",
+      "project": "Brand relaunch",
+      "valid_until": "15 Jan 2026",
+      "vat_rate": "20%",
+      "note": "Options may be added at any point during the project at the prices shown. Prices hold for 60 days from the issue date; after that they are re-quoted at the then-current rates."
+    },
+    "base_items": [
+      { "name": "Brand identity system", "qty": "1", "unit": "3,200.00", "amount": "3,200.00" },
+      { "name": "Packaging design, three SKUs", "qty": "3", "unit": "480.00", "amount": "1,440.00" },
+      { "name": "Brand guidelines document", "qty": "1", "unit": "900.00", "amount": "900.00" }
+    ],
+    "options": [
+      { "name": "Motion identity package", "qty": "1", "unit": "1,200.00", "amount": "1,200.00" },
+      { "name": "Photography art direction", "qty": "1 day", "unit": "750.00", "amount": "750.00" },
+      { "name": "Storefront signage design", "qty": "1", "unit": "640.00", "amount": "640.00" }
+    ],
+    "totals": {
+      "base_net": "€5,540.00",
+      "options_net": "€2,590.00",
+      "base_vat": "€1,108.00",
+      "base_gross": "€6,648.00",
+      "all_vat": "€1,626.00",
+      "all_gross": "€9,756.00"
+    }
+  }
+}

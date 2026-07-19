@@ -1,0 +1,32 @@
+{
+  "data": {
+    "seller": {
+      "name": "Inês Ferreira",
+      "vat_number": "PT249883107"
+    },
+    "customer": {
+      "name": "Vela Editorial Lda",
+      "city": "Lisbon, Portugal"
+    },
+    "invoice": {
+      "number": "2025-14",
+      "issued": "28 Nov 2025",
+      "due": "28 December 2025",
+      "vat_rate": "23%",
+      "terms": "Payment by bank transfer within 30 days. Reference 2025-14."
+    },
+    "items": [
+      { "name": "Brand identity system", "amount": "2,400.00" },
+      { "name": "Art direction retainer, Q4", "amount": "1,600.00" }
+    ],
+    "totals": {
+      "net": "4,000.00",
+      "vat": "920.00",
+      "due": "€4,920.00"
+    },
+    "payment": {
+      "iban": "PT50 0002 0123 1234 5678 9015 4",
+      "bic": "CGDIPTPL"
+    }
+  }
+}

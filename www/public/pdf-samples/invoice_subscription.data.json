@@ -1,0 +1,47 @@
+{
+  "data": {
+    "vendor": {
+      "name": "Halcyon Cloud",
+      "tagline": "Managed application platform",
+      "email": "billing@halcyon.cloud",
+      "vat_number": "IE3417852GH"
+    },
+    "customer": {
+      "name": "Bramble Retail Ltd",
+      "account_id": "acct_8f31c0"
+    },
+    "invoice": {
+      "number": "HC-2025-12-04417",
+      "vat_rate": "23%",
+      "note": "This invoice was charged automatically. Usage is metered hourly and billed in arrears; the plan fee is billed in advance for the period shown."
+    },
+    "period": {
+      "label": "1 – 31 December 2025",
+      "next_renewal": "1 January 2026",
+      "renewal_note": "Cancel or change your plan before that date to avoid the next charge."
+    },
+    "subscription": [
+      { "name": "Platform plan — Team", "detail": "12 seats · billed in advance", "qty": "12", "rate": "24.00", "amount": "288.00" },
+      { "name": "Additional seat", "detail": "prorated from 14 Dec (18 of 31 days)", "qty": "1", "rate": "24.00", "amount": "14.20" }
+    ],
+    "usage": [
+      { "name": "Object storage", "used": "240 GB", "rate": "0.100", "amount": "24.00" },
+      { "name": "Outbound transfer", "used": "1,180 GB", "rate": "0.020", "amount": "23.60" },
+      { "name": "Build minutes", "used": "4,200 min", "rate": "0.004", "amount": "16.80" }
+    ],
+    "spend": [
+      { "name": "Platform", "amount": 302.20 },
+      { "name": "Storage", "amount": 24.00 },
+      { "name": "Transfer", "amount": 23.60 },
+      { "name": "Build", "amount": 16.80 }
+    ],
+    "totals": {
+      "net": "€366.60",
+      "vat": "€84.32",
+      "due": "€450.92"
+    },
+    "payment": {
+      "method": "Visa ending 4417"
+    }
+  }
+}

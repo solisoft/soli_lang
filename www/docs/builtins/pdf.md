@@ -8,6 +8,8 @@ Render a PDF from a **JSON layout template** + a **JSON data** document, in-proc
 
 All three return the PDF as a **base64 string** (Soli has no bytes type). Save it with `file_write_base64(path, b64)`.
 
+> Looking for a finished invoice or quote to start from? See **[Invoice & Quote Templates](pdf-templates.md)** — eight ready-to-copy billing documents (compliant and minimal invoices, subscription billing, credit note, sectioned and optioned quotes) with their data files and previews.
+
 ---
 
 ## Quickstart

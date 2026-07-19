@@ -74,7 +74,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Documents</td>
-                        <td class="py-3 px-4 text-gray-400"><code>pdf_render</code>, Factur-X / EN&nbsp;16931 e-invoices (PDF/A-3b), PAdES digital signatures + timestamping, tagged PDF/UA output, merge/fill/stamp, markdown&rarr;PDF, spreadsheets (CSV/XLSX read+write)</td>
+                        <td class="py-3 px-4 text-gray-400"><code>pdf_render</code>, Factur-X / EN&nbsp;16931 e-invoices (PDF/A-3b), PAdES digital signatures + timestamping, tagged PDF/UA output, merge/fill/stamp, markdown&rarr;PDF, ready-made <a href="/docs/builtins/pdf-templates" class="text-amber-300 hover:underline">invoice &amp; quote templates</a>, spreadsheets (CSV/XLSX read+write)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Tooling</td>

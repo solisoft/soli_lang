@@ -1,0 +1,28 @@
+{
+  "number": "MI-2025-0184",
+  "issue_date": "2025-11-28",
+  "due_date": "2025-12-28",
+  "currency": "EUR",
+  "seller": {
+    "name": "Meridian Instruments BV",
+    "address_line": "Keizersgracht 214",
+    "postcode": "1016 DX",
+    "city": "Amsterdam",
+    "country": "NL",
+    "vat_id": "NL812345678B01"
+  },
+  "buyer": {
+    "name": "Concertgebouw Vastgoed BV",
+    "address_line": "Concertgebouwplein 10",
+    "postcode": "1071 LN",
+    "city": "Amsterdam",
+    "country": "NL",
+    "vat_id": "NL004512889B02"
+  },
+  "lines": [
+    { "name": "On-site calibration, climate sensor array", "quantity": 2, "unit_price": 480.00, "vat_rate": 21.0 },
+    { "name": "Sensor module MX-4, replacement unit", "quantity": 6, "unit_price": 145.00, "vat_rate": 21.0 },
+    { "name": "Technical handbook, printed edition", "quantity": 12, "unit_price": 18.50, "vat_rate": 9.0 }
+  ],
+  "payment_terms": "Net 30 days from the invoice date"
+}

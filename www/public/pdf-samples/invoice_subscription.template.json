@@ -1,0 +1,144 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    { "type": "paragraph", "value": "${vendor.name} · ${vendor.email} · VAT ${vendor.vat_number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "6F6C90" } }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${vendor.name}", "fontSize": 18, "fontWeight": "bold" },
+            { "type": "text", "value": "${vendor.tagline}", "fontSize": 9 }
+          ],
+          "width": 300, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "content": [
+            { "type": "text", "value": "INVOICE", "fontSize": 24, "fontWeight": "bold" },
+            { "type": "text", "value": "${invoice.number}", "fontSize": 10 }
+          ],
+          "width": 181, "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "312E81", "textColor": "FFFFFF" }, "padding_x": 18, "padding_y": 16 }
+    },
+
+    { "type": "rect", "width": 481, "height": 46, "fill": "EEEDFB" },
+    { "type": "move", "x": 18, "y": 11 },
+    { "type": "paragraph", "spans": [ { "text": "BILLING PERIOD", "fontWeight": "bold", "color": "5B54C4" } ], "options": { "fontSize": 8 } },
+    { "type": "paragraph", "spans": [ { "text": "${period.label}", "fontWeight": "bold", "color": "312E81" } ], "options": { "fontSize": 13 } },
+    { "type": "move", "x": 300, "y": -21 },
+    { "type": "paragraph", "spans": [ { "text": "ACCOUNT", "fontWeight": "bold", "color": "5B54C4" } ], "options": { "fontSize": 8 } },
+    { "type": "paragraph", "spans": [ { "text": "${customer.name}", "fontWeight": "bold", "color": "312E81" } ], "options": { "fontSize": 11 } },
+    { "type": "paragraph", "spans": [ { "text": "${customer.account_id}", "color": "6F6C90" } ], "options": { "fontSize": 8.5 } },
+    { "type": "move", "x": -318, "y": 26 },
+
+    { "type": "paragraph", "value": "SUBSCRIPTION", "options": { "fontSize": 9, "fontWeight": "bold", "color": "312E81" } },
+    { "type": "move", "y": 6 },
+    {
+      "type": "table",
+      "data": "subscription",
+      "header_columns": [
+        { "text": "PLAN",     "width": 281, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "QTY",      "width": 50,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "RATE",     "width": 70,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "AMOUNT",   "width": 80,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" }
+      ],
+      "rows": [
+        [
+          {
+            "content": [
+              { "type": "text", "value": "${name}", "fontSize": 9.5 },
+              { "type": "text", "value": "${detail}", "fontSize": 8 }
+            ],
+            "width": 281, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5"
+          },
+          { "text": "${qty}",    "width": 50, "fontSize": 9.5, "alignment": "center", "valign": "top", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" },
+          { "text": "${rate}",   "width": 70, "fontSize": 9.5, "alignment": "right",  "valign": "top", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" },
+          { "text": "${amount}", "width": 80, "fontSize": 9.5, "alignment": "right",  "valign": "top", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+
+    { "type": "move", "y": 18 },
+    { "type": "paragraph", "value": "METERED USAGE", "options": { "fontSize": 9, "fontWeight": "bold", "color": "312E81" } },
+    { "type": "move", "y": 6 },
+    {
+      "type": "table",
+      "data": "usage",
+      "header_columns": [
+        { "text": "RESOURCE", "width": 281, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "USED",     "width": 90,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "RATE",     "width": 60,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" },
+        { "text": "AMOUNT",   "width": 50,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "312E81" }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 281, "fontSize": 9.5, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" },
+          { "text": "${used}",   "width": 90,  "fontSize": 9.5, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" },
+          { "text": "${rate}",   "width": 60,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" },
+          { "text": "${amount}", "width": 50,  "fontSize": 9.5, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "E6E4F5" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+
+    { "type": "move", "y": 14 },
+    { "type": "paragraph", "value": "SPEND BY PRODUCT", "options": { "fontSize": 9, "fontWeight": "bold", "color": "312E81" } },
+    { "type": "move", "y": 6 },
+    {
+      "type": "chart",
+      "kind": "donut",
+      "data": "spend",
+      "label": "name",
+      "value": "amount",
+      "width": 210,
+      "height": 106,
+      "legend": true,
+      "colors": ["312E81", "5B54C4", "8B84E8", "C3BEF6"]
+    },
+
+    { "type": "move", "y": 12 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Net", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.net}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ],
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "VAT ${invoice.vat_rate}", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.vat}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ],
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Charged to card", "width": 130, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "312E81" },
+          { "text": "${totals.due}", "width": 80, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "bottom": "false", "left": "false", "right": "false" }, "borderColor": "312E81" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+
+    { "type": "move", "y": 14 },
+    { "type": "rect", "width": 481, "height": 40, "fill": "F6F5FD", "border": "DFDCF6", "borderWidth": 0.8 },
+    { "type": "move", "x": 16, "y": 11 },
+    { "type": "paragraph", "spans": [
+        { "text": "Next renewal ", "color": "6F6C90" },
+        { "text": "${period.next_renewal}", "fontWeight": "bold", "color": "312E81" },
+        { "text": "  ·  ${payment.method}. ${period.renewal_note}", "color": "6F6C90" }
+      ], "options": { "fontSize": 8.5 } },
+    { "type": "move", "x": -16, "y": 34 },
+    { "type": "paragraph", "value": "${invoice.note}", "options": { "fontSize": 8, "color": "8A87A6" } }
+  ]
+}

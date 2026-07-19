@@ -545,7 +545,7 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
-            Element::Table(t) => self.table(t, data, root, template)?,
+            Element::Table(t) => self.table(t, root, template)?,
             Element::Hr(h) => self.hr(h, template, root),
             Element::Rect(r) => self.rect(r),
             Element::Line(l) => self.line(l),
@@ -553,7 +553,7 @@ impl<'a> Engine<'a> {
             Element::Barcode(b) => self.barcode(b, root),
             Element::Ellipse(e) => self.ellipse(e),
             Element::List(l) => self.list(l, root, template),
-            Element::Chart(c) => self.chart(c, data, root, template),
+            Element::Chart(c) => self.chart(c, root, template),
             Element::Repeat(r) => self.repeat(r, data, root, template)?,
             Element::If(c) => self.conditional(c, false, data, root, template)?,
             Element::Unless(c) => self.conditional(c, true, data, root, template)?,
@@ -630,7 +630,8 @@ impl<'a> Engine<'a> {
         root: &Resolver,
         template: &Template,
     ) -> Result<()> {
-        let Some(items) = data.array(&r.data) else {
+        // Scope-first: a nested `repeat` binds to an array on the current item.
+        let Some(items) = root.array(&r.data) else {
             return Ok(());
         };
         for item in items {
@@ -1050,8 +1051,8 @@ impl<'a> Engine<'a> {
 
     /// A bar/line/pie chart drawn from data-bound or inline points. Flows like a
     /// block: a title (optional) above the plot, then the chart, then a small gap.
-    fn chart(&mut self, c: &ChartEl, data: &DataDocument, root: &Resolver, template: &Template) {
-        let (categories, series) = self.chart_series(c, data, root);
+    fn chart(&mut self, c: &ChartEl, root: &Resolver, template: &Template) {
+        let (categories, series) = self.chart_series(c, root);
         if categories.is_empty() || series.iter().all(|s| s.values.is_empty()) {
             self.warnings.push(RenderWarning::ElementSkipped {
                 kind: "chart".to_string(),
@@ -1129,7 +1130,6 @@ impl<'a> Engine<'a> {
     fn chart_series(
         &mut self,
         c: &ChartEl,
-        data: &DataDocument,
         root: &Resolver,
     ) -> (Vec<String>, Vec<crate::chart::Series>) {
         let label_field = c.label.as_deref().unwrap_or("label");
@@ -1137,7 +1137,7 @@ impl<'a> Engine<'a> {
 
         // Multi-series: one bound array, a value field per series.
         if let Some(defs) = &c.values {
-            let Some(items) = c.data.as_deref().and_then(|k| data.array(k)) else {
+            let Some(items) = c.data.as_deref().and_then(|k| root.array(k)) else {
                 return (Vec::new(), Vec::new());
             };
             let categories = items
@@ -1170,7 +1170,7 @@ impl<'a> Engine<'a> {
 
         // Single series: bound array, or inline points.
         if let Some(key) = &c.data {
-            let Some(items) = data.array(key) else {
+            let Some(items) = root.array(key) else {
                 return (Vec::new(), Vec::new());
             };
             let mut categories = Vec::with_capacity(items.len());
@@ -1906,7 +1906,6 @@ impl<'a> Engine<'a> {
     fn table(
         &mut self,
         t: &Table,
-        data: &DataDocument,
         root: &Resolver,
         template: &Template,
     ) -> Result<()> {
@@ -1927,7 +1926,7 @@ impl<'a> Engine<'a> {
 
         // Body rows: either the literal rows or the data-bound expansion.
         let bound_items: Vec<&serde_json::Value> = match &t.data {
-            Some(key) => data
+            Some(key) => root
                 .array(key)
                 .map(|a| a.iter().collect())
                 .unwrap_or_default(),

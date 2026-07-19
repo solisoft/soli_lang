@@ -85,6 +85,23 @@ impl<'a> Resolver<'a> {
         }
         lookup_value(self.root, path).and_then(render_scalar)
     }
+
+    /// Borrow the array at `path`, scope first then root — the same precedence
+    /// `lookup` uses for scalars. This is what lets a `repeat` (or a data-bound
+    /// table) nested inside another `repeat` bind to an array *on the current
+    /// item*: `"data": "lines"` inside a repeat over `sections` resolves to that
+    /// section's `lines`. Resolving only against the root, as this used to, made
+    /// every nested binding silently render nothing.
+    pub fn array(&self, path: &str) -> Option<&'a [Value]> {
+        if let Some(scope) = self.scope {
+            if let Some(a) = lookup_value(scope, path).and_then(|v| v.as_array()) {
+                return Some(a.as_slice());
+            }
+        }
+        lookup_value(self.root, path)
+            .and_then(|v| v.as_array())
+            .map(|a| a.as_slice())
+    }
 }
 
 /// Walk a dotted path through nested JSON objects.

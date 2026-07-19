@@ -1,0 +1,39 @@
+{
+  "data": {
+    "seller": {
+      "name": "Meridian Instruments BV",
+      "tagline": "Precision measurement and calibration",
+      "address": "Keizersgracht 214",
+      "city": "1016 DX Amsterdam, Netherlands",
+      "vat_number": "NL812345678B01"
+    },
+    "customer": {
+      "name": "Concertgebouw Vastgoed BV",
+      "city": "1071 LN Amsterdam, Netherlands",
+      "vat_number": "NL004512889B02"
+    },
+    "credit": {
+      "number": "CN-2025-0031",
+      "issued": "12 Dec 2025",
+      "reason": "Two sensor modules returned unused within the 14-day window, plus a goodwill credit for the rescheduled calibration visit.",
+      "settlement": "The credited amount is refunded to the original bank account within 14 days, or offset against the next invoice if you prefer — reply to this note to choose."
+    },
+    "original": {
+      "number": "MI-2025-0184",
+      "issued": "28 Nov 2025",
+      "amount": "€2,456.28"
+    },
+    "items": [
+      { "name": "Sensor module MX-4, returned unused", "qty": "-2", "unit": "145.00", "vat_rate": "21%", "net": "-290.00" },
+      { "name": "Goodwill credit, rescheduled site visit", "qty": "-1", "unit": "120.00", "vat_rate": "21%", "net": "-120.00" }
+    ],
+    "vat_breakdown": [
+      { "rate": "21%", "base": "-410.00", "amount": "-86.10" }
+    ],
+    "totals": {
+      "net": "-€410.00",
+      "vat": "-€86.10",
+      "credited": "-€496.10"
+    }
+  }
+}

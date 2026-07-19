@@ -14120,6 +14120,69 @@
         "audit",
         "sdbql"
       ]
+    },
+    {
+      "title": "Invoice & Quote Templates",
+      "type": "guide",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates",
+      "signature": "",
+      "description": "Eight ready-to-copy billing documents: compliant and minimal invoices, subscription billing, credit note, sectioned and optioned quotes, plus the starter pair.",
+      "keywords": ["invoice", "quote", "devis", "facture", "template", "billing", "gallery", "credit note", "estimate", "pdf template", "vat"]
+    },
+    {
+      "title": "Compliant invoice template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#invoice-compliant",
+      "signature": "",
+      "description": "VAT invoice template with a per-rate VAT breakdown, both parties' VAT numbers, statutory late-payment terms and an EPC payment QR.",
+      "keywords": ["invoice", "vat", "compliant", "en16931", "facturx", "epc", "qr", "statutory", "breakdown"]
+    },
+    {
+      "title": "Minimal invoice template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#invoice-minimal",
+      "signature": "",
+      "description": "Monochrome invoice template built on an extreme type scale: the amount due at 46pt and everything else at 8pt.",
+      "keywords": ["invoice", "minimal", "monochrome", "freelance", "simple", "typography"]
+    },
+    {
+      "title": "Subscription invoice template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#invoice-subscription",
+      "signature": "",
+      "description": "Billing-period invoice template with plan fees, prorated seats, metered usage and a donut chart of spend by product.",
+      "keywords": ["invoice", "subscription", "saas", "recurring", "proration", "usage", "metered", "donut", "chart", "renewal"]
+    },
+    {
+      "title": "Credit note template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#credit-note",
+      "signature": "",
+      "description": "Credit note template with negative amounts, a reference band naming the original invoice and its reason, and settlement terms.",
+      "keywords": ["credit note", "avoir", "refund", "negative", "cancellation", "correction", "vat"]
+    },
+    {
+      "title": "Sectioned quote template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#quote-sections",
+      "signature": "",
+      "description": "Quote template grouping line items into trade sections with per-section subtotals and a signature acceptance box.",
+      "keywords": ["quote", "devis", "estimate", "sections", "lots", "subtotal", "signature", "acceptance", "construction", "trades", "repeat"]
+    },
+    {
+      "title": "Quote with options template",
+      "type": "page",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf-templates#quote-options",
+      "signature": "",
+      "description": "Quote template separating base scope from optional line items, with tick boxes and two totals: base only and with all options.",
+      "keywords": ["quote", "options", "optional", "add-ons", "tick box", "checkbox", "dual total", "agency", "studio"]
     }
   ]
 }

@@ -1,0 +1,584 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-8">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins/pdf" class="text-gray-400 hover:text-white transition-colors">PDF &amp; Factur-X</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            <span class="text-white">Invoice &amp; quote templates</span>
+        </nav>
+        <h1 class="text-3xl font-bold tracking-tight text-white sm:text-4xl mb-3">Invoice &amp; quote templates</h1>
+        <p class="text-lg text-gray-300 leading-7 max-w-3xl">
+            Eight billing documents you can copy and put to work. Each one answers the same three questions &mdash; who, how much, by when &mdash; with a different structure, because a VAT-compliant invoice, a builder&rsquo;s quote and a metered subscription bill are not the same document wearing different colours.
+        </p>
+        <p class="text-sm text-gray-500 mt-3 max-w-3xl">
+            Every template is a single JSON file rendered by <code class="text-teal-300">pdf_render</code>. They live in <code>www/public/pdf-samples/</code>, and the previews below are the real engine output at 150&nbsp;DPI.
+        </p>
+    </div>
+
+    <!-- Contact sheet: the index is the visual -->
+    <div class="mb-12">
+        <div class="flex items-baseline justify-between mb-3">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">The set</span>
+            <span class="text-xs text-gray-600">Pick a sheet to jump to it</span>
+        </div>
+        <div class="tpl-sheets flex gap-3 overflow-x-auto pb-3">
+            <a href="#invoice-compliant" class="tpl-sheet" style="--ink:#7EA6E0">
+                <img src="/images/docs/pdf/invoice_compliant.png" alt="Compliant invoice" loading="lazy" />
+                <span>Compliant</span>
+            </a>
+            <a href="#invoice-minimal" class="tpl-sheet" style="--ink:#C3C9D4">
+                <img src="/images/docs/pdf/invoice_minimal.png" alt="Minimal invoice" loading="lazy" />
+                <span>Minimal</span>
+            </a>
+            <a href="#invoice-subscription" class="tpl-sheet" style="--ink:#A5A0F0">
+                <img src="/images/docs/pdf/invoice_subscription.png" alt="Subscription invoice" loading="lazy" />
+                <span>Subscription</span>
+            </a>
+            <a href="#credit-note" class="tpl-sheet" style="--ink:#F08CA6">
+                <img src="/images/docs/pdf/credit_note.png" alt="Credit note" loading="lazy" />
+                <span>Credit note</span>
+            </a>
+            <a href="#quote-sections" class="tpl-sheet" style="--ink:#6FC3D8">
+                <img src="/images/docs/pdf/quote_sections.png" alt="Sectioned quote" loading="lazy" />
+                <span>Sectioned quote</span>
+            </a>
+            <a href="#quote-options" class="tpl-sheet" style="--ink:#B4A3EE">
+                <img src="/images/docs/pdf/quote_options.png" alt="Quote with options" loading="lazy" />
+                <span>Quote + options</span>
+            </a>
+            <a href="#invoice-starter" class="tpl-sheet" style="--ink:#5EEAD4">
+                <img src="/images/docs/pdf/invoice.png" alt="Starter invoice" loading="lazy" />
+                <span>Starter invoice</span>
+            </a>
+            <a href="#quote-starter" class="tpl-sheet" style="--ink:#F0C176">
+                <img src="/images/docs/pdf/quote.png" alt="Starter quote" loading="lazy" />
+                <span>Starter quote</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Selection matrix -->
+    <section id="section-choose" class="scroll-mt-20 mb-14">
+        <h2 class="text-2xl font-bold text-white mb-3">Choose by what you need</h2>
+        <p class="text-gray-400 mb-5 max-w-3xl">The templates differ in structure, not decoration. This is what each one actually gives you.</p>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm min-w-[820px]">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="text-left font-semibold px-4 py-3">Template</th>
+                        <th class="px-3 py-3 font-semibold">VAT breakdown</th>
+                        <th class="px-3 py-3 font-semibold">Payment QR</th>
+                        <th class="px-3 py-3 font-semibold">Signature box</th>
+                        <th class="px-3 py-3 font-semibold">Grouped subtotals</th>
+                        <th class="px-3 py-3 font-semibold">Conditional lines</th>
+                        <th class="px-3 py-3 font-semibold">Chart</th>
+                        <th class="px-3 py-3 font-semibold">Factur-X</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 tpl-matrix">
+                    <tr>
+                        <td class="px-4 py-3"><a href="#invoice-compliant" class="text-white hover:text-teal-300">Compliant invoice</a></td>
+                        <td class="yes">&check;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#invoice-minimal" class="text-white hover:text-teal-300">Minimal invoice</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#invoice-subscription" class="text-white hover:text-teal-300">Subscription invoice</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#credit-note" class="text-white hover:text-teal-300">Credit note</a></td>
+                        <td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#quote-sections" class="text-white hover:text-teal-300">Sectioned quote</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td class="yes">&check;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#quote-options" class="text-white hover:text-teal-300">Quote with options</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#invoice-starter" class="text-white hover:text-teal-300">Starter invoice</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td class="yes">&check;</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3"><a href="#quote-starter" class="text-white hover:text-teal-300">Starter quote</a></td>
+                        <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">&ldquo;Factur-X&rdquo; marks the templates whose data carries everything the EN&nbsp;16931 profile needs. Any template can be rendered as Factur-X &mdash; see <a href="#section-facturx" class="text-teal-300 hover:underline">Rendering as Factur-X</a>.</p>
+    </section>
+
+    <!-- ================= Models ================= -->
+
+    <!-- Compliant invoice -->
+    <section id="invoice-compliant" class="tpl-model scroll-mt-20" style="--ink:#7EA6E0">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/invoice_compliant.png" alt="A VAT-compliant invoice: ink-blue rules, supplier and customer VAT numbers, a line-items table, a VAT breakdown by rate, an EPC payment QR, and a statutory information block" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Compliant invoice</h2>
+                <p class="tpl-thesis">Compliance is the content.</p>
+                <p class="text-gray-400 text-sm mb-4">Everything a VAT invoice must carry, laid out so an auditor finds it fast. Both parties&rsquo; VAT numbers, supply date alongside issue date, a <strong>VAT breakdown by rate</strong> (the anchor of the page), the statutory late-payment terms, and an EPC QR that pre-fills the transfer in a banking app. No colour band &mdash; the ink-blue rules do the work, so it reads as a form rather than a brochure.</p>
+                <ul class="tpl-traits">
+                    <li>VAT breakdown by rate</li><li>EPC payment QR</li><li>Statutory mentions</li><li>Factur-X ready</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=invoice_compliant">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_compliant.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_compliant.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-6 mb-2">The VAT breakdown is a second data-bound table over a <code>vat_breakdown</code> array &mdash; one row per rate, which is what the law asks for and what the CII XML mirrors:</p>
+        <pre data-filename="invoice_compliant.template.json — VAT breakdown"><code class="language-json text-sm">{ "type": "table", "data": "vat_breakdown",
+  "header_columns": [],
+  "rows": [ [
+    { "text": "${rate}",   "width": 90,  "alignment": "left"  },
+    { "text": "${base}",   "width": 110, "alignment": "right" },
+    { "text": "${amount}", "width": 100, "alignment": "right" },
+    { "text": "",          "width": 181 }
+  ] ] }</code></pre>
+    </section>
+
+    <!-- Minimal invoice -->
+    <section id="invoice-minimal" class="tpl-model scroll-mt-20" style="--ink:#C3C9D4">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/invoice_minimal.png" alt="A minimal monochrome invoice: the amount due set very large near the top, two hairline rules, a quiet two-line ledger, and small print anchored at the foot of the page" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Minimal invoice</h2>
+                <p class="tpl-thesis">The amount due <em>is</em> the document.</p>
+                <p class="text-gray-400 text-sm mb-4">One number at 46&nbsp;pt, everything else at 8&nbsp;pt, and two rules in the whole page. There is no accent colour at all &mdash; the hierarchy is carried entirely by the type scale, which is the point. For a freelancer or consultant whose invoice has three lines and needs to be paid, not admired.</p>
+                <ul class="tpl-traits">
+                    <li>Monochrome</li><li>Extreme type scale</li><li>Wide margins (64&nbsp;pt)</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=invoice_minimal">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_minimal.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_minimal.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-6 mb-2">Note <code>options.margins</code>: widening it to 64&nbsp;pt narrows the content width to <strong>467&nbsp;pt</strong>, and every column width in the file adds up to that instead of the default 481.</p>
+        <pre data-filename="invoice_minimal.template.json — the hero"><code class="language-json text-sm">{ "options": { "margins": 64 } }
+
+{ "type": "paragraph", "value": "AMOUNT DUE",
+  "options": { "fontSize": 8, "fontWeight": "bold", "color": "8A8A8A" } },
+{ "type": "move", "y": 6 },
+{ "type": "paragraph", "value": "${totals.due}",
+  "options": { "fontSize": 46, "fontWeight": "bold", "color": "111111" } }</code></pre>
+    </section>
+
+    <!-- Subscription invoice -->
+    <section id="invoice-subscription" class="tpl-model scroll-mt-20" style="--ink:#A5A0F0">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/invoice_subscription.png" alt="A subscription invoice: an indigo header, a billing-period band with the account name, a plan table with a prorated line, a metered-usage table, a donut chart of spend by product, and a renewal notice" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Subscription invoice</h2>
+                <p class="tpl-thesis">A billing period, not a list of deliverables.</p>
+                <p class="text-gray-400 text-sm mb-4">The period band comes first because it is the thing customers query. Plan fees (billed in advance) are separated from metered usage (billed in arrears), the prorated seat carries its own explanatory sub-line, and a <code>donut</code> chart answers &ldquo;where did the money go&rdquo; before anyone opens a ticket. Closes with the next renewal date and the card on file.</p>
+                <ul class="tpl-traits">
+                    <li>Period band</li><li>Proration sub-lines</li><li>Donut chart</li><li>Renewal notice</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=invoice_subscription">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_subscription.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice_subscription.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-6 mb-2">The chart binds straight to an array of <code>{ name, amount }</code>. Chart values must be real JSON numbers, not formatted strings:</p>
+        <pre data-filename="invoice_subscription.template.json — spend donut"><code class="language-json text-sm">{ "type": "chart", "kind": "donut",
+  "data": "spend", "label": "name", "value": "amount",
+  "width": 210, "height": 106, "legend": true,
+  "colors": ["312E81", "5B54C4", "8B84E8", "C3BEF6"] }</code></pre>
+    </section>
+
+    <!-- Credit note -->
+    <section id="credit-note" class="tpl-model scroll-mt-20" style="--ink:#F08CA6">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/credit_note.png" alt="A credit note: an oxblood rule and wordmark, a tinted band naming the original invoice and the reason, negative line amounts, and a solid oxblood total-credited panel" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Credit note</h2>
+                <p class="tpl-thesis">A cancellation has to be traceable.</p>
+                <p class="text-gray-400 text-sm mb-4">The band under the header names the invoice being corrected, its date, its original amount and the reason &mdash; the four things a reader needs before looking at a single figure. Amounts are negative throughout, and the oxblood is spent only on the wordmark, the top rule and the total panel. It credits the <a href="#invoice-compliant" class="text-teal-300 hover:underline">compliant invoice</a> above, so the pair reads as one sequence.</p>
+                <ul class="tpl-traits">
+                    <li>Reference-to-original band</li><li>Negative amounts</li><li>VAT breakdown</li><li>Settlement terms</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=credit_note">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/credit_note.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/credit_note.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-6 mb-2">The solid total panel is a <code>rect</code> with <code>spans</code> text drawn over it. Cell <code>content</code> arrays have no <code>color</code> field, so white-on-colour has to be done this way &mdash; <code>rect</code> does not advance the cursor, which is what makes the overlay work:</p>
+        <pre data-filename="credit_note.template.json — total panel"><code class="language-json text-sm">{ "type": "move", "x": 271, "y": 2 },
+{ "type": "rect", "width": 210, "height": 42, "fill": "9F1239" },
+{ "type": "move", "x": 14, "y": 9 },
+{ "type": "paragraph", "spans": [
+    { "text": "TOTAL CREDITED", "fontWeight": "bold", "color": "F6D3DC" } ],
+  "options": { "fontSize": 8 } },
+{ "type": "paragraph", "spans": [
+    { "text": "${totals.credited}", "fontWeight": "bold", "color": "FFFFFF" } ],
+  "options": { "fontSize": 18 } }</code></pre>
+    </section>
+
+    <!-- Sectioned quote -->
+    <section id="quote-sections" class="tpl-model scroll-mt-20" style="--ink:#6FC3D8">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/quote_sections.png" alt="A quote grouped into numbered trade sections, each with a subtotal, followed by a dashed acceptance box with date and signature rules" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Sectioned quote</h2>
+                <p class="tpl-thesis">The work reads by section.</p>
+                <p class="text-gray-400 text-sm mb-4">Line items grouped into numbered trade sections, each closing with its own subtotal, so a client can approve or challenge one trade without unpicking the whole figure. Ends in a dashed <strong>acceptance box</strong> &mdash; date and signature rules &mdash; because for most trades a returned signed quote <em>is</em> the contract.</p>
+                <ul class="tpl-traits">
+                    <li>Grouped subtotals</li><li>Acceptance box</li><li><code>repeat</code> + <code>if</code></li><li>Deposit terms</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=quote_sections">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote_sections.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote_sections.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <div class="tpl-note">
+            <p class="font-semibold text-white text-sm mb-1">Grouping recipe &mdash; worth knowing before you try it</p>
+            <p class="text-sm text-gray-400">A data-bound <code>table</code> or a nested <code>repeat</code> <strong>cannot</strong> resolve a relative path against the item it sits inside: <code>"data": "lines"</code> nested inside a <code>repeat</code> over <code>sections</code> silently renders nothing. Flatten the group in your data instead &mdash; one array, each row tagged with a <code>kind</code> &mdash; and branch on it with <code>if</code>. That is exactly what this template does, and it gives you full styling control per row type.</p>
+        </div>
+        <pre data-filename="quote_sections.template.json — one row, three shapes" class="mt-4"><code class="language-json text-sm">{ "type": "repeat", "data": "rows", "content": [
+  { "type": "if", "when": "kind", "equals": "section",
+    "content": [ /* tinted full-width band */ ],
+    "else": [
+      { "type": "if", "when": "kind", "equals": "subtotal",
+        "content": [ /* right-aligned rule + bold figure */ ],
+        "else":    [ /* ordinary description / qty / unit / amount row */ ] } ] } ] }</code></pre>
+        <pre data-filename="quote_sections.data.json — the flattened array" class="mt-3"><code class="language-json text-sm">"rows": [
+  { "kind": "section",  "name": "01   STRUCTURAL WORK" },
+  { "kind": "line",     "name": "Demolition of partition wall", "qty": "1", "unit": "850.00", "amount": "850.00" },
+  { "kind": "subtotal", "name": "Subtotal, structural work", "amount": "1,402.00" }
+]</code></pre>
+    </section>
+
+    <!-- Quote with options -->
+    <section id="quote-options" class="tpl-model scroll-mt-20" style="--ink:#B4A3EE">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/quote_options.png" alt="A quote with a base scope table, an options table with empty tick boxes, and two side-by-side totals: base scope only in grey and with all options in solid violet" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Quote with options</h2>
+                <p class="tpl-thesis">The client chooses.</p>
+                <p class="text-gray-400 text-sm mb-4">Base scope and optional work are separated, each priced independently, and the page closes on <strong>two totals</strong> side by side &mdash; base only, and with everything ticked. The client returns the page with boxes marked instead of writing an email describing what they want. Good for agencies, studios and anyone who quotes a core plus extras.</p>
+                <ul class="tpl-traits">
+                    <li>Tick boxes</li><li>Dual total</li><li>Base / options split</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=quote_options">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote_options.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote_options.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-6 mb-2">The tick box is an empty cell with all four borders on &mdash; no glyph involved. That matters: none of the bundled fonts cover <code>&#x2610;</code> or <code>&#x25A1;</code>, so a box character would render as tofu.</p>
+        <pre data-filename="quote_options.template.json — tick box cell"><code class="language-json text-sm">{ "text": "", "width": 22, "valign": "middle",
+  "borderSides": { "top": "true", "left": "true", "right": "true", "bottom": "true" },
+  "borderColor": "4C3A8A" }</code></pre>
+    </section>
+
+    <!-- Starter pair -->
+    <section id="invoice-starter" class="tpl-model scroll-mt-20" style="--ink:#5EEAD4">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/invoice.png" alt="A teal-banded starter invoice with a billed-to block, a line-items table and a totals stack" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Starter invoice</h2>
+                <p class="tpl-thesis">The shortest path to a decent invoice.</p>
+                <p class="text-gray-400 text-sm mb-4">A teal identity band, a billed-to block, a data-bound items table and a totals stack &mdash; about 130 lines with nothing clever in it. Start here if none of the structural models above match what you need, and add to it.</p>
+                <ul class="tpl-traits">
+                    <li>Identity band</li><li>Data-bound items</li><li>Totals stack</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=invoice">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/invoice.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="quote-starter" class="tpl-model scroll-mt-20" style="--ink:#F0C176">
+        <div class="tpl-model-grid">
+            <div class="tpl-preview"><img src="/images/docs/pdf/quote.png" alt="A charcoal and amber starter quote with a validity strip and an estimated total" class="tpl-zoom" loading="lazy" tabindex="0" role="button" aria-label="Enlarge preview — click to view full size" /></div>
+            <div class="tpl-body">
+                <h2 class="text-2xl font-bold text-white mb-1">Starter quote</h2>
+                <p class="tpl-thesis">The same skeleton, a different identity.</p>
+                <p class="text-gray-400 text-sm mb-4">Charcoal and amber instead of teal, a &ldquo;valid until&rdquo; strip under the header, and an estimated total rather than an amount due. Useful as a side-by-side with the starter invoice: the structure is identical, only the data and two colours change.</p>
+                <ul class="tpl-traits">
+                    <li>Validity strip</li><li>Estimated total</li><li>Page X of Y footer</li>
+                </ul>
+                <div class="tpl-actions">
+                    <a class="tpl-btn-primary" href="/docs/builtins/pdf-playground?sample=quote">Open in playground</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote.template.json">template.json</a>
+                    <a class="tpl-btn" href="/pdf-samples/quote.data.json">data.json</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Using them -->
+    <section id="section-using" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Using a template</h2>
+        <p class="text-gray-400 mb-4 max-w-3xl">Copy the two files into your project, swap the data for your records, and render. <code class="text-teal-300">pdf_response</code> returns a ready controller response; <code class="text-teal-300">pdf_render</code> gives you the base64 bytes to store.</p>
+        <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm">def show
+  let invoice = Invoice.find(params["id"])
+
+  # The template is static; only the data changes per invoice.
+  let template = slurp("pdf/invoice_compliant.template.json")
+  let data     = { "data": invoice.to_render_hash() }.to_json()
+
+  return pdf_response(template, data, {
+    "filename": "invoice-#{invoice.number}.pdf",
+    "title": "Invoice #{invoice.number}"
+  })
+end</code></pre>
+        <p class="text-gray-400 mt-5 mb-2 text-sm">The data document may be wrapped in <code>{ "data": { … } }</code> or passed as a bare object &mdash; both are accepted. Placeholders that find no value render empty and log a warning, so a missing field degrades rather than fails.</p>
+    </section>
+
+    <!-- Factur-X -->
+    <section id="section-facturx" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Rendering as Factur-X</h2>
+        <p class="text-gray-400 mb-5 max-w-3xl">Factur-X (EN&nbsp;16931) embeds a machine-readable CII XML invoice inside a PDF/A-3b file: one document a human reads and a machine parses. There are two routes, and the difference matters.</p>
+
+        <div class="grid gap-5 md:grid-cols-2 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-white font-semibold mb-2">You bring the XML</h3>
+                <p class="text-sm text-gray-400 mb-3">Your template, your data, your XML. You keep <strong>full control of the layout</strong>, which is what a compliance template needs.</p>
+                <pre class="!mt-0" data-filename="pdf_facturx"><code class="language-soli text-sm">let pdf = pdf_facturx(
+  template, data, xml,
+  { "profile": "en16931" }
+)</code></pre>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-white font-semibold mb-2">The engine computes it</h3>
+                <p class="text-sm text-gray-400 mb-3">Give it a typed invoice and it derives the totals, the VAT breakdown <em>and</em> the XML. Less to get wrong &mdash; but read the caveat below.</p>
+                <pre class="!mt-0" data-filename="pdf_facturx_from_invoice"><code class="language-soli text-sm">let pdf = pdf_facturx_from_invoice(
+  template, invoice,
+  { "profile": "en16931" }
+)</code></pre>
+            </div>
+        </div>
+
+        <div class="tpl-note tpl-note-warn">
+            <p class="font-semibold text-white text-sm mb-1">The typed-invoice route uses a different placeholder namespace</p>
+            <p class="text-sm text-gray-400 mb-2"><code>pdf_facturx_from_invoice</code> ignores your data file and builds its own, so a template written for <code>pdf_render</code> will not interpolate against it. It supplies <code>invoice.*</code> (<code>number</code>, <code>created_at</code>, <code>due_date</code>, <code>due_amount</code>, <code>payment_terms</code>, <code>type_label</code>), <code>company.*</code> and <code>customer.*</code> (<code>name</code>, <code>address</code>, <code>zipcode</code>, <code>city</code>, <code>country</code>, <code>phone</code>), <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code> and <code>payment.*</code>.</p>
+                <p class="text-sm text-gray-400">It does <strong>not</strong> expose party VAT identifiers or a per-rate VAT breakdown array. If your template must print those &mdash; as the compliant invoice does &mdash; use <code>pdf_facturx</code> and supply the XML yourself. <a href="/pdf-samples/invoice_compliant.facturx.xml" class="text-teal-300 hover:underline">A ready CII XML</a> and a <a href="/pdf-samples/invoice_compliant.invoice.json" class="text-teal-300 hover:underline">typed invoice</a> for that sample are both included so you can compare the two routes.</p>
+        </div>
+
+        <p class="text-gray-400 mt-5 text-sm">Both routes reject the <code>password</code> and <code>pdfa</code> options &mdash; the output is already PDF/A-3b. Full reference in <a href="/docs/builtins/pdf#section-facturx" class="text-teal-300 hover:underline">PDF &amp; Factur-X</a>.</p>
+    </section>
+
+    <!-- Regenerating -->
+    <section id="section-previews" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Regenerating the previews</h2>
+        <p class="text-gray-400 mb-4 max-w-3xl">The images on this page are committed artifacts rendered from the sample files. After editing a template, regenerate them:</p>
+        <pre data-filename="shell"><code class="language-bash text-sm">scripts/gen_pdf_previews.sh                     # every sample
+scripts/gen_pdf_previews.sh invoice_minimal     # just one</code></pre>
+        <p class="text-gray-500 text-xs mt-3">Needs <code>pdftoppm</code> (poppler-utils). Renders page&nbsp;1 of each sample at 150&nbsp;DPI into <code>www/public/images/docs/pdf/</code>.</p>
+    </section>
+
+    <p class="text-sm text-gray-500">
+        Next: the full <a href="/docs/builtins/pdf" class="text-teal-300 hover:underline">template reference</a> for every element and option, or edit any of these live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.
+    </p>
+
+    <!-- Click-to-zoom lightbox: the sheets are only readable at full size. -->
+    <div id="tpl-lightbox" class="fixed inset-0 w-screen h-screen z-[9999] hidden items-center justify-center bg-black/85 backdrop-blur-sm p-4 sm:p-10 cursor-zoom-out" aria-hidden="true">
+        <img id="tpl-lightbox-img" src="" alt="" class="max-h-[92vh] max-w-full w-auto rounded-lg border border-white/10 shadow-2xl bg-white">
+        <button id="tpl-lightbox-close" type="button" aria-label="Close" class="absolute top-4 right-5 text-3xl leading-none text-gray-300 hover:text-white">&times;</button>
+    </div>
+    <script>
+    (function () {
+        var box = document.getElementById('tpl-lightbox');
+        if (!box) return;
+        // Reparent to <body> so `position: fixed` anchors to the viewport even if
+        // an ancestor establishes a containing block, and drop any stale copy a
+        // previous instant-nav visit left behind.
+        document.querySelectorAll('#tpl-lightbox').forEach(function (n) {
+            if (n !== box && n.parentElement === document.body) n.remove();
+        });
+        if (box.parentElement !== document.body) document.body.appendChild(box);
+        var img = document.getElementById('tpl-lightbox-img');
+        if (!img) return;
+        var lastFocus = null;
+        function open(el) {
+            lastFocus = el;
+            img.src = el.getAttribute('src');
+            img.alt = el.getAttribute('alt') || '';
+            box.classList.remove('hidden');
+            box.classList.add('flex');
+            box.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+        function close() {
+            box.classList.add('hidden');
+            box.classList.remove('flex');
+            box.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+            img.src = '';
+            if (lastFocus) { lastFocus.focus(); lastFocus = null; }
+        }
+        document.querySelectorAll('.tpl-zoom').forEach(function (el) {
+            el.addEventListener('click', function () { open(el); });
+            el.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(el); }
+            });
+        });
+        box.addEventListener('click', close); // backdrop or image closes
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    })();
+    </script>
+</div>
+
+<style>
+/* Contact sheet — documents shown as sheets of paper, not cards. */
+.tpl-sheets { scrollbar-width: thin; }
+.tpl-sheet {
+    flex: 0 0 auto;
+    width: 92px;
+    text-align: center;
+    text-decoration: none;
+    transition: transform .18s ease;
+}
+.tpl-sheet img {
+    width: 92px;
+    height: 130px;          /* true A4 proportion */
+    object-fit: cover;
+    object-position: top center;
+    background: #fff;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 2px 10px rgba(0,0,0,.45);
+    display: block;
+}
+.tpl-sheet span {
+    display: block;
+    margin-top: .5rem;
+    font-size: .7rem;
+    color: #9ca3af;
+    line-height: 1.2;
+}
+.tpl-sheet:hover { transform: translateY(-3px); }
+.tpl-sheet:hover img { border-color: var(--ink); }
+.tpl-sheet:hover span { color: #e5e7eb; }
+.tpl-sheet:focus-visible {
+    outline: 2px solid #5eead4;
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* Each model carries a spine in its own ink — the page takes its colour
+   from the documents rather than imposing one on them. */
+.tpl-model {
+    border-left: 3px solid var(--ink);
+    padding-left: 1.5rem;
+    margin-bottom: 3.5rem;
+}
+.tpl-model-grid {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 1.75rem;
+    align-items: start;
+}
+.tpl-preview img {
+    width: 100%;
+    height: auto;
+    background: #fff;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 6px 22px rgba(0,0,0,.5);
+    display: block;
+    cursor: zoom-in;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.tpl-preview img:hover {
+    border-color: var(--ink);
+    box-shadow: 0 8px 28px rgba(0,0,0,.62);
+}
+.tpl-preview img:focus-visible {
+    outline: 2px solid #5eead4;
+    outline-offset: 3px;
+}
+/* The layout sets `.prose-docs p { color }` (0,1,1); this needs to outrank it
+   without resorting to !important, hence the two-class selector. */
+.prose-docs .tpl-thesis {
+    color: var(--ink);
+    font-weight: 600;
+    font-size: .95rem;
+    margin-bottom: .75rem;
+    line-height: 1.5;
+}
+.tpl-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-bottom: 1.1rem;
+    padding: 0;
+    list-style: none;
+}
+.tpl-traits li {
+    font-size: .7rem;
+    color: #cbd5e1;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 999px;
+    padding: .2rem .6rem;
+}
+.tpl-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tpl-btn, .tpl-btn-primary {
+    font-size: .78rem;
+    padding: .35rem .75rem;
+    border-radius: .5rem;
+    text-decoration: none;
+    border: 1px solid rgba(255,255,255,.12);
+    color: #d1d5db;
+    background: rgba(255,255,255,.05);
+    transition: background .15s ease, color .15s ease;
+}
+.tpl-btn:hover { background: rgba(255,255,255,.11); color: #fff; }
+.tpl-btn-primary {
+    background: rgba(20,184,166,.15);
+    border-color: rgba(45,212,191,.25);
+    color: #99f6e4;
+}
+.tpl-btn-primary:hover { background: rgba(20,184,166,.26); color: #fff; }
+.tpl-btn:focus-visible, .tpl-btn-primary:focus-visible {
+    outline: 2px solid #5eead4;
+    outline-offset: 2px;
+}
+
+.tpl-note {
+    border-left: 2px solid rgba(148,163,184,.4);
+    background: rgba(255,255,255,.035);
+    border-radius: 0 .5rem .5rem 0;
+    padding: .85rem 1rem;
+    margin-top: 1.5rem;
+}
+.tpl-note-warn { border-left-color: #f59e0b; }
+
+.tpl-matrix td { text-align: center; padding: .7rem .75rem; }
+.tpl-matrix td:first-child { text-align: left; }
+.tpl-matrix td.yes { color: #5eead4; font-weight: 600; }
+.tpl-matrix tr + tr { border-top: 1px solid rgba(255,255,255,.07); }
+
+@media (max-width: 820px) {
+    .tpl-model-grid { grid-template-columns: 1fr; }
+    .tpl-preview { max-width: 232px; }
+    .tpl-model { padding-left: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tpl-sheet { transition: none; }
+    .tpl-sheet:hover { transform: none; }
+}
+</style>

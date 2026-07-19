@@ -445,6 +445,10 @@ def builtins_pdf
     render_docs("docs/builtins/pdf", "PDF & Factur-X", "builtins", "pdf")
 end
 
+def pdf_templates
+    render_docs("docs/pdf_templates", "Invoice & Quote Templates", "builtins", "pdf", true)
+end
+
 def pdf_playground
     render_docs("docs/pdf_playground", "PDF Playground", "builtins", "pdf", true)
 end

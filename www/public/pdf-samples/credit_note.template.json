@@ -1,0 +1,171 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    { "type": "paragraph", "value": "${seller.name} · ${seller.address} · VAT ${seller.vat_number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "6B7280" } }
+  ],
+  "content": [
+    { "type": "hr", "color": "9F1239", "thickness": 3 },
+    { "type": "move", "y": 16 },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${seller.name}", "fontSize": 15, "fontWeight": "bold" },
+            { "type": "text", "value": "${seller.tagline}", "fontSize": 9 }
+          ],
+          "width": 280, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "content": [
+            { "type": "text", "value": "CREDIT NOTE", "fontSize": 21, "fontWeight": "bold" },
+            { "type": "text", "value": "${credit.number}  ·  ${credit.issued}", "fontSize": 9.5 }
+          ],
+          "width": 201, "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "textColor": "9F1239" }, "padding_x": 0, "padding_y": 0 }
+    },
+    { "type": "move", "y": 20 },
+
+    { "type": "rect", "width": 481, "height": 68, "fill": "FDF2F5", "border": "F0CBD6", "borderWidth": 0.8 },
+    { "type": "move", "x": 16, "y": 11 },
+    { "type": "paragraph", "spans": [ { "text": "THIS CREDIT NOTE RELATES TO", "fontWeight": "bold", "color": "9F1239" } ], "options": { "fontSize": 7.5 } },
+    { "type": "move", "y": 2 },
+    { "type": "paragraph", "spans": [
+        { "text": "Invoice ${original.number}", "fontWeight": "bold", "color": "1F2937" },
+        { "text": "   issued ${original.issued}   ·   original amount ${original.amount}", "color": "5B6B82" }
+      ], "options": { "fontSize": 10 } },
+    { "type": "move", "y": 3 },
+    { "type": "paragraph", "spans": [
+        { "text": "Reason  ", "fontWeight": "bold", "color": "9F1239" },
+        { "text": "${credit.reason}", "color": "5B6B82" }
+      ], "options": { "fontSize": 8.5 } },
+    { "type": "move", "x": -16, "y": 30 },
+
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "content": [
+              { "type": "text", "value": "SUPPLIER", "fontSize": 7.5, "fontWeight": "bold" },
+              { "type": "text", "value": "${seller.name}", "fontSize": 10, "fontWeight": "bold" },
+              { "type": "text", "value": "${seller.city}", "fontSize": 9 },
+              { "type": "text", "value": "VAT  ${seller.vat_number}", "fontSize": 9 }
+            ],
+            "width": 240, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          },
+          {
+            "content": [
+              { "type": "text", "value": "CUSTOMER", "fontSize": 7.5, "fontWeight": "bold" },
+              { "type": "text", "value": "${customer.name}", "fontSize": 10, "fontWeight": "bold" },
+              { "type": "text", "value": "${customer.city}", "fontSize": 9 },
+              { "type": "text", "value": "VAT  ${customer.vat_number}", "fontSize": 9 }
+            ],
+            "width": 241, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 3 }
+    },
+    { "type": "move", "y": 20 },
+
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [
+        { "text": "DESCRIPTION", "width": 229, "fontSize": 8, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "QTY",         "width": 40,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "UNIT PRICE",  "width": 68,  "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "VAT",         "width": 40,  "fontSize": 8, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "NET CREDITED","width": 104, "fontSize": 8, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",     "width": 229, "fontSize": 10, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${qty}",      "width": 40,  "fontSize": 10, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${unit}",     "width": 68,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${vat_rate}", "width": 40,  "fontSize": 10, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${net}",      "width": 104, "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" }
+        ]
+      ],
+      "options": { "header": { "fillColor": "9F1239", "textColor": "FFFFFF", "borderColor": "9F1239" }, "padding_x": 6, "padding_y": 7 }
+    },
+    { "type": "move", "y": 16 },
+
+    {
+      "type": "table",
+      "header_columns": [
+        { "text": "VAT RATE",     "width": 90,  "fontSize": 8, "fontWeight": "bold", "alignment": "left",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "9F1239" },
+        { "text": "TAXABLE BASE", "width": 110, "fontSize": 8, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "9F1239" },
+        { "text": "VAT CREDITED", "width": 100, "fontSize": 8, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "9F1239" },
+        { "text": "",             "width": 181, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+      ],
+      "rows": [],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    {
+      "type": "table",
+      "data": "vat_breakdown",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "${rate}",   "width": 90,  "fontSize": 10, "alignment": "left",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${base}",   "width": 110, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "${amount}", "width": 100, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EFE3E7" },
+          { "text": "",          "width": 181, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    { "type": "move", "y": 16 },
+
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "Net credited", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.net}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ],
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "VAT credited", "width": 130, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.vat}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    { "type": "move", "x": 271, "y": 2 },
+    { "type": "rect", "width": 210, "height": 58, "fill": "9F1239" },
+    { "type": "move", "x": 16, "y": 12 },
+    { "type": "paragraph", "spans": [ { "text": "TOTAL CREDITED", "fontWeight": "bold", "color": "F6D3DC" } ], "options": { "fontSize": 8 } },
+    { "type": "move", "y": 3 },
+    { "type": "paragraph", "spans": [ { "text": "${totals.credited}", "fontWeight": "bold", "color": "FFFFFF" } ], "options": { "fontSize": 18 } },
+    { "type": "move", "x": -287, "y": 26 },
+
+    { "type": "paragraph", "value": "Settlement", "options": { "fontSize": 8, "fontWeight": "bold", "color": "9F1239" } },
+    { "type": "move", "y": 3 },
+    {
+      "type": "list",
+      "marker": "—",
+      "indent": 10,
+      "spacing": 2,
+      "items": [
+        "${credit.settlement}",
+        "This credit note reduces the VAT originally declared on invoice ${original.number}. Adjust your input VAT for the period in which this note is received.",
+        "Retain this document with the original invoice for your statutory records."
+      ],
+      "options": { "fontSize": 8, "color": "4B5A70", "lineHeight": 1.35 }
+    }
+  ]
+}

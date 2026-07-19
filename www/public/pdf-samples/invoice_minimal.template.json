@@ -1,0 +1,106 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0, "margins": 64 },
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "text": "${seller.name}",
+          "width": 240, "fontSize": 9, "fontWeight": "bold", "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "text": "Invoice ${invoice.number}",
+          "width": 227, "fontSize": 9, "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "textColor": "111111" }, "padding_x": 0, "padding_y": 0 }
+    },
+
+    { "type": "move", "y": 96 },
+
+    { "type": "paragraph", "value": "AMOUNT DUE", "options": { "fontSize": 8, "fontWeight": "bold", "color": "8A8A8A" } },
+    { "type": "move", "y": 6 },
+    { "type": "paragraph", "value": "${totals.due}", "options": { "fontSize": 46, "fontWeight": "bold", "color": "111111" } },
+    { "type": "move", "y": 4 },
+    { "type": "paragraph", "value": "by ${invoice.due}", "options": { "fontSize": 11, "color": "555555" } },
+
+    { "type": "move", "y": 26 },
+    { "type": "hr", "color": "111111", "thickness": 1 },
+    { "type": "move", "y": 20 },
+
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 367, "fontSize": 9.5, "alignment": "left",  "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${amount}", "width": 100, "fontSize": 9.5, "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 5 }
+    },
+
+    { "type": "move", "y": 14 },
+    { "type": "hr", "color": "D4D4D4", "thickness": 0.5 },
+    { "type": "move", "y": 10 },
+
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "Net ${totals.net}   ·   VAT ${invoice.vat_rate} ${totals.vat}", "width": 367, "fontSize": 8.5, "alignment": "left", "color": "6B6B6B", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } },
+          { "text": "${totals.due}", "width": 100, "fontSize": 10, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" } }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 0 }
+    },
+
+    { "type": "move", "y": 296 },
+
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "content": [
+              { "type": "text", "value": "PAY TO", "fontSize": 7.5, "fontWeight": "bold" },
+              { "type": "text", "value": "${payment.iban}", "fontSize": 8.5 },
+              { "type": "text", "value": "${payment.bic}", "fontSize": 8.5 }
+            ],
+            "width": 156, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          },
+          {
+            "content": [
+              { "type": "text", "value": "BILLED TO", "fontSize": 7.5, "fontWeight": "bold" },
+              { "type": "text", "value": "${customer.name}", "fontSize": 8.5 },
+              { "type": "text", "value": "${customer.city}", "fontSize": 8.5 }
+            ],
+            "width": 156, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          },
+          {
+            "content": [
+              { "type": "text", "value": "ISSUED", "fontSize": 7.5, "fontWeight": "bold" },
+              { "type": "text", "value": "${invoice.issued}", "fontSize": 8.5 },
+              { "type": "text", "value": "VAT ${seller.vat_number}", "fontSize": 8.5 }
+            ],
+            "width": 155, "alignment": "left", "valign": "top",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 2 }
+    },
+
+    { "type": "move", "y": 12 },
+    { "type": "paragraph", "value": "${invoice.terms}", "options": { "fontSize": 8, "color": "8A8A8A" } }
+  ]
+}
