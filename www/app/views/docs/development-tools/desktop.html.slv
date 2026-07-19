@@ -1,0 +1,148 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Desktop Applications</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Package an app as a single executable that carries its own database. The user double-clicks it; it starts a private database, opens their browser, and serves the app locally. No installer, no separate database, no configuration.
+        </p>
+    </div>
+
+    <pre class="mb-12"><code class="language-bash text-sm">soli desktop build ./myapp --app-id com.example.myapp</code></pre>
+
+    <p class="text-gray-400 mb-12">That produces one file. Run it and the app opens.</p>
+
+    <h2 id="contents" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What the artifact contains</h2>
+    <pre class="mb-6"><code class="text-sm">[ soli runtime ]
+[ manifest        — app identity, versions, checksums ]
+[ app.sole        — your application, encrypted ]
+[ solidb          — the database binary, compressed ]
+[ ref_*.ndjson    — read-only reference data (optional) ]</code></pre>
+    <p class="text-gray-400 mb-12">
+        Your application source is <strong class="text-white">always encrypted</strong>. There is no unencrypted desktop build, because that would ship your source in the clear to every user.
+    </p>
+
+    <h2 id="requirements" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Requirements</h2>
+    <p class="text-gray-400 mb-4">
+        The application must be unlockable at launch, which means a key. Set either <code class="text-cyan-400">SOLI_BUNDLE_KEY</code> (the key itself) or <code class="text-cyan-400">SOLI_BUNDLE_AUTH_URL</code> (a key server that returns it) at both build time and run time &mdash; the same resolution chain <code class="text-cyan-400">soli build --encrypt</code> uses. See <a href="/docs/development-tools/deploy" class="text-cyan-400 hover:text-cyan-300 underline">Deployment</a>.
+    </p>
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-1">There is no offline fallback</h4>
+        <p class="text-amber-200/80 text-sm">
+            The key is never written to disk, so an app that cannot reach its key server does not start. That is the trade for being able to revoke an installation.
+        </p>
+    </div>
+
+    <h2 id="options" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Options</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10">
+                <tr><th class="py-3 px-4">Flag</th><th class="py-3 px-4">Meaning</th></tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--app-id &lt;id&gt;</code></td><td class="py-3 px-4">Reverse-DNS identity, e.g. <code class="text-cyan-400">com.example.myapp</code>. <strong class="text-white">Required.</strong> Determines where the user's data lives, so changing it between releases orphans their existing data.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--name &lt;name&gt;</code></td><td class="py-3 px-4">Display name. Defaults to the source directory's name.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--output &lt;path&gt;</code></td><td class="py-3 px-4">Artifact path. Defaults to <code class="text-cyan-400">&lt;app&gt;</code> or <code class="text-cyan-400">&lt;app&gt;-&lt;target&gt;</code>.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--target &lt;t&gt;</code></td><td class="py-3 px-4">Cross-build: <code class="text-cyan-400">linux-amd64</code>, <code class="text-cyan-400">linux-arm64</code>, <code class="text-cyan-400">darwin-amd64</code>, <code class="text-cyan-400">darwin-arm64</code>, <code class="text-cyan-400">windows-amd64</code>.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--solidb &lt;path&gt;</code></td><td class="py-3 px-4">Embed a locally built database binary instead of downloading the published release.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--solidb-version &lt;v&gt;</code></td><td class="py-3 px-4">Database release to download. Pinned by default.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--seed &lt;dir&gt;</code></td><td class="py-3 px-4">Directory of <code class="text-cyan-400">&lt;collection&gt;.ndjson</code> reference data.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">--protect</code></td><td class="py-3 px-4">Compile the app to a binary AST, stripping source and comments.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="seed" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Shipping reference data</h2>
+    <p class="text-gray-400 mb-4">
+        Read-only data your app needs &mdash; a country list, a price table &mdash; can travel with the artifact. Each <code class="text-cyan-400">seed/&lt;name&gt;.ndjson</code> is one JSON document per line. It is imported at first launch, and re-imported only when the content changes.
+    </p>
+    <pre class="mb-6"><code class="language-bash text-sm">soli desktop build ./myapp --app-id com.example.myapp --seed ./seed</code></pre>
+    <div class="my-8 p-6 rounded-xl bg-red-500/10 border border-red-500/20 mb-6">
+        <h4 class="text-lg font-semibold text-red-400 mb-1">Seed collections must be named <code>ref_*</code></h4>
+        <p class="text-red-200/80 text-sm">
+            The build fails otherwise, and the reason matters: importing <strong>replaces a collection wholesale</strong>. Without the prefix, shipping a <code>users.ndjson</code> would silently destroy the user's own <code>users</code> data on their next launch. The prefix keeps the two namespaces disjoint by construction rather than by review.
+        </p>
+    </div>
+    <pre class="mb-12"><code class="text-sm">seed/
+  ref_countries.ndjson     ✓
+  ref_currencies.ndjson    ✓
+  users.ndjson             ✗ build fails — could collide with your model</code></pre>
+
+    <h2 id="data" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Where user data lives</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10">
+                <tr><th class="py-3 px-4"></th><th class="py-3 px-4">Data (persists)</th><th class="py-3 px-4">Cache (safe to delete)</th></tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4">Linux</td><td class="py-3 px-4"><code class="text-cyan-400">$XDG_DATA_HOME/&lt;app-id&gt;/db</code></td><td class="py-3 px-4"><code class="text-cyan-400">$XDG_CACHE_HOME/&lt;app-id&gt;/bin</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">macOS</td><td class="py-3 px-4"><code class="text-cyan-400">~/Library/Application Support/&lt;app-id&gt;/db</code></td><td class="py-3 px-4"><code class="text-cyan-400">~/Library/Caches/&lt;app-id&gt;/bin</code></td></tr>
+                <tr><td class="py-3 px-4">Windows</td><td class="py-3 px-4"><code class="text-cyan-400">%LOCALAPPDATA%\&lt;app-id&gt;\db</code></td><td class="py-3 px-4"><code class="text-cyan-400">%LOCALAPPDATA%\&lt;app-id&gt;\cache\bin</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The database binary is cached and reused across launches, re-verified against its checksum each time. Deleting the cache costs one extraction, not data. A second launch of the same app is refused while the first is running &mdash; two servers over one database directory would fail deep inside the storage engine with an unhelpful error.
+    </p>
+
+    <h2 id="encryption" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Protecting data at rest</h2>
+    <p class="text-gray-400 mb-4">
+        The database files sit in the user's own directory. Mark sensitive fields so they are encrypted with the key fetched at launch:
+    </p>
+    <pre class="mb-4"><code class="language-soli text-sm">class Customer &lt; Model
+  encrypts :tax_id, :bank_account
+end</code></pre>
+    <p class="text-gray-400 mb-12">
+        Encrypted fields <strong class="text-white">cannot be queried by value</strong> &mdash; each write uses a fresh nonce, so the ciphertext differs every time. Encrypt what must stay confidential, not what you filter on. Fields you do not mark are stored in plaintext and <code class="text-cyan-400">strings</code> will find them.
+    </p>
+
+    <h2 id="threat-model" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What this protects against, and what it does not</h2>
+    <p class="text-gray-400 mb-4">
+        Worth being precise, because &ldquo;encrypted desktop app&rdquo; promises more than any local software can deliver.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">It does protect against:</strong> a copied artifact being useful to someone without an authorized key; casual inspection of your source; other local processes driving the app's API or its database; and it lets you revoke an installation.
+    </p>
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-6">
+        <h4 class="text-lg font-semibold text-amber-400 mb-1">It does not protect against the machine's owner</h4>
+        <p class="text-amber-200/80 text-sm">
+            The key reaches the process environment at launch, and on their own machine a user can read it &mdash; from <code>/proc/&lt;pid&gt;/environ</code>, from a debugger, from process memory. Assume a motivated user recovers it. Once they have, it decrypts that data offline, forever.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Treat this as <strong class="text-white">licensing-grade protection</strong>: it stops copying and enables revocation. It is not confidentiality against your user. If you hold data whose disclosure to that user would be a breach, keep it on your server behind an authenticated API and cache only derived, non-sensitive results locally.
+    </p>
+
+    <h2 id="local-port" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The local port</h2>
+    <p class="text-gray-400 mb-4">
+        The app binds <code class="text-cyan-400">127.0.0.1</code> on a port the OS assigns, so it never appears on the network and never collides with another app.
+    </p>
+    <p class="text-gray-400 mb-4">
+        Loopback keeps the network out but not the machine &mdash; every process running as that user can reach the port. So the browser is launched with a single-use token that it exchanges once for a session cookie; everything else gets <code class="text-cyan-400">403</code>. The token expires in 60 seconds and a wrong guess burns it.
+    </p>
+    <p class="text-gray-400 mb-12">
+        One limitation to know: cookies are not port-scoped, so another local server in the same browser profile could read the session cookie. Closing that needs loopback HTTPS with a per-launch certificate, which means touching the user's trust store. What the gate does close is a non-browser local process driving your API.
+    </p>
+
+    <h2 id="cross-building" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Cross-building</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">--target</code> downloads a published runtime and database for that platform and verifies both against their checksums. It does not compile anything, so you can build every target from one machine:
+    </p>
+    <pre class="mb-6"><code class="language-bash text-sm">soli desktop build ./myapp --app-id com.example.myapp --target darwin-arm64
+soli desktop build ./myapp --app-id com.example.myapp --target windows-amd64</code></pre>
+    <p class="text-gray-400 mb-4">Two signing notes, both of which bite at distribution rather than build time:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><strong class="text-white">macOS</strong> artifacts built elsewhere have an invalid signature and Apple Silicon refuses to run them. Re-sign on a Mac with <code class="text-cyan-400">codesign --force -s -</code>, or use <code class="text-cyan-400">rcodesign</code> from any platform.</li>
+        <li><strong class="text-white">Windows</strong> artifacts are unsigned, so SmartScreen shows &ldquo;Windows protected your PC&rdquo; with <em>Run anyway</em> hidden behind <em>More info</em>. Sign the <strong class="text-white">finished</strong> file &mdash; never before packaging, which would invalidate the signature: <code class="text-cyan-400">signtool sign /fd sha256 /tr &lt;timestamp-url&gt; /td sha256 myapp.exe</code>.</li>
+    </ul>
+
+    <h2 id="stopping" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Stopping</h2>
+    <p class="text-gray-400 mb-12">
+        Closing the terminal, or <code class="text-cyan-400">SIGTERM</code>, shuts the app down in order: the decrypted application tree is removed first, then the database is closed cleanly. A clean close matters &mdash; an abrupt kill makes the storage engine replay its write-ahead log on the next launch, which is slow and looks like corruption. A hard <code class="text-cyan-400">kill -9</code> skips this; the leftover directory is swept at the next launch.
+    </p>
+
+    <h2 id="size" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Size</h2>
+    <p class="text-gray-400 mb-12">
+        A typical artifact is 70&ndash;80&nbsp;MB, mostly the database binary (stored compressed, roughly a third of its size). It contains everything: runtime, application, database and reference data.
+    </p>
+</div>

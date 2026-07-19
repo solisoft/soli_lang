@@ -183,6 +183,10 @@ def development_tools_deploy
     render_docs("docs/development-tools/deploy", "Deploy", "development_tools", "deploy")
 end
 
+def development_tools_desktop
+    render_docs("docs/development-tools/desktop", "Desktop Apps", "development_tools", "desktop")
+end
+
 def development_tools_editor_integration
     render_docs(
         "docs/development-tools/editor-integration",
@@ -447,6 +451,33 @@ end
 
 def pdf_templates
     render_docs("docs/pdf_templates", "Invoice & Quote Templates", "builtins", "pdf", true)
+end
+
+def pdf_editor
+    render_docs("docs/pdf_editor", "Layout Editor", "builtins", "pdf", true)
+end
+
+# The studio is a full-screen canvas, so it renders without the docs chrome.
+def pdf_studio
+    render("docs/pdf_studio", {}, {"layout": false})
+end
+
+# Where each element landed, so the studio can hit-test the rendered page.
+# A flowing element's position depends on everything before it, so only the
+# layout engine can answer this — the editor cannot compute it.
+def pdf_studio_layout
+    let template = params["template"] ?? ""
+    let data = params["data"] ?? "{}"
+    try
+        let boxes = pdf_layout_map(template, data, {"fetch_images": false, "font_dirs": ["font"]})
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": boxes.to_json()
+        }
+    catch e
+        return {"status": 400, "headers": {"Content-Type": "text/plain"}, "body": str(e)}
+    end
 end
 
 def pdf_playground
