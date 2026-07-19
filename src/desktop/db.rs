@@ -67,6 +67,15 @@ pub struct DbHandle {
 }
 
 impl DbHandle {
+    /// The database process id.
+    ///
+    /// Exposed so the shutdown coordinator can signal it without holding the
+    /// handle: shutdown runs on its own thread while this handle stays owned by
+    /// the boot path.
+    pub fn child_pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Base URL for the model layer's `SOLIDB_HOST`.
     pub fn host_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)

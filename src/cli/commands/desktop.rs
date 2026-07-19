@@ -330,6 +330,12 @@ pub fn boot(
     let vfs = solilang::virtual_fs::DiskFS::new(&tmp_dir.to_string_lossy());
     solilang::serve::init_global_vfs(vfs);
 
+    // From here on a stop must close the database cleanly and take the
+    // decrypted tree with it. Registered only once both exist, so shutdown
+    // never races a half-built state.
+    solilang::desktop::shutdown::register(db.child_pid(), &tmp_dir);
+    solilang::desktop::shutdown::install();
+
     // 6. Loopback only. A desktop app has no business listening on the
     //    network, and pinning this also skips the outbound probe the
     //    all-interfaces path makes just to print a LAN URL.
