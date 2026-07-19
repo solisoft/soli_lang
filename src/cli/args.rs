@@ -196,6 +196,17 @@ pub enum Command {
         /// linux-amd64, linux-arm64, darwin-amd64, darwin-arm64). None = host platform.
         target: Option<String>,
     },
+    /// Package an app as a self-contained desktop application.
+    DesktopBuild {
+        folder: String,
+        app_id: String,
+        app_name: Option<String>,
+        output: Option<String>,
+        db_binary: String,
+        seed: Option<String>,
+        protect: bool,
+        target: Option<String>,
+    },
 }
 
 pub enum EngineAction {
@@ -1347,6 +1358,87 @@ pub fn parse_args() -> Options {
                     no_coverage,
                     show_uncovered,
                     fail_on_n1,
+                };
+                return options;
+            }
+            "desktop" => {
+                i += 1;
+                // Only `desktop build` exists today; anything else is a typo,
+                // and guessing would be worse than saying so.
+                match args.get(i).map(|s| s.as_str()) {
+                    Some("build") => i += 1,
+                    Some(other) => {
+                        eprintln!("Unknown desktop subcommand '{}' — expected 'build'", other);
+                        process::exit(64);
+                    }
+                    None => {
+                        eprintln!(
+                            "Usage: soli desktop build <folder> --app-id <id> --solidb <path>"
+                        );
+                        process::exit(64);
+                    }
+                }
+
+                let mut folder: Option<String> = None;
+                let mut app_id: Option<String> = None;
+                let mut app_name: Option<String> = None;
+                let mut output: Option<String> = None;
+                let mut db_binary: Option<String> = None;
+                let mut seed: Option<String> = None;
+                let mut protect = false;
+                let mut target: Option<String> = None;
+
+                // Same positional-anywhere convention as `soli build`.
+                while i < args.len() {
+                    let take_value = |i: &mut usize, flag: &str| -> String {
+                        *i += 1;
+                        args.get(*i).cloned().unwrap_or_else(|| {
+                            eprintln!("{} requires a value", flag);
+                            process::exit(64);
+                        })
+                    };
+                    match args[i].as_str() {
+                        "--app-id" => app_id = Some(take_value(&mut i, "--app-id")),
+                        "--name" => app_name = Some(take_value(&mut i, "--name")),
+                        "--output" | "-o" => output = Some(take_value(&mut i, "--output")),
+                        "--solidb" => db_binary = Some(take_value(&mut i, "--solidb")),
+                        "--seed" => seed = Some(take_value(&mut i, "--seed")),
+                        "--target" => target = Some(take_value(&mut i, "--target")),
+                        "--protect" => protect = true,
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option '{}' for desktop build", other);
+                            process::exit(64);
+                        }
+                        other => {
+                            if folder.is_none() {
+                                folder = Some(other.to_string());
+                            } else {
+                                eprintln!("Unexpected argument '{}'", other);
+                                process::exit(64);
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+
+                let Some(app_id) = app_id else {
+                    eprintln!("desktop build requires --app-id <reverse.dns.id>");
+                    process::exit(64);
+                };
+                let Some(db_binary) = db_binary else {
+                    eprintln!("desktop build requires --solidb <path-to-database-binary>");
+                    process::exit(64);
+                };
+
+                options.command = Command::DesktopBuild {
+                    folder: folder.unwrap_or_else(|| ".".to_string()),
+                    app_id,
+                    app_name,
+                    output,
+                    db_binary,
+                    seed,
+                    protect,
+                    target,
                 };
                 return options;
             }

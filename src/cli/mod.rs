@@ -144,5 +144,24 @@ pub fn run() {
             *protect,
             target.as_deref(),
         ),
+        Command::DesktopBuild {
+            folder,
+            app_id,
+            app_name,
+            output,
+            db_binary,
+            seed,
+            protect,
+            target,
+        } => commands::desktop::run(commands::desktop::DesktopBuildArgs {
+            folder,
+            app_id,
+            app_name: app_name.as_deref(),
+            output: output.as_deref(),
+            db_binary,
+            seed: seed.as_deref(),
+            protect: *protect,
+            target: target.as_deref(),
+        }),
     }
 }

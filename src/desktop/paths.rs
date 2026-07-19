@@ -53,7 +53,7 @@ impl AppPaths {
 /// build-time misconfiguration guard rather than a defence against attack —
 /// but it is cheap, and an `app_id` of `../..` would otherwise silently point
 /// the database somewhere alarming.
-fn validate_app_id(app_id: &str) -> Result<(), String> {
+pub fn validate_app_id(app_id: &str) -> Result<(), String> {
     if app_id.is_empty() {
         return Err("app_id must not be empty".to_string());
     }

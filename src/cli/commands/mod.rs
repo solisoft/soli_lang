@@ -1,3 +1,4 @@
+pub mod desktop;
 mod progress;
 mod test_runner;
 
