@@ -102,6 +102,10 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
 
     for (name, bytes) in inputs.seed {
         validate_seed_name(&name)?;
+        // Fail the developer's build rather than the user's data: importing
+        // replaces a collection wholesale, and the prefix is what keeps seed
+        // collections disjoint from the app's own models.
+        crate::desktop::seed::validate_collection_name(&name)?;
         entries.insert(format!("{}{}.ndjson", SEED_PREFIX, name), bytes);
     }
 
@@ -328,6 +332,15 @@ mod tests {
             ("two".to_string(), b"x".to_vec()),
         ];
         assert_ne!(seed_digest(&a), seed_digest(&moved));
+    }
+
+    #[test]
+    fn rejects_seed_collections_without_the_reference_prefix() {
+        // A seed named after one of the app's own models would wipe it.
+        let mut i = inputs();
+        i.seed = vec![("users".to_string(), b"{}\n".to_vec())];
+        let err = build(i).expect_err("must refuse");
+        assert!(err.contains("must be named"), "unexpected error: {}", err);
     }
 
     #[test]

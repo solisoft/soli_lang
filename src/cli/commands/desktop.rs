@@ -230,6 +230,10 @@ fn collect_seed(dir: &Path) -> Vec<(String, Vec<u8>)> {
     seed
 }
 
+/// Database the app uses. Matches the model layer's own default, so an app that
+/// never sets SOLIDB_DATABASE finds its reference data where it expects it.
+const DEFAULT_DATABASE: &str = "default";
+
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
@@ -289,6 +293,22 @@ pub fn boot(
     let db = solilang::desktop::db::start(&options)?;
     println!("  Database ready on port {}", db.port);
     export_db_environment(&db);
+
+    // 4b. Reference data, only when it differs from what is installed. This
+    //     replaces collections wholesale, so it runs before the app can serve
+    //     a request against half-imported data.
+    if solilang::desktop::seed::needs_import(&paths.state, &manifest) {
+        let owned: Vec<(String, Vec<u8>)> = container
+            .seed
+            .iter()
+            .map(|(name, bytes)| (name.clone(), bytes.to_vec()))
+            .collect();
+        println!("  Importing reference data...");
+        solilang::desktop::seed::import(&db.host_url(), DEFAULT_DATABASE, &db.credentials, &owned)?;
+        // Recorded only after success, so a failure part-way through leaves
+        // the watermark stale and the next launch retries.
+        solilang::desktop::seed::record_watermark(&paths.state, &manifest)?;
+    }
 
     // 5. Decrypt and extract the application itself.
     let app_bundle = solilang::bundle::decrypt_bundle(container.encrypted_app, &key)?;
@@ -370,6 +390,7 @@ fn export_db_environment(db: &solilang::desktop::db::DbHandle) {
     // SOLIDB_HOST, so setting only the model-layer one would leave sessions
     // pointing at a default address where nothing is listening.
     std::env::set_var("SOLI_SOLIDB_HOST", &host);
+    std::env::set_var("SOLIDB_DATABASE", DEFAULT_DATABASE);
 
     // A `.env` shipped inside the app must not be able to redirect the
     // database somewhere else.
