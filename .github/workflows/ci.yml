@@ -208,6 +208,11 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: soli-darwin-arm64
+          # Intel Mac. `soli update` has always resolved x86_64 macOS hosts to
+          # this artifact name, so without it those users get a 404.
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: soli-darwin-amd64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write

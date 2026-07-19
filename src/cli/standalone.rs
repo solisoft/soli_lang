@@ -22,7 +22,7 @@
 //! failure path is `Result` → `eprintln!` + `process::exit` — the release
 //! profile is `panic = "abort"`, so nothing here may panic on bad input.
 //!
-//! Cross-target builds (`--target linux-amd64|linux-arm64|darwin-arm64`)
+//! Cross-target builds (`--target linux-amd64|linux-arm64|darwin-amd64|darwin-arm64`)
 //! embed a published release runtime instead of `current_exe()`: downloaded
 //! from `{SOLI_RELEASE_BASE_URL | github releases}/v{VERSION}/soli-{target}.tar.gz`,
 //! sha256-verified against the `.sha256` sibling, and cached under
@@ -43,7 +43,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE_REPO: &str = "solisoft/soli_lang";
 
 /// Release artifact names, exactly as CI publishes them.
-const SUPPORTED_TARGETS: &[&str] = &["linux-amd64", "linux-arm64", "darwin-arm64"];
+const SUPPORTED_TARGETS: &[&str] = &["linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64"];
 
 // ---------------------------------------------------------------------------
 // Boot side
@@ -364,6 +364,8 @@ fn normalize_target(target: &str) -> Result<String, String> {
         "linux-amd64" | "linux-x86_64" | "linux-x64" => "linux-amd64",
         "linux-arm64" | "linux-aarch64" => "linux-arm64",
         "darwin-arm64" | "darwin-aarch64" | "macos-arm64" | "macos-aarch64" => "darwin-arm64",
+        "darwin-amd64" | "darwin-x86_64" | "darwin-x64" | "macos-amd64" | "macos-x86_64"
+        | "macos-x64" => "darwin-amd64",
         other => {
             return Err(format!(
                 "unsupported target '{}' — supported targets: {}",
@@ -650,8 +652,17 @@ mod tests {
         assert_eq!(normalize_target("linux-aarch64").unwrap(), "linux-arm64");
         assert_eq!(normalize_target("macos-arm64").unwrap(), "darwin-arm64");
         assert_eq!(normalize_target("darwin-arm64").unwrap(), "darwin-arm64");
+        // Intel Mac — `soli update` already resolves running hosts to this
+        // name, so the builder has to accept it too.
+        assert_eq!(normalize_target("macos-x86_64").unwrap(), "darwin-amd64");
+        assert_eq!(normalize_target("darwin-amd64").unwrap(), "darwin-amd64");
+
+        // Windows is not published yet. Assert against the live target list
+        // rather than a hardcoded string, so adding a target doesn't turn this
+        // into a tripwire.
         let err = normalize_target("windows-amd64").unwrap_err();
-        assert!(err.contains("linux-amd64, linux-arm64, darwin-arm64"));
+        assert!(err.contains(&SUPPORTED_TARGETS.join(", ")));
+        assert!(err.contains("windows-amd64"));
     }
 
     #[test]

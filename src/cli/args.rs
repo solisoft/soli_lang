@@ -193,7 +193,7 @@ pub enum Command {
         /// `encrypt`) so no readable source ships in the bundle.
         protect: bool,
         /// Platform to embed for `--standalone` (release artifact name:
-        /// linux-amd64, linux-arm64, darwin-arm64). None = host platform.
+        /// linux-amd64, linux-arm64, darwin-amd64, darwin-arm64). None = host platform.
         target: Option<String>,
     },
 }
@@ -290,9 +290,8 @@ pub fn print_usage() {
         "                                      soli runtime; composes with --encrypt/--protect)"
     );
     eprintln!("                       --target T     Platform for --standalone: linux-amd64,");
-    eprintln!(
-        "                                      linux-arm64, darwin-arm64 (default: this machine)"
-    );
+    eprintln!("                                      linux-arm64, darwin-amd64, darwin-arm64");
+    eprintln!("                                      (default: this machine)");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
@@ -1381,7 +1380,7 @@ pub fn parse_args() -> Options {
                             i += 1;
                             if i >= args.len() {
                                 eprintln!(
-                                    "--target requires a platform (linux-amd64, linux-arm64, darwin-arm64)"
+                                    "--target requires a platform (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64)"
                                 );
                                 print_usage();
                                 process::exit(64);
