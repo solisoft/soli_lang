@@ -159,25 +159,18 @@ pub fn write_graph(
         .create_collection(EDGE_COLLECTION, Some("edge"))
         .map_err(|e| format!("create edge collection {}: {}", EDGE_COLLECTION, e))?;
 
-    // Vector index over node embeddings (dimension inferred from the data).
+    // Vector index dimension, inferred from the data. The index itself is
+    // created *after* the bulk load (below): building it once over the finished
+    // node set is far cheaper than maintaining it incrementally, because SolidB
+    // re-serializes the whole vector index on every write batch — so an index
+    // present during the load turns each of the ~N/200 insert chunks into a
+    // full-index rewrite.
     let dimension = graph
         .nodes
         .iter()
         .map(|n| n.embedding.len())
         .find(|&d| d > 0)
         .unwrap_or(0);
-    if opts.embed && dimension > 0 {
-        client
-            .create_vector_index(
-                NODE_COLLECTION,
-                VECTOR_INDEX,
-                "embedding",
-                dimension,
-                "cosine",
-                None,
-            )
-            .map_err(|e| format!("create vector index: {}", e))?;
-    }
 
     // Traversal + filter indexes. Best-effort — never fatal.
     let _ = client.create_index(
@@ -229,6 +222,21 @@ pub fn write_graph(
         inserted += n;
         on_progress(inserted, total_docs);
     })?;
+
+    // Build the vector index now that all nodes are loaded — one pass over the
+    // finished collection instead of a full-index re-serialize per insert chunk.
+    if opts.embed && dimension > 0 {
+        client
+            .create_vector_index(
+                NODE_COLLECTION,
+                VECTOR_INDEX,
+                "embedding",
+                dimension,
+                "cosine",
+                None,
+            )
+            .map_err(|e| format!("create vector index: {}", e))?;
+    }
 
     Ok(SyncReport {
         nodes: graph.nodes.len(),
@@ -453,8 +461,11 @@ pub fn sync_graph(
     let total = graph.nodes.len() + graph.edges.len();
     let mut done = 0usize;
 
-    // Nodes: INSERT new, UPDATE changed (nodes keep their key while content
-    // changes), REMOVE gone. `update_existing = true`.
+    // Nodes: INSERT new, UPDATE changed, SKIP unchanged (same content hash),
+    // REMOVE gone. Skipping unchanged nodes is the key write-amplification win:
+    // every UPDATE batch makes SolidB re-serialize the *entire* node vector
+    // index, so on a typical re-sync (a handful of nodes changed) this collapses
+    // ~N/200 update batches down to a couple.
     let node_docs: Vec<serde_json::Value> = graph
         .nodes
         .iter()
@@ -462,21 +473,13 @@ pub fn sync_graph(
         .collect();
     let new_node_keys: std::collections::HashSet<String> =
         graph.nodes.iter().map(|n| n.key.clone()).collect();
-    let existing_nodes: std::collections::HashSet<String> =
-        fetch_keys(&client, NODE_COLLECTION)?.into_iter().collect();
-    upsert_docs(
-        &client,
-        NODE_COLLECTION,
-        node_docs,
-        &existing_nodes,
-        true,
-        &mut |n| {
-            done += n;
-            on_progress(done, total);
-        },
-    )?;
-    let stale_nodes: Vec<String> = existing_nodes
-        .iter()
+    let existing_node_hashes = fetch_node_hashes(&client)?;
+    upsert_nodes(&client, node_docs, &existing_node_hashes, &mut |n| {
+        done += n;
+        on_progress(done, total);
+    })?;
+    let stale_nodes: Vec<String> = existing_node_hashes
+        .keys()
         .filter(|k| !new_node_keys.contains(*k))
         .cloned()
         .collect();
@@ -588,6 +591,7 @@ fn upsert_docs(
 ) -> Result<(), String> {
     let mut inserts: Vec<serde_json::Value> = Vec::new();
     let mut updates: Vec<serde_json::Value> = Vec::new();
+    let mut skipped = 0usize;
     for doc in docs {
         let is_existing = doc
             .get("_key")
@@ -597,11 +601,19 @@ fn upsert_docs(
         if is_existing {
             if update_existing {
                 updates.push(doc);
+            } else {
+                // Identical by key (edges) — left untouched, but still counted
+                // toward progress so the bar reaches 100% on an incremental
+                // sync where most edges are unchanged (rather than freezing at
+                // written / total).
+                skipped += 1;
             }
-            // else: identical by key (edges) — leave untouched.
         } else {
             inserts.push(doc);
         }
+    }
+    if skipped > 0 {
+        on_chunk(skipped);
     }
     run_bulk(
         client,
@@ -619,6 +631,52 @@ fn upsert_docs(
             on_chunk,
         )?;
     }
+    Ok(())
+}
+
+/// Upsert node documents, skipping any whose stored content hash (`chash`) is
+/// unchanged: new keys INSERT, changed-hash keys UPDATE, identical-hash keys are
+/// left untouched (but counted toward progress). A node with no stored hash (an
+/// older build, or the row predates this field) has an empty `existing` value
+/// and is treated as changed so it gets one UPDATE that repopulates `chash`.
+fn upsert_nodes(
+    client: &SoliDBClient,
+    docs: Vec<serde_json::Value>,
+    existing: &HashMap<String, String>,
+    on_chunk: &mut dyn FnMut(usize),
+) -> Result<(), String> {
+    let mut inserts: Vec<serde_json::Value> = Vec::new();
+    let mut updates: Vec<serde_json::Value> = Vec::new();
+    let mut skipped = 0usize;
+    for doc in docs {
+        let key = doc.get("_key").and_then(|k| k.as_str()).unwrap_or_default();
+        let new_hash = doc
+            .get("chash")
+            .and_then(|h| h.as_str())
+            .unwrap_or_default();
+        match existing.get(key) {
+            None => inserts.push(doc),
+            Some(old_hash) if !new_hash.is_empty() && old_hash == new_hash => skipped += 1,
+            Some(_) => updates.push(doc),
+        }
+    }
+    if skipped > 0 {
+        on_chunk(skipped);
+    }
+    run_bulk(
+        client,
+        &format!("FOR d IN @docs INSERT d INTO {}", NODE_COLLECTION),
+        inserts,
+        NODE_COLLECTION,
+        on_chunk,
+    )?;
+    run_bulk(
+        client,
+        &format!("FOR d IN @docs UPDATE d._key WITH d IN {}", NODE_COLLECTION),
+        updates,
+        NODE_COLLECTION,
+        on_chunk,
+    )?;
     Ok(())
 }
 
@@ -649,6 +707,32 @@ fn fetch_keys(client: &SoliDBClient, collection: &str) -> Result<Vec<String>, St
         .iter()
         .filter_map(|r| r.as_str().map(String::from))
         .collect())
+}
+
+/// Fetch `{_key -> chash}` for every existing node, so an incremental sync can
+/// skip UPDATE-ing nodes whose content hash is unchanged. A node with no stored
+/// `chash` (an older build) maps to an empty string, forcing one UPDATE that
+/// repopulates it. Doubles as the existing-keys set for stale-node removal.
+fn fetch_node_hashes(client: &SoliDBClient) -> Result<HashMap<String, String>, String> {
+    let query = format!(
+        "FOR n IN {} RETURN {{ k: n._key, h: n.chash }}",
+        NODE_COLLECTION
+    );
+    let rows = client
+        .query(&query, None)
+        .map_err(|e| format!("list node hashes: {}", e))?;
+    let mut out = HashMap::with_capacity(rows.len());
+    for row in rows {
+        if let Some(key) = row.get("k").and_then(|v| v.as_str()) {
+            let hash = row
+                .get("h")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.insert(key.to_string(), hash);
+        }
+    }
+    Ok(out)
 }
 
 fn remove_keys(client: &SoliDBClient, collection: &str, keys: &[String]) -> Result<(), String> {

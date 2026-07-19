@@ -110,6 +110,12 @@ impl ProjectGraph {
             if let Some(key) = key {
                 obj.insert("_key".to_string(), key);
             }
+            // Stamp the content hash so the next incremental sync can detect an
+            // unchanged node and skip re-writing it.
+            obj.insert(
+                "chash".to_string(),
+                serde_json::Value::String(node_content_hash(node)),
+            );
         }
         doc
     }
@@ -187,12 +193,48 @@ pub fn edge_key(edge: &Edge) -> String {
 /// Tiny FNV-1a hash — used to disambiguate over-long truncated keys and to
 /// derive deterministic edge keys.
 fn fnv1a(s: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in s.bytes() {
+    fnv1a_bytes(0xcbf2_9ce4_8422_2325, s.as_bytes())
+}
+
+/// FNV-1a over raw bytes, resumable from a seed so multiple fields can be
+/// folded into one hash without allocating an intermediate string.
+fn fnv1a_bytes(seed: u64, bytes: &[u8]) -> u64 {
+    let mut hash = seed;
+    for &byte in bytes {
         hash ^= byte as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     hash
+}
+
+/// Content hash over a node's *stored* fields (everything except its `key`
+/// identity). Written into the document as `chash` and compared against the
+/// stored value on the next sync so an incremental re-sync can skip UPDATE-ing
+/// nodes whose content is byte-identical — the main lever for avoiding SolidB's
+/// per-write-batch vector-index re-serialization. Deterministic: folds the
+/// fields in a fixed order with a separator so distinct field boundaries can't
+/// collide.
+pub fn node_content_hash(node: &Node) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325;
+    for part in [
+        node.kind.as_str(),
+        node.name.as_str(),
+        node.qualified_name.as_str(),
+        node.file.as_str(),
+        node.signature.as_str(),
+        node.superclass.as_deref().unwrap_or(""),
+        node.role.as_str(),
+        node.doc.as_str(),
+        node.text.as_str(),
+    ] {
+        hash = fnv1a_bytes(hash, part.as_bytes());
+        hash = fnv1a_bytes(hash, &[0xff]); // field separator
+    }
+    hash = fnv1a_bytes(hash, &node.line.to_le_bytes());
+    for &value in &node.embedding {
+        hash = fnv1a_bytes(hash, &value.to_le_bytes());
+    }
+    format!("{:016x}", hash)
 }
 
 #[cfg(test)]
@@ -245,6 +287,67 @@ mod tests {
         assert!(doc.get("key").is_none());
         assert_eq!(doc["superclass"], "Model");
         assert!(doc.get("embedding").is_none(), "empty embedding omitted");
+    }
+
+    #[test]
+    fn node_document_stamps_content_hash() {
+        let node = Node {
+            key: "class:User".to_string(),
+            kind: "model".to_string(),
+            name: "User".to_string(),
+            qualified_name: "User".to_string(),
+            file: "app/models/user.sl".to_string(),
+            line: 1,
+            signature: String::new(),
+            superclass: Some("Model".to_string()),
+            role: "model".to_string(),
+            doc: String::new(),
+            text: "model User".to_string(),
+            embedding: vec![],
+        };
+        let doc = ProjectGraph::node_document(&node);
+        assert_eq!(doc["chash"], node_content_hash(&node));
+        assert!(doc["chash"].as_str().is_some_and(|s| !s.is_empty()));
+    }
+
+    #[test]
+    fn content_hash_is_deterministic_and_change_sensitive() {
+        let base = Node {
+            key: "method:User.authenticate".to_string(),
+            kind: "method".to_string(),
+            name: "authenticate".to_string(),
+            qualified_name: "User#authenticate".to_string(),
+            file: "app/models/user.sl".to_string(),
+            line: 12,
+            signature: "def authenticate(pw)".to_string(),
+            superclass: None,
+            role: "model".to_string(),
+            doc: String::new(),
+            text: "method authenticate".to_string(),
+            embedding: vec![0.1, 0.2, 0.3],
+        };
+        // Identical content → identical hash.
+        assert_eq!(node_content_hash(&base), node_content_hash(&base.clone()));
+
+        // A changed line, doc, text, or embedding each perturbs the hash.
+        let mut moved = base.clone();
+        moved.line = 13;
+        assert_ne!(node_content_hash(&base), node_content_hash(&moved));
+
+        let mut re_embedded = base.clone();
+        re_embedded.embedding = vec![0.1, 0.2, 0.4];
+        assert_ne!(node_content_hash(&base), node_content_hash(&re_embedded));
+
+        let mut redoc = base.clone();
+        redoc.doc = "authenticates a user".to_string();
+        assert_ne!(node_content_hash(&base), node_content_hash(&redoc));
+
+        // Field-boundary safety: shifting a character across two fields must
+        // still change the hash (the separator prevents a silent collision).
+        let mut shifted = base.clone();
+        shifted.name = "authenticat".to_string();
+        shifted.qualified_name = "eUser#authenticate".to_string();
+        assert_ne!(node_content_hash(&base), node_content_hash(&shifted));
     }
 
     #[test]
