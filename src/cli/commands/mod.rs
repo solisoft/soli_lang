@@ -126,6 +126,8 @@ pub fn run_build(
     };
 
     if standalone {
+        // A Windows artifact needs `.exe` even when cross-built from Linux.
+        let output_path = crate::cli::standalone::apply_exe_suffix(&output_path, target);
         if let Err(e) =
             crate::cli::standalone::write_standalone_exe(&bundle_data, &output_path, target)
         {

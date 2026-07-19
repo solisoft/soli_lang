@@ -22,7 +22,7 @@
 //! failure path is `Result` → `eprintln!` + `process::exit` — the release
 //! profile is `panic = "abort"`, so nothing here may panic on bad input.
 //!
-//! Cross-target builds (`--target linux-amd64|linux-arm64|darwin-amd64|darwin-arm64`)
+//! Cross-target builds (`--target linux-amd64|linux-arm64|darwin-amd64|darwin-arm64|windows-amd64`)
 //! embed a published release runtime instead of `current_exe()`: downloaded
 //! from `{SOLI_RELEASE_BASE_URL | github releases}/v{VERSION}/soli-{target}.tar.gz`,
 //! sha256-verified against the `.sha256` sibling, and cached under
@@ -43,7 +43,13 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE_REPO: &str = "solisoft/soli_lang";
 
 /// Release artifact names, exactly as CI publishes them.
-const SUPPORTED_TARGETS: &[&str] = &["linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64"];
+const SUPPORTED_TARGETS: &[&str] = &[
+    "linux-amd64",
+    "linux-arm64",
+    "darwin-amd64",
+    "darwin-arm64",
+    "windows-amd64",
+];
 
 // ---------------------------------------------------------------------------
 // Boot side
@@ -302,6 +308,26 @@ pub fn write_standalone_exe(
 /// invalidates its ad-hoc signature and Apple Silicon SIGKILLs unsigned
 /// binaries at exec — so darwin outputs must be re-signed.
 fn sign_if_needed(output: &Path, target: &BuildTarget) -> Result<(), String> {
+    if target.is_windows() {
+        // Appending past the last section works on Windows — the loader maps
+        // sections by header and ignores trailing bytes, which is how every
+        // self-extracting installer works. Authenticode is the catch: its hash
+        // covers the region the payload now occupies, so a signature applied
+        // *before* stapling is invalid afterwards. Signing must therefore run
+        // on the finished artifact, which is also the right place for it — the
+        // artifact is the customer's application and should carry their
+        // certificate, not soli's.
+        println!();
+        println!("  \x1b[33m\x1b[1m! Windows artifact is unsigned\x1b[0m — SmartScreen will show");
+        println!("    \"Windows protected your PC\" and hide \"Run anyway\" behind \"More info\".");
+        println!("    Sign the finished file (after this step, never before):");
+        println!(
+            "      signtool sign /fd sha256 /tr <timestamp-url> /td sha256 {}",
+            output.display()
+        );
+        println!("    (or osslsigncode from any platform, for cross-builds)");
+        return Ok(());
+    }
     if !target.is_darwin() {
         return Ok(()); // ELF ignores trailing bytes — nothing to do.
     }
@@ -349,12 +375,54 @@ impl BuildTarget {
         }
     }
 
+    fn is_windows(&self) -> bool {
+        match self {
+            BuildTarget::Host => cfg!(target_os = "windows"),
+            BuildTarget::Release(t) => t.starts_with("windows-"),
+        }
+    }
+
     /// Human label for the build summary.
     pub fn label(&self) -> String {
         match self {
             BuildTarget::Host => format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             BuildTarget::Release(t) => t.clone(),
         }
+    }
+}
+
+/// Append `.exe` when building for Windows.
+///
+/// Windows refuses to execute a file without the extension, so an artifact
+/// cross-built for Windows from Linux must carry it — the host's own
+/// conventions are irrelevant here.
+pub fn apply_exe_suffix(path: &Path, target: Option<&str>) -> PathBuf {
+    let windows = match target {
+        Some(t) => t.starts_with("windows-"),
+        None => cfg!(target_os = "windows"),
+    };
+    if !windows {
+        return path.to_path_buf();
+    }
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+    {
+        return path.to_path_buf();
+    }
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".exe");
+    path.with_file_name(name)
+}
+
+/// Filename a release tarball stores the runtime under, for a target name.
+///
+/// Windows executables need the extension; nothing else does.
+fn runtime_file_name_for(target: &str) -> &'static str {
+    if target.starts_with("windows-") {
+        "soli.exe"
+    } else {
+        "soli"
     }
 }
 
@@ -366,6 +434,9 @@ fn normalize_target(target: &str) -> Result<String, String> {
         "darwin-arm64" | "darwin-aarch64" | "macos-arm64" | "macos-aarch64" => "darwin-arm64",
         "darwin-amd64" | "darwin-x86_64" | "darwin-x64" | "macos-amd64" | "macos-x86_64"
         | "macos-x64" => "darwin-amd64",
+        "windows-amd64" | "windows-x86_64" | "windows-x64" | "win-amd64" | "win64" => {
+            "windows-amd64"
+        }
         other => {
             return Err(format!(
                 "unsupported target '{}' — supported targets: {}",
@@ -534,10 +605,13 @@ fn download_release_runtime(target: &str) -> Result<Vec<u8>, String> {
         .unpack(temp_dir.path())
         .map_err(|e| format!("failed to extract tarball: {}", e))?;
 
-    let binary_path = temp_dir.path().join("soli");
+    // Windows tarballs carry `soli.exe`; every other target carries `soli`.
+    let file_name = runtime_file_name_for(target);
+    let binary_path = temp_dir.path().join(file_name);
     std::fs::read(&binary_path).map_err(|e| {
         format!(
-            "tarball did not contain a 'soli' binary ({}): {}",
+            "tarball did not contain a '{}' binary ({}): {}",
+            file_name,
             binary_path.display(),
             e
         )
@@ -647,6 +721,48 @@ mod tests {
     }
 
     #[test]
+    fn windows_artifacts_get_an_exe_extension() {
+        // Cross-building for Windows from Linux still has to produce a name
+        // Windows will execute — the host's conventions are irrelevant.
+        assert_eq!(
+            apply_exe_suffix(Path::new("myapp"), Some("windows-amd64")),
+            Path::new("myapp.exe")
+        );
+        // Idempotent, and case-insensitive about an extension already present.
+        assert_eq!(
+            apply_exe_suffix(Path::new("myapp.exe"), Some("windows-amd64")),
+            Path::new("myapp.exe")
+        );
+        assert_eq!(
+            apply_exe_suffix(Path::new("myapp.EXE"), Some("windows-amd64")),
+            Path::new("myapp.EXE")
+        );
+        // Directories in the path are preserved.
+        assert_eq!(
+            apply_exe_suffix(Path::new("dist/myapp"), Some("windows-amd64")),
+            Path::new("dist/myapp.exe")
+        );
+        // Every other target is left alone.
+        for target in ["linux-amd64", "darwin-arm64", "darwin-amd64"] {
+            assert_eq!(
+                apply_exe_suffix(Path::new("myapp"), Some(target)),
+                Path::new("myapp"),
+                "{} must not gain an extension",
+                target
+            );
+        }
+    }
+
+    #[test]
+    fn windows_runtime_tarballs_carry_an_exe() {
+        // The published tarball stores `soli.exe` for Windows; looking for
+        // `soli` would fail extraction with a confusing "not in tarball".
+        assert_eq!(runtime_file_name_for("windows-amd64"), "soli.exe");
+        assert_eq!(runtime_file_name_for("linux-amd64"), "soli");
+        assert_eq!(runtime_file_name_for("darwin-arm64"), "soli");
+    }
+
+    #[test]
     fn target_aliases_normalize() {
         assert_eq!(normalize_target("linux-x86_64").unwrap(), "linux-amd64");
         assert_eq!(normalize_target("linux-aarch64").unwrap(), "linux-arm64");
@@ -657,12 +773,16 @@ mod tests {
         assert_eq!(normalize_target("macos-x86_64").unwrap(), "darwin-amd64");
         assert_eq!(normalize_target("darwin-amd64").unwrap(), "darwin-amd64");
 
-        // Windows is not published yet. Assert against the live target list
-        // rather than a hardcoded string, so adding a target doesn't turn this
-        // into a tripwire.
-        let err = normalize_target("windows-amd64").unwrap_err();
+        assert_eq!(normalize_target("win64").unwrap(), "windows-amd64");
+        assert_eq!(normalize_target("windows-amd64").unwrap(), "windows-amd64");
+
+        // Windows on ARM is deliberately not published: there is no native CI
+        // runner, so it would be cross-compile-only through the whole vendored
+        // C chain. Assert against the live list so adding a target doesn't turn
+        // this into a tripwire.
+        let err = normalize_target("windows-arm64").unwrap_err();
         assert!(err.contains(&SUPPORTED_TARGETS.join(", ")));
-        assert!(err.contains("windows-amd64"));
+        assert!(err.contains("windows-arm64"));
     }
 
     #[test]

@@ -83,17 +83,21 @@ fn lock_exclusive_nonblocking(_file: &File, path: &Path) -> Result<bool, String>
 mod tests {
     use super::*;
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!("soli_lock_test_{}_{}", std::process::id(), name));
-        p
+    /// A directory unique to this test invocation.
+    ///
+    /// Deliberately not a path derived from the process id and a fixed name:
+    /// the whole suite shares one process, so such a path is only unique by
+    /// convention, and a collision shows up as a confusing "lock was not
+    /// released" rather than as a clash.
+    fn scratch_dir() -> tempfile::TempDir {
+        tempfile::tempdir().expect("scratch dir")
     }
 
     #[test]
     #[cfg(unix)]
     fn acquires_when_free_and_refuses_while_held() {
-        let path = scratch("held");
-        let _ = std::fs::remove_file(&path);
+        let dir = scratch_dir();
+        let path = dir.path().join("instance.lock");
 
         let first = try_acquire(&path).expect("first acquire must evaluate");
         assert!(first.is_some(), "lock should be free initially");
@@ -109,23 +113,16 @@ mod tests {
         drop(first);
         let third = try_acquire(&path).expect("third acquire must evaluate");
         assert!(third.is_some(), "lock must be released on drop");
-
-        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
     #[cfg(unix)]
     fn creates_missing_parent_directories() {
-        let mut path = scratch("nested");
-        path.push("deeper");
-        path.push("instance.lock");
-        let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+        let dir = scratch_dir();
+        let path = dir.path().join("nested/deeper/instance.lock");
 
         let lock = try_acquire(&path).expect("must create parents");
         assert!(lock.is_some());
         assert!(path.exists());
-
-        drop(lock);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
     }
 }

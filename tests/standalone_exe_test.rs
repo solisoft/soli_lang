@@ -400,13 +400,19 @@ fn build_standalone_refuses_directory_output() {
 
 /// A gzipped tar containing a single `soli` file with the given bytes.
 fn make_runtime_tarball(runtime: &[u8]) -> Vec<u8> {
+    make_named_runtime_tarball(runtime, "soli")
+}
+
+/// As above, but with an explicit inner filename — Windows release tarballs
+/// carry `soli.exe`.
+fn make_named_runtime_tarball(runtime: &[u8], name: &str) -> Vec<u8> {
     let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     let mut builder = tar::Builder::new(gz);
     let mut header = tar::Header::new_gnu();
     header.set_size(runtime.len() as u64);
     header.set_mode(0o755);
     header.set_cksum();
-    builder.append_data(&mut header, "soli", runtime).unwrap();
+    builder.append_data(&mut header, name, runtime).unwrap();
     builder.into_inner().unwrap().finish().unwrap()
 }
 
@@ -580,16 +586,18 @@ fn target_rejects_unknown_and_requires_standalone() {
     std::fs::create_dir_all(&app_dir).unwrap();
     write_fixture_app(&app_dir);
 
+    // Windows on ARM is deliberately unsupported (no native CI runner), so it
+    // is the stable negative case now that windows-amd64 is published.
     let (status, stderr) = build_standalone(
         &app_dir,
         None,
-        &["--target", "windows-amd64"],
+        &["--target", "windows-arm64"],
         &[],
         Some(dir.path()),
     );
     assert!(!status.success());
     assert!(
-        stderr.contains("linux-amd64") && stderr.contains("darwin-arm64"),
+        stderr.contains("linux-amd64") && stderr.contains("windows-amd64"),
         "error must list supported targets, got: {stderr}"
     );
 
@@ -608,4 +616,55 @@ fn target_rejects_unknown_and_requires_standalone() {
         stderr.contains("--target only applies to --standalone"),
         "got: {stderr}"
     );
+}
+
+/// Cross-building for Windows must find `soli.exe` inside the tarball and give
+/// the artifact an `.exe` name — even though the build runs on Linux.
+///
+/// Both halves are easy to get wrong in ways that only show up on a user's
+/// Windows machine: looking for `soli` fails extraction with a confusing "not
+/// in tarball", and an artifact without the extension simply will not launch.
+#[test]
+fn windows_target_build_uses_exe_naming_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let app_dir = dir.path().join("xapp");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    write_fixture_app(&app_dir);
+
+    let tarball = make_named_runtime_tarball(FAKE_RUNTIME, "soli.exe");
+    let sha = sha256_hex(&tarball);
+    let port = spawn_mock_release_server(tarball, sha);
+    let base_url = format!("http://127.0.0.1:{}", port);
+    let cache = dir.path().join("cache");
+
+    let (status, stderr) = build_standalone(
+        &app_dir,
+        None,
+        &["--target", "windows-amd64"],
+        &[
+            ("SOLI_RELEASE_BASE_URL", base_url.as_str()),
+            ("XDG_CACHE_HOME", cache.to_str().unwrap()),
+        ],
+        Some(dir.path()),
+    );
+    assert!(
+        status.success(),
+        "windows cross-target build failed: {stderr}"
+    );
+
+    let artifact = dir.path().join("xapp-windows-amd64.exe");
+    assert!(
+        artifact.exists(),
+        "expected an .exe artifact; directory held: {:?}",
+        std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name()))
+            .collect::<Vec<_>>()
+    );
+
+    let bytes = std::fs::read(&artifact).expect("artifact written");
+    assert!(bytes.starts_with(FAKE_RUNTIME), "runtime prefix mismatch");
+    let (off, _) = payload_region(&bytes);
+    assert_eq!(off, FAKE_RUNTIME.len(), "payload must start after runtime");
+    assert_eq!(&bytes[off..off + 4], b"SOLB", "plain payload magic");
 }

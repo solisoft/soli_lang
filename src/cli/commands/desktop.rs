@@ -125,7 +125,10 @@ pub fn run(args: DesktopBuildArgs<'_>) {
     });
 
     // 4. Staple onto a runtime, exactly as a standalone build does.
-    let output_path = resolve_output_path(args.output, &source_dir, args.target);
+    let output_path = crate::cli::standalone::apply_exe_suffix(
+        &resolve_output_path(args.output, &source_dir, args.target),
+        args.target,
+    );
     if output_path.is_dir() {
         eprintln!(
             "Error: output path '{}' is a directory — pass --output <file>",

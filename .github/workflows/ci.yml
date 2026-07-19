@@ -213,6 +213,14 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: soli-darwin-amd64
+          # Keep the .tar.gz + .sha256 convention on Windows too: the standalone
+          # builder downloads and verifies that shape, and a .zip would mean a
+          # second code path plus a zip dependency for cosmetics. Windows 10
+          # 1803+ ships bsdtar as tar.exe, so the packaging step is unchanged
+          # apart from the binary name.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: soli-windows-amd64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -250,9 +258,17 @@ jobs:
           PKG_CONFIG_ALLOW_CROSS: 1
 
       - name: Package binary
+        # `shell: bash` is explicit because windows-latest defaults to
+        # PowerShell, where this script would not run. Windows 10 1803+ ships
+        # bsdtar as tar.exe, so the tar invocation itself is unchanged.
+        shell: bash
         run: |
-          ls -la target/${{ matrix.target }}/release/soli
-          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release soli
+          # Windows produces soli.exe; every other target produces soli. The
+          # standalone builder looks for the matching name inside the tarball.
+          BIN=soli
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN=soli.exe; fi
+          ls -la target/${{ matrix.target }}/release/$BIN
+          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release $BIN
           # SEC-041: publish a `.sha256` sibling so `soli update` can
           # verify the downloaded tarball before extracting / chmod-ing.
           # `shasum -a 256` is portable across the matrix (macos-latest
@@ -260,6 +276,7 @@ jobs:
           shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Upload to release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
