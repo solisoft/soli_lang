@@ -2594,6 +2594,44 @@ async fn handle_hyper_request(
         .http_requests_total
         .fetch_add(1, Ordering::Relaxed);
 
+    // Desktop launch gate. Loopback keeps the network out but not the machine:
+    // every process running as this user can reach the port. Runs before any
+    // routing (including /_metrics) so an ungated caller cannot reach anything
+    // at all. Completely inert unless a desktop boot armed it, so ordinary
+    // `soli serve` pays one atomic load.
+    if crate::desktop::token::is_armed() {
+        let cookie_header = req
+            .headers()
+            .get(hyper::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        match crate::desktop::token::evaluate(&path, req.uri().query(), cookie_header.as_deref()) {
+            crate::desktop::token::Decision::Allow => {}
+            crate::desktop::token::Decision::GrantSession(session) => {
+                // Redirect rather than serve here, so the one-shot token stops
+                // being part of the URL the browser keeps showing.
+                return Ok(Response::builder()
+                    .status(StatusCode::FOUND)
+                    .header("Location", "/")
+                    .header(
+                        "Set-Cookie",
+                        crate::desktop::token::session_cookie_header(&session),
+                    )
+                    .body(full(Bytes::new()))
+                    .unwrap());
+            }
+            crate::desktop::token::Decision::Deny => {
+                return Ok(Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(full(Bytes::from_static(
+                        b"This application must be opened from its own launcher.",
+                    )))
+                    .unwrap());
+            }
+        }
+    }
+
     // Prometheus metrics endpoint — no CSRF check, intended for scraping
     if path == "/_metrics" && method == "GET" {
         let body = crate::metrics::Metrics::global().render_prometheus();

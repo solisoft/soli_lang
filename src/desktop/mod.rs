@@ -13,3 +13,5 @@ pub mod container;
 pub mod db;
 pub mod manifest;
 pub mod paths;
+pub mod shell;
+pub mod token;

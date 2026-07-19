@@ -325,7 +325,29 @@ pub fn boot(
         dev_mode,
         workers,
         Some(Box::new(move |bound| {
-            println!("\n{} is running at http://127.0.0.1:{}", app_name, bound);
+            // Arm the gate before opening anything: the launch URL carries the
+            // one-shot token, so it cannot be minted any earlier (the port is
+            // not known) or any later (the browser would race the gate).
+            let launch_url = solilang::desktop::token::arm(bound);
+            let opened = solilang::desktop::shell::open(&launch_url);
+            match opened {
+                solilang::desktop::shell::Opened::AppWindow => {
+                    println!("\n{} opened in an app window.", app_name)
+                }
+                solilang::desktop::shell::Opened::BrowserTab => {
+                    println!("\n{} opened in your browser.", app_name)
+                }
+                solilang::desktop::shell::Opened::Nothing => {
+                    println!("\nCould not open a browser automatically.")
+                }
+            }
+
+            // Always print the link, even when a window supposedly opened.
+            // Launching only tells us a process *started*, not that a window
+            // appeared — a browser that forwards to an existing instance and
+            // exits looks identical to success. Staying quiet on that path
+            // would leave the user with an armed gate and no way through it.
+            println!("If it did not appear, open:\n  {}", launch_url);
         })),
     )
     .map_err(|e| e.to_string());
