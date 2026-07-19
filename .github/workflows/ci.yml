@@ -347,9 +347,16 @@ jobs:
           tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release $BIN
           # SEC-041: publish a `.sha256` sibling so `soli update` can
           # verify the downloaded tarball before extracting / chmod-ing.
-          # `shasum -a 256` is portable across the matrix (macos-latest
-          # ships shasum but not coreutils' `sha256sum`).
-          shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
+          # No single checksum tool spans the matrix: macOS ships `shasum` but
+          # not coreutils' `sha256sum`, while the Windows runner's Git Bash
+          # ships `sha256sum` but not `shasum`. Linux has both. Picking at
+          # runtime keeps one step for all five targets.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
+          else
+            shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
+          fi
+          cat ${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Upload to release
         shell: bash
