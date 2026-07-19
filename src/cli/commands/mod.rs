@@ -1024,6 +1024,18 @@ fn print_unified_diff(a: &str, b: &str) {
     }
 }
 
+/// Deploy to a remote server over SSH.
+///
+/// Unix-only, because it is built on ssh2 (see Cargo.toml). The non-unix arm
+/// reports that rather than failing the build, so the rest of the CLI stays
+/// available on platforms that cannot deploy.
+#[cfg(not(unix))]
+pub fn run_deploy(_folder: Option<&str>) {
+    eprintln!("`soli deploy` is only available on Unix systems.");
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
 pub fn run_deploy(folder: Option<&str>) {
     let path = if let Some(f) = folder {
         Path::new(f).to_path_buf()

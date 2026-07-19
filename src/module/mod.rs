@@ -7,6 +7,10 @@
 //! - Circular dependency detection
 
 pub mod credentials;
+// `soli deploy` is built on ssh2, which is a Unix-only dependency (see the
+// note in Cargo.toml). Deploying to a remote server is a server-ops feature; a
+// Windows desktop build has no use for it and must not fail to compile over it.
+#[cfg(unix)]
 pub mod deploy;
 pub mod installer;
 pub mod lockfile;
