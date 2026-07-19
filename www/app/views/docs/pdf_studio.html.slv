@@ -385,6 +385,14 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
       <button class="tab" data-zone="footer" role="tab" aria-selected="false"><span class="swatch" style="background:var(--magenta)"></span>Footer</button>
     </div>
 
+    <div class="sep"></div>
+    <div class="tabs" role="tablist" aria-label="Layout mode">
+      <button class="tab on" id="mode-flow" role="tab" aria-selected="true"
+              title="Elements follow one another down the page. Drag reorders them.">Flow</button>
+      <button class="tab" id="mode-free" role="tab" aria-selected="false"
+              title="Elements sit at fixed coordinates. Drag moves them anywhere.">Free</button>
+    </div>
+
     <div class="zoom">
       <button id="undo" title="Undo  (Ctrl+Z)" aria-label="Undo">&#8630;</button>
       <button id="redo" title="Redo  (Ctrl+Shift+Z)" aria-label="Redo">&#8631;</button>
@@ -860,7 +868,9 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
       el.style.left = px(placed ? it.x : fb.x) + "px";
       el.style.top = px(placed ? it.y : fb.y) + "px";
       el.style.width = px(placed ? (it.width || 120) : fb.w) + "px";
-      el.style.height = px(placed ? itemH(it) : fb.h) + "px";
+      // Prefer what the engine measured; `itemH` is only a fallback for
+      // something that has not been rendered yet.
+      el.style.height = px(placed ? ((fb && fb.h) || itemH(it)) : fb.h) + "px";
       // Only some elements carry their own height; for the rest the engine
       // decides it from the content, and the editor genuinely does not know it.
       // Say so with a dashed edge rather than drawing a confident wrong box.
@@ -893,6 +903,7 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
   }
 
   function renderLayers() {
+    reflectMode();
     var host = document.getElementById("layers");
     host.textContent = "";
     var b = band();
@@ -1039,8 +1050,18 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
         tpl.options.header_height = Math.max(24, Math.ceil(y - m0.top + h + 8));
         status("Reserved a " + tpl.options.header_height + " pt header band", "ok");
       }
-      band().push(at(x, y, w, makeInner(tool, w, h)));
-      select(band().length - 1);
+      var el0 = makeInner(tool, w, h);
+      if (modeOf() === "free") {
+        // Free: it belongs where it was drawn.
+        band().push(at(x, y, w, el0));
+        select(band().length - 1);
+      } else {
+        // Flow: coordinates would be a lie, so it joins the order at the point
+        // it was drawn instead.
+        var slot = dropSlotAt(y);
+        band().splice(slot, 0, el0);
+        select(slot);
+      }
       setTool("select");
       touched();
     } else {
@@ -1473,8 +1494,11 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
           if (b.kind === "band") { bandBox[b.path] = { y: b.y, h: b.h }; return; }
           if (b.path.indexOf(prefix) !== 0) return;
           var rest = b.path.slice(prefix.length);
-          if (rest.indexOf(".") >= 0) return;      // a nested child
-          var i = parseInt(rest, 10);
+          // Fold children into their top-level element. An `at` restores the
+          // cursor, so it measures as zero-height itself — its real extent is
+          // its children's, and that is what has to be known to lay flow
+          // content out beneath it.
+          var i = parseInt(rest.split(".")[0], 10);
           if (isNaN(i)) return;
           // A repeat draws one box per item; keep the union so the whole run is
           // clickable rather than just its first row.
@@ -1486,11 +1510,141 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
           cur.w = x2 - cur.x; cur.h = y2 - cur.y;
         });
         drawGuides();          // band geometry may have changed
+        var before = JSON.stringify(band());
+        syncFlowOffset();
+        if (JSON.stringify(band()) !== before) {
+          document.getElementById("ta-tpl").value = json();
+          clearTimeout(timer);
+          timer = setTimeout(render, 200);
+        }
         renderItems();
       }).catch(function () { /* selection just stays as it was */ });
   }
 
 
+
+
+
+  // --- flow start under free items -------------------------------------------
+  //
+  // An `at` restores the cursor, so a freely placed element does not push the
+  // flow down: flow content starts at the top of the page body and renders
+  // straight underneath it. When a document mixes the two, the flow needs to
+  // begin below the lowest placed element — which is exactly the leading `move`
+  // you would write by hand.
+  //
+  // Only a `move` at the very start of the band is managed, so nothing an
+  // author wrote elsewhere is touched.
+
+  var FLOW_GAP = 12;             // breathing room under the placed block
+
+  function lowestPlacedBottom() {
+    var b = band(), low = 0;
+    b.forEach(function (it, i) {
+      if (!isPlaced(it)) return;
+      var fb = flowBoxes[i];
+      var bottom = fb ? fb.y + fb.h : (it.y || 0) + itemH(it);
+      if (bottom > low) low = bottom;
+    });
+    return low;
+  }
+
+  function syncFlowOffset() {
+    var b = band();
+    var hasFree = b.some(isPlaced);
+    var hasFlow = b.some(function (it) { return !isPlaced(it) && it.type !== "move"; });
+    var lead = b[0] && b[0].type === "move" ? b[0] : null;
+
+    if (!hasFree || !hasFlow) {
+      // Nothing to clear, so a spacer we introduced is just noise now.
+      if (lead && lead._auto) b.shift();
+      return;
+    }
+    var m = margins();
+    var flowTop = m.top + headerHeight();
+    var needed = Math.max(0, r1(lowestPlacedBottom() - flowTop + FLOW_GAP));
+    if (!needed) {
+      if (lead && lead._auto) b.shift();
+      return;
+    }
+    if (lead && lead._auto) {
+      lead.y = needed;
+    } else if (!lead) {
+      b.unshift({ type: "move", y: needed, _auto: true });
+      if (sel >= 0) sel += 1;
+    }
+  }
+
+  // --- layout mode -----------------------------------------------------------
+  //
+  // Two ways to build a page, and the document says which it is rather than the
+  // editor holding hidden state: in *flow* the elements follow one another and
+  // dragging reorders them; in *free* every element carries coordinates and
+  // dragging moves it anywhere.
+  //
+  // Switching is a real conversion, not a display toggle. Going free wraps each
+  // element in an `at` at the position the engine measured, so nothing moves at
+  // the moment of the switch. Going back to flow unwraps them in the order they
+  // appear down the page, so what you see becomes the document order.
+
+  function modeOf() {
+    var b = band().filter(function (it) { return it.type !== "move"; });
+    if (!b.length) return "flow";
+    var placed = b.filter(isPlaced).length;
+    if (placed === b.length) return "free";
+    if (placed === 0) return "flow";
+    return "mixed";
+  }
+
+  function reflectMode() {
+    var m = modeOf();
+    var f = document.getElementById("mode-flow"), r = document.getElementById("mode-free");
+    if (!f || !r) return;
+    f.classList.toggle("on", m === "flow");
+    r.classList.toggle("on", m === "free");
+    f.setAttribute("aria-selected", m === "flow" ? "true" : "false");
+    r.setAttribute("aria-selected", m === "free" ? "true" : "false");
+    f.textContent = m === "mixed" ? "Flow*" : "Flow";
+    f.title = m === "mixed"
+      ? "Some elements are placed and some flow. Click to return them all to the flow."
+      : "Elements follow one another down the page. Drag reorders them.";
+  }
+
+  function toFreeMode() {
+    var b = band(), missing = 0;
+    for (var i = 0; i < b.length; i++) {
+      if (isPlaced(b[i]) || b[i].type === "move") continue;
+      var fb = flowBoxes[i];
+      if (!fb) { missing++; continue; }
+      b[i] = { type: "at", x: r1(fb.x), y: r1(fb.y), width: r1(fb.w), content: [b[i]] };
+    }
+    // `move` elements are pure flow spacing; in free mode they mean nothing.
+    tpl[zone] = b.filter(function (it) { return it.type !== "move"; });
+    sel = -1;
+    status(missing
+      ? "Free — " + missing + " element(s) had no measured position and were left as they are"
+      : "Free — every element now carries coordinates", "ok");
+    renderItems(); inspector(); readout(); reflectMode(); touched();
+  }
+
+  function toFlowMode() {
+    var b = band();
+    // Down the page becomes document order: the only ordering that preserves
+    // what the page currently looks like.
+    var placed = [], others = [];
+    b.forEach(function (it, i) {
+      if (isPlaced(it)) placed.push(it); else others.push({ it: it, i: i });
+    });
+    placed.sort(function (a, c) { return (a.y || 0) - (c.y || 0); });
+    var out = placed.map(function (it) {
+      return it.content && it.content[0] ? it.content[0] : it;
+    });
+    others.forEach(function (o) { out.push(o.it); });
+    tpl[zone] = out;
+    sel = -1;
+    status("Flow — elements now follow one another in the order they appeared", "ok");
+    renderItems(); inspector(); readout(); reflectMode(); touched();
+  }
 
   // --- reordering a flowing element -----------------------------------------
   //
@@ -2205,7 +2359,12 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
     if (Array.isArray(v)) return v.map(prune);
     if (v && typeof v === "object") {
       var o = {};
-      Object.keys(v).forEach(function (k) { if (v[k] !== undefined) o[k] = prune(v[k]); });
+      Object.keys(v).forEach(function (k) {
+        // `_auto` marks the spacer this editor manages; it is bookkeeping, not
+        // part of the template, so it never reaches the file or the engine.
+        if (k === "_auto" || v[k] === undefined) return;
+        o[k] = prune(v[k]);
+      });
       return o;
     }
     return v;
@@ -2445,6 +2604,13 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
   document.getElementById("grid-size").addEventListener("input", function () {
     var v = parseFloat(this.value);
     if (v > 0) { snapCfg.size = v; drawGridOverlay(); }
+  });
+
+  document.getElementById("mode-flow").addEventListener("click", function () {
+    if (modeOf() !== "flow") toFlowMode();
+  });
+  document.getElementById("mode-free").addEventListener("click", function () {
+    if (modeOf() !== "free") toFreeMode();
   });
 
   document.getElementById("undo").addEventListener("click", undo);
