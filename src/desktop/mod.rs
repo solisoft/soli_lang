@@ -9,5 +9,7 @@
 //! Built up in phases; this module currently provides the directory layout that
 //! the database and its state live in.
 
+pub mod container;
 pub mod db;
+pub mod manifest;
 pub mod paths;

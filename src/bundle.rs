@@ -271,6 +271,15 @@ impl BundleBuilder {
         Ok(())
     }
 
+    /// Serialize an arbitrary entry set to `SOLB` bytes.
+    ///
+    /// Exposed for callers that assemble entries programmatically rather than
+    /// by walking a source tree — the desktop container embeds a database
+    /// binary and reference data, neither of which is a project file.
+    pub fn serialize_entries(entries: &HashMap<String, Vec<u8>>) -> Result<Vec<u8>, String> {
+        Self::serialize(entries)
+    }
+
     fn serialize(entries: &HashMap<String, Vec<u8>>) -> Result<Vec<u8>, String> {
         let mut buf = Vec::new();
 
@@ -488,6 +497,14 @@ impl<'a> BundleReader<'a> {
 
     pub fn entries(&self) -> &[(String, &'a [u8])] {
         &self.entries
+    }
+
+    /// Look up one entry by exact path.
+    pub fn get(&self, path: &str) -> Option<&'a [u8]> {
+        self.entries
+            .iter()
+            .find(|(entry_path, _)| entry_path == path)
+            .map(|(_, bytes)| *bytes)
     }
 }
 
