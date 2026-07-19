@@ -64,6 +64,10 @@ pub struct DbHandle {
     child: Child,
     pub port: u16,
     pub credentials: DbCredentials,
+    /// Windows orphan guard. Held for the handle's lifetime: dropping it closes
+    /// the job, which kills everything inside. `None` where the platform has no
+    /// equivalent (Linux uses PDEATHSIG instead; macOS has neither).
+    _process_group: Option<crate::platform::job::ProcessGroup>,
 }
 
 impl DbHandle {
@@ -300,10 +304,33 @@ fn try_start_once(options: &DbOptions) -> Result<DbHandle, String> {
         .spawn()
         .map_err(|e| format!("cannot start {}: {}", options.binary.display(), e))?;
 
+    // Windows: adopt the child into a kill-on-close job, so it dies with this
+    // process however this process ends — the counterpart to PDEATHSIG above.
+    // Best-effort: failing to create the job must not stop the app starting,
+    // it only degrades orphan prevention to the explicit shutdown path.
+    let process_group = match crate::platform::job::ProcessGroup::new() {
+        Ok(Some(group)) => match group.adopt(&child) {
+            Ok(()) => Some(group),
+            Err(e) => {
+                eprintln!(
+                    "warning: could not tie the database to this process ({})",
+                    e
+                );
+                None
+            }
+        },
+        Ok(None) => None, // platform has no job objects
+        Err(e) => {
+            eprintln!("warning: could not create a process group ({})", e);
+            None
+        }
+    };
+
     let mut handle = DbHandle {
         child,
         port,
         credentials,
+        _process_group: process_group,
     };
 
     match wait_until_accepting(&mut handle, options.ready_timeout) {

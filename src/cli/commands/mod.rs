@@ -481,20 +481,11 @@ fn encrypted_extraction_dir() -> Result<std::path::PathBuf, String> {
 
 /// Create a directory with mode 0700 (owner-only) on unix.
 fn create_private_dir(dir: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(dir)
-            .map_err(|e| format!("Failed to create private dir '{}': {}", dir.display(), e))
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| format!("Failed to create dir '{}': {}", dir.display(), e))
-    }
+    // Delegates to the platform layer, which applies owner-only permissions at
+    // creation on both Unix (mode 0700) and Windows (a protected DACL). The
+    // non-unix branch here used to be a bare `create_dir_all` with no hardening
+    // at all — decrypted application source in a world-readable directory.
+    solilang::platform::dirs::create_private_dir(dir)
 }
 
 /// Best-effort removal of `soli_<pid>` extraction dirs left behind by dead

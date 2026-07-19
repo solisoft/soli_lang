@@ -232,7 +232,7 @@ time = ">=0.3.47, <0.3.52"
 # unreachable) `ports.ubuntu.com` multiarch mirror. Feature unification makes
 # every `openssl-sys` consumer in the graph vendored too (e.g. rusoto's
 # native-tls), so no target needs a system OpenSSL.
-# Moved to [target.'cfg(unix)'.dependencies] — see the note there.
+# Moved to the cfg(unix) dependency section below.
 
 # Language Server Protocol (used by `soli lsp`)
 tower-lsp = "0.20"
@@ -256,6 +256,19 @@ soli-codegraph = { path = "codegraph", optional = true }
 toml = "0.8"
 cms = { version = "0.2", features = ["std"] }
 x509-cert = "0.2"
+
+# Windows-only dependencies. `windows-sys` is pure Rust bindings — no C
+# toolchain involved — so it compiles for the Windows target from any host.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+] }
 
 # Unix-only dependencies.
 #

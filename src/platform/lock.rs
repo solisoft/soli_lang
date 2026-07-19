@@ -67,11 +67,49 @@ fn lock_exclusive_nonblocking(file: &File, path: &Path) -> Result<bool, String> 
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn lock_exclusive_nonblocking(file: &File, path: &Path) -> Result<bool, String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, ERROR_LOCK_VIOLATION, HANDLE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+    };
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    // Locks the whole file (u32::MAX:u32::MAX bytes). Like `flock`, the lock is
+    // released by the kernel when the handle closes — including on an abrupt
+    // termination — which is the property single-instance detection needs.
+    let handle: HANDLE = file.as_raw_handle() as _;
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    // SAFETY: `handle` is owned by `file` for this call, and `overlapped` is a
+    // zeroed, correctly sized structure.
+    let ok = unsafe {
+        LockFileEx(
+            handle,
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        )
+    };
+    if ok != 0 {
+        return Ok(true);
+    }
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        // Held by someone else. FAIL_IMMEDIATELY reports the contended case as
+        // a lock violation; IO_PENDING is the documented alternative spelling.
+        Some(code) if code == ERROR_LOCK_VIOLATION as i32 || code == ERROR_IO_PENDING as i32 => {
+            Ok(false)
+        }
+        _ => Err(format!("cannot lock {}: {}", path.display(), err)),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn lock_exclusive_nonblocking(_file: &File, path: &Path) -> Result<bool, String> {
-    // Windows wants LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY),
-    // which needs an explicit windows-sys dependency this crate does not carry
-    // yet. Refusing loudly beats a silently absent lock, which would let two
+    // Refusing loudly beats a silently absent lock, which would let two
     // instances open the same database directory.
     Err(format!(
         "single-instance locking is not implemented on this platform (lock file: {})",
