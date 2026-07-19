@@ -286,6 +286,8 @@ pub fn run_test(
     no_coverage: bool,
     show_uncovered: bool,
     fail_on_n1: bool,
+    browser: bool,
+    headed: bool,
 ) {
     let test_paths: Vec<PathBuf> = if paths.is_empty() {
         vec![std::env::current_dir()
@@ -326,6 +328,20 @@ pub fn run_test(
     if fail_on_n1 {
         solilang::interpreter::builtins::request_helpers::enable_fail_on_n1();
     }
+
+    // `--browser`: fail now rather than at the first `visit()`. Discovering
+    // there is no browser thirty seconds into a suite, from inside a worker
+    // thread, is a much worse way to learn it.
+    if browser {
+        if let Err(message) = check_browser_available() {
+            eprintln!("{}", message);
+            process::exit(1);
+        }
+        solilang::interpreter::builtins::browser::enable_browser_tests();
+        if headed {
+            solilang::interpreter::builtins::browser::enable_headed();
+        }
+    }
     let app_dir = resolve_app_dir(&test_path, test_path.is_file());
 
     if let Err(msg) = solilang::module::enforce_min_soli_version(&app_dir) {
@@ -360,9 +376,36 @@ pub fn run_test(
         test_files.retain(|p| seen.insert(p.clone()));
     }
 
+    // Browser specs are opt-in. Without `--browser` they are set aside rather
+    // than run: they need a browser installed and cost seconds each, and a
+    // default `soli test` that suddenly required Chrome would be a bad trade
+    // for everyone whose suite has none.
+    let mut browser_specs_skipped = 0usize;
+    if !browser {
+        let before = test_files.len();
+        test_files.retain(|path| !is_browser_spec(path));
+        browser_specs_skipped = before - test_files.len();
+    }
+
     if test_files.is_empty() {
-        println!("No test files found.");
+        if browser_specs_skipped > 0 {
+            // Every file found was a browser spec, so "no tests found" would be
+            // actively misleading — the tests exist, they were just not asked for.
+            println!(
+                "No tests run: {} browser spec(s) found. Add --browser to run them.",
+                browser_specs_skipped
+            );
+        } else {
+            println!("No test files found.");
+        }
         return;
+    }
+
+    if browser_specs_skipped > 0 {
+        println!(
+            "Skipping {} browser spec(s) — add --browser to run them.",
+            browser_specs_skipped
+        );
     }
 
     let mut model_preamble_files: Vec<(PathBuf, String)> = Vec::new();
@@ -905,6 +948,11 @@ pub fn run_test(
                         .unwrap()
                         .push((file, passed, error, duration, assertions));
                 }
+
+                // This worker is done: shut its browser down here rather than
+                // leaving it to thread teardown, so the browsers are gone
+                // before the suite prints its summary instead of during it.
+                solilang::interpreter::builtins::browser::close_browser();
             }));
         }
 
@@ -1728,6 +1776,39 @@ pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
     }
 
     files
+}
+
+/// Whether a spec drives a browser, and so needs `--browser`.
+///
+/// The marker is a `browser` directory anywhere in the path, which covers both
+/// `tests/browser/nav_spec.sl` and the fixture-app shape
+/// `tests-e2e/browser/specs/nav_spec.sl`. A directory rather than a filename
+/// suffix because browser specs come with fixtures and helpers that want to
+/// live beside them.
+pub fn is_browser_spec(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == "browser")
+}
+
+/// Check a browser is installed, with a message that says what to do if not.
+fn check_browser_available() -> Result<(), String> {
+    if solilang::platform::browser::find_chrome().is_some() {
+        return Ok(());
+    }
+    if let Some(configured) = solilang::platform::browser::chrome_path_override() {
+        return Err(format!(
+            "Error: {} points at '{}', which is not an executable file.",
+            solilang::platform::browser::CHROME_PATH_ENV,
+            configured
+        ));
+    }
+    Err(format!(
+        "Error: --browser needs Chrome or Chromium, and none was found.\n\
+         Looked for: {}\n\
+         Install one, or set {} to a browser somewhere else.",
+        solilang::platform::browser::CHROMIUM_BINARIES.join(", "),
+        solilang::platform::browser::CHROME_PATH_ENV,
+    ))
 }
 
 /// Like `collect_test_files`, but also picks up `.slv` view templates. Used by

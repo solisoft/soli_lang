@@ -39,6 +39,7 @@ pub fn current_action_name() -> String {
 pub mod assertions;
 pub mod assigns_helpers;
 pub mod body_limit;
+pub mod browser;
 pub mod cache;
 pub mod clock;
 pub mod collections;
@@ -540,6 +541,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         test_dsl::register_test_builtins(env);
         test_server::register_test_server_builtins(env);
         mock_http::register_mock_http_builtins(env);
+        // Browser helpers are test-only: `visit`/`click` are ordinary enough
+        // names that leaking them into a served app would be a real hazard.
+        browser::register_browser_helpers(env);
     }
 
     // Register request helper builtins

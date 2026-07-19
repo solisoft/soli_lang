@@ -1,0 +1,10 @@
+<h1 id="page-title">Dynamic</h1>
+<p id="static">Rendered on the server.</p>
+<div id="mounted"></div>
+<script>
+  // Present only once script has run: an HTTP-level test would never see it.
+  var node = document.createElement("p");
+  node.id = "from-script";
+  node.textContent = "Rendered by JavaScript";
+  document.getElementById("mounted").appendChild(node);
+</script>

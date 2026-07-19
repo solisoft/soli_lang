@@ -4,7 +4,9 @@ Rails-like end-to-end testing framework for Soli MVC applications.
 
 ## Overview
 
-The E2E testing framework provides a comprehensive set of helpers for testing your Soli controllers with real HTTP requests. Built on a test server that runs alongside your test suite, it enables you to write integration tests that simulate actual browser requests and verify controller responses, sessions, and view data.
+The E2E testing framework provides a comprehensive set of helpers for testing your Soli controllers with real HTTP requests. Built on a test server that runs alongside your test suite, it enables you to write integration tests that exercise your routes, controllers, sessions, and view data at the HTTP level — fast, and with no browser involved.
+
+When you need the page itself — JavaScript, clicks, forms as the user submits them — Soli drives a real headless Chrome as well. See [Browser Testing](testing-browser.md); this guide covers the HTTP layer, which is the right default for most controller and flow testing.
 
 This framework follows conventions inspired by RSpec Rails testing patterns, making it familiar to developers coming from Ruby on Rails backgrounds while providing the safety and expressiveness of Soli's type system.
 
@@ -456,6 +458,29 @@ assert_not(render_template());
 > keys-only view: every top-level key is still present (so `assert_hash_has_key`
 > keeps working) but its value is `null`. Assert on the keys, or render a
 > smaller slice, in that case.
+
+## Browser Testing
+
+Everything above tests what the server *sent*. When the behaviour you care
+about only exists after the browser has run the page's JavaScript, add a browser
+spec instead:
+
+```soli
+test("the coupon is applied without a reload", fn() {
+  visit("/cart")
+  fill_in("Coupon", "SAVE10")
+  click_button("Apply")
+
+  assert_text("Discount applied")
+  assert_no_page_errors()
+})
+```
+
+Browser specs run in a real headless Chrome, opt in with `soli test --browser`,
+and share the cookie jar with the request helpers — so a `login()` in
+`before_each` carries straight into `visit()`.
+
+Full reference: [Browser Testing](testing-browser.md).
 
 ## Query Assertions (N+1 detection)
 

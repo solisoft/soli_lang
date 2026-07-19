@@ -1,0 +1,16 @@
+<div data-liveview-id="<%= id %>">
+  <!-- Labelled rather than a bare number: the page also carries the dev bar,
+       whose timings contain digits, so waiting on "2" would match immediately
+       and the spec would race the very patch it means to observe. -->
+  <span id="count">count=<%= count %></span>
+  <button id="inc" soli-click="increment" soli-value-count="<%= count %>">+</button>
+  <button id="dec" soli-click="decrement" soli-value-count="<%= count %>">-</button>
+
+  <input type="text" id="echo" soli-change="set_text">
+  <span id="typed">typed=<%= typed %></span>
+
+  <!-- Never morphed: proves client-owned islands survive a server patch. -->
+  <div soli-ignore>
+    <span id="island">untouched</span>
+  </div>
+</div>

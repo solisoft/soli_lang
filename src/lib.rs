@@ -8,6 +8,7 @@
 
 pub mod ast;
 pub mod bundle;
+pub mod cdp;
 pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
@@ -546,6 +547,11 @@ fn execute_test_suites(
 
         for test in &suite.tests {
             crate::interpreter::builtins::datetime::helpers::unfreeze_datetime();
+            // The browser outlives a single test on purpose — relaunching one
+            // per test would dominate the runtime — so the errors it collected
+            // must be cleared, or the first failing page fails every test after
+            // it.
+            crate::interpreter::builtins::browser::reset_browser_state();
 
             // Run before_each if defined
             if let Some(before_each) = &suite.before_each {

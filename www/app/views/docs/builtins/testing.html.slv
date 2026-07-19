@@ -674,6 +674,156 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
         </div>
     </section>
 
+    <!-- Browser Testing -->
+    <section id="section-browser" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Browser Testing</h2>
+        <p class="text-gray-400 mb-6">Available in browser specs, run with <code class="text-cyan-400">soli test --browser</code>. Positive assertions wait for the condition; negative ones check immediately. Pass <code class="text-cyan-400">{"timeout": 30}</code> to override the 10-second default. See <a href="/docs/testing-browser" class="text-cyan-400 hover:text-cyan-300 underline">Browser Testing</a> for the full guide.</p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="space-y-4">
+                <section id="def-visit" class="scroll-mt-20">
+                    <a href="#def-visit" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">visit(path)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Navigate the browser; relative paths hit this worker's test server</p>
+                </section>
+
+                <section id="def-click" class="scroll-mt-20">
+                    <a href="#def-click" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">click(selector)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Dispatch a real mouse click at the element's position</p>
+                </section>
+
+                <section id="def-click-link" class="scroll-mt-20">
+                    <a href="#def-click-link" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">click_link(text)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Click a link by its visible text</p>
+                </section>
+
+                <section id="def-click-button" class="scroll-mt-20">
+                    <a href="#def-click-button" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">click_button(label)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Click a button by its label or value</p>
+                </section>
+
+                <section id="def-fill-in" class="scroll-mt-20">
+                    <a href="#def-fill-in" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">fill_in(field, value)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Type into a field found by selector, label, name or placeholder</p>
+                </section>
+
+                <section id="def-select-option" class="scroll-mt-20">
+                    <a href="#def-select-option" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">select_option(select, option)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Choose an option by value or visible text</p>
+                </section>
+
+                <section id="def-check" class="scroll-mt-20">
+                    <a href="#def-check" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">check(box) / uncheck(box)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Tick or untick a checkbox</p>
+                </section>
+
+                <section id="def-choose" class="scroll-mt-20">
+                    <a href="#def-choose" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">choose(radio)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Select a radio button</p>
+                </section>
+
+                <section id="def-press" class="scroll-mt-20">
+                    <a href="#def-press" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">press(key)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Press a key or chord, e.g. <code>Enter</code> or <code>Alt+d</code></p>
+                </section>
+
+                <section id="def-page-text" class="scroll-mt-20">
+                    <a href="#def-page-text" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">page_text() / page_html()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">The page's visible text, or its full markup</p>
+                </section>
+
+                <section id="def-page-path" class="scroll-mt-20">
+                    <a href="#def-page-path" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">page_path() / page_url() / page_title()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Where the browser is, and what the page is called</p>
+                </section>
+
+                <section id="def-evaluate" class="scroll-mt-20">
+                    <a href="#def-evaluate" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">evaluate(expression)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Run JavaScript in the page and get the value back, types preserved</p>
+                </section>
+
+                <section id="def-screenshot" class="scroll-mt-20">
+                    <a href="#def-screenshot" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">screenshot(path)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Write a PNG of the current view</p>
+                </section>
+
+                <section id="def-wait-for" class="scroll-mt-20">
+                    <a href="#def-wait-for" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">wait_for(selector)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Block until an element exists</p>
+                </section>
+
+                <section id="def-wait-for-text" class="scroll-mt-20">
+                    <a href="#def-wait-for-text" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">wait_for_text(text)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Block until the text appears</p>
+                </section>
+
+                <section id="def-assert-text" class="scroll-mt-20">
+                    <a href="#def-assert-text" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_text(text)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Waits for the page to show <code>text</code>; <code>assert_no_text</code> checks immediately</p>
+                </section>
+
+                <section id="def-assert-selector" class="scroll-mt-20">
+                    <a href="#def-assert-selector" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_selector(selector)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Waits for the element; <code>assert_no_selector</code> checks immediately</p>
+                </section>
+
+                <section id="def-assert-page-path" class="scroll-mt-20">
+                    <a href="#def-assert-page-path" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_page_path(path)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Waits until the browser is at <code>path</code></p>
+                </section>
+
+                <section id="def-assert-no-page-errors" class="scroll-mt-20">
+                    <a href="#def-assert-no-page-errors" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_no_page_errors()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Fails if the page threw or logged an error</p>
+                </section>
+
+                <section id="def-page-errors" class="scroll-mt-20">
+                    <a href="#def-page-errors" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">page_errors()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">The captured JavaScript errors, as an array</p>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/builtins/jobs" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">

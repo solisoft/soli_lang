@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title><%= h(title) %></title>
+</head>
+<body>
+  <nav>
+    <a href="/" id="nav-home">Home</a>
+    <a href="/about" id="nav-about">About</a>
+    <a href="/form" id="nav-form">Form</a>
+    <a href="/dynamic" id="nav-dynamic">Dynamic</a>
+    <!-- Opts out of instant-nav, so this one is a real page load. -->
+    <a href="/about" id="nav-about-reload" data-no-nav>About (full reload)</a>
+  </nav>
+  <main>
+    <%= yield %>
+  </main>
+</body>
+</html>

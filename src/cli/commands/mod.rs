@@ -1085,6 +1085,8 @@ pub fn run_test(
     no_coverage: bool,
     show_uncovered: bool,
     fail_on_n1: bool,
+    browser: bool,
+    headed: bool,
 ) {
     test_runner::run_test(
         paths,
@@ -1094,6 +1096,8 @@ pub fn run_test(
         no_coverage,
         show_uncovered,
         fail_on_n1,
+        browser,
+        headed,
     );
 }
 

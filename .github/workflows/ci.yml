@@ -112,6 +112,54 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+  # Drives Soli's own frontend in a real headless browser: instant-nav, the
+  # LiveView client, and the dev bar. None of it was covered before — jsdom
+  # cannot open a websocket or lay anything out, so a morph, an event dispatch
+  # or a head merge could break silently.
+  #
+  # A standalone job rather than a step on `test`: it needs a browser nobody
+  # else needs, and running in parallel keeps it off the critical path.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      # The runner image happens to ship Chrome, but relying on that makes the
+      # job depend on an image detail that can change without notice.
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            target/
+          key: ${{ runner.os }}-cargo-${{ github.sha }}
+
+      - name: Build
+        run: cargo build --locked
+
+      # The driver itself, against a browser but no server.
+      - name: Test the browser driver
+        run: cargo test --locked --test browser_driver_test
+
+      # The framework's frontend, against a real Soli server.
+      - name: Run browser specs
+        run: cargo run --locked -- test tests-e2e/browser/specs --browser --no-coverage
+
   # Validate that the tagged + PDF/A output is genuinely conformant, using the
   # veraPDF reference validator. Guards the "accessible + archival" claim: the
   # sample must pass BOTH PDF/A-3b and PDF/UA-1 (veraPDF exits non-zero on a

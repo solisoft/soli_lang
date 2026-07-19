@@ -537,6 +537,15 @@ def testing
     render_docs("docs/core-concepts/testing", "Testing", "testing", "testing")
 end
 
+def testing_browser
+    render_docs(
+        "docs/core-concepts/testing-browser",
+        "Browser Testing",
+        "testing",
+        "testing_browser"
+    )
+end
+
 def testing_quick_reference
     render_docs(
         "docs/core-concepts/testing-quick-reference",

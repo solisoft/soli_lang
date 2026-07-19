@@ -1,0 +1,201 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-teal-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">Browser Testing</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Drive a real headless Chrome from your specs &mdash; no Node, no npm, no Playwright.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-6">Request specs test what the server sends. Browser specs test what the user gets: a real browser loads the page, runs its JavaScript, and you drive it with helpers that read like the HTTP ones you already use.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/browser/checkout_spec.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("checkout", fn() {
+  test("a customer can place an order", fn() {
+    visit("/cart")
+    fill_in("Coupon", "SAVE10")
+    click_button("Apply")
+
+    assert_text("Discount applied")
+    assert_no_page_errors()
+  })
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">Soli speaks the Chrome DevTools protocol from the binary itself. The only requirement is a Chromium-family browser on the machine &mdash; nothing to install into your project, and nothing to keep in sync.</p>
+
+    <h2 id="section-running" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Running browser specs</h2>
+
+    <p class="text-gray-400 mb-4">Browser specs are opt-in: they need a browser and cost seconds rather than milliseconds.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli test --browser        # run everything, browser specs included
+soli test --headed         # same, but watch it happen in a window</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">A spec counts as a browser spec when a directory called <code class="text-cyan-400">browser</code> appears anywhere in its path. Plain <code class="text-cyan-400">soli test</code> sets those aside and says so &mdash; a project with no browser installed still runs green.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">tests/
+  users_spec.sl              # always runs
+  browser/
+    checkout_spec.sl         # only with --browser
+
+$ soli test
+Skipping 1 browser spec(s) — add --browser to run them.</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Choosing a browser</h3>
+    <p class="text-gray-400 mb-4">Soli looks for <code class="text-cyan-400">google-chrome</code>, <code class="text-cyan-400">chromium</code>, <code class="text-cyan-400">microsoft-edge</code> and <code class="text-cyan-400">brave-browser</code> on <code class="text-cyan-400">PATH</code> (plus the usual <code class="text-cyan-400">/Applications</code> paths on macOS). Point it elsewhere with <code class="text-cyan-400">SOLI_CHROME_PATH</code>. If nothing is found, <code class="text-cyan-400">--browser</code> fails immediately with what it looked for, rather than thirty seconds later on the first <code class="text-cyan-400">visit()</code>.</p>
+
+    <h2 id="section-navigating" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Navigating</h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">visit("/posts")                  # relative to this worker's test server
+visit("https://example.com")     # absolute URLs work too
+
+page_path()                      # "/posts?page=2"
+page_url()                       # full URL
+page_title()                     # the &lt;title&gt;
+page_text()                      # visible text, as the user sees it
+page_html()                      # full markup</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">visit</code> returns once the document has finished loading, so any script the page runs on boot has already run.</p>
+
+    <h2 id="section-interacting" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Interacting</h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">click("#save")                   # CSS selector
+click_link("Edit")               # a link by its text
+click_button("Save")             # a button by its label or value
+
+fill_in("#title", "Hello")       # by selector
+fill_in("Full name", "Ada")      # by label text
+fill_in("email", "a@b.c")        # by name or placeholder
+
+select_option("#role", "admin")  # by value or visible text
+check("#agree")
+uncheck("#agree")
+choose("#plan_pro")
+press("Enter")
+press("Alt+d")                   # chords: Alt, Ctrl, Shift, Meta/Cmd</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">Selectors resolve leniently: a CSS selector first, then a matching <code class="text-cyan-400">&lt;label&gt;</code>, then a field's <code class="text-cyan-400">name</code> or <code class="text-cyan-400">placeholder</code>. Write what you see on the page rather than what the markup happens to call it.</p>
+
+    <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-5 mb-12">
+        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-300">Clicks are real input events</strong> dispatched at the element's position, not <code class="text-cyan-400">element.click()</code>. An element covered by an overlay is not clickable in a browser, and it is not clickable here either &mdash; which is the behaviour you want a test to have.</p>
+    </div>
+
+    <h2 id="section-asserting" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Asserting</h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">assert_text("Saved")             # visible text contains this
+assert_no_text("Error")
+assert_selector("#toast")        # element is present
+assert_no_selector(".error")
+assert_page_path("/posts/1")
+assert_no_page_errors()          # no uncaught exception or console.error</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4"><strong class="text-white">Positive assertions wait.</strong> <code class="text-cyan-400">assert_text("Saved")</code> polls until the text appears or the timeout expires, so a spec never has to guess how long a round trip takes. Negative assertions check immediately &mdash; waiting for something to <em>stay</em> absent would only slow every passing test down.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">assert_text("Report ready", {"timeout": 30})   # seconds; default is 10
+wait_for("#chart", {"timeout": 30})</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Waiting explicitly</h3>
+    <p class="text-gray-400 mb-4">You need these when the next thing you do is not an assertion &mdash; <code class="text-cyan-400">evaluate</code> reads the DOM as it is right now and does <em>not</em> wait.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">click("#increment")
+wait_for_text("count=1")                                # wait first…
+assert_eq(evaluate("document.title"), "Counter — 1")    # …then read</code></pre>
+        </div>
+    </div>
+
+    <h2 id="section-escape-hatches" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Escape hatches</h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">evaluate("window.appVersion")       # any expression, value comes back
+screenshot("/tmp/checkout.png")     # PNG of the current view
+page_errors()                       # array of captured JS errors</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">evaluate</code> preserves JavaScript's types: a string stays a string even when it looks like a number, so <code class="text-cyan-400">evaluate("el.textContent")</code> on <code class="text-cyan-400">&lt;span&gt;0&lt;/span&gt;</code> gives you <code class="text-cyan-400">"0"</code>, not <code class="text-cyan-400">0</code>.</p>
+
+    <h2 id="section-signing-in" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Signing in</h2>
+
+    <p class="text-gray-400 mb-4">The browser shares the request helpers' cookie jar, so the sign-in you already have keeps working. Cookies flow both ways: a sign-in performed <em>in the browser</em> is visible to a later <code class="text-cyan-400">get()</code> and to <code class="text-cyan-400">signed_in()</code>.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">before_each(fn() {
+  login("ada@example.com", "secret")     # a real POST /login
+})
+
+test("the dashboard greets the user", fn() {
+  visit("/dashboard")                    # arrives already signed in
+  assert_text("Welcome back, Ada")
+})</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-5 mb-12">
+        <p class="text-gray-300 text-sm leading-relaxed"><code class="text-cyan-400">as_user(id)</code> with a single argument only sets a thread-local and does <strong class="text-white">not</strong> authenticate a real request. Use the two-argument form &mdash; <code class="text-cyan-400">as_user(7, {"role": "admin"})</code> &mdash; which writes the session store and sets the cookie. That one carries into the browser.</p>
+    </div>
+
+    <h2 id="section-isolation" class="text-2xl font-bold text-white mb-6 scroll-mt-24">What resets between tests</h2>
+
+    <p class="text-gray-400 mb-4">Each test starts with a clean page-error list and empty <code class="text-cyan-400">sessionStorage</code> and <code class="text-cyan-400">localStorage</code>. Without that, a panel one test collapsed would stay collapsed for the rest of the suite and results would depend on test order.</p>
+
+    <p class="text-gray-400 mb-4">Cookies are <strong class="text-white">not</strong> cleared automatically, matching the existing convention for request specs &mdash; sign out explicitly when a test needs a guest.</p>
+
+    <p class="text-gray-400 mb-12">The browser is reused for the whole worker rather than relaunched per test, which is why the reset exists at all &mdash; and why a suite of thirty browser specs takes seconds rather than a minute.</p>
+
+    <h2 id="section-ci" class="text-2xl font-bold text-white mb-6 scroll-mt-24">In CI</h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">- uses: browser-actions/setup-chrome@v1
+  with:
+    chrome-version: stable
+
+- run: soli test tests/browser --browser --no-coverage</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">Browser specs parallelise like any other: each test worker gets its own server <em>and</em> its own browser, so <code class="text-cyan-400">--jobs 3</code> means three browsers.</p>
+
+    <h2 id="section-troubleshooting" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Troubleshooting</h2>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+            <li><strong class="text-white">&ldquo;Browser helpers need a browser&rdquo;</strong> &mdash; the spec called <code class="text-cyan-400">visit()</code> without <code class="text-cyan-400">--browser</code>. Either add the flag, or move the spec out of a <code class="text-cyan-400">browser/</code> directory if it does not need one.</li>
+            <li><strong class="text-white">A click reports &ldquo;found nothing matching&rdquo;</strong> &mdash; the helper waited the full timeout and never saw the element. Check it is actually rendered (<code class="text-cyan-400">page_html()</code>) and not hidden; a zero-size element has no position to click.</li>
+            <li><strong class="text-white">Flaky-looking failures</strong> &mdash; almost always a missing wait around <code class="text-cyan-400">evaluate</code>. Assertions wait; raw <code class="text-cyan-400">evaluate</code> does not.</li>
+            <li><strong class="text-white">Unexpected page errors</strong> &mdash; <code class="text-cyan-400">page_errors()</code> shows what was captured. <code class="text-cyan-400">assert_no_page_errors()</code> covers uncaught exceptions and <code class="text-cyan-400">console.error</code>, not warnings.</li>
+        </ul>
+    </div>
+</div>

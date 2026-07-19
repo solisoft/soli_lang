@@ -100,6 +100,27 @@ assert_max_queries(response, 5);   # at most five
 See [E2E Controller Testing → Query Assertions](testing-e2e.md#query-assertions-n1-detection)
 for details.
 
+### Browser assertions
+
+Available in browser specs (`soli test --browser`). Unlike the assertions above,
+the positive ones **wait** for the condition — a browser round trip takes time,
+and a spec should not have to guess how much.
+
+```soli
+assert_text("Saved")             # visible page text contains this
+assert_no_text("Error")
+assert_selector("#toast")        # element is present
+assert_no_selector(".error")
+assert_page_path("/posts/1")     # the browser's current path
+assert_no_page_errors()          # no uncaught exception or console.error
+```
+
+Negative assertions do not wait: checking that something stays absent would slow
+every passing test by the full timeout. Override the wait per call with
+`assert_text("Ready", {"timeout": 30})` (seconds; default 10).
+
+See [Browser Testing](testing-browser.md) for the full set of helpers.
+
 ## Expect API
 
 Soli provides a chainable `expect()` API for more expressive assertions:

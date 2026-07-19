@@ -1,0 +1,4 @@
+<h1 id="page-title">Home</h1>
+<p>Welcome to the browser fixture.</p>
+<button id="counter" onclick="this.textContent = 'Clicked ' + (++window.__clicks || 1)">Click me</button>
+<script>window.__clicks = 0;</script>

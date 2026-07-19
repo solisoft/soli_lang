@@ -107,7 +107,22 @@ This is integration coverage — the kind that actually protects you — not jus
 
 For the majority of controller and flow testing, this is dramatically more effective than driving a real browser for every scenario.
 
-When you *do* need full browser tests (complex JavaScript interactions, visual regressions), you can still add Playwright later. But most teams discover they need far less of it than they expected once they have powerful pure-Soli E2E tests.
+And when you *do* need a real browser — complex JavaScript, a form as the user actually submits it — you still don't leave Soli. `soli test --browser` drives a real headless Chrome over the DevTools protocol, straight from the `soli` binary:
+
+```soli
+test("the coupon applies without a reload", fn() {
+  visit("/cart")
+  fill_in("Coupon", "SAVE10")
+  click_button("Apply")
+
+  assert_text("Discount applied")
+  assert_no_page_errors()
+})
+```
+
+No Node, no npm, no Playwright, no 300MB browser download in CI — just a Chrome on the machine. Browser specs are opt-in (they cost seconds, not milliseconds), and they share the cookie jar with the HTTP helpers, so the `login()` above carries straight into `visit()`.
+
+So the tiering still holds, and now both tiers are the same language: fast HTTP specs for the bulk of it, real browser specs for the handful of flows that genuinely need a DOM. See [Browser Testing](/docs/testing-browser) for the full set of helpers.
 
 ---
 

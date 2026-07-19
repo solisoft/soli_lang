@@ -67,6 +67,14 @@ pub enum Command {
         /// `--fail-on-n1`; a project-wide guard over the same detection the
         /// dev-bar N+1 badge uses.
         fail_on_n1: bool,
+        /// Run browser specs, which drive a real headless Chrome. Opt-in via
+        /// `--browser` because they need a browser installed and cost seconds
+        /// rather than milliseconds — the default suite stays fast and has no
+        /// dependency beyond the binary itself.
+        browser: bool,
+        /// Show the browser window instead of running headless. Debugging aid;
+        /// implies `--browser`.
+        headed: bool,
     },
     DbMigrate {
         action: DbMigrateAction,
@@ -257,7 +265,7 @@ pub fn print_usage() {
     eprintln!("       soli generate auth [folder]");
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
@@ -335,6 +343,8 @@ pub fn print_usage() {
     eprintln!("  --coverage-min N     Fail if coverage is below N% (default: 80)");
     eprintln!("  --show-uncovered     List every uncovered line in the console report");
     eprintln!("  --no-coverage        Skip coverage collection");
+    eprintln!("  --browser            Run browser specs in a real headless Chrome");
+    eprintln!("  --headed             Show the browser window (implies --browser)");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
     eprintln!("Examples:");
@@ -370,6 +380,7 @@ pub fn print_usage() {
     eprintln!("  soli test --coverage          Run tests with coverage");
     eprintln!("  soli test --jobs=4            Run tests with 4 workers");
     eprintln!("  soli test --fail-on-n1        Fail any request spec that triggers an N+1");
+    eprintln!("  soli test --browser           Also run browser specs (needs Chrome)");
     eprintln!("  soli db:migrate up            Run pending migrations");
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
@@ -1252,6 +1263,8 @@ pub fn parse_args() -> Options {
                 let mut no_coverage = false;
                 let mut show_uncovered = false;
                 let mut fail_on_n1 = false;
+                let mut browser = false;
+                let mut headed = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
                         // Support `--coverage=html`, `--coverage=json,xml`,
@@ -1325,6 +1338,16 @@ pub fn parse_args() -> Options {
                             "--fail-on-n1" => {
                                 fail_on_n1 = true;
                             }
+                            "--browser" => {
+                                browser = true;
+                            }
+                            "--headed" => {
+                                // Showing the window is only meaningful if a
+                                // browser is running at all, so asking for one
+                                // implies the other.
+                                headed = true;
+                                browser = true;
+                            }
                             "--coverage-min" => {
                                 i += 1;
                                 if i >= args.len() {
@@ -1360,6 +1383,8 @@ pub fn parse_args() -> Options {
                     no_coverage,
                     show_uncovered,
                     fail_on_n1,
+                    browser,
+                    headed,
                 };
                 return options;
             }

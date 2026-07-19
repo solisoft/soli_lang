@@ -7,7 +7,41 @@
       "path": "/docs/development-tools/graph",
       "signature": "soli graph build [folder] · soli graph query \"<question>\" [--kind KINDS] [--path PREFIX] [--json]",
       "description": "Build a graph of your project's source (files, classes, methods, routes, views and their relationships) in SolidB, then `soli graph query \"<question>\"` retrieves the most relevant code plus its graph relationships in one call — graph RAG over your own codebase. Soli extractor links instance calls on locally typed vars, partial/redirect/super edges; --kind filters seeds by node kind; results include snippets. Works on ANY repo (Ruby/Rails, Python, JS/TS, Rust, C# via tree-sitter) with --ext or a .soligraph.toml. --no-embed for an offline structural graph, --dry-run to print JSON, --fresh to rebuild, --json for agent-parseable query output.",
-      "keywords": ["soli graph", "graph build", "graph query", "code graph", "graph rag", "rag", "agents", "solidb", "embeddings", "vector index", "traversal", "soli_graph_nodes", "soli_graph_edges", "semantic search", "retrieval", "dependency graph", "call graph", "tree-sitter", "multi-language", "ruby", "rails", "python", "typescript", "rust", "soligraph.toml", "any codebase", "redirects", "partial", "super", "kind filter", "snippet", "--kind", "--path"]
+      "keywords": [
+        "soli graph",
+        "graph build",
+        "graph query",
+        "code graph",
+        "graph rag",
+        "rag",
+        "agents",
+        "solidb",
+        "embeddings",
+        "vector index",
+        "traversal",
+        "soli_graph_nodes",
+        "soli_graph_edges",
+        "semantic search",
+        "retrieval",
+        "dependency graph",
+        "call graph",
+        "tree-sitter",
+        "multi-language",
+        "ruby",
+        "rails",
+        "python",
+        "typescript",
+        "rust",
+        "soligraph.toml",
+        "any codebase",
+        "redirects",
+        "partial",
+        "super",
+        "kind filter",
+        "snippet",
+        "--kind",
+        "--path"
+      ]
     },
     {
       "title": "How Soli Compares",
@@ -545,7 +579,7 @@
       "category": "FeatureFlags",
       "path": "/docs/core-concepts/feature-flags",
       "signature": "FeatureFlags",
-      "description": "Toggle features at runtime without redeploying \u2014 env overrides, kill-switch, allowlists, and stable percentage rollout, backed by the shared cache",
+      "description": "Toggle features at runtime without redeploying — env overrides, kill-switch, allowlists, and stable percentage rollout, backed by the shared cache",
       "keywords": [
         "feature flag",
         "feature flags",
@@ -591,7 +625,7 @@
       "category": "FeatureFlags",
       "path": "/docs/core-concepts/feature-flags",
       "signature": "FeatureFlags.enable(name) / FeatureFlags.disable(name)",
-      "description": "Turn a flag on for everyone, or flip the global kill-switch off \u2014 live, no redeploy",
+      "description": "Turn a flag on for everyone, or flip the global kill-switch off — live, no redeploy",
       "keywords": [
         "feature flag",
         "enable",
@@ -1019,7 +1053,7 @@
       "category": "JSON",
       "path": "/docs/builtins/json#def-to-json",
       "signature": "value.to_json",
-      "description": "Instance-method form of JSON.stringify \u2014 works on hashes, arrays, and primitives",
+      "description": "Instance-method form of JSON.stringify — works on hashes, arrays, and primitives",
       "keywords": [
         "json",
         "to_json",
@@ -1159,7 +1193,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#def-merkle-root",
       "signature": "Crypto.merkle_root(hashes)",
-      "description": "Merkle root of an array of hex leaf hashes \u2014 one hash proving a set",
+      "description": "Merkle root of an array of hex leaf hashes — one hash proving a set",
       "keywords": [
         "crypto",
         "merkle",
@@ -4097,7 +4131,7 @@
       "category": "Utility",
       "path": "/docs/utility/encoding#method-decode",
       "signature": "Encoding.decode(input, label)",
-      "description": "Decode bytes or a string from a charset (latin1, iso-8859-1, windows-1252, \u2026) into a UTF-8 string",
+      "description": "Decode bytes or a string from a charset (latin1, iso-8859-1, windows-1252, …) into a UTF-8 string",
       "keywords": [
         "encoding",
         "decode",
@@ -4117,7 +4151,7 @@
       "category": "Utility",
       "path": "/docs/utility/encoding#method-encode",
       "signature": "Encoding.encode(string, label)",
-      "description": "Encode a UTF-8 string into bytes in a charset (latin1, iso-8859-1, windows-1252, \u2026)",
+      "description": "Encode a UTF-8 string into bytes in a charset (latin1, iso-8859-1, windows-1252, …)",
       "keywords": [
         "encoding",
         "encode",
@@ -4267,7 +4301,7 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
+      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
       "keywords": [
         "params",
         "global",
@@ -4796,7 +4830,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.html_entities()",
-      "description": "Encode every non-ASCII char as a numeric HTML entity (\u00e9 to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
+      "description": "Encode every non-ASCII char as a numeric HTML entity (é to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
       "keywords": [
         "string",
         "html_entities",
@@ -4819,7 +4853,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -6122,7 +6156,7 @@
       "category": "Hash",
       "path": "/docs/language/hashes#method-update",
       "signature": "hash.update(other)",
-      "description": "Alias for merge \u2014 merges another hash",
+      "description": "Alias for merge — merges another hash",
       "keywords": [
         "hash",
         "update",
@@ -7881,7 +7915,7 @@
       "category": "File",
       "path": "/docs/builtins/file#section-trusted-class",
       "signature": "Trusted",
-      "description": "Unjailed file I/O class \u2014 mirrors File but skips the filesystem jail and O_NOFOLLOW symlink guard. For trusted server-side paths only.",
+      "description": "Unjailed file I/O class — mirrors File but skips the filesystem jail and O_NOFOLLOW symlink guard. For trusted server-side paths only.",
       "keywords": [
         "file",
         "io",
@@ -9722,7 +9756,7 @@
       "category": "Session",
       "path": "/docs/security/sessions",
       "signature": "SOLI_SESSION_DRIVER=cookie",
-      "description": "Client-side sessions sealed with AES-256-GCM \u2014 survive restarts, work across hosts, no session database",
+      "description": "Client-side sessions sealed with AES-256-GCM — survive restarts, work across hosts, no session database",
       "keywords": [
         "session",
         "cookie",
@@ -10032,7 +10066,7 @@
       "category": "Array",
       "path": "/docs/language/arrays#array-reject",
       "signature": "array.reject(fn)",
-      "description": "Inverse of filter \u2014 keeps elements where block returns false",
+      "description": "Inverse of filter — keeps elements where block returns false",
       "keywords": [
         "array",
         "reject",
@@ -10071,7 +10105,7 @@
       "category": "Int",
       "path": "/docs/language/integers#method-succ",
       "signature": "int.next",
-      "description": "Alias for .succ \u2014 returns i + 1",
+      "description": "Alias for .succ — returns i + 1",
       "keywords": [
         "int",
         "next",
@@ -11776,7 +11810,7 @@
       "category": "Database",
       "path": "/docs/database/query-builder#traverse",
       "signature": "record.traverse(EdgeModel, direction?, depth?)",
-      "description": "Graph traversal from a saved record over an edge model \u2014 returns a chainable QueryBuilder over the reachable vertices (direction out/in/any, depth n or [min, max]).",
+      "description": "Graph traversal from a saved record over an edge model — returns a chainable QueryBuilder over the reachable vertices (direction out/in/any, depth n or [min, max]).",
       "keywords": [
         "traverse",
         "traversal",
@@ -11795,7 +11829,7 @@
       "category": "Database",
       "path": "/docs/database/query-builder#shortest-path",
       "signature": "record.shortest_path(other, via: EdgeModel, direction?)",
-      "description": "Shortest path between two records through an edge model \u2014 executes immediately, returns the vertices along the path ([] when unconnected).",
+      "description": "Shortest path between two records through an edge model — executes immediately, returns the vertices along the path ([] when unconnected).",
       "keywords": [
         "shortest_path",
         "shortest path",
@@ -11966,7 +12000,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/routing#listing-routes",
       "signature": "soli routes [folder] [-g PATTERN] [--json]",
-      "description": "Print the app's expanded route table \u2014 every route config/routes.sl and engines register, with named helpers and middleware \u2014 without starting the server.",
+      "description": "Print the app's expanded route table — every route config/routes.sl and engines register, with named helpers and middleware — without starting the server.",
       "keywords": [
         "soli routes",
         "routes",
@@ -11985,7 +12019,7 @@
       "category": "Development Tools",
       "path": "/docs/development-tools/linting#section-type-check",
       "signature": "soli check [paths...]",
-      "description": "Static type-check Soli code without executing it \u2014 whole-project, CI-friendly, exits non-zero on type errors.",
+      "description": "Static type-check Soli code without executing it — whole-project, CI-friendly, exits non-zero on type errors.",
       "keywords": [
         "soli check",
         "type check",
@@ -12019,7 +12053,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#def-encrypt",
       "signature": "Crypto.encrypt(plaintext, key?)",
-      "description": "AES-256-GCM authenticated encryption; returns base64 nonce\u2016ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
+      "description": "AES-256-GCM authenticated encryption; returns base64 nonce‖ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
       "keywords": [
         "encrypt",
         "aes",
@@ -12099,7 +12133,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/streaming#section-pubsub",
       "signature": "sse_subscribe(req, topic)",
-      "description": "Open a long-lived SSE connection subscribed to a topic. Async \u2014 does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
+      "description": "Open a long-lived SSE connection subscribed to a topic. Async — does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
       "keywords": [
         "sse_subscribe",
         "pub/sub",
@@ -12135,7 +12169,7 @@
       "category": "File",
       "path": "/docs/builtins/pdf#section-serving",
       "signature": "file_write_base64(path, b64)",
-      "description": "Decode a base64 string and write the raw bytes to a file \u2014 the natural partner to pdf_render/pdf_facturx and other builtins that return base64.",
+      "description": "Decode a base64 string and write the raw bytes to a file — the natural partner to pdf_render/pdf_facturx and other builtins that return base64.",
       "keywords": [
         "base64",
         "write file",
@@ -12190,7 +12224,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-facturx-from-invoice",
       "signature": "pdf_facturx_from_invoice(template, invoice, options?)",
-      "description": "Render a Factur-X PDF/A-3b from a typed invoice document \u2014 generates the CII XML and computes totals and the VAT breakdown from the line items.",
+      "description": "Render a Factur-X PDF/A-3b from a typed invoice document — generates the CII XML and computes totals and the VAT breakdown from the line items.",
       "keywords": [
         "pdf",
         "facturx",
@@ -12211,7 +12245,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-from-markdown",
       "signature": "pdf_from_markdown(markdown, options?)",
-      "description": "Render a designed PDF straight from a Markdown string \u2014 headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
+      "description": "Render a designed PDF straight from a Markdown string — headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
       "keywords": [
         "pdf",
         "markdown",
@@ -12262,7 +12296,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
       "signature": "pdf_pages(pdf, selection)",
-      "description": "Keep a subset of pages from a PDF \u2014 a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
+      "description": "Keep a subset of pages from a PDF — a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
       "keywords": [
         "pdf",
         "pages",
@@ -12279,7 +12313,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
       "signature": "pdf_stamp(pdf, text, options?)",
-      "description": "Stamp text \u2014 a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) \u2014 onto an existing PDF's pages. Returns base64.",
+      "description": "Stamp text — a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) — onto an existing PDF's pages. Returns base64.",
       "keywords": [
         "pdf",
         "stamp",
@@ -12333,7 +12367,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
       "signature": "pdf_sign(pdf, options)",
-      "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature \u2014 the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
+      "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature — the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
       "keywords": [
         "pdf",
         "sign",
@@ -12351,7 +12385,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
       "signature": "pdf_verify(pdf)",
-      "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } \u2014 valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
+      "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } — valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
       "keywords": [
         "pdf",
         "verify",
@@ -12369,7 +12403,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Embed SVG logos and icons in a PDF \u2014 the image element auto-detects and rasterises SVG so vector art stays crisp at any size.",
+      "description": "Embed SVG logos and icons in a PDF — the image element auto-detects and rasterises SVG so vector art stays crisp at any size.",
       "keywords": [
         "pdf",
         "svg",
@@ -12476,7 +12510,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "bookmarkLevel nests outline entries under the last shallower one \u2014 hierarchical sidebar navigation like heading levels.",
+      "description": "bookmarkLevel nests outline entries under the last shallower one — hierarchical sidebar navigation like heading levels.",
       "keywords": [
         "pdf",
         "bookmarks",
@@ -12508,7 +12542,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "#PAGE_OF:anchor# resolves to the page number of an anchored paragraph \u2014 clickable tables of contents with real page numbers.",
+      "description": "#PAGE_OF:anchor# resolves to the page number of an anchored paragraph — clickable tables of contents with real page numbers.",
       "keywords": [
         "pdf",
         "table of contents",
@@ -12576,7 +12610,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Force a new page in the PDF content flow with { \"type\": \"page_break\" } \u2014 replaces the move-y overflow trick.",
+      "description": "Force a new page in the PDF content flow with { \"type\": \"page_break\" } — replaces the move-y overflow trick.",
       "keywords": [
         "pdf",
         "page break",
@@ -12674,7 +12708,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points \u2014 single- or multi-series (grouped/stacked bars, multi-line), with legends and value-axis gridlines.",
+      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points — single- or multi-series (grouped/stacked bars, multi-line), with legends and value-axis gridlines.",
       "keywords": [
         "pdf",
         "chart",
@@ -12796,7 +12830,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-typed-invoice",
-      "description": "Typed invoice allowances (BG-20 discounts), charges (BG-21 shipping/fees, fixed or percent), payment_terms (BT-20) and credit notes (type_code 381) \u2014 computed into the VAT breakdown and the CII XML; exposed to templates as discounts[]/charges[] and total.discount/charges/taxable.",
+      "description": "Typed invoice allowances (BG-20 discounts), charges (BG-21 shipping/fees, fixed or percent), payment_terms (BT-20) and credit notes (type_code 381) — computed into the VAT breakdown and the CII XML; exposed to templates as discounts[]/charges[] and total.discount/charges/taxable.",
       "keywords": [
         "pdf",
         "invoice",
@@ -12901,7 +12935,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#having",
       "signature": "qb.having(\"total > @min\", { \"min\": 1000 })",
-      "description": "Post-COLLECT filter over bare group fields / aggregate aliases. Developer-trusted string like string-form where \u2014 never build it from user input.",
+      "description": "Post-COLLECT filter over bare group fields / aggregate aliases. Developer-trusted string like string-form where — never build it from user input.",
       "keywords": [
         "having",
         "group filter",
@@ -12934,7 +12968,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.median(field).first",
-      "description": "Median aggregation terminal \u2014 like sum/avg, chain .first. p50 only: SolidB has no PERCENTILE function.",
+      "description": "Median aggregation terminal — like sum/avg, chain .first. p50 only: SolidB has no PERCENTILE function.",
       "keywords": [
         "median",
         "p50",
@@ -12950,7 +12984,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.stddev(field).first",
-      "description": "Standard-deviation aggregation terminal \u2014 chain .first.",
+      "description": "Standard-deviation aggregation terminal — chain .first.",
       "keywords": [
         "stddev",
         "standard deviation",
@@ -12965,7 +12999,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.variance(field).first",
-      "description": "Variance aggregation terminal \u2014 chain .first.",
+      "description": "Variance aggregation terminal — chain .first.",
       "keywords": [
         "variance",
         "statistics",
@@ -12979,7 +13013,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#rich-aggregation",
       "signature": "Model.count_distinct(field).first",
-      "description": "Count of distinct values of a field \u2014 aggregation terminal, chain .first; also available as an aggregate() func and a columnar aggregate op.",
+      "description": "Count of distinct values of a field — aggregation terminal, chain .first; also available as an aggregate() func and a columnar aggregate op.",
       "keywords": [
         "count_distinct",
         "distinct",
@@ -12994,7 +13028,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#columnar-models",
       "signature": "columnar compression: \"lz4\"",
-      "description": "Declare a columnar-store model \u2014 a separate column-oriented engine (own HTTP API, no document CRUD, no SDBQL FOR). Compression lz4 (default) or none.",
+      "description": "Declare a columnar-store model — a separate column-oriented engine (own HTTP API, no document CRUD, no SDBQL FOR). Compression lz4 (default) or none.",
       "keywords": [
         "columnar",
         "column store",
@@ -13045,7 +13079,7 @@
       "category": "Database",
       "path": "/docs/database/analytics#columnar-models",
       "signature": "Model.query({ \"columns\": [...], \"filter\": {...}, \"limit\": n })",
-      "description": "Fetch rows from a columnar store: column projection, at most one filter (eq/ne/gt/gte/lt/lte/in), limit \u2014 no sort.",
+      "description": "Fetch rows from a columnar store: column projection, at most one filter (eq/ne/gt/gte/lt/lte/in), limit — no sort.",
       "keywords": [
         "query",
         "columnar",
@@ -13108,7 +13142,7 @@
       "category": "Database",
       "path": "/docs/database/search#index-dsl",
       "signature": "vector_index \"embedding\", dimension: 1536, metric: \"cosine\"",
-      "description": "Declare an HNSW vector index on an embedding field \u2014 similar() then pushes down to ANN search. Optional m:, ef_construction:, quantization:, name:.",
+      "description": "Declare an HNSW vector index on an embedding field — similar() then pushes down to ANN search. Optional m:, ef_construction:, quantization:, name:.",
       "keywords": [
         "vector_index",
         "vector",
@@ -13177,7 +13211,7 @@
       "category": "Database",
       "path": "/docs/database/search#fulltext-search",
       "signature": "Model.search(query, { \"field\": ..., \"distance\": n, \"limit\": n, \"highlight\": true })",
-      "description": "Fulltext search over a declared fulltext_index \u2014 eager, ranked results with _search_score; distance for fuzzy, highlight adds _highlighted.",
+      "description": "Fulltext search over a declared fulltext_index — eager, ranked results with _search_score; distance for fuzzy, highlight adds _highlighted.",
       "keywords": [
         "search",
         "fulltext",
@@ -13194,7 +13228,7 @@
       "category": "Database",
       "path": "/docs/database/search#geo-search",
       "signature": "Model.near(lat, lon, { \"limit\": n })",
-      "description": "Geo search sorted by distance (requires geo_index); each result carries _distance in meters. Eager \u2014 no chaining.",
+      "description": "Geo search sorted by distance (requires geo_index); each result carries _distance in meters. Eager — no chaining.",
       "keywords": [
         "near",
         "geo",
@@ -13210,7 +13244,7 @@
       "category": "Database",
       "path": "/docs/database/search#geo-search",
       "signature": "Model.within(lat, lon, radius_meters)",
-      "description": "Geo search returning everything inside a radius in meters (requires geo_index). Eager \u2014 no chaining.",
+      "description": "Geo search returning everything inside a radius in meters (requires geo_index). Eager — no chaining.",
       "keywords": [
         "within",
         "geo",
@@ -13362,7 +13396,7 @@
       "category": "Routing",
       "path": "/docs/core-concepts/routing",
       "signature": "cors(path_pattern, options?) -> Void",
-      "description": "Built-in CORS: declare cross-origin access per path \u2014 preflights answered before routing, allow headers on every response, origin-checked CSRF opt-in.",
+      "description": "Built-in CORS: declare cross-origin access per path — preflights answered before routing, allow headers on every response, origin-checked CSRF opt-in.",
       "keywords": [
         "cors",
         "cross-origin",
@@ -13379,7 +13413,7 @@
       "category": "Controllers",
       "path": "/docs/core-concepts/request-params",
       "signature": "permit(params, shape) -> Hash",
-      "description": "Strong parameters for documents: whitelist-filter a (nested) params hash \u2014 scalars, arrays, nested shapes; everything else is dropped.",
+      "description": "Strong parameters for documents: whitelist-filter a (nested) params hash — scalars, arrays, nested shapes; everything else is dropped.",
       "keywords": [
         "permit",
         "strong parameters",
@@ -13444,7 +13478,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/request-params",
       "signature": "",
-      "description": "Bracket keys nest Rack-style: author[name], tags[], items[][sku] \u2014 form, multipart, and query params alike; filter with permit().",
+      "description": "Bracket keys nest Rack-style: author[name], tags[], items[][sku] — form, multipart, and query params alike; filter with permit().",
       "keywords": [
         "nested params",
         "bracket",
@@ -13950,7 +13984,7 @@
       "category": "Database",
       "path": "/docs/core-concepts/streaming#section-broadcast",
       "signature": "Model.broadcast(payload)",
-      "description": "Publish a payload to the model's collection channel over WebSocket and SSE \u2014 a shortcut for broadcast() in an after_save callback.",
+      "description": "Publish a payload to the model's collection channel over WebSocket and SSE — a shortcut for broadcast() in an after_save callback.",
       "keywords": [
         "Model.broadcast",
         "broadcast",
@@ -14075,7 +14109,7 @@
       "category": "Database",
       "path": "/docs/builtins/solidb#section-patterns",
       "signature": "RAG_PIPELINE(name, query_vector, opts?)",
-      "description": "Raw SDBQL: run a stored retrieve\u2192expand\u2192rerank pipeline defined in _rag_pipelines.",
+      "description": "Raw SDBQL: run a stored retrieve→expand→rerank pipeline defined in _rag_pipelines.",
       "keywords": [
         "RAG_PIPELINE",
         "rag pipeline",
@@ -14128,7 +14162,19 @@
       "path": "/docs/builtins/pdf-templates",
       "signature": "",
       "description": "Eight ready-to-copy billing documents: compliant and minimal invoices, subscription billing, credit note, sectioned and optioned quotes, plus the starter pair.",
-      "keywords": ["invoice", "quote", "devis", "facture", "template", "billing", "gallery", "credit note", "estimate", "pdf template", "vat"]
+      "keywords": [
+        "invoice",
+        "quote",
+        "devis",
+        "facture",
+        "template",
+        "billing",
+        "gallery",
+        "credit note",
+        "estimate",
+        "pdf template",
+        "vat"
+      ]
     },
     {
       "title": "Compliant invoice template",
@@ -14137,7 +14183,17 @@
       "path": "/docs/builtins/pdf-templates#invoice-compliant",
       "signature": "",
       "description": "VAT invoice template with a per-rate VAT breakdown, both parties' VAT numbers, statutory late-payment terms and an EPC payment QR.",
-      "keywords": ["invoice", "vat", "compliant", "en16931", "facturx", "epc", "qr", "statutory", "breakdown"]
+      "keywords": [
+        "invoice",
+        "vat",
+        "compliant",
+        "en16931",
+        "facturx",
+        "epc",
+        "qr",
+        "statutory",
+        "breakdown"
+      ]
     },
     {
       "title": "Minimal invoice template",
@@ -14146,7 +14202,14 @@
       "path": "/docs/builtins/pdf-templates#invoice-minimal",
       "signature": "",
       "description": "Monochrome invoice template built on an extreme type scale: the amount due at 46pt and everything else at 8pt.",
-      "keywords": ["invoice", "minimal", "monochrome", "freelance", "simple", "typography"]
+      "keywords": [
+        "invoice",
+        "minimal",
+        "monochrome",
+        "freelance",
+        "simple",
+        "typography"
+      ]
     },
     {
       "title": "Subscription invoice template",
@@ -14155,7 +14218,18 @@
       "path": "/docs/builtins/pdf-templates#invoice-subscription",
       "signature": "",
       "description": "Billing-period invoice template with plan fees, prorated seats, metered usage and a donut chart of spend by product.",
-      "keywords": ["invoice", "subscription", "saas", "recurring", "proration", "usage", "metered", "donut", "chart", "renewal"]
+      "keywords": [
+        "invoice",
+        "subscription",
+        "saas",
+        "recurring",
+        "proration",
+        "usage",
+        "metered",
+        "donut",
+        "chart",
+        "renewal"
+      ]
     },
     {
       "title": "Credit note template",
@@ -14164,7 +14238,15 @@
       "path": "/docs/builtins/pdf-templates#credit-note",
       "signature": "",
       "description": "Credit note template with negative amounts, a reference band naming the original invoice and its reason, and settlement terms.",
-      "keywords": ["credit note", "avoir", "refund", "negative", "cancellation", "correction", "vat"]
+      "keywords": [
+        "credit note",
+        "avoir",
+        "refund",
+        "negative",
+        "cancellation",
+        "correction",
+        "vat"
+      ]
     },
     {
       "title": "Sectioned quote template",
@@ -14173,7 +14255,19 @@
       "path": "/docs/builtins/pdf-templates#quote-sections",
       "signature": "",
       "description": "Quote template grouping line items into trade sections with per-section subtotals and a signature acceptance box.",
-      "keywords": ["quote", "devis", "estimate", "sections", "lots", "subtotal", "signature", "acceptance", "construction", "trades", "repeat"]
+      "keywords": [
+        "quote",
+        "devis",
+        "estimate",
+        "sections",
+        "lots",
+        "subtotal",
+        "signature",
+        "acceptance",
+        "construction",
+        "trades",
+        "repeat"
+      ]
     },
     {
       "title": "Quote with options template",
@@ -14182,7 +14276,17 @@
       "path": "/docs/builtins/pdf-templates#quote-options",
       "signature": "",
       "description": "Quote template separating base scope from optional line items, with tick boxes and two totals: base only and with all options.",
-      "keywords": ["quote", "options", "optional", "add-ons", "tick box", "checkbox", "dual total", "agency", "studio"]
+      "keywords": [
+        "quote",
+        "options",
+        "optional",
+        "add-ons",
+        "tick box",
+        "checkbox",
+        "dual total",
+        "agency",
+        "studio"
+      ]
     },
     {
       "title": "Layout editor",
@@ -14191,7 +14295,19 @@
       "path": "/docs/builtins/pdf-editor",
       "signature": "",
       "description": "Build a PDF template by structure instead of hand-writing JSON: document tree, per-element property panel, and a live render from the real engine. Exports the template JSON losslessly.",
-      "keywords": ["layout editor", "pdf editor", "wysiwyg", "visual editor", "template builder", "designer", "drag", "structure", "json export", "bands", "repeat zone"]
+      "keywords": [
+        "layout editor",
+        "pdf editor",
+        "wysiwyg",
+        "visual editor",
+        "template builder",
+        "designer",
+        "drag",
+        "structure",
+        "json export",
+        "bands",
+        "repeat zone"
+      ]
     },
     {
       "title": "box",
@@ -14200,7 +14316,21 @@
       "path": "/docs/builtins/pdf#elements",
       "signature": "{ \"type\": \"box\", \"padding\": 14, \"fill\": \"F7F9FC\", \"content\": [ … ] }",
       "description": "PDF container element: lays out its content inside padding, paints fill/border at the measured size, and advances the cursor below itself. Replaces the rect + hand-computed height pattern. Boxes nest.",
-      "keywords": ["box", "panel", "container", "callout", "padding", "fill", "border", "radius", "dash", "gap", "auto height", "measure", "nest"]
+      "keywords": [
+        "box",
+        "panel",
+        "container",
+        "callout",
+        "padding",
+        "fill",
+        "border",
+        "radius",
+        "dash",
+        "gap",
+        "auto height",
+        "measure",
+        "nest"
+      ]
     },
     {
       "title": "PDF Studio",
@@ -14209,7 +14339,22 @@
       "path": "/docs/builtins/pdf-studio",
       "signature": "",
       "description": "Full-screen visual canvas for PDF templates: draw and move elements directly on the page with the real rendered PDF underneath, define header and footer bands, and export template JSON.",
-      "keywords": ["pdf studio", "wysiwyg", "canvas", "visual editor", "drag", "draw", "move", "toolbox", "header", "footer", "bands", "page layout", "designer", "absolute"]
+      "keywords": [
+        "pdf studio",
+        "wysiwyg",
+        "canvas",
+        "visual editor",
+        "drag",
+        "draw",
+        "move",
+        "toolbox",
+        "header",
+        "footer",
+        "bands",
+        "page layout",
+        "designer",
+        "absolute"
+      ]
     },
     {
       "title": "at",
@@ -14218,7 +14363,18 @@
       "path": "/docs/builtins/pdf#elements",
       "signature": "{ \"type\": \"at\", \"x\": 40, \"y\": 120, \"width\": 220, \"content\": [ … ] }",
       "description": "PDF element that places its content at absolute page coordinates and restores the flow cursor, so placed items are independent of each other and of the surrounding flow.",
-      "keywords": ["at", "absolute", "position", "place", "coordinates", "x", "y", "canvas", "overlay", "free positioning"]
+      "keywords": [
+        "at",
+        "absolute",
+        "position",
+        "place",
+        "coordinates",
+        "x",
+        "y",
+        "canvas",
+        "overlay",
+        "free positioning"
+      ]
     },
     {
       "title": "pdf_layout_map",
@@ -14227,7 +14383,378 @@
       "path": "/docs/builtins/pdf#pdf_layout_map",
       "signature": "pdf_layout_map(template, data, options?) -> Array",
       "description": "Lay out a template and report where every element landed (path, kind, page, x, y, w, h) without producing a PDF — what a visual editor needs to hit-test the rendered page.",
-      "keywords": ["pdf_layout_map", "layout map", "element box", "hit test", "bounding box", "editor", "position", "coordinates", "studio"]
+      "keywords": [
+        "pdf_layout_map",
+        "layout map",
+        "element box",
+        "hit test",
+        "bounding box",
+        "editor",
+        "position",
+        "coordinates",
+        "studio"
+      ]
+    },
+    {
+      "title": "visit",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-visit",
+      "signature": "visit(path)",
+      "description": "Navigate the browser to a path in a browser spec",
+      "keywords": [
+        "browser",
+        "navigate",
+        "goto",
+        "page"
+      ]
+    },
+    {
+      "title": "click",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-click",
+      "signature": "click(selector)",
+      "description": "Dispatch a real mouse click at an element",
+      "keywords": [
+        "browser",
+        "click",
+        "mouse"
+      ]
+    },
+    {
+      "title": "click_link",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-click-link",
+      "signature": "click_link(text)",
+      "description": "Click a link by its visible text",
+      "keywords": [
+        "browser",
+        "link",
+        "anchor"
+      ]
+    },
+    {
+      "title": "click_button",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-click-button",
+      "signature": "click_button(label)",
+      "description": "Click a button by its label or value",
+      "keywords": [
+        "browser",
+        "button",
+        "submit"
+      ]
+    },
+    {
+      "title": "fill_in",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-fill-in",
+      "signature": "fill_in(field, value)",
+      "description": "Type into a form field by selector, label, name or placeholder",
+      "keywords": [
+        "browser",
+        "form",
+        "input",
+        "type"
+      ]
+    },
+    {
+      "title": "select_option",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-select-option",
+      "signature": "select_option(select, option)",
+      "description": "Choose a select option by value or visible text",
+      "keywords": [
+        "browser",
+        "select",
+        "dropdown"
+      ]
+    },
+    {
+      "title": "check",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-check",
+      "signature": "check(box)",
+      "description": "Tick a checkbox in a browser spec",
+      "keywords": [
+        "browser",
+        "checkbox"
+      ]
+    },
+    {
+      "title": "uncheck",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-check",
+      "signature": "uncheck(box)",
+      "description": "Untick a checkbox in a browser spec",
+      "keywords": [
+        "browser",
+        "checkbox"
+      ]
+    },
+    {
+      "title": "choose",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-choose",
+      "signature": "choose(radio)",
+      "description": "Select a radio button in a browser spec",
+      "keywords": [
+        "browser",
+        "radio"
+      ]
+    },
+    {
+      "title": "press",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-press",
+      "signature": "press(key)",
+      "description": "Press a key or chord such as Enter or Alt+d",
+      "keywords": [
+        "browser",
+        "keyboard",
+        "key",
+        "shortcut"
+      ]
+    },
+    {
+      "title": "page_text",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-text",
+      "signature": "page_text()",
+      "description": "The browser page's visible text",
+      "keywords": [
+        "browser",
+        "text",
+        "content"
+      ]
+    },
+    {
+      "title": "page_html",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-text",
+      "signature": "page_html()",
+      "description": "The browser page's full markup",
+      "keywords": [
+        "browser",
+        "html",
+        "markup"
+      ]
+    },
+    {
+      "title": "page_path",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-path",
+      "signature": "page_path()",
+      "description": "The browser's current path",
+      "keywords": [
+        "browser",
+        "path",
+        "url",
+        "location"
+      ]
+    },
+    {
+      "title": "page_url",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-path",
+      "signature": "page_url()",
+      "description": "The browser's current full URL",
+      "keywords": [
+        "browser",
+        "url",
+        "location"
+      ]
+    },
+    {
+      "title": "page_title",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-path",
+      "signature": "page_title()",
+      "description": "The browser page's title",
+      "keywords": [
+        "browser",
+        "title"
+      ]
+    },
+    {
+      "title": "evaluate",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-evaluate",
+      "signature": "evaluate(expression)",
+      "description": "Run JavaScript in the page and return the value",
+      "keywords": [
+        "browser",
+        "javascript",
+        "eval",
+        "script"
+      ]
+    },
+    {
+      "title": "screenshot",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-screenshot",
+      "signature": "screenshot(path)",
+      "description": "Write a PNG screenshot of the current view",
+      "keywords": [
+        "browser",
+        "screenshot",
+        "png",
+        "image"
+      ]
+    },
+    {
+      "title": "wait_for",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-wait-for",
+      "signature": "wait_for(selector)",
+      "description": "Block until an element appears",
+      "keywords": [
+        "browser",
+        "wait",
+        "async"
+      ]
+    },
+    {
+      "title": "wait_for_text",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-wait-for-text",
+      "signature": "wait_for_text(text)",
+      "description": "Block until text appears on the page",
+      "keywords": [
+        "browser",
+        "wait",
+        "text"
+      ]
+    },
+    {
+      "title": "assert_text",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-text",
+      "signature": "assert_text(text)",
+      "description": "Wait for the page to show text; fails on timeout",
+      "keywords": [
+        "browser",
+        "assert",
+        "text"
+      ]
+    },
+    {
+      "title": "assert_no_text",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-text",
+      "signature": "assert_no_text(text)",
+      "description": "Assert text is absent from the page",
+      "keywords": [
+        "browser",
+        "assert",
+        "text"
+      ]
+    },
+    {
+      "title": "assert_selector",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-selector",
+      "signature": "assert_selector(selector)",
+      "description": "Wait for an element to be present",
+      "keywords": [
+        "browser",
+        "assert",
+        "selector",
+        "element"
+      ]
+    },
+    {
+      "title": "assert_no_selector",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-selector",
+      "signature": "assert_no_selector(selector)",
+      "description": "Assert an element is absent",
+      "keywords": [
+        "browser",
+        "assert",
+        "selector"
+      ]
+    },
+    {
+      "title": "assert_page_path",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-page-path",
+      "signature": "assert_page_path(path)",
+      "description": "Wait until the browser is at a path",
+      "keywords": [
+        "browser",
+        "assert",
+        "path",
+        "redirect"
+      ]
+    },
+    {
+      "title": "assert_no_page_errors",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-assert-no-page-errors",
+      "signature": "assert_no_page_errors()",
+      "description": "Fail if the page threw or logged a JavaScript error",
+      "keywords": [
+        "browser",
+        "assert",
+        "error",
+        "console"
+      ]
+    },
+    {
+      "title": "page_errors",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-page-errors",
+      "signature": "page_errors()",
+      "description": "The JavaScript errors captured from the page",
+      "keywords": [
+        "browser",
+        "error",
+        "console"
+      ]
+    },
+    {
+      "title": "Browser Testing",
+      "type": "guide",
+      "category": "Testing",
+      "path": "/docs/testing-browser",
+      "signature": "soli test --browser",
+      "description": "Drive a real headless Chrome from your specs — no Node, no npm, no Playwright",
+      "keywords": [
+        "browser",
+        "headless",
+        "chrome",
+        "system test",
+        "capybara",
+        "playwright",
+        "e2e",
+        "javascript"
+      ]
     }
   ]
 }

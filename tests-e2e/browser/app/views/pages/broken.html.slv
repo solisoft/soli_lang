@@ -1,0 +1,4 @@
+<h1 id="page-title">Broken</h1>
+<script>
+  setTimeout(function () { throw new Error("fixture failure"); }, 0);
+</script>

@@ -6,6 +6,7 @@
 //! sites, and gives the Windows port a single set of holes to fill rather than
 //! an audit of every module.
 
+pub mod browser;
 pub mod dirs;
 pub mod job;
 pub mod lock;

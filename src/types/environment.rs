@@ -539,6 +539,52 @@ impl TypeEnvironment {
             },
         );
 
+        // Browser test helpers (`soli test --browser`).
+        //
+        // Registered here even though `soli test` does not type-check: `soli
+        // check` and `soli -e` do, and they walk spec files too. Without these
+        // a browser spec is a wall of "undefined variable" before it ever runs.
+        //
+        // Params are Any because every one of these takes an optional trailing
+        // options hash, and an Any param switches off the arity check.
+        for (name, returns) in [
+            ("visit", Type::Void),
+            ("click", Type::Void),
+            ("click_link", Type::Void),
+            ("click_button", Type::Void),
+            ("fill_in", Type::Void),
+            ("select_option", Type::Void),
+            ("check", Type::Void),
+            ("uncheck", Type::Void),
+            ("choose", Type::Void),
+            ("press", Type::Void),
+            ("screenshot", Type::String),
+            ("wait_for", Type::Void),
+            ("wait_for_text", Type::Void),
+            ("page_path", Type::String),
+            ("page_url", Type::String),
+            ("page_title", Type::String),
+            ("page_text", Type::String),
+            ("page_html", Type::String),
+            ("page_errors", Type::Array(Box::new(Type::String))),
+            ("evaluate", Type::Any),
+            ("close_browser", Type::Void),
+            ("assert_text", Type::Any),
+            ("assert_no_text", Type::Any),
+            ("assert_selector", Type::Any),
+            ("assert_no_selector", Type::Any),
+            ("assert_page_path", Type::Any),
+            ("assert_no_page_errors", Type::Any),
+        ] {
+            self.functions.insert(
+                name.to_string(),
+                Type::Function {
+                    params: vec![Type::Any, Type::Any],
+                    return_type: Box::new(returns),
+                },
+            );
+        }
+
         // Environment access
         // getenv(String) -> String|Null  (Any so callers can compare against null)
         self.functions.insert(

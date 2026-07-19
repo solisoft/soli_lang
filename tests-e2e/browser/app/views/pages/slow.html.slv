@@ -1,0 +1,11 @@
+<h1 id="page-title">Slow</h1>
+<div id="late-container"></div>
+<script>
+  // Deliberately after load, so a spec that does not wait will miss it.
+  setTimeout(function () {
+    var node = document.createElement("p");
+    node.id = "late";
+    node.textContent = "Arrived late";
+    document.getElementById("late-container").appendChild(node);
+  }, 400);
+</script>

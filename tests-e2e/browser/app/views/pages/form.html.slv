@@ -1,0 +1,20 @@
+<h1 id="page-title">Form</h1>
+<% if message != "" %>
+  <p id="result"><%= h(message) %></p>
+<% end %>
+<form method="post" action="/form">
+  <label for="name">Full name</label>
+  <input type="text" id="name" name="name">
+
+  <label for="role">Role</label>
+  <select id="role" name="role">
+    <option value="">Pick one</option>
+    <option value="admin">Administrator</option>
+    <option value="editor">Editor</option>
+  </select>
+
+  <input type="checkbox" id="subscribe" name="subscribe" value="true">
+  <label for="subscribe">Subscribe</label>
+
+  <button type="submit">Save</button>
+</form>

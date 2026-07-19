@@ -147,6 +147,7 @@ get("/docs/utility/encoding", "docs#utility_encoding")
 
 # Testing
 get("/docs/testing", "docs#testing")
+get("/docs/testing-browser", "docs#testing_browser")
 get("/docs/testing-quick-reference", "docs#testing_quick_reference")
 
 # ============================================================================

@@ -14,29 +14,10 @@
 use std::process::{Command, Stdio};
 
 /// Chromium-family binaries, in the order we would rather have them.
-#[cfg(target_os = "linux")]
-const APP_MODE_BROWSERS: &[&str] = &[
-    "google-chrome",
-    "google-chrome-stable",
-    "chromium",
-    "chromium-browser",
-    "microsoft-edge",
-    "brave-browser",
-];
-
-#[cfg(target_os = "macos")]
-const APP_MODE_BROWSERS: &[&str] = &[
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-];
-
-#[cfg(target_os = "windows")]
-const APP_MODE_BROWSERS: &[&str] = &["chrome", "msedge"];
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-const APP_MODE_BROWSERS: &[&str] = &[];
+///
+/// Shared with the browser test driver, which needs the same list for a
+/// different reason — see `platform::browser`.
+use crate::platform::browser::CHROMIUM_BINARIES as APP_MODE_BROWSERS;
 
 /// How the window was opened, for an honest log line.
 #[derive(Debug, PartialEq, Eq)]
