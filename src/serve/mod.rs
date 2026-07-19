@@ -456,12 +456,36 @@ pub fn serve_folder_with_options(
 
 use env_loader::load_env_files;
 
+/// Called once, with the port the server actually bound, before it starts
+/// accepting. See [`serve_folder_with_options_and_hooks`].
+pub type BoundPortHook = Box<dyn FnOnce(u16) + Send>;
+
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
     folder: &Path,
     port: u16,
     dev_mode: bool,
     workers: usize,
+) -> Result<(), RuntimeError> {
+    serve_folder_with_options_and_hooks(folder, port, dev_mode, workers, None)
+}
+
+/// As [`serve_folder_with_options_and_workers`], but invokes `on_bound_port`
+/// with the port the server actually bound.
+///
+/// Serving blocks forever (it joins the worker threads), so an embedding caller
+/// has no other moment to learn the port — and with `port = 0` it cannot know it
+/// in advance, because the kernel assigns it. The desktop shell uses this to
+/// open a browser at the right URL.
+///
+/// The hook runs on the serving thread just before the ready banner, so it must
+/// not block: spawn if you need to do real work.
+pub fn serve_folder_with_options_and_hooks(
+    folder: &Path,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+    on_bound_port: Option<BoundPortHook>,
 ) -> Result<(), RuntimeError> {
     boot_trace("serve_folder enter");
 
@@ -862,6 +886,7 @@ pub fn serve_folder_with_options_and_workers(
         views_dir,
         routes_file,
         jobs_dir,
+        on_bound_port,
     )
 }
 
@@ -889,6 +914,7 @@ fn run_hyper_server_worker_pool(
     views_dir: PathBuf,
     routes_file: PathBuf,
     jobs_dir: PathBuf,
+    on_bound_port: Option<BoundPortHook>,
 ) -> Result<(), RuntimeError> {
     let reload_tx = if dev_mode {
         let (tx, _) = broadcast::channel::<()>(16);
@@ -1611,6 +1637,13 @@ fn run_hyper_server_worker_pool(
     let actual_port = bound_port_rx
         .recv()
         .expect("Failed to receive bound port from tokio thread");
+
+    // Hand the bound port to an embedding caller before the banner. The
+    // listener is already accepting at this point, so a hook that immediately
+    // opens a browser won't race the first request.
+    if let Some(hook) = on_bound_port {
+        hook(actual_port);
+    }
 
     println!("\nServer listening on http://{}:{}", bind_host, actual_port);
     // The LAN URL only exists when listening on all interfaces; when
