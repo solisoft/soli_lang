@@ -10,6 +10,10 @@ node_modules
 .env.*
 !.env.sample
 !.env.example
+# Test-fixture apps must carry their own `.env.test`: the test runner refuses to
+# start without one, so a fixture whose file is ignored passes locally and fails
+# on a clean checkout with "".env.test file not found". These hold no secrets.
+!tests-e2e/*/.env.test
 .claude/settings.local.json
 tasks*
 
