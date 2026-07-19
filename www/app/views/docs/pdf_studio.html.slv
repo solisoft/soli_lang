@@ -791,10 +791,11 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
     // rather than as an area. `header_height: 0` reserves nothing, so the body
     // starts at the top margin — painting a placeholder band there would sit on
     // top of real body content and imply those elements were in the header.
-    var hh = (tpl.options && tpl.options.header_height) || 0;
-    host.appendChild(bandEl(m.top, hh, "header", hh === 0));
+    var hh = headerHeight();
+    host.appendChild(bandEl(bandBox.header ? bandBox.header.y : m.top, hh, "header", hh === 0));
     var fh = footerHeight();
-    host.appendChild(bandEl(PT.h - m.bottom - fh, fh, "footer", fh === 0));
+    host.appendChild(bandEl(
+      bandBox.footer ? bandBox.footer.y : PT.h - m.bottom, fh, "footer", fh === 0));
   }
 
   function bandEl(topPt, hPt, name, empty) {
@@ -826,11 +827,18 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
     }
     return { top: d, right: d, bottom: d, left: d };
   }
-  // The engine derives the footer band from its content; approximate it here
-  // purely so the guide has somewhere to sit.
+  // Band geometry as the engine measured it. The footer's height is derived
+  // from its own content, so it can only be reported, never set — and guessing
+  // at it (this used to assume a flat 26pt) put the guide in the wrong place.
+  var bandBox = {};              // "header" | "footer" -> {y,h}
+
   function footerHeight() {
-    var f = tpl.footer || [];
-    return f.length ? 26 : 0;
+    if (bandBox.footer) return bandBox.footer.h;
+    return 0;
+  }
+  function headerHeight() {
+    if (bandBox.header) return bandBox.header.h;
+    return (tpl.options && tpl.options.header_height) || 0;
   }
 
   // --- items ---------------------------------------------------------------
@@ -1376,10 +1384,18 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
       num(function () { return tpl.options.header_height; },
           function (v) { tpl.options.header_height = v || 0; }),
       "Reserves a band at the top of every page. Elements placed in the Header zone repeat on all pages.");
-    var fh = document.createElement("input");
-    fh.type = "text"; fh.disabled = true;
-    fh.value = (tpl.footer && tpl.footer.length) ? "auto (from content)" : "none";
-    fieldRow(b, "Footer band", fh, "Sized by the engine from the footer's own content.");
+    var fh = document.createElement("div");
+    fh.className = "hint";
+    fh.style.color = "var(--ink)";
+    fh.style.fontFamily = "var(--mono)";
+    var fhv = footerHeight();
+    fh.textContent = fhv > 0
+      ? Math.round(fhv) + " pt · " + (tpl.footer || []).length + " element(s)"
+      : "not in use";
+    fieldRow(b, "Footer band", fh,
+      fhv > 0
+        ? "Height is derived from the footer's own content, so it is measured rather than set. Switch to the Footer zone to edit it."
+        : "Switch to the Footer zone and draw something to add a running footer.");
 
     var e = document.createElement("div");
     e.className = "empty";
@@ -1448,10 +1464,13 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
     }).then(function (r) { return r.ok ? r.json() : []; })
       .then(function (boxes) {
         flowBoxes = {};
+        bandBox = {};
         // Only the band currently being edited, and only its top-level
         // elements: those are what the Layers list and `sel` address.
         var prefix = zone + ".";
         boxes.forEach(function (b) {
+          // The bands themselves, reported at the height the engine derived.
+          if (b.kind === "band") { bandBox[b.path] = { y: b.y, h: b.h }; return; }
           if (b.path.indexOf(prefix) !== 0) return;
           var rest = b.path.slice(prefix.length);
           if (rest.indexOf(".") >= 0) return;      // a nested child
@@ -1466,6 +1485,7 @@ table.grid .merged { font-size: 9px; color: var(--sel); font-family: var(--mono)
           cur.x = Math.min(cur.x, b.x); cur.y = Math.min(cur.y, b.y);
           cur.w = x2 - cur.x; cur.h = y2 - cur.y;
         });
+        drawGuides();          // band geometry may have changed
         renderItems();
       }).catch(function () { /* selection just stays as it was */ });
   }

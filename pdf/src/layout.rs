@@ -401,9 +401,24 @@ impl<'a> Engine<'a> {
             // `artifact_mode` is on, so header overflow can't recurse.
             let empty = DataDocument::empty();
             let data = self.data.unwrap_or(&empty);
-            for el in &template.header {
+            for (i, el) in template.header.iter().enumerate() {
+                self.el_path = vec!["header".to_string(), i.to_string()];
                 // Header elements should not paginate; ignore errors softly.
                 let _ = self.element(el, data, root, template);
+            }
+            self.el_path.clear();
+            // The band itself, so an editor can draw it at its true height
+            // rather than guessing.
+            if self.pages.is_empty() && self.page.header_height > 0.0 {
+                self.element_boxes.push(crate::draw::ElementBox {
+                    path: "header".to_string(),
+                    kind: "band".to_string(),
+                    page: 0,
+                    x: self.page.content_left(),
+                    y: self.page.header_top(),
+                    w: self.page.content_width(),
+                    h: self.page.header_height,
+                });
             }
             self.artifact_mode = saved_artifact;
             self.cursor = saved;
@@ -422,7 +437,9 @@ impl<'a> Engine<'a> {
         let right = left + self.page.content_width();
         let mut fx = left;
         let mut fy = self.page.footer_top() + FOOTER_PADDING / 2.0;
-        for el in &template.footer {
+        let footer_first_page = self.pages.is_empty();
+        for (fi, el) in template.footer.iter().enumerate() {
+            let fy0 = fy;
             match el {
                 Element::Paragraph(p) => {
                     fy = self.footer_paragraph(p, root, fy);
@@ -494,6 +511,36 @@ impl<'a> Engine<'a> {
                     reason: "not supported in the footer band".to_string(),
                 }),
             }
+            // The footer has its own layout loop rather than going through
+            // `element`, so its boxes are recorded here from the height each
+            // element consumed. First page only: the band repeats verbatim.
+            if footer_first_page {
+                let (iw, ih) = intrinsic_size(el);
+                let h = (fy - fy0).max(ih);
+                if h > 0.0 {
+                    self.element_boxes.push(crate::draw::ElementBox {
+                        path: format!("footer.{fi}"),
+                        kind: element_kind(el).to_string(),
+                        page: 0,
+                        x: fx,
+                        y: fy0,
+                        w: iw.unwrap_or(right - fx),
+                        h,
+                    });
+                }
+            }
+        }
+        // The band itself, at the height the engine derived from its content.
+        if footer_first_page && self.page.footer_height > 0.0 {
+            self.element_boxes.push(crate::draw::ElementBox {
+                path: "footer".to_string(),
+                kind: "band".to_string(),
+                page: 0,
+                x: left,
+                y: self.page.footer_top(),
+                w: self.page.content_width(),
+                h: self.page.footer_height,
+            });
         }
         self.cursor = saved_cursor;
         self.artifact_mode = saved_artifact;
@@ -523,7 +570,10 @@ impl<'a> Engine<'a> {
         // laid out from their own cursor, so a single box would be misleading.
         let page0 = self.pages.len();
         let (x0, y0) = (self.cursor.x, self.cursor.y);
-        let record = !self.artifact_mode && !self.el_path.is_empty();
+        // Bands run in artifact mode and repeat on every page, so they are
+        // recorded once, from the first page — an editor needs one box per
+        // authored element, not one per page it appears on.
+        let record = !self.el_path.is_empty() && (!self.artifact_mode || self.pages.is_empty());
 
         self.element_inner(el, data, root, template)?;
 
