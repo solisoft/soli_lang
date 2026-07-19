@@ -203,7 +203,8 @@ pub enum Command {
         app_id: String,
         app_name: Option<String>,
         output: Option<String>,
-        db_binary: String,
+        db_binary: Option<String>,
+        db_version: Option<String>,
         seed: Option<String>,
         protect: bool,
         target: Option<String>,
@@ -1385,6 +1386,7 @@ pub fn parse_args() -> Options {
                 let mut app_name: Option<String> = None;
                 let mut output: Option<String> = None;
                 let mut db_binary: Option<String> = None;
+                let mut db_version: Option<String> = None;
                 let mut seed: Option<String> = None;
                 let mut protect = false;
                 let mut target: Option<String> = None;
@@ -1403,6 +1405,9 @@ pub fn parse_args() -> Options {
                         "--name" => app_name = Some(take_value(&mut i, "--name")),
                         "--output" | "-o" => output = Some(take_value(&mut i, "--output")),
                         "--solidb" => db_binary = Some(take_value(&mut i, "--solidb")),
+                        "--solidb-version" => {
+                            db_version = Some(take_value(&mut i, "--solidb-version"))
+                        }
                         "--seed" => seed = Some(take_value(&mut i, "--seed")),
                         "--target" => target = Some(take_value(&mut i, "--target")),
                         "--protect" => protect = true,
@@ -1426,17 +1431,13 @@ pub fn parse_args() -> Options {
                     eprintln!("desktop build requires --app-id <reverse.dns.id>");
                     process::exit(64);
                 };
-                let Some(db_binary) = db_binary else {
-                    eprintln!("desktop build requires --solidb <path-to-database-binary>");
-                    process::exit(64);
-                };
-
                 options.command = Command::DesktopBuild {
                     folder: folder.unwrap_or_else(|| ".".to_string()),
                     app_id,
                     app_name,
                     output,
                     db_binary,
+                    db_version,
                     seed,
                     protect,
                     target,

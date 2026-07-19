@@ -11,6 +11,7 @@
 
 pub mod container;
 pub mod db;
+pub mod fetch;
 pub mod manifest;
 pub mod paths;
 pub mod seed;

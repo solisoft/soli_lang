@@ -498,17 +498,19 @@ fn resolve_runtime_template(target: Option<&str>) -> Result<(Vec<u8>, BuildTarge
 }
 
 fn runtime_cache_dir() -> Result<PathBuf, String> {
+    artifact_cache_dir("runtimes")
+}
+
+/// Cache directory for a class of downloaded release artifact.
+pub fn artifact_cache_dir(kind: &str) -> Result<PathBuf, String> {
     if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
         if !xdg.is_empty() {
-            return Ok(PathBuf::from(xdg).join("soli").join("runtimes"));
+            return Ok(PathBuf::from(xdg).join("soli").join(kind));
         }
     }
     let home =
         std::env::var("HOME").map_err(|_| "cannot determine cache dir (no HOME)".to_string())?;
-    Ok(PathBuf::from(home)
-        .join(".cache")
-        .join("soli")
-        .join("runtimes"))
+    Ok(PathBuf::from(home).join(".cache").join("soli").join(kind))
 }
 
 fn release_base_url() -> String {

@@ -8,16 +8,37 @@ use solilang::desktop::manifest::{DesktopManifest, MANIFEST_VERSION};
 
 use super::resolve_bundle_key;
 
+/// Database release fetched when `--solidb` is not supplied.
+///
+/// Pinned rather than "latest": the embedded binary and the data directory it
+/// creates must stay in step across rebuilds of the same app.
+const DEFAULT_DB_VERSION: &str = "0.31.0";
+
+/// This machine's release artifact name, for a host build.
+fn host_target() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    format!("{}-{}", os, arch)
+}
+
 /// Everything `soli desktop build` needs.
 pub struct DesktopBuildArgs<'a> {
     pub folder: &'a str,
     pub app_id: &'a str,
     pub app_name: Option<&'a str>,
     pub output: Option<&'a str>,
-    /// Path to the database binary to embed. Once per-target database releases
-    /// are published this becomes optional, resolved by download like the soli
-    /// runtime; until then it is required and supplied explicitly.
-    pub db_binary: &'a str,
+    /// Path to a locally built database binary. When absent, the published
+    /// release for the build target is downloaded and verified instead.
+    pub db_binary: Option<&'a str>,
+    /// Database release version to download. Defaults to `DEFAULT_DB_VERSION`.
+    pub db_version: Option<&'a str>,
     /// Directory of `<collection>.ndjson` files shipped as reference data.
     pub seed: Option<&'a str>,
     pub protect: bool,
@@ -37,16 +58,6 @@ pub fn run(args: DesktopBuildArgs<'_>) {
             eprintln!("Error: {}", e);
             process::exit(1);
         }
-    }
-
-    let db_binary_path = Path::new(args.db_binary);
-    if !db_binary_path.is_file() {
-        eprintln!(
-            "Error: database binary '{}' not found. Build it (cargo build --release in the \
-             solidb repo) and pass --solidb <path>.",
-            db_binary_path.display()
-        );
-        process::exit(1);
     }
 
     // The key resolves through the same chain as `soli build --encrypt` and as
@@ -77,11 +88,37 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         process::exit(1);
     });
 
-    // 2. The database binary.
-    let db_binary = std::fs::read(db_binary_path).unwrap_or_else(|e| {
-        eprintln!("Error reading {}: {}", db_binary_path.display(), e);
-        process::exit(1);
-    });
+    // 2. The database binary: a local build if one was named, otherwise the
+    //    published release for this target, downloaded and checksum-verified.
+    let db_version = args.db_version.unwrap_or(DEFAULT_DB_VERSION);
+    let (db_binary, db_version_label) = match args.db_binary {
+        Some(path) => {
+            let path = Path::new(path);
+            if !path.is_file() {
+                eprintln!("Error: database binary '{}' not found", path.display());
+                process::exit(1);
+            }
+            let bytes = std::fs::read(path).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", path.display(), e);
+                process::exit(1);
+            });
+            (bytes, read_db_version(path))
+        }
+        None => {
+            // Without --target this is a host build, so fetch the host's own
+            // artifact name.
+            let target = args
+                .target
+                .map(|t| t.to_string())
+                .unwrap_or_else(host_target);
+            let bytes = solilang::desktop::fetch::database_binary(&target, db_version)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
+                });
+            (bytes, format!("solidb {}", db_version))
+        }
+    };
     println!(
         "  Embedding database binary ({:.1} MB)",
         db_binary.len() as f64 / (1024.0 * 1024.0)
@@ -106,7 +143,7 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         app_id: args.app_id.to_string(),
         app_name,
         soli_version: env!("CARGO_PKG_VERSION").to_string(),
-        solidb_version: read_db_version(db_binary_path),
+        solidb_version: db_version_label,
         // Filled in by `container::build` from the embedded bytes.
         solidb_sha256: String::new(),
         seed_version: (!seed.is_empty()).then(|| container::seed_digest(&seed)[..16].to_string()),
