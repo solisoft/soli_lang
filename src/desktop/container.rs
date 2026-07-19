@@ -20,6 +20,9 @@
 
 use std::collections::HashMap;
 
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use sha2::{Digest, Sha256};
 
 use crate::bundle::BundleReader;
@@ -38,6 +41,9 @@ pub struct ContainerInputs {
     /// disagree with the bytes actually embedded.
     pub manifest: DesktopManifest,
 }
+
+/// Value of `manifest.db_compression` for a deflated binary.
+const DEFLATE: &str = "deflate";
 
 /// Hex-encoded SHA-256.
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -88,7 +94,22 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
         return Err("desktop container needs a database binary".to_string());
     }
 
+    // The checksum covers the *uncompressed* bytes — what actually gets
+    // executed — so it stays meaningful regardless of how they are stored.
     inputs.manifest.solidb_sha256 = sha256_hex(&inputs.db_binary);
+
+    // The database binary dominates artifact size; deflate takes it to roughly
+    // a third. Compressing only this entry keeps the outer bundle a plain SOLB
+    // that existing readers still parse.
+    let stored_db = {
+        use std::io::Write;
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&inputs.db_binary)
+            .and_then(|()| encoder.finish())
+            .map_err(|e| format!("cannot compress the database binary: {}", e))?
+    };
+    inputs.manifest.db_compression = Some(DEFLATE.to_string());
     inputs.manifest.seed_sha256 = if inputs.seed.is_empty() {
         None
     } else {
@@ -98,7 +119,7 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
     let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
     entries.insert(MANIFEST_ENTRY.to_string(), inputs.manifest.to_json()?);
     entries.insert(APP_ENTRY.to_string(), inputs.encrypted_app);
-    entries.insert(DB_BINARY_ENTRY.to_string(), inputs.db_binary);
+    entries.insert(DB_BINARY_ENTRY.to_string(), stored_db);
 
     for (name, bytes) in inputs.seed {
         validate_seed_name(&name)?;
@@ -135,7 +156,8 @@ fn validate_seed_name(name: &str) -> Result<(), String> {
 pub struct DesktopContainer<'a> {
     pub manifest: DesktopManifest,
     pub encrypted_app: &'a [u8],
-    pub db_binary: &'a [u8],
+    /// Decompressed and verified, so callers never see the stored form.
+    pub db_binary: Vec<u8>,
     /// Reference data as `(collection_name, ndjson_bytes)`.
     pub seed: Vec<(String, &'a [u8])>,
 }
@@ -170,9 +192,30 @@ pub fn open(payload: &[u8]) -> Result<DesktopContainer<'_>, String> {
         )
     })?;
 
+    // Restore the stored form before verifying: the checksum is over the bytes
+    // that will be executed, not over however they happen to be packed.
+    let db_binary = match manifest.db_compression.as_deref() {
+        None => db_binary.to_vec(),
+        Some(DEFLATE) => {
+            use std::io::Read;
+            let mut out = Vec::new();
+            ZlibDecoder::new(db_binary)
+                .read_to_end(&mut out)
+                .map_err(|e| format!("cannot decompress the database binary: {}", e))?;
+            out
+        }
+        Some(other) => {
+            return Err(format!(
+                "this application stores its database binary as '{}', which this runtime \
+                 does not understand — the runtime is older than the app",
+                other
+            ))
+        }
+    };
+
     // Verify before anything executes these bytes. A mismatch means the
     // artifact was truncated or altered after it was built.
-    let actual = sha256_hex(db_binary);
+    let actual = sha256_hex(&db_binary);
     if actual != manifest.solidb_sha256 {
         return Err(format!(
             "embedded database binary failed verification: manifest expects {}, found {} \
@@ -234,6 +277,7 @@ mod tests {
             solidb_version: "0.31.0".to_string(),
             // Deliberately wrong: `build` must overwrite it.
             solidb_sha256: "00".repeat(32),
+            db_compression: None,
             seed_version: Some("v1".to_string()),
             seed_sha256: None,
         }
@@ -292,23 +336,89 @@ mod tests {
 
     #[test]
     fn open_rejects_a_tampered_database_binary() {
+        // Rebuild the payload with the stored binary altered but the manifest's
+        // checksum left alone — what a modified artifact looks like. The binary
+        // is extracted to a user-writable cache and executed, so this check is
+        // what makes reusing it across launches safe.
         let payload = build(inputs()).expect("build");
+        let reader = crate::bundle::BundleReader::new(&payload).expect("read");
 
-        // Flip one byte of the embedded binary. It is extracted to a
-        // user-writable cache and then executed, so this check is what makes
-        // reuse across launches safe.
-        let needle = b"pretend-database";
-        let at = payload
-            .windows(needle.len())
-            .position(|w| w == needle)
-            .expect("binary bytes present");
-        let mut tampered = payload.clone();
-        tampered[at] ^= 0xff;
+        let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
+        for (path, bytes) in reader.entries() {
+            let mut content = bytes.to_vec();
+            if path == DB_BINARY_ENTRY {
+                // Flip a byte inside the stored (compressed) binary.
+                let at = content.len() / 2;
+                content[at] ^= 0xff;
+            }
+            entries.insert(path.clone(), content);
+        }
+        let tampered =
+            crate::bundle::BundleBuilder::serialize_entries(&entries).expect("re-serialize");
 
         let err = open(&tampered).expect_err("must refuse a modified binary");
+        // Either the compressed stream no longer decodes, or it decodes to
+        // something whose digest does not match. Both are correct refusals;
+        // what matters is that neither is silently accepted.
         assert!(
-            err.contains("failed verification"),
+            err.contains("failed verification") || err.contains("cannot decompress"),
             "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn compression_shrinks_the_stored_binary_but_not_what_is_returned() {
+        // The binary dominates artifact size, so it is stored deflated; callers
+        // must still receive the exact bytes that will be executed.
+        let mut i = inputs();
+        // Repetitive content so compression is unambiguous.
+        i.db_binary = b"AAAABBBBCCCC".repeat(500).to_vec();
+        let original = i.db_binary.clone();
+
+        let payload = build(i).expect("build");
+        let reader = crate::bundle::BundleReader::new(&payload).expect("read");
+        let stored = reader.get(DB_BINARY_ENTRY).expect("db entry");
+        assert!(
+            stored.len() < original.len(),
+            "stored {} bytes vs original {} — compression did not apply",
+            stored.len(),
+            original.len()
+        );
+
+        let container = open(&payload).expect("open");
+        assert_eq!(container.db_binary, original, "must round-trip exactly");
+        assert_eq!(
+            container.manifest.db_compression.as_deref(),
+            Some("deflate")
+        );
+    }
+
+    #[test]
+    fn open_refuses_an_unknown_compression_scheme() {
+        // A newer artifact may store the binary some other way. Guessing would
+        // mean executing bytes we did not decode correctly.
+        let payload = build(inputs()).expect("build");
+        let reader = crate::bundle::BundleReader::new(&payload).expect("read");
+
+        let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
+        for (path, bytes) in reader.entries() {
+            entries.insert(path.clone(), bytes.to_vec());
+        }
+        let mut manifest =
+            DesktopManifest::from_json(entries[MANIFEST_ENTRY].as_slice()).expect("parse manifest");
+        manifest.db_compression = Some("zstd-from-the-future".to_string());
+        entries.insert(
+            MANIFEST_ENTRY.to_string(),
+            manifest.to_json().expect("json"),
+        );
+        let future =
+            crate::bundle::BundleBuilder::serialize_entries(&entries).expect("re-serialize");
+
+        let err = open(&future).expect_err("must refuse");
+        assert!(
+            err.contains("older than the app"),
+            "error should say which side is out of date, got: {}",
             err
         );
     }

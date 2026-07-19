@@ -39,6 +39,13 @@ pub struct DesktopManifest {
     /// cache directory and reused across launches, so it lives somewhere the
     /// user can write — verifying on every launch is what makes reuse safe.
     pub solidb_sha256: String,
+    /// How the embedded database binary is stored, if compressed.
+    ///
+    /// `None` means stored verbatim — the shape older artifacts have, so
+    /// reading one still works. `Some("deflate")` roughly thirds the binary,
+    /// which dominates artifact size.
+    #[serde(default)]
+    pub db_compression: Option<String>,
     /// Identifier for the shipped reference data, used to decide whether an
     /// installed copy is current. `None` when the app ships no seed data.
     pub seed_version: Option<String>,
@@ -82,6 +89,7 @@ mod tests {
             soli_version: "1.22.0".to_string(),
             solidb_version: "0.31.0".to_string(),
             solidb_sha256: "ab".repeat(32),
+            db_compression: Some("deflate".to_string()),
             seed_version: Some("2026-07-19".to_string()),
             seed_sha256: Some("cd".repeat(32)),
         }
@@ -115,6 +123,24 @@ mod tests {
         manifest.app_id = String::new();
         let json = manifest.to_json().expect("serialize");
         assert!(DesktopManifest::from_json(&json).is_err());
+    }
+
+    #[test]
+    fn a_manifest_without_compression_still_parses() {
+        // Artifacts built before compression existed store the binary verbatim
+        // and carry no such field; they must keep working.
+        let json = br#"{
+            "manifest_version": 1,
+            "app_id": "com.example.app",
+            "app_name": "Example",
+            "soli_version": "1.22.0",
+            "solidb_version": "0.31.0",
+            "solidb_sha256": "aa",
+            "seed_version": null,
+            "seed_sha256": null
+        }"#;
+        let manifest = DesktopManifest::from_json(json).expect("parse");
+        assert_eq!(manifest.db_compression, None);
     }
 
     #[test]

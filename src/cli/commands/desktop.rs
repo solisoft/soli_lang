@@ -144,8 +144,9 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         app_name,
         soli_version: env!("CARGO_PKG_VERSION").to_string(),
         solidb_version: db_version_label,
-        // Filled in by `container::build` from the embedded bytes.
+        // Both filled in by `container::build` from the embedded bytes.
         solidb_sha256: String::new(),
+        db_compression: None,
         seed_version: (!seed.is_empty()).then(|| container::seed_digest(&seed)[..16].to_string()),
         seed_sha256: None,
     };
@@ -322,7 +323,7 @@ pub fn boot(
     // 3. The database binary, extracted once and reused. `container::open`
     //    already verified it against the manifest, which is what makes reusing
     //    a copy from a user-writable cache safe.
-    let db_binary_path = extract_db_binary(&paths.cache, container.db_binary, &manifest)?;
+    let db_binary_path = extract_db_binary(&paths.cache, &container.db_binary, &manifest)?;
 
     // 4. Start the database and point the model layer at it.
     let options = solilang::desktop::db::DbOptions::new(

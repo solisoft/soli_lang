@@ -230,6 +230,7 @@ mod tests {
             soli_version: "1.22.0".to_string(),
             solidb_version: "0.31.0".to_string(),
             solidb_sha256: "ab".repeat(32),
+            db_compression: None,
             seed_version: Some("v1".to_string()),
             seed_sha256: sha.map(String::from),
         }
