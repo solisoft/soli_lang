@@ -1,0 +1,284 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs" class="text-gray-400 hover:text-white transition-colors">Documentation</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">XML Signatures &amp; Keys</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">XML Signatures &amp; Key Material</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Canonicalize XML, read certificates and RSA keys, and convert between hex, bytes and Base64 &mdash; the primitives a SAML Service Provider, an XML-DSig verifier or an OpenID Connect JWKS endpoint is assembled from.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Overview
+        </h2>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-6">
+            <p class="text-gray-300 leading-relaxed">
+                <strong class="text-amber-400">These are primitives, not a turn-key signer.</strong> Soli ships the pieces &mdash; canonicalization, certificate parsing, key parsing, modular exponentiation, PKCS#1 padding, encoding conversions &mdash; and you compose the protocol you need. That keeps one opinionated implementation of SAML or XML-DSig from being baked into the language, at the cost of you owning the assembly. The worked examples below are the composition, end to end.
+            </p>
+        </div>
+
+        <p class="text-gray-400 leading-relaxed mb-4">Three encodings meet in this area, and mixing them up is the most common source of a signature that verifies locally and nowhere else:</p>
+        <ul class="text-gray-400 leading-relaxed space-y-2 mb-4 list-disc list-inside">
+            <li><code class="text-amber-300">Crypto.sha256</code>, <code class="text-amber-300">Crypto.modexp</code> and <code class="text-amber-300">Crypto.pkcs1_*</code> all speak <strong>hex</strong>.</li>
+            <li>XML-DSig's <code class="text-amber-300">DigestValue</code> and <code class="text-amber-300">SignatureValue</code>, and a JWK's <code class="text-amber-300">n</code>/<code class="text-amber-300">e</code>, are <strong>Base64</strong>.</li>
+            <li><code class="text-amber-300">Deflate</code> and the encoders work in <strong>raw bytes</strong>.</li>
+        </ul>
+        <p class="text-gray-400 leading-relaxed"><code class="text-amber-300">Hex</code> is the bridge between the first two &mdash; encoding a hex <em>string</em> to Base64 instead of the bytes it denotes produces a value twice the right length that no counterparty will accept.</p>
+    </section>
+
+    <!-- XML Canonicalization -->
+    <section id="section-xml" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            XML Canonicalization
+        </h2>
+
+        <section id="def-xml-c14n-exclusive" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-xml-c14n-exclusive" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Xml.c14n_exclusive(xml, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Canonicalizes a document with W3C <strong>Exclusive XML Canonicalization 1.0</strong> (<code class="text-amber-300">http://www.w3.org/2001/10/xml-exc-c14n#</code>) &mdash; the canonical form XML-DSig signs. Empty elements expand to start/end pairs, attributes and namespace declarations are sorted, the XML declaration and comments are removed, and &mdash; the &ldquo;exclusive&rdquo; part &mdash; namespace declarations that are not visibly utilized are dropped rather than inherited from ancestors. <code class="text-amber-300">DOCTYPE</code> declarations are rejected as an XXE defense.</p>
+                <p class="text-gray-400 mb-3">The optional second argument is either the <strong>InclusiveNamespaces PrefixList</strong> directly &mdash; a space-separated string such as <code class="text-amber-300">"ds saml"</code>, or an array of prefixes, with <code class="text-amber-300">#default</code> selecting the default namespace &mdash; or an options hash:</p>
+                <div class="text-sm text-gray-400 space-y-1 mb-3">
+                    <div><code class="text-amber-400">inclusive_prefixes</code> : <code class="text-orange-400">String | Array</code> - as above</div>
+                    <div><code class="text-amber-400">id</code> : <code class="text-orange-400">String</code> - canonicalize only the subtree of the element whose <code>Id</code>/<code>ID</code>/<code>id</code> attribute matches, inheriting the ancestor namespace context. This is how a <code>Reference URI="#..."</code> is resolved.</div>
+                    <div><code class="text-amber-400">enveloped_signature</code> : <code class="text-orange-400">Bool</code> - drop any descendant <code>&lt;ds:Signature&gt;</code> (the enveloped-signature transform)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; the canonical UTF-8 serialization (the no-comments form).</div>
+<pre data-filename="Example"><code class="language-soli text-sm">Xml.c14n_exclusive("&lt;?xml version=\"1.0\"?&gt;&lt;doc b='2' a='1'/&gt;")
+# =&gt; "&lt;doc a=\"1\" b=\"2\"&gt;&lt;/doc&gt;"
+
+# An ancestor namespace the signed element does not use is dropped (n2 removed):
+xml = "&lt;n0:r xmlns:n0=\"http://a\" xmlns:n2=\"http://c\"&gt;&lt;n1:e xmlns:n1=\"http://b\"&gt;x&lt;/n1:e&gt;&lt;/n0:r&gt;"
+Xml.c14n_exclusive(xml)
+# =&gt; "&lt;n0:r xmlns:n0=\"http://a\"&gt;&lt;n1:e xmlns:n1=\"http://b\"&gt;x&lt;/n1:e&gt;&lt;/n0:r&gt;"
+
+# Canonicalize the SAML-referenced element with its own signature stripped
+Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": true})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-xml-get-element-by-id" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-xml-get-element-by-id" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Xml.get_element_by_id(xml, id)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Returns the element whose <code class="text-amber-300">Id</code>/<code class="text-amber-300">ID</code>/<code class="text-amber-300">id</code> attribute equals <code class="text-amber-300">id</code>, serialized as a standalone fragment with the inherited ancestor namespaces injected onto its root &mdash; so it re-parses and re-canonicalizes identically to the in-context subtree. Raises if no such element exists.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; the element subtree as standalone XML</div>
+            </div>
+        </section>
+
+        <section id="def-xml-get-elements-by-tag" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-xml-get-elements-by-tag" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Xml.get_elements_by_tag(xml, local_name)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Every element with the given local name (namespace prefix ignored), each as a standalone fragment. Use it to locate elements that carry no <code class="text-amber-300">Id</code>, such as <code class="text-amber-300">&lt;ds:SignedInfo&gt;</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array</code> of <code class="text-orange-400">String</code></div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Certificates and Keys -->
+    <section id="section-keys" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+            </span>
+            Certificates &amp; Keys
+        </h2>
+
+        <section id="def-x509-public-key" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-x509-public-key" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">X509.public_key(cert)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Parses an X.509 certificate and extracts its RSA public key. Accepts PEM (<code class="text-amber-300">-----BEGIN CERTIFICATE-----</code>), bare base64 as found in a SAML metadata <code class="text-amber-300">&lt;ds:X509Certificate&gt;</code>, hex, or a raw DER byte array.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "algorithm": "RSA", "n": hex, "e": hex, "bits": Int }</code>. The <code>n</code>/<code>e</code> hex strings drop straight into <code class="text-amber-300">Crypto.modexp</code>.</div>
+<pre data-filename="Example"><code class="language-soli text-sm">key = X509.public_key(idp_metadata_cert)
+em  = Crypto.modexp(signature, key["e"], key["n"])   # the RSA verify step</code></pre>
+            </div>
+        </section>
+
+        <section id="def-x509-fingerprint" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-x509-fingerprint" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">X509.fingerprint(cert, algorithm?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">The certificate fingerprint (a hash of the DER bytes) as hex. <code class="text-amber-300">algorithm</code> is <code class="text-amber-300">"sha256"</code> (default) or <code class="text-amber-300">"sha1"</code>. Useful for pinning an identity provider's certificate.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; hex digest</div>
+            </div>
+        </section>
+
+        <section id="def-rsakey-private-from-pem" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-rsakey-private-from-pem" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">RsaKey.private_from_pem(pem)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Parses an RSA private key &mdash; PKCS#8 (<code class="text-amber-300">-----BEGIN PRIVATE KEY-----</code>) or PKCS#1 (<code class="text-amber-300">-----BEGIN RSA PRIVATE KEY-----</code>) PEM &mdash; so you can <strong>sign</strong>. The verification side, <code class="text-amber-300">X509.public_key</code>, only yields <code>(n, e)</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }</code></div>
+                <p class="text-gray-400 mt-3 mb-3">The public counterpart is <code class="text-amber-400">RsaKey.public_from_pem(pem)</code>, which reads an SPKI (<code class="text-amber-300">-----BEGIN PUBLIC KEY-----</code>) or PKCS#1 public key and returns <code>{ algorithm, n, e, bits }</code>. Use it when you hold a bare public key rather than a certificate &mdash; publishing a JWKS, or verifying someone else&rsquo;s tokens.</p>
+                <div class="rounded-xl bg-white/5 border border-white/10 p-4 mt-4">
+                    <p class="text-gray-400 text-sm"><strong class="text-white">There is no RSA key generation.</strong> Soli reads keys, it does not create them &mdash; generate one with <code class="text-amber-300">openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048</code> and load the PEM. A signing key has to survive restarts, be shared across workers and hosts, and be rotatable, which makes it operator-managed configuration rather than something a process mints for itself.</p>
+                </div>
+<pre data-filename="Publishing a JWKS entry"><code class="language-soli text-sm"># An OIDC provider's public key, as a JWK. Hex.decode first: encoding the
+# hex text rather than the bytes it denotes yields a value twice as long.
+key = RsaKey.private_from_pem(getenv("SOLI_OIDC_PRIVATE_KEY"))
+jwk = {
+  "kty": "RSA",
+  "use": "sig",
+  "alg": "RS256",
+  "kid": Crypto.sha256(public_pem).slice(0, 16),
+  "n": Base64.urlsafe_encode(Hex.decode(key["n"])),
+  "e": Base64.urlsafe_encode(Hex.decode(key["e"]))
+}</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Encoding bridges -->
+    <section id="section-encoding" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Encoding Bridges
+        </h2>
+
+        <section id="def-hex-encode" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-hex-encode" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Hex.encode(data) / Hex.decode(hex)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Bridges the hex world (<code class="text-amber-300">Crypto.modexp</code>, <code class="text-amber-300">Crypto.sha256</code> and <code class="text-amber-300">Crypto.pkcs1_*</code> all speak hex) and the byte/Base64 world (<code class="text-amber-300">Base64</code>, XML-DSig's <code class="text-amber-300">DigestValue</code>/<code class="text-amber-300">SignatureValue</code>, and a JWK's <code class="text-amber-300">n</code>/<code class="text-amber-300">e</code>). <code class="text-amber-300">encode</code> takes a String or byte array and returns hex; <code class="text-amber-300">decode</code> takes a hex string (an optional <code class="text-amber-300">0x</code> prefix is accepted) and returns a byte array.</p>
+                <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mt-3 mb-3">
+                    <p class="text-gray-300 text-sm"><code class="text-amber-300">Hex.decode</code> raises on odd-length input. A hex string that lost a leading zero &mdash; from string trimming, or from a producer that drops it &mdash; fails here rather than silently decoding shifted by half a byte.</p>
+                </div>
+<pre data-filename="Example"><code class="language-soli text-sm"># hex digest -&gt; base64 DigestValue
+digest_value = Base64.encode(Hex.decode(Crypto.sha256(canonical_xml)))
+
+# incoming base64 -&gt; hex, to compare against a Crypto.* result
+Hex.encode(Base64.decode(incoming_b64))
+
+# PKCE S256 challenge, the same conversion in the OIDC world
+challenge = Base64.urlsafe_encode(Hex.decode(Crypto.sha256(code_verifier)))</code></pre>
+            </div>
+        </section>
+
+        <section id="def-deflate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-deflate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Deflate.deflate(data) / Deflate.inflate(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Raw DEFLATE (RFC 1951, with no zlib or gzip wrapper) &mdash; the compression used by the SAML 2.0 <strong>HTTP-Redirect binding</strong>. Byte conventions mirror <code class="text-amber-300">Base64</code>: <code class="text-amber-300">deflate</code> takes a String (its UTF-8 bytes) or a byte array and returns a byte array; <code class="text-amber-300">inflate</code> returns a String when the result is valid UTF-8 and a byte array otherwise.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Inbound: decode a SAMLRequest from a redirect URL
+xml = Deflate.inflate(Base64.decode(params["SAMLRequest"]))
+
+# Outbound: encode one
+param = Base64.encode(Deflate.deflate(authn_request_xml))</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Putting it together -->
+    <section id="section-signing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Putting It Together
+        </h2>
+
+        <p class="text-gray-400 leading-relaxed mb-4">RSA signing is <code class="text-amber-300">modexp</code> over a PKCS#1-padded digest, and verification is the same operation with the public exponent, unpadded. The round trip below is the whole of it:</p>
+
+<pre data-filename="Sign and verify"><code class="language-soli text-sm">key         = RsaKey.private_from_pem(sp_private_key_pem)
+key_octets  = key["bits"] / 8
+
+digest      = Crypto.sha256(canonical_xml)
+em          = Crypto.pkcs1_pad(digest, key_octets)   # block type 1
+signature   = Crypto.modexp(em, key["d"], key["n"])  # sign
+
+# Verify with the public exponent
+recovered   = Crypto.pkcs1_unpad(Crypto.modexp(signature, key["e"], key["n"]))
+assert(recovered == digest)</code></pre>
+
+        <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-5 mt-6">
+            <p class="text-gray-300 leading-relaxed text-sm">
+                <strong class="text-red-400">This is textbook RSA.</strong> <code class="text-amber-300">Crypto.modexp</code> is unblinded and its big-integer arithmetic is not constant-time, so a local attacker who can measure your signing operation precisely may be able to recover key material. That is a deliberate trade: the Rust <code class="text-amber-300">rsa</code> crate carries an unfixed timing advisory (RUSTSEC-2023-0071) and is excluded from this project. It is appropriate for signing documents you are publishing; treat a high-rate signing oracle exposed to untrusted timing measurement as out of scope.
+            </p>
+        </div>
+    </section>
+
+    <!-- Next -->
+    <div class="flex items-center justify-between pt-8 border-t border-white/10">
+        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Crypto
+        </a>
+        <a href="/docs/utility/base64" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+            Base64
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

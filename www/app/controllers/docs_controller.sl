@@ -164,6 +164,10 @@ def security_authorization
     render_docs("docs/security/authorization", "Authorization & Policies", "security", "authorization")
 end
 
+def security_oidc_provider
+    render_docs("docs/security/oidc-provider", "OpenID Connect Provider", "security", "oidc_provider")
+end
+
 # Development Tools
 # ============================================================================
 
@@ -351,6 +355,10 @@ end
 
 def builtins_jwt
     render_docs("docs/builtins/jwt", "JWT Functions", "builtins", "jwt")
+end
+
+def builtins_xml_signatures
+    render_docs("docs/builtins/xml-signatures", "XML Signatures & Keys", "builtins", "xml-signatures")
 end
 
 def builtins_vapid

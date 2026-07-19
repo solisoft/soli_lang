@@ -1,0 +1,204 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                OpenID Connect Provider
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Be an identity provider, not just talk to one. One command scaffolds a working
+            OpenID Connect provider so other applications can &ldquo;Sign in with your app&rdquo;.
+        </p>
+    </div>
+
+    <section>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth            # the provider signs tokens about a signed-in user
+soli generate oidc_provider</code></pre>
+        <p class="text-gray-400 mt-4 leading-relaxed">
+            The second command refuses to run without the first: the provider needs a <code class="text-amber-300">User</code>
+            model and the <code class="text-amber-300">current_user</code> middleware to know who is being authenticated.
+            The generated provider implements the <strong class="text-white">Authorization Code flow with PKCE</strong> &mdash;
+            the only flow OAuth&nbsp;2.1 still recommends.
+        </p>
+    </section>
+
+    <!-- Endpoints -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            Endpoints
+        </h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10 text-left text-gray-300">
+                        <th class="py-2 pr-4 font-semibold">Route</th>
+                        <th class="py-2 font-semibold">Purpose</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">GET /.well-known/openid-configuration</code></td><td>Discovery document</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">GET /.well-known/jwks.json</code></td><td>Public signing keys</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">GET /oauth/authorize</code></td><td>Authorization + consent screen</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">POST /oauth/authorize</code></td><td>Consent decision</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">POST /oauth/token</code></td><td>Code and refresh grants</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">GET|POST /oauth/userinfo</code></td><td>Claims for a bearer token</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-amber-300">POST /oauth/revoke</code></td><td>RFC 7009 revocation</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-300">GET /oauth/logout</code></td><td>RP-initiated logout</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-4 mt-6">
+            <p class="text-gray-400 text-sm">
+                The generated routes call <code class="text-amber-300">skip_csrf</code> on <code class="text-amber-300">/oauth/token</code>
+                and <code class="text-amber-300">/oauth/revoke</code>. Those are server-to-server calls with no browser
+                <code>Origin</code>, so the same-origin gate would reject every legitimate exchange; the <em>client</em> is
+                authenticated instead. The consent <code>POST</code> is a real browser form and keeps CSRF protection.
+            </p>
+        </div>
+    </section>
+
+    <!-- Setup -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
+            Setup
+        </h2>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Signing keys</h3>
+        <p class="text-gray-400 mb-3 leading-relaxed">
+            The generator deliberately does <strong class="text-white">not</strong> create keys &mdash; a private key written
+            into <code class="text-amber-300">config/</code> ends up committed. Generate them yourself:
+        </p>
+<pre data-filename="Terminal"><code class="language-bash text-sm">openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out oidc.pem
+openssl rsa -in oidc.pem -pubout -out oidc.pub.pem</code></pre>
+<pre data-filename=".env"><code class="language-bash text-sm">SOLI_OIDC_ISSUER=https://id.example.com
+SOLI_OIDC_PRIVATE_KEY="$(cat oidc.pem)"
+SOLI_OIDC_PUBLIC_KEY="$(cat oidc.pub.pem)"</code></pre>
+        <p class="text-gray-400 mt-3 mb-6 leading-relaxed">
+            Both halves are configured because signing needs the private PEM and JWKS publication needs the public one.
+            <code class="text-amber-300">SOLI_OIDC_ISSUER</code> <strong class="text-white">must</strong> match your public
+            origin exactly, with no trailing slash &mdash; relying parties compare the <code>iss</code> claim byte for byte.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Migrations</h3>
+        <p class="text-gray-400 mb-6 leading-relaxed">
+            <code class="text-amber-300">soli db:migrate up</code>. SoliDB creates a collection on first model access, so the
+            migration exists for the <strong class="text-white">indexes</strong>. The unique ones are not an optimisation:
+            <code class="text-amber-300">code_digest</code> unique is the database-level backstop that keeps an authorization
+            code single-use even if the application-level burn ever raced.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Register a relying party</h3>
+<pre data-filename="Register a client"><code class="language-soli text-sm">result = OauthClient.register("My App", ["https://app.example/callback"], {})
+print(result["client_id"])
+print(result["client_secret"])   # shown once — only its Argon2 digest is stored</code></pre>
+        <p class="text-gray-400 mt-3 mb-6 leading-relaxed">
+            A <strong class="text-white">public</strong> client (SPA, mobile) has no secret, so PKCE is forced on and cannot be
+            switched off &mdash; it is the only thing binding the code to the requester.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Two edits to <code class="text-amber-300">sessions_controller.sl</code></h3>
+        <p class="text-gray-400 mb-3 leading-relaxed">
+            The generator does not modify files it did not create, so make these yourself:
+        </p>
+<pre data-filename="app/controllers/sessions_controller.sl"><code class="language-soli text-sm"># in `create`, next to session_regenerate():
+session_set("auth_time", DateTime.utc().to_unix())
+
+# and replace the final `return redirect("/")` with:
+destination = session_get("oidc_return_to") ?? "/"
+session_delete("oidc_return_to")
+return redirect(destination)</code></pre>
+        <p class="text-gray-400 mt-3 leading-relaxed">
+            Without the first, <code class="text-amber-300">auth_time</code> falls back to the authorization instant. Without
+            the second, a user who signs in mid-flow lands on the home page instead of completing the authorization.
+        </p>
+    </section>
+
+    <!-- Tokens -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
+            Tokens &amp; key rotation
+        </h2>
+        <p class="text-gray-400 mb-4 leading-relaxed">
+            <strong class="text-white">Access tokens are signed JWTs</strong> (<code class="text-amber-300">typ: "at+jwt"</code>,
+            RFC 9068), so a resource server verifies them offline against the JWKS with no call back to the provider. The cost
+            is that revoking a grant kills the <em>refresh</em> token immediately while an already-issued access token lives out
+            its TTL. That TTL is deliberately short (10 minutes) because it, not the denylist, is what bounds the exposure.
+        </p>
+        <p class="text-gray-400 mb-4 leading-relaxed">
+            <strong class="text-white">Refresh tokens are opaque and rotate.</strong> Every use issues a new one and retires the
+            old. Presenting a retired token means it leaked, so the entire family is revoked &mdash; the legitimate holder loses
+            access too, which is correct, because the provider cannot tell the two apart. A refresh token is only issued when the
+            client asked for <code class="text-amber-300">offline_access</code>.
+        </p>
+        <p class="text-gray-400 mb-4 leading-relaxed">
+            The <code class="text-amber-300">id_token</code> carries <code>iss</code>, <code>sub</code>, <code>aud</code>,
+            <code>exp</code>, <code>iat</code>, the echoed <code>nonce</code>, <code>auth_time</code> and <code>at_hash</code>.
+            Scope-gated claims come from the <code class="text-amber-300">oidc_user_claims</code> hook &mdash; the one place that
+            needs to know what a <code>User</code> looks like.
+        </p>
+<pre data-filename="Rotating a signing key"><code class="language-bash text-sm"># 1. keep the outgoing key published
+SOLI_OIDC_PREVIOUS_PUBLIC_KEY="$(cat old.pub.pem)"
+# 2. promote the new pair, deploy
+SOLI_OIDC_PRIVATE_KEY="$(cat new.pem)"
+SOLI_OIDC_PUBLIC_KEY="$(cat new.pub.pem)"
+# 3. once OIDC_ID_TOKEN_TTL has elapsed, unset the previous key</code></pre>
+        <p class="text-gray-400 mt-3 leading-relaxed">
+            The JWKS lists both keys during the overlap; signing always uses the active one alone. This only works because tokens
+            carry a <code class="text-amber-300">kid</code> header.
+        </p>
+    </section>
+
+    <!-- Security -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">4</span>
+            Security decisions
+        </h2>
+        <p class="text-gray-400 mb-6 leading-relaxed">
+            These are worth knowing about, because several are places where a looser implementation would still appear to work.
+        </p>
+        <div class="space-y-4">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Exact <code class="text-amber-300">redirect_uri</code> matching</h4>
+                <p class="text-gray-400 text-sm">Byte for byte against a registered URI &mdash; no prefix matching, no wildcards, no normalization. Anything looser lets an attacker who can register a lookalike path harvest authorization codes.</p>
+            </div>
+            <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-5">
+                <h4 class="font-semibold text-red-400 mb-2">Two errors never redirect</h4>
+                <p class="text-gray-300 text-sm">An unknown <code class="text-amber-300">client_id</code> or an unregistered <code class="text-amber-300">redirect_uri</code> renders a 400 page instead of bouncing the browser. Redirecting on an unvalidated <code>redirect_uri</code> <em>is</em> the open redirect that RFC 6749 &sect;4.1.2.1 carves these two cases out to prevent. Every other authorization error does redirect, with <code>error</code>, <code>error_description</code> and the echoed <code>state</code>.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">PKCE <code class="text-amber-300">S256</code> only</h4>
+                <p class="text-gray-400 text-sm"><code>plain</code> is rejected for every client type. It offers no protection against an attacker who intercepted the authorization request, and accepting it only adds a downgrade path.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Codes are single-use and bound</h4>
+                <p class="text-gray-400 text-sm">60-second TTL, tied to <code>client_id</code>, <code>redirect_uri</code> and <code>code_challenge</code> &mdash; all re-checked at exchange. The burn is a single atomic statement, so two simultaneous exchanges cannot both win. A replayed code revokes every token the first exchange produced.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Client authentication</h4>
+                <p class="text-gray-400 text-sm"><code>client_secret_basic</code> or <code>client_secret_post</code>, never both (RFC 6749 &sect;2.3). Secrets are Argon2 digests. A failed <em>Basic</em> authentication returns 401 with <code>WWW-Authenticate</code>; the same failure via form parameters returns 400 &mdash; a distinction from RFC 6749 &sect;5.2 that is routinely gotten wrong.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Token responses are <code class="text-amber-300">Cache-Control: no-store</code></h4>
+                <p class="text-gray-400 text-sm">They carry bearer credentials and must not sit in a proxy cache. This is why the generated code returns a raw response hash rather than <code>render_json</code>, whose fast-path headers cannot be extended.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Caveats -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">5</span>
+            Caveats &amp; what is not implemented
+        </h2>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed list-disc list-inside">
+            <li>Registered <code class="text-amber-300">redirect_uris</code> must be absolute <code>http</code>/<code>https</code> with no fragment. Custom-scheme native redirects (<code>com.example.app:/cb</code>) are rejected at registration, because the redirect helper only accepts http(s); supporting them would mean bypassing the guard that closes the open redirect.</li>
+            <li>An app serving files from <code class="text-amber-300">public/.well-known/</code> (ACME HTTP-01, for example) can shadow the discovery document, since static files take precedence for <code>GET</code>.</li>
+            <li><strong class="text-white">Not implemented:</strong> dynamic client registration (RFC 7591), request objects (JAR), implicit and hybrid flows, client-credentials and device-code grants, front/back-channel logout, DPoP or mTLS sender constraining, and token introspection (RFC 7662).</li>
+        </ul>
+    </section>
+</div>

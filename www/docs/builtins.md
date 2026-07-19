@@ -2005,6 +2005,25 @@ Parses an RSA private key — PKCS#8 (`-----BEGIN PRIVATE KEY-----`) or PKCS#1
 **Returns:** Hash — `{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }`.
 Sign with the private exponent: `Crypto.modexp(padded, key["d"], key["n"])`.
 
+#### RsaKey.public_from_pem(pem)
+
+Parses a bare RSA **public** key — SPKI (`-----BEGIN PUBLIC KEY-----`) or
+PKCS#1 (`-----BEGIN RSA PUBLIC KEY-----`) PEM. Use it when you hold a public
+key rather than a certificate (`X509.public_key` covers that case): publishing
+a JWKS, or verifying tokens signed by someone else.
+
+**Returns:** Hash — `{ "algorithm": "RSA", "n": hex, "e": hex, "bits": Int }`.
+
+```soli
+# One JWKS entry
+key = RsaKey.public_from_pem(getenv("SOLI_OIDC_PUBLIC_KEY"))
+jwk = {
+  "kty": "RSA", "use": "sig", "alg": "RS256",
+  "n": Base64.urlsafe_encode(Hex.decode(key["n"])),
+  "e": Base64.urlsafe_encode(Hex.decode(key["e"]))
+}
+```
+
 #### Hex.encode(data) / Hex.decode(hex)
 
 Bridges the hex world (`Crypto.modexp` / `sha256` / `pkcs1_*` all speak hex) and

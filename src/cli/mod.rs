@@ -23,6 +23,7 @@ pub fn run() {
             folder,
         } => commands::run_generate(scaffold_name, fields, folder),
         Command::GenerateAuth { folder } => commands::run_generate_auth(folder),
+        Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
         Command::GenerateMailer {
             name,
             actions,

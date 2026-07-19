@@ -22,7 +22,8 @@ use std::rc::Rc;
 
 use base64::Engine;
 use der::Decode;
-use pkcs1::RsaPrivateKey as Pkcs1PrivateKey;
+use pkcs1::{RsaPrivateKey as Pkcs1PrivateKey, RsaPublicKey as Pkcs1PublicKey};
+use pkcs8::spki::SubjectPublicKeyInfoRef;
 use pkcs8::PrivateKeyInfo;
 
 use crate::interpreter::environment::Environment;
@@ -81,6 +82,36 @@ fn parse_components(pem: &str) -> Result<RsaComponents, String> {
     ))
 }
 
+/// Parse a PEM RSA **public** key — SPKI (`-----BEGIN PUBLIC KEY-----`) or
+/// PKCS#1 (`-----BEGIN RSA PUBLIC KEY-----`) — and return `(n, e)` as
+/// big-endian octets.
+///
+/// `X509.public_key` covers the certificate case; this covers a bare public
+/// key, which is what an OIDC provider publishes in its JWKS and what a
+/// relying party is handed for verification.
+fn parse_public_components(pem: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let (label, der) = pem_to_der(pem)?;
+
+    // SPKI wraps the PKCS#1 RSAPublicKey in a SubjectPublicKeyInfo; unwrap it.
+    let inner_der: Vec<u8> = if label.contains("RSA PUBLIC KEY") {
+        der.clone()
+    } else {
+        let spki = SubjectPublicKeyInfoRef::from_der(&der)
+            .map_err(|e| format!("SPKI parse error: {}", e))?;
+        spki.subject_public_key
+            .as_bytes()
+            .ok_or("SPKI public key is not byte-aligned")?
+            .to_vec()
+    };
+
+    let key = Pkcs1PublicKey::from_der(&inner_der)
+        .map_err(|e| format!("RSA public key (PKCS#1) parse error: {}", e))?;
+    Ok((
+        key.modulus.as_bytes().to_vec(),
+        key.public_exponent.as_bytes().to_vec(),
+    ))
+}
+
 pub fn register_rsa_key_builtins(env: &mut Environment) {
     let mut methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
@@ -107,6 +138,34 @@ pub fn register_rsa_key_builtins(env: &mut Environment) {
                     ("n".to_string(), Value::String(bytes_to_hex(&n).into())),
                     ("e".to_string(), Value::String(bytes_to_hex(&e).into())),
                     ("d".to_string(), Value::String(bytes_to_hex(&d).into())),
+                    ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
+                ]))
+            },
+        )),
+    );
+
+    // RsaKey.public_from_pem(pem) -> { algorithm, n, e, bits }
+    methods.insert(
+        "public_from_pem".to_string(),
+        Rc::new(NativeFunction::new(
+            "RsaKey.public_from_pem",
+            Some(1),
+            |args| {
+                let pem = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "RsaKey.public_from_pem() expects string PEM, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                let (n, e) = parse_public_components(&pem)
+                    .map_err(|err| format!("RsaKey.public_from_pem(): {}", err))?;
+                Ok(hash_from_pairs([
+                    ("algorithm".to_string(), Value::String("RSA".into())),
+                    ("n".to_string(), Value::String(bytes_to_hex(&n).into())),
+                    ("e".to_string(), Value::String(bytes_to_hex(&e).into())),
                     ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
                 ]))
             },

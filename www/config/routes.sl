@@ -58,6 +58,7 @@ get("/docs/database/migrations", "docs#database_migrations")
 # Security
 get("/docs/security/authentication", "docs#security_authentication")
 get("/docs/security/authorization", "docs#security_authorization")
+get("/docs/security/oidc-provider", "docs#security_oidc_provider")
 get("/docs/security/sessions", "docs#security_sessions")
 
 # Development Tools
@@ -106,6 +107,7 @@ get("/docs/builtins/s3", "docs#builtins_s3")
 get("/docs/builtins/json", "docs#builtins_json")
 get("/docs/builtins/ai", "docs#builtins_ai")
 get("/docs/builtins/crypto", "docs#builtins_crypto")
+get("/docs/builtins/xml-signatures", "docs#builtins_xml_signatures")
 get("/docs/builtins/jwt", "docs#builtins_jwt")
 get("/docs/builtins/vapid", "docs#builtins_vapid")
 get("/docs/builtins/pdf", "docs#builtins_pdf")

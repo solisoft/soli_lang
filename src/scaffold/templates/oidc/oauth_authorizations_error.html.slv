@@ -1,0 +1,10 @@
+<div class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md text-center">
+    <h1 class="text-2xl font-bold mb-3">Authorization failed</h1>
+    <p class="text-slate-400 mb-6"><%= h(message) %></p>
+    <p class="text-xs text-slate-500">
+      For your safety you were not redirected back to the application, because
+      the request did not identify one we recognise.
+    </p>
+  </div>
+</div>

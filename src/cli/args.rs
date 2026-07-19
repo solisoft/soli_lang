@@ -25,6 +25,11 @@ pub enum Command {
     GenerateAuth {
         folder: String,
     },
+    /// `soli generate oidc_provider [folder]` — scaffold an OpenID Connect
+    /// provider (Authorization Code + PKCE).
+    GenerateOidcProvider {
+        folder: String,
+    },
     /// `soli generate mailer <Name> <action...> [folder]` — scaffold a mailer
     /// class (app/mailers/<name>_mailer.sl) and one HTML view per action.
     GenerateMailer {
@@ -263,6 +268,7 @@ pub fn print_usage() {
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli generate auth [folder]");
+    eprintln!("       soli generate oidc_provider [folder]");
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
@@ -297,6 +303,7 @@ pub fn print_usage() {
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
+    eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
     );
@@ -362,6 +369,7 @@ pub fn print_usage() {
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli generate auth            Scaffold authentication + policy layer");
+    eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
     eprintln!("  soli build my_app --standalone     Self-contained executable ./my_app");
@@ -496,6 +504,16 @@ pub fn parse_args() -> Options {
                         options.command = Command::GenerateAuth { folder };
                         return options;
                     }
+                    "oidc_provider" | "oidc" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateOidcProvider { folder };
+                        return options;
+                    }
                     "mailer" => {
                         i += 1;
                         if i >= args.len() {
@@ -547,7 +565,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, mailer, component)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, mailer, component)",
                             subcommand
                         );
                         print_usage();

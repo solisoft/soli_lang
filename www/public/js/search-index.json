@@ -14845,6 +14845,284 @@
         "jwk",
         "pkce"
       ]
+    },
+    {
+      "title": "XML Signatures & Keys",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins/xml-signatures",
+      "signature": "Xml · X509 · RsaKey · Deflate · Hex",
+      "description": "Canonicalize XML, read certificates and RSA keys, and convert between hex, bytes and Base64 — the primitives behind SAML, XML-DSig and a JWKS endpoint",
+      "keywords": [
+        "xml",
+        "xmldsig",
+        "saml",
+        "signature",
+        "canonicalization",
+        "c14n",
+        "certificate",
+        "rsa",
+        "key",
+        "jwks",
+        "sso"
+      ]
+    },
+    {
+      "title": "Xml.c14n_exclusive",
+      "type": "method",
+      "category": "Xml",
+      "path": "/docs/builtins/xml-signatures#def-xml-c14n-exclusive",
+      "signature": "Xml.c14n_exclusive(xml, options?)",
+      "description": "Exclusive XML Canonicalization 1.0 — the canonical form XML-DSig signs",
+      "keywords": [
+        "xml",
+        "c14n",
+        "canonical",
+        "canonicalization",
+        "xmldsig",
+        "saml",
+        "exclusive"
+      ]
+    },
+    {
+      "title": "Xml.get_element_by_id",
+      "type": "method",
+      "category": "Xml",
+      "path": "/docs/builtins/xml-signatures#def-xml-get-element-by-id",
+      "signature": "Xml.get_element_by_id(xml, id)",
+      "description": "Element with the matching Id/ID/id attribute, as standalone XML with inherited namespaces",
+      "keywords": [
+        "xml",
+        "element",
+        "id",
+        "reference",
+        "saml",
+        "xmldsig"
+      ]
+    },
+    {
+      "title": "Xml.get_elements_by_tag",
+      "type": "method",
+      "category": "Xml",
+      "path": "/docs/builtins/xml-signatures#def-xml-get-elements-by-tag",
+      "signature": "Xml.get_elements_by_tag(xml, local_name)",
+      "description": "Every element with the given local name, ignoring namespace prefix",
+      "keywords": [
+        "xml",
+        "element",
+        "tag",
+        "signedinfo",
+        "saml",
+        "xmldsig"
+      ]
+    },
+    {
+      "title": "X509.public_key",
+      "type": "method",
+      "category": "X509",
+      "path": "/docs/builtins/xml-signatures#def-x509-public-key",
+      "signature": "X509.public_key(cert)",
+      "description": "Extract the RSA public key (n, e) from an X.509 certificate in PEM, base64, hex or DER",
+      "keywords": [
+        "x509",
+        "certificate",
+        "public key",
+        "rsa",
+        "pem",
+        "der",
+        "saml",
+        "idp"
+      ]
+    },
+    {
+      "title": "X509.fingerprint",
+      "type": "method",
+      "category": "X509",
+      "path": "/docs/builtins/xml-signatures#def-x509-fingerprint",
+      "signature": "X509.fingerprint(cert, algorithm?)",
+      "description": "Certificate fingerprint as hex — sha256 (default) or sha1, for certificate pinning",
+      "keywords": [
+        "x509",
+        "certificate",
+        "fingerprint",
+        "thumbprint",
+        "pinning",
+        "sha256"
+      ]
+    },
+    {
+      "title": "RsaKey.private_from_pem",
+      "type": "method",
+      "category": "RsaKey",
+      "path": "/docs/builtins/xml-signatures#def-rsakey-private-from-pem",
+      "signature": "RsaKey.private_from_pem(pem)",
+      "description": "Parse a PKCS#8 or PKCS#1 RSA private key PEM into its components (n, e, d, bits)",
+      "keywords": [
+        "rsa",
+        "key",
+        "private",
+        "pem",
+        "pkcs8",
+        "pkcs1",
+        "sign",
+        "jwks",
+        "oidc"
+      ]
+    },
+    {
+      "title": "Hex.encode",
+      "type": "method",
+      "category": "Hex",
+      "path": "/docs/builtins/xml-signatures#def-hex-encode",
+      "signature": "Hex.encode(data)",
+      "description": "Encode a string or byte array to hex",
+      "keywords": [
+        "hex",
+        "encode",
+        "bytes",
+        "digest",
+        "convert"
+      ]
+    },
+    {
+      "title": "Hex.decode",
+      "type": "method",
+      "category": "Hex",
+      "path": "/docs/builtins/xml-signatures#def-hex-encode",
+      "signature": "Hex.decode(hex)",
+      "description": "Decode a hex string to a byte array — the bridge from Crypto.* hex output to Base64",
+      "keywords": [
+        "hex",
+        "decode",
+        "bytes",
+        "digest",
+        "base64",
+        "pkce",
+        "jwk"
+      ]
+    },
+    {
+      "title": "Deflate.deflate",
+      "type": "method",
+      "category": "Deflate",
+      "path": "/docs/builtins/xml-signatures#def-deflate",
+      "signature": "Deflate.deflate(data)",
+      "description": "Raw DEFLATE (RFC 1951, no wrapper) — the SAML HTTP-Redirect binding compression",
+      "keywords": [
+        "deflate",
+        "compress",
+        "rfc1951",
+        "saml",
+        "redirect binding"
+      ]
+    },
+    {
+      "title": "Deflate.inflate",
+      "type": "method",
+      "category": "Deflate",
+      "path": "/docs/builtins/xml-signatures#def-deflate",
+      "signature": "Deflate.inflate(data)",
+      "description": "Decompress raw DEFLATE data",
+      "keywords": [
+        "deflate",
+        "inflate",
+        "decompress",
+        "rfc1951",
+        "saml"
+      ]
+    },
+    {
+      "title": "OpenID Connect Provider",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/oidc-provider",
+      "signature": "soli generate oidc_provider",
+      "description": "Scaffold an OpenID Connect provider (Authorization Code + PKCE) so other apps can sign in with yours",
+      "keywords": [
+        "oidc",
+        "openid",
+        "openid connect",
+        "oauth",
+        "oauth2",
+        "sso",
+        "single sign-on",
+        "pkce",
+        "identity provider",
+        "idp",
+        "jwks",
+        "id_token",
+        "authorization code",
+        "consent",
+        "refresh token"
+      ]
+    },
+    {
+      "title": "soli generate oidc_provider",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/oidc-provider",
+      "signature": "soli generate oidc_provider [folder]",
+      "description": "Generate the OIDC provider scaffold — models, controllers, consent screen, routes and index migration",
+      "keywords": [
+        "generate",
+        "scaffold",
+        "oidc",
+        "oauth",
+        "sso",
+        "provider",
+        "cli"
+      ]
+    },
+    {
+      "title": "OauthClient.register",
+      "type": "method",
+      "category": "OIDC",
+      "path": "/docs/security/oidc-provider#register-a-relying-party",
+      "signature": "OauthClient.register(name, redirect_uris, options)",
+      "description": "Register a relying party; returns the client_id and the client_secret once",
+      "keywords": [
+        "oauth",
+        "client",
+        "register",
+        "relying party",
+        "client_secret",
+        "oidc"
+      ]
+    },
+    {
+      "title": "oidc_user_claims",
+      "type": "function",
+      "category": "OIDC",
+      "path": "/docs/security/oidc-provider",
+      "signature": "oidc_user_claims(user, scopes)",
+      "description": "Hook mapping a User to scope-gated OIDC claims for the id_token and userinfo",
+      "keywords": [
+        "oidc",
+        "claims",
+        "userinfo",
+        "id_token",
+        "scopes",
+        "profile",
+        "email"
+      ]
+    },
+    {
+      "title": "RsaKey.public_from_pem",
+      "type": "method",
+      "category": "RsaKey",
+      "path": "/docs/builtins/xml-signatures#def-rsakey-private-from-pem",
+      "signature": "RsaKey.public_from_pem(pem)",
+      "description": "Parse an SPKI or PKCS#1 RSA public key PEM into its components (n, e, bits) — the JWKS building block",
+      "keywords": [
+        "rsa",
+        "public key",
+        "pem",
+        "spki",
+        "jwks",
+        "jwk",
+        "oidc",
+        "parse"
+      ]
     }
   ]
 }

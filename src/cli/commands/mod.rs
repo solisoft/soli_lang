@@ -553,6 +553,16 @@ pub fn run_generate_auth(folder: &str) {
     }
 }
 
+pub fn run_generate_oidc_provider(folder: &str) {
+    match solilang::scaffold::create_oidc_provider(folder) {
+        Ok(()) => solilang::scaffold::print_oidc_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_generate_mailer(name: &str, actions: &[String], folder: &str) {
     match solilang::scaffold::create_mailer(folder, name, actions) {
         Ok(()) => {}

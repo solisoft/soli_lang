@@ -149,7 +149,7 @@ fn write_migration(app_path: &Path) -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("Failed to get timestamp: {}", e))?
         .as_secs();
-    let filename = format!("{}create_users_{}.sl", timestamp, timestamp);
+    let filename = format!("{}_create_users.sl", timestamp);
     let path = migrations_dir.join(&filename);
     write_file(&path, &auth::users_migration())?;
     println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
@@ -181,11 +181,7 @@ fn write_token_indexes_migration(app_path: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to get timestamp: {}", e))?
         .as_secs();
     // +1 keeps it ordered after a create_users migration written this second.
-    let filename = format!(
-        "{}add_auth_token_indexes_{}.sl",
-        timestamp + 1,
-        timestamp + 1
-    );
+    let filename = format!("{}_add_auth_token_indexes.sl", timestamp + 1);
     let path = migrations_dir.join(&filename);
     write_file(&path, &auth::auth_token_indexes_migration())?;
     println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
