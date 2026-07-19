@@ -20,9 +20,18 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 text-sm leading-relaxed">Nothing yet &mdash; changes landing on <code class="text-cyan-400">main</code> since v1.23.0 will appear here.</p>
+    </section>
+
+    <section id="v1-23-0" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.23.0</h2>
+            <span class="text-sm font-medium text-gray-400">July 19, 2026</span>
+        </div>
+
 
         <!-- PDF -->
-        <h3 id="unreleased-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
+        <h3 id="v23-0-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Table cells accept <code class="text-cyan-400">rowspan</code></strong> &mdash; a cell can now merge downward as well as across. It claims its column slots in the rows beneath (which then carry fewer cells) and is drawn once, tall enough to cover every row it spans; pair it with <code class="text-cyan-400">valign</code> to centre the label. Composes with <code class="text-cyan-400">colspan</code>, and a spanning cell no longer inflates the height of its first row. Applies to a table's literal rows &mdash; a data-bound table repeats one template row, so there is nothing to span.</li>
@@ -48,7 +57,7 @@
         </div>
 
         <!-- Desktop -->
-        <h3 id="unreleased-desktop" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Desktop apps</h3>
+        <h3 id="v23-0-desktop" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Desktop apps</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white"><code class="text-cyan-400">soli desktop build</code></strong> &mdash; package an app as a single executable that carries its own database. The user double-clicks it; it starts a private database on a loopback port, opens their browser, and serves the app. No installer, no separate database, no configuration. Your source is always encrypted, reference data can ship alongside it, and one machine cross-builds every target. See <a href="/docs/development-tools/desktop" class="text-cyan-400 hover:text-cyan-300 underline">Desktop Applications</a> &mdash; which is explicit about what this does <em>not</em> protect against, because the key reaches the process environment and a machine&rsquo;s owner can read it. Treat it as licensing-grade protection, not confidentiality against your user.</li>
@@ -58,7 +67,7 @@
         </div>
 
         <!-- Testing -->
-        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <h3 id="v23-0-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Browser testing is built in</strong> &mdash; <code class="text-cyan-400">soli test --browser</code> drives a real headless Chrome over the DevTools protocol, spoken from the <code class="text-cyan-400">soli</code> binary itself: no Node, no npm, no Playwright, nothing to install into your project. The vocabulary sits alongside the existing HTTP helpers &mdash; <code class="text-cyan-400">visit</code>, <code class="text-cyan-400">click</code>, <code class="text-cyan-400">click_link</code>, <code class="text-cyan-400">click_button</code>, <code class="text-cyan-400">fill_in</code>, <code class="text-cyan-400">select_option</code>, <code class="text-cyan-400">check</code>, <code class="text-cyan-400">choose</code>, <code class="text-cyan-400">press</code>, <code class="text-cyan-400">evaluate</code>, <code class="text-cyan-400">screenshot</code>, <code class="text-cyan-400">wait_for</code> &mdash; with waiting assertions (<code class="text-cyan-400">assert_text</code>, <code class="text-cyan-400">assert_selector</code>, <code class="text-cyan-400">assert_page_path</code>, <code class="text-cyan-400">assert_no_page_errors</code>). Clicks are real input events dispatched at the element's position, not <code class="text-cyan-400">element.click()</code>, so an element hidden behind an overlay fails the way it would for a user. Fields resolve by CSS selector, <code class="text-cyan-400">&lt;label&gt;</code> text, <code class="text-cyan-400">name</code> or <code class="text-cyan-400">placeholder</code>. See <a href="/docs/testing-browser" class="text-cyan-400 hover:text-cyan-300 underline">Browser Testing</a>.</li>
@@ -69,7 +78,7 @@
         </div>
 
         <!-- Fixes -->
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v23-0-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Parameter defaults now work in production</strong> &mdash; <code class="text-cyan-400">def configure(host = "localhost", port = 8080)</code> called as <code class="text-cyan-400">configure()</code> bound <code class="text-cyan-400">null</code> to both parameters under the bytecode VM, while binding the declared defaults under the tree-walking interpreter. Since the VM runs only outside <code class="text-cyan-400">--dev</code>, that meant a function with default parameters worked in development and silently computed wrong values in production &mdash; with no error, and so no fallback and no log line. Defaults are now compiled into the callee and applied per omitted argument. An explicitly passed <code class="text-cyan-400">null</code> stays <code class="text-cyan-400">null</code> (it is a supplied argument), and a later default may reference an earlier parameter, as in <code class="text-cyan-400">def f(a, b = a * 2)</code>.</li>

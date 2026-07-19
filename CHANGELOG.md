@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-07-19
+
 ### Added
 
 * **feat(test):** **browser testing is built in.** `soli test --browser` drives a real headless Chrome over the Chrome DevTools protocol, spoken from the `soli` binary itself — no Node, no npm, no Playwright, nothing installed into the project. New helpers sit alongside the existing HTTP ones: `visit`, `click`, `click_link`, `click_button`, `fill_in`, `select_option`, `check`/`uncheck`, `choose`, `press` (including chords like `Alt+d`), `evaluate`, `screenshot`, `wait_for`, `wait_for_text`, `page_text`/`page_html`/`page_path`/`page_url`/`page_title`/`page_errors`, plus assertions `assert_text`, `assert_no_text`, `assert_selector`, `assert_no_selector`, `assert_page_path`, `assert_no_page_errors`. Positive assertions wait for their condition (default 10s, `{"timeout": n}` to override); negative ones check immediately, since waiting for something to stay absent only slows passing tests. Clicks are real `Input.dispatchMouseEvent` events at the element's measured position rather than `element.click()`, so an element covered by an overlay fails as it would for a user; fields resolve by CSS selector, `<label>` text, `name` or `placeholder`. `evaluate` preserves JavaScript's types — deliberately not the shared `json_to_value`, which promotes numeric-looking strings to `Decimal` and would turn `textContent` of `"0"` into `0`. See [Browser Testing](/docs/testing-browser).
