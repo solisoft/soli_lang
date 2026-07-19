@@ -396,6 +396,7 @@ impl Compiler {
         let _dummy = self.start_function(FunctionType::Function, name.clone(), &decl.params);
 
         self.begin_scope();
+        self.emit_param_defaults(&decl.params)?;
         self.compile_function_body(&decl.body)?;
         self.end_scope(line);
 

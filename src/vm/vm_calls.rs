@@ -80,6 +80,87 @@ pub(crate) fn jit_compile_method<I: IntoIterator<Item = String>>(
     Ok(arc)
 }
 
+/// Lay labelled arguments out in parameter order for `proto`, returning the
+/// slot values and a mask of which parameters were actually supplied.
+///
+/// Follows the tree-walking interpreter's rules: positional arguments fill the
+/// leading parameters, labelled arguments fill by name, an unknown label is an
+/// undefined-variable error, and a parameter that ends up unfilled is an arity
+/// error unless it declares a default. Unfilled defaulted slots are left null
+/// here and written by the callee's prologue, so a default expression is
+/// evaluated in the callee — and only when it is actually needed.
+fn bind_named_arguments(
+    proto: &FunctionProto,
+    positional: Vec<Value>,
+    named: Vec<(crate::interpreter::value::SoliStr, Value)>,
+    span: Span,
+) -> Result<(Vec<Value>, u64), RuntimeError> {
+    let total_params = proto.param_names.len();
+
+    if positional.len() > total_params {
+        return Err(RuntimeError::wrong_arity(
+            total_params,
+            positional.len() + named.len(),
+            span,
+        ));
+    }
+
+    let mut slots = vec![Value::Null; total_params];
+    let mut supplied = 0u64;
+
+    for (i, value) in positional.into_iter().enumerate() {
+        slots[i] = value;
+        if i < 64 {
+            supplied |= 1u64 << i;
+        }
+    }
+
+    for (name, value) in named {
+        let Some(index) = proto
+            .param_names
+            .iter()
+            .position(|p| p.as_str() == name.as_ref())
+        else {
+            // Same error the interpreter raises for `f(nope: 1)`.
+            return Err(RuntimeError::undefined_variable(name.to_string(), span));
+        };
+        // A label that names an already-positionally-filled parameter is
+        // dropped, and the positional value wins. That is not an obviously good
+        // rule — arguably `f(3, a: 9)` should be an error — but it is what the
+        // tree-walking interpreter does (`used_params.contains(...) { continue }`
+        // in `call_value_with_named`), and the engines must agree.
+        if index < 64 && supplied & (1u64 << index) != 0 {
+            continue;
+        }
+        slots[index] = value;
+        if index < 64 {
+            supplied |= 1u64 << index;
+        }
+    }
+
+    // Anything still unfilled must have a default to fall back on.
+    for index in 0..total_params {
+        let filled = index >= 64 || supplied & (1u64 << index) != 0;
+        let has_default = index >= 64 || proto.defaults_mask & (1u64 << index) != 0;
+        if !filled && !has_default {
+            // Report how many parameters were bound before this one, matching
+            // the interpreter's `final_args.len()` at the point it gives up.
+            let bound_before = if index >= 64 {
+                index
+            } else {
+                (supplied & ((1u64 << index) - 1)).count_ones() as usize
+            };
+            return Err(RuntimeError::wrong_arity(
+                proto.arity as usize,
+                bound_before,
+                span,
+            ));
+        }
+    }
+
+    Ok((slots, supplied))
+}
+
 impl Vm {
     /// Call a value with the given number of argument slots on the stack.
     /// The callee is below the arguments on the stack.
@@ -138,7 +219,9 @@ impl Vm {
             return Err(RuntimeError::wrong_arity(total_params, argc, span));
         }
 
-        // Fill in default values for missing optional parameters
+        // Reserve a stack slot for every parameter the caller omitted. The slot
+        // starts as null; the callee's `JumpIfParamSupplied` prologue overwrites
+        // it with the declared default (if any) before the body runs.
         if argc < total_params {
             for _ in argc..total_params {
                 self.push(Value::Null);
@@ -147,9 +230,152 @@ impl Vm {
 
         let stack_base = self.stack.len() - total_params - 1;
 
-        self.frames.push(CallFrame::new(closure, stack_base, class));
+        self.frames.push(CallFrame::new(
+            closure,
+            stack_base,
+            class,
+            crate::vm::vm::positional_supplied_mask(argc),
+        ));
 
         Ok(())
+    }
+
+    /// Push `slots` (already in parameter order) and open a frame with an
+    /// explicit supplied-parameter mask.
+    ///
+    /// The positional entry points derive the mask from `argc` because the
+    /// caller fills a prefix of the parameters. A named call can fill any
+    /// subset, so it computes the mask itself and hands it over here; the
+    /// callee's default-value prologue then runs for exactly the unfilled
+    /// parameters.
+    fn call_closure_with_slots(
+        &mut self,
+        closure: Rc<VmClosure>,
+        slots: Vec<Value>,
+        supplied: u64,
+        class: Option<Rc<Class>>,
+    ) -> Result<(), RuntimeError> {
+        let total_params = slots.len();
+        for value in slots {
+            self.push(value);
+        }
+        let stack_base = self.stack.len() - total_params - 1;
+        self.frames
+            .push(CallFrame::new(closure, stack_base, class, supplied));
+        Ok(())
+    }
+
+    /// Call the value on the stack beneath `argc` argument slots, where
+    /// `labels[i]` names slot `i` (or is `None` when that slot is positional).
+    ///
+    /// Mirrors the tree-walking interpreter's `call_value_with_named`, which
+    /// applies two different conventions depending on what the callee turns out
+    /// to be — hence the dispatch happens here, at call time, rather than in the
+    /// compiler. Callee shapes the VM has no binding rule for surface as
+    /// `EngineFallback` so serve mode re-runs the request on the interpreter
+    /// instead of failing the request.
+    pub(crate) fn call_value_named(
+        &mut self,
+        argc: usize,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        // Arguments were evaluated in source order, so slot i pairs with
+        // labels[i]. Lift them off the stack, leaving the callee on top.
+        let mut values = Vec::with_capacity(argc);
+        for _ in 0..argc {
+            values.push(self.pop());
+        }
+        values.reverse();
+
+        let mut positional: Vec<Value> = Vec::new();
+        let mut named: Vec<(crate::interpreter::value::SoliStr, Value)> = Vec::new();
+        for (i, value) in values.into_iter().enumerate() {
+            match labels.get(i).and_then(|l| l.as_ref()) {
+                Some(name) => {
+                    if named.iter().any(|(existing, _)| existing == name) {
+                        return Err(RuntimeError::type_error(
+                            format!("duplicate named argument '{}'", name),
+                            span,
+                        ));
+                    }
+                    named.push((name.clone(), value));
+                }
+                None => positional.push(value),
+            }
+        }
+
+        let callee_idx = self.stack.len() - 1;
+        let callee = self.stack[callee_idx].clone();
+        match callee {
+            // Natives take an options hash: Ruby-style, the labelled arguments
+            // collapse into a single trailing positional hash. This is what
+            // makes `get("/", "home#index", name: "root")` work.
+            Value::NativeFunction(ref native) => {
+                let hash = {
+                    let mut pairs = crate::interpreter::value::HashPairs::default();
+                    for (name, value) in named {
+                        pairs.insert(
+                            crate::interpreter::value::HashKey::String(name.to_string().into()),
+                            value,
+                        );
+                    }
+                    Value::Hash(Rc::new(RefCell::new(pairs)))
+                };
+                let count = positional.len() + 1;
+                for value in positional {
+                    self.push(value);
+                }
+                self.push(hash);
+                let native = native.clone();
+                self.call_native(&native, count, span)
+            }
+            // Compiled function: reorder into parameter slots.
+            Value::VmClosure(closure) => {
+                let (slots, supplied) =
+                    bind_named_arguments(&closure.proto, positional, named, span)?;
+                self.call_closure_with_slots(closure, slots, supplied, None)
+            }
+            // Tree-walking function reached from compiled code: compile it,
+            // then bind exactly as above.
+            Value::Function(ref func) => {
+                let proto =
+                    jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
+                        RuntimeError::EngineFallback(
+                            format!("a function the VM cannot compile ({})", e),
+                            span,
+                        )
+                    })?;
+                let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+                self.stack[callee_idx] = Value::VmClosure(closure.clone());
+                let (slots, supplied) =
+                    bind_named_arguments(&closure.proto, positional, named, span)?;
+                self.call_closure_with_slots(closure, slots, supplied, None)
+            }
+            // `Config(port: 3000)` — bind against the compiled constructor and
+            // let it run with `this` in the callee slot.
+            Value::Class(ref class) => {
+                if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
+                    let (slots, supplied) =
+                        bind_named_arguments(&ctor.proto, positional, named, span)?;
+                    let instance =
+                        Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
+                    self.stack[callee_idx] = instance;
+                    self.call_closure_with_slots(ctor, slots, supplied, Some(defining_class))
+                } else {
+                    // Tree-walking constructors need the interpreter's
+                    // run-to-completion dance; punt rather than half-bind.
+                    Err(RuntimeError::EngineFallback(
+                        format!("named arguments to {}'s constructor", class.name),
+                        span,
+                    ))
+                }
+            }
+            _ => Err(RuntimeError::EngineFallback(
+                "named arguments to this callee".to_string(),
+                span,
+            )),
+        }
     }
 
     fn call_native(
@@ -195,8 +421,16 @@ impl Vm {
         // JIT-compile (or reuse the cached bytecode for) the tree-walking
         // function. `jit_compile_function` returns the cached proto on a hit
         // and compiles+caches on the first call.
-        let proto = jit_compile_function(func, self.globals.keys().cloned())
-            .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+        //
+        // A compile failure is an `EngineFallback`, never a general error: the
+        // callee is fine, only *this engine* can't run it, so serve mode must
+        // re-run the request on the tree-walker. A general error would be
+        // routed through user-level `try`/`rescue`, and a handler that wrapped
+        // the call would swallow the VM's internal limitation as if it were an
+        // application error — returning a rescue value instead of demoting.
+        let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
+            RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
+        })?;
 
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
@@ -231,8 +465,12 @@ impl Vm {
         // e.g. native classes in serve mode): JIT-compile as a method, run
         // it to completion, discard its return value, and yield the instance.
         if let Some(ctor) = class.find_constructor() {
-            let proto = jit_compile_method(&ctor, self.globals.keys().cloned())
-                .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+            let proto = jit_compile_method(&ctor, self.globals.keys().cloned()).map_err(|e| {
+                RuntimeError::EngineFallback(
+                    format!("a function the VM cannot compile ({})", e),
+                    span,
+                )
+            })?;
             let closure = Rc::new(VmClosure::new(proto, Vec::new()));
             self.stack[callee_idx] = instance_val.clone();
             let saved_depth = self.return_depth;
@@ -280,8 +518,9 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let proto = jit_compile_method(method, self.globals.keys().cloned())
-            .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+        let proto = jit_compile_method(method, self.globals.keys().cloned()).map_err(|e| {
+            RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
+        })?;
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
         let saved_depth = self.return_depth;
         let frames_before = self.frames.len();
@@ -339,8 +578,12 @@ impl Vm {
                 self.stack.push(Value::Null);
             }
             let stack_base = self.stack.len() - total_params - 1;
-            self.frames
-                .push(CallFrame::new(closure, stack_base, Some(defining_class)));
+            self.frames.push(CallFrame::new(
+                closure,
+                stack_base,
+                Some(defining_class),
+                crate::vm::vm::positional_supplied_mask(argc),
+            ));
             return Ok(());
         }
 
@@ -520,7 +763,10 @@ impl Vm {
                 let compiled =
                     Compiler::compile_method_standalone(method, self.globals.keys().cloned())
                         .map_err(|e| {
-                            RuntimeError::new(format!("VM JIT compile error: {}", e), span)
+                            RuntimeError::EngineFallback(
+                                format!("a function the VM cannot compile ({})", e),
+                                span,
+                            )
                         })?;
                 let arc = Arc::new(compiled);
                 *method.jit_cache.borrow_mut() = Some(arc.clone());
@@ -714,5 +960,59 @@ mod tests {
         // ...and a second call returns the same cached proto (no recompile).
         let again = jit_compile_function(&func, std::iter::empty()).expect("cached compile");
         assert!(Arc::ptr_eq(&proto.unwrap(), &again));
+    }
+
+    #[test]
+    fn jit_compile_failure_is_uncatchable_fallback() {
+        // A tree-walker function the VM cannot compile (here: its body makes a
+        // named-argument call) must surface as an EngineFallback, so serve mode
+        // demotes the handler to the interpreter. A general error would be
+        // routed through user-level try/rescue, letting a handler that wrapped
+        // the call swallow the VM's own limitation as an application error and
+        // silently return a rescue value instead.
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+        use crate::vm::Compiler;
+
+        // `helper` is a tree-walking Function whose body cannot be compiled.
+        // `break` is a deliberate, documented VM punt (it would need to unwind
+        // the iterator and handler stacks), which makes it a stable stand-in
+        // for "any construct the compiler refuses".
+        let body_src = "for i in [1, 2] { break }";
+        let body_tokens = Scanner::new(body_src).scan_tokens().expect("lexer error");
+        let body = Parser::new(body_tokens)
+            .parse()
+            .expect("parser error")
+            .statements;
+        let helper = Value::Function(Rc::new(Function {
+            name: "helper".to_string(),
+            body: body.into(),
+            ..Function::default()
+        }));
+
+        // Confirm the premise: this function really is uncompilable.
+        let Value::Function(ref f) = helper else {
+            unreachable!()
+        };
+        assert!(
+            jit_compile_function(f, std::iter::empty()).is_err(),
+            "test premise broken: `helper` should fail to compile"
+        );
+
+        for source in [
+            "let x = helper();",
+            "let x = \"start\"\ntry { helper() } catch (e) { x = \"caught\" }",
+            "let x = helper() rescue \"caught\";",
+        ] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.globals.insert("helper".to_string(), helper.clone());
+            match vm.execute(&module.main) {
+                Err(err) => assert!(err.is_engine_fallback(), "{}: {}", source, err),
+                Ok(_) => panic!("{}: expected EngineFallback, got Ok", source),
+            }
+        }
     }
 }

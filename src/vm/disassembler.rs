@@ -98,7 +98,21 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("JUMP_TRUE_NP  {:>4}", offset));
         }
         Op::NullishJump(offset) => out.push_str(&format!("NULLISH_JUMP {:>5}", offset)),
+        Op::JumpIfParamSupplied(param_index, offset) => out.push_str(&format!(
+            "JUMP_IF_PARAM_SUPPLIED p{} {:>5}",
+            param_index, offset
+        )),
         Op::Call(argc) => out.push_str(&format!("CALL         {:>5}", argc)),
+        Op::CallNamed(argc, names_idx) => out.push_str(&format!(
+            "CALL_NAMED   {:>5}  {}",
+            argc,
+            format_constant(chunk.constants.get(*names_idx as usize))
+        )),
+        Op::NewNamed(argc, names_idx) => out.push_str(&format!(
+            "NEW_NAMED    {:>5}  {}",
+            argc,
+            format_constant(chunk.constants.get(*names_idx as usize))
+        )),
         Op::Closure(idx) => {
             let val = chunk.constants.get(*idx as usize);
             out.push_str(&format!(
@@ -360,6 +374,13 @@ fn format_constant(val: Option<&Constant>) -> String {
         Some(Constant::Null) => "null".to_string(),
         Some(Constant::Function(f)) => format!("<fn {}>", f.name),
         Some(Constant::HashKeys(ks)) => format!("HashKeys[{}]", ks.len()),
+        Some(Constant::ArgNames(names)) => {
+            let rendered: Vec<&str> = names
+                .iter()
+                .map(|n| n.as_ref().map(|s| s.as_ref()).unwrap_or("_"))
+                .collect();
+            format!("ArgNames[{}]", rendered.join(", "))
+        }
         None => "???".to_string(),
     }
 }

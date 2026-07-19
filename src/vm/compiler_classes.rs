@@ -141,6 +141,7 @@ impl Compiler {
         let _dummy = self.start_function(func_type, method.name.clone(), &method.params);
 
         self.begin_scope();
+        self.emit_param_defaults(&method.params)?;
         self.hoist_locals(&method.body, line);
         for stmt in &method.body {
             self.compile_stmt(stmt)?;
@@ -170,6 +171,7 @@ impl Compiler {
             self.start_function(FunctionType::Constructor, "init".to_string(), &ctor.params);
 
         self.begin_scope();
+        self.emit_param_defaults(&ctor.params)?;
 
         // Initialize instance fields that have initializers
         for field in fields {

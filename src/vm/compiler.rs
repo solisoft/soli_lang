@@ -202,9 +202,11 @@ impl Compiler {
             .filter(|p| p.default_value.is_some())
             .count() as u8;
         compiler.proto.param_names = func.params.iter().map(|p| p.name.clone()).collect();
+        compiler.proto.defaults_mask = defaults_mask(&func.params);
 
         let line = func.span.map(|s| s.line as usize).unwrap_or(0);
         compiler.begin_scope();
+        compiler.emit_param_defaults(&func.params)?;
         compiler.compile_function_body(&func.body)?;
         compiler.end_scope(line);
 
@@ -455,12 +457,54 @@ impl Compiler {
         new_compiler.proto.defaults =
             params.iter().filter(|p| p.default_value.is_some()).count() as u8;
         new_compiler.proto.param_names = params.iter().map(|p| p.name.clone()).collect();
+        new_compiler.proto.defaults_mask = defaults_mask(params);
 
         // Swap self with the new compiler, storing self as enclosing
         let old = std::mem::replace(self, new_compiler);
         self.enclosing = Some(Box::new(old));
         // Return a dummy — we'll use finish_function to unwrap
         Box::new(Compiler::new(FunctionType::Script, String::new()))
+    }
+
+    /// Emit the parameter-default prologue at the top of the function body.
+    ///
+    /// For each parameter that declares a default, emit
+    ///
+    /// ```text
+    ///     JumpIfParamSupplied(i, past)   ; caller passed it — keep their value
+    ///     <default expression>
+    ///     SetLocalPop(i + 1)             ; slot 0 is `this`/callee, params follow
+    ///   past:
+    /// ```
+    ///
+    /// The frame's `supplied` bitmask decides, so a caller that explicitly
+    /// passes `null` keeps the `null` (it occupies the slot) while an omitted
+    /// argument gets the default — the same distinction the tree-walking
+    /// interpreter draws by only filling parameters past the positional count.
+    ///
+    /// Emitting in parameter order means a later default may reference an
+    /// earlier parameter (`def f(a, b = a + 1)`): slot `a` is already bound by
+    /// the time `b`'s default runs.
+    pub fn emit_param_defaults(&mut self, params: &[Parameter]) -> CompileResult<()> {
+        for (i, param) in params.iter().enumerate() {
+            let Some(default) = &param.default_value else {
+                continue;
+            };
+            // Slot 0 is reserved (`this` for methods, callee otherwise), so the
+            // parameter at index `i` lives in local slot `i + 1`.
+            let Ok(slot) = u16::try_from(i + 1) else {
+                return Err(CompileError::new(
+                    "too many parameters for default-value prologue",
+                    param.span,
+                ));
+            };
+            let line = param.span.line as usize;
+            let jump = self.emit_jump(Op::JumpIfParamSupplied(i as u16, u16::MAX), line);
+            self.compile_expr(default)?;
+            self.emit(Op::SetLocalPop(slot), line);
+            self.patch_jump(jump);
+        }
+        Ok(())
     }
 
     /// Finish compiling the current function, returning the proto and restoring the enclosing compiler.
@@ -542,6 +586,23 @@ fn peephole_optimize_proto(proto: &mut FunctionProto) {
 /// height explicitly so the exit-path mismatch never matters. The gate tolerates
 /// over-counting (an extra, safe fallback) but must never under-count, so when
 /// in doubt an op's effect should not be more negative than reality.
+/// Bitmask of which parameters declare a default value (bit `i` = parameter
+/// `i`). Parameters past bit 63 are reported as defaulted — see
+/// [`FunctionProto::defaults_mask`].
+fn defaults_mask(params: &[Parameter]) -> u64 {
+    let mut mask = 0u64;
+    for (i, param) in params.iter().enumerate() {
+        if i >= 64 {
+            mask |= !0u64 << 63;
+            break;
+        }
+        if param.default_value.is_some() {
+            mask |= 1u64 << i;
+        }
+    }
+    mask
+}
+
 fn stack_effect(op: Op) -> i32 {
     use Op::*;
     match op {
@@ -558,11 +619,19 @@ fn stack_effect(op: Op) -> i32 {
         Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual => -1,
         Negate | Not => 0,
         // Control flow.
-        Jump(_) | Loop(_) | JumpIfFalseNoPop(_) | JumpIfTrueNoPop(_) | NullishJump(_)
-        | JumpIfNull(_) | JumpIfNotNull(_) => 0,
+        Jump(_)
+        | Loop(_)
+        | JumpIfFalseNoPop(_)
+        | JumpIfTrueNoPop(_)
+        | NullishJump(_)
+        | JumpIfNull(_)
+        | JumpIfNotNull(_)
+        | JumpIfParamSupplied(_, _) => 0,
         JumpIfFalse(_) => -1,
         // Calls: pop callee/receiver + argc args, push the result.
         Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
+        // Same shape as Call/New: the callee plus argc slots collapse to one result.
+        CallNamed(argc, _) | NewNamed(argc, _) => -(argc as i32),
         // [this, args…] collapse to the result: net -argc.
         CallSuperInit(argc) | CallSuperMethod(_, argc) => -(argc as i32),
         CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,

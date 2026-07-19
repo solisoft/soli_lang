@@ -23,6 +23,11 @@ pub enum Constant {
     /// so we don't push each key onto the value stack just to convert it back to
     /// a HashKey at insertion time.
     HashKeys(Arc<Vec<crate::interpreter::value::HashKey>>),
+    /// Argument labels for a `CallNamed`, one entry per argument slot in source
+    /// order: `Some(name)` for `f(port: 3000)`, `None` for a positional (or
+    /// block) argument. `CallNamed` reads it to split the evaluated arguments
+    /// back into positional and named groups before binding them to the callee.
+    ArgNames(Arc<Vec<Option<crate::interpreter::value::SoliStr>>>),
 }
 
 /// A compiled function (or top-level script).
@@ -34,11 +39,15 @@ pub struct FunctionProto {
     pub arity: u8,
     /// Number of parameters with default values.
     pub defaults: u8,
+    /// Bit `i` is set when parameter `i` declares a default. `defaults` only
+    /// counts them, which is enough for a positional call (required parameters
+    /// lead), but a named call can leave any slot unfilled and must be able to
+    /// tell "omitted, has a default" from "omitted, required". Saturates at 64
+    /// parameters — beyond that a parameter reads as defaulted, which errs
+    /// toward running the prologue rather than a spurious arity error.
+    pub defaults_mask: u64,
     /// Parameter names (for named argument resolution).
     pub param_names: Vec<String>,
-    /// Default value constant indices (for parameters with defaults).
-    /// Each entry is a list of opcodes that compute the default value.
-    pub default_ops: Vec<Vec<Op>>,
     /// The bytecode instructions.
     pub chunk: Chunk,
     /// Upvalue descriptors for creating closures.
@@ -53,8 +62,8 @@ impl FunctionProto {
             name,
             arity: 0,
             defaults: 0,
+            defaults_mask: 0,
             param_names: Vec::new(),
-            default_ops: Vec::new(),
             chunk: Chunk::new(),
             upvalue_descriptors: Vec::new(),
             is_method: false,
@@ -127,7 +136,8 @@ impl Chunk {
             | Op::JumpIfTrueNoPop(target)
             | Op::NullishJump(target)
             | Op::ForIter(target)
-            | Op::ForIterRange(target) => {
+            | Op::ForIterRange(target)
+            | Op::JumpIfParamSupplied(_, target) => {
                 *target = jump;
             }
             _ => panic!("Tried to patch non-jump instruction at offset {}", offset),
@@ -292,7 +302,7 @@ mod tests {
         assert_eq!(p.arity, 0);
         assert_eq!(p.defaults, 0);
         assert!(p.param_names.is_empty());
-        assert!(p.default_ops.is_empty());
+        assert_eq!(p.defaults_mask, 0);
         assert!(p.upvalue_descriptors.is_empty());
         assert!(p.chunk.is_empty());
         assert!(!p.is_method);

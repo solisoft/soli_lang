@@ -38,6 +38,28 @@ pub struct CallFrame {
     code: *const Op,
     /// Length of the cached code slice (`ip >= code_len` ends the frame).
     code_len: usize,
+    /// Bitmask of parameters the caller actually supplied: bit `i` is set when
+    /// parameter `i` received a value. `Op::JumpIfParamSupplied` reads it to
+    /// decide whether to run a parameter's default-value bytecode.
+    ///
+    /// A positional call of `argc` arguments sets the low `argc` bits; a
+    /// named-argument call sets exactly the bits it filled, which is why this
+    /// is a mask rather than a count. Parameters beyond bit 63 are treated as
+    /// supplied (the mask saturates), so a function with more than 64
+    /// parameters silently loses defaults past that point rather than
+    /// misbinding — a limit no realistic signature reaches.
+    supplied: u64,
+}
+
+/// Build the supplied-parameter mask for a plain positional call of `argc`
+/// arguments: the low `argc` bits set, saturating at 64 parameters.
+#[inline]
+pub(crate) fn positional_supplied_mask(argc: usize) -> u64 {
+    if argc >= 64 {
+        u64::MAX
+    } else {
+        (1u64 << argc) - 1
+    }
 }
 
 impl CallFrame {
@@ -48,6 +70,7 @@ impl CallFrame {
         closure: Rc<VmClosure>,
         stack_base: usize,
         class: Option<Rc<crate::interpreter::value::Class>>,
+        supplied: u64,
     ) -> Self {
         let code = closure.proto.chunk.code.as_ptr();
         let code_len = closure.proto.chunk.code.len();
@@ -58,6 +81,7 @@ impl CallFrame {
             class,
             code,
             code_len,
+            supplied,
         }
     }
 }
@@ -140,7 +164,7 @@ impl Vm {
         let closure = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
         self.push(Value::VmClosure(closure.clone()));
 
-        self.frames.push(CallFrame::new(closure, 0, None));
+        self.frames.push(CallFrame::new(closure, 0, None, 0));
 
         self.run()
     }
@@ -260,6 +284,17 @@ impl Vm {
                     let idx = base + slot as usize;
                     let val = self.stack[idx].clone();
                     self.stack.push(val);
+                }
+                Op::JumpIfParamSupplied(param_index, offset) => {
+                    // Parameter-default prologue: skip the default-value
+                    // bytecode when the caller supplied this parameter.
+                    // Parameters past bit 63 read as supplied (mask saturates).
+                    let frame = self.frames.last().unwrap();
+                    let supplied =
+                        param_index >= 64 || frame.supplied & (1u64 << param_index as u64) != 0;
+                    if supplied {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
                 }
                 Op::SetLocal(slot) => {
                     let val = self.stack.last().unwrap().clone();
@@ -593,7 +628,12 @@ impl Vm {
                             self.stack.push(Value::Null);
                         }
                         let stack_base = self.stack.len() - total_params - 1;
-                        self.frames.push(CallFrame::new(closure, stack_base, None));
+                        self.frames.push(CallFrame::new(
+                            closure,
+                            stack_base,
+                            None,
+                            positional_supplied_mask(argc),
+                        ));
                     } else {
                         let span = self.current_span();
                         self.call_value(argc, span)?;
@@ -1603,6 +1643,20 @@ impl Vm {
                 Op::New(argc) => {
                     let span = self.current_span();
                     self.op_new(argc as usize, span)?;
+                }
+                // `New` and `Call` share a binding path once labels are
+                // involved: `call_value_named` dispatches on the callee, and a
+                // class callee runs its constructor with the instance bound.
+                Op::CallNamed(argc, names_idx) | Op::NewNamed(argc, names_idx) => {
+                    let labels = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[names_idx as usize] {
+                            Constant::ArgNames(names) => names.clone(),
+                            _ => unreachable!("CallNamed must reference an ArgNames constant"),
+                        }
+                    };
+                    let span = self.current_span();
+                    self.call_value_named(argc as usize, &labels, span)?;
                 }
                 Op::GetThis => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -2894,6 +2948,10 @@ fn constant_to_value(constant: &Constant) -> Value {
             // Never loaded as a Value — only consumed by Op::HashWithKeys.
             unreachable!("HashKeys constant should not be loaded as a Value")
         }
+        Constant::ArgNames(_) => {
+            // Never loaded as a Value — only consumed by Op::CallNamed/NewNamed.
+            unreachable!("ArgNames constant should not be loaded as a Value")
+        }
     }
 }
 
@@ -2920,6 +2978,146 @@ mod tests {
             Value::NativeFunction(NativeFunction::new("puts", None, |_| Ok(Value::Null))),
         );
         vm.execute(&module.main)
+    }
+
+    /// A match expression must leave the value stack balanced.
+    ///
+    /// A literal arm's `Equal` consumes the duplicated subject, but
+    /// `compile_match` popped again unconditionally, so every literal-arm match
+    /// left the stack one slot short. Nothing observed it until something read
+    /// the stack by depth — a `catch` binding does, so the exception variable
+    /// resolved to a stale slot (binding a fragment of an unrelated string), and
+    /// one shape indexed out of bounds and panicked the VM outright, which in a
+    /// release build (`panic = "abort"`) takes the worker down.
+    #[test]
+    fn test_vm_match_leaves_stack_balanced_for_following_catch() {
+        assert_eq!(
+            compile_and_get_global(
+                "let x = \"unset\"\nmatch 42 { 42 => \"a\", _ => \"b\" }\ntry { throw \"boom\" } catch e { x = e }",
+                "x"
+            ),
+            Value::String("boom".into())
+        );
+        // Same shape, but with the match bound to a variable first.
+        assert_eq!(
+            compile_and_get_global(
+                "let m = match 42 { 42 => \"a\", _ => \"b\" }\nlet x = \"unset\"\ntry { throw \"boom\" } catch e { x = e }",
+                "x"
+            ),
+            Value::String("boom".into())
+        );
+        // The match itself must still produce the right arm.
+        assert_eq!(
+            compile_and_get_global("let m = match 42 { 42 => \"a\", _ => \"b\" };", "m"),
+            Value::String("a".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let m = match 7 { 1 => \"one\", _ => \"fb\" };", "m"),
+            Value::String("fb".into())
+        );
+    }
+
+    /// Parameter defaults must be evaluated by the callee's prologue.
+    ///
+    /// These previously bound `null`: the compiler counted defaults into
+    /// `proto.defaults` but never compiled the expressions, and the call path
+    /// pushed `Value::Null` into every omitted slot. Because that produced no
+    /// error it triggered no engine fallback either, so a handler using default
+    /// parameters silently computed wrong values in production (VM) while
+    /// working in `--dev` (interpreter).
+    #[test]
+    fn test_vm_parameter_defaults_are_evaluated() {
+        // Fully omitted.
+        assert_eq!(
+            compile_and_get_global("def f(a = 1, b = 2) { return a + b }\nlet x = f();", "x"),
+            Value::Int(3)
+        );
+        // Partially supplied — only the omitted tail defaults.
+        assert_eq!(
+            compile_and_get_global("def f(a = 1, b = 2) { return a + b }\nlet x = f(10);", "x"),
+            Value::Int(12)
+        );
+        // Required parameter followed by a defaulted one.
+        assert_eq!(
+            compile_and_get_global("def f(a, b = 5) { return a * b }\nlet x = f(3);", "x"),
+            Value::Int(15)
+        );
+        // A default is an arbitrary expression, not just a literal.
+        assert_eq!(
+            compile_and_get_global("def f(a = 2 + 3) { return a }\nlet x = f();", "x"),
+            Value::Int(5)
+        );
+        // Later defaults may reference earlier parameters (slots fill in order).
+        assert_eq!(
+            compile_and_get_global("def f(a = 2, b = a * 10) { return b }\nlet x = f();", "x"),
+            Value::Int(20)
+        );
+        // Constructors take the same prologue.
+        assert_eq!(
+            compile_and_get_global(
+                "class C { v: Int; new(v = 7) { this.v = v } }\nlet x = C().v;",
+                "x"
+            ),
+            Value::Int(7)
+        );
+    }
+
+    /// An explicitly passed `null` occupies its slot: it is *supplied*, so the
+    /// default must not overwrite it. This is why the frame tracks a
+    /// supplied-parameter bitmask rather than just an argument count.
+    #[test]
+    fn test_vm_explicit_null_argument_beats_default() {
+        assert_eq!(
+            compile_and_get_global(
+                "def f(a = 1, b = 2) { return [a, b] }\nlet x = f(null)[0];",
+                "x"
+            ),
+            Value::Null
+        );
+        // ...while the parameter after it still defaults.
+        assert_eq!(
+            compile_and_get_global(
+                "def f(a = 1, b = 2) { return [a, b] }\nlet x = f(null)[1];",
+                "x"
+            ),
+            Value::Int(2)
+        );
+    }
+
+    /// Named arguments bind by parameter name at call time, and interact
+    /// correctly with defaults: labelled slots are supplied, the rest default.
+    #[test]
+    fn test_vm_named_arguments_bind_by_name() {
+        assert_eq!(
+            compile_and_get_global(
+                "def f(host = \"local\", port = 80) { return port }\nlet x = f(port: 3000);",
+                "x"
+            ),
+            Value::Int(3000)
+        );
+        // Written order is irrelevant.
+        assert_eq!(
+            compile_and_get_global("def f(a, b) { return a - b }\nlet x = f(b: 1, a: 10);", "x"),
+            Value::Int(9)
+        );
+        // Mixed positional + labelled, with a defaulted gap between them.
+        assert_eq!(
+            compile_and_get_global(
+                "def f(a, b = 10, c = 100) { return a + b + c }\nlet x = f(1, c: 5);",
+                "x"
+            ),
+            Value::Int(16)
+        );
+        // An unfilled parameter with no default is still an arity error.
+        let src = "def f(a, b = 2) { return a }\nlet x = f(b: 1);";
+        let tokens = Scanner::new(src).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        assert!(
+            vm.execute(&module.main).is_err(),
+            "omitting a required parameter must not silently bind null"
+        );
     }
 
     fn compile_and_get_global(source: &str, name: &str) -> Value {

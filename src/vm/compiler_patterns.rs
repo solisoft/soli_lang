@@ -8,27 +8,31 @@ use super::chunk::Constant;
 use super::compiler::{CompileResult, Compiler};
 use super::opcode::Op;
 
-/// Whether a pattern introduces any variable binding (and therefore hits the
-/// VM's unfinished binding-pattern compilation). Literal and wildcard patterns
-/// bind nothing and compile correctly.
-fn pattern_binds(pattern: &MatchPattern) -> bool {
+/// Whether a pattern must run on the tree-walking interpreter rather than
+/// compile to bytecode.
+///
+/// Two reasons land a pattern here. **Binding** patterns (`x`, `[a, b]`,
+/// `{k: v}`, enum variants) alias the subject's stack slot, which the VM's
+/// compilation does not yet model. **Composite** patterns (array, hash, and/or)
+/// interleave their own `Dup`/`Pop` with each sub-pattern's, and the two only
+/// balance when every sub-pattern leaves the duplicated subject in place — which
+/// a literal sub-pattern does not (its `Equal` consumes it). That mismatch
+/// silently popped one value too many, corrupting the value stack for whatever
+/// followed the match; see [`Compiler::compile_pattern`] for the contract that
+/// now makes dup-consumption explicit for the kinds the VM does compile.
+///
+/// Only wildcard and literal patterns compile — both have a proven stack effect.
+fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
     match pattern {
         MatchPattern::Wildcard | MatchPattern::Literal(_) => false,
         MatchPattern::Variable(_) | MatchPattern::Typed { .. } => true,
-        MatchPattern::Array { elements, rest } => {
-            rest.is_some() || elements.iter().any(pattern_binds)
-        }
-        MatchPattern::Hash { fields, rest } => {
-            rest.is_some() || fields.iter().any(|(_, p)| pattern_binds(p))
-        }
-        MatchPattern::Destructuring { fields, .. } => fields.iter().any(|(_, p)| pattern_binds(p)),
-        // Enum-variant matching (tag comparison + payload binding) is implemented
-        // in the tree-walker only; treat it as "binds" so `compile_match` bails
-        // and the match runs there.
         MatchPattern::EnumVariant { .. } => true,
-        MatchPattern::And(patterns) | MatchPattern::Or(patterns) => {
-            patterns.iter().any(pattern_binds)
-        }
+        // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
+        MatchPattern::Array { .. }
+        | MatchPattern::Hash { .. }
+        | MatchPattern::Destructuring { .. }
+        | MatchPattern::And(_)
+        | MatchPattern::Or(_) => true,
     }
 }
 
@@ -40,18 +44,13 @@ impl Compiler {
         arms: &[MatchArm],
         line: usize,
     ) -> CompileResult<()> {
-        // Patterns that bind a variable (`x`, `[a, b]`, `{k: v}`, ...) are not
-        // correctly compiled: the binding aliases the subject's stack slot, but
-        // `compile_match` pops the subject before the arm body, so a body that
-        // *uses* the binding reads a freed slot (panic). This is the same
-        // missing-stack-depth-tracking limitation behind list comprehensions.
-        // Until that's addressed, fail compilation for binding patterns so the
-        // server falls back to the tree-walking interpreter (which is correct)
-        // rather than abort the worker. Literal / wildcard arms still run on the
-        // VM. Tracked in the differential harness.
-        if let Some(arm) = arms.iter().find(|a| pattern_binds(&a.pattern)) {
+        // Patterns the VM cannot compile with a proven stack effect run on the
+        // tree-walking interpreter instead (see `pattern_needs_interpreter`).
+        // Failing compilation here is what routes them there; the alternative
+        // was miscompiled bytecode that corrupted the value stack.
+        if let Some(arm) = arms.iter().find(|a| pattern_needs_interpreter(&a.pattern)) {
             return Err(CompileError::new(
-                "match patterns that bind variables are not yet supported by the bytecode VM",
+                "this match pattern is not yet supported by the bytecode VM",
                 arm.body.span,
             ));
         }
@@ -65,11 +64,17 @@ impl Compiler {
             // Duplicate the match subject for testing
             self.emit(Op::Dup, line);
 
-            // Compile the pattern test
-            let fail_jump = self.compile_pattern(&arm.pattern, line)?;
-
-            // Pop the duplicated subject (pattern matched)
-            self.emit(Op::Pop, line);
+            // Compile the pattern test. `consumed_dup` says whether the test
+            // itself used up the duplicate — a literal's `Equal` does, a
+            // wildcard emits nothing at all — so exactly one `Pop` happens per
+            // arm. Popping unconditionally (the old behavior) removed the
+            // *subject* after a literal test, leaving the whole expression one
+            // slot short and silently corrupting later stack-relative reads
+            // such as a `catch` binding.
+            let (fail_jump, consumed_dup) = self.compile_pattern(&arm.pattern, line)?;
+            if !consumed_dup {
+                self.emit(Op::Pop, line);
+            }
 
             // Check guard if present
             let guard_jump = if let Some(ref guard) = arm.guard {
@@ -111,107 +116,33 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a single pattern. Returns jump offsets that need to be patched to the "fail" path.
+    /// Compile a single pattern test.
+    ///
+    /// Returns the jump offsets to patch to the "fail" path, and whether the
+    /// test consumed the duplicated subject that `compile_match` pushed for it.
+    /// That flag is the stack contract between the two: the caller emits a `Pop`
+    /// only when the pattern left the duplicate in place, so exactly one value
+    /// is removed either way, on both the success and the fail path.
+    ///
+    /// Only the kinds `pattern_needs_interpreter` admits reach here; everything
+    /// else has already failed compilation and runs on the tree-walker.
     fn compile_pattern(
         &mut self,
         pattern: &MatchPattern,
         line: usize,
-    ) -> CompileResult<Vec<usize>> {
+    ) -> CompileResult<(Vec<usize>, bool)> {
         match pattern {
-            MatchPattern::Wildcard => {
-                // Always matches — pop the dup'd value
-                Ok(vec![])
-            }
-            MatchPattern::Variable(name) => {
-                // Bind the value to the variable — always matches
-                self.begin_scope();
-                self.add_local(name.clone(), false);
-                // The dup'd value becomes the local
-                Ok(vec![])
-            }
+            // Always matches and emits nothing, so the duplicate is untouched.
+            MatchPattern::Wildcard => Ok((vec![], false)),
+            // `Equal` pops the duplicate and the literal; `JumpIfFalse` then pops
+            // the boolean — so the duplicate is gone down both paths.
             MatchPattern::Literal(expr_kind) => {
-                // Compare with the literal
-                self.compile_literal_pattern(expr_kind, line)
+                Ok((self.compile_literal_pattern(expr_kind, line)?, true))
             }
-            MatchPattern::Typed { name, type_name } => {
-                // Check type, then bind
-                let _type_idx = self.add_string_constant(type_name);
-                self.emit(Op::Dup, line);
-                self.emit_constant(Constant::String(type_name.clone().into()), line);
-                // Runtime type check — handled by the VM
-                let fail = self.emit_jump(Op::JumpIfFalse(0), line);
-                self.begin_scope();
-                self.add_local(name.clone(), false);
-                Ok(vec![fail])
-            }
-            MatchPattern::Array { elements, rest } => {
-                self.compile_array_pattern(elements, rest.as_deref(), line)
-            }
-            MatchPattern::Hash { fields, rest } => {
-                self.compile_hash_pattern(fields, rest.as_deref(), line)
-            }
-            MatchPattern::Destructuring { type_name, fields } => {
-                // Check type, then destructure
-                let mut fails = Vec::new();
-                let _type_idx = self.add_string_constant(type_name);
-                // Type check would go here
-                // Then destructure fields
-                for (field_name, sub_pattern) in fields {
-                    self.emit(Op::Dup, line);
-                    let field_idx = self.add_string_constant(field_name);
-                    self.emit(Op::GetProperty(field_idx), line);
-                    let mut sub_fails = self.compile_pattern(sub_pattern, line)?;
-                    fails.append(&mut sub_fails);
-                }
-                Ok(fails)
-            }
-            MatchPattern::EnumVariant { .. } => {
-                // Unreachable: `pattern_binds` flags these so `compile_match`
-                // bails to the tree-walker before reaching pattern compilation.
-                Err(CompileError::new(
-                    "enum-variant match patterns are evaluated by the tree-walker",
-                    crate::span::Span::new(0, 0, line, 0),
-                ))
-            }
-            MatchPattern::And(patterns) => {
-                let mut fails = Vec::new();
-                for pat in patterns {
-                    self.emit(Op::Dup, line);
-                    let mut sub_fails = self.compile_pattern(pat, line)?;
-                    fails.append(&mut sub_fails);
-                    self.emit(Op::Pop, line);
-                }
-                Ok(fails)
-            }
-            MatchPattern::Or(patterns) => {
-                // Try each pattern; if one succeeds, jump to success
-                let mut success_jumps = Vec::new();
-                let mut last_fail = Vec::new();
-
-                for (i, pat) in patterns.iter().enumerate() {
-                    self.emit(Op::Dup, line);
-                    let fails = self.compile_pattern(pat, line)?;
-
-                    if i < patterns.len() - 1 {
-                        // If matched, jump to success
-                        success_jumps.push(self.emit_jump(Op::Jump(0), line));
-                        // Patch fails to try next pattern
-                        for f in fails {
-                            self.patch_jump(f);
-                        }
-                        self.emit(Op::Pop, line);
-                    } else {
-                        last_fail = fails;
-                    }
-                }
-
-                // Patch success jumps
-                for sj in success_jumps {
-                    self.patch_jump(sj);
-                }
-
-                Ok(last_fail)
-            }
+            _ => Err(CompileError::new(
+                "this match pattern is not yet supported by the bytecode VM",
+                crate::span::Span::new(0, 0, line, 0),
+            )),
         }
     }
 
@@ -247,62 +178,5 @@ impl Compiler {
         self.emit(Op::Equal, line);
         let fail = self.emit_jump(Op::JumpIfFalse(0), line);
         Ok(vec![fail])
-    }
-
-    fn compile_array_pattern(
-        &mut self,
-        elements: &[MatchPattern],
-        rest: Option<&str>,
-        line: usize,
-    ) -> CompileResult<Vec<usize>> {
-        let mut fails = Vec::new();
-
-        // Check length (at least N elements)
-        // We'd need a length check opcode or runtime call
-        // For now, we'll compile element-by-element checks
-
-        for (i, elem) in elements.iter().enumerate() {
-            self.emit(Op::Dup, line);
-            self.emit_constant(Constant::Int(i as i64), line);
-            self.emit(Op::GetIndex, line);
-            let mut sub_fails = self.compile_pattern(elem, line)?;
-            fails.append(&mut sub_fails);
-            self.emit(Op::Pop, line);
-        }
-
-        if let Some(rest_name) = rest {
-            // Bind the rest of the array to a variable
-            // This would need a slice operation
-            self.begin_scope();
-            self.add_local(rest_name.to_string(), false);
-        }
-
-        Ok(fails)
-    }
-
-    fn compile_hash_pattern(
-        &mut self,
-        fields: &[(String, MatchPattern)],
-        rest: Option<&str>,
-        line: usize,
-    ) -> CompileResult<Vec<usize>> {
-        let mut fails = Vec::new();
-
-        for (field_name, sub_pattern) in fields {
-            self.emit(Op::Dup, line);
-            let _key_idx = self.add_string_constant(field_name);
-            self.emit_constant(Constant::String(field_name.clone().into()), line);
-            self.emit(Op::GetIndex, line);
-            let mut sub_fails = self.compile_pattern(sub_pattern, line)?;
-            fails.append(&mut sub_fails);
-            self.emit(Op::Pop, line);
-        }
-
-        if let Some(rest_name) = rest {
-            self.begin_scope();
-            self.add_local(rest_name.to_string(), false);
-        }
-
-        Ok(fails)
     }
 }

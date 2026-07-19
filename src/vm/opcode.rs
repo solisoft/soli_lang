@@ -74,10 +74,27 @@ pub enum Op {
     JumpIfTrueNoPop(u16),
     /// Jump forward if null, don't pop (for ??).
     NullishJump(u16),
+    /// Parameter-default prologue: jump forward by the second operand when the
+    /// caller actually supplied the parameter at index `.0`, skipping the
+    /// bytecode that computes that parameter's default value. "Supplied" is
+    /// read from the frame's `supplied` bitmask, so it is exact for both
+    /// positional calls and named-argument calls that fill slots out of order
+    /// — an explicitly passed `null` counts as supplied and does NOT trigger
+    /// the default, matching the tree-walking interpreter.
+    JumpIfParamSupplied(u16, u16),
 
     // --- Functions ---
     /// Call a function with N arguments.
     Call(u8),
+    /// Call a function with N argument slots, some of them labelled. The second
+    /// operand indexes a `Constant::ArgNames` giving each slot's label (or
+    /// `None` for positional). Binding happens at call time, where the callee
+    /// value is known — a user function reorders labels into parameter slots,
+    /// while a native collapses them into one trailing options hash, matching
+    /// the tree-walking interpreter's two conventions.
+    CallNamed(u8, u16),
+    /// `New` with labelled argument slots — see [`Op::CallNamed`].
+    NewNamed(u8, u16),
     /// Create a closure from a function prototype constant index.
     /// Followed by N upvalue descriptors encoded as (is_local: u8, index: u16) in the bytecode.
     Closure(u16),

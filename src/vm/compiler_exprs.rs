@@ -529,35 +529,77 @@ impl Compiler {
         }
 
         self.compile_expr(callee)?;
+        self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
+    }
 
-        let mut argc = 0u8;
+    /// Compile a call's arguments (the callee is already on the stack) and emit
+    /// the call instruction.
+    ///
+    /// Every argument is evaluated in source order regardless of labelling, so
+    /// side effects happen in the order written. When no argument is labelled
+    /// this emits the plain `positional` opcode; otherwise it records the
+    /// per-slot labels as a constant and emits `named`, leaving the actual
+    /// binding to run time where the callee's identity — and therefore which of
+    /// the two calling conventions applies — is known.
+    fn compile_call_arguments(
+        &mut self,
+        arguments: &[Argument],
+        line: usize,
+        positional: fn(u8) -> Op,
+        named: fn(u8, u16) -> Op,
+    ) -> CompileResult<()> {
+        self.compile_call_arguments_after(arguments, line, 0, positional, named)
+    }
+
+    /// As [`Self::compile_call_arguments`], but with `leading` argument values
+    /// already pushed ahead of `arguments` — the pipeline operator evaluates its
+    /// left-hand side into the first slot before the written arguments follow.
+    /// Those leading slots are always positional.
+    fn compile_call_arguments_after(
+        &mut self,
+        arguments: &[Argument],
+        line: usize,
+        leading: u8,
+        positional: fn(u8) -> Op,
+        named: fn(u8, u16) -> Op,
+    ) -> CompileResult<()> {
+        if arguments.len() + leading as usize > u8::MAX as usize {
+            return Err(CompileError::new(
+                "too many arguments in a single call",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
+        }
+
+        let mut argc = leading;
+        let mut labels: Vec<Option<crate::interpreter::value::SoliStr>> =
+            vec![None; leading as usize];
+        labels.reserve(arguments.len());
         for arg in arguments {
             match arg {
                 Argument::Positional(expr) => {
                     self.compile_expr(expr)?;
-                    argc += 1;
+                    labels.push(None);
                 }
-                Argument::Named(_) => {
-                    // The VM calling convention cannot reorder named arguments
-                    // by the callee's parameter names at runtime, so there is no
-                    // correct bytecode to emit here (the old Op::NamedArg was a
-                    // no-op that corrupted argc and could misdispatch or panic).
-                    // Bail out so the handler falls back to the tree-walking
-                    // interpreter, which resolves named args correctly.
-                    return Err(CompileError::new(
-                        "Named arguments are not supported in compiled mode",
-                        crate::span::Span::new(0, 0, line, 0),
-                    ));
+                Argument::Named(named_arg) => {
+                    self.compile_expr(&named_arg.value)?;
+                    labels.push(Some(named_arg.name.clone().into()));
                 }
                 Argument::Block(expr) => {
-                    // Compile block as closure argument
+                    // A block occupies a plain trailing slot, as it does for a
+                    // fully positional call.
                     self.compile_expr(expr)?;
-                    argc += 1;
+                    labels.push(None);
                 }
             }
+            argc += 1;
         }
 
-        self.emit(Op::Call(argc), line);
+        if labels.iter().any(Option::is_some) {
+            let idx = self.add_constant(Constant::ArgNames(std::sync::Arc::new(labels)));
+            self.emit(named(argc, idx), line);
+        } else {
+            self.emit(positional(argc), line);
+        }
         Ok(())
     }
 
@@ -587,30 +629,7 @@ impl Compiler {
         // Fall back to calling print as a regular function
         let idx = self.add_string_constant("print");
         self.emit(Op::GetGlobal(idx), line);
-        let mut argc = 0u8;
-        for arg in arguments {
-            match arg {
-                Argument::Positional(expr) => {
-                    self.compile_expr(expr)?;
-                    argc += 1;
-                }
-                Argument::Named(_) => {
-                    // Named arguments require runtime reordering by the callee's
-                    // parameter names, which the VM does not do; bail out so this
-                    // call runs in the tree-walking interpreter instead.
-                    return Err(CompileError::new(
-                        "Named arguments are not supported in compiled mode",
-                        crate::span::Span::new(0, 0, line, 0),
-                    ));
-                }
-                Argument::Block(expr) => {
-                    self.compile_expr(expr)?;
-                    argc += 1;
-                }
-            }
-        }
-        self.emit(Op::Call(argc), line);
-        Ok(())
+        self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
     }
 
     fn compile_json_parse(&mut self, arguments: &[Argument], line: usize) -> CompileResult<()> {
@@ -660,28 +679,7 @@ impl Compiler {
                 // Compile callee first, then left as first arg, then rest of args
                 self.compile_expr(callee)?;
                 self.compile_expr(left)?;
-                let mut argc = 1u8;
-                for arg in arguments {
-                    match arg {
-                        Argument::Positional(expr) => {
-                            self.compile_expr(expr)?;
-                            argc += 1;
-                        }
-                        Argument::Named(_) => {
-                            // Named args need runtime reordering the VM doesn't
-                            // do; fall back to the tree-walking interpreter.
-                            return Err(CompileError::new(
-                                "Named arguments are not supported in compiled mode",
-                                crate::span::Span::new(0, 0, line, 0),
-                            ));
-                        }
-                        Argument::Block(expr) => {
-                            self.compile_expr(expr)?;
-                            argc += 1;
-                        }
-                    }
-                }
-                self.emit(Op::Call(argc), line);
+                self.compile_call_arguments_after(arguments, line, 1, Op::Call, Op::CallNamed)?;
             }
             _ => {
                 // If right is just a function reference, call it with left as sole argument
@@ -730,30 +728,7 @@ impl Compiler {
         line: usize,
     ) -> CompileResult<()> {
         self.compile_expr(class_expr)?;
-        let mut argc = 0u8;
-        for arg in arguments {
-            match arg {
-                Argument::Positional(expr) => {
-                    self.compile_expr(expr)?;
-                    argc += 1;
-                }
-                Argument::Named(_) => {
-                    // Named arguments require runtime reordering by the callee's
-                    // parameter names, which the VM does not do; bail out so this
-                    // call runs in the tree-walking interpreter instead.
-                    return Err(CompileError::new(
-                        "Named arguments are not supported in compiled mode",
-                        crate::span::Span::new(0, 0, line, 0),
-                    ));
-                }
-                Argument::Block(expr) => {
-                    self.compile_expr(expr)?;
-                    argc += 1;
-                }
-            }
-        }
-        self.emit(Op::New(argc), line);
-        Ok(())
+        self.compile_call_arguments(arguments, line, Op::New, Op::NewNamed)
     }
 
     fn compile_array(&mut self, elements: &[Expr], line: usize) -> CompileResult<()> {
@@ -898,10 +873,8 @@ impl Compiler {
         // Compile lambda as a nested function
         let _dummy = self.start_function(FunctionType::Lambda, "<lambda>".to_string(), params);
 
-        // Default values for parameters are handled at call time by the VM.
-        // The compiler records that defaults exist via proto.defaults count.
-
         self.begin_scope();
+        self.emit_param_defaults(params)?;
         self.compile_function_body(body)?;
         self.end_scope(line);
 
@@ -1341,16 +1314,16 @@ mod grouped_compile_tests {
 
 #[cfg(test)]
 mod named_args_compile_tests {
-    //! Named-argument calls must NOT compile in the bytecode VM. The VM calling
-    //! convention cannot reorder arguments by the callee's parameter names at
-    //! runtime, so the compiler rejects them (a `CompileError`) and the
-    //! production request path's VM→interpreter fallback runs them on the
-    //! tree-walker, which reorders named args correctly. The old code emitted a
-    //! no-op `Op::NamedArg` that over-counted `argc` and could misdispatch to
-    //! the wrong callee or panic the worker on stack underflow. These tests pin
-    //! the deterministic-fallback contract across all four call-compilation
-    //! paths (plain call, print fallback, pipeline, `new`); positional calls
-    //! must still compile.
+    //! Named-argument calls compile to `Op::CallNamed` / `Op::NewNamed`, which
+    //! carry the per-slot labels as a constant and bind them at call time —
+    //! where the callee is known and its convention (reorder into parameter
+    //! slots for a user function, collapse into a trailing options hash for a
+    //! native) can be chosen. They previously failed to compile, which was
+    //! correct but demoted the whole enclosing handler to the tree-walking
+    //! interpreter for the rest of the worker's life. These tests pin that all
+    //! four call-compilation paths (plain call, print fallback, pipeline,
+    //! `new`) both compile and bind correctly.
+    use crate::interpreter::value::Value;
     use crate::vm::compiler::Compiler;
 
     fn compiles(src: &str) -> bool {
@@ -1359,27 +1332,62 @@ mod named_args_compile_tests {
         Compiler::compile(&program).is_ok()
     }
 
+    /// Run `src` on the VM and read back a global — the engines must agree, so
+    /// these expectations mirror the tree-walking interpreter's results.
+    fn run_and_get(src: &str, global: &str) -> Value {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = crate::vm::Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        vm.globals.get(global).cloned().expect("missing global")
+    }
+
     #[test]
-    fn named_arg_call_is_rejected_for_interpreter_fallback() {
-        assert!(
-            !compiles("def add(a, b) { return a + b }\nprint(add(b: 2, a: 1))"),
-            "a call with named args must fail VM compilation so it falls back to the interpreter"
+    fn named_arg_call_binds_by_parameter_name() {
+        assert!(compiles(
+            "def add(a, b) { return a + b }\nprint(add(b: 2, a: 1))"
+        ));
+        // Labels bind by name, so the written order is irrelevant.
+        assert_eq!(
+            run_and_get(
+                "def sub(a, b) { return a - b }\nlet x = sub(b: 1, a: 10);",
+                "x"
+            ),
+            Value::Int(9)
         );
     }
 
     #[test]
-    fn named_arg_to_print_is_rejected() {
-        assert!(
-            !compiles("print(msg: \"hi\")"),
-            "named args to print must fail VM compilation (print-fallback path)"
+    fn named_arg_mixes_with_positional_and_defaults() {
+        assert_eq!(
+            run_and_get(
+                "def f(a, b = 10, c = 100) { return a + b + c }\nlet x = f(1, c: 5);",
+                "x"
+            ),
+            Value::Int(16)
         );
     }
 
     #[test]
-    fn named_arg_in_pipeline_is_rejected() {
-        assert!(
-            !compiles("def scale(x, factor) { return x * factor }\nprint(5 |> scale(factor: 3))"),
-            "a pipeline call with named args must fail VM compilation"
+    fn named_arg_to_print_is_accepted() {
+        // print's fallback path routes through the generic call machinery,
+        // where print is a native and the label collapses into an options hash.
+        assert!(compiles("print(msg: \"hi\")"));
+    }
+
+    #[test]
+    fn named_arg_in_pipeline_binds_by_name() {
+        assert!(compiles(
+            "def scale(x, factor) { return x * factor }\nprint(5 |> scale(factor: 3))"
+        ));
+        // The piped value fills the first slot positionally; the label fills the rest.
+        assert_eq!(
+            run_and_get(
+                "def scale(x, factor) { return x * factor }\nlet x = 5 |> scale(factor: 3);",
+                "x"
+            ),
+            Value::Int(15)
         );
     }
 
