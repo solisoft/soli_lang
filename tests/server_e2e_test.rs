@@ -623,3 +623,89 @@ fn websocket_upgrade_completes_and_round_trips() {
         .expect("server must deliver the echo frame after the upgrade");
     assert_eq!(reply.to_text().unwrap(), "echo:hello");
 }
+
+/// `--port 0` must report the port the OS actually assigned.
+///
+/// The bind loop used to echo back the *requested* port, which is fine for a
+/// fixed port but reports `0` for an ephemeral one — leaving the bound port
+/// undiscoverable both in the startup banner and to any embedding caller (a
+/// desktop shell has to know where to point a browser). Regression test for
+/// reading `listener.local_addr()` instead.
+#[test]
+fn ephemeral_port_zero_reports_the_real_bound_port() {
+    use std::io::{BufRead, BufReader};
+    use std::sync::mpsc;
+
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_soli"));
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/_e2e_app");
+
+    let mut child = Command::new(&binary)
+        .arg("serve")
+        .arg(&fixture)
+        .arg("--port")
+        .arg("0")
+        .arg("--workers")
+        .arg("1")
+        .env("SOLI_HOST", "127.0.0.1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve --port 0");
+
+    // Read the banner on a worker thread — the child keeps running, so a
+    // blocking read on the main thread would never return.
+    let stdout = child.stdout.take().expect("piped stdout");
+    let (tx, rx) = mpsc::channel::<u16>();
+    // Keep draining after the port is found: returning early would drop the
+    // reader, close the pipe, and hand the server a SIGPIPE on its next
+    // stdout write — killing the very process we're about to probe.
+    thread::spawn(move || {
+        let mut sent = false;
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if sent {
+                continue;
+            }
+            if let Some(rest) = line.split("listening on http://").nth(1) {
+                if let Some(port) = rest.rsplit(':').next() {
+                    if let Ok(port) = port.trim().parse::<u16>() {
+                        let _ = tx.send(port);
+                        sent = true;
+                    }
+                }
+            }
+        }
+    });
+
+    let port = rx.recv_timeout(Duration::from_secs(20));
+
+    // Tear the child down before asserting, so a failure doesn't leak a server.
+    // The banner prints once the listener is bound, but workers finish booting
+    // slightly later — poll rather than firing a single request, same as
+    // `ServerProcess::wait_ready`.
+    let reported = port.map(|p| {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut ok = false;
+        while Instant::now() < deadline {
+            if ureq::get(&format!("http://127.0.0.1:{}/ping", p))
+                .timeout(Duration::from_millis(500))
+                .call()
+                .is_ok()
+            {
+                ok = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        (p, ok)
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+
+    let (port, reachable) = reported.expect("server never announced a port within 20s");
+    assert_ne!(port, 0, "--port 0 reported 0 instead of the assigned port");
+    assert!(
+        reachable,
+        "announced port {} did not accept a request — the reported port is wrong",
+        port
+    );
+}

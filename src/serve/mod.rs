@@ -1007,7 +1007,19 @@ fn run_hyper_server_worker_pool(
                     }
                 }
             };
-            let _ = bound_port_tx.send(try_port);
+            // Report the port the OS actually gave us, not the one we asked
+            // for. They differ when `port` is 0: the caller is asking for an
+            // ephemeral port, the kernel picks one, and `try_port` is still 0 —
+            // so without this the bound port is undiscoverable and every
+            // consumer (the startup banner, a desktop shell that has to open a
+            // browser at the right URL) sees `0`. Falls back to `try_port` if
+            // the address can't be read, which keeps the fixed-port and
+            // scan-upward-on-AddrInUse paths behaving exactly as before.
+            let bound_port = listener
+                .local_addr()
+                .map(|addr| addr.port())
+                .unwrap_or(try_port);
+            let _ = bound_port_tx.send(bound_port);
 
             loop {
                 let (stream, peer_addr) = match listener.accept().await {
