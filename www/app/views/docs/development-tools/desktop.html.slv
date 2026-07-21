@@ -132,7 +132,7 @@ end</code></pre>
 soli desktop build ./myapp --app-id com.example.myapp --target windows-amd64</code></pre>
     <p class="text-gray-400 mb-4">Two signing notes, both of which bite at distribution rather than build time:</p>
     <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
-        <li><strong class="text-white">macOS</strong> artifacts built elsewhere have an invalid signature and Apple Silicon refuses to run them. Re-sign on a Mac with <code class="text-cyan-400">codesign --force -s -</code>, or use <code class="text-cyan-400">rcodesign</code> from any platform.</li>
+        <li><strong class="text-white">macOS</strong> artifacts built elsewhere are unsigned and Apple Silicon refuses to run them. Re-sign on a Mac with <code class="text-cyan-400">codesign --force -s -</code>. Use <code class="text-cyan-400">codesign</code> specifically: the payload rides inside <code class="text-cyan-400">__LINKEDIT</code>, and a signer that regenerates that segment (such as <code class="text-cyan-400">rcodesign</code>) discards it, leaving a binary that no longer contains the app.</li>
         <li><strong class="text-white">Windows</strong> artifacts are unsigned, so SmartScreen shows &ldquo;Windows protected your PC&rdquo; with <em>Run anyway</em> hidden behind <em>More info</em>. Sign the <strong class="text-white">finished</strong> file &mdash; never before packaging, which would invalidate the signature: <code class="text-cyan-400">signtool sign /fd sha256 /tr &lt;timestamp-url&gt; /td sha256 myapp.exe</code>.</li>
     </ul>
 

@@ -458,6 +458,17 @@ fn encrypted_extraction_dir() -> Result<std::path::PathBuf, String> {
     let shm = Path::new("/dev/shm");
     let base = if shm.is_dir() {
         shm.to_path_buf()
+    } else if cfg!(target_os = "macos") {
+        // macOS has no /dev/shm and no user-mountable tmpfs. Refusing here
+        // would make every encrypted bundle unbootable on the platform —
+        // including every desktop app, which is *always* encrypted — so the
+        // refusal below would turn into "this feature does not exist on Mac".
+        //
+        // `temp_dir()` is confstr(_CS_DARWIN_USER_TEMP_DIR): a per-user,
+        // per-boot directory under /var/folders that is already mode 0700 and
+        // is swept by the OS. Not RAM, but not shared with other users either,
+        // and the tree is unlinked on shutdown by `register_cleanup_dir`.
+        std::env::temp_dir()
     } else if std::env::var("SOLI_BUNDLE_ALLOW_DISK").ok().as_deref() == Some("1") {
         eprintln!(
             "\x1b[33mWarning:\x1b[0m /dev/shm is not available — extracting the DECRYPTED \

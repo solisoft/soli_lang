@@ -1,5 +1,6 @@
 pub mod args;
 mod commands;
+mod macho;
 mod standalone;
 
 use args::{parse_args, Command};

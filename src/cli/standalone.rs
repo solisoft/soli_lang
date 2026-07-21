@@ -9,8 +9,21 @@
 //! [ footer: magic b"SOLIXEC1" (8 bytes) + payload_len u64 LE (8 bytes) ]
 //! ```
 //!
+//! Darwin is the exception. A Mach-O may not carry data past `__LINKEDIT` —
+//! `codesign` rejects such a file outright ("main executable failed strict
+//! validation") and rewriting signers silently drop the trailing bytes, which
+//! throws the payload away. So for darwin the inherited signature is stripped,
+//! the payload appended, and `__LINKEDIT` grown to cover it (see `cli::macho`).
+//! Signing then appends the signature last, which pushes the footer off EOF:
+//!
+//! ```text
+//! [ mach-o, __LINKEDIT grown over everything below ]
+//! [ payload ] [ footer ] [ code signature — added by codesign, last ]
+//! ```
+//!
 //! At boot, `boot_if_standalone()` (the first statement of `cli::run()`)
-//! reads the last 16 bytes of `current_exe()`. No footer → normal soli CLI.
+//! reads the last 16 bytes of `current_exe()`, and on a signed Mach-O falls
+//! back to the 16 bytes before the signature. No footer → normal soli CLI.
 //! Footer present → the executable IS the app: parse the app-oriented flags
 //! (`--port`, `--host`, `--workers`, `--dev`) and serve the embedded payload
 //! through the same pipeline as `soli serve app.soli` — including key
@@ -55,19 +68,63 @@ const SUPPORTED_TARGETS: &[&str] = &[
 // Boot side
 // ---------------------------------------------------------------------------
 
+/// Where the appended region ends, and how long the payload is.
+struct Footer {
+    payload_len: u64,
+    /// Offset one past the footer's last byte.
+    end: u64,
+}
+
 /// Read the footer of `file` and return the payload length when the magic
 /// matches. `file_len` is passed in so the caller can bound-check.
-fn read_footer(file: &mut std::fs::File, file_len: u64) -> Option<u64> {
-    if file_len < FOOTER_LEN {
+///
+/// The footer sits at EOF on ELF and PE, and on any darwin artifact that was
+/// never signed. On a *signed* Mach-O the code signature is necessarily the
+/// last thing in the file, so the appended region ends where that signature
+/// begins — try EOF first, then that anchor.
+fn read_footer(file: &mut std::fs::File, file_len: u64) -> Option<Footer> {
+    if let Some(footer) = read_footer_at(file, file_len, file_len) {
+        return Some(footer);
+    }
+    let anchor = macho_footer_anchor(file)?;
+    read_footer_at(file, file_len, anchor)
+}
+
+/// Read a footer whose last byte is at `end - 1`.
+fn read_footer_at(file: &mut std::fs::File, file_len: u64, end: u64) -> Option<Footer> {
+    if end < FOOTER_LEN || end > file_len {
         return None;
     }
-    file.seek(SeekFrom::End(-(FOOTER_LEN as i64))).ok()?;
+    file.seek(SeekFrom::Start(end - FOOTER_LEN)).ok()?;
     let mut footer = [0u8; 16];
     file.read_exact(&mut footer).ok()?;
     if &footer[..8] != FOOTER_MAGIC {
         return None;
     }
-    Some(u64::from_le_bytes(footer[8..16].try_into().ok()?))
+    Some(Footer {
+        payload_len: u64::from_le_bytes(footer[8..16].try_into().ok()?),
+        end,
+    })
+}
+
+/// Offset of the code signature blob, for a signed Mach-O. Reads only the
+/// header and load commands — the payload itself may be hundreds of megabytes.
+fn macho_footer_anchor(file: &mut std::fs::File) -> Option<u64> {
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut head = [0u8; 32];
+    file.read_exact(&mut head).ok()?;
+    if !super::macho::is_macho64(&head) {
+        return None;
+    }
+    let sizeofcmds = u32::from_le_bytes(head[20..24].try_into().ok()?) as usize;
+    // Guards a corrupt header from driving a huge allocation.
+    if sizeofcmds > 4 * 1024 * 1024 {
+        return None;
+    }
+    let mut buf = vec![0u8; 32 + sizeofcmds];
+    file.seek(SeekFrom::Start(0)).ok()?;
+    file.read_exact(&mut buf).ok()?;
+    super::macho::find_footer_anchor(&buf)
 }
 
 /// Extract the embedded bundle payload from the running executable.
@@ -82,27 +139,24 @@ pub fn embedded_payload() -> Option<Result<Vec<u8>, String>> {
     let exe = std::env::current_exe().ok()?;
     let mut file = std::fs::File::open(&exe).ok()?;
     let file_len = file.metadata().ok()?.len();
-    let payload_len = read_footer(&mut file, file_len)?;
+    let footer = read_footer(&mut file, file_len)?;
 
-    Some(read_payload(&mut file, file_len, payload_len))
+    Some(read_payload(&mut file, &footer))
 }
 
-fn read_payload(
-    file: &mut std::fs::File,
-    file_len: u64,
-    payload_len: u64,
-) -> Result<Vec<u8>, String> {
+fn read_payload(file: &mut std::fs::File, footer: &Footer) -> Result<Vec<u8>, String> {
+    let payload_len = footer.payload_len;
     if payload_len == 0 {
         return Err("embedded bundle is empty".to_string());
     }
-    let max_payload = file_len - FOOTER_LEN;
+    let max_payload = footer.end - FOOTER_LEN;
     if payload_len > max_payload {
         return Err(format!(
             "footer claims a {} byte bundle but the executable only has {} bytes before the footer",
             payload_len, max_payload
         ));
     }
-    file.seek(SeekFrom::Start(file_len - FOOTER_LEN - payload_len))
+    file.seek(SeekFrom::Start(footer.end - FOOTER_LEN - payload_len))
         .map_err(|e| format!("seek failed: {}", e))?;
     let mut payload = vec![0u8; payload_len as usize];
     file.read_exact(&mut payload)
@@ -284,11 +338,27 @@ pub fn write_standalone_exe(
         );
     }
 
-    let mut out = Vec::with_capacity(template.len() + bundle_data.len() + 16);
-    out.extend_from_slice(&template);
+    // On darwin the payload cannot simply trail the image: it would sit past
+    // __LINKEDIT and past the inherited signature, which is precisely what
+    // `codesign` rejects as "main executable failed strict validation" (and what
+    // makes rewriting signers drop the payload entirely). Drop the inherited
+    // signature, append, then grow __LINKEDIT over what we appended so the file
+    // stays a well-formed Mach-O with nothing outside a segment.
+    let mut out = if target.is_darwin() {
+        super::macho::strip_signature(&template)?
+    } else {
+        let mut v = Vec::with_capacity(template.len() + bundle_data.len() + 16);
+        v.extend_from_slice(&template);
+        v
+    };
+    let appended_from = out.len();
     out.extend_from_slice(bundle_data);
     out.extend_from_slice(FOOTER_MAGIC);
     out.extend_from_slice(&(bundle_data.len() as u64).to_le_bytes());
+    if target.is_darwin() {
+        let appended = (out.len() - appended_from) as u64;
+        super::macho::extend_linkedit(&mut out, appended)?;
+    }
 
     std::fs::write(output, &out)
         .map_err(|e| format!("failed to write '{}': {}", output.display(), e))?;
@@ -354,7 +424,8 @@ fn sign_if_needed(output: &Path, target: &BuildTarget) -> Result<(), String> {
         println!("    invalid and Apple Silicon will refuse to run it. Before distributing,");
         println!("    ad-hoc re-sign it on a Mac:");
         println!("      codesign --force -s - {}", output.display());
-        println!("    (or use rcodesign from any platform: rcodesign sign <file>)");
+        println!("    Use codesign, not a rewriting signer: the payload lives inside");
+        println!("    __LINKEDIT, and a signer that regenerates that segment drops it.");
         Ok(())
     }
 }
@@ -663,10 +734,62 @@ mod tests {
         let payload = b"SOLB\x00\x00\x00\x00fake-bundle-bytes";
         let exe = make_exe(b"fake-runtime", payload);
         let (_dir, mut f, len) = scratch_file(&exe);
-        let plen = read_footer(&mut f, len).expect("footer detected");
-        assert_eq!(plen, payload.len() as u64);
-        let got = read_payload(&mut f, len, plen).expect("payload reads");
+        let footer = read_footer(&mut f, len).expect("footer detected");
+        assert_eq!(footer.payload_len, payload.len() as u64);
+        let got = read_payload(&mut f, &footer).expect("payload reads");
         assert_eq!(got, payload);
+    }
+
+    /// The shape a darwin artifact has *after* signing: payload and footer live
+    /// inside __LINKEDIT, with the code signature blob last. The footer is
+    /// deliberately not at EOF — that is the whole point of the anchor lookup.
+    fn signed_macho_exe(payload: &[u8]) -> Vec<u8> {
+        const SEG: usize = 72;
+        const SIG: usize = 16;
+        let linkedit_fileoff: u64 = 128;
+        let sig_blob = vec![0x5Au8; 48];
+        let sig_dataoff = linkedit_fileoff + payload.len() as u64 + FOOTER_LEN;
+        let filesize = payload.len() as u64 + FOOTER_LEN + sig_blob.len() as u64;
+
+        let mut out = vec![0u8; 32];
+        out[0..4].copy_from_slice(&0xfeed_facfu32.to_le_bytes());
+        out[16..20].copy_from_slice(&2u32.to_le_bytes());
+        out[20..24].copy_from_slice(&((SEG + SIG) as u32).to_le_bytes());
+
+        let mut seg = vec![0u8; SEG];
+        seg[0..4].copy_from_slice(&0x19u32.to_le_bytes());
+        seg[4..8].copy_from_slice(&(SEG as u32).to_le_bytes());
+        seg[8..18].copy_from_slice(b"__LINKEDIT");
+        seg[40..48].copy_from_slice(&linkedit_fileoff.to_le_bytes());
+        seg[48..56].copy_from_slice(&filesize.to_le_bytes());
+        out.extend_from_slice(&seg);
+
+        let mut sig = vec![0u8; SIG];
+        sig[0..4].copy_from_slice(&0x1du32.to_le_bytes());
+        sig[4..8].copy_from_slice(&(SIG as u32).to_le_bytes());
+        sig[8..12].copy_from_slice(&(sig_dataoff as u32).to_le_bytes());
+        sig[12..16].copy_from_slice(&(sig_blob.len() as u32).to_le_bytes());
+        out.extend_from_slice(&sig);
+
+        out.resize(linkedit_fileoff as usize, 0);
+        out.extend_from_slice(payload);
+        out.extend_from_slice(FOOTER_MAGIC);
+        out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        out.extend_from_slice(&sig_blob);
+        out
+    }
+
+    #[test]
+    fn footer_is_found_behind_a_code_signature() {
+        let payload = b"SOLB\x00\x00\x00\x00signed-artifact-bundle";
+        let exe = signed_macho_exe(payload);
+        // Precondition: EOF holds signature bytes, so the plain check must miss.
+        assert_ne!(&exe[exe.len() - 16..exe.len() - 8], FOOTER_MAGIC);
+
+        let (_dir, mut f, len) = scratch_file(&exe);
+        let footer = read_footer(&mut f, len).expect("footer found via signature anchor");
+        assert_eq!(footer.payload_len, payload.len() as u64);
+        assert_eq!(read_payload(&mut f, &footer).unwrap(), payload.to_vec());
     }
 
     #[test]
@@ -687,8 +810,8 @@ mod tests {
         exe.extend_from_slice(FOOTER_MAGIC);
         exe.extend_from_slice(&u64::MAX.to_le_bytes());
         let (_dir, mut f, len) = scratch_file(&exe);
-        let plen = read_footer(&mut f, len).expect("footer magic matches");
-        let err = read_payload(&mut f, len, plen).unwrap_err();
+        let footer = read_footer(&mut f, len).expect("footer magic matches");
+        let err = read_payload(&mut f, &footer).unwrap_err();
         assert!(err.contains("only has"), "unexpected error: {}", err);
     }
 
@@ -696,16 +819,16 @@ mod tests {
     fn zero_payload_is_rejected() {
         let exe = make_exe(b"runtime", b"");
         let (_dir, mut f, len) = scratch_file(&exe);
-        let plen = read_footer(&mut f, len).unwrap();
-        assert!(read_payload(&mut f, len, plen).is_err());
+        let footer = read_footer(&mut f, len).unwrap();
+        assert!(read_payload(&mut f, &footer).is_err());
     }
 
     #[test]
     fn non_bundle_payload_is_rejected() {
         let exe = make_exe(b"runtime", b"NOTA bundle at all");
         let (_dir, mut f, len) = scratch_file(&exe);
-        let plen = read_footer(&mut f, len).unwrap();
-        let err = read_payload(&mut f, len, plen).unwrap_err();
+        let footer = read_footer(&mut f, len).unwrap();
+        let err = read_payload(&mut f, &footer).unwrap_err();
         assert!(err.contains("bad magic"), "unexpected error: {}", err);
     }
 
@@ -717,9 +840,9 @@ mod tests {
         payload.extend_from_slice(&[0u8; 32]);
         let exe = make_exe(b"runtime", &payload);
         let (_dir, mut f, len) = scratch_file(&exe);
-        let plen = read_footer(&mut f, len).unwrap();
-        assert_eq!(plen, payload.len() as u64);
-        assert_eq!(read_payload(&mut f, len, plen).unwrap(), payload);
+        let footer = read_footer(&mut f, len).unwrap();
+        assert_eq!(footer.payload_len, payload.len() as u64);
+        assert_eq!(read_payload(&mut f, &footer).unwrap(), payload);
     }
 
     #[test]

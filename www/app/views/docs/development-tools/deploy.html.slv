@@ -332,7 +332,7 @@ ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
             <li>The protected-bundle <strong>version lock is satisfied by construction</strong> — runtime and bundle ship as a matched pair.</li>
             <li>Encrypted standalones inherit the RAM-only extraction contract: <code>/dev/shm</code> or <code>SOLI_BUNDLE_ALLOW_DISK=1</code>.</li>
             <li><strong>Do not post-process the artifact</strong> — <code>strip</code>, <code>objcopy</code>, <code>upx</code> or re-signing-tools that rewrite the file destroy the embedded bundle trailer.</li>
-            <li><strong>macOS:</strong> building <em>on</em> a Mac ad-hoc re-signs the artifact automatically. A <code>darwin-arm64</code> artifact cross-built on Linux must be re-signed before Apple Silicon will run it: <code>codesign --force -s - my_app-darwin-arm64</code> on a Mac (or <code>rcodesign sign</code> from any platform). No Windows target is published.</li>
+            <li><strong>macOS:</strong> building <em>on</em> a Mac ad-hoc re-signs the artifact automatically. A <code>darwin-arm64</code> artifact cross-built on Linux must be re-signed before Apple Silicon will run it: <code>codesign --force -s - my_app-darwin-arm64</code> on a Mac. Use <code>codesign</code> specifically — the payload rides inside <code>__LINKEDIT</code>, and a signer that regenerates that segment (such as <code>rcodesign</code>) discards it. No Windows target is published.</li>
             <li><code>soli update</code> does not apply to standalone apps — a runtime fix means rebuilding and redeploying the artifact.</li>
         </ul>
     </div>
