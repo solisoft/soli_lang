@@ -589,6 +589,7 @@ impl TypeEnvironment {
             ("choose", Type::Void),
             ("press", Type::Void),
             ("screenshot", Type::String),
+            ("viewport", Type::Any),
             ("wait_for", Type::Void),
             ("wait_for_text", Type::Void),
             ("page_path", Type::String),

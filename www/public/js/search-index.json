@@ -14739,6 +14739,25 @@
       ]
     },
     {
+      "title": "viewport",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-viewport",
+      "signature": "viewport(preset) / viewport(width, height)",
+      "description": "The size a browser spec renders at — declared per describe block, or changed inside a test",
+      "keywords": [
+        "browser",
+        "viewport",
+        "responsive",
+        "mobile",
+        "screen size",
+        "resize",
+        "device",
+        "breakpoint",
+        "media query"
+      ]
+    },
+    {
       "title": "Browser Testing",
       "type": "guide",
       "category": "Testing",

@@ -765,6 +765,13 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     <p class="text-gray-400 text-sm mt-1">Run JavaScript in the page and get the value back, types preserved</p>
                 </section>
 
+                <section id="def-viewport" class="scroll-mt-20">
+                    <a href="#def-viewport" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">viewport(preset) / viewport(width, height)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">The size the page renders at. Declared in a <code>describe</code> body it covers every test in the suite (nested suites inherit it); called inside a test it resizes there and then. Presets: <code>mobile</code>, <code>iphone</code>, <code>iphone_se</code>, <code>android</code>, <code>tablet</code>, <code>ipad</code>, <code>laptop</code>, <code>desktop</code>, <code>wide</code> &mdash; the device ones also emulate pixel ratio and touch. No arguments reads the current viewport back. Default 1280&times;800</p>
+                </section>
+
                 <section id="def-screenshot" class="scroll-mt-20">
                     <a href="#def-screenshot" class="group flex items-center gap-2">
                         <code class="font-mono text-amber-400">screenshot(path)</code>

@@ -22,6 +22,10 @@ pub struct TestSuite {
     pub before_all: Option<Value>,
     pub after_all: Option<Value>,
     pub nested_suites: Vec<TestSuite>,
+    /// Browser viewport declared with `viewport(...)` in the suite body, which
+    /// every test in it (and every suite nested in it) starts in. `None` means
+    /// the default size.
+    pub viewport: Option<crate::interpreter::builtins::browser::Viewport>,
 }
 
 thread_local! {
@@ -501,6 +505,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                     before_all: None,
                     after_all: None,
                     nested_suites: Vec::new(),
+                    viewport: None,
                 };
 
                 TEST_SUITES.with(|suites| {
@@ -528,6 +533,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                     before_all: None,
                     after_all: None,
                     nested_suites: Vec::new(),
+                    viewport: None,
                 };
 
                 TEST_SUITES.with(|suites| {

@@ -73,6 +73,95 @@ page_html()                      # full markup</code></pre>
 
     <p class="text-gray-400 mb-12"><code class="text-cyan-400">visit</code> returns once the document has finished loading, so any script the page runs on boot has already run.</p>
 
+    <h2 id="section-viewport" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Viewport</h2>
+
+    <p class="text-gray-400 mb-4">Every spec runs at a fixed 1280&times;800 &mdash; not &ldquo;whatever the browser opens with&rdquo; &mdash; so a responsive layout renders the same on your machine and in CI. Declare a different one in the spec:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("navigation on a phone", fn() {
+  viewport("mobile")               # applies to every test below
+
+  test("the menu collapses", fn() {
+    visit("/")
+    assert_selector(".menu-toggle")
+    assert_no_selector(".sidebar")
+  })
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">The declaration belongs to the suite, like <code class="text-cyan-400">before_each</code>: every test in the <code class="text-cyan-400">describe</code> starts in it, and a nested <code class="text-cyan-400">describe</code> inherits it unless it declares its own.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("dashboard", fn() {
+  viewport("mobile")
+
+  context("on a wide screen", fn() {
+    viewport("wide")               # overrides, for this block only
+    test("shows both panes", fn() { ... })
+  })
+
+  test("stacks the panes", fn() { ... })   # still the phone
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">Sizes can be a preset, a <code class="text-cyan-400">"WxH"</code> string, or two numbers:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">viewport("iphone_se")
+viewport("1024x768")
+viewport(1024, 768)
+viewport(1024, 768, {"scale": 2, "mobile": true})</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10">
+                <tr>
+                    <th class="py-2 pr-4 font-semibold">Preset</th>
+                    <th class="py-2 pr-4 font-semibold">Size</th>
+                    <th class="py-2 pr-4 font-semibold">Pixel ratio</th>
+                    <th class="py-2 font-semibold">Emulates a device</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">mobile</code>, <code class="text-cyan-400">iphone</code></td><td class="py-2 pr-4">390&times;844</td><td class="py-2 pr-4">3</td><td class="py-2">yes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">iphone_se</code></td><td class="py-2 pr-4">375&times;667</td><td class="py-2 pr-4">2</td><td class="py-2">yes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">android</code></td><td class="py-2 pr-4">412&times;915</td><td class="py-2 pr-4">2.6</td><td class="py-2">yes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">tablet</code>, <code class="text-cyan-400">ipad</code></td><td class="py-2 pr-4">820&times;1180</td><td class="py-2 pr-4">2</td><td class="py-2">yes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">laptop</code></td><td class="py-2 pr-4">1280&times;800</td><td class="py-2 pr-4">1</td><td class="py-2">no</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">desktop</code></td><td class="py-2 pr-4">1440&times;900</td><td class="py-2 pr-4">1</td><td class="py-2">no</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">wide</code></td><td class="py-2 pr-4">1920&times;1080</td><td class="py-2 pr-4">1</td><td class="py-2">no</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-4">Names are matched loosely, so <code class="text-cyan-400">"iPhone SE"</code> and <code class="text-cyan-400">"iphone-se"</code> are the same request.</p>
+
+    <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-5 mb-8">
+        <p class="text-gray-300 text-sm leading-relaxed mb-3"><strong class="text-amber-300">Device emulation is more than a narrow window.</strong> The phone and tablet presets also set the pixel ratio and turn on touch, so <code class="text-cyan-400">matchMedia("(pointer: coarse)")</code> matches and a page that only binds touch handlers is reachable. Pass <code class="text-cyan-400">{"mobile": true}</code> to get the same for an explicit size; a bare size stays a desktop, so breakpoint tests are never silently handed a touch device.</p>
+        <p class="text-gray-300 text-sm leading-relaxed">One consequence is worth knowing: with device emulation on, a page <em>without</em> <code class="text-cyan-400">&lt;meta name="viewport" content="width=device-width"&gt;</code> lays out at 980 CSS pixels &mdash; exactly what a real phone does with it. If a mobile spec sees the desktop layout, that missing tag is usually why. Soli's generated layout has it.</p>
+    </div>
+
+    <p class="text-gray-400 mb-4">Resize inside a test when the resize <em>is</em> the thing under test. <code class="text-cyan-400">viewport()</code> with no arguments reads the current one back as <code class="text-cyan-400">{"width": 390, "height": 844, "scale": 3, "mobile": true}</code>.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">test("the sidebar collapses when the window narrows", fn() {
+  visit("/dashboard")
+  assert_selector(".sidebar")
+
+  viewport("mobile")
+  assert_no_selector(".sidebar")
+})</code></pre>
+        </div>
+    </div>
+
     <h2 id="section-interacting" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Interacting</h2>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
@@ -168,7 +257,7 @@ test("the dashboard greets the user", fn() {
 
     <h2 id="section-isolation" class="text-2xl font-bold text-white mb-6 scroll-mt-24">What resets between tests</h2>
 
-    <p class="text-gray-400 mb-4">Each test starts with a clean page-error list and empty <code class="text-cyan-400">sessionStorage</code> and <code class="text-cyan-400">localStorage</code>. Without that, a panel one test collapsed would stay collapsed for the rest of the suite and results would depend on test order.</p>
+    <p class="text-gray-400 mb-4">Each test starts with a clean page-error list, empty <code class="text-cyan-400">sessionStorage</code> and <code class="text-cyan-400">localStorage</code>, and the viewport its suite declared. Without that, a panel one test collapsed &mdash; or a resize one test performed &mdash; would carry into the rest of the suite and results would depend on test order.</p>
 
     <p class="text-gray-400 mb-4">Cookies are <strong class="text-white">not</strong> cleared automatically, matching the existing convention for request specs &mdash; sign out explicitly when a test needs a guest.</p>
 

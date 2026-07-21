@@ -322,7 +322,9 @@ fn extract_test_definitions(
                 // Check if this is a describe call
                 if let ast::ExprKind::Variable(name) = &callee.kind {
                     if name == "describe" || name == "context" {
-                        if let Some(suite) = extract_suite_from_call(name, arguments, stmt.span) {
+                        if let Some(mut suite) = extract_suite_from_call(name, arguments, stmt.span)
+                        {
+                            push_viewport_down(&mut suite);
                             suites.push(suite);
                         }
                     }
@@ -331,6 +333,67 @@ fn extract_test_definitions(
         }
     }
     suites
+}
+
+/// Hand each nested suite the viewport it did not declare for itself.
+///
+/// Top-down, and after the whole tree is built: `viewport(...)` can appear
+/// anywhere in a `describe` body, including below the nested `describe`s it
+/// applies to, and a spec author reading the file will expect it to cover them
+/// either way.
+fn push_viewport_down(suite: &mut interpreter::builtins::test_dsl::TestSuite) {
+    for nested in &mut suite.nested_suites {
+        if nested.viewport.is_none() {
+            nested.viewport = suite.viewport;
+        }
+        push_viewport_down(nested);
+    }
+}
+
+/// Read a `viewport(...)` declaration out of a suite body.
+///
+/// Only literals: the body of a `describe` is never executed — it is walked —
+/// so there is nothing to evaluate an expression against. `viewport(width())`
+/// is silently no viewport, which is the same deal `describe` itself makes
+/// about its name.
+fn extract_viewport(arguments: &[Argument]) -> Option<interpreter::builtins::browser::Viewport> {
+    use interpreter::builtins::browser;
+
+    let positional: Vec<&ast::Expr> = arguments
+        .iter()
+        .filter_map(|arg| match arg {
+            Argument::Positional(expr) => Some(expr),
+            _ => None,
+        })
+        .collect();
+
+    let mut viewport = match (
+        positional.first().map(|e| &e.kind),
+        positional.get(1).map(|e| &e.kind),
+    ) {
+        (Some(ast::ExprKind::StringLiteral(name)), _) => browser::viewport_from_name(name).ok()?,
+        (Some(ast::ExprKind::IntLiteral(width)), Some(ast::ExprKind::IntLiteral(height))) => {
+            browser::viewport_size(*width as f64, *height as f64).ok()?
+        }
+        _ => return None,
+    };
+
+    // A trailing `{"scale": 3, "mobile": true}`, in literal form.
+    if let Some(ast::ExprKind::Hash(pairs)) = positional.get(2).map(|e| &e.kind) {
+        for (key, value) in pairs {
+            let ast::ExprKind::StringLiteral(key) = &key.kind else {
+                continue;
+            };
+            match (key.as_str(), &value.kind) {
+                ("scale", ast::ExprKind::IntLiteral(n)) => viewport.scale = *n as f64,
+                ("scale", ast::ExprKind::FloatLiteral(f)) => viewport.scale = *f,
+                ("mobile", ast::ExprKind::BoolLiteral(b)) => viewport.mobile = *b,
+                _ => {}
+            }
+        }
+    }
+
+    Some(viewport)
 }
 
 fn extract_suite_from_call(
@@ -374,6 +437,7 @@ fn extract_suite_from_call(
         before_all: None,
         after_all: None,
         nested_suites: Vec::new(),
+        viewport: None,
     };
 
     // Extract tests and nested suites from the lambda body
@@ -424,6 +488,10 @@ fn extract_tests_from_block(
                     } else if name == "after_all" {
                         if let Some(callback) = first_callback_expr(arguments) {
                             suite.after_all = Some(ast_expr_to_value(callback));
+                        }
+                    } else if name == "viewport" {
+                        if let Some(viewport) = extract_viewport(arguments) {
+                            suite.viewport = Some(viewport);
                         }
                     }
                 }
@@ -550,7 +618,9 @@ fn execute_test_suites(
             // The browser outlives a single test on purpose — relaunching one
             // per test would dominate the runtime — so the errors it collected
             // must be cleared, or the first failing page fails every test after
-            // it.
+            // it. Setting the suite's viewport first means the reset restores
+            // that rather than whatever the previous test resized to.
+            crate::interpreter::builtins::browser::set_active_viewport(suite.viewport);
             crate::interpreter::builtins::browser::reset_browser_state();
 
             // Run before_each if defined
@@ -694,4 +764,100 @@ pub fn type_check(source: &str) -> Result<(), Vec<error::TypeError>> {
 
     let mut checker = types::TypeChecker::new();
     checker.check(&program)
+}
+
+#[cfg(test)]
+mod suite_extraction_tests {
+    use super::*;
+
+    fn suites(source: &str) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
+        let tokens = lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("the spec must tokenize");
+        let program = parser::Parser::new(tokens)
+            .parse()
+            .expect("the spec must parse");
+        extract_test_definitions(&program)
+    }
+
+    #[test]
+    fn a_suite_declares_its_viewport_by_preset() {
+        let extracted = suites(
+            r#"describe("Checkout", fn() {
+                 viewport("mobile")
+                 test("shows the menu", fn() { assert(true) })
+               })"#,
+        );
+        let viewport = extracted[0].viewport.expect("the declaration must stick");
+        assert_eq!(viewport.width, 390);
+        assert!(viewport.mobile);
+    }
+
+    #[test]
+    fn a_suite_can_declare_an_explicit_size_and_options() {
+        let extracted = suites(
+            r#"describe("Kiosk", fn() {
+                 viewport(1024, 768, {"scale": 2, "mobile": true})
+                 test("fits", fn() { assert(true) })
+               })"#,
+        );
+        let viewport = extracted[0].viewport.expect("the declaration must stick");
+        assert_eq!((viewport.width, viewport.height), (1024, 768));
+        assert_eq!(viewport.scale, 2.0);
+        assert!(viewport.mobile);
+    }
+
+    #[test]
+    fn a_nested_suite_inherits_unless_it_says_otherwise() {
+        let extracted = suites(
+            r#"describe("Dashboard", fn() {
+                 context("on a desktop", fn() {
+                   viewport("wide")
+                   test("shows the sidebar", fn() { assert(true) })
+                 })
+                 context("on a phone", fn() {
+                   context("deeply", fn() {
+                     test("still a phone", fn() { assert(true) })
+                   })
+                   test("hides the sidebar", fn() { assert(true) })
+                 })
+                 // Declared *below* the nested suites on purpose: reading order
+                 // must not decide what a nested suite inherits.
+                 viewport("mobile")
+               })"#,
+        );
+        let outer = &extracted[0];
+        assert_eq!(outer.viewport.map(|v| v.width), Some(390));
+
+        let desktop = &outer.nested_suites[0];
+        assert_eq!(desktop.viewport.map(|v| v.width), Some(1920));
+
+        let phone = &outer.nested_suites[1];
+        assert_eq!(phone.viewport.map(|v| v.width), Some(390));
+        assert_eq!(phone.nested_suites[0].viewport.map(|v| v.width), Some(390));
+    }
+
+    #[test]
+    fn a_suite_without_a_declaration_has_no_viewport_of_its_own() {
+        let extracted = suites(
+            r#"describe("Api", fn() {
+                 test("answers", fn() { assert(true) })
+               })"#,
+        );
+        assert!(extracted[0].viewport.is_none());
+    }
+
+    #[test]
+    fn a_declaration_that_cannot_be_read_statically_is_not_half_applied() {
+        // Nothing evaluates a `describe` body, so a computed size has no value
+        // to read; falling back to a guessed one would be worse than the
+        // default.
+        let extracted = suites(
+            r#"describe("Computed", fn() {
+                 viewport(chosen_width, 800)
+                 test("runs", fn() { assert(true) })
+               })"#,
+        );
+        assert!(extracted[0].viewport.is_none());
+    }
 }

@@ -140,6 +140,75 @@ fn screenshots_are_png_bytes() {
     assert_eq!(&image[..8], b"\x89PNG\r\n\x1a\n", "must be a real PNG");
 }
 
+/// A page that opts into the device width, the way every layout that means to
+/// be usable on a phone does. Without the meta tag a mobile viewport lays out
+/// at 980 CSS pixels — real phone behavior, and not what a spec is testing.
+const RESPONSIVE_FIXTURE: &str = "data:text/html,\
+<html><head>\
+<meta name='viewport' content='width=device-width, initial-scale=1'>\
+<style>.panel { display: none } \
+@media (max-width: 600px) { .panel { display: block } }</style>\
+</head><body><div class='panel'>menu</div></body></html>";
+
+#[test]
+fn the_page_lays_out_at_the_emulated_viewport() {
+    let Some(mut browser) = browser() else { return };
+    browser
+        .set_viewport(390, 844, 3.0, true)
+        .expect("the viewport must apply");
+    browser
+        .navigate(RESPONSIVE_FIXTURE)
+        .expect("the fixture must load");
+
+    let width = browser.evaluate("window.innerWidth").unwrap();
+    let height = browser.evaluate("window.innerHeight").unwrap();
+    assert_eq!(width.as_i64(), Some(390));
+    assert_eq!(height.as_i64(), Some(844));
+
+    // The pixel ratio and the coarse pointer are what a responsive layout and
+    // a touch-only handler actually branch on — a narrow window alone is not
+    // a phone.
+    let ratio = browser.evaluate("window.devicePixelRatio").unwrap();
+    assert_eq!(ratio.as_f64(), Some(3.0));
+    let coarse = browser
+        .evaluate("matchMedia('(pointer: coarse)').matches")
+        .unwrap();
+    assert_eq!(coarse.as_bool(), Some(true));
+
+    // And back: a spec that resizes mid-test must really get the desktop
+    // layout afterwards, not a phone with more pixels.
+    browser
+        .set_viewport(1280, 800, 1.0, false)
+        .expect("the viewport must change");
+    let width = browser.evaluate("window.innerWidth").unwrap();
+    assert_eq!(width.as_i64(), Some(1280));
+    let coarse = browser
+        .evaluate("matchMedia('(pointer: coarse)').matches")
+        .unwrap();
+    assert_eq!(coarse.as_bool(), Some(false));
+}
+
+#[test]
+fn a_media_query_sees_the_emulated_width() {
+    // The point of the feature: `@media (max-width: 600px)` rules must apply,
+    // and stop applying when the spec asks for a desktop.
+    let Some(mut browser) = browser() else { return };
+    browser
+        .set_viewport(390, 844, 3.0, true)
+        .expect("the viewport must apply");
+    browser
+        .navigate(RESPONSIVE_FIXTURE)
+        .expect("the fixture must load");
+
+    let display = "getComputedStyle(document.querySelector('.panel')).display";
+    assert_eq!(browser.evaluate(display).unwrap().as_str(), Some("block"));
+
+    browser
+        .set_viewport(1280, 800, 1.0, false)
+        .expect("the viewport must change");
+    assert_eq!(browser.evaluate(display).unwrap().as_str(), Some("none"));
+}
+
 #[test]
 fn cookies_round_trip_through_the_page() {
     let Some(mut browser) = browser() else { return };

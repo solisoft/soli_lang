@@ -124,6 +124,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "choose",
     "press",
     "screenshot",
+    "viewport",
     "wait_for",
     "wait_for_text",
     "page_path",

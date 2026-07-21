@@ -314,6 +314,48 @@ impl Browser {
         Ok(())
     }
 
+    /// Emulate a viewport of a given size, pixel density and device class.
+    ///
+    /// Overrides the metrics rather than resizing the window: the window is
+    /// the wrong lever even in headed mode, because the frame, scrollbars and
+    /// window manager all take a cut, so the page would end up with a layout
+    /// viewport a spec never asked for and cannot predict.
+    ///
+    /// `mobile` is what makes the difference between "a narrow desktop" and a
+    /// phone: it turns on the mobile meta-viewport, and touch is enabled with
+    /// it so a page that only binds touch handlers is reachable.
+    pub fn set_viewport(
+        &mut self,
+        width: u32,
+        height: u32,
+        scale: f64,
+        mobile: bool,
+    ) -> Result<(), String> {
+        self.send(
+            "Emulation.setDeviceMetricsOverride",
+            json!({
+                "width": width,
+                "height": height,
+                "deviceScaleFactor": scale,
+                "mobile": mobile,
+                // Without these, `screen.width` keeps reporting the host's
+                // monitor — so a page that sizes itself off `screen` rather
+                // than the viewport would see a device the spec never asked
+                // for, and headlessly at that.
+                "screenWidth": width,
+                "screenHeight": height,
+            }),
+        )?;
+        self.send(
+            "Emulation.setTouchEmulationEnabled",
+            json!({
+                "enabled": mobile,
+                "maxTouchPoints": if mobile { 5 } else { 1 },
+            }),
+        )
+        .map(|_| ())
+    }
+
     /// Capture the visible page as PNG bytes.
     pub fn screenshot(&mut self) -> Result<Vec<u8>, String> {
         use base64::Engine;

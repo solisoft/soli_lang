@@ -9,7 +9,7 @@
 //! find that out; per-thread because `Value` is `Rc`-based and cannot cross
 //! threads, and because each worker already owns its own server subprocess.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -30,9 +30,266 @@ static HEADED: AtomicBool = AtomicBool::new(false);
 /// Default patience for anything that waits on the page.
 const DEFAULT_WAIT: Duration = Duration::from_secs(10);
 
+/// The viewport every test starts in, unless the run or the spec says otherwise.
+///
+/// Fixed rather than "whatever the browser opens with": a headless Chrome's
+/// 800×600 default is both smaller than any layout is designed for and free to
+/// change between browser versions, which is how a suite starts failing on a
+/// machine that only differs by its Chrome build.
+const DEFAULT_VIEWPORT: Viewport = Viewport {
+    width: 1280,
+    height: 800,
+    scale: 1.0,
+    mobile: false,
+};
+
+/// A viewport a spec can ask for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Viewport {
+    pub width: u32,
+    pub height: u32,
+    /// Device pixel ratio — what `devicePixelRatio` reports in the page.
+    pub scale: f64,
+    /// Emulate a phone/tablet: mobile meta-viewport plus touch events.
+    pub mobile: bool,
+}
+
+/// Named viewports, so specs read as intent rather than arithmetic.
+///
+/// Sizes are the CSS pixel dimensions of a representative current device, not
+/// a snapshot of one model — a spec asserting a mobile layout cares about
+/// which side of the breakpoint it lands on, and pinning exact hardware would
+/// make these need updating every autumn.
+const PRESETS: &[(&str, Viewport)] = &[
+    (
+        "mobile",
+        Viewport {
+            width: 390,
+            height: 844,
+            scale: 3.0,
+            mobile: true,
+        },
+    ),
+    (
+        "iphone",
+        Viewport {
+            width: 390,
+            height: 844,
+            scale: 3.0,
+            mobile: true,
+        },
+    ),
+    (
+        "iphone_se",
+        Viewport {
+            width: 375,
+            height: 667,
+            scale: 2.0,
+            mobile: true,
+        },
+    ),
+    (
+        "android",
+        Viewport {
+            width: 412,
+            height: 915,
+            scale: 2.6,
+            mobile: true,
+        },
+    ),
+    (
+        "tablet",
+        Viewport {
+            width: 820,
+            height: 1180,
+            scale: 2.0,
+            mobile: true,
+        },
+    ),
+    (
+        "ipad",
+        Viewport {
+            width: 820,
+            height: 1180,
+            scale: 2.0,
+            mobile: true,
+        },
+    ),
+    ("laptop", DEFAULT_VIEWPORT),
+    (
+        "desktop",
+        Viewport {
+            width: 1440,
+            height: 900,
+            scale: 1.0,
+            mobile: false,
+        },
+    ),
+    (
+        "wide",
+        Viewport {
+            width: 1920,
+            height: 1080,
+            scale: 1.0,
+            mobile: false,
+        },
+    ),
+];
+
 thread_local! {
     /// This worker's browser. `None` until the first helper needs it.
     static BROWSER: RefCell<Option<Browser>> = const { RefCell::new(None) };
+
+    /// The viewport this worker's tests start in — the enclosing suite's
+    /// declaration, or the default. Per-thread because a worker runs one spec
+    /// file at a time and each file declares its own.
+    static ACTIVE_VIEWPORT: Cell<Viewport> = const { Cell::new(DEFAULT_VIEWPORT) };
+}
+
+/// Look a preset up by name.
+///
+/// Tolerant about spelling — `"iphone_se"`, `"iPhone SE"` and `"iphone-se"`
+/// are the same request, and a spec author should not have to guess which
+/// separator we chose.
+pub fn viewport_preset(name: &str) -> Option<Viewport> {
+    let wanted: String = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c == '-' || c == ' ' { '_' } else { c })
+        .collect();
+    PRESETS
+        .iter()
+        .find(|(preset, _)| *preset == wanted)
+        .map(|(_, viewport)| *viewport)
+}
+
+/// Every preset name, for the error message that lists them.
+fn preset_names() -> String {
+    PRESETS
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Parse `"390x844"` into a size.
+fn parse_size(text: &str) -> Option<(u32, u32)> {
+    let (width, height) = text.trim().split_once(['x', 'X', '*'])?;
+    Some((width.trim().parse().ok()?, height.trim().parse().ok()?))
+}
+
+/// Build a viewport from a preset name or a `"WxH"` string.
+pub fn viewport_from_name(name: &str) -> Result<Viewport, String> {
+    if let Some(viewport) = viewport_preset(name) {
+        return Ok(viewport);
+    }
+    if let Some((width, height)) = parse_size(name) {
+        return Ok(Viewport {
+            width,
+            height,
+            ..DEFAULT_VIEWPORT
+        });
+    }
+    Err(format!(
+        "viewport() does not know {:?} — pass a size like 390, 844 or \"390x844\", \
+         or one of: {}",
+        name,
+        preset_names()
+    ))
+}
+
+/// Apply the `scale` / `mobile` keys of an options hash to a viewport.
+pub fn apply_viewport_options(viewport: &mut Viewport, options: &Value) -> Result<(), String> {
+    let Value::Hash(hash) = options else {
+        return Ok(());
+    };
+    for (key, value) in hash.borrow().iter() {
+        let crate::interpreter::value::HashKey::String(key) = key else {
+            continue;
+        };
+        match (key.as_str(), value) {
+            ("scale", Value::Int(n)) => viewport.scale = *n as f64,
+            ("scale", Value::Float(f)) => viewport.scale = *f,
+            ("mobile", Value::Bool(b)) => viewport.mobile = *b,
+            ("scale", other) => {
+                return Err(format!(
+                    "viewport() expects a number for \"scale\", got {}",
+                    other.type_name()
+                ))
+            }
+            ("mobile", other) => {
+                return Err(format!(
+                    "viewport() expects true or false for \"mobile\", got {}",
+                    other.type_name()
+                ))
+            }
+            (other, _) => {
+                return Err(format!(
+                "viewport() does not understand the option {:?} — expected \"scale\" or \"mobile\"",
+                other
+            ))
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Read a viewport out of the arguments to `viewport(...)`.
+///
+/// Accepts `viewport("mobile")`, `viewport("390x844")`, `viewport(390, 844)`
+/// and any of those followed by `{"scale": 3, "mobile": true}`.
+pub fn viewport_from_values(args: &[Value]) -> Result<Viewport, String> {
+    let mut viewport = match (args.first(), args.get(1)) {
+        (Some(Value::String(name)), _) => viewport_from_name(name)?,
+        (Some(Value::Int(width)), Some(Value::Int(height))) => {
+            viewport_size(*width as f64, *height as f64)?
+        }
+        (Some(Value::Int(_)), _) => {
+            return Err("viewport() needs a height as well as a width".to_string())
+        }
+        (Some(other), _) => {
+            return Err(format!(
+                "viewport() expects a size or a preset name, got {}",
+                other.type_name()
+            ))
+        }
+        (None, _) => return Err("viewport() is missing an argument".to_string()),
+    };
+    if let Some(options) = args.iter().find(|arg| matches!(arg, Value::Hash(_))) {
+        apply_viewport_options(&mut viewport, options)?;
+    }
+    Ok(viewport)
+}
+
+/// A viewport of an explicit size, rejecting the ones a browser cannot render.
+pub fn viewport_size(width: f64, height: f64) -> Result<Viewport, String> {
+    // A zero or negative dimension is accepted by the protocol and means
+    // "whatever the window is", which would silently ignore the declaration.
+    if width < 1.0 || height < 1.0 {
+        return Err(format!(
+            "viewport() needs a positive width and height, got {}x{}",
+            width, height
+        ));
+    }
+    Ok(Viewport {
+        width: width as u32,
+        height: height as u32,
+        ..DEFAULT_VIEWPORT
+    })
+}
+
+/// Declare the viewport the next tests start in.
+///
+/// `None` restores the default, which is what a suite that says nothing gets —
+/// so a `describe` with a declaration cannot leak into the next one.
+pub fn set_active_viewport(viewport: Option<Viewport>) {
+    ACTIVE_VIEWPORT.with(|cell| cell.set(viewport.unwrap_or(DEFAULT_VIEWPORT)));
+}
+
+/// The viewport the current test started in.
+pub fn active_viewport() -> Viewport {
+    ACTIVE_VIEWPORT.with(|cell| cell.get())
 }
 
 /// Allow browser helpers to launch a browser.
@@ -72,6 +329,8 @@ pub fn close_browser() {
 /// - `sessionStorage` and `localStorage`, which survive navigation by design.
 ///   A test that hides a panel would leave it hidden for the rest of the suite,
 ///   making results depend on test order.
+/// - The viewport, which a test may change mid-run and which must not be left
+///   to decide how the next test's layout renders.
 ///
 /// Cookies are left alone: they are shared with the HTTP jar, where the
 /// established convention is that specs manage sign-in themselves (`logout()`
@@ -80,9 +339,16 @@ pub fn close_browser() {
 /// Costs nothing when the thread has no browser, which is every worker in a
 /// suite that has no browser specs.
 pub fn reset_browser_state() {
+    let viewport = active_viewport();
     BROWSER.with(|cell| {
         if let Some(browser) = cell.borrow_mut().as_mut() {
             browser.clear_page_errors();
+            let _ = browser.set_viewport(
+                viewport.width,
+                viewport.height,
+                viewport.scale,
+                viewport.mobile,
+            );
             // Fails harmlessly before the first navigation, when there is no
             // document to have storage on.
             let _ = browser.evaluate(
@@ -113,7 +379,19 @@ fn with_browser<T>(body: impl FnOnce(&mut Browser) -> Result<T, String>) -> Resu
     BROWSER.with(|cell| {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
-            *slot = Some(Browser::launch(HEADED.load(Ordering::SeqCst))?);
+            let mut browser = Browser::launch(HEADED.load(Ordering::SeqCst))?;
+            // Before anything can navigate: a page rendered at the browser's
+            // own default size and then resized is not the same page as one
+            // rendered at the declared size, and responsive layouts are
+            // precisely where the difference shows.
+            let viewport = active_viewport();
+            browser.set_viewport(
+                viewport.width,
+                viewport.height,
+                viewport.scale,
+                viewport.mobile,
+            )?;
+            *slot = Some(browser);
         }
         let browser = slot.as_mut().expect("just launched");
         body(browser)
@@ -303,6 +581,51 @@ pub fn register_browser_helpers(env: &mut Environment) {
                 push_cookies(browser, &origin)?;
                 browser.navigate(&url)?;
                 pull_cookies(browser, &origin)?;
+                Ok(Value::Null)
+            })
+        })),
+    );
+
+    // --- viewport ---------------------------------------------------------
+
+    env.define(
+        "viewport".to_string(),
+        Value::NativeFunction(NativeFunction::new("viewport", None, |args| {
+            // No arguments reads; arguments set.
+            //
+            // The read reports the emulated device, not `window.innerWidth`:
+            // on a page without a `<meta name="viewport">` a phone lays out at
+            // 980 CSS pixels — real behavior, and a confusing thing to hand
+            // back to a spec that asked for 390.
+            if args.is_empty() {
+                let current = active_viewport();
+                let mut fields = crate::interpreter::value::HashPairs::default();
+                for (key, value) in [
+                    ("width", Value::Int(current.width as i64)),
+                    ("height", Value::Int(current.height as i64)),
+                    ("scale", Value::Float(current.scale)),
+                    ("mobile", Value::Bool(current.mobile)),
+                ] {
+                    fields.insert(
+                        crate::interpreter::value::HashKey::String(key.into()),
+                        value,
+                    );
+                }
+                return Ok(Value::Hash(std::rc::Rc::new(RefCell::new(fields))));
+            }
+
+            let viewport = viewport_from_values(&args)?;
+            // Remembered as well as applied: `viewport()` called inside a
+            // `before_each` must survive the reset that runs before the next
+            // test, or it would take effect for exactly one test.
+            ACTIVE_VIEWPORT.with(|cell| cell.set(viewport));
+            with_browser(|browser| {
+                browser.set_viewport(
+                    viewport.width,
+                    viewport.height,
+                    viewport.scale,
+                    viewport.mobile,
+                )?;
                 Ok(Value::Null)
             })
         })),
@@ -864,6 +1187,89 @@ mod tests {
     fn a_literal_plus_survives_the_split() {
         assert_eq!(parse_chord("+"), ("+".to_string(), 0));
         assert_eq!(parse_chord("Alt++"), ("+".to_string(), 1));
+    }
+
+    #[test]
+    fn presets_are_found_however_they_are_spelled() {
+        let expected = viewport_preset("iphone_se").expect("the preset must exist");
+        assert_eq!(viewport_preset("iPhone SE"), Some(expected));
+        assert_eq!(viewport_preset("iphone-se"), Some(expected));
+        assert_eq!(viewport_preset("  IPHONE_SE  "), Some(expected));
+        assert_eq!(viewport_preset("pixelbook"), None);
+    }
+
+    #[test]
+    fn phone_presets_emulate_a_phone_rather_than_a_narrow_desktop() {
+        let phone = viewport_preset("mobile").expect("the preset must exist");
+        assert!(phone.mobile, "a mobile preset must set the mobile flag");
+        assert!(phone.scale > 1.0, "a phone has a retina-class pixel ratio");
+        assert!(phone.width < 500);
+
+        let desktop = viewport_preset("desktop").expect("the preset must exist");
+        assert!(!desktop.mobile);
+        assert_eq!(desktop.scale, 1.0);
+    }
+
+    #[test]
+    fn a_size_can_be_given_as_a_string_or_as_two_numbers() {
+        let from_string = viewport_from_values(&[Value::String("390x844".into())]).unwrap();
+        let from_numbers = viewport_from_values(&[Value::Int(390), Value::Int(844)]).unwrap();
+        assert_eq!(from_string, from_numbers);
+        assert_eq!(from_string.width, 390);
+        assert_eq!(from_string.height, 844);
+        // A bare size is a window, not a phone: emulating touch off the back of
+        // a narrow width would make desktop-breakpoint tests lie.
+        assert!(!from_string.mobile);
+    }
+
+    #[test]
+    fn options_override_the_size_they_follow() {
+        let mut options = crate::interpreter::value::HashPairs::default();
+        options.insert(
+            crate::interpreter::value::HashKey::String("scale".into()),
+            Value::Int(3),
+        );
+        options.insert(
+            crate::interpreter::value::HashKey::String("mobile".into()),
+            Value::Bool(true),
+        );
+        let viewport = viewport_from_values(&[
+            Value::Int(390),
+            Value::Int(844),
+            Value::Hash(std::rc::Rc::new(RefCell::new(options))),
+        ])
+        .unwrap();
+        assert_eq!(viewport.scale, 3.0);
+        assert!(viewport.mobile);
+    }
+
+    #[test]
+    fn unusable_declarations_say_so_instead_of_being_ignored() {
+        // Zero is accepted by the protocol and means "use the window", which
+        // would quietly ignore what the spec asked for.
+        assert!(viewport_from_values(&[Value::Int(0), Value::Int(844)]).is_err());
+        assert!(viewport_from_values(&[Value::Int(390)]).is_err());
+        assert!(viewport_from_values(&[]).is_err());
+
+        let unknown = viewport_from_values(&[Value::String("pixelbook".into())]).unwrap_err();
+        // The message has to list the presets: guessing a name is the single
+        // most likely way to get this wrong.
+        assert!(unknown.contains("iphone"), "got: {}", unknown);
+    }
+
+    #[test]
+    fn an_unknown_option_is_a_typo_worth_reporting() {
+        let mut options = crate::interpreter::value::HashPairs::default();
+        options.insert(
+            crate::interpreter::value::HashKey::String("scaled".into()),
+            Value::Int(2),
+        );
+        let error = viewport_from_values(&[
+            Value::String("mobile".into()),
+            Value::Hash(std::rc::Rc::new(RefCell::new(options))),
+        ])
+        .unwrap_err();
+        assert!(error.contains("scaled"), "got: {}", error);
     }
 
     #[test]

@@ -79,6 +79,89 @@ page_html()                      # full markup
 `visit` returns once the document has finished loading, so any script the page
 runs on boot has already run.
 
+## Viewport
+
+Every spec runs at a fixed 1280×800 — not "whatever the browser opens with",
+so a responsive layout renders the same on your machine and in CI. Declare a
+different one in the spec:
+
+```soli
+describe("navigation on a phone", fn() {
+  viewport("mobile")                # applies to every test below
+
+  test("the menu collapses", fn() {
+    visit("/")
+    assert_selector(".menu-toggle")
+    assert_no_selector(".sidebar")
+  })
+})
+```
+
+The declaration is part of the suite, like `before_each`: every test in the
+`describe` starts in it, and a nested `describe` inherits it unless it declares
+its own.
+
+```soli
+describe("dashboard", fn() {
+  viewport("mobile")
+
+  context("on a wide screen", fn() {
+    viewport("wide")                # overrides, for this block only
+    test("shows both panes", fn() { ... })
+  })
+
+  test("stacks the panes", fn() { ... })   # still the phone
+})
+```
+
+Sizes can be a preset, a `"WxH"` string, or two numbers:
+
+```soli
+viewport("iphone_se")
+viewport("1024x768")
+viewport(1024, 768)
+viewport(1024, 768, {"scale": 2, "mobile": true})
+```
+
+| Preset | Size | Pixel ratio | Emulates a device |
+|---|---|---|---|
+| `mobile`, `iphone` | 390×844 | 3 | yes |
+| `iphone_se` | 375×667 | 2 | yes |
+| `android` | 412×915 | 2.6 | yes |
+| `tablet`, `ipad` | 820×1180 | 2 | yes |
+| `laptop` | 1280×800 | 1 | no |
+| `desktop` | 1440×900 | 1 | no |
+| `wide` | 1920×1080 | 1 | no |
+
+Names are matched loosely, so `"iPhone SE"` and `"iphone-se"` are the same
+request.
+
+**Device emulation is more than a narrow window.** The phone and tablet presets
+also set the pixel ratio and turn on touch, so `matchMedia("(pointer: coarse)")`
+matches and a page that only binds touch handlers is reachable. Pass
+`{"mobile": true}` to get the same for an explicit size. A bare size stays a
+desktop, so breakpoint tests are not silently given a touch device.
+
+One consequence is worth knowing: with device emulation on, a page *without*
+`<meta name="viewport" content="width=device-width">` lays out at 980 CSS
+pixels — exactly what a real phone does with it. If a mobile spec sees the
+desktop layout, that missing tag is usually why. Soli's generated layout has it.
+
+Resize inside a test when the point of the test is the resize itself:
+
+```soli
+test("the sidebar collapses when the window narrows", fn() {
+  visit("/dashboard")
+  assert_selector(".sidebar")
+
+  viewport("mobile")
+  assert_no_selector(".sidebar")
+})
+```
+
+`viewport()` with no arguments reads back the current one, as
+`{"width": 390, "height": 844, "scale": 3, "mobile": true}`.
+
 ## Interacting
 
 ```soli
@@ -188,9 +271,10 @@ later `get()` and to `signed_in()`.
 
 ## What resets between tests
 
-Each test starts with a clean page-error list and empty `sessionStorage` and
-`localStorage`. Without that, a panel one test collapsed would stay collapsed
-for the rest of the suite and results would depend on test order.
+Each test starts with a clean page-error list, empty `sessionStorage` and
+`localStorage`, and the viewport its suite declared. Without that, a panel one
+test collapsed — or a resize one test performed — would carry into the rest of
+the suite and results would depend on test order.
 
 Cookies are **not** cleared automatically, matching the existing convention for
 request specs: sign out explicitly when a test needs a guest.
