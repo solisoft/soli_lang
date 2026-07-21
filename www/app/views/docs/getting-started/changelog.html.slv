@@ -21,18 +21,34 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
+        <!-- Auth & security -->
+        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+            </ul>
+        </div>
+    </section>
+
+    <section id="v1-23-2" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.23.2</h2>
+            <span class="text-sm font-medium text-gray-400">July 21, 2026</span>
+        </div>
+
         <!-- Testing -->
-        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <h3 id="v23-2-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Browser specs declare their viewport</strong> &mdash; <code class="text-cyan-400">viewport("mobile")</code> in a <code class="text-cyan-400">describe</code> body sets the size every test in that suite renders at, and nested suites inherit it; calling <code class="text-cyan-400">viewport(...)</code> inside a test resizes there and then, for a spec whose subject <em>is</em> the resize. Accepts a preset (<code class="text-cyan-400">mobile</code>, <code class="text-cyan-400">iphone</code>, <code class="text-cyan-400">iphone_se</code>, <code class="text-cyan-400">android</code>, <code class="text-cyan-400">tablet</code>, <code class="text-cyan-400">ipad</code>, <code class="text-cyan-400">laptop</code>, <code class="text-cyan-400">desktop</code>, <code class="text-cyan-400">wide</code>), a <code class="text-cyan-400">"WxH"</code> string, or explicit numbers with <code class="text-cyan-400">{"scale": 2, "mobile": true}</code>. The device presets emulate the device rather than just a narrow window &mdash; pixel ratio and touch included, so <code class="text-cyan-400">matchMedia("(pointer: coarse)")</code> matches. Every spec now starts at a fixed 1280&times;800 instead of whatever the browser happened to open with, and the viewport resets between tests along with page errors and storage. See <a href="/docs/testing-browser#section-viewport" class="text-cyan-400 hover:text-cyan-300 underline">Browser Testing &mdash; Viewport</a>.</li>
             </ul>
         </div>
 
-        <!-- Auth & security -->
-        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <!-- Packaging & desktop -->
+        <h3 id="v23-2-packaging" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Packaging &amp; desktop</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Fixed: macOS standalone and desktop artifacts lost their app when signed</strong> &mdash; a Mach-O may not carry data past <code class="text-cyan-400">__LINKEDIT</code>, so an appended bundle made <code class="text-cyan-400">codesign</code> reject the file (&ldquo;main executable failed strict validation&rdquo;), while rewriting signers accepted it and silently discarded the payload. Darwin builds now strip the inherited signature, append, and grow <code class="text-cyan-400">__LINKEDIT</code> over what was appended, so the artifact stays a well-formed Mach-O; the boot side reads the footer from behind the code signature when signing has pushed it off the end of the file. Re-sign with <code class="text-cyan-400">codesign</code> specifically &mdash; a signer that regenerates <code class="text-cyan-400">__LINKEDIT</code> still drops the payload.</li>
+                <li><strong class="text-white">Fixed: encrypted bundles could not boot on macOS</strong> &mdash; extraction required <code class="text-cyan-400">/dev/shm</code>, which macOS does not have, so every encrypted standalone &mdash; and every desktop app, which is always encrypted &mdash; refused to start. They now extract to the per-user, per-boot temp directory the OS already isolates and sweeps.</li>
             </ul>
         </div>
     </section>
