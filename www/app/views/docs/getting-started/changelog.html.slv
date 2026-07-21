@@ -29,6 +29,21 @@
         </div>
     </section>
 
+    <section id="v1-23-3" class="mb-16 scroll-mt-24">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
+            <h2 class="text-3xl font-bold text-white">v1.23.3</h2>
+            <span class="text-sm font-medium text-gray-400">July 21, 2026</span>
+        </div>
+
+        <!-- Testing -->
+        <h3 id="v23-3-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">A lost coverage dump now says so instead of quietly reporting less</strong> &mdash; controllers, helpers and middleware execute in the test server subprocess, so the runner scrapes each worker's <code class="text-cyan-400">/__coverage__</code> before killing it. Every failure on that path &mdash; server not answering, timeout, malformed dump &mdash; was swallowed, and the report simply came out lower: one unlucky worker could drop an entire application's server-side coverage and the only symptom was a number that read as &ldquo;these lines were never tested&rdquo;. The runner now prints a warning naming the port and the reason, and says which measurements are missing from the report below it. In a local reproduction the difference was 31.5% reported as 1.7%, with nothing on screen to explain it.</li>
+            </ul>
+        </div>
+    </section>
+
     <section id="v1-23-2" class="mb-16 scroll-mt-24">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
             <h2 class="text-3xl font-bold text-white">v1.23.2</h2>

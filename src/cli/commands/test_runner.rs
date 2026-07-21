@@ -1157,18 +1157,42 @@ pub fn run_test(
                     if let Some(ref token) = coverage_token {
                         req = req.set("X-Coverage-Token", token);
                     }
-                    let Ok(resp) = req.call() else {
-                        continue;
+                    // Every failure below loses one worker's entire server-side
+                    // coverage — every controller, view helper and middleware it
+                    // ran. Silently, the report just comes out lower, which reads
+                    // as "these lines were never executed" and sends you looking
+                    // for a test that already exists. Say so instead.
+                    let dump = req
+                        .call()
+                        .map_err(|e| format!("the test server did not answer: {}", e))
+                        .and_then(|resp| {
+                            resp.into_string()
+                                .map_err(|e| format!("unreadable response: {}", e))
+                        })
+                        .and_then(|text| {
+                            serde_json::from_str::<serde_json::Value>(&text)
+                                .map_err(|e| format!("malformed JSON: {}", e))
+                        })
+                        .and_then(|json| {
+                            json.get("files")
+                                .and_then(|v| v.as_array())
+                                .cloned()
+                                .ok_or_else(|| "no \"files\" in the dump".to_string())
+                        });
+                    let files = match dump {
+                        Ok(files) => files,
+                        Err(reason) => {
+                            eprintln!(
+                                "\x1b[33mWarning:\x1b[0m could not collect server-side coverage \
+                                 from the test server on port {} — {}.\n         \
+                                 Controller, helper and middleware lines exercised by that \
+                                 worker are missing from the report below.",
+                                port, reason
+                            );
+                            continue;
+                        }
                     };
-                    let Ok(text) = resp.into_string() else {
-                        continue;
-                    };
-                    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
-                        continue;
-                    };
-                    let Some(files) = json.get("files").and_then(|v| v.as_array()) else {
-                        continue;
-                    };
+                    let files = &files;
                     let mut guard = tracker_rc.lock().unwrap();
                     for f in files {
                         let path = match f.get("path").and_then(|v| v.as_str()) {
