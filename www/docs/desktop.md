@@ -140,6 +140,25 @@ loopback HTTPS with a per-launch certificate, which means touching the user's
 trust store. What the gate does close is a non-browser local process driving
 your API.
 
+## Embedding in a native shell
+
+The artifact opens the app in a chrome-less browser window. If you wrap it in a
+native shell of your own — a Cocoa/WebView app, an Electron-style container —
+you want your window, not that one. Set `SOLI_DESKTOP_NO_WINDOW=1` and the
+server opens nothing:
+
+```bash
+SOLI_DESKTOP_NO_WINDOW=1 ./myapp
+```
+
+The launch URL is still printed, on its own indented line, and your shell needs
+it: it carries the single-use token described above, so pointing a web view at
+`http://127.0.0.1:<port>/` directly gets a `403`. Read the child's stdout, take
+the first `http://127.0.0.1:` line, and load that.
+
+Send `SIGTERM` when your window closes so the database and the decrypted tree
+are cleaned up in order — see [Stopping](#stopping).
+
 ## Cross-building
 
 `--target` downloads a published runtime and database for that platform and

@@ -124,6 +124,18 @@ end</code></pre>
         One limitation to know: cookies are not port-scoped, so another local server in the same browser profile could read the session cookie. Closing that needs loopback HTTPS with a per-launch certificate, which means touching the user's trust store. What the gate does close is a non-browser local process driving your API.
     </p>
 
+    <h2 id="embedding" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Embedding in a native shell</h2>
+    <p class="text-gray-400 mb-4">
+        The artifact opens the app in a chrome-less browser window. If you wrap it in a native shell of your own &mdash; a Cocoa/WebView app, an Electron-style container &mdash; you want your window, not that one. Set <code class="text-cyan-400">SOLI_DESKTOP_NO_WINDOW=1</code> and the server opens nothing:
+    </p>
+    <pre class="mb-6"><code class="language-bash text-sm">SOLI_DESKTOP_NO_WINDOW=1 ./myapp</code></pre>
+    <p class="text-gray-400 mb-4">
+        The launch URL is still printed, on its own indented line, and your shell needs it: it carries the single-use token described above, so pointing a web view at <code class="text-cyan-400">http://127.0.0.1:&lt;port&gt;/</code> directly gets a <code class="text-cyan-400">403</code>. Read the child's stdout, take the first <code class="text-cyan-400">http://127.0.0.1:</code> line, and load that.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Send <code class="text-cyan-400">SIGTERM</code> when your window closes so the database and the decrypted tree are cleaned up in order &mdash; see <a href="#stopping" class="text-amber-400 hover:text-amber-300">Stopping</a>.
+    </p>
+
     <h2 id="cross-building" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Cross-building</h2>
     <p class="text-gray-400 mb-4">
         <code class="text-cyan-400">--target</code> downloads a published runtime and database for that platform and verifies both against their checksums. It does not compile anything, so you can build every target from one machine:

@@ -28,10 +28,26 @@ pub enum Opened {
     BrowserTab,
     /// Nothing opened; the user needs the printed URL.
     Nothing,
+    /// Deliberately not opened — an embedding shell hosts the view itself.
+    Suppressed,
+}
+
+/// Set by a native wrapper that embeds this server and renders the app in its
+/// own web view. Without it the wrapper gets two windows: its own, and the
+/// browser this module launches. The launch URL is printed either way, which
+/// is how the wrapper learns the port and the one-shot token.
+pub const NO_WINDOW_ENV: &str = "SOLI_DESKTOP_NO_WINDOW";
+
+/// Whether an embedding wrapper has asked us not to open anything.
+fn window_suppressed() -> bool {
+    std::env::var_os(NO_WINDOW_ENV).is_some_and(|v| !v.is_empty() && v != "0")
 }
 
 /// Open `url`, preferring a chrome-less window.
 pub fn open(url: &str) -> Opened {
+    if window_suppressed() {
+        return Opened::Suppressed;
+    }
     // A dedicated profile directory would isolate cookies from the user's
     // normal browsing, which matters because the session cookie is not
     // port-scoped. Deliberately not doing that yet: it costs a fresh profile
@@ -95,6 +111,28 @@ fn spawn_detached(program: &str, args: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An embedding wrapper must be able to stop this from opening a browser
+    /// on top of its own window — and "0"/empty must not count as opting in.
+    /// The predicate is tested rather than `open()` itself, which would launch
+    /// a real browser on the machine running the suite.
+    #[test]
+    fn no_window_env_is_read_as_an_explicit_opt_in() {
+        let previous = std::env::var_os(NO_WINDOW_ENV);
+
+        std::env::set_var(NO_WINDOW_ENV, "1");
+        assert!(window_suppressed());
+        std::env::set_var(NO_WINDOW_ENV, "0");
+        assert!(!window_suppressed());
+        std::env::set_var(NO_WINDOW_ENV, "");
+        assert!(!window_suppressed());
+        std::env::remove_var(NO_WINDOW_ENV);
+        assert!(!window_suppressed());
+
+        if let Some(v) = previous {
+            std::env::set_var(NO_WINDOW_ENV, v);
+        }
+    }
 
     #[test]
     fn spawning_a_missing_program_reports_failure_rather_than_panicking() {

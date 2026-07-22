@@ -356,7 +356,12 @@ pub fn boot(
     let bundle = solilang::bundle::BundleReader::new(&app_bundle)?;
     solilang::bundle::check_bundle_meta(bundle.entries())?;
 
+    // Symlink-free, for the same reason as the standalone path: the VFS is
+    // rooted at this string while `serve_folder` canonicalizes it, and on macOS
+    // the temp-dir fallback is `/var/folders/...` -> `/private/var/folders/...`.
+    // A mismatch there costs every view lookup, silently.
     let tmp_dir = super::encrypted_extraction_dir()?;
+    let tmp_dir = tmp_dir.canonicalize().unwrap_or(tmp_dir);
     solilang::cleanup::register_cleanup_dir(&tmp_dir);
     for (path, content) in bundle.entries() {
         let full_path = tmp_dir.join(path);
@@ -407,6 +412,8 @@ pub fn boot(
                 solilang::desktop::shell::Opened::Nothing => {
                     println!("\nCould not open a browser automatically.")
                 }
+                // An embedding wrapper is the window. It parses the URL below.
+                solilang::desktop::shell::Opened::Suppressed => {}
             }
 
             // Always print the link, even when a window supposedly opened.

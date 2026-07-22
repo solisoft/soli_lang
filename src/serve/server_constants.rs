@@ -59,6 +59,21 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("ogg", "video/ogg"),
     ("mp3", "audio/mpeg"),
     ("wav", "audio/wav"),
+    // A PWA manifest served as octet-stream is ignored by every browser, which
+    // is a silent "your app is not installable" rather than an error.
+    ("webmanifest", "application/manifest+json"),
+    ("webp", "image/webp"),
+    ("avif", "image/avif"),
+    ("bmp", "image/bmp"),
+    ("otf", "font/otf"),
+    ("mjs", "application/javascript"),
+    ("map", "application/json"),
+    ("htm", "text/html"),
+    ("txt", "text/plain; charset=utf-8"),
+    ("xml", "application/xml"),
+    ("m4a", "audio/mp4"),
+    ("oga", "audio/ogg"),
+    ("vtt", "text/vtt"),
 ];
 
 /// Extensions that are considered static files for hot reload
@@ -66,10 +81,41 @@ pub const STATIC_FILE_EXTENSIONS: &[&str] = &[
     "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf",
 ];
 
-/// Valid static file extensions for serving
+/// Valid static file extensions for serving. Keep in step with the bundler's
+/// `BUNDLE_EXTENSIONS`: an asset that ships inside a bundle but is not listed
+/// here is 404 in a standalone app while working fine from disk in dev.
 pub const VALID_STATIC_EXTENSIONS: &[&str] = &[
-    "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf", "html", "json",
-    "mp4", "webm", "ogg", "mp3", "wav",
+    "css",
+    "js",
+    "svg",
+    "ico",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "woff",
+    "woff2",
+    "ttf",
+    "html",
+    "json",
+    "mp4",
+    "webm",
+    "ogg",
+    "mp3",
+    "wav",
+    "webmanifest",
+    "webp",
+    "avif",
+    "bmp",
+    "otf",
+    "mjs",
+    "map",
+    "htm",
+    "txt",
+    "xml",
+    "m4a",
+    "oga",
+    "vtt",
 ];
 
 /// HTTP success status code range start (inclusive)
@@ -226,6 +272,9 @@ mod tests {
             ("data.json", "application/json"),
             ("font.woff2", "font/woff2"),
             ("song.mp3", "audio/mpeg"),
+            ("site.webmanifest", "application/manifest+json"),
+            ("hero.webp", "image/webp"),
+            ("robots.txt", "text/plain; charset=utf-8"),
         ];
         for (path, expected) in cases {
             assert_eq!(get_mime_type(&PathBuf::from(path)), expected, "for {path}");

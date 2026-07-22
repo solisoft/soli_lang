@@ -5,6 +5,19 @@
 ### Added
 
 
+## [1.23.4] - 2026-07-21
+
+### Added
+
+* **feat(bundle):** bundles now carry **static assets**, not just code. `BUNDLE_EXTENSIONS` covered `.css` and `.js` but no images, icons, fonts, `.html` or `.webmanifest` — so every `soli build --standalone` and `soli desktop build` artifact shipped an app whose logo, favicon, offline page and web-app manifest were all `404`, silently, while working perfectly from disk in dev. Images (`png/jpg/gif/svg/webp/avif/ico/bmp`), fonts (`woff/woff2/ttf/otf/eot`), media (`mp3/wav/ogg/oga/m4a/mp4/webm/vtt`) and documents (`html/htm/txt/xml/webmanifest/mjs/map`) are bundled and served as bytes. `VALID_STATIC_EXTENSIONS` and the MIME table gained the matching entries — including `application/manifest+json` for `.webmanifest`, without which a browser ignores the manifest and the app is silently not installable.
+* **feat(desktop):** `SOLI_DESKTOP_NO_WINDOW=1` stops a desktop artifact from opening a browser window, for embedding it in a native shell (Cocoa/WebView, Electron-style container) that provides the window itself. Without it the wrapper gets two windows: its own, and the browser the artifact launches. The launch URL is still printed on its own indented line, which is how the wrapper learns the port and the single-use token — pointing a web view at `http://127.0.0.1:<port>/` directly is refused by the gate. See [Desktop Applications](/docs/development-tools/desktop#embedding).
+
+### Fixed
+
+* **fix(serve):** **every page of a macOS standalone or desktop app rendered as the literal text `null`.** The bundle extracts under `std::env::temp_dir()` and the virtual filesystem is rooted at that path, but `serve_folder` canonicalizes the folder it is handed. On macOS the temp dir is `/var/folders/...`, a symlink to `/private/var/folders/...`, so the two disagreed about where the app lived. Nothing errored: view helpers never loaded, no template was found for any action, and the auto-render path fell through to raw value serialization — turning an action's nil return into a four-byte `null` body with no `content-type`. The extraction directory is now canonicalized before anything records it, on both the standalone and desktop paths, with a regression test that fails if it ever returns a symlinked path. Reproducible on any platform by pointing `TMPDIR` at a symlink.
+* **fix(standalone):** **signed macOS apps dropped the user into the soli REPL.** `codesign` starts the code signature blob on a 16-byte boundary, so when the appended region did not end on one it inserted up to 15 bytes of padding — and the boot-side lookup anchored the footer at the signature offset *exactly*, read that padding instead of the magic, concluded the executable carried no payload, and fell through to the normal CLI. With no arguments that is the REPL, so a double-clicked app printed `>>>` instead of starting. Every `--standalone` and `soli desktop build` darwin artifact was affected whenever its size happened to be misaligned, which is most of them. The appended region is now padded to the boundary at build time, and the loader additionally walks back over an alignment gap so artifacts built before this fix boot too — validating the bundle magic before accepting a candidate, since a wrong hit there is a hard failure rather than a fall-through.
+
+
 ## [1.23.1] - 2026-07-19
 
 ### Added

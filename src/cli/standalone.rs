@@ -21,9 +21,16 @@
 //! [ payload ] [ footer ] [ code signature — added by codesign, last ]
 //! ```
 //!
+//! `codesign` starts that signature on a 16-byte boundary, so the appended
+//! region is padded to one — otherwise the gap it inserts sits between the
+//! footer and the signature, and the boot-side lookup below reads padding
+//! instead of the magic (which lands the user in the REPL, not their app).
+//!
 //! At boot, `boot_if_standalone()` (the first statement of `cli::run()`)
 //! reads the last 16 bytes of `current_exe()`, and on a signed Mach-O falls
-//! back to the 16 bytes before the signature. No footer → normal soli CLI.
+//! back to the 16 bytes before the signature — then, for artifacts built
+//! before the padding fix, walks back over the alignment gap. No footer →
+//! normal soli CLI.
 //! Footer present → the executable IS the app: parse the app-oriented flags
 //! (`--port`, `--host`, `--workers`, `--dev`) and serve the embedded payload
 //! through the same pipeline as `soli serve app.soli` — including key
@@ -49,6 +56,13 @@ use std::process;
 
 const FOOTER_MAGIC: &[u8; 8] = b"SOLIXEC1";
 const FOOTER_LEN: u64 = 16;
+
+/// `codesign` starts the code signature blob on a 16-byte boundary. Appending a
+/// payload whose end is not itself 16-byte aligned therefore leaves up to 15
+/// bytes of padding between our footer and the signature — so the appended
+/// region is padded to this alignment at build time, and the boot-side lookup
+/// walks back over the padding on artifacts built before that.
+const SIGNATURE_ALIGN: u64 = 16;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -82,12 +96,61 @@ struct Footer {
 /// never signed. On a *signed* Mach-O the code signature is necessarily the
 /// last thing in the file, so the appended region ends where that signature
 /// begins — try EOF first, then that anchor.
+///
+/// The anchor is not always exact. `codesign` aligns the signature blob to
+/// [`SIGNATURE_ALIGN`], so on an artifact whose appended region ends off that
+/// boundary it inserts padding the anchor then points past. Builds now pad to
+/// the boundary themselves, but artifacts produced before that fix are already
+/// in the wild — and a payload found 10 bytes early is the difference between
+/// an app that boots and one that drops the user into the soli REPL.
 fn read_footer(file: &mut std::fs::File, file_len: u64) -> Option<Footer> {
     if let Some(footer) = read_footer_at(file, file_len, file_len) {
         return Some(footer);
     }
     let anchor = macho_footer_anchor(file)?;
-    read_footer_at(file, file_len, anchor)
+    if let Some(footer) = read_footer_at(file, file_len, anchor) {
+        return Some(footer);
+    }
+    read_footer_behind_padding(file, file_len, anchor)
+}
+
+/// Walk back from `anchor` over signature alignment padding, looking for the
+/// footer. Bounded to the padding a 16-byte alignment can produce: a wider
+/// scan would risk matching the magic inside the payload itself.
+fn read_footer_behind_padding(
+    file: &mut std::fs::File,
+    file_len: u64,
+    anchor: u64,
+) -> Option<Footer> {
+    for back in 1..SIGNATURE_ALIGN {
+        let end = anchor.checked_sub(back)?;
+        if let Some(footer) = read_footer_at(file, file_len, end) {
+            // The magic alone is 8 bytes of a payload that may be tens of
+            // megabytes; confirm the bundle it points at before trusting it,
+            // because a wrong hit here is a hard boot failure rather than a
+            // fall-through to the CLI.
+            if payload_magic_is_valid(file, &footer) {
+                return Some(footer);
+            }
+        }
+    }
+    None
+}
+
+/// Whether the bytes the footer points at actually begin a soli bundle.
+fn payload_magic_is_valid(file: &mut std::fs::File, footer: &Footer) -> bool {
+    let Some(start) = footer
+        .end
+        .checked_sub(FOOTER_LEN)
+        .and_then(|e| e.checked_sub(footer.payload_len))
+    else {
+        return false;
+    };
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return false;
+    }
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).is_ok() && (&magic == b"SOLB" || &magic == b"SOLE")
 }
 
 /// Read a footer whose last byte is at `end - 1`.
@@ -352,6 +415,19 @@ pub fn write_standalone_exe(
         v
     };
     let appended_from = out.len();
+    // Pad ahead of the payload so the footer ends on a signature boundary:
+    // `codesign` aligns its blob to one, and any gap it has to insert lands
+    // between the footer and the signature, leaving the anchor pointing past
+    // the footer instead of at it. Padding first keeps the footer last and
+    // costs at most 15 bytes; `read_payload` seeks back from the footer by the
+    // recorded length, so leading filler is never read.
+    if target.is_darwin() {
+        let unaligned =
+            (out.len() as u64 + bundle_data.len() as u64 + FOOTER_LEN) % SIGNATURE_ALIGN;
+        if unaligned != 0 {
+            out.resize(out.len() + (SIGNATURE_ALIGN - unaligned) as usize, 0);
+        }
+    }
     out.extend_from_slice(bundle_data);
     out.extend_from_slice(FOOTER_MAGIC);
     out.extend_from_slice(&(bundle_data.len() as u64).to_le_bytes());
@@ -744,12 +820,19 @@ mod tests {
     /// inside __LINKEDIT, with the code signature blob last. The footer is
     /// deliberately not at EOF — that is the whole point of the anchor lookup.
     fn signed_macho_exe(payload: &[u8]) -> Vec<u8> {
+        signed_macho_exe_with_padding(payload, 0)
+    }
+
+    /// As `signed_macho_exe`, but with `pad` bytes of alignment filler between
+    /// the footer and the signature — what `codesign` inserts when the appended
+    /// region does not end on a 16-byte boundary.
+    fn signed_macho_exe_with_padding(payload: &[u8], pad: usize) -> Vec<u8> {
         const SEG: usize = 72;
         const SIG: usize = 16;
         let linkedit_fileoff: u64 = 128;
         let sig_blob = vec![0x5Au8; 48];
-        let sig_dataoff = linkedit_fileoff + payload.len() as u64 + FOOTER_LEN;
-        let filesize = payload.len() as u64 + FOOTER_LEN + sig_blob.len() as u64;
+        let sig_dataoff = linkedit_fileoff + payload.len() as u64 + FOOTER_LEN + pad as u64;
+        let filesize = payload.len() as u64 + FOOTER_LEN + pad as u64 + sig_blob.len() as u64;
 
         let mut out = vec![0u8; 32];
         out[0..4].copy_from_slice(&0xfeed_facfu32.to_le_bytes());
@@ -775,6 +858,7 @@ mod tests {
         out.extend_from_slice(payload);
         out.extend_from_slice(FOOTER_MAGIC);
         out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        out.resize(out.len() + pad, 0);
         out.extend_from_slice(&sig_blob);
         out
     }
@@ -790,6 +874,50 @@ mod tests {
         let footer = read_footer(&mut f, len).expect("footer found via signature anchor");
         assert_eq!(footer.payload_len, payload.len() as u64);
         assert_eq!(read_payload(&mut f, &footer).unwrap(), payload.to_vec());
+    }
+
+    /// The regression that dropped signed macOS apps into the soli REPL:
+    /// `codesign` aligns its blob to 16 bytes, so an appended region ending off
+    /// that boundary leaves padding, and anchoring the footer at the signature
+    /// offset exactly reads that padding instead of the magic.
+    #[test]
+    fn footer_is_found_behind_signature_alignment_padding() {
+        let payload = b"SOLB\x00\x00\x00\x00signed-artifact-bundle";
+        for pad in 1..SIGNATURE_ALIGN as usize {
+            let exe = signed_macho_exe_with_padding(payload, pad);
+            let (_dir, mut f, len) = scratch_file(&exe);
+            let footer = read_footer(&mut f, len)
+                .unwrap_or_else(|| panic!("footer found with {} bytes of padding", pad));
+            assert_eq!(footer.payload_len, payload.len() as u64);
+            assert_eq!(read_payload(&mut f, &footer).unwrap(), payload.to_vec());
+        }
+    }
+
+    /// Padding is only ever alignment slack, so a footer that is not within a
+    /// signature boundary of the anchor is not ours to claim.
+    #[test]
+    fn a_footer_far_behind_the_anchor_is_not_claimed() {
+        let payload = b"SOLB\x00\x00\x00\x00signed-artifact-bundle";
+        let exe = signed_macho_exe_with_padding(payload, SIGNATURE_ALIGN as usize + 8);
+        let (_dir, mut f, len) = scratch_file(&exe);
+        assert!(read_footer(&mut f, len).is_none());
+    }
+
+    /// The padding walk must not turn a plain signed binary into a broken app.
+    /// A binary whose data merely *contains* the magic just behind the
+    /// signature has no payload — claiming one would abort at boot with
+    /// "not a soli bundle" instead of running the soli CLI.
+    #[test]
+    fn magic_in_the_padding_window_without_a_bundle_is_not_claimed() {
+        // No footer of its own: the "payload" is inert data ending in a
+        // sequence that mimics a footer.
+        let mut data = vec![0x11u8; 64];
+        data.extend_from_slice(FOOTER_MAGIC);
+        data.extend_from_slice(&8u64.to_le_bytes());
+        let exe = signed_macho_exe_with_padding(&data, 7);
+
+        let (_dir, mut f, len) = scratch_file(&exe);
+        assert!(read_footer(&mut f, len).is_none());
     }
 
     #[test]

@@ -91,8 +91,62 @@ pub fn decrypt_bundle(data: &[u8], key_material: &str) -> Result<Vec<u8>, String
     Ok(plain)
 }
 
+/// What gets bundled. Code and templates are the obvious half; the rest is
+/// everything a served page asks for afterwards.
+///
+/// Static assets are not optional. A bundle that carries `.css` and `.js` but
+/// no images, icons, fonts or `.html` produces an app that boots and then
+/// renders without its logo, its favicon, its web-app manifest and its offline
+/// page — all 404, all silently. Anything a browser can request off `public/`
+/// belongs here.
+///
+/// Entries are stored and served as bytes (`VirtualFileSystem::read`), so
+/// binary formats are safe; only `read_to_string` assumes UTF-8, and nothing
+/// calls it on an asset.
 const BUNDLE_EXTENSIONS: &[&str] = &[
-    "sl", "slv", "yml", "yaml", "css", "js", "md", "erb", "toml", "json", "env",
+    // Code, templates, configuration
+    "sl",
+    "slv",
+    "yml",
+    "yaml",
+    "erb",
+    "toml",
+    "json",
+    "env",
+    "md", // Documents and styles
+    "css",
+    "js",
+    "mjs",
+    "map",
+    "html",
+    "htm",
+    "txt",
+    "xml",
+    "webmanifest",
+    // Images
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "svg",
+    "webp",
+    "avif",
+    "ico",
+    "bmp",
+    // Fonts
+    "woff",
+    "woff2",
+    "ttf",
+    "otf",
+    "eot", // Media
+    "mp3",
+    "wav",
+    "ogg",
+    "oga",
+    "m4a",
+    "mp4",
+    "webm",
+    "vtt",
 ];
 
 const BUNDLE_SPECIAL_FILES: &[&str] = &["soli.toml", ".solivrc"];
@@ -545,6 +599,41 @@ mod tests {
                 .unwrap(),
             "class HomeController {}"
         );
+    }
+
+    /// A bundle that carries the stylesheet but not the logo produces an app
+    /// that boots and renders broken, with every asset 404 and nothing in the
+    /// log to say so. Binary content must survive the round trip byte-for-byte.
+    #[test]
+    fn static_assets_are_bundled_alongside_code() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir_all(&public).unwrap();
+
+        // A PNG header: bytes that are deliberately not valid UTF-8.
+        let png: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE];
+        fs::write(public.join("icon-192.png"), png).unwrap();
+        fs::write(public.join("offline.html"), b"<h1>offline</h1>").unwrap();
+        fs::write(public.join("manifest.webmanifest"), b"{}").unwrap();
+        fs::write(public.join("favicon.ico"), b"\x00\x00\x01\x00").unwrap();
+        fs::write(public.join("app.woff2"), b"wOF2").unwrap();
+        fs::write(public.join("notify.mp3"), b"ID3").unwrap();
+        fs::write(dir.path().join("app.sl"), b"print(1)").unwrap();
+
+        let bundle = BundleBuilder::build(dir.path()).unwrap();
+        let vfs = crate::virtual_fs::BundleFS::new(bundle).unwrap();
+
+        for asset in [
+            "public/icon-192.png",
+            "public/offline.html",
+            "public/manifest.webmanifest",
+            "public/favicon.ico",
+            "public/app.woff2",
+            "public/notify.mp3",
+        ] {
+            assert!(vfs.exists(asset), "{} should be bundled", asset);
+        }
+        assert_eq!(vfs.read("public/icon-192.png").unwrap(), png);
     }
 
     #[test]

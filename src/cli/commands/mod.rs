@@ -407,12 +407,10 @@ pub(crate) fn serve_bundle_bytes(
     // with 0700 perms so plaintext never lands on persistent disk; plain
     // bundles keep the historical temp-dir behavior.
     let tmp_dir = if encrypted {
-        encrypted_extraction_dir()?
+        let dir = encrypted_extraction_dir()?;
+        dir.canonicalize().unwrap_or(dir)
     } else {
-        let dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
-        dir
+        plain_extraction_dir(&std::env::temp_dir())?
     };
 
     if encrypted {
@@ -447,6 +445,23 @@ pub(crate) fn serve_bundle_bytes(
 
     solilang::serve::serve_folder_with_options(&tmp_dir, port, dev_mode, workers)
         .map_err(|e| e.to_string())
+}
+
+/// Extraction directory for a plain (unencrypted) bundle, under `base`.
+///
+/// The returned path is always symlink-free, and that is the point rather than
+/// a detail. `serve_folder` canonicalizes the folder it is handed, while the
+/// VFS is rooted at the path passed to `DiskFS::new` — so if this path contains
+/// a symlink the two disagree about where the app lives. macOS is exactly that
+/// case: `std::env::temp_dir()` is `/var/folders/...`, a symlink to
+/// `/private/var/folders/...`. The failure is silent, not loud: view helpers
+/// never load, no template is found for any action, and the auto-render path
+/// serializes each action's nil return as the literal four-byte body `null`.
+fn plain_extraction_dir(base: &Path) -> Result<std::path::PathBuf, String> {
+    let dir = base.join(format!("soli_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    Ok(dir.canonicalize().unwrap_or(dir))
 }
 
 /// Pick the extraction directory for a DECRYPTED bundle: `/dev/shm/soli_<pid>`
@@ -2434,6 +2449,36 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
 mod tests {
     use solilang::module::compare_versions;
     use std::cmp::Ordering;
+
+    /// The macOS `null` regression: `std::env::temp_dir()` is a symlink there
+    /// (`/var/folders/...` -> `/private/var/folders/...`), and a VFS rooted at
+    /// the symlinked path disagrees with the canonicalized path `serve_folder`
+    /// uses — so no view is ever found and every action renders as `null`.
+    #[test]
+    fn plain_extraction_dir_is_symlink_free() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&real).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+
+        let extracted = super::plain_extraction_dir(&link).unwrap();
+
+        assert_eq!(
+            extracted,
+            extracted.canonicalize().unwrap(),
+            "extraction dir must already be canonical"
+        );
+        assert!(
+            extracted.starts_with(real.canonicalize().unwrap()),
+            "expected a path under {}, got {}",
+            real.display(),
+            extracted.display()
+        );
+    }
 
     #[test]
     fn newer_release_is_greater() {
