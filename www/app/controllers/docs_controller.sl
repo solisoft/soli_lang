@@ -195,6 +195,26 @@ def development_tools_native_bridge
     render_docs("docs/development-tools/native-bridge", "Native Bridge", "development_tools", "native-bridge")
 end
 
+def native_notifications
+    render_docs("docs/native/notifications", "Notifications", "native", "notifications")
+end
+
+def native_camera
+    render_docs("docs/native/camera", "Camera & Microphone", "native", "camera")
+end
+
+def native_scanning
+    render_docs("docs/native/scanning", "Barcode & QR Scanning", "native", "scanning")
+end
+
+def native_push_apple
+    render_docs("docs/native/push-apple", "Apple Push (APNs)", "native", "push-apple")
+end
+
+def native_push_android
+    render_docs("docs/native/push-android", "Android Push (FCM)", "native", "push-android")
+end
+
 def development_tools_editor_integration
     render_docs(
         "docs/development-tools/editor-integration",

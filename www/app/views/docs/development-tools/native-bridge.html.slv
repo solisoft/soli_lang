@@ -22,6 +22,26 @@
         In a shell that raises a real OS notification. In a browser it raises a Web Notification. Where neither exists it does nothing.
     </p>
 
+    <h2 id="feature-pages" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Per feature</h2>
+    <div class="grid gap-4 sm:grid-cols-2 mb-12">
+        <a href="/docs/native/notifications" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Notifications</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Native.notify</code> reaches a client with the app open &mdash; no push service, no keys.</p>
+        </a>
+        <a href="/docs/native/camera" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Camera &amp; Microphone</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">getUserMedia</code>, once the shell stops denying it silently.</p>
+        </a>
+        <a href="/docs/native/push-apple" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Apple Push (APNs)</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Apns.send</code> reaches a macOS or iOS app that is closed.</p>
+        </a>
+        <a href="/docs/native/push-android" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Android Push (FCM)</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Fcm.send</code> reaches a closed Android app, where Doze kills connections.</p>
+        </a>
+    </div>
+
     <h2 id="what-reaches-whom" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What reaches whom</h2>
     <p class="text-gray-400 mb-4">
         The bridge covers the app-is-open case, and nothing else. That is a deliberate boundary rather than a shortcoming &mdash; it is what lets it work with no push service, no certificates and no keys &mdash; but you need the whole picture to choose transports:
@@ -110,7 +130,7 @@ end</code></pre>
                 <tr><td class="py-2 pr-4 text-white">Vibration / haptics</td><td class="py-2 pr-4">✅ Android</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 needs VIBRATE</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Deep links into the app</td><td class="py-2 pr-4">&mdash;</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2">✅ shipped</td></tr>
                 <tr><td class="py-2 pr-4 text-white">NFC</td><td class="py-2 pr-4">Chrome Android only</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗ no hardware API</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Barcode / QR scan</td><td class="py-2 pr-4">partial</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/scanning" class="text-amber-400 hover:text-amber-300">Barcode / QR scan</a></td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ decoder needed</td><td class="py-2">✅ native</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Biometric unlock</td><td class="py-2 pr-4">✅ WebAuthn</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Badge count</td><td class="py-2 pr-4">✅ Badging API</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Share sheet</td><td class="py-2 pr-4">✅ Web Share</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
@@ -151,15 +171,6 @@ end</code></pre>
   // safe to offer the in-app scanner
 }</code></pre>
 
-    <h2 id="notification-api" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Existing notification code keeps working</h2>
-    <p class="text-gray-400 mb-4">
-        Inside a shell the client script replaces <code class="text-cyan-400">window.Notification</code> with one that routes through the bridge. Page code that already does this:
-    </p>
-    <pre class="mb-6"><code class="language-javascript text-sm">new Notification("Saved", { body: "Your changes are live" })</code></pre>
-    <p class="text-gray-400 mb-12">
-        keeps working in the shell &mdash; where that global does not otherwise exist at all &mdash; and keeps using real Web Notifications in a browser. <code class="text-cyan-400">Notification.requestPermission()</code> resolves to <code class="text-cyan-400">"granted"</code>, because the shell owns the OS-level permission and a second in-page prompt would be meaningless.
-    </p>
-
     <h2 id="writing-a-shell" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Writing a shell</h2>
     <p class="text-gray-400 mb-4">A shell injects an object the client script looks for. WebKit can define it at document start:</p>
     <pre class="mb-6"><code class="language-javascript text-sm">window.soli = window.soli || {};
@@ -181,82 +192,6 @@ window.soli.native = {
     <p class="text-gray-400 mb-12">
         The client subscribes over SSE and reconnects with exponential backoff, up to 30 seconds. It drops the connection while the tab is hidden &mdash; an idle backgrounded stream costs the server a task for nothing &mdash; and reconnects when it returns. Thousands of idle subscribers cost async tasks, not worker threads.
     </p>
-
-    <h2 id="apns" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Reaching a closed app: APNs</h2>
-    <p class="text-gray-400 mb-4">
-        The bridge stops at the edge of &ldquo;app is open&rdquo;. To go past it something has to be listening while your app is not &mdash; on Apple platforms that is APNs, and the OS displays the notification whether or not the app is running.
-    </p>
-    <pre class="mb-6"><code class="language-soli text-sm">Apns.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
-  "key":     File.read("AuthKey_ABC123.p8"),
-  "key_id":  "ABC123DEFG",
-  "team_id": "1A2B3C4D5E",
-  "topic":   "net.example.myapp"
-})</code></pre>
-    <p class="text-gray-400 mb-4">
-        Returns <code class="text-cyan-400">{"status": Int, "reason": String}</code> rather than raising: a dead device token is an ordinary outcome to handle (prune it), not an exception. <code class="text-cyan-400">200</code> means delivered to Apple. <code class="text-cyan-400">410</code> with <code class="text-cyan-400">Unregistered</code> means the app was removed &mdash; delete the token. <code class="text-cyan-400">400</code> with <code class="text-cyan-400">BadDeviceToken</code> almost always means the token came from a build pointed at the <em>other</em> gateway; add <code class="text-cyan-400">"sandbox": true</code> for development builds.
-    </p>
-    <div class="overflow-x-auto mb-6">
-        <table class="w-full text-sm text-left text-gray-400">
-            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-                <tr><th class="py-2 pr-4">Option</th><th class="py-2">Meaning</th></tr>
-            </thead>
-            <tbody class="divide-y divide-white/5">
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key</code></td><td class="py-2">Contents of the <code class="text-cyan-400">.p8</code> file, including the BEGIN/END lines. <strong class="text-white">Required.</strong></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key_id</code></td><td class="py-2">The key's 10-character id. <strong class="text-white">Required.</strong></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">team_id</code></td><td class="py-2">Your Apple team id. <strong class="text-white">Required.</strong></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">topic</code></td><td class="py-2">The app's bundle id. <strong class="text-white">Required.</strong></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">sandbox</code></td><td class="py-2"><code class="text-cyan-400">true</code> for development builds. Default <code class="text-cyan-400">false</code>.</td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">priority</code></td><td class="py-2"><code class="text-cyan-400">10</code> (immediate, default) or <code class="text-cyan-400">5</code> (power-considerate).</td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">push_type</code></td><td class="py-2"><code class="text-cyan-400">"alert"</code> (default), <code class="text-cyan-400">"background"</code>, <code class="text-cyan-400">"voip"</code>&hellip;</td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">collapse_id</code></td><td class="py-2">Notifications sharing one replace each other.</td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">expiration</code></td><td class="py-2">Unix time after which Apple stops trying.</td></tr>
-            </tbody>
-        </table>
-    </div>
-    <p class="text-gray-400 mb-4">
-        <code class="text-cyan-400">title</code>, <code class="text-cyan-400">body</code>, <code class="text-cyan-400">badge</code> and <code class="text-cyan-400">sound</code> are wrapped into the <code class="text-cyan-400">aps</code> envelope for you; anything else rides along as custom data the app reads on tap. Supply your own <code class="text-cyan-400">aps</code> key and it is sent verbatim.
-    </p>
-    <p class="text-gray-400 mb-4">
-        <code class="text-cyan-400">Apns.token(key, key_id, team_id)</code> exposes the provider JWT for callers driving the HTTP themselves. Tokens are cached and reused for 45 minutes &mdash; Apple rate-limits <em>minting</em> to once every 20 minutes and answers <code class="text-cyan-400">TooManyProviderTokenUpdates</code> if you exceed it.
-    </p>
-    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-6">
-        <p class="text-gray-300 text-sm leading-relaxed">
-            <strong class="text-white">What it costs.</strong> Unlike the bridge, this is not free of setup: receiving a push requires the <code class="text-cyan-400">aps-environment</code> entitlement, which comes from a provisioning profile, which requires a <strong class="text-white">paid Apple Developer account</strong>. An ad-hoc signed app cannot receive one however correct the sender is.
-        </p>
-    </div>
-    <p class="text-gray-400 mb-4">The two together:</p>
-    <pre class="mb-12"><code class="language-soli text-sm">reached = Native.notify("user:#{str(user_id)}", payload)
-Apns.send(device_token, payload, apns_options) if reached == 0</code></pre>
-
-    <h2 id="fcm" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Reaching a closed Android app: FCM</h2>
-    <p class="text-gray-400 mb-4">
-        The Android counterpart to APNs, and the only way to reach an app that is not running: Android kills long-lived connections within minutes of the screen going off, which is exactly why FCM exists. A background socket or a foreground service is not a workaround &mdash; it is a battery cost that still loses to Doze.
-    </p>
-    <pre class="mb-6"><code class="language-soli text-sm">Fcm.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
-  "service_account": File.read("service-account.json")
-})</code></pre>
-    <p class="text-gray-400 mb-6">
-        Returns <code class="text-cyan-400">{"status": Int, "reason": String}</code>, like <code class="text-cyan-400">Apns.send</code>. <code class="text-cyan-400">200</code> is delivered. <code class="text-cyan-400">404</code> with <code class="text-cyan-400">UNREGISTERED</code> means the app was removed or the token rotated &mdash; delete it. <code class="text-cyan-400">400</code> with <code class="text-cyan-400">INVALID_ARGUMENT</code> usually means a malformed token.
-    </p>
-
-    <h3 class="text-xl font-semibold text-white mb-3">Why this needs more than APNs</h3>
-    <p class="text-gray-400 mb-4">
-        APNs authenticates with the request itself. FCM's HTTP v1 API wants an <strong class="text-white">OAuth2 access token</strong>, so there is an extra round trip: sign a service-account assertion (RS256), exchange it at Google's token endpoint, then send. Access tokens last an hour and are cached per service account, so the exchange happens roughly once rather than per message.
-    </p>
-    <p class="text-gray-400 mb-6">
-        The old <code class="text-cyan-400">key=AAAA&hellip;</code> server-key API needed none of that and is not an option &mdash; Google shut it down in 2024. <code class="text-cyan-400">Fcm.access_token(service_account_json)</code> exposes the token for callers driving the HTTP themselves.
-    </p>
-
-    <h3 class="text-xl font-semibold text-white mb-3">Payload mapping</h3>
-    <p class="text-gray-400 mb-6">
-        <code class="text-cyan-400">title</code> and <code class="text-cyan-400">body</code> become a <code class="text-cyan-400">notification</code>, which is what makes Android display the message without the app running. Everything else becomes <code class="text-cyan-400">data</code> for the app to read on tap &mdash; <strong class="text-white">stringified</strong>, because FCM rejects a <code class="text-cyan-400">data</code> payload with non-string values outright, so a <code class="text-cyan-400">{"count": 3}</code> would otherwise fail the whole send. Messages go out at <code class="text-cyan-400">high</code> priority, since a notification the user is meant to see now is precisely what Doze would defer. Supply your own <code class="text-cyan-400">message</code> key and it is sent verbatim.
-    </p>
-
-    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-12">
-        <p class="text-gray-300 text-sm leading-relaxed">
-            <strong class="text-white">What it costs.</strong> A Firebase project (free), a service-account JSON from <em>Project settings &rarr; Service accounts</em>, and &mdash; the real work &mdash; the <strong class="text-white">Firebase SDK in the Android app</strong>, which needs <code class="text-cyan-400">google-services.json</code> and a Gradle build. The shell in <code class="text-cyan-400">clients/android</code> builds without Gradle today, so adding FCM to it is a build-system change as much as a code change.
-        </p>
-    </div>
 
     <h2 id="requirements" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Requirements</h2>
     <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">

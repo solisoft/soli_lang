@@ -7,6 +7,7 @@
 //! - Middleware support for request interception
 
 mod asset_cache;
+pub mod camera;
 pub mod cors;
 mod csrf;
 mod db_browser;
@@ -3224,6 +3225,11 @@ async fn handle_hyper_request(
     // 403 rather than an explanation an attacker could probe with.
     if path == "/__soli/native.js" && method == "GET" {
         return Ok(box_full(native::handle_native_js()));
+    }
+
+    // Camera preview / barcode scanning, injected only into pages that use one.
+    if path == "/__soli/camera.js" && method == "GET" {
+        return Ok(box_full(camera::handle_camera_js()));
     }
     if path == "/__soli/native/stream" && method == "GET" {
         return Ok(match native::topic_for_query(raw_query.as_deref()) {

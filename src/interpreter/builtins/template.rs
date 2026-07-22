@@ -773,6 +773,89 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // camera_preview(options?) — a <video> wired to the camera.
+    //
+    // Showing a camera is six lines of getUserMedia, so this exists for what
+    // those six lines leave out: the script it turns on stops the tracks when
+    // the element goes away. Instant navigation swaps the body without a page
+    // unload, so a hand-rolled preview keeps its stream and the camera
+    // indicator stays lit after the user has moved on.
+    //
+    // Options: facing ("user" | "environment"), scan (formats, e.g. "qr_code"),
+    // width, height, audio, class, id, fallback (a selector revealed on error).
+    env.define(
+        "camera_preview".to_string(),
+        Value::NativeFunction(NativeFunction::new("camera_preview", None, |args| {
+            let options = match args.first() {
+                None | Some(Value::Null) => None,
+                Some(Value::Hash(h)) => Some(h.borrow().clone()),
+                Some(other) => {
+                    return Err(format!(
+                        "camera_preview() expects an options hash, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let get = |key: &str| -> Option<String> {
+                options.as_ref().and_then(|o| {
+                    o.get(&HashKey::String(key.into())).and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        Value::Int(i) => Some(i.to_string()),
+                        Value::Bool(b) => Some(b.to_string()),
+                        _ => None,
+                    })
+                })
+            };
+
+            let mut attributes = String::new();
+            // `playsinline` and `muted` are not decoration: without them iOS
+            // takes the video fullscreen, and autoplay is refused.
+            attributes.push_str(" data-soli-camera autoplay playsinline muted");
+
+            if let Some(id) = get("id") {
+                attributes.push_str(&format!(" id=\"{}\"", super::html::html_escape(&id)));
+            }
+            if let Some(class) = get("class") {
+                attributes.push_str(&format!(" class=\"{}\"", super::html::html_escape(&class)));
+            }
+            for (option, attribute) in [
+                ("facing", "data-facing"),
+                ("scan", "data-soli-scan"),
+                ("width", "data-width"),
+                ("height", "data-height"),
+                ("interval", "data-scan-interval"),
+                ("fallback", "data-fallback"),
+            ] {
+                if let Some(value) = get(option) {
+                    attributes.push_str(&format!(
+                        " {}=\"{}\"",
+                        attribute,
+                        super::html::html_escape(&value)
+                    ));
+                }
+            }
+            for (option, attribute) in [
+                ("audio", "data-audio"),
+                ("continuous", "data-scan-continuous"),
+                ("manual", "data-manual"),
+            ] {
+                if matches!(
+                    options
+                        .as_ref()
+                        .and_then(|o| o.get(&HashKey::String(option.into())).cloned()),
+                    Some(Value::Bool(true))
+                ) {
+                    attributes.push_str(&format!(" {}", attribute));
+                }
+            }
+
+            Ok(Value::String(
+                format!("<video{}></video>", attributes).into(),
+            ))
+        })),
+    );
+
     // native_channel(channel) — emit the meta tag that turns on the native
     // bridge for this page and names the channel it listens to.
     //

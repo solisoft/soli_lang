@@ -27,6 +27,15 @@ Native.notify("user:42", {
 In a shell that raises a real OS notification. In a browser it raises a Web Notification. Where
 neither is available it does nothing.
 
+## Per feature
+
+| Page | |
+|---|---|
+| [Notifications](/docs/native/notifications) | `Native.notify` reaches a client with the app open — no push service, no keys. |
+| [Camera & Microphone](/docs/native/camera) | `getUserMedia`, once the shell stops denying it silently. |
+| [Apple Push (APNs)](/docs/native/push-apple) | `Apns.send` reaches a macOS or iOS app that is closed. |
+| [Android Push (FCM)](/docs/native/push-android) | `Fcm.send` reaches a closed Android app, where Doze kills connections. |
+
 ## What reaches whom
 
 The bridge covers the app-is-open case, and nothing else. That is a deliberate boundary rather than
@@ -120,7 +129,7 @@ Two rules explain the shape of this table:
 | Vibration / haptics | ✅ Android | ✗ | ✗ | 🔜 bridge | 🔜 needs `VIBRATE` |
 | Deep links into the app | — | 🔜 | 🔜 | 🔜 | ✅ shipped |
 | NFC | Chrome Android only | ✗ | ✗ | ✗ no hardware API | 🔜 bridge |
-| Barcode / QR scan | partial | ✅ browser | ✅ browser | 🔜 bridge | 🔜 bridge |
+| [Barcode / QR scan](/docs/native/scanning) | ✅ native | ✅ native | ✅ native | ✅ decoder needed | ✅ native |
 | Biometric unlock | ✅ WebAuthn | ✅ browser | ✅ browser | 🔜 bridge | 🔜 bridge |
 | Badge count | ✅ Badging API | 🔜 | 🔜 | 🔜 bridge | 🔜 bridge |
 | Share sheet | ✅ Web Share | ✅ browser | 🔜 | 🔜 bridge | 🔜 bridge |
@@ -164,19 +173,6 @@ if (window.soli.nativeBridge.capabilities.includes("camera")) {
 }
 ```
 
-## Existing notification code keeps working
-
-Inside a shell the client script replaces `window.Notification` with one that routes through the
-bridge. Page code that already does this:
-
-```js
-new Notification("Saved", { body: "Your changes are live" })
-```
-
-keeps working in the shell — where that global does not otherwise exist at all — and keeps using
-real Web Notifications in a browser. `Notification.requestPermission()` resolves to `"granted"`,
-because the shell owns the OS-level permission and a second in-page prompt would be meaningless.
-
 ## Writing a shell
 
 A shell injects an object the client script looks for. WebKit can define it at document start:
@@ -213,112 +209,6 @@ The client subscribes over SSE and reconnects with exponential backoff, up to 30
 the connection while the tab is hidden — an idle backgrounded stream costs the server a task for
 nothing — and reconnects when it comes back. Thousands of idle subscribers cost async tasks, not
 worker threads.
-
-## Reaching a closed app: APNs
-
-The bridge stops at the edge of "app is open". To go past it something has to be
-listening while your app is not — on Apple platforms that is APNs, and the OS
-displays the notification whether or not the app is running.
-
-```soli
-Apns.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
-  "key":     File.read("AuthKey_ABC123.p8"),
-  "key_id":  "ABC123DEFG",
-  "team_id": "1A2B3C4D5E",
-  "topic":   "net.example.myapp"
-})
-```
-
-Returns `{"status": Int, "reason": String}` rather than raising: a dead device
-token is an ordinary outcome to handle (prune it), not an exception. `200` means
-delivered to Apple. `410` with `Unregistered` means the app was removed — delete
-the token. `400` with `BadDeviceToken` almost always means the token came from a
-build pointed at the *other* gateway; add `"sandbox": true` for development
-builds.
-
-| Option | |
-|---|---|
-| `key` | Contents of the `.p8` file, including the BEGIN/END lines. **Required.** |
-| `key_id` | The key's 10-character id. **Required.** |
-| `team_id` | Your Apple team id. **Required.** |
-| `topic` | The app's bundle id. **Required.** |
-| `sandbox` | `true` for development builds. Default `false`. |
-| `priority` | `10` (immediate, default) or `5` (power-considerate). |
-| `push_type` | `"alert"` (default), `"background"`, `"voip"`, … |
-| `collapse_id` | Notifications sharing one replace each other. |
-| `expiration` | Unix time after which Apple stops trying. |
-
-`title`, `body`, `badge` and `sound` are wrapped into the `aps` envelope for
-you; anything else you pass rides along as custom data the app reads on tap. If
-you supply your own `aps` key it is sent verbatim.
-
-`Apns.token(key, key_id, team_id)` exposes the provider JWT for callers driving
-the HTTP themselves. Tokens are cached and reused for 45 minutes — Apple rate
-limits *minting* to once every 20 minutes and answers
-`TooManyProviderTokenUpdates` if you exceed it.
-
-### What it costs
-
-Unlike the bridge, this is not free of setup: receiving a push requires the
-`aps-environment` entitlement, which comes from a provisioning profile, which
-requires a **paid Apple Developer account**. An ad-hoc signed app cannot receive
-one however correct the sender is.
-
-### The two together
-
-```soli
-reached = Native.notify("user:#{str(user_id)}", payload)
-Apns.send(device_token, payload, apns_options) if reached == 0
-```
-
-The bridge for anyone looking, APNs for anyone who is not — and no push service
-involved in the common case.
-
-## Reaching a closed Android app: FCM
-
-The Android counterpart to APNs, and the only way to reach an app that is not running: Android kills
-long-lived connections within minutes of the screen going off, which is exactly why FCM exists. A
-background socket or a foreground service is not a workaround — it is a battery cost that still
-loses to Doze.
-
-```soli
-Fcm.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
-  "service_account": File.read("service-account.json")
-})
-```
-
-Returns `{"status": Int, "reason": String}`, like `Apns.send`. `200` is delivered. `404` with
-`UNREGISTERED` means the app was removed or the token rotated — delete it. `400` with
-`INVALID_ARGUMENT` usually means a malformed token.
-
-### Why this needs more than APNs
-
-APNs authenticates with the request itself. FCM's HTTP v1 API wants an **OAuth2 access token**, so
-there is an extra round trip: sign a service-account assertion (RS256), exchange it at Google's
-token endpoint, then send. Access tokens last an hour and are cached per service account, so the
-exchange happens roughly once rather than per message.
-
-The old `key=AAAA…` server-key API needed none of that and is not an option — Google shut it down in
-2024.
-
-`Fcm.access_token(service_account_json)` exposes the token for callers driving the HTTP themselves.
-
-### Payload mapping
-
-`title` and `body` become a `notification`, which is what makes Android display the message without
-the app running. Everything else becomes `data` for the app to read on tap — **stringified**,
-because FCM rejects a `data` payload with non-string values outright, so a `{"count": 3}` would
-otherwise fail the whole send. Messages go out at `high` priority, since a notification the user is
-meant to see now is precisely what Doze would otherwise defer.
-
-Supply your own `message` key and it is sent verbatim.
-
-### What it costs
-
-A Firebase project (free), a service-account JSON from *Project settings → Service accounts*, and —
-the real work — the **Firebase SDK in the Android app**, which needs `google-services.json` and a
-Gradle build. The shell in `clients/android` builds without Gradle today, so adding FCM to it is a
-build-system change as much as a code change.
 
 ## Requirements
 

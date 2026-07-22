@@ -694,6 +694,11 @@ pub fn html_response(body: String, status: i64) -> Value {
     // want nothing from the shell get no script and open no stream.
     let body = crate::serve::native::inject_native_tag(&body);
 
+    // Camera preview + scan loop, for pages carrying a `data-soli-camera`
+    // element. Independent of the native bridge: a page can show a camera
+    // without wanting notifications, and vice versa.
+    let body = crate::serve::camera::inject_camera_tag(&body);
+
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
     // body on the actual click as long as the server returns 304 on the

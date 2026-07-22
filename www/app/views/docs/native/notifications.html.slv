@@ -1,0 +1,98 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Notifications</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Raise a real OS notification from server-side Soli, inside a packaged desktop or mobile app.</p>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        An embedded web view has <strong class="text-white">no Notifications API and no Push API</strong> &mdash; Android's <code class="text-cyan-400">WebView</code> and <code class="text-cyan-400">WKWebView</code> both reserve them for the browser. So an app that ships web push reaches browsers and installed PWAs, and silently reaches nothing inside its own shell. This closes that gap for a client with the app <em>open</em>; <a href="/docs/native/push-apple" class="text-amber-400 hover:text-amber-300">Apple push</a> and <a href="/docs/native/push-android" class="text-amber-400 hover:text-amber-300">Android push</a> cover one that is closed.
+    </p>
+
+    <h2 id="enabling" class="text-3xl font-bold text-white mb-4 scroll-mt-24">One line in your layout</h2>
+    <pre class="mb-6"><code class="language-erb text-sm">&lt;% user_id = session_get("user_id") %&gt;
+&lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
+    <p class="text-gray-400 mb-12">
+        That emits a <code class="text-cyan-400">&lt;meta name="soli-native"&gt;</code> tag naming the channel this page listens to. Its presence is what switches the bridge on &mdash; a page that never calls it downloads no script and opens no connection.
+    </p>
+
+    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Sending</h2>
+    <pre class="mb-6"><code class="language-soli text-sm">Native.notify("user:42", {
+  "title": "New ping",
+  "body":  "Ana replied to your comment",
+  "url":   "/pings/3"
+})</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Key</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">title</code></td><td class="py-2">Required in practice &mdash; a notification with no title shows as blank.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">body</code></td><td class="py-2">The line under the title.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">url</code></td><td class="py-2">Opened when the notification is clicked.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">tag</code></td><td class="py-2">A stable id: a second notification with the same tag <em>replaces</em> the first rather than stacking.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">icon</code></td><td class="py-2">Overrides the app icon, where the platform supports it.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="example" class="text-3xl font-bold text-white mb-4 scroll-mt-24">A real example</h2>
+    <p class="text-gray-400 mb-4">A comment reply, notifying everyone on the thread except its author:</p>
+    <pre class="mb-6"><code class="language-soli text-sm">class Comment &lt; Model
+  def notify_thread
+    for participant in this.thread_participants()
+      next if participant["_key"] == this.author_id
+
+      reached = Native.notify("user:#{participant["_key"]}", {
+        "title": "#{this.author_name} replied",
+        "body":  this.body.truncate(120),
+        "url":   "/threads/#{this.thread_id}#comment-#{this._key}",
+        "tag":   "thread-#{this.thread_id}"
+      })
+
+      # Nobody looking: fall through to a push service.
+      WebPush.deliver_to_user(participant["_key"], "New reply", this.body, "/threads/#{this.thread_id}") if reached == 0
+    end
+  end
+end</code></pre>
+    <p class="text-gray-400 mb-12">
+        The <code class="text-cyan-400">tag</code> matters here: ten replies to one thread collapse into one notification rather than ten.
+    </p>
+
+    <h2 id="who-is-listening" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Knowing whether anyone is listening</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">notify</code> returns the number of clients it reached, and <code class="text-cyan-400">Native.subscribers(channel)</code> asks without sending. That return value is what lets an app choose a transport without branching on platform:
+    </p>
+    <pre class="mb-12"><code class="language-soli text-sm">if Native.subscribers("user:#{str(user_id)}") == 0
+  # They are away — a digest email is more use than a notification nobody sees.
+  DigestMailer.queue(user_id)
+end</code></pre>
+
+    <h2 id="notification-api" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Existing <code class="text-cyan-400">Notification</code> code keeps working</h2>
+    <p class="text-gray-400 mb-4">Inside a shell the client script replaces <code class="text-cyan-400">window.Notification</code> with one routed through the bridge:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">new Notification("Saved", { body: "Your changes are live" })</code></pre>
+    <p class="text-gray-400 mb-12">
+        That keeps working in the shell &mdash; where the global does not otherwise exist &mdash; and keeps using real Web Notifications in a browser. <code class="text-cyan-400">Notification.requestPermission()</code> resolves to <code class="text-cyan-400">"granted"</code>, because the shell owns the OS-level permission and a second in-page prompt would be meaningless.
+    </p>
+
+    <h2 id="channels" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Channel names and their tokens</h2>
+    <p class="text-gray-400 mb-4">
+        Channels are yours to choose: <code class="text-cyan-400">user:42</code>, <code class="text-cyan-400">room:7</code>, <code class="text-cyan-400">deploy:prod</code>. They may not contain <code class="text-cyan-400">.</code>, <code class="text-cyan-400">|</code> or control characters, and are namespaced internally so they can never collide with &mdash; or be reached through &mdash; an app's own <code class="text-cyan-400">sse_broadcast</code> topics.
+    </p>
+    <p class="text-gray-400 mb-4">
+        The channel travels as a <strong class="text-white">signed token</strong>, not as plain text. Subscribing is a <code class="text-cyan-400">GET</code> the browser makes, so an unsigned <code class="text-cyan-400">?channel=user:42</code> would let anyone listen to anyone. The token is keyed by HKDF-SHA256 from <code class="text-cyan-400">SOLI_SESSION_SECRET</code>, carries a 12-hour expiry, and is verified before any subscription is accepted. Rotating the secret invalidates outstanding tokens.
+    </p>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">Native.channel_token(channel)</code> mints one directly, for a client that is not a rendered page.
+    </p>
+
+    <h2 id="connection" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Connection behaviour</h2>
+    <p class="text-gray-400 mb-12">
+        The client subscribes over SSE and reconnects with exponential backoff up to 30 seconds. It drops the connection while the tab is hidden &mdash; an idle backgrounded stream costs the server a task for nothing &mdash; and reconnects when it returns. Thousands of idle subscribers cost async tasks, not worker threads.
+    </p>
+
+    <h2 id="requirements" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Requirements</h2>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">SOLI_SESSION_SECRET</code>, 32+ characters. Without it <code class="text-cyan-400">native_channel</code> raises rather than emitting an unsigned tag. Nothing else &mdash; no push service, no certificates, no keys.
+    </p>
+</div>

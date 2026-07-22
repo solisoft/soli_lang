@@ -1,0 +1,100 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Android Push (FCM)</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Reach an Android app that is <strong class="text-white">closed</strong>.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Android kills long-lived connections within minutes of the screen going off. A background socket or a foreground service is not a workaround &mdash; it is a battery cost that still loses to Doze. FCM exists for exactly this.
+    </p>
+
+    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Sending</h2>
+    <pre class="mb-12"><code class="language-soli text-sm">Fcm.send(device_token, {
+  "title": "New ping",
+  "body":  "Ana replied to your comment",
+  "url":   "/pings/3"
+}, {
+  "service_account": File.read("service-account.json")
+})
+# =&gt; { "status": 200, "reason": "" }</code></pre>
+
+    <h2 id="result" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Handling the result</h2>
+    <pre class="mb-6"><code class="language-soli text-sm">class AndroidPush
+  static def deliver(device, payload)
+    result = Fcm.send(device["token"], payload, { "service_account": AndroidPush.account() })
+
+    # The app was uninstalled or the token rotated.
+    if result["reason"] == "UNREGISTERED" || result["reason"] == "NOT_FOUND"
+      Device.find(device["_key"]).destroy()
+      return "pruned"
+    end
+
+    return "sent" if result["status"] == 200
+    "failed"
+  end
+end</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Status</th><th class="py-2 pr-4">Reason</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">200</code></td><td class="py-2 pr-4">&mdash;</td><td class="py-2">Accepted by Google.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">400</code></td><td class="py-2 pr-4"><code class="text-cyan-400">INVALID_ARGUMENT</code></td><td class="py-2">Malformed token or payload.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">404</code></td><td class="py-2 pr-4"><code class="text-cyan-400">UNREGISTERED</code></td><td class="py-2">App removed or token rotated. Delete it.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">429</code></td><td class="py-2 pr-4"><code class="text-cyan-400">QUOTA_EXCEEDED</code></td><td class="py-2">Back off and retry.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">503</code></td><td class="py-2 pr-4"><code class="text-cyan-400">UNAVAILABLE</code></td><td class="py-2">Transient. Retry with backoff.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="payload" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Payload mapping</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">title</code> and <code class="text-cyan-400">body</code> become a <code class="text-cyan-400">notification</code>, which is what makes Android display the message with the app closed. Everything else becomes <code class="text-cyan-400">data</code> for the app to read on tap:
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">Fcm.send(token, {
+  "title": "Build finished",
+  "body":  "main is green",
+  "build": 4821,             # becomes data, stringified to "4821"
+  "url":   "/builds/4821"
+}, options)</code></pre>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white"><code>data</code> values are stringified</strong>, deliberately: FCM rejects a <code class="text-cyan-400">data</code> payload containing numbers or booleans <em>outright</em>, so an innocuous <code class="text-cyan-400">{"count": 3}</code> would otherwise fail the entire send. Every FCM client library does the same.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Messages go out at <code class="text-cyan-400">high</code> priority, because normal priority is precisely what Doze defers &mdash; which would defeat the purpose of reaching a sleeping device. Supply your own <code class="text-cyan-400">message</code> key and it is sent verbatim, for topics, conditions or per-platform overrides:
+    </p>
+    <pre class="mb-12"><code class="language-soli text-sm">Fcm.send("", { "message": {
+  "topic": "release-notes",
+  "notification": { "title": "v1.24.0", "body": "See what changed" }
+}}, options)</code></pre>
+
+    <h2 id="oauth" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Why this needs more setup than APNs</h2>
+    <p class="text-gray-400 mb-4">
+        APNs authenticates with the request itself. FCM's HTTP v1 API wants an <strong class="text-white">OAuth2 access token</strong>, so there is an extra round trip: sign a service-account assertion (RS256), exchange it at Google's token endpoint, then send. Access tokens last an hour and are cached per service account, so the exchange happens roughly once rather than per message.
+    </p>
+    <p class="text-gray-400 mb-12">
+        The old <code class="text-cyan-400">key=AAAA&hellip;</code> server-key API needed none of that. It is not an option &mdash; Google shut it down in 2024. <code class="text-cyan-400">Fcm.access_token(service_account_json)</code> exposes the token for a caller driving the HTTP itself.
+    </p>
+
+    <h2 id="cost" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What it costs</h2>
+    <ol class="space-y-3 text-gray-400 text-sm leading-relaxed mb-6 list-decimal pl-6">
+        <li>A Firebase project (free).</li>
+        <li>A service-account JSON from <em>Project settings &rarr; Service accounts</em>. Treat it as a secret: it can send as your app to anyone.</li>
+        <li><strong class="text-white">The Firebase SDK in the Android app</strong> &mdash; this is the real work. Obtaining a device token requires <code class="text-cyan-400">firebase-messaging</code>, which needs <code class="text-cyan-400">google-services.json</code> and a <strong class="text-white">Gradle build</strong>.</li>
+    </ol>
+    <p class="text-gray-400 mb-4">
+        That last point is a build-system change, not just code: a shell built with <code class="text-cyan-400">aapt2 &rarr; javac &rarr; d8</code> and no dependency resolution cannot absorb the Play Services dependency tree.
+    </p>
+    <p class="text-gray-400 mb-4">Once it is in, the app reports its token the same way:</p>
+    <pre class="mb-12"><code class="language-java text-sm">FirebaseMessaging.getInstance().getToken()
+    .addOnSuccessListener(token -&gt; {
+        // POST it to your app and store it against the signed-in user.
+    });</code></pre>
+
+    <h2 id="combining" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Combining the two</h2>
+    <pre class="mb-12"><code class="language-soli text-sm">reached = Native.notify("user:#{str(user_id)}", payload)
+Fcm.send(device_token, payload, fcm_options) if reached == 0</code></pre>
+</div>

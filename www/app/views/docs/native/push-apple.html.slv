@@ -1,0 +1,108 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Apple Push (APNs)</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Reach a macOS or iOS app that is <strong class="text-white">closed</strong>.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        <a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications</a> stop at the edge of &ldquo;app is open&rdquo; &mdash; a closed app is not executing, so something else has to be listening. On Apple platforms that is APNs: the OS receives the push and displays it whether or not your app is running.
+    </p>
+
+    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Sending</h2>
+    <pre class="mb-12"><code class="language-soli text-sm">Apns.send(device_token, {
+  "title": "New ping",
+  "body":  "Ana replied to your comment",
+  "url":   "/pings/3"
+}, {
+  "key":     File.read("AuthKey_ABC123.p8"),
+  "key_id":  "ABC123DEFG",
+  "team_id": "1A2B3C4D5E",
+  "topic":   "net.example.myapp"
+})
+# =&gt; { "status": 200, "reason": "" }</code></pre>
+
+    <h2 id="result" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Handling the result</h2>
+    <p class="text-gray-400 mb-4">It returns rather than raises, because a dead device token is an ordinary outcome:</p>
+    <pre class="mb-6"><code class="language-soli text-sm">class ApplePush
+  static def deliver(device, payload)
+    result = Apns.send(device["token"], payload, ApplePush.credentials())
+
+    # The device is gone: stop sending to it, or you will do this forever.
+    if result["status"] == 410 || result["reason"] == "Unregistered"
+      Device.find(device["_key"]).destroy()
+      return "pruned"
+    end
+
+    return "sent" if result["status"] == 200
+    "failed"
+  end
+end</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Status</th><th class="py-2 pr-4">Reason</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">200</code></td><td class="py-2 pr-4">&mdash;</td><td class="py-2">Accepted by Apple.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">400</code></td><td class="py-2 pr-4"><code class="text-cyan-400">BadDeviceToken</code></td><td class="py-2">Almost always the wrong gateway &mdash; a development build's token sent to production. Add <code class="text-cyan-400">"sandbox": true</code>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">403</code></td><td class="py-2 pr-4"><code class="text-cyan-400">InvalidProviderToken</code></td><td class="py-2">The <code class="text-cyan-400">.p8</code>, <code class="text-cyan-400">key_id</code> or <code class="text-cyan-400">team_id</code> do not agree.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">410</code></td><td class="py-2 pr-4"><code class="text-cyan-400">Unregistered</code></td><td class="py-2">App removed. Delete the token.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">429</code></td><td class="py-2 pr-4"><code class="text-cyan-400">TooManyProviderTokenUpdates</code></td><td class="py-2">Minting too often &mdash; see below.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="options" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Options</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Option</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key</code></td><td class="py-2">Contents of the <code class="text-cyan-400">.p8</code> file, BEGIN/END lines included. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key_id</code></td><td class="py-2">The key's 10-character id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">team_id</code></td><td class="py-2">Your Apple team id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">topic</code></td><td class="py-2">The app's bundle id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">sandbox</code></td><td class="py-2"><code class="text-cyan-400">true</code> for development builds.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">priority</code></td><td class="py-2"><code class="text-cyan-400">10</code> immediate (default) or <code class="text-cyan-400">5</code> power-considerate.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">push_type</code></td><td class="py-2"><code class="text-cyan-400">"alert"</code> (default), <code class="text-cyan-400">"background"</code>, <code class="text-cyan-400">"voip"</code>&hellip;</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">collapse_id</code></td><td class="py-2">Notifications sharing one replace each other.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">expiration</code></td><td class="py-2">Unix time after which Apple stops trying.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">title</code>, <code class="text-cyan-400">body</code>, <code class="text-cyan-400">badge</code> and <code class="text-cyan-400">sound</code> are wrapped into the <code class="text-cyan-400">aps</code> envelope for you. Anything else rides along as custom data the app reads on tap:</p>
+    <pre class="mb-12"><code class="language-soli text-sm">Apns.send(token, {
+  "title":     "Deploy finished",
+  "body":      "v1.24.0 is live",
+  "badge":     1,
+  "deploy_id": "d_8123",          # custom — your app reads this
+  "url":       "/deploys/d_8123"
+}, options)</code></pre>
+
+    <h2 id="auth" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Token-based auth</h2>
+    <p class="text-gray-400 mb-4">
+        One <code class="text-cyan-400">.p8</code> key works for every app under a team and never expires, where certificates are per-app and expire annually. Get one from <em>Apple Developer &rarr; Keys</em>, enable APNs on it, and note the key id.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Provider tokens are cached for 45 minutes, and that is not an optimization: <strong class="text-white">Apple rate-limits minting</strong>, answering <code class="text-cyan-400">TooManyProviderTokenUpdates</code> if you reissue more often than every 20 minutes. <code class="text-cyan-400">Apns.token(key, key_id, team_id)</code> exposes one for a caller driving the HTTP itself.
+    </p>
+
+    <h2 id="cost" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What it costs</h2>
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-6">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">Receiving requires the <code>aps-environment</code> entitlement</strong>, which comes from a provisioning profile, which requires a <strong class="text-white">paid Apple Developer account</strong>. An ad-hoc signed app cannot receive a push however correct the sender is.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-4">Your app then registers and reports its token:</p>
+    <pre class="mb-12"><code class="language-swift text-sm">NSApplication.shared.registerForRemoteNotifications()
+
+func application(_ app: NSApplication,
+                 didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+    let hex = token.map { String(format: "%02x", $0) }.joined()
+    // POST it to your app and store it against the signed-in user.
+}</code></pre>
+
+    <h2 id="combining" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Combining the two</h2>
+    <pre class="mb-6"><code class="language-soli text-sm">reached = Native.notify("user:#{str(user_id)}", payload)
+Apns.send(device_token, payload, apns_options) if reached == 0</code></pre>
+    <p class="text-gray-400 mb-12">The bridge for anyone looking, APNs for anyone who is not &mdash; and no push service involved in the common case.</p>
+</div>

@@ -15182,6 +15182,54 @@
       "path": "/docs/development-tools/native-bridge#fcm",
       "signature": "Fcm.send(device_token: String, payload: Hash, options: Hash) -> Hash",
       "description": "Firebase Cloud Messaging HTTP v1. Reaches a closed Android app, where a background connection cannot survive Doze. Signs a service-account assertion, exchanges it for a cached OAuth2 token, and stringifies data values as FCM requires."
+    },
+    {
+      "title": "Notifications (native)",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/notifications",
+      "signature": "Native.notify(channel, payload) · native_channel(channel)",
+      "description": "Raise a real OS notification from server-side Soli inside a packaged desktop or mobile app, where an embedded web view has no Notifications API."
+    },
+    {
+      "title": "Camera & Microphone (native)",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/camera",
+      "signature": "navigator.mediaDevices.getUserMedia",
+      "description": "getUserMedia inside a packaged app. A web view denies capture silently; the shell has to grant it. macOS needs usage descriptions or it terminates; Android has two permission gates."
+    },
+    {
+      "title": "Apple Push (APNs)",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/push-apple",
+      "signature": "Apns.send(device_token, payload, options)",
+      "description": "Reach a closed macOS or iOS app. Token-based auth with a .p8 key, cached provider tokens, and status/reason results for pruning dead device tokens."
+    },
+    {
+      "title": "Android Push (FCM)",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/push-android",
+      "signature": "Fcm.send(device_token, payload, options)",
+      "description": "Reach a closed Android app, where a background connection cannot survive Doze. FCM HTTP v1 with a service-account assertion exchanged for a cached OAuth2 token."
+    },
+    {
+      "title": "Barcode & QR Scanning",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/scanning",
+      "signature": "camera_preview({\"scan\": \"qr_code\"}) · soli:scan event",
+      "description": "Read a QR or barcode from the live camera feed in a view. Native BarcodeDetector where the host has one (Chromium), a pluggable decoder where it does not (WebKit), throttled to 100ms."
+    },
+    {
+      "title": "camera_preview",
+      "type": "helper",
+      "category": "Native Bridge",
+      "path": "/docs/native/camera#helper",
+      "signature": "camera_preview(options?: Hash) -> String",
+      "description": "Renders a <video> wired to the camera, with optional barcode scanning. Stops the tracks when the element leaves the DOM, which hand-written previews miss on an instant-nav swap."
     }
   ]
 }

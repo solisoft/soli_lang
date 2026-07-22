@@ -1,0 +1,105 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Camera &amp; Microphone</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8"><code class="text-cyan-400">getUserMedia</code> inside a packaged app &mdash; which works only once the shell stops denying it.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        This is the clearest example of the bridge's first rule: <strong class="text-white">prefer the web API where the host has one</strong>. There is no <code class="text-cyan-400">Native.camera(...)</code> call, because the web already has <code class="text-cyan-400">getUserMedia</code>. What a shell has to do is grant it.
+    </p>
+
+    <h2 id="the-failure" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The failure this fixes</h2>
+    <p class="text-gray-400 mb-4">A web view denies capture <strong class="text-white">silently</strong>. The page sees a rejected promise, the user sees no prompt, and nothing appears in any log:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">navigator.mediaDevices.getUserMedia({ video: true })
+  .catch(err =&gt; console.log(err.name))   // "NotAllowedError", with no prompt ever shown</code></pre>
+    <p class="text-gray-400 mb-12">
+        That is why camera code that works in a browser &ldquo;just doesn't work&rdquo; in a wrapper. It is not the page's fault and not a bug in <code class="text-cyan-400">getUserMedia</code>.
+    </p>
+
+    <h2 id="using-it" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Using it</h2>
+    <p class="text-gray-400 mb-4">Nothing soli-specific &mdash; it is ordinary web code:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">async function startScanner(video) {
+  if (!window.soli?.nativeBridge?.capabilities.includes("camera")) {
+    return showFallback()   // a file input with capture=environment still works everywhere
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" },   // rear camera on a phone
+    audio: false
+  })
+  video.srcObject = stream
+  await video.play()
+  return stream
+}
+
+// Release the camera when you are done — the indicator light stays on otherwise.
+function stop(stream) {
+  stream.getTracks().forEach(track =&gt; track.stop())
+}</code></pre>
+    <p class="text-gray-400 mb-12">
+        Feature-detect through <code class="text-cyan-400">capabilities</code> rather than the user agent: a capability only appears there once it actually works in that shell.
+    </p>
+
+    <h2 id="helper" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The <code class="text-cyan-400">camera_preview</code> helper</h2>
+    <p class="text-gray-400 mb-4">Plain HTML is a perfectly good answer, and the helper exists only for what it leaves out:</p>
+    <pre class="mb-4"><code class="language-erb text-sm">&lt;%- camera_preview({"facing": "environment", "class": "rounded-xl", "fallback": "#no-camera"}) %&gt;</code></pre>
+    <pre class="mb-6"><code class="language-html text-sm">&lt;video data-soli-camera autoplay playsinline muted class="rounded-xl"
+       data-facing="environment" data-fallback="#no-camera"&gt;&lt;/video&gt;</code></pre>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Option</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">facing</code></td><td class="py-2"><code class="text-cyan-400">"user"</code> (default) or <code class="text-cyan-400">"environment"</code> for the rear camera.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">width</code> / <code class="text-cyan-400">height</code></td><td class="py-2">Requested as <code class="text-cyan-400">ideal</code>, so an unsupported size picks the nearest mode rather than failing.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">audio</code></td><td class="py-2"><code class="text-cyan-400">true</code> to capture the microphone too.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">scan</code></td><td class="py-2">Barcode formats &mdash; see <a href="/docs/native/scanning" class="text-amber-400 hover:text-amber-300">Scanning</a>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">fallback</code></td><td class="py-2">A selector revealed when the camera fails.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">class</code> / <code class="text-cyan-400">id</code></td><td class="py-2">Passed through to the element.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">manual</code></td><td class="py-2">Render the element but do not start the stream; call <code class="text-cyan-400">soli.camera.start(el)</code> yourself.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-3">What it buys over the six lines above:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-6 list-disc pl-6">
+        <li><strong class="text-white">The tracks are stopped when the element leaves the DOM.</strong> Instant navigation swaps the body without a page unload, so a hand-rolled preview keeps its stream and the camera indicator stays lit after the user has moved on. This is the one that actually bites.</li>
+        <li><code class="text-cyan-400">playsinline muted</code> always &mdash; without them iOS goes fullscreen and refuses to autoplay.</li>
+        <li>Constraints requested as <code class="text-cyan-400">ideal</code> rather than <code class="text-cyan-400">exact</code>.</li>
+        <li><code class="text-cyan-400">soli.camera.snapshot(video)</code> un-mirrors front-camera frames, so text in shot is not backwards.</li>
+        <li>Events rather than callbacks: <code class="text-cyan-400">soli:camera-ready</code>, <code class="text-cyan-400">soli:camera-error</code> (with the <code class="text-cyan-400">NotAllowedError</code> / <code class="text-cyan-400">NotFoundError</code> / <code class="text-cyan-400">NotReadableError</code> name), and <code class="text-cyan-400">data-camera-state</code> on the element for CSS.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">The script is injected <strong class="text-white">only</strong> into pages that render such an element, so a page with no camera downloads nothing.</p>
+
+    <h2 id="without-a-stream" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Without a live stream</h2>
+    <p class="text-gray-400 mb-4">If all you need is a photo, a file input costs nothing and works on every platform, including browsers with no bridge at all:</p>
+    <pre class="mb-6"><code class="language-html text-sm">&lt;input type="file" accept="image/*" capture="environment"&gt;</code></pre>
+    <p class="text-gray-400 mb-12">
+        On Android that opens the camera app directly. The shell already handles the file chooser; a bare WebView ignores every file input, which is its own silent failure.
+    </p>
+
+    <h2 id="per-shell" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What each shell does</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Host</th><th class="py-2 pr-4">Grant</th><th class="py-2">Also required</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">macOS</td><td class="py-2 pr-4"><code class="text-cyan-400">requestMediaCapturePermissionFor</code> in the <code class="text-cyan-400">WKUIDelegate</code></td><td class="py-2"><code class="text-cyan-400">NSCameraUsageDescription</code> / <code class="text-cyan-400">NSMicrophoneUsageDescription</code></td></tr>
+                <tr><td class="py-2 pr-4 text-white">Android</td><td class="py-2 pr-4"><code class="text-cyan-400">onPermissionRequest</code> in the <code class="text-cyan-400">WebChromeClient</code></td><td class="py-2"><code class="text-cyan-400">CAMERA</code> / <code class="text-cyan-400">RECORD_AUDIO</code>, granted at runtime from API 23</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Windows / Linux</td><td class="py-2 pr-4">nothing &mdash; the artifact opens the real browser</td><td class="py-2">&mdash;</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">Two platform details worth knowing, because both fail in confusing ways:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-6 list-disc pl-6">
+        <li><strong class="text-white">macOS terminates the process</strong> if a usage description is missing. Not a denial, not an exception &mdash; the app disappears the moment the page calls <code class="text-cyan-400">getUserMedia</code>. The string you write is what the user reads in the permission dialog, so it should explain the why.</li>
+        <li><strong class="text-white">Android has two gates</strong>: the app's own runtime permission and the per-origin one the web view asks about. The shell holds the page's request while Android asks the user, then replays it. A <code class="text-cyan-400">PermissionRequest</code> that is never answered leaves <code class="text-cyan-400">getUserMedia</code> hanging forever rather than rejecting, so denial is answered explicitly too.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        Reference implementations: <code class="text-cyan-400">clients/macos/main.swift</code> and <code class="text-cyan-400">clients/android/.../MainActivity.java</code>.
+    </p>
+
+    <h2 id="secure-contexts" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Secure contexts</h2>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">getUserMedia</code> requires one. HTTPS qualifies, and so does <code class="text-cyan-400">http://127.0.0.1</code> &mdash; which is what a <code class="text-cyan-400">soli desktop build</code> app serves on, so a packaged desktop app is fine without a certificate.
+    </p>
+</div>

@@ -1,0 +1,134 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Barcode &amp; QR Scanning</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Read a code from the live camera feed, in a view.</p>
+    </div>
+
+    <pre class="mb-4"><code class="language-erb text-sm">&lt;%- camera_preview({"facing": "environment", "scan": "qr_code"}) %&gt;</code></pre>
+    <pre class="mb-6"><code class="language-javascript text-sm">document.addEventListener("soli:scan", event =&gt; {
+  console.log(event.detail.value)     // the decoded text
+  console.log(event.detail.format)    // "qr_code", where the platform reports it
+})</code></pre>
+    <p class="text-gray-400 mb-12">
+        That is the whole integration. Scanning stops on the first hit unless you ask otherwise, and the camera is released when the element goes away.
+    </p>
+
+    <h2 id="not-server-side" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Why not decode on the server</h2>
+    <p class="text-gray-400 mb-12">
+        Because continuous scanning means ~10 frames a second. Uploading those is latency and bandwidth nobody wants, and the round trip makes the viewfinder feel broken. Server-side decoding is the right answer for <strong class="text-white">a photo the user captured</strong> &mdash; a file input, one image, one request &mdash; not for a live feed.
+    </p>
+
+    <h2 id="support" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Support, and the gap</h2>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">BarcodeDetector</code> is native in Chromium and absent from WebKit:</p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Host</th><th class="py-2">Live scanning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">Android shell</td><td class="py-2">✅ native <code class="text-cyan-400">BarcodeDetector</code></td></tr>
+                <tr><td class="py-2 pr-4 text-white">Windows / Linux</td><td class="py-2">✅ native (the artifact opens Chrome)</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Chromium browsers</td><td class="py-2">✅ native</td></tr>
+                <tr><td class="py-2 pr-4 text-white">macOS shell (<code class="text-cyan-400">WKWebView</code>)</td><td class="py-2">❌ needs a decoder</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Safari / iOS</td><td class="py-2">❌ needs a decoder</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Soli ships the <strong class="text-white">loop</strong>, not the decoder. A WASM barcode reader is ~200&nbsp;KB, and putting one in every soli binary to serve the pages that scan would be the wrong trade. Where the platform has no detector, supply one:
+    </p>
+    <pre class="mb-4"><code class="language-javascript text-sm">import { readBarcodes } from "zxing-wasm"
+
+window.soli.camera.decoder = async (video) =&gt; {
+  const results = await readBarcodes(video, { formats: ["QRCode"] })
+  return results.length ? results[0].text : null
+}</code></pre>
+    <p class="text-gray-400 mb-4">
+        Return the decoded string, or <code class="text-cyan-400">null</code> for &ldquo;nothing in this frame&rdquo;. The loop, throttling, lifecycle and event are handled either way.
+    </p>
+    <p class="text-gray-400 mb-4">
+        If neither a detector nor a decoder is available the element fires <code class="text-cyan-400">soli:scan-unsupported</code>, so a page can offer something else rather than showing a viewfinder that will never resolve:
+    </p>
+    <pre class="mb-12"><code class="language-javascript text-sm">video.addEventListener("soli:scan-unsupported", () =&gt; {
+  document.querySelector("#upload-a-photo").hidden = false
+})</code></pre>
+
+    <h2 id="options" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Options</h2>
+    <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Option</th><th class="py-2">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">scan</code></td><td class="py-2">Formats to look for: <code class="text-cyan-400">"qr_code"</code>, or several &mdash; <code class="text-cyan-400">"qr_code,ean_13,code_128"</code>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">continuous</code></td><td class="py-2">Keep scanning after a hit. Default: stop on the first one.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">interval</code></td><td class="py-2">Milliseconds between frames. Default <code class="text-cyan-400">100</code>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">facing</code></td><td class="py-2"><code class="text-cyan-400">"environment"</code> for the rear camera &mdash; almost always what you want for scanning.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">fallback</code></td><td class="py-2">A selector revealed when the camera fails or scanning is unsupported.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <strong class="text-white">100&nbsp;ms is deliberate.</strong> A <code class="text-cyan-400">requestAnimationFrame</code> loop decodes 60 times a second, drains a phone battery and finds codes no faster: a code held in frame is still there 100&nbsp;ms later.
+    </p>
+
+    <h2 id="example" class="text-3xl font-bold text-white mb-4 scroll-mt-24">A complete example</h2>
+    <p class="text-gray-400 mb-4">Scanning a ticket at the door, posting each code as it is found:</p>
+    <pre class="mb-4"><code class="language-erb text-sm">&lt;div class="scanner"&gt;
+  &lt;%- camera_preview({
+    "facing":     "environment",
+    "scan":       "qr_code",
+    "continuous": true,
+    "class":      "w-full rounded-xl",
+    "fallback":   "#manual-entry"
+  }) %&gt;
+
+  &lt;form id="manual-entry" hidden action="/tickets/check" method="post"&gt;
+    &lt;%- csrf_field() %&gt;
+    &lt;input name="code" placeholder="Type the ticket code"&gt;
+    &lt;button&gt;Check in&lt;/button&gt;
+  &lt;/form&gt;
+
+  &lt;ul id="checked-in"&gt;&lt;/ul&gt;
+&lt;/div&gt;</code></pre>
+    <pre class="mb-4"><code class="language-javascript text-sm">const seen = new Set()
+
+document.addEventListener("soli:scan", async (event) =&gt; {
+  const code = event.detail.value
+  if (seen.has(code)) return          // continuous mode re-reads the same code
+  seen.add(code)
+
+  const response = await fetch("/tickets/check", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json",
+               "X-CSRF-Token": document.querySelector("meta[name=csrf-token]").content },
+    body:    JSON.stringify({ code })
+  })
+
+  const ticket = await response.json()
+  const item = document.createElement("li")
+  item.textContent = ticket.valid ? `✅ ${ticket.holder}` : `❌ ${ticket.reason}`
+  document.querySelector("#checked-in").prepend(item)
+})</code></pre>
+    <p class="text-gray-400 mb-12">
+        The <code class="text-cyan-400">seen</code> set matters in continuous mode: a code stays in frame for many hundred-millisecond ticks, and without it one ticket checks in a dozen times.
+    </p>
+
+    <h2 id="stills" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Capturing a still instead</h2>
+    <p class="text-gray-400 mb-4">If you want the photo rather than the code &mdash; a receipt, a document &mdash; take a frame and post it:</p>
+    <pre class="mb-4"><code class="language-javascript text-sm">const dataUrl = window.soli.camera.snapshot(video)   // JPEG data URL</code></pre>
+    <p class="text-gray-400 mb-12">Front-camera frames are un-mirrored on the way out, or text in the shot comes out backwards.</p>
+
+    <h2 id="formats" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Formats</h2>
+    <p class="text-gray-400 mb-4">Whatever the host detector supports. Chromium reports its list:</p>
+    <pre class="mb-4"><code class="language-javascript text-sm">const formats = await BarcodeDetector.getSupportedFormats()
+// ["aztec", "code_128", "code_39", "data_matrix", "ean_13", "ean_8", "itf",
+//  "pdf417", "qr_code", "upc_a", "upc_e", ...]</code></pre>
+    <p class="text-gray-400 mb-12">
+        Ask only for what you need &mdash; a detector constrained to <code class="text-cyan-400">qr_code</code> is faster than one trying every format on every frame.
+    </p>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><a href="/docs/native/camera" class="text-amber-400 hover:text-amber-300">Camera &amp; Microphone</a> &mdash; the preview itself, and the permissions each shell needs</li>
+        <li><a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a> &mdash; the capability table</li>
+    </ul>
+</div>
