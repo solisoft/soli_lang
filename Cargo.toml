@@ -67,7 +67,10 @@ crossterm = "0.28"
 gag = "1.0"
 
 # HTTP support
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "cookies", "multipart", "stream"], default-features = false }
+# "http2" is required by APNs, which is HTTP/2-only — Apple's gateway refuses
+# an HTTP/1.1 connection outright. Existing HTTP/1.1 callers are unaffected:
+# the protocol is negotiated per-connection over ALPN.
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "cookies", "multipart", "stream", "http2"], default-features = false }
 ureq = { version = "2.9", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

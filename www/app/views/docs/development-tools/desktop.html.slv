@@ -135,6 +135,9 @@ end</code></pre>
     <p class="text-gray-400 mb-12">
         Send <code class="text-cyan-400">SIGTERM</code> when your window closes so the database and the decrypted tree are cleaned up in order &mdash; see <a href="#stopping" class="text-amber-400 hover:text-amber-300">Stopping</a>.
     </p>
+    <p class="text-gray-400 mb-12">
+        Once your shell owns the window it can also own notifications: see <a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a>, which lets server-side Soli raise a real OS notification in your shell. A web view has no Push API and no Notification API, so that bridge is the only way an embedded app gets one.
+    </p>
 
     <h2 id="cross-building" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Cross-building</h2>
     <p class="text-gray-400 mb-4">

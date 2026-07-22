@@ -18,6 +18,7 @@ pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 pub(crate) mod middleware;
 pub mod middleware_log;
+pub mod native;
 pub mod nav;
 pub mod openapi;
 mod origin;
@@ -377,6 +378,41 @@ fn full(body: Bytes) -> ResponseBody {
 
 /// Box a `Response<Full<Bytes>>` (handlers that still build `Full`, e.g. the
 /// live-reload handlers) into the unified boxed body type.
+/// A live SSE response subscribed to `topic`, for the native bridge stream.
+///
+/// Deliberately not routed through a worker: the connection lives as an async
+/// `StreamBody` fed by a channel, so thousands of idle subscribers cost async
+/// tasks rather than worker threads — the same contract `sse_subscribe` gets.
+fn native_stream_response(topic: &str) -> Response<ResponseBody> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    // A first comment frame flushes headers, so the client's `onopen` fires
+    // immediately instead of when the first notification happens to arrive.
+    let _ = tx.try_send(b": connected\n\n".to_vec());
+    crate::interpreter::builtins::streaming::register_subscriber(topic, tx);
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|chunk| Ok::<_, std::io::Error>(hyper::body::Frame::data(Bytes::from(chunk))));
+
+    Response::builder()
+        .status(200)
+        .header("Content-Type", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        // Nginx buffers proxied responses by default, which holds events until
+        // the buffer fills — indistinguishable from a broken bridge.
+        .header("X-Accel-Buffering", "no")
+        .header("Server", "soliMVC")
+        .body(BodyExt::boxed(StreamBody::new(stream)))
+        .unwrap_or_else(|_| {
+            box_full(
+                Response::builder()
+                    .status(500)
+                    .body(Full::new(Bytes::from_static(b"stream init error")))
+                    .unwrap(),
+            )
+        })
+}
+
 fn box_full(resp: Response<Full<Bytes>>) -> Response<ResponseBody> {
     resp.map(|b| b.map_err(|never| match never {}).boxed())
 }
@@ -2587,6 +2623,9 @@ async fn handle_hyper_request(
     };
     let uri = req.uri();
     let path = uri.path().to_string();
+    // Owned so the borrow of `req` ends here; the native bridge's stream route
+    // below needs the raw query string to verify its channel token.
+    let raw_query = uri.query().map(|q| q.to_string());
     let request_start = std::time::Instant::now();
 
     // Increment total request counter before any routing decisions
@@ -3177,6 +3216,28 @@ async fn handle_hyper_request(
     // Framework-bundled instant-navigation script (body swap + pushState).
     if path == "/__soli/nav.js" && method == "GET" {
         return Ok(box_full(nav::handle_nav_js()));
+    }
+
+    // Framework-bundled native bridge: the client shim, and the SSE stream it
+    // subscribes to. The stream is the only place a channel is trusted, so the
+    // signed token is verified before subscribing; every rejection is a flat
+    // 403 rather than an explanation an attacker could probe with.
+    if path == "/__soli/native.js" && method == "GET" {
+        return Ok(box_full(native::handle_native_js()));
+    }
+    if path == "/__soli/native/stream" && method == "GET" {
+        return Ok(match native::topic_for_query(raw_query.as_deref()) {
+            Some(topic) => native_stream_response(&topic),
+            None => box_full(
+                Response::builder()
+                    .status(403)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(Full::new(Bytes::from_static(
+                        b"native channel token missing, invalid or expired",
+                    )))
+                    .unwrap(),
+            ),
+        });
     }
 
     // Handle live reload SSE endpoint

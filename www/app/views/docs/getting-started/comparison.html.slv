@@ -82,7 +82,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Long tail</td>
-                        <td class="py-3 px-4 text-gray-400">S3 client, image pipeline, web push (VAPID), JWT, TOTP primitives, feature flags with percentage rollout, i18n, KV store (Redis-style API), SOAP client, POP3 + IMAP mail clients</td>
+                        <td class="py-3 px-4 text-gray-400">S3 client, image pipeline, web push (VAPID) <em>and</em> a native bridge (<code>Native.notify</code>) that raises OS notifications inside packaged desktop/mobile shells, where web push does not exist at all, JWT, TOTP primitives, feature flags with percentage rollout, i18n, KV store (Redis-style API), SOAP client, POP3 + IMAP mail clients</td>
                     </tr>
                 </tbody>
             </table>

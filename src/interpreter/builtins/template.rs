@@ -773,6 +773,32 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // native_channel(channel) — emit the meta tag that turns on the native
+    // bridge for this page and names the channel it listens to.
+    //
+    // The channel travels as a signed token, not as plain text: subscribing is
+    // a GET the browser makes, so an unsigned `?channel=user:42` would let
+    // anyone listen to anyone. The tag's presence is also what gates script
+    // injection, so a page that never calls this downloads nothing.
+    env.define(
+        "native_channel".to_string(),
+        Value::NativeFunction(NativeFunction::new("native_channel", Some(1), |args| {
+            let channel = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "native_channel() expects string channel, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let token = crate::interpreter::builtins::native::sign_channel(&channel)?;
+            Ok(Value::String(
+                format!("<meta name=\"soli-native\" content=\"{}\">", token).into(),
+            ))
+        })),
+    );
+
     env.define(
         "strip_html".to_string(),
         Value::NativeFunction(NativeFunction::new(

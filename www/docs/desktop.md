@@ -159,6 +159,11 @@ the first `http://127.0.0.1:` line, and load that.
 Send `SIGTERM` when your window closes so the database and the decrypted tree
 are cleaned up in order — see [Stopping](#stopping).
 
+Once your shell owns the window it can also own notifications: see
+[Native Bridge](/docs/development-tools/native-bridge), which lets server-side
+Soli raise a real OS notification in your shell. A web view has no Push API and
+no Notification API, so that bridge is the only way an embedded app gets one.
+
 ## Cross-building
 
 `--target` downloads a published runtime and database for that platform and

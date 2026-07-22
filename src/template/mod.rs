@@ -689,6 +689,11 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
+    // Native bridge: injected only for pages that called `native_channel(...)`,
+    // which is what puts the `soli-native` meta tag in the HTML. Pages that
+    // want nothing from the shell get no script and open no stream.
+    let body = crate::serve::native::inject_native_tag(&body);
+
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
     // body on the actual click as long as the server returns 304 on the

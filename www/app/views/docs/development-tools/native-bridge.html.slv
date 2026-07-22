@@ -1,0 +1,266 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Native Bridge</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Reach the shell your app is being viewed in. While the app is open, server-side Soli code raises a real OS notification with no push service, no certificates and no keys. For an app that is closed, this page also covers <a href="#apns" class="text-amber-400 hover:text-amber-300">APNs</a>, which needs all three.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        An app packaged with <a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300">soli desktop build</a>, or wrapped in a WebView on a phone, renders inside an embedded web view &mdash; and <strong class="text-white">neither <code class="text-cyan-400">WKWebView</code> nor Android's <code class="text-cyan-400">WebView</code> implements the Push API or the Notifications API</strong>. Both platforms reserve those for the browser proper. So an app that ships web push reaches browsers and installed PWAs, and silently reaches nothing at all inside its own native shell.
+    </p>
+
+    <pre class="mb-6"><code class="language-soli text-sm">Native.notify("user:42", {
+  "title": "New ping",
+  "body":  "Ana replied to your comment",
+  "url":   "/pings/3"
+})</code></pre>
+
+    <p class="text-gray-400 mb-12">
+        In a shell that raises a real OS notification. In a browser it raises a Web Notification. Where neither exists it does nothing.
+    </p>
+
+    <h2 id="what-reaches-whom" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What reaches whom</h2>
+    <p class="text-gray-400 mb-4">
+        The bridge covers the app-is-open case, and nothing else. That is a deliberate boundary rather than a shortcoming &mdash; it is what lets it work with no push service, no certificates and no keys &mdash; but you need the whole picture to choose transports:
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Client</th><th class="py-2 pr-4">App open</th><th class="py-2">App closed</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4">Browser</td><td class="py-2 pr-4">bridge (or Web Notification)</td><td class="py-2">web push (VAPID)</td></tr>
+                <tr><td class="py-2 pr-4">Installed PWA</td><td class="py-2 pr-4">bridge</td><td class="py-2">web push (VAPID)</td></tr>
+                <tr><td class="py-2 pr-4">macOS / iOS shell</td><td class="py-2 pr-4"><strong class="text-white">bridge</strong></td><td class="py-2"><a href="#apns" class="text-amber-400 hover:text-amber-300">APNs</a></td></tr>
+                <tr><td class="py-2 pr-4">Android shell</td><td class="py-2 pr-4"><strong class="text-white">bridge</strong></td><td class="py-2">FCM (not yet in soli)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        The bridge is the only thing that reaches the two shell rows on the left, because an embedded web view has neither the Push API nor the Notifications API. Everything on the right needs a push service, because a closed app is not executing and something else has to be listening.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">notify</code> returns how many clients it reached, which makes the two compose without a branch on platform:
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">reached = Native.notify("user:#{str(user_id)}", payload)
+if reached == 0
+  Apns.send(device_token, payload, apns_options)   # or WebPush, for a browser
+end</code></pre>
+    <p class="text-gray-400 mb-12">
+        One case where the right-hand column is simply empty: a desktop app carrying its <strong class="text-white">own</strong> database has nothing writing to it while closed, so there is nothing to announce. There the bridge is not a partial answer &mdash; it is the whole one.
+    </p>
+
+    <h2 id="enabling" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Turning it on</h2>
+    <p class="text-gray-400 mb-4">One helper in your layout names the channel this page listens to:</p>
+    <pre class="mb-6"><code class="language-erb text-sm">&lt;% user_id = session_get("user_id") %&gt;
+&lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
+    <p class="text-gray-400 mb-4">
+        That emits a <code class="text-cyan-400">&lt;meta name="soli-native"&gt;</code> tag whose presence is what switches the bridge on. A page that never calls it downloads no script and opens no connection.
+    </p>
+    <p class="text-gray-400 mb-12">
+        The channel travels as a <strong class="text-white">signed token</strong>, not as plain text. Subscribing is a <code class="text-cyan-400">GET</code> the browser makes, so an unsigned <code class="text-cyan-400">?channel=user:42</code> would let anyone listen to anyone. The token is keyed by HKDF-SHA256 from <code class="text-cyan-400">SOLI_SESSION_SECRET</code> (32+ characters, the same secret sealed cookies use, with its own domain-separating label), carries a 12-hour expiry, and is verified before any subscription is accepted. Rotating the secret invalidates outstanding tokens, exactly as it does sealed cookies.
+    </p>
+
+    <h2 id="api" class="text-3xl font-bold text-white mb-4 scroll-mt-24">API</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400 mb-4">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Call</th><th class="py-2 pr-4">Returns</th><th class="py-2">Notes</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Native.notify(channel, payload)</code></td><td class="py-2 pr-4">Int</td><td class="py-2">Clients reached. <code class="text-cyan-400">0</code> means nobody has the app open.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Native.subscribers(channel)</code></td><td class="py-2 pr-4">Int</td><td class="py-2">Live listeners, without sending anything.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Native.channel_token(channel)</code></td><td class="py-2 pr-4">String</td><td class="py-2">A raw token, for a client that is not a rendered page.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">native_channel(channel)</code></td><td class="py-2 pr-4">String</td><td class="py-2">The meta tag, for a view. The usual way in.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Payload keys the shells understand: <code class="text-cyan-400">title</code>, <code class="text-cyan-400">body</code>, <code class="text-cyan-400">url</code> (opened on click), <code class="text-cyan-400">tag</code> (a stable id, so an update replaces its predecessor rather than stacking), <code class="text-cyan-400">icon</code>.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Channel names are yours &mdash; <code class="text-cyan-400">user:42</code>, <code class="text-cyan-400">room:7</code>, <code class="text-cyan-400">deploy:prod</code>. They may not contain <code class="text-cyan-400">.</code>, <code class="text-cyan-400">|</code> or control characters, and are namespaced internally so they can never collide with, or be reached through, an app's own <code class="text-cyan-400">sse_broadcast</code> topics.
+    </p>
+
+    <h2 id="capabilities" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Capabilities</h2>
+    <p class="text-gray-400 mb-4">
+        A shell declares what it can do, and the page can branch on it without sniffing user agents:
+    </p>
+    <pre class="mb-6"><code class="language-javascript text-sm">window.soli.nativeBridge   // { available: true, platform: "android", capabilities: ["notify", "camera"] }</code></pre>
+    <p class="text-gray-400 mb-3">Two rules explain the shape of this table:</p>
+    <ol class="space-y-2 text-gray-400 text-sm leading-relaxed mb-6 list-decimal pl-6">
+        <li><strong class="text-white">Prefer the web API when the host already has one.</strong> <code class="text-cyan-400">getUserMedia</code> needs no bridge call &mdash; it needs the shell to stop denying it, which is permission wiring rather than an API.</li>
+        <li><strong class="text-white">Only embedded web views need a bridge at all.</strong> On Windows and Linux a <code class="text-cyan-400">soli desktop build</code> artifact opens the user's <em>real browser</em> (chrome-less, but Chrome), so every web API is already there. There is nothing to bridge until you replace that browser with a native window.</li>
+    </ol>
+    <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Capability</th><th class="py-2 pr-4">Browser / PWA</th><th class="py-2 pr-4">Windows</th><th class="py-2 pr-4">Linux</th><th class="py-2 pr-4">macOS shell</th><th class="py-2">Android shell</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">Notifications, app open</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Notifications, app closed</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ <a href="#apns" class="text-amber-400 hover:text-amber-300">APNs</a></td><td class="py-2">✅ <a href="#fcm" class="text-amber-400 hover:text-amber-300">FCM</a> sender*</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Camera / microphone</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">File upload / capture</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Clipboard</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Geolocation</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Vibration / haptics</td><td class="py-2 pr-4">✅ Android</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 needs VIBRATE</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Deep links into the app</td><td class="py-2 pr-4">&mdash;</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">NFC</td><td class="py-2 pr-4">Chrome Android only</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗ no hardware API</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Barcode / QR scan</td><td class="py-2 pr-4">partial</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Biometric unlock</td><td class="py-2 pr-4">✅ WebAuthn</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Badge count</td><td class="py-2 pr-4">✅ Badging API</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Share sheet</td><td class="py-2 pr-4">✅ Web Share</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Keep screen awake</td><td class="py-2 pr-4">✅ Wake Lock</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Printing</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">🔜 bridge</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-500 text-sm mb-8">✅ shipped &nbsp;·&nbsp; 🔜 planned &nbsp;·&nbsp; ✗ not possible on the platform &nbsp;·&nbsp; &ldquo;browser&rdquo; = provided by the browser the artifact opens, not by a shell<br>* The <strong class="text-white">sender</strong> ships; the Android app still needs the Firebase SDK to obtain a device token, which means a Gradle build.</p>
+
+    <h3 id="shell-status" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Where the shells stand</h3>
+    <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Host</th><th class="py-2 pr-4">Window today</th><th class="py-2">Native shell</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">Windows</td><td class="py-2 pr-4">the user's browser, chrome-less</td><td class="py-2">none &mdash; would be <strong class="text-white">WebView2</strong></td></tr>
+                <tr><td class="py-2 pr-4 text-white">Linux</td><td class="py-2 pr-4">the user's browser, chrome-less</td><td class="py-2">none &mdash; would be <strong class="text-white">WebKitGTK</strong></td></tr>
+                <tr><td class="py-2 pr-4 text-white">macOS</td><td class="py-2 pr-4">native, frameless</td><td class="py-2">✅ AppKit + <code class="text-cyan-400">WKWebView</code></td></tr>
+                <tr><td class="py-2 pr-4 text-white">Android</td><td class="py-2 pr-4">native</td><td class="py-2">✅ <code class="text-cyan-400">WebView</code></td></tr>
+                <tr><td class="py-2 pr-4 text-white">iOS</td><td class="py-2 pr-4">&mdash;</td><td class="py-2">none &mdash; would be UIKit + <code class="text-cyan-400">WKWebView</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">
+        A Windows or Linux shell is a real option, not a missing feature: it buys a native frameless window and an icon, and costs you the web APIs the browser was providing for free. Both embed a web view that suppresses notifications by default &mdash; WebView2 raises <code class="text-cyan-400">NotificationReceived</code> for the host to handle, WebKitGTK emits <code class="text-cyan-400">show-notification</code> &mdash; so both would implement the same bridge contract the macOS and Android shells do, and both would need their own permission wiring for camera.
+    </p>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">&ldquo;macOS shell&rdquo; means AppKit, not Apple in general.</strong> There is no iOS shell yet. <code class="text-cyan-400">WKWebView</code>, <code class="text-cyan-400">WKScriptMessageHandler</code>, <code class="text-cyan-400">UNUserNotificationCenter</code> and the capture-permission delegate are shared between the platforms, so the bridge code ports directly &mdash; but the window layer (<code class="text-cyan-400">NSWindow</code>, menus, the frameless chrome) is AppKit and has no UIKit equivalent. APNs is already platform-neutral: the same <code class="text-cyan-400">Apns.send</code> reaches both once a device registers.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Rows marked 🔜 are not implemented yet. A capability only appears in a shell's <code class="text-cyan-400">capabilities</code> list once it actually works there, so feature-detection stays honest:
+    </p>
+    <pre class="mb-12"><code class="language-javascript text-sm">if (window.soli.nativeBridge.capabilities.includes("camera")) {
+  // safe to offer the in-app scanner
+}</code></pre>
+
+    <h2 id="notification-api" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Existing notification code keeps working</h2>
+    <p class="text-gray-400 mb-4">
+        Inside a shell the client script replaces <code class="text-cyan-400">window.Notification</code> with one that routes through the bridge. Page code that already does this:
+    </p>
+    <pre class="mb-6"><code class="language-javascript text-sm">new Notification("Saved", { body: "Your changes are live" })</code></pre>
+    <p class="text-gray-400 mb-12">
+        keeps working in the shell &mdash; where that global does not otherwise exist at all &mdash; and keeps using real Web Notifications in a browser. <code class="text-cyan-400">Notification.requestPermission()</code> resolves to <code class="text-cyan-400">"granted"</code>, because the shell owns the OS-level permission and a second in-page prompt would be meaningless.
+    </p>
+
+    <h2 id="writing-a-shell" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Writing a shell</h2>
+    <p class="text-gray-400 mb-4">A shell injects an object the client script looks for. WebKit can define it at document start:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">window.soli = window.soli || {};
+window.soli.native = {
+  platform: "macos",
+  capabilities: ["notify"],
+  notify: function (json) { window.webkit.messageHandlers.soliNative.postMessage(json); }
+};</code></pre>
+    <p class="text-gray-400 mb-4">
+        Android binds a Java object by name instead, which the script also accepts &mdash; <code class="text-cyan-400">addJavascriptInterface</code> is how the platform injects, and evaluating a wrapper script early enough to dress it up races page load:
+    </p>
+    <pre class="mb-6"><code class="language-java text-sm">webView.addJavascriptInterface(new SoliNativeBridge(), "soliNativeHost");</code></pre>
+    <p class="text-gray-400 mb-4">Either way <code class="text-cyan-400">notify</code> receives one JSON string.</p>
+    <p class="text-gray-400 mb-12">
+        Pages can branch on what the host supports without sniffing user agents: <code class="text-cyan-400">window.soli.nativeBridge</code> reports <code class="text-cyan-400">{ available, platform, capabilities }</code>.
+    </p>
+
+    <h2 id="connection" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Connection behaviour</h2>
+    <p class="text-gray-400 mb-12">
+        The client subscribes over SSE and reconnects with exponential backoff, up to 30 seconds. It drops the connection while the tab is hidden &mdash; an idle backgrounded stream costs the server a task for nothing &mdash; and reconnects when it returns. Thousands of idle subscribers cost async tasks, not worker threads.
+    </p>
+
+    <h2 id="apns" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Reaching a closed app: APNs</h2>
+    <p class="text-gray-400 mb-4">
+        The bridge stops at the edge of &ldquo;app is open&rdquo;. To go past it something has to be listening while your app is not &mdash; on Apple platforms that is APNs, and the OS displays the notification whether or not the app is running.
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">Apns.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
+  "key":     File.read("AuthKey_ABC123.p8"),
+  "key_id":  "ABC123DEFG",
+  "team_id": "1A2B3C4D5E",
+  "topic":   "net.example.myapp"
+})</code></pre>
+    <p class="text-gray-400 mb-4">
+        Returns <code class="text-cyan-400">{"status": Int, "reason": String}</code> rather than raising: a dead device token is an ordinary outcome to handle (prune it), not an exception. <code class="text-cyan-400">200</code> means delivered to Apple. <code class="text-cyan-400">410</code> with <code class="text-cyan-400">Unregistered</code> means the app was removed &mdash; delete the token. <code class="text-cyan-400">400</code> with <code class="text-cyan-400">BadDeviceToken</code> almost always means the token came from a build pointed at the <em>other</em> gateway; add <code class="text-cyan-400">"sandbox": true</code> for development builds.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Option</th><th class="py-2">Meaning</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key</code></td><td class="py-2">Contents of the <code class="text-cyan-400">.p8</code> file, including the BEGIN/END lines. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">key_id</code></td><td class="py-2">The key's 10-character id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">team_id</code></td><td class="py-2">Your Apple team id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">topic</code></td><td class="py-2">The app's bundle id. <strong class="text-white">Required.</strong></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">sandbox</code></td><td class="py-2"><code class="text-cyan-400">true</code> for development builds. Default <code class="text-cyan-400">false</code>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">priority</code></td><td class="py-2"><code class="text-cyan-400">10</code> (immediate, default) or <code class="text-cyan-400">5</code> (power-considerate).</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">push_type</code></td><td class="py-2"><code class="text-cyan-400">"alert"</code> (default), <code class="text-cyan-400">"background"</code>, <code class="text-cyan-400">"voip"</code>&hellip;</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">collapse_id</code></td><td class="py-2">Notifications sharing one replace each other.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">expiration</code></td><td class="py-2">Unix time after which Apple stops trying.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">title</code>, <code class="text-cyan-400">body</code>, <code class="text-cyan-400">badge</code> and <code class="text-cyan-400">sound</code> are wrapped into the <code class="text-cyan-400">aps</code> envelope for you; anything else rides along as custom data the app reads on tap. Supply your own <code class="text-cyan-400">aps</code> key and it is sent verbatim.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">Apns.token(key, key_id, team_id)</code> exposes the provider JWT for callers driving the HTTP themselves. Tokens are cached and reused for 45 minutes &mdash; Apple rate-limits <em>minting</em> to once every 20 minutes and answers <code class="text-cyan-400">TooManyProviderTokenUpdates</code> if you exceed it.
+    </p>
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-6">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">What it costs.</strong> Unlike the bridge, this is not free of setup: receiving a push requires the <code class="text-cyan-400">aps-environment</code> entitlement, which comes from a provisioning profile, which requires a <strong class="text-white">paid Apple Developer account</strong>. An ad-hoc signed app cannot receive one however correct the sender is.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-4">The two together:</p>
+    <pre class="mb-12"><code class="language-soli text-sm">reached = Native.notify("user:#{str(user_id)}", payload)
+Apns.send(device_token, payload, apns_options) if reached == 0</code></pre>
+
+    <h2 id="fcm" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Reaching a closed Android app: FCM</h2>
+    <p class="text-gray-400 mb-4">
+        The Android counterpart to APNs, and the only way to reach an app that is not running: Android kills long-lived connections within minutes of the screen going off, which is exactly why FCM exists. A background socket or a foreground service is not a workaround &mdash; it is a battery cost that still loses to Doze.
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">Fcm.send(device_token, { "title": "New ping", "body": "Ana replied", "url": "/pings/3" }, {
+  "service_account": File.read("service-account.json")
+})</code></pre>
+    <p class="text-gray-400 mb-6">
+        Returns <code class="text-cyan-400">{"status": Int, "reason": String}</code>, like <code class="text-cyan-400">Apns.send</code>. <code class="text-cyan-400">200</code> is delivered. <code class="text-cyan-400">404</code> with <code class="text-cyan-400">UNREGISTERED</code> means the app was removed or the token rotated &mdash; delete it. <code class="text-cyan-400">400</code> with <code class="text-cyan-400">INVALID_ARGUMENT</code> usually means a malformed token.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-3">Why this needs more than APNs</h3>
+    <p class="text-gray-400 mb-4">
+        APNs authenticates with the request itself. FCM's HTTP v1 API wants an <strong class="text-white">OAuth2 access token</strong>, so there is an extra round trip: sign a service-account assertion (RS256), exchange it at Google's token endpoint, then send. Access tokens last an hour and are cached per service account, so the exchange happens roughly once rather than per message.
+    </p>
+    <p class="text-gray-400 mb-6">
+        The old <code class="text-cyan-400">key=AAAA&hellip;</code> server-key API needed none of that and is not an option &mdash; Google shut it down in 2024. <code class="text-cyan-400">Fcm.access_token(service_account_json)</code> exposes the token for callers driving the HTTP themselves.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-3">Payload mapping</h3>
+    <p class="text-gray-400 mb-6">
+        <code class="text-cyan-400">title</code> and <code class="text-cyan-400">body</code> become a <code class="text-cyan-400">notification</code>, which is what makes Android display the message without the app running. Everything else becomes <code class="text-cyan-400">data</code> for the app to read on tap &mdash; <strong class="text-white">stringified</strong>, because FCM rejects a <code class="text-cyan-400">data</code> payload with non-string values outright, so a <code class="text-cyan-400">{"count": 3}</code> would otherwise fail the whole send. Messages go out at <code class="text-cyan-400">high</code> priority, since a notification the user is meant to see now is precisely what Doze would defer. Supply your own <code class="text-cyan-400">message</code> key and it is sent verbatim.
+    </p>
+
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-12">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">What it costs.</strong> A Firebase project (free), a service-account JSON from <em>Project settings &rarr; Service accounts</em>, and &mdash; the real work &mdash; the <strong class="text-white">Firebase SDK in the Android app</strong>, which needs <code class="text-cyan-400">google-services.json</code> and a Gradle build. The shell in <code class="text-cyan-400">clients/android</code> builds without Gradle today, so adding FCM to it is a build-system change as much as a code change.
+        </p>
+    </div>
+
+    <h2 id="requirements" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Requirements</h2>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><code class="text-cyan-400">SOLI_SESSION_SECRET</code>, 32+ characters. Without it <code class="text-cyan-400">native_channel</code> raises rather than emitting an unsigned tag.</li>
+        <li>Nothing else. No push service, no keys, no certificates.</li>
+    </ul>
+</div>

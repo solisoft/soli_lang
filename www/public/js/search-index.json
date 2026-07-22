@@ -15142,6 +15142,46 @@
         "oidc",
         "parse"
       ]
+    },
+    {
+      "title": "Native Bridge",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/native-bridge",
+      "signature": "Native.notify(channel, payload) · Native.subscribers(channel) · native_channel(channel)",
+      "description": "Raise a real OS notification in a packaged desktop or mobile app. Embedded web views have no Push API and no Notifications API, so web push reaches browsers and PWAs but never a native shell. Reaches only clients with the app open, and returns how many, so real push stays one line away."
+    },
+    {
+      "title": "Native.notify",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/native-bridge#api",
+      "signature": "Native.notify(channel: String, payload: Hash) -> Int",
+      "description": "Send a notification to every client listening on a channel. Returns the number reached; 0 means nobody has the app open, which is the cue to fall through to web push."
+    },
+    {
+      "title": "native_channel",
+      "type": "helper",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/native-bridge#enabling",
+      "signature": "native_channel(channel: String) -> String",
+      "description": "View helper emitting the signed meta tag that turns the native bridge on for a page and names the channel it listens to."
+    },
+    {
+      "title": "Apns.send",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/native-bridge#apns",
+      "signature": "Apns.send(device_token: String, payload: Hash, options: Hash) -> Hash",
+      "description": "Apple Push Notification service, token-based (JWT). Reaches an app that is closed, where the native bridge cannot. Returns {status, reason}; receiving requires the aps-environment entitlement and a paid Apple Developer account."
+    },
+    {
+      "title": "Fcm.send",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/native-bridge#fcm",
+      "signature": "Fcm.send(device_token: String, payload: Hash, options: Hash) -> Hash",
+      "description": "Firebase Cloud Messaging HTTP v1. Reaches a closed Android app, where a background connection cannot survive Doze. Signs a service-account assertion, exchanges it for a cached OAuth2 token, and stringifies data values as FCM requires."
     }
   ]
 }

@@ -2128,6 +2128,62 @@ impl TypeEnvironment {
         }
         self.classes.insert("KV".to_string(), kv_class);
 
+        // Native class — Native.notify(channel, payload) -> Int (clients
+        // reached), Native.subscribers(channel) -> Int,
+        // Native.channel_token(channel) -> String.
+        let mut native_class = ClassType::new("Native".to_string());
+        for (name, return_type) in [
+            ("notify", Type::Int),
+            ("subscribers", Type::Int),
+            ("channel_token", Type::String),
+        ] {
+            native_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Native".to_string(), native_class);
+
+        // Apns class — Apns.send(device_token, payload, options) -> Hash
+        // {status, reason}; Apns.token(key, key_id, team_id) -> String.
+        let mut apns_class = ClassType::new("Apns".to_string());
+        for (name, return_type) in [("send", Type::Any), ("token", Type::String)] {
+            apns_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Apns".to_string(), apns_class);
+
+        // Fcm class — Fcm.send(device_token, payload, options) -> Hash
+        // {status, reason}; Fcm.access_token(service_account_json) -> String.
+        let mut fcm_class = ClassType::new("Fcm".to_string());
+        for (name, return_type) in [("send", Type::Any), ("access_token", Type::String)] {
+            fcm_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Fcm".to_string(), fcm_class);
+
         // UUID class — UUID.v4() / UUID.v7() -> String
         let mut uuid_class = ClassType::new("UUID".to_string());
         for name in &["v4", "v7"] {

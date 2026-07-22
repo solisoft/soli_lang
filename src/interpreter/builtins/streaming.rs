@@ -122,6 +122,12 @@ pub fn broadcast_sse(topic: &str, data: &str, event: Option<&str>) -> usize {
     broadcast_bytes(topic, format_sse(data, event).into_bytes())
 }
 
+/// Number of live subscribers on `topic`, for cross-module callers (the
+/// `Native.*` builtins ask this to decide whether a push fallback is needed).
+pub fn subscriber_count_for(topic: &str) -> usize {
+    subscriber_count(topic)
+}
+
 /// Number of live subscribers on `topic` (best-effort; prunes closed ones).
 fn subscriber_count(topic: &str) -> usize {
     let mut subs = SUBSCRIBERS.lock().unwrap();

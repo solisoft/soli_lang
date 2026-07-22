@@ -191,6 +191,10 @@ def development_tools_desktop
     render_docs("docs/development-tools/desktop", "Desktop Apps", "development_tools", "desktop")
 end
 
+def development_tools_native_bridge
+    render_docs("docs/development-tools/native-bridge", "Native Bridge", "development_tools", "native-bridge")
+end
+
 def development_tools_editor_integration
     render_docs(
         "docs/development-tools/editor-integration",
