@@ -109,6 +109,21 @@ pub struct Party {
     /// the seller when VAT is charged.
     #[serde(default)]
     pub vat_id: Option<String>,
+    /// Legal registration identifier — BT-30 (seller) / BT-47 (buyer): the
+    /// **SIREN** (9 digits) or **SIRET** (14 digits) in France, the KvK number
+    /// in the Netherlands, and so on.
+    ///
+    /// EN 16931 leaves it optional — `BR-CO-26` only asks for *one* of BT-30,
+    /// BT-31 (VAT id) or BT-32 — but the French e-invoicing mandate makes both
+    /// parties' SIREN a required invoice mention, and routing keys off the
+    /// SIRET. Fill it for any invoice that has to travel in France.
+    #[serde(default)]
+    pub legal_id: Option<String>,
+    /// ISO 6523 ICD scheme for [`Party::legal_id`] — BT-30-1 / BT-47-1, e.g.
+    /// `"0002"` (SIRENE / SIREN) or `"0009"` (SIRET). Left unset, the French
+    /// codes are inferred from the digit count; see [`Party::legal_id_scheme`].
+    #[serde(default)]
+    pub legal_id_scheme: Option<String>,
     /// IBAN for payment — used to build the EPC "scan-to-pay" QR (seller only).
     #[serde(default)]
     pub iban: Option<String>,
@@ -120,6 +135,47 @@ pub struct Party {
 impl Party {
     fn country_display(&self) -> &str {
         self.country_name.as_deref().unwrap_or(&self.country)
+    }
+
+    /// The registration identifier as it travels in the CII: whitespace removed
+    /// when the value is purely numeric — a SIRET is commonly typed
+    /// `512 345 678 00027` but must reach the directory as 14 digits — and
+    /// merely trimmed otherwise. `None` when unset or blank.
+    fn legal_id_value(&self) -> Option<String> {
+        let raw = self.legal_id.as_deref()?.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        let compact: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+        if compact.bytes().all(|b| b.is_ascii_digit()) {
+            Some(compact)
+        } else {
+            Some(raw.to_string())
+        }
+    }
+
+    /// The ISO 6523 ICD scheme code to stamp on the registration id.
+    ///
+    /// An explicit `legal_id_scheme` always wins. Otherwise the French codes are
+    /// inferred from the digit count: 9 digits is a SIREN (`0002`, SIRENE) and
+    /// 14 is a SIRET (`0009`). Anything else emits a bare `<ram:ID>` with no
+    /// `schemeID` — allowed by EN 16931, and honest, rather than guessing a
+    /// French scheme for a foreign registration number.
+    fn legal_id_scheme(&self) -> Option<&str> {
+        if let Some(scheme) = self.legal_id_scheme.as_deref().map(str::trim) {
+            if !scheme.is_empty() {
+                return Some(scheme);
+            }
+        }
+        let value = self.legal_id_value()?;
+        if !value.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        match value.len() {
+            9 => Some("0002"),
+            14 => Some("0009"),
+            _ => None,
+        }
     }
 }
 
@@ -754,6 +810,21 @@ fn push_allowance_charge(
 fn push_party(out: &mut String, tag: &str, p: &Party) {
     out.push_str(&format!("      <ram:{tag}>\n"));
     out.push_str(&format!("        <ram:Name>{}</ram:Name>\n", esc(&p.name)));
+    // BT-30 / BT-47. The CII party sequence is fixed: SpecifiedLegalOrganization
+    // sits after Name and before DefinedTradeContact — moving it breaks schema
+    // validation even though every value is correct.
+    if let Some(id) = p.legal_id_value() {
+        out.push_str("        <ram:SpecifiedLegalOrganization>\n");
+        match p.legal_id_scheme() {
+            Some(scheme) => out.push_str(&format!(
+                "          <ram:ID schemeID=\"{}\">{}</ram:ID>\n",
+                esc(scheme),
+                esc(&id)
+            )),
+            None => out.push_str(&format!("          <ram:ID>{}</ram:ID>\n", esc(&id))),
+        }
+        out.push_str("        </ram:SpecifiedLegalOrganization>\n");
+    }
     if let Some(phone) = &p.phone {
         out.push_str("        <ram:DefinedTradeContact>\n");
         out.push_str("          <ram:TelephoneUniversalCommunication>\n");
@@ -818,6 +889,11 @@ fn party_json(p: &Party, name_key: &str) -> Value {
         "city": p.city,
         "country": p.country_display(),
         "phone": p.phone.clone().unwrap_or_default(),
+        // A French invoice must *print* both parties' SIREN, not merely carry it
+        // in the XML — so the identifiers reach the template too. Empty string
+        // when unset, which interpolates to nothing.
+        "vat_number": p.vat_id.clone().unwrap_or_default(),
+        "registration": p.legal_id_value().unwrap_or_default(),
     })
 }
 
@@ -882,6 +958,8 @@ mod tests {
                 country_name: Some("France".into()),
                 phone: Some("+033 612348032".into()),
                 vat_id: Some("FRXX999999999".into()),
+                legal_id: Some("512345678".into()),
+                legal_id_scheme: None,
                 iban: Some("FR7630006000011234567890189".into()),
                 bic: None,
             },
@@ -894,6 +972,8 @@ mod tests {
                 country_name: Some("USA".into()),
                 phone: Some("+001 1234567890".into()),
                 vat_id: None,
+                legal_id: None,
+                legal_id_scheme: None,
                 iban: None,
                 bic: None,
             },
@@ -994,6 +1074,59 @@ mod tests {
         assert!(xml.contains("<ram:CountryID>FR</ram:CountryID>"));
         // Buyer has no VAT id → no second tax registration.
         assert_eq!(xml.matches("SpecifiedTaxRegistration").count(), 2);
+        // BT-30: a 9-digit id is inferred as a SIREN (ISO 6523 ICD 0002).
+        assert!(xml.contains("<ram:ID schemeID=\"0002\">512345678</ram:ID>"));
+        // Buyer has no registration id → no second legal organisation.
+        assert_eq!(xml.matches("SpecifiedLegalOrganization").count(), 2);
+    }
+
+    #[test]
+    fn legal_organisation_sits_between_name_and_address() {
+        // The CII party sequence is fixed; a correct value in the wrong slot
+        // still fails schema validation.
+        let xml = sample().to_cii_xml(Profile::En16931).unwrap();
+        let name = xml.find("<ram:Name>PDFx</ram:Name>").unwrap();
+        let org = xml.find("<ram:SpecifiedLegalOrganization>").unwrap();
+        let contact = xml.find("<ram:DefinedTradeContact>").unwrap();
+        let address = xml.find("<ram:PostalTradeAddress>").unwrap();
+        assert!(name < org && org < contact && contact < address);
+    }
+
+    #[test]
+    fn siret_is_compacted_and_scheme_inferred() {
+        let mut inv = sample();
+        // SIRETs are typed with spaces; the directory wants 14 bare digits.
+        inv.seller.legal_id = Some("512 345 678 00027".into());
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        assert!(xml.contains("<ram:ID schemeID=\"0009\">51234567800027</ram:ID>"));
+    }
+
+    #[test]
+    fn explicit_scheme_wins_and_foreign_ids_stay_bare() {
+        let mut inv = sample();
+        inv.seller.legal_id_scheme = Some("0060".into());
+        assert!(inv
+            .to_cii_xml(Profile::En16931)
+            .unwrap()
+            .contains("<ram:ID schemeID=\"0060\">512345678</ram:ID>"));
+
+        // Non-numeric registration, no explicit scheme → bare ID rather than a
+        // guessed French one.
+        let mut inv = sample();
+        inv.seller.legal_id = Some("KvK 34567890".into());
+        inv.seller.legal_id_scheme = None;
+        assert!(inv
+            .to_cii_xml(Profile::En16931)
+            .unwrap()
+            .contains("<ram:ID>KvK 34567890</ram:ID>"));
+    }
+
+    #[test]
+    fn blank_legal_id_emits_nothing() {
+        let mut inv = sample();
+        inv.seller.legal_id = Some("   ".into());
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        assert!(!xml.contains("SpecifiedLegalOrganization"));
     }
 
     #[test]
@@ -1004,6 +1137,11 @@ mod tests {
         assert_eq!(d["invoice"]["due_amount"], "€600.00");
         assert_eq!(d["company"]["name"], "PDFx");
         assert_eq!(d["company"]["country"], "France"); // display name
+                                                       // Identifiers reach the template so the PDF can print the statutory
+                                                       // mentions; unset ones interpolate to nothing.
+        assert_eq!(d["company"]["vat_number"], "FRXX999999999");
+        assert_eq!(d["company"]["registration"], "512345678");
+        assert_eq!(d["customer"]["registration"], "");
         assert_eq!(d["customer"]["company"], "John Doe");
         assert_eq!(d["items"][1]["total_amount"], "€400.00");
         assert_eq!(d["total"]["vat"], "€100.00");

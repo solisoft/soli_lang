@@ -1,18 +1,21 @@
 {
   "data": {
     "seller": {
-      "name": "Meridian Instruments BV",
+      "name": "Meridian Instruments SAS",
       "tagline": "Precision measurement and calibration",
-      "address": "Keizersgracht 214",
-      "city": "1016 DX Amsterdam, Netherlands",
-      "vat_number": "NL812345678B01",
-      "registration": "KvK 34567890"
+      "address": "18 rue de Paradis",
+      "city": "75010 Paris, France",
+      "vat_number": "FR75512345679",
+      "siren": "512 345 679",
+      "siret": "512 345 679 00017",
+      "registration": "RCS Paris 512 345 679 · capital €50,000"
     },
     "customer": {
-      "name": "Concertgebouw Vastgoed BV",
-      "address": "Concertgebouwplein 10",
-      "city": "1071 LN Amsterdam, Netherlands",
-      "vat_number": "NL004512889B02"
+      "name": "Philharmonie Immobilier SAS",
+      "address": "221 avenue Jean-Jaurès",
+      "city": "75019 Paris, France",
+      "vat_number": "FR22842917361",
+      "siren": "842 917 361"
     },
     "invoice": {
       "number": "MI-2025-0184",
@@ -21,26 +24,27 @@
       "due": "28 Dec 2025",
       "po_ref": "PO-4471",
       "terms": "net 30 days from the invoice date",
-      "vat_note": "VAT charged under the Dutch VAT Act (Wet op de omzetbelasting 1968)."
+      "operation_note": "Nature of the operation: supply of goods and services.",
+      "vat_note": "VAT payable on debits (option under art. 269-2-c, French General Tax Code)."
     },
     "items": [
-      { "name": "On-site calibration, climate sensor array", "qty": "2", "unit": "480.00", "vat_rate": "21%", "net": "960.00" },
-      { "name": "Sensor module MX-4, replacement unit", "qty": "6", "unit": "145.00", "vat_rate": "21%", "net": "870.00" },
-      { "name": "Technical handbook, printed edition", "qty": "12", "unit": "18.50", "vat_rate": "9%", "net": "222.00" }
+      { "name": "On-site calibration, climate sensor array", "qty": "2", "unit": "480.00", "vat_rate": "20%", "net": "960.00" },
+      { "name": "Sensor module MX-4, replacement unit", "qty": "6", "unit": "145.00", "vat_rate": "20%", "net": "870.00" },
+      { "name": "Technical handbook, printed edition", "qty": "12", "unit": "18.50", "vat_rate": "5.5%", "net": "222.00" }
     ],
     "vat_breakdown": [
-      { "rate": "21%", "base": "1,830.00", "amount": "384.30" },
-      { "rate": "9%", "base": "222.00", "amount": "19.98" }
+      { "rate": "20%", "base": "1,830.00", "amount": "366.00" },
+      { "rate": "5.5%", "base": "222.00", "amount": "12.21" }
     ],
     "totals": {
       "net": "€2,052.00",
-      "vat": "€404.28",
-      "due": "€2,456.28"
+      "vat": "€378.21",
+      "due": "€2,430.21"
     },
     "payment": {
-      "iban": "NL91ABNA0417164300",
-      "bic": "ABNANL2A",
-      "amount": "2456.28"
+      "iban": "FR7630006000011234567890189",
+      "bic": "CRLYFRPP",
+      "amount": "2430.21"
     }
   }
 }

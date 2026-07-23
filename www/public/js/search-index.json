@@ -12826,6 +12826,33 @@
       ]
     },
     {
+      "title": "SIREN / SIRET on a Factur-X invoice",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-siren-siret",
+      "signature": "seller.legal_id / buyer.legal_id",
+      "description": "Fill the legal registration identifier (BT-30 / BT-47) on a typed invoice — SIREN or SIRET in France. The ISO 6523 scheme is inferred from the digit count (9 → 0002 SIRENE, 14 → 0009 SIRET) and spaces are stripped; legal_id_scheme overrides. Optional in EN 16931 (BR-CO-26), mandatory for the French e-invoicing mandate.",
+      "keywords": [
+        "siren",
+        "siret",
+        "legal_id",
+        "legal_id_scheme",
+        "BT-30",
+        "BT-47",
+        "SpecifiedLegalOrganization",
+        "iso 6523",
+        "0002",
+        "0009",
+        "sirene",
+        "facturx",
+        "en 16931",
+        "france",
+        "facture electronique",
+        "mentions obligatoires",
+        "routage"
+      ]
+    },
+    {
       "title": "PDF invoice discounts, charges & payment terms",
       "type": "feature",
       "category": "PDF",
@@ -14182,7 +14209,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf-templates#invoice-compliant",
       "signature": "",
-      "description": "VAT invoice template with a per-rate VAT breakdown, both parties' VAT numbers, statutory late-payment terms and an EPC payment QR.",
+      "description": "French VAT invoice template with a per-rate VAT breakdown, both parties' SIREN and VAT numbers, the seller's SIRET, statutory late-payment terms and an EPC payment QR.",
       "keywords": [
         "invoice",
         "vat",
@@ -14192,7 +14219,10 @@
         "epc",
         "qr",
         "statutory",
-        "breakdown"
+        "breakdown",
+        "siren",
+        "siret",
+        "facture"
       ]
     },
     {

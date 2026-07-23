@@ -29,6 +29,14 @@
             </ul>
         </div>
 
+        <!-- PDF -->
+        <h3 id="unreleased-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">SIREN / SIRET on both parties of a Factur-X invoice.</strong> The typed invoice carried a VAT id and nothing else, so the generated CII had no <code class="text-cyan-400">SpecifiedLegalOrganization</code> at all &mdash; valid EN&nbsp;16931 (<code class="text-cyan-400">BR-CO-26</code> accepts a VAT number alone) but not a French invoice, whose statutory mentions include both parties' SIREN and whose routing keys off the SIRET. <code class="text-cyan-400">seller.legal_id</code> / <code class="text-cyan-400">buyer.legal_id</code> now fill BT-30 / BT-47, and <strong class="text-white">the ISO&nbsp;6523 scheme is inferred</strong> from the digit count &mdash; 9 digits is a SIREN (<code class="text-cyan-400">schemeID="0002"</code>), 14 a SIRET (<code class="text-cyan-400">0009</code>). Whitespace is stripped, so the readable <code class="text-cyan-400">"512 345 679 00017"</code> travels as the 14 bare digits a directory expects; <code class="text-cyan-400">legal_id_scheme</code> overrides for any other ICD code, and a non-numeric registration with no explicit scheme (a Dutch <code class="text-cyan-400">"KvK 34567890"</code>) stays a bare <code class="text-cyan-400">&lt;ram:ID&gt;</code> rather than being tagged with a wrong French one. Both identifiers also reach the template as <code class="text-cyan-400">company.registration</code> / <code class="text-cyan-400">customer.registration</code>, so the PDF can print what the XML carries &mdash; the <code class="text-cyan-400">invoice_compliant</code> and <code class="text-cyan-400">credit_note</code> samples are now French invoices demonstrating both schemes. See <a href="/docs/builtins/pdf#section-siren-siret" class="text-amber-400 hover:text-amber-300">PDF &amp; Factur-X</a>.</li>
+            </ul>
+        </div>
+
         <!-- Dev tools -->
         <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">

@@ -820,7 +820,8 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf
     "name": "PDFx", "address_line": "1 Rue des Champs-Élysées",
     "postcode": "75000", "city": "PARIS",
     "country": "FR", "country_name": "France",
-    "phone": "+33 6 12 34 80 32", "vat_id": "FRXX999999999"
+    "phone": "+33 6 12 34 80 32", "vat_id": "FRXX999999999",
+    "legal_id": "512 345 679 00017"
   },
   "buyer": {
     "name": "John Doe", "address_line": "123 Main St",
@@ -850,6 +851,7 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf
 | `charges[]` | Optional document-level charges — shipping, fees (BG-21). Same shape as `allowances`; they increase the tax basis. A charge/allowance with a rate no line uses gets its own VAT-breakdown row. |
 | `payment_terms` | Optional free-text payment terms (BT-20), e.g. `"30 days net"`. Emitted with `due_date` in the CII `SpecifiedTradePaymentTerms` block. |
 | `seller` / `buyer` | `name`, `address_line`, `postcode`, `city`, `country` (ISO-2), `country_name`, `phone`, `vat_id`. The seller's `vat_id` is required by EN 16931 when VAT is charged. |
+| `seller.legal_id` / `buyer.legal_id` | Optional legal registration identifier — **SIREN** or **SIRET** in France (BT-30 / BT-47). See [SIREN, SIRET and the French mandate](#siren-siret-and-the-french-mandate). |
 | `seller.iban` / `seller.bic` | Optional. When present, exposed as the `payment.*` render-data block for an EPC [scan-to-pay QR](#payment-qr-scan-to-pay). |
 | `lines[]` | `name`, `unit_price`, `quantity` (default `1`), `vat_rate` (percent), `unit_code` (default `C62`), `vat_category` (default `S`). |
 
@@ -864,6 +866,38 @@ Amounts accept a number (`100`, `100.5`) or a numeric string (`"100.50"`) and ar
   { "type": "paragraph", "value": "${reason}  −${amount}", "options": { "alignment": "right" } }
 ] }
 ```
+
+### SIREN, SIRET and the French mandate
+
+`legal_id` fills the legal registration identifier — BT-30 for the seller, BT-47 for the buyer:
+
+```json
+"seller": { "legal_id": "512 345 679 00017" },
+"buyer":  { "legal_id": "842917361" }
+```
+
+which emits, in the CII party block:
+
+```xml
+<ram:SellerTradeParty>
+  <ram:Name>Meridian Instruments SAS</ram:Name>
+  <ram:SpecifiedLegalOrganization>
+    <ram:ID schemeID="0009">51234567900017</ram:ID>
+  </ram:SpecifiedLegalOrganization>
+  ...
+```
+
+**The scheme is inferred.** A 9-digit value is a SIREN and gets `schemeID="0002"` (SIRENE); a 14-digit value is a SIRET and gets `schemeID="0009"`. Spaces are stripped, so the readable `"512 345 679 00017"` travels as the 14 bare digits a routing directory expects. Set `legal_id_scheme` explicitly for any other [ISO 6523 ICD](https://www.iso.org/standard/47435.html) code:
+
+```json
+"seller": { "legal_id": "34567890", "legal_id_scheme": "0106" }
+```
+
+A non-numeric value with no explicit scheme — a Dutch `"KvK 34567890"`, say — is emitted as a bare `<ram:ID>` with no `schemeID` rather than being tagged with a wrong one. EN 16931 allows that.
+
+**Is it mandatory?** Not in the standard: `BR-CO-26` only requires *one* of BT-30, BT-31 (VAT id) or BT-32 on the seller, so a VAT number alone validates. It is mandatory **in France** — the SIREN is already a statutory invoice mention, the reform adds the buyer's SIREN for domestic B2B, and routing keys off the SIRET. Fill it for any invoice that has to travel in France.
+
+Both identifiers also reach the template as `company.registration` / `customer.registration` (and `company.vat_number` / `customer.vat_number`), so the visual PDF can print the statutory mentions the XML carries. The `invoice_compliant` sample does exactly this — [open it in the playground](/docs/builtins/pdf-playground?sample=invoice_compliant).
 
 ---
 

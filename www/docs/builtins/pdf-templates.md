@@ -23,7 +23,9 @@ The templates live in `www/public/pdf-samples/` as a `<name>.template.json` + `<
 
 ### `invoice_compliant` — compliance is the content
 
-Everything a VAT invoice must carry, laid out so an auditor finds it fast: both parties' VAT numbers, supply date alongside issue date, a **VAT breakdown by rate**, the statutory late-payment terms, and an EPC QR that pre-fills the transfer in a banking app. No colour band — ink-blue rules do the work, so it reads as a form rather than a brochure.
+Everything a VAT invoice must carry, laid out so an auditor finds it fast: both parties' **SIREN** and VAT numbers (plus the seller's SIRET), supply date alongside issue date, a **VAT breakdown by rate**, the statutory late-payment terms, and an EPC QR that pre-fills the transfer in a banking app. No colour band — ink-blue rules do the work, so it reads as a form rather than a brochure.
+
+It is a French invoice, so it carries the mentions the French e-invoicing mandate requires — both parties' SIREN, the nature of the operation, the VAT-on-debits option, and the RCS/capital line in the footer. See [SIREN, SIRET and the French mandate](pdf.md#siren-siret-and-the-french-mandate) for how those identifiers reach the CII XML.
 
 The breakdown is a second data-bound table over a `vat_breakdown` array, one row per rate:
 
@@ -156,9 +158,9 @@ let pdf = pdf_facturx(template, data, xml, { "profile": "en16931" })
 let pdf = pdf_facturx_from_invoice(template, invoice, { "profile": "en16931" })
 ```
 
-> **The typed-invoice route uses a different placeholder namespace.** `pdf_facturx_from_invoice` ignores your data file and builds its own, so a template written for `pdf_render` will not interpolate against it. It supplies `invoice.*` (`number`, `created_at`, `due_date`, `due_amount`, `payment_terms`, `type_label`), `company.*` and `customer.*` (`name`, `address`, `zipcode`, `city`, `country`, `phone`), `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text` and `payment.*`.
+> **The typed-invoice route uses a different placeholder namespace.** `pdf_facturx_from_invoice` ignores your data file and builds its own, so a template written for `pdf_render` will not interpolate against it. It supplies `invoice.*` (`number`, `created_at`, `due_date`, `due_amount`, `payment_terms`, `type_label`), `company.*` and `customer.*` (`name`, `address`, `zipcode`, `city`, `country`, `phone`, `vat_number`, `registration` — the SIREN/SIRET), `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text` and `payment.*`.
 >
-> It does **not** expose party VAT identifiers or a per-rate VAT breakdown array. If your template must print those — as `invoice_compliant` does — use `pdf_facturx` and supply the XML yourself. A ready CII XML (`invoice_compliant.facturx.xml`) and a typed invoice (`invoice_compliant.invoice.json`) are both included so you can compare the two routes.
+> It does **not** expose a per-rate VAT breakdown array. If your template must print one — as `invoice_compliant` does — use `pdf_facturx` and supply the XML yourself. A ready CII XML (`invoice_compliant.facturx.xml`) and a typed invoice (`invoice_compliant.invoice.json`) are both included so you can compare the two routes.
 
 Both routes reject the `password` and `pdfa` options — the output is already PDF/A-3b.
 

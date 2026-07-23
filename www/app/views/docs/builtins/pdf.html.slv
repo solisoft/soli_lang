@@ -743,6 +743,7 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
     "postcode": "75000", "city": "PARIS",
     "country": "FR", "country_name": "France",
     "phone": "+33 6 12 34 80 32", "vat_id": "FRXX999999999",
+    "legal_id": "512 345 679 00017",
     "iban": "FR7630006000011234567890189"
   },
   "buyer": {
@@ -773,6 +774,7 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
                     <tr><td class="px-4 py-2"><code>charges[]</code></td><td class="px-4 py-2">Optional document-level charges &mdash; shipping, fees (BG-21). Same shape as <code>allowances</code>; they increase the tax basis. A rate no line uses gets its own VAT-breakdown row.</td></tr>
                     <tr><td class="px-4 py-2"><code>payment_terms</code></td><td class="px-4 py-2">Optional free-text payment terms (BT-20), e.g. <code>"30 days net"</code>. Emitted with <code>due_date</code> in the CII <code>SpecifiedTradePaymentTerms</code> block.</td></tr>
                     <tr><td class="px-4 py-2"><code>seller</code> / <code>buyer</code></td><td class="px-4 py-2"><code>name</code>, <code>address_line</code>, <code>postcode</code>, <code>city</code>, <code>country</code> (ISO-2), <code>country_name</code>, <code>phone</code>, <code>vat_id</code>. The seller's <code>vat_id</code> is required by EN 16931 when VAT is charged.</td></tr>
+                    <tr><td class="px-4 py-2"><code>seller.legal_id</code> / <code>buyer.legal_id</code></td><td class="px-4 py-2">Optional legal registration identifier &mdash; <strong class="text-white">SIREN</strong> or <strong class="text-white">SIRET</strong> in France (BT-30 / BT-47). See <a href="#section-siren-siret" class="text-teal-300 hover:underline">SIREN, SIRET and the French mandate</a>.</td></tr>
                     <tr><td class="px-4 py-2"><code>seller.iban</code> / <code>seller.bic</code></td><td class="px-4 py-2">Optional. When present, exposed as the <code>payment.*</code> render-data block for an EPC <a href="#section-qr" class="text-teal-300 hover:underline">scan-to-pay QR</a>.</td></tr>
                     <tr><td class="px-4 py-2"><code>lines[]</code></td><td class="px-4 py-2"><code>name</code>, <code>unit_price</code>, <code>quantity</code> (default <code>1</code>), <code>vat_rate</code> (percent), <code>unit_code</code> (default <code>C62</code>), <code>vat_category</code> (default <code>S</code>).</td></tr>
                 </tbody>
@@ -781,6 +783,25 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
         <p class="text-gray-400 mt-3">Amounts accept a number (<code>100</code>, <code>100.5</code>) or a numeric string (<code>"100.50"</code>) and are kept exact to the cent.</p>
         <p class="text-gray-400 mt-3"><strong class="text-white">Credit notes.</strong> Set <code>"type_code": "381"</code> (or <code>261</code> for self-billed): amounts stay <strong>positive</strong> &mdash; in CII the type code carries the semantics, there is no separate credit-note document. The render data exposes <code>invoice.type_code</code> and a ready-made <code>invoice.type_label</code> (<code>"Invoice"</code> / <code>"Credit note"</code>) for the template's title line.</p>
         <p class="text-gray-400 mt-3"><strong class="text-white">Render-data paths.</strong> Besides <code>items[]</code>, the computed figures land on <code>total.*</code>: <code>total.amount</code> (line total), <code>total.discount</code> (BT-107), <code>total.charges</code> (BT-108), <code>total.taxable</code> (the tax basis, BT-109 &mdash; differs from <code>total.amount</code> once allowances/charges exist), <code>total.vat</code>, <code>total.due_amount</code>. Each allowance/charge is also exposed in <code>discounts[]</code> / <code>charges[]</code> as <code>{ reason, amount, percent }</code> &mdash; bind them with a <code>repeat</code> or a data-bound <code>table</code> for the totals card.</p>
+
+        <h3 id="section-siren-siret" class="scroll-mt-20 text-lg font-semibold text-white mt-8 mb-3">SIREN, SIRET and the French mandate</h3>
+        <p class="text-gray-400 mb-3"><code class="text-teal-300">legal_id</code> fills the legal registration identifier &mdash; BT-30 for the seller, BT-47 for the buyer:</p>
+        <pre data-filename="The typed invoice"><code class="language-json text-sm">"seller": { "legal_id": "512 345 679 00017" },
+"buyer":  { "legal_id": "842917361" }</code></pre>
+        <p class="text-gray-400 mt-3 mb-3">which emits, in the CII party block:</p>
+        <pre data-filename="The generated CII"><code class="language-xml text-sm">&lt;ram:SellerTradeParty&gt;
+  &lt;ram:Name&gt;Meridian Instruments SAS&lt;/ram:Name&gt;
+  &lt;ram:SpecifiedLegalOrganization&gt;
+    &lt;ram:ID schemeID="0009"&gt;51234567900017&lt;/ram:ID&gt;
+  &lt;/ram:SpecifiedLegalOrganization&gt;
+  ...</code></pre>
+        <p class="text-gray-400 mt-3"><strong class="text-white">The scheme is inferred.</strong> A 9-digit value is a SIREN and gets <code>schemeID="0002"</code> (SIRENE); a 14-digit value is a SIRET and gets <code>schemeID="0009"</code>. Spaces are stripped, so the readable <code>"512 345 679 00017"</code> travels as the 14 bare digits a routing directory expects. Set <code>legal_id_scheme</code> explicitly for any other ISO&nbsp;6523 ICD code:</p>
+        <pre data-filename="An explicit scheme" class="mt-3"><code class="language-json text-sm">"seller": { "legal_id": "34567890", "legal_id_scheme": "0106" }</code></pre>
+        <p class="text-gray-400 mt-3">A non-numeric value with no explicit scheme &mdash; a Dutch <code>"KvK 34567890"</code>, say &mdash; is emitted as a bare <code>&lt;ram:ID&gt;</code> with no <code>schemeID</code> rather than being tagged with a wrong one. EN&nbsp;16931 allows that.</p>
+        <div class="rounded-xl border border-amber-400/20 bg-amber-500/5 p-4 mt-4">
+            <p class="text-sm text-gray-300"><strong class="text-amber-300">Is it mandatory?</strong> Not in the standard: <code>BR-CO-26</code> only requires <em>one</em> of BT-30, BT-31 (VAT id) or BT-32 on the seller, so a VAT number alone validates. It is mandatory <strong class="text-white">in France</strong> &mdash; the SIREN is already a statutory invoice mention, the reform adds the buyer's SIREN for domestic B2B, and routing keys off the SIRET. Fill it for any invoice that has to travel in France.</p>
+        </div>
+        <p class="text-gray-400 mt-4">Both identifiers also reach the template as <code>company.registration</code> / <code>customer.registration</code> (and <code>company.vat_number</code> / <code>customer.vat_number</code>), so the visual PDF can print the statutory mentions the XML carries. The <code>invoice_compliant</code> sample does exactly this &mdash; <a href="/docs/builtins/pdf-playground?sample=invoice_compliant" class="text-teal-300 hover:underline">open it in the playground</a>.</p>
     </section>
 
     <!-- Performance -->
