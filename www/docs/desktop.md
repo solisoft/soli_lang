@@ -199,3 +199,21 @@ A hard `kill -9` skips this; the leftover directory is swept at the next launch.
 A typical artifact is 70–80 MB, mostly the database binary (stored compressed,
 roughly a third of its size). It contains everything: runtime, application,
 database and reference data.
+
+## Staying current
+
+A desktop artifact is a frozen binary — to ship a fix you'd otherwise ask every
+user to re-download it by hand. Build it with `--update-url` and it can check a
+release channel you control and replace itself with a newer, cryptographically
+signed build:
+
+```bash
+soli desktop build ./my_app --app-id com.example.myapp \
+  --update-url https://updates.example.com/my_app \
+  --update-key <p256-pubkey>
+```
+
+The running app then supports `--check-update` / `--update`, or drives the flow
+from Soli via `Updater.check()` / `Updater.apply()`. See
+[Auto-Update (OTA)](/docs/development-tools/auto-update) for signing keys,
+publishing a manifest, and the security model.

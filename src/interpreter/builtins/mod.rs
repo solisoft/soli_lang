@@ -121,6 +121,7 @@ pub mod test_server;
 pub mod trust_proxy;
 pub mod types;
 pub mod ulid;
+pub mod updater;
 pub mod uploads;
 pub mod uuid;
 pub mod validation;
@@ -580,6 +581,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     fcm::register_fcm_builtins(env);
     geo::register_geo_builtins(env);
     push::register_push_builtins(env);
+    updater::register_updater_builtins(env);
 
     // Register rate limit builtins
     rate_limit::register_rate_limit_builtins(env);

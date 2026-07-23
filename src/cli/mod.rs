@@ -105,6 +105,18 @@ pub fn run() {
         Command::Remove { name } => commands::run_remove(name),
         Command::Install => commands::run_install(),
         Command::Update { name } => commands::run_update(name.as_deref()),
+        Command::UpdateKeygen => {
+            if let Err(e) = run_update_keygen() {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Command::SignUpdate { manifest, key_path } => {
+            if let Err(e) = run_sign_update(manifest, key_path) {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
         Command::SelfUpdate => commands::run_self_update()
             .map_err(|e| e.to_string())
             .expect("Update failed"),
@@ -142,6 +154,8 @@ pub fn run() {
             encrypt,
             protect,
             target,
+            update_url,
+            update_key,
         } => commands::run_build(
             folder,
             output.as_deref(),
@@ -149,6 +163,8 @@ pub fn run() {
             *encrypt,
             *protect,
             target.as_deref(),
+            update_url.as_deref(),
+            update_key.as_deref(),
         ),
         Command::DesktopBuild {
             folder,
@@ -160,6 +176,8 @@ pub fn run() {
             seed,
             protect,
             target,
+            update_url,
+            update_key,
         } => commands::desktop::run(commands::desktop::DesktopBuildArgs {
             folder,
             app_id,
@@ -170,6 +188,27 @@ pub fn run() {
             seed: seed.as_deref(),
             protect: *protect,
             target: target.as_deref(),
+            update_url: update_url.as_deref(),
+            update_key: update_key.as_deref(),
         }),
     }
+}
+
+/// `soli update-keygen` — a P-256 keypair for signing update manifests.
+fn run_update_keygen() -> Result<(), Box<dyn std::error::Error>> {
+    let (private_pem, public_b64) = solilang::update::generate_keypair()?;
+    println!("{}", private_pem.trim());
+    println!();
+    println!("# Public key — pass to `soli build --update-key`:");
+    println!("{}", public_b64);
+    Ok(())
+}
+
+/// `soli sign-update <latest.json> --key <private.pem>`.
+fn run_sign_update(manifest: &str, key_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let key_pem = std::fs::read_to_string(key_path)
+        .map_err(|e| format!("cannot read key {}: {}", key_path, e))?;
+    solilang::update::sign_manifest_file(std::path::Path::new(manifest), &key_pem)?;
+    println!("Signed {}", manifest);
+    Ok(())
 }

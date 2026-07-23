@@ -234,6 +234,8 @@ struct StandaloneArgs {
     port: u16,
     workers: usize,
     dev_mode: bool,
+    check_update: bool,
+    apply_update: bool,
 }
 
 /// If this executable carries an embedded bundle, boot it and never return.
@@ -261,6 +263,14 @@ pub fn boot_if_standalone() {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
 
+    // Auto-update runs before serving and always exits. The descriptor lives
+    // in the outer bundle; for an encrypted standalone payload it's sealed, so
+    // load `.env` first (SOLI_BUNDLE_KEY / key-server config may live there).
+    if args.check_update || args.apply_update {
+        solilang::serve::env_loader::load_env_files(&env_dir);
+        run_artifact_update(&payload, args.apply_update);
+    }
+
     let label = exe_label();
     if let Err(e) = crate::cli::commands::serve_bundle_bytes(
         &payload,
@@ -274,6 +284,73 @@ pub fn boot_if_standalone() {
         process::exit(70);
     }
     process::exit(0);
+}
+
+/// Read the embedded auto-update descriptor from an artifact's payload.
+///
+/// The descriptor sits in the outer bundle, so a plaintext standalone payload
+/// and a desktop container both expose it without a key. An encrypted
+/// standalone payload seals it, so that case resolves the bundle key (same
+/// chain as serve) and decrypts first.
+fn read_update_descriptor(payload: &[u8]) -> Option<solilang::update::UpdateDescriptor> {
+    if let Ok(reader) = solilang::bundle::BundleReader::new(payload) {
+        if let Some(desc) = solilang::bundle::update_descriptor_from(reader.entries()) {
+            return Some(desc);
+        }
+    }
+    if solilang::bundle::is_encrypted_bundle(payload) {
+        let (key, _) = crate::cli::commands::resolve_bundle_key().ok()?;
+        let plain = solilang::bundle::decrypt_bundle(payload, &key).ok()?;
+        let reader = solilang::bundle::BundleReader::new(&plain).ok()?;
+        return solilang::bundle::update_descriptor_from(reader.entries());
+    }
+    None
+}
+
+/// Handle `--check-update` / `--update` for a booted artifact. Always exits.
+fn run_artifact_update(payload: &[u8], apply: bool) -> ! {
+    let descriptor = match read_update_descriptor(payload) {
+        Some(d) => d,
+        None => {
+            eprintln!(
+                "This application was not built with auto-update — rebuild it with \
+                 `soli build … --update-url <base>` (and `--update-key` to require signatures)."
+            );
+            process::exit(1);
+        }
+    };
+
+    if apply {
+        match solilang::update::apply(&descriptor) {
+            Ok(msg) => {
+                println!("{}", msg);
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Update failed: {}", e);
+                process::exit(1);
+            }
+        }
+    } else {
+        match solilang::update::check(&descriptor) {
+            Ok(res) if res.available => {
+                println!("Update available: {} → {}", res.current, res.latest);
+                if !res.notes.trim().is_empty() {
+                    println!("\n{}", res.notes.trim());
+                }
+                println!("\nRun with --update to install it.");
+                process::exit(0);
+            }
+            Ok(res) => {
+                println!("Up to date (version {}).", res.current);
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Update check failed: {}", e);
+                process::exit(1);
+            }
+        }
+    }
 }
 
 /// The executable's display name for usage/version output.
@@ -293,6 +370,8 @@ fn parse_standalone_args(payload: &[u8]) -> StandaloneArgs {
         .map(|p| p.get())
         .unwrap_or(4);
     let mut dev_mode = false;
+    let mut check_update = false;
+    let mut apply_update = false;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -322,6 +401,8 @@ fn parse_standalone_args(payload: &[u8]) -> StandaloneArgs {
                 std::env::set_var("SOLI_HOST", host);
             }
             "--dev" => dev_mode = true,
+            "--check-update" => check_update = true,
+            "--update" => apply_update = true,
             "--help" | "-h" => {
                 print_standalone_usage(&exe_label());
                 process::exit(0);
@@ -354,6 +435,8 @@ fn parse_standalone_args(payload: &[u8]) -> StandaloneArgs {
         port,
         workers,
         dev_mode,
+        check_update,
+        apply_update,
     }
 }
 
@@ -367,6 +450,8 @@ fn print_standalone_usage(exe: &str) {
     println!("  --host IP        Interface to bind (default: all; sets SOLI_HOST)");
     println!("  --workers N      Worker threads (default: CPU count)");
     println!("  --dev            Development mode");
+    println!("  --check-update   Check the update channel for a newer version");
+    println!("  --update         Download and install a newer version, if any");
     println!("  --version, -v    Print version information");
     println!("  --help, -h       Show this help");
     println!();

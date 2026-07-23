@@ -176,6 +176,13 @@ pub enum Command {
     },
     Install,
     SelfUpdate,
+    /// Generate a P-256 keypair for signing update manifests.
+    UpdateKeygen,
+    /// Sign an update manifest in place with a P-256 private key.
+    SignUpdate {
+        manifest: String,
+        key_path: String,
+    },
     Update {
         name: Option<String>,
     },
@@ -209,6 +216,10 @@ pub enum Command {
         /// linux-amd64, linux-arm64, darwin-amd64, darwin-arm64,
         /// windows-amd64). None = host platform.
         target: Option<String>,
+        /// Base URL an artifact checks for updates (`--update-url`).
+        update_url: Option<String>,
+        /// Base64 P-256 public key to verify update manifests (`--update-key`).
+        update_key: Option<String>,
     },
     /// Package an app as a self-contained desktop application.
     DesktopBuild {
@@ -221,6 +232,8 @@ pub enum Command {
         seed: Option<String>,
         protect: bool,
         target: Option<String>,
+        update_url: Option<String>,
+        update_key: Option<String>,
     },
 }
 
@@ -320,6 +333,12 @@ pub fn print_usage() {
     eprintln!("                       --target T     Platform for --standalone: linux-amd64,");
     eprintln!("                                      linux-arm64, darwin-amd64, darwin-arm64,");
     eprintln!("                                      windows-amd64 (default: this machine)");
+    eprintln!("                       --update-url U Enable auto-update: the artifact checks");
+    eprintln!("                                      U/<channel>/latest.json and self-replaces");
+    eprintln!("                       --update-key K Base64 P-256 pubkey update manifests must");
+    eprintln!("                                      be signed with (omit only for local testing)");
+    eprintln!("  update-keygen        Generate a P-256 keypair for signing update manifests");
+    eprintln!("  sign-update <file> --key <pem>  Sign an update manifest in place");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
@@ -1122,6 +1141,37 @@ pub fn parse_args() -> Options {
                 options.command = Command::Publish { registry };
                 return options;
             }
+            "update-keygen" => {
+                options.command = Command::UpdateKeygen;
+                return options;
+            }
+            "sign-update" => {
+                i += 1;
+                let mut manifest: Option<String> = None;
+                let mut key_path: Option<String> = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--key" => {
+                            i += 1;
+                            key_path = args.get(i).cloned();
+                        }
+                        other if !other.starts_with('-') && manifest.is_none() => {
+                            manifest = Some(other.to_string());
+                        }
+                        other => {
+                            eprintln!("Unknown argument '{}' for sign-update", other);
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                let (Some(manifest), Some(key_path)) = (manifest, key_path) else {
+                    eprintln!("Usage: soli sign-update <latest.json> --key <private.pem>");
+                    process::exit(64);
+                };
+                options.command = Command::SignUpdate { manifest, key_path };
+                return options;
+            }
             "update" => {
                 i += 1;
                 let name = if i < args.len() && !args[i].starts_with('-') {
@@ -1433,6 +1483,8 @@ pub fn parse_args() -> Options {
                 let mut seed: Option<String> = None;
                 let mut protect = false;
                 let mut target: Option<String> = None;
+                let mut update_url: Option<String> = None;
+                let mut update_key: Option<String> = None;
 
                 // Same positional-anywhere convention as `soli build`.
                 while i < args.len() {
@@ -1453,6 +1505,8 @@ pub fn parse_args() -> Options {
                         }
                         "--seed" => seed = Some(take_value(&mut i, "--seed")),
                         "--target" => target = Some(take_value(&mut i, "--target")),
+                        "--update-url" => update_url = Some(take_value(&mut i, "--update-url")),
+                        "--update-key" => update_key = Some(take_value(&mut i, "--update-key")),
                         "--protect" => protect = true,
                         other if other.starts_with('-') => {
                             eprintln!("Unknown option '{}' for desktop build", other);
@@ -1484,6 +1538,8 @@ pub fn parse_args() -> Options {
                     seed,
                     protect,
                     target,
+                    update_url,
+                    update_key,
                 };
                 return options;
             }
@@ -1499,6 +1555,8 @@ pub fn parse_args() -> Options {
                 let mut encrypt = false;
                 let mut protect = false;
                 let mut target: Option<String> = None;
+                let mut update_url: Option<String> = None;
+                let mut update_key: Option<String> = None;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--output" | "-o" => {
@@ -1531,6 +1589,22 @@ pub fn parse_args() -> Options {
                             protect = true;
                             encrypt = true;
                         }
+                        "--update-url" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--update-url requires a URL");
+                                process::exit(64);
+                            }
+                            update_url = Some(args[i].clone());
+                        }
+                        "--update-key" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--update-key requires a base64 public key");
+                                process::exit(64);
+                            }
+                            update_key = Some(args[i].clone());
+                        }
                         other if other.starts_with('-') => {
                             eprintln!("Unknown option for build: {}", other);
                             print_usage();
@@ -1560,6 +1634,10 @@ pub fn parse_args() -> Options {
                     print_usage();
                     process::exit(64);
                 }
+                if (update_url.is_some() || update_key.is_some()) && !standalone {
+                    eprintln!("--update-url / --update-key only apply to --standalone builds");
+                    process::exit(64);
+                }
                 options.command = Command::Build {
                     folder,
                     output,
@@ -1567,6 +1645,8 @@ pub fn parse_args() -> Options {
                     encrypt,
                     protect,
                     target,
+                    update_url,
+                    update_key,
                 };
                 return options;
             }

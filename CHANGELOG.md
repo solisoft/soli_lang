@@ -4,6 +4,8 @@
 
 ### Added
 
+* **feat(build):** **signed over-the-air auto-update for standalone & desktop artifacts.** A `soli build --standalone` / `soli desktop build` artifact was a frozen binary — shipping a fix meant asking every user to re-download it by hand. Built with `--update-url <base>` (and `--update-key <p256-pubkey>`), an artifact now embeds an update descriptor and understands `--check-update` / `--update`: it fetches `<base>/<channel>/latest.json`, verifies the manifest's P-256 ECDSA signature against the embedded key, downloads the artifact for its own platform, verifies its sha256, and atomically self-replaces (staged then renamed, so a failed or tampered download never touches the installed binary). An auto-updater is an RCE channel, so the manifest **must** be signed — an unsigned update is accepted only when no key was embedded, and then only with a loud warning; downgrades are refused. Two developer commands: `soli update-keygen` (generate a P-256 keypair) and `soli sign-update <latest.json> --key <pem>` (sign a manifest in place); building with `--update-url` also drops a `<output>.update.json` stub pre-filled with this build's version/sha256/size to merge into the manifest. A new `Updater` builtin — `Updater.version()` / `Updater.check()` / `Updater.apply()` — drives the same flow from Soli so a page can offer an in-app "update available, restart to apply" affordance; every method degrades gracefully (`configured: false`) outside a built artifact. Mobile shells are deliberately excluded — they're WebViews onto a remote URL, so content updates on deploy and the store updates the shell. See [Auto-Update (OTA)](/docs/development-tools/auto-update).
+
 
 ## [1.24.0] - 2026-07-23
 

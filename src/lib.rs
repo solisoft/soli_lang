@@ -40,6 +40,7 @@ pub mod solidb_http;
 pub mod span;
 pub mod template;
 pub mod types;
+pub mod update;
 pub mod virtual_fs;
 pub mod vm;
 

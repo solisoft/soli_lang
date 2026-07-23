@@ -1,0 +1,226 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Auto-Update (OTA)</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            A <code class="text-amber-300">soli build --standalone</code> or <code class="text-amber-300">soli desktop build</code> artifact is a frozen binary. Auto-update turns it into a product that stays current — it checks a release channel you control and replaces itself with a newer, <strong>cryptographically verified</strong> build.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-amber-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-amber-400 mb-1">Mobile shells don't need this</h4>
+                <p class="text-amber-200/80 text-sm">
+                    iOS / Android shells are WebViews onto a remote URL — their content updates the moment you deploy, and the App Store / Play Store update the shell binary. Auto-update targets the one truly frozen thing: the <strong>desktop / standalone artifact</strong>.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">The shape of it</h2>
+    <ol class="list-decimal list-inside text-gray-300 mb-8 space-y-2">
+        <li>At <strong>build time</strong> you embed an <em>update descriptor</em> — where to look, and the public key updates must be signed with.</li>
+        <li>You <strong>publish</strong> a signed <code>latest.json</code> manifest and the new artifact.</li>
+        <li>The <strong>running app</strong> checks the channel, verifies the manifest signature against the embedded key, downloads the artifact for its own platform, verifies its sha256, and atomically replaces itself.</li>
+    </ol>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Building an updatable artifact</h2>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli build ./my_app --standalone \
+  --update-url https://updates.example.com/my_app \
+  --update-key &lt;p256-pubkey&gt;</code></pre>
+    </div>
+
+    <div class="overflow-hidden rounded-xl ring-1 ring-white/10 mb-8">
+        <table class="min-w-full divide-y divide-white/10 text-sm">
+            <thead class="bg-white/5">
+                <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Flag</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">--update-url &lt;base&gt;</code></td>
+                    <td class="px-4 py-3">Base URL you publish updates under. The app fetches <code>&lt;base&gt;/&lt;channel&gt;/latest.json</code>.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">--update-key &lt;pubkey&gt;</code></td>
+                    <td class="px-4 py-3">Base64 P-256 public key the app verifies manifest signatures against. Omit only for local testing.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-8">
+        The app's own version is read from its <code>soli.toml</code> <code>[package] version</code>, so bump that before each release — it's what the updater compares against. Building with <code>--update-url</code> also drops a <code>&lt;output&gt;.update.json</code> stub next to the artifact, pre-filled with this build's version, sha256 and size — ready to merge into your published manifest.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Build output"><code class="language-bash text-sm">  ✓ Standalone executable written to myapp (55.0 MB, 0.4 KB app bundle)
+    Platform: linux-amd64 — run it with: ./myapp --port 8080
+    Update stub: myapp.update.json (merge into latest.json, then `soli sign-update`)</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Signing keys</h2>
+
+    <div class="my-8 p-6 rounded-xl bg-red-500/10 border border-red-500/20 mb-8">
+        <div class="flex items-start gap-4">
+            <div class="text-red-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-red-400 mb-1">An auto-updater is an RCE channel — treat it like one</h4>
+                <p class="text-red-200/80 text-sm">
+                    The artifact is downloaded from <strong>your</strong> URL, so the sha256 in the manifest is not enough on its own: whoever can serve a malicious binary can serve a matching sha256. The manifest is <strong>signed</strong>, and the app verifies that signature against the key you embedded at build time.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Generate a keypair once. Keep the private key secret; embed the public one.
+soli update-keygen</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre><code class="language-bash text-sm">-----BEGIN PRIVATE KEY-----
+…                                 # keep this secret — it signs releases
+-----END PRIVATE KEY-----
+
+# Public key — pass to `soli build --update-key`:
+BCwQ3U9ezl09YZjeew31+Q2W9NH5mUsGs6QS1yeX/CLaOyrk…</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Save the private key somewhere safe (a secrets manager, not the repo). Embed the public key in every build. Rotating the key means every already-shipped artifact stops trusting new updates — so rotate deliberately.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Publishing an update</h2>
+    <ol class="list-decimal list-inside text-gray-300 mb-8 space-y-2">
+        <li><strong>Bump</strong> <code>soli.toml</code> <code>[package] version</code> and build the new artifact for each platform (<code>--target linux-amd64|linux-arm64|darwin-arm64|…</code>).</li>
+        <li><strong>Assemble</strong> <code>latest.json</code> from each build's <code>.update.json</code> stub — one entry per platform, keyed by target.</li>
+        <li><strong>Sign</strong> it with your private key — this adds the <code>signature</code> field.</li>
+        <li><strong>Upload</strong> <code>latest.json</code> to <code>&lt;update_url&gt;/stable/latest.json</code> and each artifact to the URL you listed. HTTPS is required.</li>
+    </ol>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="latest.json"><code class="language-json text-sm">{
+  "version": "1.1.0",
+  "notes": "Bug fixes and faster startup.",
+  "artifacts": {
+    "darwin-arm64": { "url": "https://updates.example.com/my_app/stable/myapp-1.1.0-darwin-arm64", "sha256": "…", "size": 60123904 },
+    "linux-amd64":  { "url": "https://updates.example.com/my_app/stable/myapp-1.1.0-linux-amd64",  "sha256": "…", "size": 57656963 }
+  }
+}</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Sign the manifest in place (adds the `signature` field)
+soli sign-update latest.json --key private.pem</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Checking and applying from the CLI</h2>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">./myapp --check-update      # fetch + verify manifest, compare versions, report
+./myapp --update            # do the above, then download + verify + self-replace</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">$ ./myapp --check-update
+Update available: 1.0.0 → 1.1.0
+
+Bug fixes and faster startup.
+
+Run with --update to install it.
+
+$ ./myapp --update
+updated to v1.1.0</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        A failed or tampered download never touches the installed binary — the new artifact is staged, verified, and only then atomically renamed into place. Downgrades are refused.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Driving updates from Soli — the <code>Updater</code> builtin</h2>
+
+    <p class="text-gray-400 mb-8">
+        To offer an in-app "update available — restart to apply" affordance instead of the terminal, use the <code class="text-amber-300">Updater</code> class from any controller or view:
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req) {
+  info = Updater.check()
+  # { "configured": true, "available": true,
+  #   "current": "1.0.0", "latest": "1.1.0", "notes": "…" }
+  return render("home/index", { "update": info })
+}
+
+def install_update(req) {
+  result = Updater.apply()
+  # { "status": "updated", "restart_required": true, "message": "updated to v1.1.0" }
+  return { "status": 200, "body": result.to_json() }
+}</code></pre>
+    </div>
+
+    <div class="overflow-hidden rounded-xl ring-1 ring-white/10 mb-8">
+        <table class="min-w-full divide-y divide-white/10 text-sm">
+            <thead class="bg-white/5">
+                <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Method</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Returns</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">Updater.version()</code></td>
+                    <td class="px-4 py-3">The embedded app version (<code>"1.0.0"</code>), or <code>null</code> if this build has no update channel.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">Updater.check()</code></td>
+                    <td class="px-4 py-3"><code>{ configured, available, current, latest, notes }</code> — or <code>{ configured: false, error }</code> outside an artifact.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">Updater.apply()</code></td>
+                    <td class="px-4 py-3"><code>{ status, restart_required, message }</code> on success, <code>{ status: "error", error }</code> on failure.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Outside a built artifact (e.g. <code>soli serve</code> in development) every method degrades gracefully — <code>version()</code> is <code>null</code>, and <code>check()</code>/<code>apply()</code> report <code>configured: false</code> rather than raising — so the same controller code runs in dev and in the shipped app.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Security summary</h2>
+    <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
+        <li><strong class="text-gray-200">Signed manifests.</strong> Updates are verified with P-256 ECDSA against a key embedded at build time. An unsigned update is accepted <strong>only</strong> when no key was embedded (local testing), and then only with a loud warning.</li>
+        <li><strong class="text-gray-200">sha256-gated download.</strong> The downloaded artifact must match the sha256 in the signature-verified manifest, or it is refused.</li>
+        <li><strong class="text-gray-200">HTTPS required</strong> for the update URL.</li>
+        <li><strong class="text-gray-200">Downgrade-safe.</strong> The updater never installs a version older than or equal to the running one.</li>
+        <li><strong class="text-gray-200">Atomic swap.</strong> The new binary is staged and verified before an atomic rename replaces the installed one; an interrupted update leaves the original intact.</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/development-tools/desktop" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Desktop Apps &rarr;</h3>
+            <p class="text-sm text-gray-400">Build a single-binary desktop app with an embedded database.</p>
+        </a>
+        <a href="/docs/development-tools/deploy" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Deploy &rarr;</h3>
+            <p class="text-sm text-gray-400">Ship Soli apps as standalone or cross-compiled binaries.</p>
+        </a>
+    </div>
+</div>

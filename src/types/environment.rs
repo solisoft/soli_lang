@@ -2232,6 +2232,23 @@ impl TypeEnvironment {
         );
         self.classes.insert("Push".to_string(), push_class);
 
+        // Updater class — Updater.version()/check()/apply() for artifact
+        // auto-update (soli build --update-url).
+        let mut updater_class = ClassType::new("Updater".to_string());
+        for name in ["version", "check", "apply"] {
+            updater_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![],
+                    return_type: Type::Any,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Updater".to_string(), updater_class);
+
         // AppLinks class — AppLinks.android/apple(...) -> String (the
         // association-file JSON).
         let mut app_links_class = ClassType::new("AppLinks".to_string());

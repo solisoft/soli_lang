@@ -43,6 +43,10 @@ pub struct DesktopBuildArgs<'a> {
     pub seed: Option<&'a str>,
     pub protect: bool,
     pub target: Option<&'a str>,
+    /// Auto-update channel base URL (`soli build --update-url` equivalent).
+    pub update_url: Option<&'a str>,
+    /// Base64 P-256 public key updates are verified against.
+    pub update_key: Option<&'a str>,
 }
 
 pub fn run(args: DesktopBuildArgs<'_>) {
@@ -162,6 +166,30 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         process::exit(1);
     });
 
+    // 3b. Embed the auto-update descriptor into the (plaintext) container
+    //     bundle, so a running artifact can read it without the app key. The
+    //     app version comes from soli.toml, like a standalone build.
+    let payload = if let Some(url) = args.update_url {
+        let descriptor = solilang::update::UpdateDescriptor {
+            app_version: super::read_app_version(&source_dir),
+            update_url: url.to_string(),
+            channel: "stable".to_string(),
+            pubkey: args.update_key.map(|k| k.to_string()),
+        };
+        let embedded = solilang::bundle::BundleBuilder::embed_update(&payload, &descriptor)
+            .unwrap_or_else(|e| {
+                eprintln!("Error embedding update descriptor: {}", e);
+                process::exit(1);
+            });
+        println!(
+            "  Auto-update enabled (channel stable, {}signed)",
+            if args.update_key.is_some() { "" } else { "UN" }
+        );
+        embedded
+    } else {
+        payload
+    };
+
     // 4. Staple onto a runtime, exactly as a standalone build does.
     let output_path = crate::cli::standalone::apply_exe_suffix(
         &resolve_output_path(args.output, &source_dir, args.target),
@@ -190,6 +218,15 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         size as f64 / (1024.0 * 1024.0)
     );
     println!("Run it directly; it starts its own database and opens the app.");
+
+    if let Some(url) = args.update_url {
+        super::emit_update_stub(
+            &output_path,
+            &super::read_app_version(&source_dir),
+            args.target,
+            url,
+        );
+    }
 }
 
 fn resolve_source_dir(folder: &str) -> PathBuf {

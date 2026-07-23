@@ -15310,6 +15310,54 @@
       "path": "/docs/builtins/crypto#def-x509-spki-pin",
       "signature": "X509.spki_pin(cert) -> String",
       "description": "The public-key pin for TLS certificate pinning: base64(SHA-256(SubjectPublicKeyInfo)) as sha256/<base64>. Pins the key, not the cert, so it survives a same-key renewal."
+    },
+    {
+      "title": "Auto-Update (OTA)",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update",
+      "signature": "soli build --update-url · soli update-keygen · soli sign-update · Updater.check()",
+      "description": "Ship a standalone or desktop artifact that checks a release channel you control and replaces itself with a newer, cryptographically signed build. P-256 signed manifests, sha256-gated download, atomic self-replace, downgrade-safe."
+    },
+    {
+      "title": "Updater.check",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update#driving-updates-from-soli-the-updater-builtin",
+      "signature": "Updater.check() -> Hash",
+      "description": "Fetch and signature-verify the update manifest and compare versions. Returns {configured, available, current, latest, notes}, or {configured:false} outside a built artifact."
+    },
+    {
+      "title": "Updater.apply",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update#driving-updates-from-soli-the-updater-builtin",
+      "signature": "Updater.apply() -> Hash",
+      "description": "Download the newer artifact for this platform, verify its sha256, and atomically self-replace. Returns {status, restart_required, message}."
+    },
+    {
+      "title": "Updater.version",
+      "type": "method",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update#driving-updates-from-soli-the-updater-builtin",
+      "signature": "Updater.version() -> String?",
+      "description": "The embedded app version of a running artifact, or null if this build has no auto-update channel."
+    },
+    {
+      "title": "soli update-keygen",
+      "type": "cli",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update#signing-keys",
+      "signature": "soli update-keygen",
+      "description": "Generate a P-256 keypair for signing update manifests: a private key to keep secret, and a public key to embed with soli build --update-key."
+    },
+    {
+      "title": "soli sign-update",
+      "type": "cli",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/auto-update#publishing-an-update",
+      "signature": "soli sign-update <latest.json> --key <private.pem>",
+      "description": "Sign an update manifest in place with a P-256 private key, adding the signature field the artifact verifies against its embedded public key."
     }
   ]
 }

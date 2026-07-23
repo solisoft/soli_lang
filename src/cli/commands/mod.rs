@@ -21,6 +21,80 @@ use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
+/// The app's own version from `soli.toml` `[package] version`, for the update
+/// descriptor. Falls back to "0.0.0" when absent — an app that opts into
+/// auto-update should set a version, but a missing one must not fail the build.
+pub(crate) fn read_app_version(source_dir: &std::path::Path) -> String {
+    let toml_path = source_dir.join("soli.toml");
+    let Ok(text) = std::fs::read_to_string(&toml_path) else {
+        return "0.0.0".to_string();
+    };
+    // Minimal: the first `version = "..."` after a `[package]` header.
+    let mut in_package = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package = trimmed == "[package]";
+            continue;
+        }
+        if in_package {
+            if let Some(rest) = trimmed.strip_prefix("version") {
+                if let Some(eq) = rest.trim_start().strip_prefix('=') {
+                    return eq.trim().trim_matches('"').to_string();
+                }
+            }
+        }
+    }
+    "0.0.0".to_string()
+}
+
+/// Write a `<output>.update.json` stub next to a freshly built artifact: this
+/// target's version, sha256 and size, ready to merge into the developer's
+/// published `latest.json` (then sign with `soli sign-update`). The `url` is a
+/// best-effort guess (`<update_url>/<channel>/<filename>`) the developer edits
+/// to match where they actually host it.
+pub(crate) fn emit_update_stub(
+    output_path: &std::path::Path,
+    version: &str,
+    target: Option<&str>,
+    update_url: &str,
+) {
+    let bytes = match std::fs::read(output_path) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let sha256 = solilang::desktop::container::sha256_hex(&bytes);
+    let key = match target {
+        Some(t) => t.to_string(),
+        None => solilang::update::host_target().unwrap_or_else(|_| "unknown".to_string()),
+    };
+    let filename = output_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let guessed_url = format!("{}/stable/{}", update_url.trim_end_matches('/'), filename);
+    let stub = serde_json::json!({
+        "version": version,
+        "notes": "",
+        "artifacts": {
+            key: { "url": guessed_url, "sha256": sha256, "size": bytes.len() }
+        }
+    });
+    let stub_path = {
+        let mut p = output_path.as_os_str().to_os_string();
+        p.push(".update.json");
+        std::path::PathBuf::from(p)
+    };
+    let pretty = serde_json::to_string_pretty(&stub).unwrap_or_else(|_| "{}".to_string());
+    if std::fs::write(&stub_path, pretty).is_ok() {
+        println!(
+            "    Update stub: {} (merge into latest.json, then `soli sign-update`)",
+            stub_path.display()
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn run_build(
     folder: &str,
     output: Option<&str>,
@@ -28,6 +102,8 @@ pub fn run_build(
     encrypt: bool,
     protect: bool,
     target: Option<&str>,
+    update_url: Option<&str>,
+    update_key: Option<&str>,
 ) {
     // Resolve "." to current directory so file_name() works properly
     let source_dir = if folder == "." {
@@ -74,6 +150,33 @@ pub fn run_build(
             eprintln!("Error building bundle: {}", e);
             process::exit(1);
         }
+    };
+
+    // Embed the auto-update descriptor (into the plaintext bundle, so it rides
+    // inside the sealed payload rather than beside it). The app version comes
+    // from the source soli.toml.
+    let bundle_data = if let Some(url) = update_url {
+        let descriptor = solilang::update::UpdateDescriptor {
+            app_version: read_app_version(&source_dir),
+            update_url: url.to_string(),
+            channel: "stable".to_string(),
+            pubkey: update_key.map(|k| k.to_string()),
+        };
+        match solilang::bundle::BundleBuilder::embed_update(&bundle_data, &descriptor) {
+            Ok(data) => {
+                println!(
+                    "  Auto-update enabled (channel stable, {}signed)",
+                    if update_key.is_some() { "" } else { "UN" }
+                );
+                data
+            }
+            Err(e) => {
+                eprintln!("Error embedding update descriptor: {}", e);
+                process::exit(1);
+            }
+        }
+    } else {
+        bundle_data
     };
 
     let bundle_data = if encrypt {
@@ -160,6 +263,9 @@ pub fn run_build(
             crate::cli::standalone::target_label(target),
             run_name
         );
+        if let Some(url) = update_url {
+            emit_update_stub(&output_path, &read_app_version(&source_dir), target, url);
+        }
         return;
     }
 
@@ -189,7 +295,7 @@ pub fn run_build(
 /// (the key itself), then `SOLI_BUNDLE_AUTH_URL` (a key server queried with
 /// an optional `SOLI_BUNDLE_API_KEY` sent as `x-api-key`). Returns the key
 /// material plus a human label of where it came from.
-fn resolve_bundle_key() -> Result<(String, String), String> {
+pub(crate) fn resolve_bundle_key() -> Result<(String, String), String> {
     if let Ok(key) = std::env::var("SOLI_BUNDLE_KEY") {
         if !key.trim().is_empty() {
             return Ok((
@@ -402,6 +508,7 @@ pub(crate) fn serve_bundle_bytes(
 
     let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
     solilang::bundle::check_bundle_meta(bundle.entries())?;
+    solilang::update::stash_active_descriptor(bundle.entries());
 
     // Extraction dir. Decrypted app trees go to RAM-backed tmpfs (/dev/shm)
     // with 0700 perms so plaintext never lands on persistent disk; plain

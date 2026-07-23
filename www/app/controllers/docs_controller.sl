@@ -195,6 +195,10 @@ def development_tools_native_bridge
     render_docs("docs/development-tools/native-bridge", "Native Bridge", "development_tools", "native-bridge")
 end
 
+def development_tools_auto_update
+    render_docs("docs/development-tools/auto-update", "Auto-Update (OTA)", "development_tools", "auto-update")
+end
+
 def native_notifications
     render_docs("docs/native/notifications", "Notifications", "native", "notifications")
 end

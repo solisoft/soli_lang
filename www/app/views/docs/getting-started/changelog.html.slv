@@ -21,10 +21,11 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
-        <!-- Auth & security -->
-        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <!-- Dev tools -->
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Signed over-the-air auto-update for standalone &amp; desktop artifacts.</strong> A built artifact was a frozen binary &mdash; a fix meant asking every user to re-download it. Built with <code class="text-cyan-400">--update-url &lt;base&gt;</code> and <code class="text-cyan-400">--update-key &lt;p256-pubkey&gt;</code>, an artifact now understands <code class="text-cyan-400">--check-update</code> / <code class="text-cyan-400">--update</code>: it fetches <code class="text-cyan-400">&lt;base&gt;/&lt;channel&gt;/latest.json</code>, verifies its P-256 signature against the embedded key, downloads the artifact for its own platform, verifies the sha256, and atomically self-replaces &mdash; staged then renamed, so a failed or tampered download never touches the installed binary. An auto-updater is an RCE channel, so the manifest <strong class="text-white">must</strong> be signed (unsigned is accepted only when no key was embedded, with a loud warning); downgrades are refused. <code class="text-cyan-400">soli update-keygen</code> makes a keypair, <code class="text-cyan-400">soli sign-update</code> signs a manifest, and building drops a <code class="text-cyan-400">.update.json</code> stub to merge in. A new <code class="text-cyan-400">Updater</code> builtin (<code class="text-cyan-400">version</code>/<code class="text-cyan-400">check</code>/<code class="text-cyan-400">apply</code>) drives the flow from Soli for an in-app &ldquo;update available&rdquo; prompt. Mobile shells are excluded &mdash; they update on deploy. See <a href="/docs/development-tools/auto-update" class="text-amber-400 hover:text-amber-300">Auto-Update (OTA)</a>.</li>
             </ul>
         </div>
 
