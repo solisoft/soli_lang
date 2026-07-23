@@ -29,6 +29,7 @@ pub mod prod_log;
 pub mod route_listing;
 pub mod route_log;
 mod router;
+pub mod sensors;
 mod server_constants;
 pub mod span_log;
 pub mod template_warnings;
@@ -3230,6 +3231,12 @@ async fn handle_hyper_request(
     // Camera preview / barcode scanning, injected only into pages that use one.
     if path == "/__soli/camera.js" && method == "GET" {
         return Ok(box_full(camera::handle_camera_js()));
+    }
+
+    // Motion sensors (gyroscope / accelerometer / orientation), injected only
+    // into pages that opt in.
+    if path == "/__soli/sensors.js" && method == "GET" {
+        return Ok(box_full(sensors::handle_sensors_js()));
     }
     if path == "/__soli/native/stream" && method == "GET" {
         return Ok(match native::topic_for_query(raw_query.as_deref()) {

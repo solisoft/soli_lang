@@ -856,6 +856,22 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // motion_sensors() — opt a page into the gyroscope / accelerometer /
+    // orientation client (`window.soli.sensors`).
+    //
+    // Emits the `soli-sensors` meta tag that gates script injection, so a page
+    // that never calls this downloads nothing. Only needed when the sensor code
+    // lives in an external .js file — an inline `soli.sensors.*` reference opts
+    // the page in on its own. Output it raw in the head: `<%- motion_sensors() %>`.
+    env.define(
+        "motion_sensors".to_string(),
+        Value::NativeFunction(NativeFunction::new("motion_sensors", None, |_args| {
+            Ok(Value::String(
+                "<meta name=\"soli-sensors\" content=\"1\">".into(),
+            ))
+        })),
+    );
+
     // native_channel(channel) — emit the meta tag that turns on the native
     // bridge for this page and names the channel it listens to.
     //

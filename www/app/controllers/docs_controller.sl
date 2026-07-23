@@ -215,6 +215,10 @@ def native_geolocation
     render_docs("docs/native/geolocation", "Geolocation", "native", "geolocation")
 end
 
+def native_motion_sensors
+    render_docs("docs/native/motion-sensors", "Motion Sensors", "native", "motion-sensors")
+end
+
 def native_device
     render_docs("docs/native/device", "Device Capabilities", "native", "device")
 end
