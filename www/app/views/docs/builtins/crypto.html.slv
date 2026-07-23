@@ -884,9 +884,28 @@ em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step</code></p
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Certificate fingerprint (hash of the DER bytes) as hex. <code class="text-amber-400">algorithm</code> is <code>"sha256"</code> (default) or <code>"sha1"</code>. Useful for pinning an IdP certificate.</p>
+                <p class="text-gray-400 mb-3">Certificate fingerprint (hash of the DER bytes) as hex. <code class="text-amber-400">algorithm</code> is <code>"sha256"</code> (default) or <code>"sha1"</code>. Fingerprints the whole certificate; for TLS pinning that survives renewal, pin the key with <code class="text-amber-400">X509.spki_pin</code> instead.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - hex digest</div>
+            </div>
+        </section>
+
+        <section id="def-x509-spki-pin" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-x509-spki-pin" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">X509.spki_pin(cert)</code>
+                </a>
+                <p class="text-gray-400 mb-3">The public-key pin for TLS certificate pinning: <code>base64(SHA-256(SubjectPublicKeyInfo))</code>, returned as <code>"sha256/&lt;base64&gt;"</code> &mdash; the exact form an Android Network Security Config <code>&lt;pin-set&gt;</code> or any HPKP-style pinner expects.</p>
+                <p class="text-gray-400 mb-3">It pins the <strong class="text-white">key</strong>, not the certificate, which is what lets a pinned client survive a certificate renewal: as long as the renewal reuses the key, the pin is unchanged. Pin the certificate (or its <code>fingerprint</code>) instead and the client breaks on every ~90-day rotation.</p>
+                <pre data-filename="Compute a pin from your server's certificate"><code class="language-soli text-sm">pin = X509.spki_pin(File.read("cert.pem"))
+# => "sha256/UKm/R6MKhCiukXKhnWjBQSRBSWRwGQBLCCa/8w27Dxs="</code></pre>
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 mt-3">
+                    <p class="text-gray-300 text-sm leading-relaxed">
+                        <strong class="text-white">Pinning is a footgun; treat it as one.</strong> A wrong or lost pin <strong class="text-white">bricks the installed app</strong> with no server-side fix. Always ship a <strong class="text-white">backup pin</strong> (a second, offline key), and for a public web app already on HSTS + Certificate Transparency, weigh whether the one threat it closes &mdash; a rogue or compromised CA &mdash; is worth the operational risk. Browsers removed HPKP for this reason. Soli gives you the pin string but does not wire pinning into the shells by default; that is a deliberate per-deployment decision.
+                    </p>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - <code>"sha256/&lt;base64&gt;"</code></div>
             </div>
         </section>
 

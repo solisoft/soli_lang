@@ -37,6 +37,7 @@ pub fn current_action_name() -> String {
 
 // Re-export submodules
 pub mod apns;
+pub mod app_links;
 pub mod assertions;
 pub mod assigns_helpers;
 pub mod body_limit;
@@ -57,6 +58,7 @@ pub mod expectations;
 pub mod factories;
 pub mod fcm;
 pub mod file;
+pub mod geo;
 pub mod hash;
 pub mod hex;
 pub mod html;
@@ -86,6 +88,7 @@ pub mod pdf_markdown;
 pub mod permit;
 pub mod pop3;
 pub mod primitives;
+pub mod push;
 pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;
@@ -572,8 +575,11 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register KV builtins
     kv::register_kv_builtins(env);
     native::register_native_builtins(env);
+    app_links::register_app_links_builtins(env);
     apns::register_apns_builtins(env);
     fcm::register_fcm_builtins(env);
+    geo::register_geo_builtins(env);
+    push::register_push_builtins(env);
 
     // Register rate limit builtins
     rate_limit::register_rate_limit_builtins(env);

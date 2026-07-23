@@ -1,0 +1,142 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Geolocation</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Where the user is, and what to do with it once you know.</p>
+    </div>
+
+    <p class="text-gray-400 mb-4">The browser half is one line and needs no framework:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">navigator.geolocation.getCurrentPosition(
+  pos =&gt; console.log(pos.coords.latitude, pos.coords.longitude),
+  err =&gt; console.log(err.code)      // 1 PERMISSION_DENIED · 2 POSITION_UNAVAILABLE · 3 TIMEOUT
+)</code></pre>
+    <p class="text-gray-400 mb-12">
+        What soli adds is the two ends that line does not cover: <strong class="text-white">shells have to permit it</strong>, and <strong class="text-white">everything after the coordinates is server-side arithmetic</strong>.
+    </p>
+
+    <h2 id="silent-failure" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The silent failure</h2>
+    <p class="text-gray-400 mb-4">
+        Like the camera, an unwired web view denies location with no prompt and nothing in the log. The page's error callback fires with <code class="text-cyan-400">PERMISSION_DENIED</code> for a permission the user was never asked about. Both shells now handle it:
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Host</th><th class="py-2">What it does</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">Android</td><td class="py-2"><code class="text-cyan-400">onGeolocationPermissionsShowPrompt</code> in the <code class="text-cyan-400">WebChromeClient</code>, plus <code class="text-cyan-400">ACCESS_FINE_LOCATION</code> / <code class="text-cyan-400">ACCESS_COARSE_LOCATION</code> granted at runtime</td></tr>
+                <tr><td class="py-2 pr-4 text-white">macOS</td><td class="py-2"><code class="text-cyan-400">NSLocationWhenInUseUsageDescription</code> &mdash; WKWebView can only serve geolocation if the host app is itself authorised for Core Location</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Windows / Linux</td><td class="py-2">nothing &mdash; the artifact opens the real browser</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-3">Two details, both of which produce a hung page if you get them wrong when writing your own shell:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-6 list-disc pl-6">
+        <li>Android asks <strong class="text-white">per origin</strong> (the web view) <em>and</em> <strong class="text-white">per app</strong> (the OS). Both have to be satisfied, so the shell holds the page's request while Android asks the user, then replays it.</li>
+        <li>An unanswered <code class="text-cyan-400">GeolocationPermissions.Callback</code> leaves <code class="text-cyan-400">getCurrentPosition</code> waiting <strong class="text-white">forever</strong> rather than calling its error handler. Denial has to be answered explicitly.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">Only the app's own origin is granted. A third-party frame asking for the user's position is refused without a prompt.</p>
+
+    <h2 id="geo" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Server-side: <code class="text-cyan-400">Geo</code></h2>
+    <pre class="mb-6"><code class="language-soli text-sm">metres = Geo.distance(48.8566, 2.3522, 51.5074, -0.1278)   # 343516.4 — Paris to London
+box    = Geo.bounding_box(48.8566, 2.3522, 5000)           # 5 km around Paris
+hash   = Geo.geohash(48.8566, 2.3522, 9)                   # "u09tvw0f6"</code></pre>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Call</th><th class="py-2 pr-4">Returns</th><th class="py-2">Notes</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Geo.distance(lat1, lng1, lat2, lng2)</code></td><td class="py-2 pr-4">Float</td><td class="py-2">Great-circle metres (haversine).</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Geo.bearing(lat1, lng1, lat2, lng2)</code></td><td class="py-2 pr-4">Float</td><td class="py-2">Degrees clockwise from north.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Geo.bounding_box(lat, lng, radius_m)</code></td><td class="py-2 pr-4">Hash</td><td class="py-2"><code class="text-cyan-400">{min_lat, max_lat, min_lng, max_lng}</code>.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Geo.geohash(lat, lng, precision?)</code></td><td class="py-2 pr-4">String</td><td class="py-2">Default precision 9 (~5 m).</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Geo.geohash_decode(hash)</code></td><td class="py-2 pr-4">Hash</td><td class="py-2"><code class="text-cyan-400">{lat, lng, lat_error, lng_error}</code>.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">Coordinates outside ±90 / ±180 raise rather than wrap &mdash; a wrapped coordinate produces an answer that looks plausible and is wrong.</p>
+
+    <h2 id="nearby" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Finding what is nearby</h2>
+    <p class="text-gray-400 mb-4">
+        The important part, because the obvious version does not scale. <strong class="text-white">Distance is a trigonometric function of every row</strong>, so a query that filters or sorts by it cannot use an index &mdash; that is a full scan. Use the box as a cheap indexed pre-filter, then measure only what survives:
+    </p>
+    <pre class="mb-4"><code class="language-soli text-sm">class Place &lt; Model
+  # Places within `radius_m`, nearest first.
+  static def near(lat, lng, radius_m)
+    box = Geo.bounding_box(lat, lng, radius_m)
+
+    # Indexed, and cheap: four comparisons on two fields.
+    candidates = Place.where(
+      "lat &gt;= @min_lat AND lat &lt;= @max_lat AND lng &gt;= @min_lng AND lng &lt;= @max_lng",
+      box
+    )
+
+    # Exact, and only over what the box already narrowed to. The box is a
+    # square around a circle, so its corners are outside the radius.
+    within = []
+    for place in candidates
+      metres = Geo.distance(lat, lng, place["lat"], place["lng"])
+      within.push({ "place": place, "metres": metres }) if metres &lt;= radius_m
+    end
+
+    within.sort_by(fn(entry) entry["metres"])
+  end
+end</code></pre>
+    <p class="text-gray-400 mb-12">
+        Index <code class="text-cyan-400">lat</code> and <code class="text-cyan-400">lng</code> and this stays fast as the collection grows. Without the box it is <code class="text-cyan-400">O(rows)</code> trigonometry per request.
+    </p>
+
+    <h2 id="geohash" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Geohashes</h2>
+    <p class="text-gray-400 mb-4">
+        A geohash turns a position into a string whose <strong class="text-white">prefix means proximity</strong> &mdash; neighbours share a prefix, so a <code class="text-cyan-400">LIKE 'u09tv%'</code> finds a neighbourhood with no trigonometry at all, on an ordinary text index.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Precision</th><th class="py-2">Cell size</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4">5</td><td class="py-2">~5 km</td></tr>
+                <tr><td class="py-2 pr-4">6</td><td class="py-2">~1 km</td></tr>
+                <tr><td class="py-2 pr-4">7</td><td class="py-2">~150 m</td></tr>
+                <tr><td class="py-2 pr-4">9</td><td class="py-2">~5 m</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <pre class="mb-4"><code class="language-soli text-sm">class Place &lt; Model
+  before_save fn() { this.geohash = Geo.geohash(this.lat, this.lng, 9) }
+
+  static def in_neighbourhood(lat, lng)
+    Place.where("geohash LIKE @prefix", { "prefix": "#{Geo.geohash(lat, lng, 6)}%" })
+  end
+end</code></pre>
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-12">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">Cell edges.</strong> Two points a metre apart can sit either side of a boundary and share no prefix at all. For a &ldquo;roughly here&rdquo; lookup that is fine; for correctness, use the bounding box.
+        </p>
+    </div>
+
+    <h2 id="watching" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Watching a position</h2>
+    <p class="text-gray-400 mb-4">
+        For a moving user, <code class="text-cyan-400">watchPosition</code> streams updates &mdash; and <strong class="text-white">must be cleared</strong>, or it keeps the GPS awake and drains the battery:
+    </p>
+    <pre class="mb-4"><code class="language-javascript text-sm">const watch = navigator.geolocation.watchPosition(
+  pos =&gt; send(pos.coords),
+  err =&gt; console.log(err.code),
+  { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+)
+
+// Instant navigation swaps the body without a page unload, so this is the hook
+// that actually fires.
+document.addEventListener("soli:visit", () =&gt; navigator.geolocation.clearWatch(watch), { once: true })</code></pre>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">enableHighAccuracy: true</code> turns on GPS rather than network positioning: markedly more accurate outdoors, markedly more expensive. Leave it off unless you are drawing a track.
+    </p>
+
+    <h2 id="privacy" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Privacy</h2>
+    <p class="text-gray-400 mb-12">
+        A position is personal data. Ask at the moment it is needed rather than on page load &mdash; a prompt the user did not expect is usually denied, and a denial is remembered. <code class="text-cyan-400">pos.coords.accuracy</code> (metres) is worth storing alongside the coordinates: it is the difference between &ldquo;in this building&rdquo; and &ldquo;in this city&rdquo;, and without it you cannot tell them apart later.
+    </p>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><a href="/docs/native/camera" class="text-amber-400 hover:text-amber-300">Camera &amp; Microphone</a> &mdash; the same permission-wiring story</li>
+        <li><a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a> &mdash; the capability table</li>
+    </ul>
+</div>

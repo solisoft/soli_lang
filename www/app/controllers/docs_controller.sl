@@ -207,6 +207,18 @@ def native_scanning
     render_docs("docs/native/scanning", "Barcode & QR Scanning", "native", "scanning")
 end
 
+def native_geolocation
+    render_docs("docs/native/geolocation", "Geolocation", "native", "geolocation")
+end
+
+def native_device
+    render_docs("docs/native/device", "Device Capabilities", "native", "device")
+end
+
+def native_deep_links
+    render_docs("docs/native/deep-links", "Deep Links", "native", "deep-links")
+end
+
 def native_push_apple
     render_docs("docs/native/push-apple", "Apple Push (APNs)", "native", "push-apple")
 end

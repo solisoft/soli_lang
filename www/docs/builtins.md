@@ -1976,9 +1976,37 @@ em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step
 #### X509.fingerprint(cert, algorithm?)
 
 Returns the certificate fingerprint (hash of the DER bytes) as hex. `algorithm`
-is `"sha256"` (default) or `"sha1"`. Useful for pinning an IdP certificate.
+is `"sha256"` (default) or `"sha1"`. Fingerprints the whole certificate; for TLS
+pinning that survives renewal, pin the key with `X509.spki_pin` instead.
 
 **Returns:** String — hex digest.
+
+#### X509.spki_pin(cert)
+
+The public-key pin for TLS certificate pinning:
+`base64(SHA-256(SubjectPublicKeyInfo))`, returned as `"sha256/<base64>"` — the
+form an Android Network Security Config `<pin-set>` or any HPKP-style pinner
+expects.
+
+It pins the **key**, not the certificate, which is what lets a pinned client
+survive a certificate renewal: as long as the renewal reuses the key, the pin is
+unchanged. Pin the certificate (or its `fingerprint`) instead and the client
+breaks on every ~90-day rotation.
+
+```soli
+pin = X509.spki_pin(File.read("cert.pem"))
+# => "sha256/UKm/R6MKhCiukXKhnWjBQSRBSWRwGQBLCCa/8w27Dxs="
+```
+
+> **Pinning is a footgun; treat it as one.** A wrong or lost pin **bricks the
+> installed app** with no server-side fix. Always ship a **backup pin** (a
+> second, offline key). For a public web app already on HSTS + Certificate
+> Transparency, weigh whether the one threat it closes — a rogue or compromised
+> CA — is worth the operational risk; browsers removed HPKP for this reason.
+> Soli gives you the pin string but does not wire pinning into the shells by
+> default.
+
+**Returns:** String — `"sha256/<base64>"`.
 
 #### Deflate.deflate(data) / Deflate.inflate(data)
 

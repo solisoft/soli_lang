@@ -66,7 +66,7 @@ client library does the same.
 Messages go out at `high` priority, because normal priority is precisely what Doze defers — which
 would defeat the purpose of reaching a sleeping device.
 
-Supply your own `message` key and it is sent verbatim, for topics, conditions or per-platform
+A `badge` in the payload sets the launcher badge on the closed app (via the notification's `notification_count`). Supply your own `message` key and it is sent verbatim, for topics, conditions or per-platform
 overrides:
 
 ```soli

@@ -209,6 +209,10 @@ pub fn message_json(device_token: &str, payload: &Value) -> Result<serde_json::V
 
     let title = object.remove("title");
     let body = object.remove("body");
+    // Android has no arbitrary icon-badge counter; a badge rides a notification.
+    // Pulled out of the payload before the `data` loop so it does not also ship
+    // as a (stringified) data value.
+    let badge = object.remove("badge").and_then(|v| v.as_i64());
 
     let mut notification = serde_json::Map::new();
     if let Some(title) = title {
@@ -244,16 +248,19 @@ pub fn message_json(device_token: &str, payload: &Value) -> Result<serde_json::V
         message.insert("data".to_string(), serde_json::Value::Object(data));
     }
     // High priority: a notification the user should see now is exactly the case
-    // Doze would otherwise defer.
-    message.insert(
-        "android".to_string(),
-        serde_json::json!({ "priority": "high" }),
-    );
+    // Doze would otherwise defer. A badge, if present, rides here too — the
+    // AndroidNotification `notification_count` is the supported way to badge a
+    // closed app's launcher icon.
+    let mut android = serde_json::json!({ "priority": "high" });
+    if let Some(count) = badge {
+        android["notification"] = serde_json::json!({ "notification_count": count });
+    }
+    message.insert("android".to_string(), android);
 
     Ok(serde_json::json!({ "message": message }))
 }
 
-fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
+pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
     if device_token.is_empty() || device_token.len() > 512 {
         return Err("Fcm.send(): implausible device token".to_string());
     }
@@ -464,6 +471,28 @@ mod tests {
         // Doze defers normal-priority messages, which is wrong for something the
         // user is meant to see now.
         assert_eq!(message["message"]["android"]["priority"], "high");
+    }
+
+    /// A badge rides the Android notification as `notification_count` — the
+    /// supported way to badge a closed app's icon — and does NOT leak into
+    /// `data` as a stringified value.
+    #[test]
+    fn a_badge_becomes_the_android_notification_count() {
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("title".into()), Value::String("Hi".into()));
+        pairs.insert(HashKey::String("badge".into()), Value::Int(5));
+        let value = Value::Hash(Rc::new(std::cell::RefCell::new(pairs)));
+
+        let message = message_json("device-abc", &value).expect("builds");
+        assert_eq!(
+            message["message"]["android"]["notification"]["notification_count"],
+            5
+        );
+        assert!(
+            message["message"].get("data").is_none()
+                || message["message"]["data"].get("badge").is_none(),
+            "badge must not also ship as data"
+        );
     }
 
     /// FCM rejects non-string data values outright, so a `{"count": 3}` must not

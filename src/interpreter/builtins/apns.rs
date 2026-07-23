@@ -264,7 +264,7 @@ fn parse_options(value: &Value) -> Result<SendOptions, String> {
 /// POST one notification. Returns `{"status": Int, "reason": String}` rather
 /// than throwing: a dead device token is an ordinary outcome to be handled
 /// (prune it), not an exception.
-fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
+pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
     if device_token.is_empty() || device_token.len() > MAX_DEVICE_TOKEN_LEN {
         return Err("Apns.send(): implausible device token".to_string());
     }
@@ -495,6 +495,24 @@ mod tests {
         assert_eq!(json["aps"]["sound"], "default");
         // Custom keys survive alongside `aps` — that is what the app reads on tap.
         assert_eq!(json["url"], "/x");
+    }
+
+    /// A badge sets the icon count on a closed app — the iOS/macOS analogue of
+    /// Android's notification_count — and lands in `aps.badge`, not as custom
+    /// data.
+    #[test]
+    fn a_badge_lands_in_the_aps_envelope() {
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("title".into()), Value::String("Hi".into()));
+        pairs.insert(HashKey::String("badge".into()), Value::Int(9));
+        let value = Value::Hash(Rc::new(std::cell::RefCell::new(pairs)));
+
+        let json: serde_json::Value = serde_json::from_str(&payload_json(&value).unwrap()).unwrap();
+        assert_eq!(json["aps"]["badge"], 9);
+        assert!(
+            json.get("badge").is_none(),
+            "badge must not also ship as custom data"
+        );
     }
 
     /// A caller who already speaks APNs keeps full control.

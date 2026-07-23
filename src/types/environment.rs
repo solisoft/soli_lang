@@ -1800,6 +1800,16 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        x509_class.methods.insert(
+            "spki_pin".to_string(),
+            MethodInfo {
+                name: "spki_pin".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("X509".to_string(), x509_class);
 
         // HTTP class
@@ -2183,6 +2193,61 @@ impl TypeEnvironment {
             );
         }
         self.classes.insert("Fcm".to_string(), fcm_class);
+
+        // Geo class — distance/bearing return Float, bounding_box and
+        // geohash_decode return hashes, geohash returns a String.
+        let mut geo_class = ClassType::new("Geo".to_string());
+        for (name, return_type) in [
+            ("distance", Type::Float),
+            ("bearing", Type::Float),
+            ("bounding_box", Type::Any),
+            ("geohash", Type::String),
+            ("geohash_decode", Type::Any),
+        ] {
+            geo_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Geo".to_string(), geo_class);
+
+        // Push class — Push.deliver(channel, payload, options) -> Hash
+        // {reached_live, transport, sent, failed, prune}.
+        let mut push_class = ClassType::new("Push".to_string());
+        push_class.methods.insert(
+            "deliver".to_string(),
+            MethodInfo {
+                name: "deliver".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Push".to_string(), push_class);
+
+        // AppLinks class — AppLinks.android/apple(...) -> String (the
+        // association-file JSON).
+        let mut app_links_class = ClassType::new("AppLinks".to_string());
+        for name in ["android", "apple"] {
+            app_links_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type: Type::String,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("AppLinks".to_string(), app_links_class);
 
         // UUID class — UUID.v4() / UUID.v7() -> String
         let mut uuid_class = ClassType::new("UUID".to_string());

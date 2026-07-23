@@ -158,6 +158,33 @@ pub fn register_vapid_builtins(env: &mut Environment) {
     );
 }
 
+/// Send a Web Push to a browser subscription, for callers composing transports
+/// (see [`super::push`]) rather than calling `vapid_send` from Soli.
+///
+/// `subscription` is the `{endpoint, keys: {p256dh, auth}}` a browser produces;
+/// `payload` is the already-serialized notification JSON.
+pub fn send_to_subscription(
+    subscription: &Value,
+    payload: &str,
+    private_key_b64: &str,
+    public_key_b64: &str,
+    subject: &str,
+    options: Option<&Value>,
+) -> Result<Value, String> {
+    let endpoint = arg_subscription_endpoint(subscription, "Push")?;
+    let keys = arg_subscription_keys(subscription, "Push")?;
+    send_push(
+        &endpoint,
+        &keys.p256dh,
+        &keys.auth,
+        payload.as_bytes(),
+        private_key_b64,
+        public_key_b64,
+        subject,
+        options,
+    )
+}
+
 // ---------- core crypto ---------------------------------------------------
 
 fn generate_keys() -> Value {

@@ -1,0 +1,101 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Device Capabilities</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Vibration, sharing, badges, biometrics, NFC, printing &mdash; the rest of what a shell can reach.</p>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        Each follows the same rule as the camera: <strong class="text-white">use the web API where the host has one</strong>, and only cross the bridge where it does not. One call per capability hides that difference:
+    </p>
+    <pre class="mb-6"><code class="language-javascript text-sm">await soli.nativeBridge.vibrate(200)
+await soli.nativeBridge.share({ title: "Bonfire", text: "Look at this", url: location.href })
+await soli.nativeBridge.badge(3)
+await soli.nativeBridge.keepAwake(true)
+const ok  = await soli.nativeBridge.authenticate("Confirm the payment")
+const tag = await soli.nativeBridge.readTag()</code></pre>
+    <p class="text-gray-400 mb-4">Feature-detect first &mdash; a capability is listed only where it actually works:</p>
+    <pre class="mb-12"><code class="language-javascript text-sm">if (soli.nativeBridge.supports("nfc")) { ... }</code></pre>
+
+    <h2 id="what-each-does" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What each does</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">Call</th><th class="py-2 pr-4">macOS shell</th><th class="py-2 pr-4">Android shell</th><th class="py-2">Browser fallback</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">vibrate(ms | pattern)</code></td><td class="py-2 pr-4">trackpad haptic</td><td class="py-2 pr-4"><code class="text-cyan-400">Vibrator</code></td><td class="py-2"><code class="text-cyan-400">navigator.vibrate</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">share({title, text, url})</code></td><td class="py-2 pr-4"><code class="text-cyan-400">NSSharingServicePicker</code></td><td class="py-2 pr-4"><code class="text-cyan-400">ACTION_SEND</code> chooser</td><td class="py-2"><code class="text-cyan-400">navigator.share</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">badge(count)</code></td><td class="py-2 pr-4">dock tile</td><td class="py-2 pr-4">notification badge</td><td class="py-2">Badging API</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">keepAwake(on)</code></td><td class="py-2 pr-4">power assertion</td><td class="py-2 pr-4"><code class="text-cyan-400">FLAG_KEEP_SCREEN_ON</code></td><td class="py-2">&mdash;</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">authenticate(reason)</code></td><td class="py-2 pr-4">Touch ID / password</td><td class="py-2 pr-4"><code class="text-cyan-400">BiometricPrompt</code></td><td class="py-2">&mdash; (use WebAuthn)</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">readTag()</code></td><td class="py-2 pr-4">✗ no hardware</td><td class="py-2 pr-4">NFC reader mode</td><td class="py-2">&mdash;</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">print()</code></td><td class="py-2 pr-4"><code class="text-cyan-400">NSPrintOperation</code></td><td class="py-2 pr-4"><code class="text-cyan-400">PrintManager</code></td><td class="py-2"><code class="text-cyan-400">window.print()</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Every call returns a promise. Ones that need a human &mdash; biometrics, NFC, sharing &mdash; resolve when they answer and <strong class="text-white">reject when they cancel</strong>, so a page never waits forever:
+    </p>
+    <pre class="mb-12"><code class="language-javascript text-sm">try {
+  await soli.nativeBridge.authenticate("Confirm the transfer")
+  submit()
+} catch (err) {
+  if (err.name === "TimeoutError") retry()
+  else showMessage(err.message)      // "cancelled", "NFC is switched off", …
+}</code></pre>
+
+    <h2 id="limits" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The honest limits</h2>
+    <p class="text-gray-400 mb-3">Four rows above are not oversights, and each fails for a different reason:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><strong class="text-white">Android has no <em>arbitrary</em> badge counter.</strong> iOS, macOS and the web let you set the icon to any number at any time; Android does not &mdash; a badge there is a byproduct of a notification. <code class="text-cyan-400">badge(n)</code> posts a silent, minimum-importance carrier notification carrying <code class="text-cyan-400">setNumber(n)</code>: launchers that render a count (Samsung and others) show the number, stock/Pixel shows a dot, and the carrier sits collapsed at the bottom of the shade. <code class="text-cyan-400">badge(0)</code> cancels it.</li>
+        <li><strong class="text-white">Macs have no NFC radio.</strong> Not a missing binding &mdash; the hardware is absent.</li>
+        <li><strong class="text-white">macOS haptics mean the trackpad</strong>, and only Force Touch ones. A no-op elsewhere rather than an error, since a page asking to buzz should not have to care.</li>
+        <li><strong class="text-white">Biometrics do not authenticate anything to your server.</strong> They confirm the person holding the device, locally. For an actual credential use WebAuthn &mdash; this is a lock on a UI action, not proof of identity.</li>
+    </ul>
+
+    <h2 id="badges" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Badges, open and closed</h2>
+    <p class="text-gray-400 mb-4">A badge has two cases, and Android and Apple differ in both.</p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">While the app is open</strong>, <code class="text-cyan-400">badge(count)</code> sets it &mdash; the dock tile on macOS, <code class="text-cyan-400">navigator.setAppBadge</code> in a browser, the carrier notification on Android.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">While the app is closed</strong>, the count has to ride the push, because nothing local is running to set it:
+    </p>
+    <pre class="mb-4"><code class="language-soli text-sm"># iOS / macOS — aps.badge sets the icon number directly
+Apns.send(token, { "title": "3 new", "badge": 3 }, apns_options)
+
+# Android — notification_count on the pushed notification
+Fcm.send(token, { "title": "3 new", "badge": 3 }, fcm_options)
+
+# or let Push.deliver route it to whichever the user has
+Push.deliver("user:#{str(user.id)}", { "title": "3 new", "badge": 3 }, options)</code></pre>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">badge</code> is pulled out of the payload and placed correctly for each transport &mdash; <code class="text-cyan-400">aps.badge</code> for APNs, <code class="text-cyan-400">android.notification.notification_count</code> for FCM &mdash; so the same call badges a closed app on either platform. On the web, the count arrives as push data and your service worker calls <code class="text-cyan-400">navigator.setAppBadge</code> (that part is app-side, in <code class="text-cyan-400">sw.js</code>).
+    </p>
+
+    <h2 id="vibration" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Vibration patterns</h2>
+    <p class="text-gray-400 mb-4">A number is a duration; an array alternates on and off, in milliseconds:</p>
+    <pre class="mb-4"><code class="language-javascript text-sm">soli.nativeBridge.vibrate(50)                 // a tick
+soli.nativeBridge.vibrate([0, 100, 50, 100])  // buzz, pause, buzz</code></pre>
+    <p class="text-gray-400 mb-12">WebKit has no Vibration API at all, so on macOS this is the bridge or nothing.</p>
+
+    <h2 id="nfc" class="text-3xl font-bold text-white mb-4 scroll-mt-24">NFC</h2>
+    <p class="text-gray-400 mb-4">Android only, and it reads the tag's id:</p>
+    <pre class="mb-4"><code class="language-javascript text-sm">const id = await soli.nativeBridge.readTag()   // "04a2b3c4d5e6f7"</code></pre>
+    <p class="text-gray-400 mb-4">
+        The shell uses <strong class="text-white">reader mode</strong>, not foreground dispatch: it does not bounce through a new intent, and it suppresses the system's discovery sound and activity switch &mdash; which is what makes an in-app scanner feel in-app rather than like the OS interrupting.
+    </p>
+    <p class="text-gray-400 mb-12">Web NFC exists only in Chrome for Android, never in a WebView, so there is no fallback to reach for.</p>
+
+    <h2 id="printing" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Printing</h2>
+    <pre class="mb-4"><code class="language-javascript text-sm">await soli.nativeBridge.print()</code></pre>
+    <p class="text-gray-400 mb-12">
+        Android needs the bridge &mdash; a WebView ignores <code class="text-cyan-400">window.print()</code> entirely. Everywhere else this is <code class="text-cyan-400">window.print()</code>, which is why the call exists at all rather than leaving pages to branch.
+    </p>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><a href="/docs/native/camera" class="text-amber-400 hover:text-amber-300">Camera &amp; Microphone</a> · <a href="/docs/native/scanning" class="text-amber-400 hover:text-amber-300">Scanning</a> · <a href="/docs/native/geolocation" class="text-amber-400 hover:text-amber-300">Geolocation</a></li>
+        <li><a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a> &mdash; the capability table</li>
+    </ul>
+</div>

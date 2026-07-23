@@ -31,8 +31,9 @@ neither is available it does nothing.
 
 | Page | |
 |---|---|
-| [Notifications](/docs/native/notifications) | `Native.notify` reaches a client with the app open — no push service, no keys. |
+| [Notifications](/docs/native/notifications) | `Push.deliver` reaches a user however you can — bridge if the app is open, VAPID / APNs / FCM if not. |
 | [Camera & Microphone](/docs/native/camera) | `getUserMedia`, once the shell stops denying it silently. |
+| [Geolocation](/docs/native/geolocation) | `Geo.distance` / `bounding_box` / `geohash`, plus the permission each shell needs. |
 | [Apple Push (APNs)](/docs/native/push-apple) | `Apns.send` reaches a macOS or iOS app that is closed. |
 | [Android Push (FCM)](/docs/native/push-android) | `Fcm.send` reaches a closed Android app, where Doze kills connections. |
 
@@ -106,10 +107,18 @@ reached through, an app's own `sse_broadcast` topics.
 A shell declares what it can do, and the page can branch on it without sniffing user agents:
 
 ```js
-window.soli.nativeBridge   // { available: true, platform: "android", capabilities: ["notify", "camera"] }
+window.soli.nativeBridge
+// { available: true, platform: "android",
+//   capabilities: ["notify", "geolocation", "vibrate", "share", "keep_awake",
+//                  "print", "clipboard", "camera", "nfc", "biometric"] }
 ```
 
-Two rules explain the shape of this table:
+> The two **Notifications** rows are unified by [`Push.deliver`](/docs/native/notifications#pushdeliver-the-one-call-to-reach-a-user)
+> — one server-side call that reaches a user over the bridge if the app is open and over Web Push /
+> APNs / FCM if it is closed, chosen by platform. The rows below are the transports it routes
+> between; you rarely call them directly.
+
+Two rules explain the shape of the rest of this table:
 
 1. **Prefer the web API when the host already has one.** `getUserMedia` needs no bridge call — it
    needs the shell to stop denying it, which is permission wiring rather than an API.
@@ -118,26 +127,32 @@ Two rules explain the shape of this table:
    there — notifications, push, camera, geolocation. There is nothing to bridge until you replace
    that browser with a native window.
 
-| Capability | Browser / PWA | Windows | Linux | macOS shell | Android shell |
-|---|---|---|---|---|---|
-| Notifications, app open | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped |
-| Notifications, app closed | ✅ web push | ✅ web push | ✅ web push | ✅ [APNs](#reaching-a-closed-app-apns) | ✅ [FCM](#reaching-a-closed-android-app-fcm) sender¹ |
-| Camera / microphone | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped |
-| File upload / capture | ✅ | ✅ | ✅ | ✅ | ✅ shipped |
-| Clipboard | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Geolocation | ✅ | ✅ browser | ✅ browser | 🔜 bridge | 🔜 bridge |
-| Vibration / haptics | ✅ Android | ✗ | ✗ | 🔜 bridge | 🔜 needs `VIBRATE` |
-| Deep links into the app | — | 🔜 | 🔜 | 🔜 | ✅ shipped |
-| NFC | Chrome Android only | ✗ | ✗ | ✗ no hardware API | 🔜 bridge |
-| [Barcode / QR scan](/docs/native/scanning) | ✅ native | ✅ native | ✅ native | ✅ decoder needed | ✅ native |
-| Biometric unlock | ✅ WebAuthn | ✅ browser | ✅ browser | 🔜 bridge | 🔜 bridge |
-| Badge count | ✅ Badging API | 🔜 | 🔜 | 🔜 bridge | 🔜 bridge |
-| Share sheet | ✅ Web Share | ✅ browser | 🔜 | 🔜 bridge | 🔜 bridge |
-| Keep screen awake | ✅ Wake Lock | ✅ browser | ✅ browser | 🔜 bridge | 🔜 bridge |
-| Printing | ✅ | ✅ | ✅ | ✅ | 🔜 bridge |
+| Capability | Browser / PWA | Windows | Linux | macOS shell | iOS | Android shell |
+|---|---|---|---|---|---|---|
+| [Notifications, app open](/docs/native/notifications) | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
+| Notifications, app closed | ✅ web push | ✅ web push | ✅ web push | ✅ APNs | ✅ APNs | ✅ FCM sender* |
+| [Camera / microphone](/docs/native/camera) | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
+| [Barcode / QR scan](/docs/native/scanning) | ✅ native | ✅ native | ✅ native | ✅ decoder needed | ✅ decoder needed | ✅ native |
+| File upload / capture | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ shipped |
+| Clipboard | ✅ | ✅ | ✅ | ✅ | ✅ shipped | ✅ |
+| [Geolocation](/docs/native/geolocation) | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
+| Vibration / haptics | ✅ Android | ✗ | ✗ | ✅ trackpad only | ✅ haptics | ✅ shipped |
+| [Deep links into the app](/docs/native/deep-links) | — | 🔜 | 🔜 | ✅ scheme | ✅ scheme | ✅ shipped |
+| NFC | Chrome Android only | ✗ | ✗ | ✗ no hardware | ✅ Core NFC | ✅ shipped |
+| Biometric unlock | ✅ WebAuthn | ✅ browser | ✅ browser | ✅ Touch ID | ✅ Face/Touch ID | ✅ shipped |
+| Badge count | ✅ Badging API | 🔜 | 🔜 | ✅ dock tile | ✅ shipped | ✅ via notification |
+| Share sheet | ✅ Web Share | ✅ browser | 🔜 | ✅ shipped | ✅ shipped | ✅ shipped |
+| Keep screen awake | ✅ Wake Lock | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
+| Printing | ✅ | ✅ | ✅ | ✅ | ✅ shipped | ✅ shipped |
 
 ✅ shipped · 🔜 planned · ✗ not possible on the platform · "browser" = provided by the browser the
 artifact opens, not by a shell
+
+**The iOS column is the native shell** (`clients/ios`), a UIKit + WKWebView app onto the remote
+deployment, like the Android one. It carries the full bridge — and because iOS has an arbitrary icon
+badge and Core NFC, it reaches two things the macOS shell cannot. Where you would rather not ship a
+native app, the iOS **PWA** is unusually strong on its own: home-screen web apps get push (16.4+),
+camera and geolocation with no app at all.
 
 ¹ The **sender** ships; the Android app still needs the Firebase SDK to obtain a device token, which
 means a Gradle build (see [What it costs](#what-it-costs-1)).
@@ -150,7 +165,7 @@ means a Gradle build (see [What it costs](#what-it-costs-1)).
 | **Linux** | the user's browser, chrome-less | none — would be **WebKitGTK** |
 | **macOS** | native, frameless | ✅ AppKit + `WKWebView` |
 | **Android** | native | ✅ `WebView` |
-| **iOS** | — | none — would be UIKit + `WKWebView` |
+| **iOS** | — | ✅ UIKit + `WKWebView` |
 
 A Windows or Linux shell is a real option, not a missing feature: it buys a native frameless window
 and an icon, and costs you the web APIs the browser was providing for free. Both embed a web view

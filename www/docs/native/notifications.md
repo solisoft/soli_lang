@@ -19,6 +19,61 @@ That emits a `<meta name="soli-native">` tag naming the channel this page listen
 what switches the bridge on — a page that never calls it downloads no script and opens no
 connection.
 
+## `Push.deliver` — the one call to reach a user
+
+There are four ways to notify someone, and which applies depends only on *where they are*: the bridge
+for an app that is open, and a push service (VAPID / APNs / FCM) for one that is closed, chosen by
+platform. `Push.deliver` is the cascade over all four — try the bridge, fall through to push for
+whoever it did not reach, and route each target by platform:
+
+```soli
+result = Push.deliver("user:#{str(user.id)}", {
+  "title": "New ping",
+  "body":  "Ana replied",
+  "url":   "/pings/3"
+}, {
+  "targets": user.push_targets(),                                   # [{platform, token|subscription}, ...]
+  "apns":    { "key": apns_key, "key_id": "…", "team_id": "…", "topic": "net.example.app" },
+  "fcm":     { "service_account": firebase_account }
+  # VAPID keys are read from VAPID_* env when not passed as options.vapid
+})
+```
+
+The framework cannot own the device list — where a user's tokens live is your schema — so you pass
+the targets in. What it owns is the part identical in every app: the ordering, the per-platform
+routing, and telling you which tokens are dead.
+
+```soli
+{
+  "reached_live": 1,          # bridge subscribers reached
+  "transport":    "native",   # "native" | "push" | "none"
+  "sent":   [{ "platform": "android", "target": "…" }],
+  "failed": [{ "platform": "apple", "target": "…", "error": "BadDeviceToken" }],
+  "prune":  ["expired-token"]  # delete these — the service said they are gone
+}
+```
+
+**Act on `prune`.** A push service reports a removed app as `410` / `UNREGISTERED`; those tokens are
+gone for good and a store that never deletes them grows without bound:
+
+```soli
+for token in result["prune"]
+  Device.first_by("token", token)&.destroy()
+end
+```
+
+A wrong-gateway `400 BadDeviceToken` is deliberately **not** pruned — its usual cause is a
+development token sent to the production gateway, and the token is fine.
+
+By default the push cascade is skipped when the bridge already reached someone. Pass `"always": true`
+to notify every transport regardless — for a to-all announcement where a user with two devices should
+hear it on both.
+
+The four transports underneath remain available directly (`Native.notify`, `vapid_send`, `Apns.send`,
+`Fcm.send`) for when you want one specifically; `Push.deliver` is the one you reach for by default.
+
+## Reaching an open app directly
+
 ## Sending
 
 ```soli

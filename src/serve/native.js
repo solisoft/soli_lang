@@ -43,6 +43,64 @@
   }
 
   // ---------------------------------------------------------------------
+  // Request/response calls
+  // ---------------------------------------------------------------------
+  //
+  // `notify` is fire-and-forget, but biometrics, NFC and the share sheet all
+  // have to answer — the user accepts or cancels. Both platforms can only push
+  // strings across, so a call carries an id and the shell replies by invoking
+  // `window.__soliNativeReply` with it.
+  //
+  // Every pending call is rejected if the shell never answers: a promise that
+  // hangs forever is worse than a rejection a page can handle.
+
+  var pending = {};
+  var nextCallId = 0;
+  var CALL_TIMEOUT_MS = 120000; // biometrics and NFC wait on a human
+
+  window.__soliNativeReply = function (payload) {
+    var message = typeof payload === "string" ? JSON.parse(payload) : payload;
+    var call = pending[message.id];
+    if (!call) return;
+    delete pending[message.id];
+    clearTimeout(call.timer);
+    if (message.ok) {
+      call.resolve(message.value);
+    } else {
+      var error = new Error(message.error || "the native call failed");
+      error.name = message.name || "NativeError";
+      call.reject(error);
+    }
+  };
+
+  function call(method, args) {
+    return new Promise(function (resolve, reject) {
+      if (!bridge || typeof bridge.call !== "function") {
+        var error = new Error("no native host for '" + method + "'");
+        error.name = "NotSupportedError";
+        reject(error);
+        return;
+      }
+      var id = ++nextCallId;
+      pending[id] = {
+        resolve: resolve,
+        reject: reject,
+        timer: setTimeout(function () {
+          delete pending[id];
+          var timeout = new Error("'" + method + "' did not answer");
+          timeout.name = "TimeoutError";
+          reject(timeout);
+        }, CALL_TIMEOUT_MS)
+      };
+      bridge.call(JSON.stringify({ id: id, method: method, args: args || {} }));
+    });
+  }
+
+  function supports(capability) {
+    return !!bridge && (bridge.capabilities || []).indexOf(capability) !== -1;
+  }
+
+  // ---------------------------------------------------------------------
   // Delivery
   // ---------------------------------------------------------------------
 
@@ -189,6 +247,67 @@
   window.soli.nativeBridge = {
     available: !!bridge,
     platform: bridge && bridge.platform ? bridge.platform : "web",
-    capabilities: bridge && bridge.capabilities ? bridge.capabilities : ["notify"]
+    capabilities: bridge && bridge.capabilities ? bridge.capabilities : ["notify"],
+    supports: supports,
+    call: call,
+
+    /// Buzz. Falls back to the Vibration API, which Android's WebView has and
+    /// WebKit does not.
+    vibrate: function (pattern) {
+      if (supports("vibrate")) return call("vibrate", { pattern: [].concat(pattern || 200) });
+      if (navigator.vibrate) return Promise.resolve(navigator.vibrate(pattern || 200));
+      return Promise.resolve(false);
+    },
+
+    /// The OS share sheet. `navigator.share` where it exists, native otherwise.
+    share: function (data) {
+      if (navigator.share) return navigator.share(data);
+      if (supports("share")) return call("share", data || {});
+      return Promise.reject(Object.assign(new Error("sharing is unavailable"), {
+        name: "NotSupportedError"
+      }));
+    },
+
+    /// An unread count on the app icon.
+    badge: function (count) {
+      if (supports("badge")) return call("badge", { count: count || 0 });
+      if (navigator.setAppBadge) {
+        return count ? navigator.setAppBadge(count) : navigator.clearAppBadge();
+      }
+      return Promise.resolve(false);
+    },
+
+    /// Keep the screen on — a scanner or a recipe should not dim mid-task.
+    keepAwake: function (on) {
+      if (supports("keep_awake")) return call("keep_awake", { on: on !== false });
+      return Promise.resolve(false);
+    },
+
+    /// Face ID / Touch ID / fingerprint. Resolves true only on a real success.
+    authenticate: function (reason) {
+      if (!supports("biometric")) {
+        return Promise.reject(Object.assign(new Error("no biometric hardware exposed"), {
+          name: "NotSupportedError"
+        }));
+      }
+      return call("biometric", { reason: reason || "Confirm it is you" });
+    },
+
+    /// Read one NFC tag. Android only — WebKit has no API and macOS no hardware.
+    readTag: function () {
+      if (!supports("nfc")) {
+        return Promise.reject(Object.assign(new Error("NFC is unavailable here"), {
+          name: "NotSupportedError"
+        }));
+      }
+      return call("nfc_read", {});
+    },
+
+    /// Print the current page through the OS print service.
+    print: function () {
+      if (supports("print")) return call("print", {});
+      window.print();
+      return Promise.resolve(true);
+    }
   };
 })();

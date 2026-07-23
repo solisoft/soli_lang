@@ -15230,6 +15230,86 @@
       "path": "/docs/native/camera#helper",
       "signature": "camera_preview(options?: Hash) -> String",
       "description": "Renders a <video> wired to the camera, with optional barcode scanning. Stops the tracks when the element leaves the DOM, which hand-written previews miss on an instant-nav swap."
+    },
+    {
+      "title": "Geolocation",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/geolocation",
+      "signature": "navigator.geolocation · Geo.distance · Geo.bounding_box · Geo.geohash",
+      "description": "Permission wiring each shell needs for navigator.geolocation, and the server-side maths after it: haversine distance, indexed bounding-box pre-filtering, and geohashes."
+    },
+    {
+      "title": "Geo.distance",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/geolocation#geo",
+      "signature": "Geo.distance(lat1, lng1, lat2, lng2) -> Float",
+      "description": "Great-circle distance in metres (haversine). Coordinates off the globe raise rather than wrap."
+    },
+    {
+      "title": "Geo.bounding_box",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/geolocation#nearby",
+      "signature": "Geo.bounding_box(lat, lng, radius_m) -> Hash",
+      "description": "The lat/lng square enclosing a circle, for indexed pre-filtering before exact distances. Longitude span accounts for cos(latitude)."
+    },
+    {
+      "title": "Geo.geohash",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/geolocation#geohash",
+      "signature": "Geo.geohash(lat, lng, precision?) -> String",
+      "description": "Position as a prefix-searchable string: neighbours share a prefix, so proximity lookups need no trigonometry."
+    },
+    {
+      "title": "Device Capabilities",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/device",
+      "signature": "soli.nativeBridge.vibrate / share / badge / keepAwake / authenticate / readTag / print",
+      "description": "Vibration, share sheet, badge count, keep-awake, biometrics, NFC and printing across the macOS and Android shells, each falling back to the web API where the host has one."
+    },
+    {
+      "title": "Push.deliver",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/notifications#pushdeliver-the-one-call-to-reach-a-user",
+      "signature": "Push.deliver(channel, payload, options) -> Hash",
+      "description": "One call that reaches a user across all four transports: the native bridge if the app is open, else Web Push / APNs / FCM by platform. Returns a prune list of dead tokens to delete."
+    },
+    {
+      "title": "Deep Links",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/deep-links",
+      "signature": "AppLinks.android · AppLinks.apple · https app links · custom schemes",
+      "description": "Open your app's URLs in the app instead of the browser. AppLinks generates the assetlinks.json and apple-app-site-association files the OS verifies against; the shells declare and route the links."
+    },
+    {
+      "title": "AppLinks.android",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/deep-links#host-half",
+      "signature": "AppLinks.android(package_name, fingerprints) -> String",
+      "description": "Generate the Android Digital Asset Links (assetlinks.json) statement, normalizing certificate fingerprints to the form Google matches."
+    },
+    {
+      "title": "AppLinks.apple",
+      "type": "method",
+      "category": "Native Bridge",
+      "path": "/docs/native/deep-links#host-half",
+      "signature": "AppLinks.apple(app_id, paths?) -> String",
+      "description": "Generate the apple-app-site-association document (modern components + legacy paths) for Universal Links."
+    },
+    {
+      "title": "X509.spki_pin",
+      "type": "method",
+      "category": "Cryptography",
+      "path": "/docs/builtins/crypto#def-x509-spki-pin",
+      "signature": "X509.spki_pin(cert) -> String",
+      "description": "The public-key pin for TLS certificate pinning: base64(SHA-256(SubjectPublicKeyInfo)) as sha256/<base64>. Pins the key, not the cert, so it survives a same-key renewal."
     }
   ]
 }

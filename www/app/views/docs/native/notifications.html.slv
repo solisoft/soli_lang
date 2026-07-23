@@ -17,7 +17,46 @@
         That emits a <code class="text-cyan-400">&lt;meta name="soli-native"&gt;</code> tag naming the channel this page listens to. Its presence is what switches the bridge on &mdash; a page that never calls it downloads no script and opens no connection.
     </p>
 
-    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Sending</h2>
+    <h2 id="push-deliver" class="text-3xl font-bold text-white mb-4 scroll-mt-24"><code class="text-cyan-400">Push.deliver</code> &mdash; the one call to reach a user</h2>
+    <p class="text-gray-400 mb-4">
+        There are four ways to notify someone, and which applies depends only on <em>where they are</em>: the bridge for an app that is open, and a push service (VAPID / APNs / FCM) for one that is closed, chosen by platform. <code class="text-cyan-400">Push.deliver</code> is the cascade over all four &mdash; try the bridge, fall through to push for whoever it did not reach, and route each target by platform:
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">result = Push.deliver("user:#{str(user.id)}", {
+  "title": "New ping",
+  "body":  "Ana replied",
+  "url":   "/pings/3"
+}, {
+  "targets": user.push_targets(),                                   # [{platform, token|subscription}, ...]
+  "apns":    { "key": apns_key, "key_id": "…", "team_id": "…", "topic": "net.example.app" },
+  "fcm":     { "service_account": firebase_account }
+  # VAPID keys are read from VAPID_* env when not passed as options.vapid
+})</code></pre>
+    <p class="text-gray-400 mb-4">
+        The framework cannot own the device list &mdash; where a user's tokens live is your schema &mdash; so you pass the targets in. What it owns is the part identical in every app: the ordering, the per-platform routing, and telling you which tokens are dead.
+    </p>
+    <pre class="mb-6"><code class="language-soli text-sm">{
+  "reached_live": 1,          # bridge subscribers reached
+  "transport":    "native",   # "native" | "push" | "none"
+  "sent":   [{ "platform": "android", "target": "…" }],
+  "failed": [{ "platform": "apple", "target": "…", "error": "BadDeviceToken" }],
+  "prune":  ["expired-token"]  # delete these — the service said they are gone
+}</code></pre>
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-4">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">Act on <code>prune</code>.</strong> A push service reports a removed app as <code class="text-cyan-400">410</code> / <code class="text-cyan-400">UNREGISTERED</code>; those tokens are gone for good and a store that never deletes them grows without bound. A wrong-gateway <code class="text-cyan-400">400 BadDeviceToken</code> is deliberately <strong class="text-white">not</strong> pruned &mdash; its usual cause is a development token sent to production, and the token is fine.
+        </p>
+    </div>
+    <pre class="mb-4"><code class="language-soli text-sm">for token in result["prune"]
+  Device.first_by("token", token)&amp;.destroy()
+end</code></pre>
+    <p class="text-gray-400 mb-4">
+        By default the push cascade is skipped when the bridge already reached someone. Pass <code class="text-cyan-400">"always": true</code> to notify every transport regardless &mdash; for a to-all announcement where a user with two devices should hear it on both.
+    </p>
+    <p class="text-gray-400 mb-12">
+        The four transports underneath remain available directly (<code class="text-cyan-400">Native.notify</code>, <code class="text-cyan-400">vapid_send</code>, <code class="text-cyan-400">Apns.send</code>, <code class="text-cyan-400">Fcm.send</code>) for when you want one specifically; <code class="text-cyan-400">Push.deliver</code> is the one you reach for by default.
+    </p>
+
+    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Reaching an open app directly</h2>
     <pre class="mb-6"><code class="language-soli text-sm">Native.notify("user:42", {
   "title": "New ping",
   "body":  "Ana replied to your comment",

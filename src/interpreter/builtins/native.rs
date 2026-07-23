@@ -226,7 +226,7 @@ fn verify_channel_with(key: &[u8; 32], token: &str) -> Result<String, String> {
 /// Send `payload` to every client listening on `channel`. Returns the number
 /// reached, which is the signal an app uses to decide whether real push is
 /// needed.
-fn notify(channel: &str, payload: &Value) -> Result<i64, String> {
+pub fn notify(channel: &str, payload: &Value) -> Result<i64, String> {
     validate_channel(channel)?;
     let json = crate::interpreter::value::value_to_json(payload)
         .map_err(|e| format!("Native.notify() could not serialize payload: {}", e))?;

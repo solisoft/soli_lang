@@ -109,8 +109,16 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         A shell declares what it can do, and the page can branch on it without sniffing user agents:
     </p>
-    <pre class="mb-6"><code class="language-javascript text-sm">window.soli.nativeBridge   // { available: true, platform: "android", capabilities: ["notify", "camera"] }</code></pre>
-    <p class="text-gray-400 mb-3">Two rules explain the shape of this table:</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">window.soli.nativeBridge
+// { available: true, platform: "android",
+//   capabilities: ["notify", "geolocation", "vibrate", "share", "keep_awake",
+//                  "print", "clipboard", "camera", "nfc", "biometric"] }</code></pre>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            The two <strong class="text-white">Notifications</strong> rows are unified by <a href="/docs/native/notifications#push-deliver" class="text-amber-400 hover:text-amber-300"><code>Push.deliver</code></a> &mdash; one server-side call that reaches a user over the bridge if the app is open and over Web Push / APNs / FCM if it is closed, chosen by platform. The rows below are the transports it routes between; you rarely call them directly.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-3">Two rules explain the shape of the rest of this table:</p>
     <ol class="space-y-2 text-gray-400 text-sm leading-relaxed mb-6 list-decimal pl-6">
         <li><strong class="text-white">Prefer the web API when the host already has one.</strong> <code class="text-cyan-400">getUserMedia</code> needs no bridge call &mdash; it needs the shell to stop denying it, which is permission wiring rather than an API.</li>
         <li><strong class="text-white">Only embedded web views need a bridge at all.</strong> On Windows and Linux a <code class="text-cyan-400">soli desktop build</code> artifact opens the user's <em>real browser</em> (chrome-less, but Chrome), so every web API is already there. There is nothing to bridge until you replace that browser with a native window.</li>
@@ -118,28 +126,33 @@ end</code></pre>
     <div class="overflow-x-auto mb-4">
         <table class="w-full text-sm text-left text-gray-400">
             <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-                <tr><th class="py-2 pr-4">Capability</th><th class="py-2 pr-4">Browser / PWA</th><th class="py-2 pr-4">Windows</th><th class="py-2 pr-4">Linux</th><th class="py-2 pr-4">macOS shell</th><th class="py-2">Android shell</th></tr>
+                <tr><th class="py-2 pr-4">Capability</th><th class="py-2 pr-4">Browser / PWA</th><th class="py-2 pr-4">Windows</th><th class="py-2 pr-4">Linux</th><th class="py-2 pr-4">macOS shell</th><th class="py-2 pr-4">iOS</th><th class="py-2">Android shell</th></tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="py-2 pr-4 text-white">Notifications, app open</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Notifications, app closed</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ <a href="#apns" class="text-amber-400 hover:text-amber-300">APNs</a></td><td class="py-2">✅ <a href="#fcm" class="text-amber-400 hover:text-amber-300">FCM</a> sender*</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Camera / microphone</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
-                <tr><td class="py-2 pr-4 text-white">File upload / capture</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅ shipped</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Clipboard</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Geolocation</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Vibration / haptics</td><td class="py-2 pr-4">✅ Android</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 needs VIBRATE</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Deep links into the app</td><td class="py-2 pr-4">&mdash;</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2">✅ shipped</td></tr>
-                <tr><td class="py-2 pr-4 text-white">NFC</td><td class="py-2 pr-4">Chrome Android only</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗ no hardware API</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/scanning" class="text-amber-400 hover:text-amber-300">Barcode / QR scan</a></td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ decoder needed</td><td class="py-2">✅ native</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Biometric unlock</td><td class="py-2 pr-4">✅ WebAuthn</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Badge count</td><td class="py-2 pr-4">✅ Badging API</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Share sheet</td><td class="py-2 pr-4">✅ Web Share</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Keep screen awake</td><td class="py-2 pr-4">✅ Wake Lock</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜 bridge</td><td class="py-2">🔜 bridge</td></tr>
-                <tr><td class="py-2 pr-4 text-white">Printing</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">🔜 bridge</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications, app open</a></td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Notifications, app closed</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ web push</td><td class="py-2 pr-4">✅ <a href="/docs/native/push-apple" class="text-amber-400 hover:text-amber-300">APNs</a></td><td class="py-2 pr-4">✅ <a href="/docs/native/push-apple" class="text-amber-400 hover:text-amber-300">APNs</a></td><td class="py-2">✅ <a href="/docs/native/push-android" class="text-amber-400 hover:text-amber-300">FCM</a> sender*</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/camera" class="text-amber-400 hover:text-amber-300">Camera / microphone</a></td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/scanning" class="text-amber-400 hover:text-amber-300">Barcode / QR scan</a></td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ native</td><td class="py-2 pr-4">✅ decoder needed</td><td class="py-2 pr-4">✅ decoder needed</td><td class="py-2">✅ native</td></tr>
+                <tr><td class="py-2 pr-4 text-white">File upload / capture</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Clipboard</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/geolocation" class="text-amber-400 hover:text-amber-300">Geolocation</a></td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Vibration / haptics</td><td class="py-2 pr-4">✅ Android</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✅ trackpad only</td><td class="py-2 pr-4">✅ haptics</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/deep-links" class="text-amber-400 hover:text-amber-300">Deep links into the app</a></td><td class="py-2 pr-4">&mdash;</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">✅ scheme</td><td class="py-2 pr-4">✅ scheme</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">NFC</td><td class="py-2 pr-4">Chrome Android only</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗ no hardware</td><td class="py-2 pr-4">✅ Core NFC</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Biometric unlock</td><td class="py-2 pr-4">✅ WebAuthn</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ Touch ID</td><td class="py-2 pr-4">✅ Face/Touch ID</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Badge count</td><td class="py-2 pr-4">✅ Badging API</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">✅ dock tile</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ via notification</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Share sheet</td><td class="py-2 pr-4">✅ Web Share</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Keep screen awake</td><td class="py-2 pr-4">✅ Wake Lock</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Printing</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
             </tbody>
         </table>
     </div>
     <p class="text-gray-500 text-sm mb-8">✅ shipped &nbsp;·&nbsp; 🔜 planned &nbsp;·&nbsp; ✗ not possible on the platform &nbsp;·&nbsp; &ldquo;browser&rdquo; = provided by the browser the artifact opens, not by a shell<br>* The <strong class="text-white">sender</strong> ships; the Android app still needs the Firebase SDK to obtain a device token, which means a Gradle build.</p>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+        <p class="text-gray-300 text-sm leading-relaxed">
+            <strong class="text-white">The iOS column is the native shell</strong> (<code class="text-cyan-400">clients/ios</code>), a UIKit + WKWebView app onto the remote deployment, like the Android one. It carries the full bridge &mdash; and because iOS has an arbitrary icon badge and Core NFC, it reaches two things the macOS shell cannot. Where you would rather not ship a native app, the iOS <strong class="text-white">PWA</strong> is unusually strong on its own: home-screen web apps get push (16.4+), camera and geolocation with no app at all.
+        </p>
+    </div>
 
     <h3 id="shell-status" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Where the shells stand</h3>
     <div class="overflow-x-auto mb-4">
@@ -152,7 +165,7 @@ end</code></pre>
                 <tr><td class="py-2 pr-4 text-white">Linux</td><td class="py-2 pr-4">the user's browser, chrome-less</td><td class="py-2">none &mdash; would be <strong class="text-white">WebKitGTK</strong></td></tr>
                 <tr><td class="py-2 pr-4 text-white">macOS</td><td class="py-2 pr-4">native, frameless</td><td class="py-2">✅ AppKit + <code class="text-cyan-400">WKWebView</code></td></tr>
                 <tr><td class="py-2 pr-4 text-white">Android</td><td class="py-2 pr-4">native</td><td class="py-2">✅ <code class="text-cyan-400">WebView</code></td></tr>
-                <tr><td class="py-2 pr-4 text-white">iOS</td><td class="py-2 pr-4">&mdash;</td><td class="py-2">none &mdash; would be UIKit + <code class="text-cyan-400">WKWebView</code></td></tr>
+                <tr><td class="py-2 pr-4 text-white">iOS</td><td class="py-2 pr-4">&mdash;</td><td class="py-2">✅ UIKit + <code class="text-cyan-400">WKWebView</code></td></tr>
             </tbody>
         </table>
     </div>
@@ -161,7 +174,7 @@ end</code></pre>
     </p>
     <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
         <p class="text-gray-300 text-sm leading-relaxed">
-            <strong class="text-white">&ldquo;macOS shell&rdquo; means AppKit, not Apple in general.</strong> There is no iOS shell yet. <code class="text-cyan-400">WKWebView</code>, <code class="text-cyan-400">WKScriptMessageHandler</code>, <code class="text-cyan-400">UNUserNotificationCenter</code> and the capture-permission delegate are shared between the platforms, so the bridge code ports directly &mdash; but the window layer (<code class="text-cyan-400">NSWindow</code>, menus, the frameless chrome) is AppKit and has no UIKit equivalent. APNs is already platform-neutral: the same <code class="text-cyan-400">Apns.send</code> reaches both once a device registers.
+            <strong class="text-white">macOS and iOS are separate shells.</strong> <code class="text-cyan-400">WKWebView</code>, <code class="text-cyan-400">WKScriptMessageHandler</code>, <code class="text-cyan-400">UNUserNotificationCenter</code> and <code class="text-cyan-400">LocalAuthentication</code> are shared, so the bridge ports almost verbatim &mdash; but the window layer differs (AppKit <code class="text-cyan-400">NSWindow</code> vs UIKit), so they are two targets: <code class="text-cyan-400">clients/macos</code> (AppKit, hosts an embedded server) and <code class="text-cyan-400">clients/ios</code> (UIKit, a WebView onto the remote deployment, since iOS forbids a bundled server). iOS additionally has an arbitrary icon badge and Core NFC that macOS lacks. APNs is platform-neutral: the same <code class="text-cyan-400">Apns.send</code> reaches both.
         </p>
     </div>
     <p class="text-gray-400 mb-4">

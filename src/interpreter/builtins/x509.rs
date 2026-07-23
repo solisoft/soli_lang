@@ -167,6 +167,29 @@ pub fn register_x509_builtins(env: &mut Environment) {
         })),
     );
 
+    // X509.spki_pin(cert) -> String ("sha256/<base64>")
+    //
+    // The public-key pin used by certificate pinning: base64 of SHA-256 over
+    // the certificate's SubjectPublicKeyInfo. It pins the *key*, not the cert,
+    // so it survives a certificate renewal that reuses the key — which is the
+    // only way pinning does not brick the client every ~90 days. The `sha256/`
+    // prefix is the form Android's Network Security Config and every HPKP-style
+    // pin-set expects, so the output drops straight into a pin-set.
+    methods.insert(
+        "spki_pin".to_string(),
+        Rc::new(NativeFunction::new("X509.spki_pin", Some(1), |args| {
+            let der = to_der(&args[0]).map_err(|e| format!("X509.spki_pin(): {}", e))?;
+            let (_, cert) = X509Certificate::from_der(&der)
+                .map_err(|e| format!("X509.spki_pin(): invalid certificate: {}", e))?;
+            // The raw DER of the SubjectPublicKeyInfo — pinning this and not the
+            // whole certificate is the entire point.
+            let spki = cert.public_key().raw;
+            let digest = Sha256::digest(spki);
+            let pin = base64::engine::general_purpose::STANDARD.encode(digest);
+            Ok(Value::String(format!("sha256/{}", pin).into()))
+        })),
+    );
+
     let class = Class {
         name: "X509".to_string(),
         superclass: None,
@@ -192,6 +215,58 @@ mod tests {
         assert_eq!(strip_leading_zeros(&[0x00, 0xff, 0x10]), &[0xff, 0x10]);
         assert_eq!(strip_leading_zeros(&[0x01, 0x02]), &[0x01, 0x02]);
         assert_eq!(strip_leading_zeros(&[0x00]), &[0x00]);
+    }
+
+    /// The property that makes SPKI pinning usable: two certificates issued from
+    /// the SAME key — a renewal — produce the SAME pin, so a 90-day cert rotation
+    /// does not brick a pinned client. A DIFFERENT key produces a different pin.
+    #[test]
+    fn spki_pin_is_stable_across_renewal_and_changes_with_the_key() {
+        // Two certs, one key (a renewal). Different validity, different serial.
+        let cert1 = "-----BEGIN CERTIFICATE-----\nMIIBgTCCASegAwIBAgIUfRx6UUfAxAc/7KnSxMRyrRCwqVswCgYIKoZIzj0EAwIw\nFjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIzMDc0NDA3WhcNMjYwODIy\nMDc0NDA3WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG\nSM49AwEHA0IABGzbcZZRYvhhLwk6iNlmYpmJYFDraCR7j9rNeYv3FLD1shSy/oIz\nZsFvEu1FgV00QGsa/WcgSl7sugEJUvb2N7ejUzBRMB0GA1UdDgQWBBSJYpREDiiF\nD9aZ/5bkaeHdYryb9DAfBgNVHSMEGDAWgBSJYpREDiiFD9aZ/5bkaeHdYryb9DAP\nBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIQDzgcU3umi5dhgn004P\n2Ql5dY2VpwLZ52brEWxuQ56WEwIgXqXOJrvvo4nqcCkMepFOsNP86GuJv+18iFty\nuOWHyBw=\n-----END CERTIFICATE-----";
+        let cert2 = "-----BEGIN CERTIFICATE-----
+MIIBgTCCASegAwIBAgIUBhrf1zzlaVoaAqrsyohR0+AzV78wCgYIKoZIzj0EAwIw
+FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIzMDc0NDA3WhcNMjcwNzIz
+MDc0NDA3WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABGzbcZZRYvhhLwk6iNlmYpmJYFDraCR7j9rNeYv3FLD1shSy/oIz
+ZsFvEu1FgV00QGsa/WcgSl7sugEJUvb2N7ejUzBRMB0GA1UdDgQWBBSJYpREDiiF
+D9aZ/5bkaeHdYryb9DAfBgNVHSMEGDAWgBSJYpREDiiFD9aZ/5bkaeHdYryb9DAP
+BgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIQC6h6Nt/V46ycmNNSG5
+T98qJTfTvm1nKb4aEPvWb/THVwIgQEPKW7I6xy7kHDKaamTVAG21RODfBgk/agLQ
+3ZFPIpU=
+-----END CERTIFICATE-----";
+        let cert3 = "-----BEGIN CERTIFICATE-----
+MIIBgjCCASegAwIBAgIUDy1GrRA9x5FdBcwbb/30lFjMAzkwCgYIKoZIzj0EAwIw
+FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIzMDc0NDA3WhcNMjYwODIy
+MDc0NDA3WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABFXP+T6OsIxdD4spFdFwJOYUfhK9dmVVxwTN9hP8m69cUZdNnOKw
+aUWyIoOcP58Uc3wh0NcYILeIm4Xl6MK18/6jUzBRMB0GA1UdDgQWBBQD1AVrRXrJ
+aXdcHxIiAoVWt33sNjAfBgNVHSMEGDAWgBQD1AVrRXrJaXdcHxIiAoVWt33sNjAP
+BgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQDmAhNSNXFAg+SuPtDf
+qbpLWgutn/Xw5zPsQZUxy6X82AIhALn4uFQe9r08hcPYD+BOXw0eeLvK+JqPcqGS
+IZV30Dp1
+-----END CERTIFICATE-----"; // a different key entirely
+
+        let pin = |pem: &str| -> String {
+            let der = to_der(&Value::String(pem.into())).unwrap();
+            let (_, cert) = X509Certificate::from_der(&der).unwrap();
+            let digest = Sha256::digest(cert.public_key().raw);
+            format!(
+                "sha256/{}",
+                base64::engine::general_purpose::STANDARD.encode(digest)
+            )
+        };
+
+        // Matches `openssl x509 -pubkey | openssl pkey -pubin -outform der
+        //          | openssl dgst -sha256 -binary | base64`.
+        assert_eq!(
+            pin(cert1),
+            "sha256/UKm/R6MKhCiukXKhnWjBQSRBSWRwGQBLCCa/8w27Dxs="
+        );
+        // A renewal reusing the key keeps the pin — the whole point.
+        assert_eq!(pin(cert1), pin(cert2));
+        // A new key changes it.
+        assert_ne!(pin(cert1), pin(cert3));
     }
 
     #[test]

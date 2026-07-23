@@ -1,0 +1,98 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Deep Links</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Open <code class="text-cyan-400">https://your-app.com/pings/3</code> &mdash; or <code class="text-cyan-400">yourapp://pings/3</code> &mdash; in the app instead of the browser.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        A deep link has two halves that must agree: the <strong class="text-white">app</strong> declares which URLs it handles, and the <strong class="text-white">host</strong> serves a file proving the app is allowed to. Get either wrong and the link silently falls back to the browser, with no error anywhere &mdash; which is why this is fiddlier than it looks. Soli owns the host half (<code class="text-cyan-400">AppLinks</code>) and the shells own the app half.
+    </p>
+
+    <h2 id="two-kinds" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Two kinds of link</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4"></th><th class="py-2 pr-4">Looks like</th><th class="py-2 pr-4">Verification</th><th class="py-2">Works with</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4 text-white">Universal / App Link</td><td class="py-2 pr-4"><code class="text-cyan-400">https://app.com/pings/3</code></td><td class="py-2 pr-4">host serves a file naming the app</td><td class="py-2">any signing on Android; a <strong class="text-white">paid</strong> Apple account on macOS/iOS</td></tr>
+                <tr><td class="py-2 pr-4 text-white">Custom scheme</td><td class="py-2 pr-4"><code class="text-cyan-400">bonfire://pings/3</code></td><td class="py-2 pr-4">none</td><td class="py-2">any signing, both platforms</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The https link is the one worth having &mdash; an ordinary URL that opens the app when installed and the site otherwise. The custom scheme needs no verification, so it works immediately (a QR code, an email button) even before the https link is set up, or on an ad-hoc signed macOS build that cannot use the https form.
+    </p>
+
+    <h2 id="host-half" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The host half: <code class="text-cyan-400">AppLinks</code></h2>
+    <p class="text-gray-400 mb-4">
+        The OS verifies an https link by fetching a file from your domain and checking your app is in it. <code class="text-cyan-400">AppLinks</code> generates that file &mdash; the part everyone gets wrong by hand:
+    </p>
+    <pre class="mb-4"><code class="language-soli text-sm"># config/routes.sl
+get("/.well-known/assetlinks.json",              "well_known#android")
+get("/.well-known/apple-app-site-association",   "well_known#apple")</code></pre>
+    <pre class="mb-6"><code class="language-soli text-sm"># app/controllers/well_known_controller.sl
+def android(req)
+  {
+    "headers": { "Content-Type": "application/json" },
+    "body": AppLinks.android("net.solisoft.bonfire", [ENV["ANDROID_CERT_SHA256"]])
+  }
+end
+
+def apple(req)
+  {
+    "headers": { "Content-Type": "application/json" },
+    "body": AppLinks.apple("ABCDE12345.net.solisoft.bonfire", ["/pings/*", "/threads/*"])
+  }
+end</code></pre>
+    <p class="text-gray-400 mb-3">Three details the OS is unforgiving about, all handled for you or worth knowing:</p>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><strong class="text-white">The Apple file has no <code>.json</code> extension</strong> and must be served as <code class="text-cyan-400">application/json</code> with <strong class="text-white">no redirect</strong> &mdash; Apple's CDN fetches it verbatim, and a 301 to a <code class="text-cyan-400">.json</code> version fails verification.</li>
+        <li><strong class="text-white">The Android fingerprint</strong> is your signing certificate's SHA-256, from <code class="text-cyan-400">keytool -list -v -keystore …</code> or the Play Console. <code class="text-cyan-400">AppLinks.android</code> accepts plain hex or colon-separated and normalizes to the upper-case colon form Google matches &mdash; a wrong-length one is rejected rather than silently never matching.</li>
+        <li><strong class="text-white"><code>AppLinks.apple</code></strong> takes <code class="text-cyan-400">TEAMID.bundle.id</code> and emits both the modern <code class="text-cyan-400">components</code> form and the legacy <code class="text-cyan-400">paths</code>, so one file serves every OS version.</li>
+    </ul>
+
+    <h2 id="app-half" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The app half: what the shells declare</h2>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Android</strong> &mdash; the manifest declares both link types, and the app routes the incoming URL into the web view (a deep link that only launched the app onto the home page would be pointless):
+    </p>
+    <pre class="mb-4"><code class="language-xml text-sm">&lt;intent-filter android:autoVerify="true"&gt;
+  &lt;action android:name="android.intent.action.VIEW" /&gt;
+  &lt;category android:name="android.intent.category.DEFAULT" /&gt;
+  &lt;category android:name="android.intent.category.BROWSABLE" /&gt;
+  &lt;data android:scheme="https" android:host="bonfire-app.pro" /&gt;
+&lt;/intent-filter&gt;</code></pre>
+    <p class="text-gray-400 mb-6">
+        The shell handles the intent on both a cold launch (the launch intent's data) and a warm one (<code class="text-cyan-400">onNewIntent</code>), maps a <code class="text-cyan-400">bonfire://host/path</code> onto <code class="text-cyan-400">https://…/host/path</code>, and loads it. <code class="text-cyan-400">autoVerify</code> is what makes Android fetch your <code class="text-cyan-400">assetlinks.json</code>; until it succeeds the https link shows a chooser, and the custom scheme is the reliable fallback.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">macOS</strong> &mdash; a custom scheme in <code class="text-cyan-400">CFBundleURLTypes</code>, handled through an Apple event. Because a launch event can arrive before the web view has loaded, the shell <strong class="text-white">queues</strong> the link and delivers it once the first page is ready:
+    </p>
+    <pre class="mb-6"><code class="language-swift text-sm">NSAppleEventManager.shared().setEventHandler(
+    self, andSelector: #selector(handleURLEvent(_:withReplyEvent:)),
+    forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))</code></pre>
+    <p class="text-gray-400 mb-12">
+        Universal (https) links on macOS additionally need the <strong class="text-white">associated-domains entitlement</strong>, which comes from a provisioning profile and so a paid Apple Developer account. The custom scheme has no such requirement, which is why the shell ships it.
+    </p>
+
+    <h2 id="testing" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Testing</h2>
+    <pre class="mb-6"><code class="language-bash text-sm"># Android — simulate either link type against a connected device
+adb shell am start -a android.intent.action.VIEW -d "https://bonfire-app.pro/pings/3"
+adb shell am start -a android.intent.action.VIEW -d "bonfire://pings/3"
+
+# macOS — the custom scheme
+open "bonfire://pings/3"
+
+# Verify the host files before you rely on them
+curl -s https://bonfire-app.pro/.well-known/assetlinks.json
+curl -sI https://bonfire-app.pro/.well-known/apple-app-site-association   # application/json, 200, no redirect</code></pre>
+    <p class="text-gray-400 mb-12">
+        Google's Statement List Generator and Tester and Apple's <code class="text-cyan-400">swcutil dl -d bonfire-app.pro</code> check the files the way the OS does.
+    </p>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications</a> &mdash; notification taps carry a URL, routed the same way</li>
+        <li><a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a> &mdash; the capability table</li>
+    </ul>
+</div>
