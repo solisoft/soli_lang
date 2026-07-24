@@ -33,6 +33,40 @@ pub fn run() {
         Command::GenerateComponent { name, folder } => {
             commands::run_generate_component(name, folder)
         }
+        Command::GenerateDevices { folder } => commands::run_generate_devices(folder),
+        Command::GenerateClient {
+            platform,
+            url,
+            package_id,
+            scheme,
+            app_name,
+            team_id,
+            fcm,
+            folder,
+        } => commands::run_generate_client(&solilang::scaffold::ClientOptions {
+            platform: platform.to_string(),
+            url: url.to_string(),
+            package_id: package_id.to_string(),
+            scheme: scheme.to_string(),
+            app_name: app_name.to_string(),
+            team_id: team_id.to_string(),
+            fcm: *fcm,
+            folder: folder.to_string(),
+        }),
+        Command::GenerateAppLinks {
+            android_package,
+            android_sha256,
+            apple_app_id,
+            paths,
+            folder,
+        } => commands::run_generate_app_links(
+            android_package,
+            android_sha256,
+            apple_app_id,
+            paths,
+            folder,
+        ),
+        Command::GenerateOffline { folder } => commands::run_generate_offline(folder),
         Command::DbMigrate { action, folder } => commands::run_db_migrate(action, folder),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
         Command::DbIndexes { folder } => commands::run_db_indexes(folder),
@@ -191,6 +225,11 @@ pub fn run() {
             update_url: update_url.as_deref(),
             update_key: update_key.as_deref(),
         }),
+        Command::DesktopRegisterProtocol {
+            exe,
+            scheme,
+            app_name,
+        } => commands::desktop::run_register_protocol(exe, scheme, app_name),
     }
 }
 

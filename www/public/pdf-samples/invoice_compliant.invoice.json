@@ -4,25 +4,29 @@
   "due_date": "2025-12-28",
   "currency": "EUR",
   "seller": {
-    "name": "Meridian Instruments BV",
-    "address_line": "Keizersgracht 214",
-    "postcode": "1016 DX",
-    "city": "Amsterdam",
-    "country": "NL",
-    "vat_id": "NL812345678B01"
+    "name": "Meridian Instruments SAS",
+    "address_line": "18 rue de Paradis",
+    "postcode": "75010",
+    "city": "Paris",
+    "country": "FR",
+    "vat_id": "FR75512345679",
+    "legal_id": "512 345 679 00017",
+    "iban": "FR7630006000011234567890189",
+    "bic": "CRLYFRPP"
   },
   "buyer": {
-    "name": "Concertgebouw Vastgoed BV",
-    "address_line": "Concertgebouwplein 10",
-    "postcode": "1071 LN",
-    "city": "Amsterdam",
-    "country": "NL",
-    "vat_id": "NL004512889B02"
+    "name": "Philharmonie Immobilier SAS",
+    "address_line": "221 avenue Jean-Jaurès",
+    "postcode": "75019",
+    "city": "Paris",
+    "country": "FR",
+    "vat_id": "FR22842917361",
+    "legal_id": "842917361"
   },
   "lines": [
-    { "name": "On-site calibration, climate sensor array", "quantity": 2, "unit_price": 480.00, "vat_rate": 21.0 },
-    { "name": "Sensor module MX-4, replacement unit", "quantity": 6, "unit_price": 145.00, "vat_rate": 21.0 },
-    { "name": "Technical handbook, printed edition", "quantity": 12, "unit_price": 18.50, "vat_rate": 9.0 }
+    { "name": "On-site calibration, climate sensor array", "quantity": 2, "unit_price": 480.00, "vat_rate": 20.0 },
+    { "name": "Sensor module MX-4, replacement unit", "quantity": 6, "unit_price": 145.00, "vat_rate": 20.0 },
+    { "name": "Technical handbook, printed edition", "quantity": 12, "unit_price": 18.50, "vat_rate": 5.5 }
   ],
   "payment_terms": "Net 30 days from the invoice date"
 }

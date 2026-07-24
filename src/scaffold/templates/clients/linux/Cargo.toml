@@ -1,0 +1,21 @@
+[package]
+name = "{{SCHEME}}-shell"
+version = "1.0.0"
+edition = "2021"
+description = "Native Linux shell for {{APP_NAME}}"
+
+[[bin]]
+name = "{{SCHEME}}-shell"
+path = "src/main.rs"
+
+[dependencies]
+gtk = { version = "0.18", features = ["v3_24"] }
+gdk = "0.18"
+gio = "0.18"
+glib = "0.18"
+webkit2gtk = "2.0"
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+strip = true

@@ -29,6 +29,7 @@ pub mod prod_log;
 pub mod route_listing;
 pub mod route_log;
 mod router;
+pub mod sensors;
 mod server_constants;
 pub mod span_log;
 pub mod template_warnings;
@@ -2647,12 +2648,18 @@ async fn handle_hyper_request(
             .map(|s| s.to_string());
         match crate::desktop::token::evaluate(&path, req.uri().query(), cookie_header.as_deref()) {
             crate::desktop::token::Decision::Allow => {}
-            crate::desktop::token::Decision::GrantSession(session) => {
+            crate::desktop::token::Decision::GrantSession { session, redirect } => {
                 // Redirect rather than serve here, so the one-shot token stops
-                // being part of the URL the browser keeps showing.
+                // being part of the URL the browser keeps showing. Deep links
+                // land on `redirect` instead of always `/`.
+                let location = if redirect.starts_with('/') {
+                    redirect
+                } else {
+                    "/".to_string()
+                };
                 return Ok(Response::builder()
                     .status(StatusCode::FOUND)
-                    .header("Location", "/")
+                    .header("Location", location)
                     .header(
                         "Set-Cookie",
                         crate::desktop::token::session_cookie_header(&session),
@@ -3230,6 +3237,15 @@ async fn handle_hyper_request(
     // Camera preview / barcode scanning, injected only into pages that use one.
     if path == "/__soli/camera.js" && method == "GET" {
         return Ok(box_full(camera::handle_camera_js()));
+    }
+    if path == "/__soli/barcode-decoder.js" && method == "GET" {
+        return Ok(box_full(camera::handle_barcode_decoder_js()));
+    }
+
+    // Motion sensors (gyroscope / accelerometer / orientation), injected only
+    // into pages that opt in.
+    if path == "/__soli/sensors.js" && method == "GET" {
+        return Ok(box_full(sensors::handle_sensors_js()));
     }
     if path == "/__soli/native/stream" && method == "GET" {
         return Ok(match native::topic_for_query(raw_query.as_deref()) {

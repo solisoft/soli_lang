@@ -219,6 +219,31 @@ pub fn run(args: DesktopBuildArgs<'_>) {
     );
     println!("Run it directly; it starts its own database and opens the app.");
 
+    // Deep-link install helpers next to the artifact (Linux .desktop, Windows ps1).
+    let scheme = scheme_from_app_id(args.app_id);
+    let app_label = args
+        .app_name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| default_app_name(&source_dir));
+    match solilang::desktop::protocol::write_registration_helpers(&output_path, &scheme, &app_label)
+    {
+        Ok(paths) => {
+            println!("Deep-link helpers:");
+            for p in paths {
+                println!("  {}", p.display());
+            }
+            println!(
+                "  Register with ./register-protocol.sh (Linux) or .\\register-protocol.ps1 (Windows)"
+            );
+            println!(
+                "  Then open: {}://path  or  {} --open /path",
+                scheme,
+                output_path.display()
+            );
+        }
+        Err(e) => eprintln!("  (could not write protocol helpers: {})", e),
+    }
+
     if let Some(url) = args.update_url {
         super::emit_update_stub(
             &output_path,
@@ -226,6 +251,42 @@ pub fn run(args: DesktopBuildArgs<'_>) {
             args.target,
             url,
         );
+    }
+}
+
+pub fn run_register_protocol(exe: &str, scheme: &str, app_name: &str) {
+    let path = Path::new(exe);
+    if !path.exists() {
+        eprintln!("Error: executable '{}' not found", path.display());
+        process::exit(1);
+    }
+    match solilang::desktop::protocol::write_registration_helpers(path, scheme, app_name) {
+        Ok(paths) => {
+            println!("Wrote deep-link helpers for scheme '{scheme}':");
+            for p in paths {
+                println!("  {}", p.display());
+            }
+            println!("Run ./register-protocol.sh or .\\register-protocol.ps1 to install.");
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+/// Prefer the last reverse-DNS label as a URL scheme (`com.example.myapp` → `myapp`).
+fn scheme_from_app_id(app_id: &str) -> String {
+    let last = app_id.rsplit('.').next().unwrap_or(app_id);
+    let cleaned: String = last
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '-' || *c == '.')
+        .collect::<String>()
+        .to_lowercase();
+    if cleaned.is_empty() || cleaned.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        "soliapp".to_string()
+    } else {
+        cleaned
     }
 }
 
@@ -334,6 +395,18 @@ pub fn boot(
     let manifest = container.manifest.clone();
 
     println!("Starting {}...", manifest.app_name);
+
+    // Deep link / protocol handler: remember where to land after the launch token.
+    if let Some(path) = solilang::desktop::deeplink::pending_from_env_and_args() {
+        println!("  Opening path {}", path);
+        solilang::desktop::deeplink::set_pending_path(path);
+    }
+
+    // In-app Updater.* reads the outer payload's update descriptor (not the
+    // encrypted inner app). Stash it now so Updater.check() works in desktop.
+    if let Ok(outer) = solilang::bundle::BundleReader::new(payload) {
+        solilang::update::stash_active_descriptor(outer.entries());
+    }
 
     // 1. One instance per install: two servers over one database directory
     //    would fail deep inside the storage engine with an unhelpful error.

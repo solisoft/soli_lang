@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="soli desktop build packages runtime, encrypted app, SolidB and optional reference data into one executable. Double-click fetches a key, starts a private local database, gates the port with a one-time token, and opens the browser.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <!-- Title -->
+  <text x="48" y="52" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="30" font-weight="700" fill="#f4f4f5">soli desktop build</text>
+  <text x="48" y="80" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">One executable. Private database. Double-click to open.</text>
+
+  <!-- Command chip -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace">
+    <rect x="560" y="28" width="416" height="56" rx="12" fill="#12151b" stroke="#3a2f14"/>
+    <text x="580" y="52" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.2" fill="#f59e0b">COMMAND</text>
+    <text x="580" y="72" font-size="13" fill="#e5e7eb">soli desktop build ./app --app-id …</text>
+  </g>
+
+  <!-- Artifact stack (left) -->
+  <g>
+    <rect x="40" y="120" width="300" height="340" rx="14" fill="#101319" stroke="#2b3038"/>
+    <rect x="40" y="120" width="300" height="40" rx="14" fill="#151922"/>
+    <rect x="40" y="144" width="300" height="16" fill="#151922"/>
+    <text x="58" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#cbd5e1">Artifact (one file)</text>
+
+    <!-- layers -->
+    <rect x="60" y="180" width="260" height="44" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="78" y="207" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">soli runtime</text>
+
+    <rect x="60" y="234" width="260" height="44" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="78" y="261" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">manifest · checksums</text>
+
+    <rect x="60" y="288" width="260" height="44" rx="10" fill="#1a1510" stroke="#3a2f14"/>
+    <text x="78" y="308" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1" fill="#f59e0b">ALWAYS ENCRYPTED</text>
+    <text x="78" y="324" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e5e7eb">app.sole</text>
+
+    <rect x="60" y="342" width="260" height="44" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="78" y="369" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">solidb  (compressed)</text>
+
+    <rect x="60" y="396" width="260" height="44" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="78" y="423" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">ref_*.ndjson  (optional)</text>
+  </g>
+
+  <path d="M350 290 L 400 290" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Launch flow (center) -->
+  <g>
+    <rect x="412" y="120" width="280" height="340" rx="14" fill="#101319" stroke="#3a2f14"/>
+    <rect x="412" y="120" width="280" height="40" rx="14" fill="#1a1510"/>
+    <rect x="412" y="144" width="280" height="16" fill="#1a1510"/>
+    <text x="430" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#fbbf24">On double-click</text>
+
+    <g font-family="system-ui, sans-serif" font-size="13">
+      <circle cx="442" cy="196" r="10" fill="#1a1510" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="438" y="200" font-size="11" font-weight="700" fill="#f59e0b">1</text>
+      <text x="462" y="200" fill="#e5e7eb">Fetch unlock key</text>
+      <text x="462" y="218" font-size="12" fill="#6b7280">never written to disk</text>
+
+      <circle cx="442" cy="256" r="10" fill="#1a1510" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="438" y="260" font-size="11" font-weight="700" fill="#f59e0b">2</text>
+      <text x="462" y="260" fill="#e5e7eb">Start private SolidB</text>
+      <text x="462" y="278" font-size="12" fill="#6b7280">127.0.0.1 · ephemeral port</text>
+
+      <circle cx="442" cy="316" r="10" fill="#1a1510" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="438" y="320" font-size="11" font-weight="700" fill="#f59e0b">3</text>
+      <text x="462" y="320" fill="#e5e7eb">Single-use launch token</text>
+      <text x="462" y="338" font-size="12" fill="#6b7280">else → 403 · burns on misuse</text>
+
+      <circle cx="442" cy="376" r="10" fill="#0f1f16" stroke="#166534" stroke-width="1.5"/>
+      <text x="438" y="380" font-size="11" font-weight="700" fill="#22c55e">4</text>
+      <text x="462" y="380" fill="#e5e7eb">Open browser</text>
+      <text x="462" y="398" font-size="12" fill="#6b7280">or shell via NO_WINDOW</text>
+    </g>
+
+    <rect x="430" y="420" width="244" height="28" rx="8" fill="#1a2e1f" stroke="#166534"/>
+    <text x="454" y="439" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#22c55e">key cut → install revoked</text>
+  </g>
+
+  <path d="M700 290 L 750 290" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- User machine (right) -->
+  <g>
+    <rect x="762" y="120" width="222" height="340" rx="14" fill="#101319" stroke="#14532d"/>
+    <rect x="762" y="120" width="222" height="40" rx="14" fill="#0f1f16"/>
+    <rect x="762" y="144" width="222" height="16" fill="#0f1f16"/>
+    <text x="780" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#86efac">User machine</text>
+
+    <!-- window chrome -->
+    <rect x="782" y="180" width="182" height="120" rx="10" fill="#0b0d0f" stroke="#2b3038"/>
+    <circle cx="800" cy="198" r="4" fill="#ef4444"/>
+    <circle cx="814" cy="198" r="4" fill="#f59e0b"/>
+    <circle cx="828" cy="198" r="4" fill="#22c55e"/>
+    <rect x="796" y="218" width="154" height="12" rx="3" fill="#1a1f28"/>
+    <rect x="796" y="238" width="100" height="10" rx="3" fill="#1a1f28"/>
+    <rect x="796" y="256" width="130" height="10" rx="3" fill="#1a1f28"/>
+    <rect x="796" y="274" width="80" height="10" rx="3" fill="#24301f"/>
+
+    <text x="782" y="332" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#9aa4b2">data/</text>
+    <text x="782" y="352" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#e5e7eb">&lt;app-id&gt;/db</text>
+    <text x="782" y="380" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">persists across launches</text>
+    <text x="782" y="400" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">cache = extract only</text>
+
+    <rect x="782" y="420" width="182" height="28" rx="8" fill="#12151b" stroke="#2b3038"/>
+    <text x="798" y="439" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#9aa4b2">~70–80 MB artifact</text>
+  </g>
+
+  <!-- Footer note -->
+  <text x="48" y="540" font-family="system-ui, sans-serif" font-size="13" fill="#6b7280">Licensing-grade protection · same Soli app · OTA via --update-url · cross-build from one CI host</text>
+</svg>

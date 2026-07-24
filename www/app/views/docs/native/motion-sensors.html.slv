@@ -1,0 +1,150 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Motion Sensors</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">The gyroscope, accelerometer and device orientation — how the phone is being held and moved.</p>
+    </div>
+
+    <p class="text-gray-400 mb-4">All three ride the standard web <code class="text-cyan-400">DeviceMotionEvent</code> / <code class="text-cyan-400">DeviceOrientationEvent</code>, which fire in mobile Safari, Chrome, and both WebView shells — so this is a thin client helper, not a native bridge. What it adds over a raw <code class="text-cyan-400">addEventListener</code> is the part hand-written code reliably forgets:</p>
+    <ul class="space-y-2 text-gray-400 text-sm leading-relaxed mb-12 list-decimal pl-6">
+        <li>the <strong class="text-white">iOS 13+ permission gesture</strong> — <code class="text-cyan-400">DeviceMotionEvent.requestPermission()</code> must be called from a user gesture, and rejects otherwise;</li>
+        <li><strong class="text-white">stopping the listener</strong> — instant navigation swaps the body without a page unload, so a subscription from a page that has been replaced keeps the sensor (and the battery drain) running;</li>
+        <li>one <strong class="text-white">shared listener per event</strong> fanned out to every subscriber;</li>
+        <li>a <strong class="text-white">normalized reading</strong> in each sensor's conventional unit.</li>
+    </ul>
+
+    <h2 id="enabling" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Enabling it</h2>
+    <p class="text-gray-400 mb-4">Referencing <code class="text-cyan-400">soli.sensors</code> in an inline <code class="text-cyan-400">&lt;script&gt;</code> is enough — the server sees it and injects the client. When your sensor code lives in an <strong class="text-white">external</strong> <code class="text-cyan-400">.js</code> file the server can't see, call <code class="text-cyan-400">motion_sensors()</code> once (it emits the marker that turns injection on):</p>
+    <pre class="mb-6"><code class="language-erb text-sm">&lt;%- motion_sensors() %&gt;   &lt;%# only needed for external-JS sensor code %&gt;</code></pre>
+    <p class="text-gray-400 mb-12">A page that references neither downloads nothing.</p>
+
+    <h2 id="the-api" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The API</h2>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">window.soli.sensors</code> exposes three subscriptions. Each returns a <code class="text-cyan-400">Promise&lt;{ stop() }&gt;</code> — a Promise because permission may have to be asked first.</p>
+    <pre class="mb-6"><code class="language-javascript text-sm">// Angular velocity — x/y/z in rad/s
+const gyro = await soli.sensors.gyroscope(r =&gt; {
+  console.log(r.x, r.y, r.z, r.interval)
+})
+
+// Linear acceleration — x/y/z in m/s² (gravity removed by default)
+const accel = await soli.sensors.accelerometer(r =&gt; {
+  console.log(r.x, r.y, r.z)
+}, { includeGravity: false })
+
+// Device attitude — degrees
+const tilt = await soli.sensors.orientation(r =&gt; {
+  console.log(r.alpha, r.beta, r.gamma, r.absolute)
+})
+
+// Later — always stop what you started
+gyro.stop()
+accel.stop()
+tilt.stop()</code></pre>
+
+    <div class="overflow-hidden rounded-xl ring-1 ring-white/10 mb-8">
+        <table class="min-w-full divide-y divide-white/10 text-sm">
+            <thead class="bg-white/5">
+                <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Method</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Reading</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Unit</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">gyroscope(cb, opts)</code></td>
+                    <td class="px-4 py-3"><code>{ x, y, z, interval }</code> — angular velocity</td>
+                    <td class="px-4 py-3">rad/s</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">accelerometer(cb, opts)</code></td>
+                    <td class="px-4 py-3"><code>{ x, y, z, interval }</code> — linear acceleration</td>
+                    <td class="px-4 py-3">m/s²</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">orientation(cb, opts)</code></td>
+                    <td class="px-4 py-3"><code>{ alpha, beta, gamma, absolute }</code> — attitude</td>
+                    <td class="px-4 py-3">degrees</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">supported(kind)</code></td>
+                    <td class="px-4 py-3">whether the event exists</td>
+                    <td class="px-4 py-3">—</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">requestPermission()</code></td>
+                    <td class="px-4 py-3">ask motion + orientation in one gesture</td>
+                    <td class="px-4 py-3">—</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">stopAll()</code></td>
+                    <td class="px-4 py-3">stop every active subscription</td>
+                    <td class="px-4 py-3">—</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-8">Orientation axes follow the web convention: <code class="text-cyan-400">alpha</code> is the compass rotation (0–360, <code class="text-cyan-400">absolute: true</code> when it is true north), <code class="text-cyan-400">beta</code> is front-to-back tilt (−180 to 180), <code class="text-cyan-400">gamma</code> is left-to-right tilt (−90 to 90).</p>
+
+    <h3 class="text-xl font-semibold text-white mb-3">Options</h3>
+    <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-12 list-disc pl-6">
+        <li><strong class="text-white"><code class="text-cyan-400">frequency</code></strong> (Hz) or <strong class="text-white"><code class="text-cyan-400">interval</code></strong> (ms) — throttle the callback. Sensors can fire 60+ times a second; a level indicator or a compass needs far less, and throttling saves the battery. <code class="text-cyan-400">{ frequency: 10 }</code> caps it at ten readings a second.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">includeGravity</code></strong> (accelerometer only) — by default the reading has gravity removed (<code class="text-cyan-400">DeviceMotionEvent.acceleration</code>). Set <code class="text-cyan-400">true</code> for the raw with-gravity value. On a device that only reports the with-gravity reading, the gravity-free request falls back to it.</li>
+    </ul>
+
+    <h2 id="ios-gesture" class="text-3xl font-bold text-white mb-4 scroll-mt-24">iOS needs a gesture</h2>
+    <p class="text-gray-400 mb-4">On iOS 13+, motion and orientation are gated behind a permission prompt that <strong class="text-white">only appears if you ask from a user gesture</strong>. Call from a click, not on load:</p>
+    <pre class="mb-6"><code class="language-html text-sm">&lt;button id="enable"&gt;Enable motion&lt;/button&gt;
+&lt;script&gt;
+  document.getElementById("enable").addEventListener("click", async () =&gt; {
+    // one gesture grants both
+    const state = await soli.sensors.requestPermission()   // {motion, orientation}
+    if (state.motion === "granted") {
+      soli.sensors.gyroscope(r =&gt; level(r))
+    }
+  })
+&lt;/script&gt;</code></pre>
+    <p class="text-gray-400 mb-12">Calling <code class="text-cyan-400">gyroscope()</code> directly works too — it requests permission itself — but only if that call is inside the gesture. Outside one, the promise rejects with a <code class="text-cyan-400">NotAllowedError</code>. Android and desktop browsers have no such prompt.</p>
+
+    <h2 id="per-platform" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Per-platform reality</h2>
+    <div class="overflow-hidden rounded-xl ring-1 ring-white/10 mb-8">
+        <table class="min-w-full divide-y divide-white/10 text-sm">
+            <thead class="bg-white/5">
+                <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Platform</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Behaviour</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr>
+                    <td class="px-4 py-3"><strong class="text-white">Mobile Safari / iOS shell</strong></td>
+                    <td class="px-4 py-3">Works, after the per-gesture <code class="text-cyan-400">requestPermission()</code> prompt.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><strong class="text-white">Chrome Android / Android shell</strong></td>
+                    <td class="px-4 py-3">Works with no prompt.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><strong class="text-white">Desktop browsers, macOS / Linux shells</strong></td>
+                    <td class="px-4 py-3">The events exist, so <code class="text-cyan-400">supported()</code> is <code>true</code>, but a machine with no gyroscope never emits — your callback simply never fires. Design for readings that may not come.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">supported(kind)</code> reports whether the API exists, which is not the same as whether the hardware is present — the honest signal is that a callback never arrives, so don't block your UI waiting for the first reading.</p>
+
+    <h2 id="cleanup" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Cleanup across instant navigation</h2>
+    <p class="text-gray-400 mb-12">You must call <code class="text-cyan-400">.stop()</code> when a subscription is no longer needed. The one case the helper handles for you is <strong class="text-white">instant navigation</strong> — on the <code class="text-cyan-400">soli:visit</code> event (and on <code class="text-cyan-400">pagehide</code>) every active subscription is stopped, because the body swap that instant-nav performs would otherwise leave a listener from the previous page running against a gyroscope nobody is watching. Re-subscribe in <code class="text-cyan-400">soli:load</code> if the next page needs the sensor.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/native/geolocation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Geolocation &rarr;</h3>
+            <p class="text-sm text-gray-400">Where the user is, and the server-side arithmetic that follows.</p>
+        </a>
+        <a href="/docs/native/device" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Device Capabilities &rarr;</h3>
+            <p class="text-sm text-gray-400">Vibration, share sheet, badge, biometrics, NFC and more.</p>
+        </a>
+    </div>
+</div>

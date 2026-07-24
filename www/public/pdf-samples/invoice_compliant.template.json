@@ -2,7 +2,7 @@
   "fonts": ["titillium"],
   "options": { "header_height": 0 },
   "footer": [
-    { "type": "paragraph", "value": "${seller.name} · ${seller.address} · VAT ${seller.vat_number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "6B7280" } }
+    { "type": "paragraph", "value": "${seller.name} · ${seller.registration} · SIRET ${seller.siret} · VAT ${seller.vat_number} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 7.5, "color": "6B7280" } }
   ],
   "content": [
     {
@@ -32,7 +32,7 @@
     { "type": "hr", "color": "1B3A6B", "thickness": 1.6 },
     { "type": "move", "y": 2 },
     { "type": "hr", "color": "1B3A6B", "thickness": 0.4 },
-    { "type": "move", "y": 18 },
+    { "type": "move", "y": 14 },
 
     {
       "type": "table",
@@ -45,8 +45,9 @@
               { "type": "text", "value": "${seller.name}", "fontSize": 10, "fontWeight": "bold" },
               { "type": "text", "value": "${seller.address}", "fontSize": 9 },
               { "type": "text", "value": "${seller.city}", "fontSize": 9 },
-              { "type": "text", "value": "VAT  ${seller.vat_number}", "fontSize": 9 },
-              { "type": "text", "value": "Reg.  ${seller.registration}", "fontSize": 9 }
+              { "type": "text", "value": "SIREN  ${seller.siren}", "fontSize": 9 },
+              { "type": "text", "value": "SIRET  ${seller.siret}", "fontSize": 9 },
+              { "type": "text", "value": "VAT  ${seller.vat_number}", "fontSize": 9 }
             ],
             "width": 240, "alignment": "left", "valign": "top",
             "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
@@ -57,6 +58,7 @@
               { "type": "text", "value": "${customer.name}", "fontSize": 10, "fontWeight": "bold" },
               { "type": "text", "value": "${customer.address}", "fontSize": 9 },
               { "type": "text", "value": "${customer.city}", "fontSize": 9 },
+              { "type": "text", "value": "SIREN  ${customer.siren}", "fontSize": 9 },
               { "type": "text", "value": "VAT  ${customer.vat_number}", "fontSize": 9 }
             ],
             "width": 241, "alignment": "left", "valign": "top",
@@ -66,7 +68,7 @@
       ],
       "options": { "padding_x": 0, "padding_y": 3 }
     },
-    { "type": "move", "y": 16 },
+    { "type": "move", "y": 13 },
 
     {
       "type": "table",
@@ -86,7 +88,7 @@
       ],
       "options": { "header": { "fillColor": "EEF2F8", "textColor": "1B3A6B" }, "padding_x": 8, "padding_y": 6 }
     },
-    { "type": "move", "y": 18 },
+    { "type": "move", "y": 14 },
 
     {
       "type": "table",
@@ -109,7 +111,7 @@
       ],
       "options": { "header": { "fillColor": "1B3A6B", "textColor": "FFFFFF", "borderColor": "1B3A6B" }, "padding_x": 6, "padding_y": 7 }
     },
-    { "type": "move", "y": 16 },
+    { "type": "move", "y": 13 },
 
     {
       "type": "table",
@@ -184,7 +186,8 @@
       "spacing": 2,
       "items": [
         "Payment terms: ${invoice.terms}.",
-        "Late payment incurs statutory interest at the ECB reference rate plus 8 percentage points, plus a fixed €40 recovery charge (Directive 2011/7/EU).",
+        "Late payment: ECB refinancing rate plus 10 points, plus a €40 recovery indemnity (art. L441-10, French Commercial Code).",
+        "${invoice.operation_note}",
         "${invoice.vat_note}",
         "Goods remain the property of ${seller.name} until paid in full."
       ],

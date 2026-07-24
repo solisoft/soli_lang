@@ -148,16 +148,6 @@
     var continuous = element.hasAttribute("data-scan-continuous");
 
     var detector = detectorFor(formats);
-    if (!detector && typeof (window.soli.camera || {}).decoder !== "function") {
-      element.dispatchEvent(
-        new CustomEvent("soli:scan-unsupported", {
-          bubbles: true,
-          detail: { formats: formats }
-        })
-      );
-      return;
-    }
-
     var state = { stopped: false };
     scanners.set(element, state);
 
@@ -171,35 +161,91 @@
       if (!continuous) stopScanning(element);
     }
 
-    function tick() {
-      if (state.stopped || !element.isConnected) return;
-      // A video that is not playing yet has no frame to read.
-      if (element.readyState < 2) {
-        setTimeout(tick, interval);
+    function beginLoop() {
+      if (state.stopped) return;
+      if (!detector && typeof (window.soli.camera || {}).decoder !== "function") {
+        element.dispatchEvent(
+          new CustomEvent("soli:scan-unsupported", {
+            bubbles: true,
+            detail: { formats: formats }
+          })
+        );
         return;
       }
 
-      var attempt = detector
-        ? detector.detect(element).then(function (codes) {
-            return codes && codes.length ? { value: codes[0].rawValue, format: codes[0].format } : null;
-          })
-        : Promise.resolve(window.soli.camera.decoder(element)).then(function (value) {
-            return value ? { value: value, format: null } : null;
-          });
+      function tick() {
+        if (state.stopped || !element.isConnected) return;
+        // A video that is not playing yet has no frame to read.
+        if (element.readyState < 2) {
+          setTimeout(tick, interval);
+          return;
+        }
 
-      attempt
-        .then(function (hit) {
-          if (state.stopped) return;
-          if (hit) found(hit.value, hit.format);
-          if (!state.stopped) setTimeout(tick, interval);
-        })
-        .catch(function () {
-          // A single bad frame is not a reason to stop scanning.
-          if (!state.stopped) setTimeout(tick, interval);
-        });
+        var attempt = detector
+          ? detector.detect(element).then(function (codes) {
+              return codes && codes.length
+                ? { value: codes[0].rawValue, format: codes[0].format }
+                : null;
+            })
+          : Promise.resolve(window.soli.camera.decoder(element)).then(function (value) {
+              return value ? { value: value, format: null } : null;
+            });
+
+        attempt
+          .then(function (hit) {
+            if (state.stopped) return;
+            if (hit) found(hit.value, hit.format);
+            if (!state.stopped) setTimeout(tick, interval);
+          })
+          .catch(function () {
+            // A single bad frame is not a reason to stop scanning.
+            if (!state.stopped) setTimeout(tick, interval);
+          });
+      }
+
+      tick();
     }
 
-    tick();
+    // WebKit has no BarcodeDetector. Auto-load Soli's optional decoder (and
+    // best-effort jsQR) only when a page actually scans — Chromium never pays.
+    if (!detector && typeof (window.soli.camera || {}).decoder !== "function") {
+      ensureBarcodeDecoder()
+        .then(function () {
+          var load = window.soli.camera && window.soli.camera.loadJsQR;
+          if (typeof load === "function" && typeof window.jsQR !== "function") {
+            return load().catch(function () { /* decoder may still no-op */ });
+          }
+        })
+        .then(beginLoop)
+        .catch(function () {
+          beginLoop();
+        });
+      return;
+    }
+
+    beginLoop();
+  }
+
+  var decoderLoad = null;
+  function ensureBarcodeDecoder() {
+    if (typeof (window.soli.camera || {}).decoder === "function") {
+      return Promise.resolve();
+    }
+    if (decoderLoad) return decoderLoad;
+    decoderLoad = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "/__soli/barcode-decoder.js";
+      s.async = true;
+      s.onload = function () {
+        resolve();
+      };
+      s.onerror = function () {
+        decoderLoad = null;
+        reject(new Error("barcode-decoder load failed"));
+      };
+      document.head.appendChild(s);
+    });
+    return decoderLoad;
   }
 
   function stopScanning(element) {

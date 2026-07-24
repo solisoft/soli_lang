@@ -24,7 +24,19 @@ use the https form.
 ## The host half: `AppLinks`
 
 The OS verifies an https link by fetching a file from your domain and checking your app is in it.
-`AppLinks` generates that file — the part everyone gets wrong by hand:
+`AppLinks` generates that file — the part everyone gets wrong by hand.
+
+Scaffold it:
+
+```bash
+soli generate app_links \
+  --android-package net.example.myapp \
+  --sha256 <signing-cert-sha256> \
+  --apple-app-id TEAMID.net.example.myapp \
+  --paths "/pings/*,/threads/*"
+```
+
+Or hand-write:
 
 ```soli
 # config/routes.sl
@@ -37,17 +49,21 @@ get("/.well-known/apple-app-site-association",   "well_known#apple")
 def android(req)
   {
     "headers": { "Content-Type": "application/json" },
-    "body": AppLinks.android("net.solisoft.bonfire", [ENV["ANDROID_CERT_SHA256"]])
+    "body": AppLinks.android("net.example.myapp", [ENV["ANDROID_CERT_SHA256"]])
   }
 end
 
 def apple(req)
   {
     "headers": { "Content-Type": "application/json" },
-    "body": AppLinks.apple("ABCDE12345.net.solisoft.bonfire", ["/pings/*", "/threads/*"])
+    "body": AppLinks.apple("TEAMID.net.example.myapp", ["/pings/*", "/threads/*"])
   }
 end
 ```
+
+Shells from [`soli generate client`](/docs/native/clients) already declare intent filters / URL types
+for the scheme and host you pass at generate time. Desktop artifacts use
+[`--open` / protocol helpers](/docs/development-tools/desktop#deep-links).
 
 Three details the OS is unforgiving about, all handled for you or worth knowing:
 

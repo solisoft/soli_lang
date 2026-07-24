@@ -11,6 +11,40 @@ soli desktop build ./myapp --app-id com.example.myapp
 
 That produces one file. Run it and the app opens.
 
+## Deep links into a desktop artifact
+
+Launch with a path or custom-scheme URL so the first screen after the launch
+token is not always `/`:
+
+```bash
+./myapp --open /pings/3
+./myapp myapp://host/pings/3
+SOLI_DESKTOP_OPEN=/dashboard ./myapp
+```
+
+After the one-shot session exchange, the browser is redirected to that path.
+
+`soli desktop build` writes helpers next to the artifact:
+
+- `register-protocol.sh` + `<scheme>.desktop` (Linux)
+- `register-protocol.ps1` (Windows)
+- `DEEP_LINKS.txt`
+
+```bash
+./register-protocol.sh          # Linux
+.\register-protocol.ps1         # Windows
+# or re-emit helpers for any binary:
+soli desktop register-protocol --exe ./myapp --scheme myapp --name "My App"
+```
+
+macOS custom schemes are cleaner in a native shell (`CFBundleURLTypes`).  
+Generated Linux/Windows **mobile-style** clients under `soli generate client`
+also ship registration helpers.
+
+In-app `Updater.check()` / `Updater.apply()` work on desktop builds that were
+packaged with `--update-url` / `--update-key` (the outer payload descriptor is
+stashed at boot).
+
 ## What the artifact contains
 
 ```

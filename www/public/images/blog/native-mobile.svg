@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Soli native mobile: iOS and Android WebView shells load a remote Soli app. The native bridge handles open-app notifications and device APIs; Push.deliver falls through to APNs and FCM when closed; AppLinks deep-link into the web view.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <!-- Title -->
+  <text x="48" y="52" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="30" font-weight="700" fill="#f4f4f5">Native mobile shells</text>
+  <text x="48" y="80" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">Same Soli app. Thin WebView chrome. Real OS reach.</text>
+
+  <!-- Command chip -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace">
+    <rect x="600" y="28" width="376" height="56" rx="12" fill="#12151b" stroke="#3a2f14"/>
+    <text x="620" y="52" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.2" fill="#f59e0b">ONE CALL</text>
+    <text x="620" y="72" font-size="13" fill="#e5e7eb">Push.deliver(channel, payload, …)</text>
+  </g>
+
+  <!-- Left: shells -->
+  <g>
+    <rect x="40" y="120" width="280" height="340" rx="14" fill="#101319" stroke="#2b3038"/>
+    <rect x="40" y="120" width="280" height="40" rx="14" fill="#151922"/>
+    <rect x="40" y="144" width="280" height="16" fill="#151922"/>
+    <text x="58" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#cbd5e1">Shells (store apps)</text>
+
+    <!-- iOS phone -->
+    <rect x="70" y="188" width="100" height="180" rx="16" fill="#151922" stroke="#2b3038"/>
+    <rect x="78" y="206" width="84" height="128" rx="6" fill="#0b0d0f" stroke="#3a2f14"/>
+    <text x="88" y="250" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#f59e0b">WKWebView</text>
+    <text x="92" y="270" font-family="system-ui, sans-serif" font-size="11" fill="#8b929e">UIKit</text>
+    <text x="98" y="348" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#e5e7eb">iOS</text>
+    <circle cx="120" cy="358" r="6" fill="none" stroke="#2b3038"/>
+
+    <!-- Android phone -->
+    <rect x="190" y="188" width="100" height="180" rx="12" fill="#151922" stroke="#2b3038"/>
+    <rect x="198" y="206" width="84" height="128" rx="4" fill="#0b0d0f" stroke="#3a2f14"/>
+    <text x="210" y="250" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#f59e0b">WebView</text>
+    <text x="214" y="270" font-family="system-ui, sans-serif" font-size="11" fill="#8b929e">native</text>
+    <text x="208" y="348" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#e5e7eb">Android</text>
+    <rect x="228" y="354" width="24" height="6" rx="2" fill="#2b3038"/>
+
+    <text x="58" y="420" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">bridge · permissions · deep links</text>
+  </g>
+
+  <path d="M330 290 L 380 290" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Center: Soli deployment -->
+  <g>
+    <rect x="392" y="120" width="260" height="340" rx="14" fill="#101319" stroke="#3a2f14"/>
+    <rect x="392" y="120" width="260" height="40" rx="14" fill="#1a1510"/>
+    <rect x="392" y="144" width="260" height="16" fill="#1a1510"/>
+    <text x="410" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#fbbf24">Remote Soli app</text>
+
+    <rect x="412" y="180" width="220" height="40" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="428" y="205" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">models · controllers</text>
+
+    <rect x="412" y="232" width="220" height="40" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="428" y="257" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">LiveView · HTMx</text>
+
+    <rect x="412" y="284" width="220" height="40" rx="10" fill="#1a1510" stroke="#3a2f14"/>
+    <text x="428" y="309" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e5e7eb">Native.notify</text>
+
+    <rect x="412" y="336" width="220" height="40" rx="10" fill="#1a1510" stroke="#3a2f14"/>
+    <text x="428" y="361" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e5e7eb">Push.deliver</text>
+
+    <rect x="412" y="388" width="220" height="40" rx="10" fill="#151922" stroke="#2b3038"/>
+    <text x="428" y="413" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9aa4b2">AppLinks proof files</text>
+  </g>
+
+  <path d="M662 290 L 712 290" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Right: reach matrix -->
+  <g>
+    <rect x="724" y="120" width="260" height="340" rx="14" fill="#101319" stroke="#2b3038"/>
+    <rect x="724" y="120" width="260" height="40" rx="14" fill="#151922"/>
+    <rect x="724" y="144" width="260" height="16" fill="#151922"/>
+    <text x="742" y="146" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#cbd5e1">Who gets notified</text>
+
+    <g font-family="system-ui, sans-serif">
+      <circle cx="754" cy="200" r="10" fill="#0f1a14" stroke="#22c55e" stroke-width="1.5"/>
+      <text x="750" y="204" font-size="11" font-weight="700" fill="#22c55e">●</text>
+      <text x="774" y="196" font-size="13" fill="#e5e7eb">App open</text>
+      <text x="774" y="214" font-size="12" fill="#6b7280">native bridge (SSE)</text>
+
+      <circle cx="754" cy="270" r="10" fill="#1a1510" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="750" y="274" font-size="11" font-weight="700" fill="#f59e0b">2</text>
+      <text x="774" y="266" font-size="13" fill="#e5e7eb">iOS closed</text>
+      <text x="774" y="284" font-size="12" fill="#6b7280">Apns.send</text>
+
+      <circle cx="754" cy="340" r="10" fill="#1a1510" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="750" y="344" font-size="11" font-weight="700" fill="#f59e0b">3</text>
+      <text x="774" y="336" font-size="13" fill="#e5e7eb">Android closed</text>
+      <text x="774" y="354" font-size="12" fill="#6b7280">Fcm.send · Doze-safe</text>
+
+      <circle cx="754" cy="410" r="10" fill="#151922" stroke="#2b3038" stroke-width="1.5"/>
+      <text x="750" y="414" font-size="11" font-weight="700" fill="#8b929e">4</text>
+      <text x="774" y="406" font-size="13" fill="#e5e7eb">Browser / PWA</text>
+      <text x="774" y="424" font-size="12" fill="#6b7280">Web Push · VAPID</text>
+    </g>
+  </g>
+
+  <!-- Footer note -->
+  <text x="48" y="540" font-family="system-ui, sans-serif" font-size="13" fill="#6b7280">Deploy product changes on the server. Store releases only for shell / permission / icon work.</text>
+</svg>

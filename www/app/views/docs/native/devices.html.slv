@@ -1,0 +1,91 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Device registration</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Store push targets so <code class="text-cyan-400">Push.deliver</code> can reach a user on every platform.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        The framework owns routing and dead-token detection. <strong class="text-white">Your app owns the device list</strong>.
+        <code class="text-cyan-400">soli generate devices</code> scaffolds the usual shape.
+    </p>
+
+    <h2 id="generate" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Generate</h2>
+    <pre class="mb-6"><code class="language-bash text-sm">soli generate devices
+soli db:migrate up</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Piece</th><th class="py-2">Role</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">Device</code> model</td><td class="py-2">platform, token, optional web subscription; upsert by token</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">POST /devices</code></td><td class="py-2">Register after login (session required)</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">push_targets_for</code> / <code class="text-cyan-400">prune_tokens</code></td><td class="py-2">Wire into <code class="text-cyan-400">Push.deliver</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">deliver_to_user</code></td><td class="py-2">Deliver + prune in one helper</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">skip_csrf("/devices/*")</code></td><td class="py-2">Shell POSTs often lack Origin</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="layout" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Layout</h2>
+    <pre class="mb-12"><code class="language-erb text-sm">&lt;%- csrf_meta_tag() %&gt;
+&lt;% user_id = session_get("user_id") %&gt;
+&lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
+
+    <h2 id="http" class="text-3xl font-bold text-white mb-4 scroll-mt-24">HTTP contract</h2>
+    <pre class="mb-4"><code class="language-http text-sm">POST /devices
+Cookie: &lt;session&gt;
+Content-Type: application/json
+X-CSRF-Token: &lt;from csrf_meta_tag, when posting from a page&gt;
+
+{ "platform": "android", "token": "…" }</code></pre>
+    <p class="text-gray-400 mb-6">Platforms: <code class="text-cyan-400">ios</code>, <code class="text-cyan-400">android</code>, <code class="text-cyan-400">web</code>, <code class="text-cyan-400">macos</code>, <code class="text-cyan-400">apple</code>, <code class="text-cyan-400">fcm</code>. Returns <code class="text-cyan-400">201</code>.</p>
+
+    <h3 id="csrf" class="text-xl font-semibold text-white mb-3 scroll-mt-24">CSRF</h3>
+    <p class="text-gray-400 mb-4">Native shells often send a session cookie without Origin. The generator adds <code class="text-cyan-400">skip_csrf("/devices/*")</code>; the controller still requires login. Generated shells also set Origin/Referer. From a page:</p>
+    <pre class="mb-12"><code class="language-js text-sm">await soli.nativeBridge.registerDevice({
+  platform: "web",
+  subscription: pushSubscriptionJson
+})
+// or { platform: "android", token: fcmToken }</code></pre>
+
+    <h2 id="sending" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Sending</h2>
+    <pre class="mb-6"><code class="language-soli text-sm">result = deliver_to_user(user.id, {
+  "title": "New ping",
+  "body":  "Ana replied",
+  "url":   "/pings/3"
+}, {
+  "apns": apns_options,
+  "fcm":  fcm_options
+})
+# prunes dead tokens from result["prune"] automatically</code></pre>
+    <pre class="mb-12"><code class="language-soli text-sm">result = Push.deliver("user:#{str(user.id)}", payload, {
+  "targets": Device.push_targets_for(user.id),
+  "apns": apns_options,
+  "fcm": fcm_options
+})
+Device.prune_tokens(result["prune"] || [])</code></pre>
+    <p class="text-gray-400 mb-12"><strong class="text-white">Always act on prune.</strong> Tokens the service reports as gone should be deleted.</p>
+
+    <h2 id="checklist" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Checklist</h2>
+    <ol class="list-decimal list-inside text-gray-400 space-y-2 mb-12">
+        <li><code class="text-cyan-400">SOLI_SESSION_SECRET</code> (32+)</li>
+        <li><code class="text-cyan-400">soli generate devices</code> + migrate</li>
+        <li>Layout: <code class="text-cyan-400">csrf_meta_tag</code> + <code class="text-cyan-400">native_channel</code></li>
+        <li>Register tokens after login (shell or <code class="text-cyan-400">registerDevice</code>)</li>
+        <li><code class="text-cyan-400">deliver_to_user</code> with APNs/FCM/VAPID credentials</li>
+        <li><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Generate a client</a> pointed at the deployment</li>
+    </ol>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
+        <li><a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications</a></li>
+        <li><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Native clients</a></li>
+        <li><a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">Native Bridge</a></li>
+        <li><a href="/docs/native/push-android" class="text-amber-400 hover:text-amber-300">Android Push (FCM)</a></li>
+        <li><a href="/docs/native/push-apple" class="text-amber-400 hover:text-amber-300">Apple Push (APNs)</a></li>
+        <li><a href="/docs/blog/native-mobile" class="text-amber-400 hover:text-amber-300">Native mobile blog</a></li>
+    </ul>
+</div>

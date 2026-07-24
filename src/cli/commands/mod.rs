@@ -716,6 +716,58 @@ pub fn run_generate_component(name: &str, folder: &str) {
     }
 }
 
+pub fn run_generate_devices(folder: &str) {
+    match solilang::scaffold::create_devices(folder) {
+        Ok(()) => solilang::scaffold::print_devices_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+pub fn run_generate_client(opts: &solilang::scaffold::ClientOptions) {
+    match solilang::scaffold::create_client(opts) {
+        Ok(()) => solilang::scaffold::print_client_success_message(opts),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+pub fn run_generate_app_links(
+    android_package: &str,
+    android_sha256: &str,
+    apple_app_id: &str,
+    paths: &[String],
+    folder: &str,
+) {
+    let opts = solilang::scaffold::AppLinksOptions {
+        android_package: android_package.to_string(),
+        android_sha256: android_sha256.to_string(),
+        apple_app_id: apple_app_id.to_string(),
+        paths: paths.to_vec(),
+    };
+    match solilang::scaffold::create_app_links(folder, &opts) {
+        Ok(()) => solilang::scaffold::print_app_links_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+pub fn run_generate_offline(folder: &str) {
+    match solilang::scaffold::create_offline(folder) {
+        Ok(()) => solilang::scaffold::print_offline_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_engine(action: &EngineAction) {
     match action {
         EngineAction::Create { name } => match solilang::scaffold::create_engine(name) {

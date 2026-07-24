@@ -50,8 +50,9 @@ static ARMED: AtomicBool = AtomicBool::new(false);
 pub enum Decision {
     /// Not a desktop app, or the caller already holds a valid session.
     Allow,
-    /// A valid launch token: set this cookie and redirect to `/`.
-    GrantSession(String),
+    /// A valid launch token: set this cookie and redirect to the path
+    /// (usually `/`, or a deep-link path from [`crate::desktop::deeplink`]).
+    GrantSession { session: String, redirect: String },
     /// Refuse.
     Deny,
 }
@@ -130,7 +131,12 @@ pub fn evaluate(path: &str, query: Option<&str>, cookie_header: Option<&str>) ->
             return Decision::Deny;
         };
         if constant_time_eq(supplied.as_bytes(), expected.as_bytes()) {
-            return Decision::GrantSession(gate.session.clone());
+            let redirect =
+                crate::desktop::deeplink::take_pending_path().unwrap_or_else(|| "/".to_string());
+            return Decision::GrantSession {
+                session: gate.session.clone(),
+                redirect,
+            };
         }
         return Decision::Deny;
     }
@@ -234,7 +240,10 @@ mod tests {
         let token = token_from(&url);
 
         let session = match evaluate(EXCHANGE_PATH, Some(&format!("t={}", token)), None) {
-            Decision::GrantSession(s) => s,
+            Decision::GrantSession { session, redirect } => {
+                assert_eq!(redirect, "/");
+                session
+            }
             other => panic!("expected a session, got {:?}", other),
         };
 
@@ -254,7 +263,7 @@ mod tests {
 
         assert!(matches!(
             evaluate(EXCHANGE_PATH, Some(&query), None),
-            Decision::GrantSession(_)
+            Decision::GrantSession { .. }
         ));
         // Replaying it — from history, from /proc, from a referrer — must fail.
         assert_eq!(evaluate(EXCHANGE_PATH, Some(&query), None), Decision::Deny);

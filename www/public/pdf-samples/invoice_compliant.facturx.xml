@@ -37,7 +37,7 @@
         <ram:ApplicableTradeTax>
           <ram:TypeCode>VAT</ram:TypeCode>
           <ram:CategoryCode>S</ram:CategoryCode>
-          <ram:RateApplicablePercent>21.00</ram:RateApplicablePercent>
+          <ram:RateApplicablePercent>20.00</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
         <ram:SpecifiedTradeSettlementLineMonetarySummation>
           <ram:LineTotalAmount>960.00</ram:LineTotalAmount>
@@ -63,7 +63,7 @@
         <ram:ApplicableTradeTax>
           <ram:TypeCode>VAT</ram:TypeCode>
           <ram:CategoryCode>S</ram:CategoryCode>
-          <ram:RateApplicablePercent>21.00</ram:RateApplicablePercent>
+          <ram:RateApplicablePercent>20.00</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
         <ram:SpecifiedTradeSettlementLineMonetarySummation>
           <ram:LineTotalAmount>870.00</ram:LineTotalAmount>
@@ -89,7 +89,7 @@
         <ram:ApplicableTradeTax>
           <ram:TypeCode>VAT</ram:TypeCode>
           <ram:CategoryCode>S</ram:CategoryCode>
-          <ram:RateApplicablePercent>9.00</ram:RateApplicablePercent>
+          <ram:RateApplicablePercent>5.50</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
         <ram:SpecifiedTradeSettlementLineMonetarySummation>
           <ram:LineTotalAmount>222.00</ram:LineTotalAmount>
@@ -98,27 +98,33 @@
     </ram:IncludedSupplyChainTradeLineItem>
     <ram:ApplicableHeaderTradeAgreement>
       <ram:SellerTradeParty>
-        <ram:Name>Meridian Instruments BV</ram:Name>
+        <ram:Name>Meridian Instruments SAS</ram:Name>
+        <ram:SpecifiedLegalOrganization>
+          <ram:ID schemeID="0009">51234567900017</ram:ID>
+        </ram:SpecifiedLegalOrganization>
         <ram:PostalTradeAddress>
-          <ram:PostcodeCode>1016 DX</ram:PostcodeCode>
-          <ram:LineOne>Keizersgracht 214</ram:LineOne>
-          <ram:CityName>Amsterdam</ram:CityName>
-          <ram:CountryID>NL</ram:CountryID>
+          <ram:PostcodeCode>75010</ram:PostcodeCode>
+          <ram:LineOne>18 rue de Paradis</ram:LineOne>
+          <ram:CityName>Paris</ram:CityName>
+          <ram:CountryID>FR</ram:CountryID>
         </ram:PostalTradeAddress>
         <ram:SpecifiedTaxRegistration>
-          <ram:ID schemeID="VA">NL812345678B01</ram:ID>
+          <ram:ID schemeID="VA">FR75512345679</ram:ID>
         </ram:SpecifiedTaxRegistration>
       </ram:SellerTradeParty>
       <ram:BuyerTradeParty>
-        <ram:Name>Concertgebouw Vastgoed BV</ram:Name>
+        <ram:Name>Philharmonie Immobilier SAS</ram:Name>
+        <ram:SpecifiedLegalOrganization>
+          <ram:ID schemeID="0002">842917361</ram:ID>
+        </ram:SpecifiedLegalOrganization>
         <ram:PostalTradeAddress>
-          <ram:PostcodeCode>1071 LN</ram:PostcodeCode>
-          <ram:LineOne>Concertgebouwplein 10</ram:LineOne>
-          <ram:CityName>Amsterdam</ram:CityName>
-          <ram:CountryID>NL</ram:CountryID>
+          <ram:PostcodeCode>75019</ram:PostcodeCode>
+          <ram:LineOne>221 avenue Jean-Jaurès</ram:LineOne>
+          <ram:CityName>Paris</ram:CityName>
+          <ram:CountryID>FR</ram:CountryID>
         </ram:PostalTradeAddress>
         <ram:SpecifiedTaxRegistration>
-          <ram:ID schemeID="VA">NL004512889B02</ram:ID>
+          <ram:ID schemeID="VA">FR22842917361</ram:ID>
         </ram:SpecifiedTaxRegistration>
       </ram:BuyerTradeParty>
     </ram:ApplicableHeaderTradeAgreement>
@@ -126,18 +132,18 @@
     <ram:ApplicableHeaderTradeSettlement>
       <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
       <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>384.30</ram:CalculatedAmount>
+        <ram:CalculatedAmount>366.00</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
         <ram:BasisAmount>1830.00</ram:BasisAmount>
         <ram:CategoryCode>S</ram:CategoryCode>
-        <ram:RateApplicablePercent>21.00</ram:RateApplicablePercent>
+        <ram:RateApplicablePercent>20.00</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>
       <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>19.98</ram:CalculatedAmount>
+        <ram:CalculatedAmount>12.21</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
         <ram:BasisAmount>222.00</ram:BasisAmount>
         <ram:CategoryCode>S</ram:CategoryCode>
-        <ram:RateApplicablePercent>9.00</ram:RateApplicablePercent>
+        <ram:RateApplicablePercent>5.50</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>
       <ram:SpecifiedTradePaymentTerms>
         <ram:Description>Net 30 days from the invoice date</ram:Description>
@@ -148,9 +154,9 @@
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>2052.00</ram:LineTotalAmount>
         <ram:TaxBasisTotalAmount>2052.00</ram:TaxBasisTotalAmount>
-        <ram:TaxTotalAmount currencyID="EUR">404.28</ram:TaxTotalAmount>
-        <ram:GrandTotalAmount>2456.28</ram:GrandTotalAmount>
-        <ram:DuePayableAmount>2456.28</ram:DuePayableAmount>
+        <ram:TaxTotalAmount currencyID="EUR">378.21</ram:TaxTotalAmount>
+        <ram:GrandTotalAmount>2430.21</ram:GrandTotalAmount>
+        <ram:DuePayableAmount>2430.21</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
     </ram:ApplicableHeaderTradeSettlement>
   </rsm:SupplyChainTradeTransaction>

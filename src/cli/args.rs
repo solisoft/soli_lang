@@ -43,6 +43,33 @@ pub enum Command {
         name: String,
         folder: String,
     },
+    /// `soli generate devices [folder]` — Device model + register endpoint for push.
+    GenerateDevices {
+        folder: String,
+    },
+    /// `soli generate client <platform> [options] [folder]` — native shell project.
+    GenerateClient {
+        platform: String,
+        url: String,
+        package_id: String,
+        scheme: String,
+        app_name: String,
+        team_id: String,
+        fcm: bool,
+        folder: String,
+    },
+    /// `soli generate app_links [options] [folder]` — well-known deep-link proof files.
+    GenerateAppLinks {
+        android_package: String,
+        android_sha256: String,
+        apple_app_id: String,
+        paths: Vec<String>,
+        folder: String,
+    },
+    /// `soli generate offline [folder]` — outbox sync push/pull + client helper.
+    GenerateOffline {
+        folder: String,
+    },
     Serve {
         folder: String,
         port: u16,
@@ -235,6 +262,12 @@ pub enum Command {
         update_url: Option<String>,
         update_key: Option<String>,
     },
+    /// `soli desktop register-protocol --exe <path> --scheme <s> [--name <n>]`
+    DesktopRegisterProtocol {
+        exe: String,
+        scheme: String,
+        app_name: String,
+    },
 }
 
 pub enum EngineAction {
@@ -283,6 +316,10 @@ pub fn print_usage() {
     eprintln!("       soli generate auth [folder]");
     eprintln!("       soli generate oidc_provider [folder]");
     eprintln!("       soli generate component <name> [folder]");
+    eprintln!("       soli generate devices [folder]");
+    eprintln!("       soli generate client <android|ios|linux|windows> [--url URL] [--package ID] [--scheme S] [--fcm] [folder]");
+    eprintln!("       soli generate app_links [--android-package P] [--sha256 H] [--apple-app-id ID] [folder]");
+    eprintln!("       soli generate offline [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
@@ -320,6 +357,12 @@ pub fn print_usage() {
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
     );
+    eprintln!("  generate devices     Device model + POST /devices for push token registration");
+    eprintln!(
+        "  generate client      Native shell (android|ios|linux|windows); --fcm for Android FCM"
+    );
+    eprintln!("  generate app_links   Well-known assetlinks + apple-app-site-association routes");
+    eprintln!("  generate offline     Outbox sync endpoints + public/js/soli_outbox.js helper");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
     eprintln!("                       --encrypt      Encrypt the bundle (AES-256-GCM; key from");
@@ -582,9 +625,180 @@ pub fn parse_args() -> Options {
                         options.command = Command::GenerateComponent { name, folder };
                         return options;
                     }
+                    "devices" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateDevices { folder };
+                        return options;
+                    }
+                    "client" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!(
+                                "generate client requires a platform (android, ios, linux, windows)"
+                            );
+                            print_usage();
+                            process::exit(64);
+                        }
+                        let platform = args[i].clone();
+                        i += 1;
+                        let mut url = "https://example.com/".to_string();
+                        let mut package_id = String::new();
+                        let mut scheme = String::new();
+                        let mut app_name = String::new();
+                        let mut team_id = "TEAMID".to_string();
+                        let mut fcm = false;
+                        let mut folder = ".".to_string();
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--url" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        url = args[i].clone();
+                                    }
+                                }
+                                "--package" | "--package-id" | "--bundle-id" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        package_id = args[i].clone();
+                                    }
+                                }
+                                "--scheme" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        scheme = args[i].clone();
+                                    }
+                                }
+                                "--name" | "--app-name" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        app_name = args[i].clone();
+                                    }
+                                }
+                                "--team-id" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        team_id = args[i].clone();
+                                    }
+                                }
+                                "--fcm" => {
+                                    fcm = true;
+                                }
+                                flag if flag.starts_with('-') => {
+                                    eprintln!("Unknown flag for generate client: {}", flag);
+                                    process::exit(64);
+                                }
+                                other => {
+                                    folder = other.to_string();
+                                    break;
+                                }
+                            }
+                            i += 1;
+                        }
+                        let (default_name, default_package) =
+                            solilang::scaffold::client_generator::defaults_from_folder(&folder);
+                        if app_name.is_empty() {
+                            app_name = default_name;
+                        }
+                        if package_id.is_empty() {
+                            package_id = default_package;
+                        }
+                        if scheme.is_empty() {
+                            scheme = app_name
+                                .chars()
+                                .filter(|c| c.is_ascii_alphanumeric())
+                                .collect::<String>()
+                                .to_lowercase();
+                            if scheme.is_empty() {
+                                scheme = "myapp".to_string();
+                            }
+                        }
+                        options.command = Command::GenerateClient {
+                            platform,
+                            url,
+                            package_id,
+                            scheme,
+                            app_name,
+                            team_id,
+                            fcm,
+                            folder,
+                        };
+                        return options;
+                    }
+                    "app_links" | "applinks" => {
+                        i += 1;
+                        let mut android_package = "net.example.app".to_string();
+                        let mut android_sha256 = "00".repeat(32);
+                        let mut apple_app_id = "TEAMID.net.example.app".to_string();
+                        let mut paths = vec!["*".to_string()];
+                        let mut folder = ".".to_string();
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--android-package" | "--package" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        android_package = args[i].clone();
+                                    }
+                                }
+                                "--sha256" | "--android-sha256" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        android_sha256 = args[i].clone();
+                                    }
+                                }
+                                "--apple-app-id" | "--app-id" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        apple_app_id = args[i].clone();
+                                    }
+                                }
+                                "--paths" => {
+                                    i += 1;
+                                    if i < args.len() {
+                                        paths = args[i]
+                                            .split(',')
+                                            .map(|s| s.trim().to_string())
+                                            .filter(|s| !s.is_empty())
+                                            .collect();
+                                    }
+                                }
+                                flag if flag.starts_with('-') => {
+                                    eprintln!("Unknown flag for generate app_links: {}", flag);
+                                    process::exit(64);
+                                }
+                                other => {
+                                    folder = other.to_string();
+                                    break;
+                                }
+                            }
+                            i += 1;
+                        }
+                        options.command = Command::GenerateAppLinks {
+                            android_package,
+                            android_sha256,
+                            apple_app_id,
+                            paths,
+                            folder,
+                        };
+                        return options;
+                    }
+                    "offline" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateOffline { folder };
+                        return options;
+                    }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, mailer, component)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, mailer, component, devices, client, app_links, offline)",
                             subcommand
                         );
                         print_usage();
@@ -1458,17 +1672,74 @@ pub fn parse_args() -> Options {
             }
             "desktop" => {
                 i += 1;
-                // Only `desktop build` exists today; anything else is a typo,
-                // and guessing would be worse than saying so.
                 match args.get(i).map(|s| s.as_str()) {
                     Some("build") => i += 1,
+                    Some("register-protocol") | Some("register") => {
+                        i += 1;
+                        let mut exe: Option<String> = None;
+                        let mut scheme: Option<String> = None;
+                        let mut app_name = "Soli App".to_string();
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--exe" | "--binary" => {
+                                    i += 1;
+                                    exe = args.get(i).cloned();
+                                }
+                                "--scheme" => {
+                                    i += 1;
+                                    scheme = args.get(i).cloned();
+                                }
+                                "--name" => {
+                                    i += 1;
+                                    if let Some(n) = args.get(i) {
+                                        app_name = n.clone();
+                                    }
+                                }
+                                other if other.starts_with('-') => {
+                                    eprintln!(
+                                        "Unknown option '{}' for desktop register-protocol",
+                                        other
+                                    );
+                                    process::exit(64);
+                                }
+                                other => {
+                                    if exe.is_none() {
+                                        exe = Some(other.to_string());
+                                    } else {
+                                        eprintln!("Unexpected argument '{}'", other);
+                                        process::exit(64);
+                                    }
+                                }
+                            }
+                            i += 1;
+                        }
+                        let Some(exe) = exe else {
+                            eprintln!(
+                                "Usage: soli desktop register-protocol --exe <path> --scheme <scheme> [--name Name]"
+                            );
+                            process::exit(64);
+                        };
+                        let Some(scheme) = scheme else {
+                            eprintln!("desktop register-protocol requires --scheme <scheme>");
+                            process::exit(64);
+                        };
+                        options.command = Command::DesktopRegisterProtocol {
+                            exe,
+                            scheme,
+                            app_name,
+                        };
+                        return options;
+                    }
                     Some(other) => {
-                        eprintln!("Unknown desktop subcommand '{}' — expected 'build'", other);
+                        eprintln!(
+                            "Unknown desktop subcommand '{}' — expected 'build' or 'register-protocol'",
+                            other
+                        );
                         process::exit(64);
                     }
                     None => {
                         eprintln!(
-                            "Usage: soli desktop build <folder> --app-id <id> --solidb <path>"
+                            "Usage: soli desktop build <folder> --app-id <id>\n       soli desktop register-protocol --exe <path> --scheme <scheme>"
                         );
                         process::exit(64);
                     }

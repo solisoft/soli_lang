@@ -25,34 +25,46 @@ feed.
 
 ## Support, and the gap
 
-`BarcodeDetector` is native in Chromium and absent from WebKit:
+`BarcodeDetector` is still **Chromium-only** — WebKit (Safari, iOS WKWebView, macOS
+shell) does not implement it. Soli closes that gap for pages that use `scan=`:
 
-| Host | Live scanning |
+| Host | How live scanning works |
 |---|---|
 | Android shell | ✅ native `BarcodeDetector` |
-| Windows / Linux | ✅ native (the artifact opens Chrome) |
+| Windows / Linux desktop | ✅ native (artifact opens Chrome) |
 | Chromium browsers | ✅ native |
-| **macOS shell** (`WKWebView`) | ❌ needs a decoder |
-| **Safari / iOS** | ❌ needs a decoder |
+| **macOS shell** (`WKWebView`) | ✅ auto-loads Soli decoder + jsQR (not `BarcodeDetector`) |
+| **Safari / iOS shell** | ✅ same WebKit path |
 
-Soli ships the **loop**, not the decoder. A WASM barcode reader is ~200 KB, and putting one in every
-soli binary to serve the pages that scan would be the wrong trade. Where the platform has no
-detector, supply one:
+What “auto-loads” means (only when `scan=` is set and there is no native detector):
 
-```js
-import { readBarcodes } from "zxing-wasm"
+1. Inject `/__soli/barcode-decoder.js`.
+2. That script tries **same-origin** jsQR first (`/js/jsQR.min.js`, then
+   `/vendor/jsQR.min.js`), then a public CDN if CSP allows.
+3. If the page already set `window.soli.camera.decoder`, that wins.
 
-window.soli.camera.decoder = async (video) => {
-  const results = await readBarcodes(video, { formats: ["QRCode"] })
-  return results.length ? results[0].text : null
-}
+Chromium never downloads the optional script.
+
+**Production / strict CSP:** vendor [jsQR](https://github.com/cozmo/jsQR) yourself — do not rely on the CDN:
+
+```bash
+# from your app root
+mkdir -p public/js
+curl -L -o public/js/jsQR.min.js \
+  https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js
 ```
 
-Return the decoded string, or `null` for "nothing in this frame". The loop, throttling, lifecycle and
-event are handled either way.
+```js
+await soli.camera.loadJsQR()                   # search path above
+await soli.camera.loadJsQR("/js/jsQR.min.js")  # explicit
+# or set your own decoder:
+window.soli.camera.decoder = async (video) => { /* string | null */ }
+```
 
-If neither a detector nor a decoder is available the element fires `soli:scan-unsupported`, so a page
-can offer something else rather than showing a viewfinder that will never resolve:
+A full WASM reader (~200 KB) is deliberately **not** embedded in every Soli binary.
+
+If neither a detector nor a working decoder is available, the element fires
+`soli:scan-unsupported` (e.g. CSP blocked CDN and no vendored jsQR):
 
 ```js
 video.addEventListener("soli:scan-unsupported", () => {

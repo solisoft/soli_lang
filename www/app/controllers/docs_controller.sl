@@ -215,6 +215,10 @@ def native_geolocation
     render_docs("docs/native/geolocation", "Geolocation", "native", "geolocation")
 end
 
+def native_motion_sensors
+    render_docs("docs/native/motion-sensors", "Motion Sensors", "native", "motion-sensors")
+end
+
 def native_device
     render_docs("docs/native/device", "Device Capabilities", "native", "device")
 end
@@ -229,6 +233,22 @@ end
 
 def native_push_android
     render_docs("docs/native/push-android", "Android Push (FCM)", "native", "push-android")
+end
+
+def native_devices
+    render_docs("docs/native/devices", "Device registration", "native", "devices")
+end
+
+def native_clients
+    render_docs("docs/native/clients", "Native clients", "native", "clients")
+end
+
+def native_offline
+    render_docs("docs/native/offline", "Offline mobile", "native", "offline")
+end
+
+def native_platform_limits
+    render_docs("docs/native/platform-limits", "Platform limits", "native", "platform-limits")
 end
 
 def development_tools_editor_integration

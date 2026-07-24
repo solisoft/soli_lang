@@ -699,6 +699,10 @@ pub fn html_response(body: String, status: i64) -> Value {
     // without wanting notifications, and vice versa.
     let body = crate::serve::camera::inject_camera_tag(&body);
 
+    // Motion sensors (gyroscope / accelerometer / orientation), for pages that
+    // enabled them with `motion_sensors()` or reference `soli.sensors`.
+    let body = crate::serve::sensors::inject_sensors_tag(&body);
+
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
     // body on the actual click as long as the server returns 304 on the

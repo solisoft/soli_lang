@@ -7,6 +7,27 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
+<a href="/docs/blog/native-mobile"><img src="/images/blog/native-mobile.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Native Mobile"></a>
+<br>
+<strong><a href="/docs/blog/native-mobile">Ship a Native Mobile App Without Rewriting the Stack</a></strong><br>
+<small>Thin iOS/Android WebView shells, native bridge, Push.deliver to APNs/FCM, and AppLinks — same Soli app, real OS reach.</small>
+</div>
+
+<div>
+<a href="/docs/blog/desktop-build"><img src="/images/blog/desktop-build.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Desktop Build"></a>
+<br>
+<strong><a href="/docs/blog/desktop-build">Ship a Desktop App With <code>soli desktop build</code></a></strong><br>
+<small>One executable with an encrypted app, private SolidB, launch tokens, cross-builds, and OTA — without Electron or a separate database installer.</small>
+</div>
+
+<div>
+<a href="/docs/blog/release-channels"><img src="/images/blog/release-channels.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Release Channels"></a>
+<br>
+<strong><a href="/docs/blog/release-channels">How to Operate a Release Channel</a></strong><br>
+<small>Keys, canaries, fix-forward rollbacks, and the day-to-day runbook for Soli auto-update — not the API, the ops.</small>
+</div>
+
+<div>
 <a href="/docs/blog/code-graph-rag"><img src="/images/blog/code-graph-rag.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Code Graph RAG"></a>
 <br>
 <strong><a href="/docs/blog/code-graph-rag">Code Graph RAG: A Map for Agents</a></strong><br>
@@ -115,6 +136,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [How to Operate a Release Channel](/docs/blog/release-channels) - Signing keys, CDN layout, canary before stable, fix-forward rollbacks, key rotation, and monitoring for Soli auto-update channels
 - [RAG Product Discovery in Soli](/docs/blog/rag-product-discovery) - Embed products on save, retrieve with `.similar()` and `hybrid()`, then generate grounded shopping answers with `llm_generate` — no separate vector DB or orchestration framework
 - [Full End-to-End Tests in Pure Soli](/docs/blog/e2e-testing) - Realistic integration tests using a built-in test server, BDD DSL (`describe`/`test`), session helpers, and coverage gates — no external tools.
 - [Scaffolds That Don’t Suck](/docs/blog/scaffolds) - One command (`/soli-resource`) from idea to complete, tested, production-shaped resource with an intelligent pause for human input.

@@ -12826,6 +12826,33 @@
       ]
     },
     {
+      "title": "SIREN / SIRET on a Factur-X invoice",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-siren-siret",
+      "signature": "seller.legal_id / buyer.legal_id",
+      "description": "Fill the legal registration identifier (BT-30 / BT-47) on a typed invoice — SIREN or SIRET in France. The ISO 6523 scheme is inferred from the digit count (9 → 0002 SIRENE, 14 → 0009 SIRET) and spaces are stripped; legal_id_scheme overrides. Optional in EN 16931 (BR-CO-26), mandatory for the French e-invoicing mandate.",
+      "keywords": [
+        "siren",
+        "siret",
+        "legal_id",
+        "legal_id_scheme",
+        "BT-30",
+        "BT-47",
+        "SpecifiedLegalOrganization",
+        "iso 6523",
+        "0002",
+        "0009",
+        "sirene",
+        "facturx",
+        "en 16931",
+        "france",
+        "facture electronique",
+        "mentions obligatoires",
+        "routage"
+      ]
+    },
+    {
       "title": "PDF invoice discounts, charges & payment terms",
       "type": "feature",
       "category": "PDF",
@@ -14182,7 +14209,7 @@
       "category": "PDF",
       "path": "/docs/builtins/pdf-templates#invoice-compliant",
       "signature": "",
-      "description": "VAT invoice template with a per-rate VAT breakdown, both parties' VAT numbers, statutory late-payment terms and an EPC payment QR.",
+      "description": "French VAT invoice template with a per-rate VAT breakdown, both parties' SIREN and VAT numbers, the seller's SIRET, statutory late-payment terms and an EPC payment QR.",
       "keywords": [
         "invoice",
         "vat",
@@ -14192,7 +14219,10 @@
         "epc",
         "qr",
         "statutory",
-        "breakdown"
+        "breakdown",
+        "siren",
+        "siret",
+        "facture"
       ]
     },
     {
@@ -15358,6 +15388,46 @@
       "path": "/docs/development-tools/auto-update#publishing-an-update",
       "signature": "soli sign-update <latest.json> --key <private.pem>",
       "description": "Sign an update manifest in place with a P-256 private key, adding the signature field the artifact verifies against its embedded public key."
+    },
+    {
+      "title": "Motion Sensors",
+      "type": "page",
+      "category": "Native Bridge",
+      "path": "/docs/native/motion-sensors",
+      "signature": "soli.sensors.gyroscope(cb) · soli.sensors.accelerometer(cb) · soli.sensors.orientation(cb) · motion_sensors()",
+      "description": "Gyroscope, accelerometer and device orientation via the web DeviceMotion/DeviceOrientation events. A thin client helper that handles the iOS permission gesture, throttling, normalized units, and stopping the listener on instant navigation."
+    },
+    {
+      "title": "soli.sensors.gyroscope",
+      "type": "helper",
+      "category": "Native Bridge",
+      "path": "/docs/native/motion-sensors#the-api",
+      "signature": "soli.sensors.gyroscope(cb, opts) -> Promise<{stop()}>",
+      "description": "Subscribe to angular velocity (x/y/z in rad/s). Returns a handle whose stop() removes the shared devicemotion listener; throttle with {frequency} or {interval}."
+    },
+    {
+      "title": "soli.sensors.accelerometer",
+      "type": "helper",
+      "category": "Native Bridge",
+      "path": "/docs/native/motion-sensors#the-api",
+      "signature": "soli.sensors.accelerometer(cb, opts) -> Promise<{stop()}>",
+      "description": "Subscribe to linear acceleration (x/y/z in m/s^2, gravity removed unless includeGravity:true)."
+    },
+    {
+      "title": "soli.sensors.orientation",
+      "type": "helper",
+      "category": "Native Bridge",
+      "path": "/docs/native/motion-sensors#the-api",
+      "signature": "soli.sensors.orientation(cb, opts) -> Promise<{stop()}>",
+      "description": "Subscribe to device attitude: alpha/beta/gamma in degrees plus absolute. From the web DeviceOrientationEvent."
+    },
+    {
+      "title": "motion_sensors",
+      "type": "helper",
+      "category": "Native Bridge",
+      "path": "/docs/native/motion-sensors#enabling",
+      "signature": "motion_sensors() -> String",
+      "description": "View helper emitting the soli-sensors meta tag that turns the motion-sensor client on for a page (needed only when the sensor code is in an external .js file)."
     }
   ]
 }

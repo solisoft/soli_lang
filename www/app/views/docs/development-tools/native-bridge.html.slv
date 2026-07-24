@@ -24,21 +24,45 @@
 
     <h2 id="feature-pages" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Per feature</h2>
     <div class="grid gap-4 sm:grid-cols-2 mb-12">
+        <a href="/docs/native/clients" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Native clients</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">soli generate client</code> &mdash; iOS / Android / Linux / Windows shells.</p>
+        </a>
+        <a href="/docs/native/devices" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Device registration</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">soli generate devices</code>, <code class="text-cyan-400">registerDevice</code>, prune helpers.</p>
+        </a>
         <a href="/docs/native/notifications" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
             <h3 class="text-white font-semibold mb-1">Notifications</h3>
-            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Native.notify</code> reaches a client with the app open &mdash; no push service, no keys.</p>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Push.deliver</code> &mdash; bridge if open, VAPID / APNs / FCM if closed.</p>
+        </a>
+        <a href="/docs/native/deep-links" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Deep Links</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">AppLinks</code> + <code class="text-cyan-400">soli generate app_links</code>.</p>
         </a>
         <a href="/docs/native/camera" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
             <h3 class="text-white font-semibold mb-1">Camera &amp; Microphone</h3>
             <p class="text-gray-400 text-sm"><code class="text-cyan-400">getUserMedia</code>, once the shell stops denying it silently.</p>
         </a>
+        <a href="/docs/native/scanning" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Barcode &amp; QR</h3>
+            <p class="text-gray-400 text-sm">Scan loop; WebKit auto-loads optional jsQR.</p>
+        </a>
+        <a href="/docs/native/offline" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Offline mobile</h3>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">soli generate offline</code> &mdash; outbox, not local SolidB.</p>
+        </a>
+        <a href="/docs/native/platform-limits" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
+            <h3 class="text-white font-semibold mb-1">Platform limits</h3>
+            <p class="text-gray-400 text-sm">Background location, IAP, widgets &mdash; honest stubs.</p>
+        </a>
         <a href="/docs/native/push-apple" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
             <h3 class="text-white font-semibold mb-1">Apple Push (APNs)</h3>
-            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Apns.send</code> reaches a macOS or iOS app that is closed.</p>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Apns.send</code> reaches a closed macOS or iOS app.</p>
         </a>
         <a href="/docs/native/push-android" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:border-amber-500/40 transition">
             <h3 class="text-white font-semibold mb-1">Android Push (FCM)</h3>
-            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Fcm.send</code> reaches a closed Android app, where Doze kills connections.</p>
+            <p class="text-gray-400 text-sm"><code class="text-cyan-400">Fcm.send</code> + <code class="text-cyan-400">generate client android --fcm</code> for tokens.</p>
         </a>
     </div>
 
@@ -55,7 +79,7 @@
                 <tr><td class="py-2 pr-4">Browser</td><td class="py-2 pr-4">bridge (or Web Notification)</td><td class="py-2">web push (VAPID)</td></tr>
                 <tr><td class="py-2 pr-4">Installed PWA</td><td class="py-2 pr-4">bridge</td><td class="py-2">web push (VAPID)</td></tr>
                 <tr><td class="py-2 pr-4">macOS / iOS shell</td><td class="py-2 pr-4"><strong class="text-white">bridge</strong></td><td class="py-2"><a href="#apns" class="text-amber-400 hover:text-amber-300">APNs</a></td></tr>
-                <tr><td class="py-2 pr-4">Android shell</td><td class="py-2 pr-4"><strong class="text-white">bridge</strong></td><td class="py-2">FCM (not yet in soli)</td></tr>
+                <tr><td class="py-2 pr-4">Android shell</td><td class="py-2 pr-4"><strong class="text-white">bridge</strong></td><td class="py-2"><a href="/docs/native/push-android" class="text-amber-400 hover:text-amber-300">FCM</a> (sender in Soli; token via <code class="text-cyan-400">--fcm</code> client)</td></tr>
             </tbody>
         </table>
     </div>
@@ -136,6 +160,7 @@ end</code></pre>
                 <tr><td class="py-2 pr-4 text-white">File upload / capture</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2">✅ shipped</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Clipboard</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅</td></tr>
                 <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/geolocation" class="text-amber-400 hover:text-amber-300">Geolocation</a></td><td class="py-2 pr-4">✅</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ browser</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
+                <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/motion-sensors" class="text-amber-400 hover:text-amber-300">Motion sensors</a></td><td class="py-2 pr-4">✅ mobile</td><td class="py-2 pr-4">— no sensor</td><td class="py-2 pr-4">— no sensor</td><td class="py-2 pr-4">— no sensor</td><td class="py-2 pr-4">✅ shipped</td><td class="py-2">✅ shipped</td></tr>
                 <tr><td class="py-2 pr-4 text-white">Vibration / haptics</td><td class="py-2 pr-4">✅ Android</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✅ trackpad only</td><td class="py-2 pr-4">✅ haptics</td><td class="py-2">✅ shipped</td></tr>
                 <tr><td class="py-2 pr-4 text-white"><a href="/docs/native/deep-links" class="text-amber-400 hover:text-amber-300">Deep links into the app</a></td><td class="py-2 pr-4">&mdash;</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">🔜</td><td class="py-2 pr-4">✅ scheme</td><td class="py-2 pr-4">✅ scheme</td><td class="py-2">✅ shipped</td></tr>
                 <tr><td class="py-2 pr-4 text-white">NFC</td><td class="py-2 pr-4">Chrome Android only</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗</td><td class="py-2 pr-4">✗ no hardware</td><td class="py-2 pr-4">✅ Core NFC</td><td class="py-2">✅ shipped</td></tr>

@@ -1,0 +1,89 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Native clients</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Generate thin OS shells that load your deployed Soli app and speak the native bridge &mdash; not a second UI rewrite.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        For a local offline product with an embedded database, use
+        <a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300"><code class="text-cyan-400">soli desktop build</code></a> instead.
+    </p>
+
+    <h2 id="recipe" class="text-3xl font-bold text-white mb-4 scroll-mt-24">End-to-end recipe</h2>
+    <pre class="mb-6"><code class="language-bash text-sm">soli generate devices
+soli generate app_links \
+  --android-package net.example.myapp \
+  --apple-app-id TEAMID.net.example.myapp
+soli db:migrate up
+
+soli generate client android --url https://app.example.com \
+  --package net.example.myapp --scheme myapp
+soli generate client android --fcm --url https://app.example.com \
+  --package net.example.myapp --scheme myapp
+soli generate client ios --url https://app.example.com \
+  --bundle-id net.example.myapp --team-id TEAMID --scheme myapp</code></pre>
+    <pre class="mb-6"><code class="language-erb text-sm">&lt;%- csrf_meta_tag() %&gt;
+&lt;% user_id = session_get("user_id") %&gt;
+&lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
+    <pre class="mb-12"><code class="language-soli text-sm">deliver_to_user(user.id, {
+  "title": "New ping", "body": "Ana replied", "url": "/pings/3"
+}, { "apns": apns_options, "fcm": fcm_options })</code></pre>
+
+    <h2 id="generate" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Generate</h2>
+    <pre class="mb-6"><code class="language-bash text-sm">soli generate client &lt;platform&gt; [options] [folder]</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Flag</th><th class="py-2">Meaning</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">--url</code></td><td class="py-2">Deployment the WebView loads</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">--package</code> / <code class="text-cyan-400">--bundle-id</code></td><td class="py-2">Android package or iOS bundle id</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">--scheme</code></td><td class="py-2">Custom URL scheme</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">--team-id</code></td><td class="py-2">Apple team (iOS)</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">--fcm</code></td><td class="py-2">Android Gradle + Firebase template</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="platforms" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Platforms</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Platform</th><th class="py-2 pr-4">Output</th><th class="py-2">Build</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">android</code></td><td class="py-2 pr-4">No-Gradle WebView</td><td class="py-2"><code class="text-cyan-400">./build.sh</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">android --fcm</code></td><td class="py-2 pr-4">Gradle + Firebase</td><td class="py-2">closed-app FCM tokens → <code class="text-cyan-400">/devices</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">ios</code></td><td class="py-2 pr-4">XcodeGen + UIKit</td><td class="py-2">APNs token POST to <code class="text-cyan-400">/devices</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">linux</code></td><td class="py-2 pr-4">GTK + WebKitGTK</td><td class="py-2"><code class="text-cyan-400">cargo build --release</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">windows</code></td><td class="py-2 pr-4">WebView2 (.NET 8)</td><td class="py-2">build on Windows</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="apple" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Free vs paid (Apple)</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Capability</th><th class="py-2 pr-4">Free</th><th class="py-2">Paid</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4">Custom scheme, camera, geo, haptics, share, biometrics</td><td class="py-2 pr-4">✅</td><td class="py-2">✅</td></tr>
+                <tr><td class="py-2 pr-4">APNs, Universal Links, Core NFC</td><td class="py-2 pr-4"></td><td class="py-2">✅ entitlements</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
+        <li><a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300">Device registration</a></li>
+        <li><a href="/docs/native/deep-links" class="text-amber-400 hover:text-amber-300">Deep Links</a></li>
+        <li><a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications</a></li>
+        <li><a href="/docs/native/platform-limits" class="text-amber-400 hover:text-amber-300">Platform limits</a></li>
+        <li><a href="/docs/blog/native-mobile" class="text-amber-400 hover:text-amber-300">Native mobile blog</a></li>
+        <li><a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300">Desktop Applications</a></li>
+    </ul>
+</div>

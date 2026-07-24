@@ -1,0 +1,50 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Offline mobile</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">Mobile shells are WebViews onto a remote deployment. True offline is a different product shape.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        <a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300"><code class="text-cyan-400">soli desktop build</code></a>
+        is the offline engine (local SolidB). Phones do not embed that stack by default.
+    </p>
+
+    <h2 id="v1" class="text-3xl font-bold text-white mb-4 scroll-mt-24">v1: outbox + sync</h2>
+    <pre class="mb-6"><code class="language-bash text-sm">soli generate offline
+soli db:migrate up</code></pre>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Piece</th><th class="py-2">Role</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">POST /sync/push</code></td><td class="py-2">Accept outbox items (session required)</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">GET /sync/pull</code></td><td class="py-2">Pull recent events for the user</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SyncEvent</code></td><td class="py-2">Optional audit log</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">public/js/soli_outbox.js</code></td><td class="py-2">localStorage queue + flush on <code class="text-cyan-400">online</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">skip_csrf("/sync/*")</code></td><td class="py-2">Shell flushes may lack Origin</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <pre class="mb-6"><code class="language-js text-sm">soliOutbox.enqueue({ method: "POST", path: "/pings", body: { text: "hi" } })
+await soliOutbox.flush()</code></pre>
+    <p class="text-gray-400 mb-12">
+        Default push <strong class="text-white">stores</strong> events &mdash; replace the loop with real model writes for your domain. The server stays the source of truth.
+    </p>
+
+    <h2 id="out" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Out of v1</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
+        <li>Full embedded SolidB on iOS/Android</li>
+        <li>Automatic CRDT conflict resolution</li>
+        <li>Background location while offline &mdash; see <a href="/docs/native/platform-limits" class="text-amber-400 hover:text-amber-300">Platform limits</a></li>
+    </ul>
+
+    <h2 id="related" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Related</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2">
+        <li><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Native clients</a></li>
+        <li><a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300">Device registration</a></li>
+        <li><a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300">Desktop Applications</a></li>
+    </ul>
+</div>
