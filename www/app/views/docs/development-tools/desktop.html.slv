@@ -12,6 +12,24 @@
 
     <p class="text-gray-400 mb-12">That produces one file. Run it and the app opens.</p>
 
+    <h2 id="deep-links" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Deep links into a desktop artifact</h2>
+    <p class="text-gray-400 mb-4">
+        Launch with a path or custom-scheme URL so the first screen after the launch token is not always <code class="text-cyan-400">/</code>:
+    </p>
+    <pre class="mb-6"><code class="language-bash text-sm">./myapp --open /pings/3
+./myapp myapp://host/pings/3
+SOLI_DESKTOP_OPEN=/dashboard ./myapp</code></pre>
+    <p class="text-gray-400 mb-4">
+        After the one-shot session exchange, the browser redirects to that path.
+        <code class="text-cyan-400">soli desktop build</code> writes <code class="text-cyan-400">register-protocol.sh</code>,
+        <code class="text-cyan-400">register-protocol.ps1</code>, and a <code class="text-cyan-400">.desktop</code> file next to the artifact.
+    </p>
+    <pre class="mb-6"><code class="language-bash text-sm">./register-protocol.sh
+soli desktop register-protocol --exe ./myapp --scheme myapp --name "My App"</code></pre>
+    <p class="text-gray-400 mb-12">
+        In-app <code class="text-cyan-400">Updater.check()</code> works when the artifact was built with <code class="text-cyan-400">--update-url</code> / <code class="text-cyan-400">--update-key</code>.
+    </p>
+
     <h2 id="contents" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What the artifact contains</h2>
     <pre class="mb-6"><code class="text-sm">[ soli runtime ]
 [ manifest        — app identity, versions, checksums ]

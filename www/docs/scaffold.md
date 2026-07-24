@@ -2,6 +2,18 @@
 
 SoliLang includes a scaffold generator that quickly creates a complete MVC resource including models, controllers, views, tests, and migrations.
 
+## Native / mobile generators
+
+| Command | Creates |
+|---------|---------|
+| `soli generate devices` | Device model, `POST /devices`, prune helpers — [docs](/docs/native/devices) |
+| `soli generate client <platform>` | WebView shells (android, ios, linux, windows; `--fcm` for Android) — [docs](/docs/native/clients) |
+| `soli generate app_links` | Well-known deep-link proof routes — [docs](/docs/native/deep-links) |
+| `soli generate offline` | Outbox sync push/pull + `soli_outbox.js` — [docs](/docs/native/offline) |
+
+Also: `soli generate auth`, `oidc_provider`, `mailer`, `component`, and `soli desktop build` for local
+desktop products.
+
 ## Basic Usage
 
 Generate a scaffold for a resource:

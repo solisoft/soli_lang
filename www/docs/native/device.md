@@ -124,7 +124,15 @@ await soli.nativeBridge.print()
 Android needs the bridge — a WebView ignores `window.print()` entirely. Everywhere else this is
 `window.print()`, which is why the call exists at all rather than leaving pages to branch.
 
+## Background location, IAP, widgets
+
+These are **not** default shell capabilities. The client exposes
+`startBackgroundLocation` / `stopBackgroundLocation` / `purchase` so pages can
+feature-detect; without `background_location` or `iap` in the shell's list they
+reject with `NotSupportedError`. See [Platform limits](/docs/native/platform-limits).
+
 ## Related
 
 - [Camera & Microphone](/docs/native/camera) · [Scanning](/docs/native/scanning) · [Geolocation](/docs/native/geolocation)
+- [Platform limits](/docs/native/platform-limits) · [Offline](/docs/native/offline)
 - [Native Bridge](/docs/development-tools/native-bridge) — the capability table

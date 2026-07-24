@@ -22,6 +22,9 @@ use crate::serve::prefetch;
 /// Client JS — compiled into the binary, like `nav.js`.
 pub const CAMERA_SCRIPT: &str = include_str!("camera.js");
 
+/// Optional WebKit barcode decoder, loaded on demand by `camera.js`.
+pub const BARCODE_DECODER_SCRIPT: &str = include_str!("barcode_decoder.js");
+
 /// Makes injection idempotent when a body is rewrapped.
 const INJECTED_MARKER: &str = "__soli_camera_injected";
 
@@ -77,6 +80,18 @@ pub fn handle_camera_js() -> Response<Full<Bytes>> {
         .header("Content-Type", "application/javascript; charset=utf-8")
         .header("Cache-Control", "public, max-age=86400, immutable")
         .body(Full::new(Bytes::from_static(CAMERA_SCRIPT.as_bytes())))
+        .unwrap()
+}
+
+/// `GET /__soli/barcode-decoder.js` — WebKit fallback for `scan=`.
+pub fn handle_barcode_decoder_js() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(200)
+        .header("Content-Type", "application/javascript; charset=utf-8")
+        .header("Cache-Control", "public, max-age=86400, immutable")
+        .body(Full::new(Bytes::from_static(
+            BARCODE_DECODER_SCRIPT.as_bytes(),
+        )))
         .unwrap()
 }
 

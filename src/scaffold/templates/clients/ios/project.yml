@@ -1,0 +1,20 @@
+name: {{APP_NAME}}
+options:
+  bundleIdPrefix: {{TEAM_ID}}
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: {{PACKAGE_ID}}
+    DEVELOPMENT_TEAM: {{TEAM_ID}}
+    INFOPLIST_FILE: {{APP_NAME}}/Info.plist
+    CODE_SIGN_ENTITLEMENTS: {{APP_NAME}}/App.entitlements
+targets:
+  {{APP_NAME}}:
+    type: application
+    platform: iOS
+    sources:
+      - {{APP_NAME}}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: {{PACKAGE_ID}}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name={{APP_NAME}}
+Comment={{APP_NAME}} native shell
+Exec={{SCHEME}}-shell %u
+Icon={{SCHEME}}
+Type=Application
+Categories=Network;
+MimeType=x-scheme-handler/{{SCHEME}};
+StartupNotify=true

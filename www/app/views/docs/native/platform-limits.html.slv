@@ -1,0 +1,58 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Platform limits</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">What the native bridge deliberately does not pretend to own.</p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Prefer the web API when the host has one. Cross the bridge only when the embedded web view cannot.
+        Background location, store billing, and home-screen widgets sit outside that contract &mdash;
+        helpers exist so feature-detection stays honest.
+    </p>
+
+    <h2 id="background-location" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Background location</h2>
+    <pre class="mb-6"><code class="language-js text-sm">if (soli.nativeBridge.supports("background_location")) {
+  await soli.nativeBridge.startBackgroundLocation({ distanceFilter: 25 })
+} else {
+  // navigator.geolocation while the page is open only
+}</code></pre>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Host</th><th class="py-2">Status</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4">Browser / PWA</td><td class="py-2">Foreground geolocation only</td></tr>
+                <tr><td class="py-2 pr-4">Generated shells (default)</td><td class="py-2">Not in capabilities &mdash; <code class="text-cyan-400">NotSupportedError</code></td></tr>
+                <tr><td class="py-2 pr-4">Custom shell</td><td class="py-2">Declare <code class="text-cyan-400">background_location</code> and implement bridge methods</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="iap" class="text-3xl font-bold text-white mb-4 scroll-mt-24">In-app purchases</h2>
+    <pre class="mb-6"><code class="language-js text-sm">try {
+  await soli.nativeBridge.purchase("sku.premium.monthly")
+} catch (err) {
+  if (err.name === "NotSupportedError") { /* web checkout */ }
+}</code></pre>
+    <p class="text-gray-400 mb-12">
+        Soli does not ship StoreKit or Play Billing. A shell may list <code class="text-cyan-400">iap</code>; until then <code class="text-cyan-400">purchase</code> rejects.
+    </p>
+
+    <h2 id="widgets" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Widgets / Live Activities</h2>
+    <p class="text-gray-400 mb-12">
+        Not part of the WebView thesis. Ship a native extension beside the generated shell if you need a home-screen glance.
+    </p>
+
+    <h2 id="first-class" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What is first-class</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
+        <li><a href="/docs/native/notifications" class="text-amber-400 hover:text-amber-300">Notifications</a></li>
+        <li><a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300">Devices</a></li>
+        <li><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Clients</a></li>
+        <li><a href="/docs/native/deep-links" class="text-amber-400 hover:text-amber-300">Deep links</a></li>
+        <li><a href="/docs/native/offline" class="text-amber-400 hover:text-amber-300">Offline (outbox)</a></li>
+        <li><a href="/docs/development-tools/desktop" class="text-amber-400 hover:text-amber-300">Desktop</a></li>
+    </ul>
+</div>

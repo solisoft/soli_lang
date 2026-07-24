@@ -26,8 +26,14 @@
 
     <h2 id="host-half" class="text-3xl font-bold text-white mb-4 scroll-mt-24">The host half: <code class="text-cyan-400">AppLinks</code></h2>
     <p class="text-gray-400 mb-4">
-        The OS verifies an https link by fetching a file from your domain and checking your app is in it. <code class="text-cyan-400">AppLinks</code> generates that file &mdash; the part everyone gets wrong by hand:
+        The OS verifies an https link by fetching a file from your domain and checking your app is in it. <code class="text-cyan-400">AppLinks</code> generates that file &mdash; the part everyone gets wrong by hand. Scaffold it:
     </p>
+    <pre class="mb-4"><code class="language-bash text-sm">soli generate app_links \
+  --android-package net.example.myapp \
+  --sha256 &lt;signing-cert-sha256&gt; \
+  --apple-app-id TEAMID.net.example.myapp \
+  --paths "/pings/*,/threads/*"</code></pre>
+    <p class="text-gray-400 mb-4">Or hand-write:</p>
     <pre class="mb-4"><code class="language-soli text-sm"># config/routes.sl
 get("/.well-known/assetlinks.json",              "well_known#android")
 get("/.well-known/apple-app-site-association",   "well_known#apple")</code></pre>

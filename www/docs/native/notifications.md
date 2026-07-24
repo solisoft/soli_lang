@@ -32,16 +32,21 @@ result = Push.deliver("user:#{str(user.id)}", {
   "body":  "Ana replied",
   "url":   "/pings/3"
 }, {
-  "targets": user.push_targets(),                                   # [{platform, token|subscription}, ...]
+  "targets": Device.push_targets_for(user.id),   # or your own [{platform, token|subscription}, ...]
   "apns":    { "key": apns_key, "key_id": "…", "team_id": "…", "topic": "net.example.app" },
   "fcm":     { "service_account": firebase_account }
   # VAPID keys are read from VAPID_* env when not passed as options.vapid
 })
+# or: deliver_to_user(user.id, payload, { "apns": …, "fcm": … })
 ```
 
 The framework cannot own the device list — where a user's tokens live is your schema — so you pass
 the targets in. What it owns is the part identical in every app: the ordering, the per-platform
 routing, and telling you which tokens are dead.
+
+Scaffold the usual store with [`soli generate devices`](/docs/native/devices): model, `POST /devices`,
+`Device.push_targets_for`, and `deliver_to_user` (which prunes for you). Shells from
+[`soli generate client`](/docs/native/clients) POST tokens after login.
 
 ```soli
 {

@@ -3,13 +3,17 @@
 //! Provides functionality for `soli new app_name` command and resource scaffolding.
 
 pub mod app_generator;
+pub mod app_links_generator;
 pub mod auth_generator;
+pub mod client_generator;
 pub mod component_generator;
 pub mod controller_generator;
+pub mod devices_generator;
 pub mod engine;
 pub mod mailer_generator;
 pub mod migration_generator;
 pub mod model_generator;
+pub mod offline_generator;
 pub mod oidc_generator;
 pub mod seed_generator;
 pub mod templates;
@@ -246,8 +250,12 @@ pub fn print_scaffold_success_message(name: &str) {
 
 // Re-export public functions for backward compatibility
 pub use app_generator::create_app;
+pub use app_links_generator::{create_app_links, print_app_links_success_message, AppLinksOptions};
 pub use auth_generator::{create_auth, print_auth_success_message};
+pub use client_generator::{create_client, print_client_success_message, ClientOptions};
 pub use component_generator::create_component;
+pub use devices_generator::{create_devices, print_devices_success_message};
 pub use engine::create_engine;
 pub use mailer_generator::create_mailer;
+pub use offline_generator::{create_offline, print_offline_success_message};
 pub use oidc_generator::{create_oidc_provider, print_oidc_success_message};

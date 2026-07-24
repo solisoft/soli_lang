@@ -308,6 +308,72 @@
       if (supports("print")) return call("print", {});
       window.print();
       return Promise.resolve(true);
+    },
+
+    /// Background location. Shells must declare "background_location" and
+    /// implement the bridge; browsers have no honest equivalent while the app
+    /// is suspended. Rejects with NotSupportedError until a shell opts in.
+    startBackgroundLocation: function (options) {
+      if (!supports("background_location")) {
+        return Promise.reject(Object.assign(
+          new Error("background location is not available in this host"),
+          { name: "NotSupportedError" }
+        ));
+      }
+      return call("background_location_start", options || {});
+    },
+
+    stopBackgroundLocation: function () {
+      if (!supports("background_location")) {
+        return Promise.reject(Object.assign(
+          new Error("background location is not available in this host"),
+          { name: "NotSupportedError" }
+        ));
+      }
+      return call("background_location_stop", {});
+    },
+
+    /// In-app purchase. Soli does not implement StoreKit / Play Billing —
+    /// a shell may expose "iap". Until then this always rejects so pages can
+    /// feature-detect instead of guessing.
+    purchase: function (productId) {
+      if (!supports("iap")) {
+        return Promise.reject(Object.assign(
+          new Error("in-app purchases are not wired in this host (implement in the shell)"),
+          { name: "NotSupportedError" }
+        ));
+      }
+      return call("iap_purchase", { product_id: productId || "" });
+    },
+
+    /// Register a push / device token with POST /devices (session cookie).
+    /// Prefer calling this after login. Pass { platform, token } or
+    /// { platform: "web", subscription }. Sends X-CSRF-Token when
+    /// <meta name="csrf-token"> is present (csrf_meta_tag in the layout).
+    registerDevice: function (opts) {
+      opts = opts || {};
+      var headers = { "Content-Type": "application/json" };
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta && meta.content) headers["X-CSRF-Token"] = meta.content;
+      var body = {
+        platform: opts.platform || (bridge && bridge.platform) || "web",
+        token: opts.token || null,
+        subscription: opts.subscription || null
+      };
+      return fetch("/devices", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: headers,
+        body: JSON.stringify(body)
+      }).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (t) {
+            throw Object.assign(new Error(t || ("HTTP " + r.status)), { status: r.status });
+          });
+        }
+        if (r.status === 204) return null;
+        return r.json();
+      });
     }
   };
 })();

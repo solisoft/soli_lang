@@ -235,6 +235,22 @@ def native_push_android
     render_docs("docs/native/push-android", "Android Push (FCM)", "native", "push-android")
 end
 
+def native_devices
+    render_docs("docs/native/devices", "Device registration", "native", "devices")
+end
+
+def native_clients
+    render_docs("docs/native/clients", "Native clients", "native", "clients")
+end
+
+def native_offline
+    render_docs("docs/native/offline", "Offline mobile", "native", "offline")
+end
+
+def native_platform_limits
+    render_docs("docs/native/platform-limits", "Platform limits", "native", "platform-limits")
+end
+
 def development_tools_editor_integration
     render_docs(
         "docs/development-tools/editor-integration",

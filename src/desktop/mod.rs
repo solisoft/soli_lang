@@ -11,9 +11,11 @@
 
 pub mod container;
 pub mod db;
+pub mod deeplink;
 pub mod fetch;
 pub mod manifest;
 pub mod paths;
+pub mod protocol;
 pub mod seed;
 pub mod shell;
 pub mod shutdown;

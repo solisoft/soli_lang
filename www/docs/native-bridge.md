@@ -31,11 +31,19 @@ neither is available it does nothing.
 
 | Page | |
 |---|---|
-| [Notifications](/docs/native/notifications) | `Push.deliver` reaches a user however you can — bridge if the app is open, VAPID / APNs / FCM if not. |
+| [Native clients](/docs/native/clients) | `soli generate client` — iOS / Android / Linux / Windows WebView shells. |
+| [Device registration](/docs/native/devices) | `soli generate devices` — token store, `registerDevice`, `deliver_to_user`. |
+| [Notifications](/docs/native/notifications) | `Push.deliver` — bridge if open, VAPID / APNs / FCM if closed. |
+| [Deep Links](/docs/native/deep-links) | `AppLinks` + `soli generate app_links` + shell URL handlers. |
 | [Camera & Microphone](/docs/native/camera) | `getUserMedia`, once the shell stops denying it silently. |
-| [Geolocation](/docs/native/geolocation) | `Geo.distance` / `bounding_box` / `geohash`, plus the permission each shell needs. |
-| [Apple Push (APNs)](/docs/native/push-apple) | `Apns.send` reaches a macOS or iOS app that is closed. |
-| [Android Push (FCM)](/docs/native/push-android) | `Fcm.send` reaches a closed Android app, where Doze kills connections. |
+| [Barcode & QR](/docs/native/scanning) | `camera_preview` scan loop; WebKit loads optional jsQR. |
+| [Geolocation](/docs/native/geolocation) | `Geo.*` plus the permission each shell needs. |
+| [Device capabilities](/docs/native/device) | Share, badge, biometrics, NFC, print, haptics. |
+| [Offline mobile](/docs/native/offline) | `soli generate offline` — outbox + sync (not local SolidB). |
+| [Platform limits](/docs/native/platform-limits) | Background location, IAP, widgets — honest stubs. |
+| [Apple Push (APNs)](/docs/native/push-apple) | `Apns.send` when the app is closed. |
+| [Android Push (FCM)](/docs/native/push-android) | `Fcm.send` when the app is closed (Doze). |
+| [Desktop](/docs/development-tools/desktop) | Local executable + private SolidB (different product shape). |
 
 ## What reaches whom
 
@@ -47,8 +55,8 @@ need the whole picture to choose transports:
 |---|---|---|
 | Browser | bridge (or Web Notification) | web push (VAPID) |
 | Installed PWA | bridge | web push (VAPID) |
-| macOS / iOS shell | **bridge** | [APNs](#reaching-a-closed-app-apns) |
-| Android shell | **bridge** | FCM (not yet in soli) |
+| macOS / iOS shell | **bridge** | [APNs](/docs/native/push-apple) |
+| Android shell | **bridge** | [FCM](/docs/native/push-android) (sender in Soli; token needs Firebase SDK / `soli generate client android --fcm`) |
 
 The bridge is the only thing that reaches the two shell rows on the left, because an embedded web
 view has neither the Push API nor the Notifications API. Everything on the right needs a push
@@ -88,6 +96,8 @@ accepted. Rotating the secret invalidates outstanding tokens, exactly as it does
 
 ## API
 
+### Server
+
 | Call | Returns | |
 |---|---|---|
 | `Native.notify(channel, payload)` | `Int` | Clients reached. `0` means nobody has the app open. |
@@ -96,7 +106,18 @@ accepted. Rotating the secret invalidates outstanding tokens, exactly as it does
 | `native_channel(channel)` | `String` | The meta tag, for a view. The usual way in. |
 
 Payload keys the shells understand: `title`, `body`, `url` (opened on click), `tag` (a stable id, so
-an update replaces its predecessor rather than stacking), `icon`.
+an update replaces its predecessor rather than stacking), `icon`, `badge` (closed-app push).
+
+### Client (`window.soli.nativeBridge`)
+
+Available when a shell injects the host object (or as a thin web fallback for some APIs).
+
+| Call | |
+|---|---|
+| `supports(name)` / `capabilities` | Feature-detect without sniffing UAs |
+| `vibrate` / `share` / `badge` / `keepAwake` / `authenticate` / `readTag` / `print` | Device APIs — see [Device](/docs/native/device) |
+| `registerDevice({ platform, token?, subscription? })` | `POST /devices` with session + optional CSRF meta — see [Devices](/docs/native/devices) |
+| `startBackgroundLocation` / `purchase` | Reject unless the shell lists the capability — see [Platform limits](/docs/native/platform-limits) |
 
 Channel names are yours to choose — `user:42`, `room:7`, `deploy:prod`. They may not contain `.`,
 `|` or control characters, and are namespaced internally so they can never collide with, or be
@@ -137,11 +158,11 @@ Two rules explain the shape of the rest of this table:
 | Clipboard | ✅ | ✅ | ✅ | ✅ | ✅ shipped | ✅ |
 | [Geolocation](/docs/native/geolocation) | ✅ | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
 | Vibration / haptics | ✅ Android | ✗ | ✗ | ✅ trackpad only | ✅ haptics | ✅ shipped |
-| [Deep links into the app](/docs/native/deep-links) | — | 🔜 | 🔜 | ✅ scheme | ✅ scheme | ✅ shipped |
+| [Deep links into the app](/docs/native/deep-links) | — | ✅ protocol / `soli desktop` open | ✅ protocol / desktop open | ✅ scheme | ✅ scheme | ✅ shipped |
 | NFC | Chrome Android only | ✗ | ✗ | ✗ no hardware | ✅ Core NFC | ✅ shipped |
 | Biometric unlock | ✅ WebAuthn | ✅ browser | ✅ browser | ✅ Touch ID | ✅ Face/Touch ID | ✅ shipped |
-| Badge count | ✅ Badging API | 🔜 | 🔜 | ✅ dock tile | ✅ shipped | ✅ via notification |
-| Share sheet | ✅ Web Share | ✅ browser | 🔜 | ✅ shipped | ✅ shipped | ✅ shipped |
+| Badge count | ✅ Badging API | ✅ browser | ✅ browser | ✅ dock tile | ✅ shipped | ✅ via notification |
+| Share sheet | ✅ Web Share | ✅ browser | ✅ generated shell | ✅ shipped | ✅ shipped | ✅ shipped |
 | Keep screen awake | ✅ Wake Lock | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |
 | Printing | ✅ | ✅ | ✅ | ✅ | ✅ shipped | ✅ shipped |
 
@@ -173,11 +194,11 @@ that suppresses notifications by default — WebView2 raises `NotificationReceiv
 handle, WebKitGTK emits `show-notification` — so both would implement the same bridge contract the
 macOS and Android shells do, and both would need their own permission wiring for camera.
 
-**"macOS shell" means AppKit, not Apple in general.** There is no iOS shell yet. `WKWebView`,
-`WKScriptMessageHandler`, `UNUserNotificationCenter` and the capture-permission delegate are shared
-between the platforms, so the bridge code ports directly — but the window layer (`NSWindow`, menus,
-the frameless chrome) is AppKit and has no UIKit equivalent. APNs, by contrast, is already
-platform-neutral: the same `Apns.send` reaches both once a device registers.
+**"macOS shell" means AppKit.** The **iOS shell** is separate UIKit + `WKWebView`
+(`soli generate client ios`). WebKit message handlers, notifications, and capture
+permission wiring are shared in spirit; the window layer is not. APNs is
+platform-neutral: the same `Apns.send` reaches macOS and iOS once a device
+registers. Generate shells with [`soli generate client`](/docs/native/clients).
 
 Rows marked 🔜 are not implemented yet. A capability only appears in a shell's `capabilities` list
 once it actually works there, so feature-detection stays honest:

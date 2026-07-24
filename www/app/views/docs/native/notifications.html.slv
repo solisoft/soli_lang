@@ -21,16 +21,21 @@
     <p class="text-gray-400 mb-4">
         There are four ways to notify someone, and which applies depends only on <em>where they are</em>: the bridge for an app that is open, and a push service (VAPID / APNs / FCM) for one that is closed, chosen by platform. <code class="text-cyan-400">Push.deliver</code> is the cascade over all four &mdash; try the bridge, fall through to push for whoever it did not reach, and route each target by platform:
     </p>
+    <p class="text-gray-400 mb-4">
+        Scaffold the usual token store with <a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300"><code class="text-cyan-400">soli generate devices</code></a>
+        and shells with <a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300"><code class="text-cyan-400">soli generate client</code></a>.
+    </p>
     <pre class="mb-6"><code class="language-soli text-sm">result = Push.deliver("user:#{str(user.id)}", {
   "title": "New ping",
   "body":  "Ana replied",
   "url":   "/pings/3"
 }, {
-  "targets": user.push_targets(),                                   # [{platform, token|subscription}, ...]
+  "targets": Device.push_targets_for(user.id),   # or your own [{platform, token|subscription}, ...]
   "apns":    { "key": apns_key, "key_id": "…", "team_id": "…", "topic": "net.example.app" },
   "fcm":     { "service_account": firebase_account }
   # VAPID keys are read from VAPID_* env when not passed as options.vapid
-})</code></pre>
+})
+# or: deliver_to_user(user.id, payload, { "apns": …, "fcm": … })</code></pre>
     <p class="text-gray-400 mb-4">
         The framework cannot own the device list &mdash; where a user's tokens live is your schema &mdash; so you pass the targets in. What it owns is the part identical in every app: the ordering, the per-platform routing, and telling you which tokens are dead.
     </p>
