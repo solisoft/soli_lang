@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [1.24.1] - 2026-07-24
+
 ### Security
 
 * **fix(deps):** **bump `ammonia` to 4.1.4 — RUSTSEC-2026-0213 (XSS via SVG animation tags).** `ammonia` 4.1.3 let an attacker smuggle script through SVG `animate` / `set` elements, so anything sanitizing untrusted HTML with its default tag set could emit an XSS vector. Soli's own `sanitize_html` was **not** exposed — `sanitize_builder()` replaces ammonia's defaults with an explicit 22-tag allowlist that contains no SVG elements, so `animate` and `set` were already stripped — but the advisory failed `cargo audit`, which gates every push and PR. The bump clears it; no Soli-facing behavior changes.

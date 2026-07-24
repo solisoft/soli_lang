@@ -20,9 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet &mdash; the next cycle starts here.</p>
+    </section>
+
+    <section id="v1-24-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.24.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-07-24</span></h2>
 
         <!-- Native / mobile -->
-        <h3 id="unreleased-native" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Native &amp; mobile</h3>
+        <h3 id="v1-24-1-native" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Native &amp; mobile</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Generate shells, devices, deep-link proofs, and an offline outbox.</strong> <code class="text-cyan-400">soli generate devices</code> scaffolds a <code class="text-cyan-400">Device</code> model, <code class="text-cyan-400">POST /devices</code>, prune helpers, and <code class="text-cyan-400">deliver_to_user</code> for <code class="text-cyan-400">Push.deliver</code> (migration uses <code class="text-cyan-400">begin</code>/<code class="text-cyan-400">rescue</code> if the collection already exists). <code class="text-cyan-400">soli generate client android|ios|linux|windows</code> emits WebView shells (Android optional <code class="text-cyan-400">--fcm</code> Gradle path; iOS posts APNs tokens). <code class="text-cyan-400">soli generate app_links</code> writes well-known host files; <code class="text-cyan-400">soli generate offline</code> adds <code class="text-cyan-400">/sync/push</code>, <code class="text-cyan-400">/sync/pull</code>, and <code class="text-cyan-400">soli_outbox.js</code>. Desktop artifacts accept <code class="text-cyan-400">--open</code> / scheme URLs after the launch token; camera <code class="text-cyan-400">scan=</code> auto-loads a WebKit barcode decoder. Background location and IAP helpers reject unless a shell opts in. See <a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Native clients</a>, <a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300">Devices</a>, and <a href="/docs/native/platform-limits" class="text-amber-400 hover:text-amber-300">Platform limits</a>.</li>
@@ -31,7 +36,7 @@
         </div>
 
         <!-- PDF -->
-        <h3 id="unreleased-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
+        <h3 id="v1-24-1-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">SIREN / SIRET on both parties of a Factur-X invoice.</strong> The typed invoice carried a VAT id and nothing else, so the generated CII had no <code class="text-cyan-400">SpecifiedLegalOrganization</code> at all &mdash; valid EN&nbsp;16931 (<code class="text-cyan-400">BR-CO-26</code> accepts a VAT number alone) but not a French invoice, whose statutory mentions include both parties' SIREN and whose routing keys off the SIRET. <code class="text-cyan-400">seller.legal_id</code> / <code class="text-cyan-400">buyer.legal_id</code> now fill BT-30 / BT-47, and <strong class="text-white">the ISO&nbsp;6523 scheme is inferred</strong> from the digit count &mdash; 9 digits is a SIREN (<code class="text-cyan-400">schemeID="0002"</code>), 14 a SIRET (<code class="text-cyan-400">0009</code>). Whitespace is stripped, so the readable <code class="text-cyan-400">"512 345 679 00017"</code> travels as the 14 bare digits a directory expects; <code class="text-cyan-400">legal_id_scheme</code> overrides for any other ICD code, and a non-numeric registration with no explicit scheme (a Dutch <code class="text-cyan-400">"KvK 34567890"</code>) stays a bare <code class="text-cyan-400">&lt;ram:ID&gt;</code> rather than being tagged with a wrong French one. Both identifiers also reach the template as <code class="text-cyan-400">company.registration</code> / <code class="text-cyan-400">customer.registration</code>, so the PDF can print what the XML carries &mdash; the <code class="text-cyan-400">invoice_compliant</code> and <code class="text-cyan-400">credit_note</code> samples are now French invoices demonstrating both schemes. See <a href="/docs/builtins/pdf#section-siren-siret" class="text-amber-400 hover:text-amber-300">PDF &amp; Factur-X</a>.</li>
@@ -39,7 +44,7 @@
         </div>
 
         <!-- Dev tools -->
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v1-24-1-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Signed over-the-air auto-update for standalone &amp; desktop artifacts.</strong> A built artifact was a frozen binary &mdash; a fix meant asking every user to re-download it. Built with <code class="text-cyan-400">--update-url &lt;base&gt;</code> and <code class="text-cyan-400">--update-key &lt;p256-pubkey&gt;</code>, an artifact now understands <code class="text-cyan-400">--check-update</code> / <code class="text-cyan-400">--update</code>: it fetches <code class="text-cyan-400">&lt;base&gt;/&lt;channel&gt;/latest.json</code>, verifies its P-256 signature against the embedded key, downloads the artifact for its own platform, verifies the sha256, and atomically self-replaces &mdash; staged then renamed, so a failed or tampered download never touches the installed binary. An auto-updater is an RCE channel, so the manifest <strong class="text-white">must</strong> be signed (unsigned is accepted only when no key was embedded, with a loud warning); downgrades are refused. <code class="text-cyan-400">soli update-keygen</code> makes a keypair, <code class="text-cyan-400">soli sign-update</code> signs a manifest, and building drops a <code class="text-cyan-400">.update.json</code> stub to merge in. A new <code class="text-cyan-400">Updater</code> builtin (<code class="text-cyan-400">version</code>/<code class="text-cyan-400">check</code>/<code class="text-cyan-400">apply</code>) drives the flow from Soli for an in-app &ldquo;update available&rdquo; prompt. Mobile shells are excluded &mdash; they update on deploy. See <a href="/docs/development-tools/auto-update" class="text-amber-400 hover:text-amber-300">Auto-Update (OTA)</a>.</li>
@@ -47,7 +52,7 @@
         </div>
 
         <!-- Auth / security -->
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <h3 id="v1-24-1-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Dependency bump: <code class="text-cyan-400">ammonia</code> 4.1.4 (RUSTSEC-2026-0213).</strong> The advisory covers an XSS in <code class="text-cyan-400">ammonia</code> 4.1.3, where script could be smuggled through SVG <code class="text-cyan-400">animate</code> / <code class="text-cyan-400">set</code> animation tags. Soli&rsquo;s <code class="text-cyan-400">sanitize_html</code> was <strong class="text-white">not</strong> affected &mdash; it replaces ammonia&rsquo;s default tag set with an explicit 22-tag allowlist containing no SVG elements, so those tags were already stripped &mdash; but the advisory failed <code class="text-cyan-400">cargo audit</code>, which gates every push and PR. Nothing changes in how <code class="text-cyan-400">sanitize_html</code> behaves.</li>
@@ -360,7 +365,7 @@
         </div>
 
         <!-- Security -->
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security</h3>
+        <h3 id="v1-21-0-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Rate-limiter memory hardening</strong> &mdash; the process-global rate-limit store is now bounded (10,000 distinct keys) and auto-reclaims expired buckets, so an attacker minting a fresh key per request (rotating spoofed IPs, random tokens) can no longer grow it without limit. When the cap is reached a new key <em class="text-gray-300">evicts</em> an existing bucket rather than sharing one, so every live key keeps its own independent counter &mdash; limits are never mixed across keys or across different rate-limit rules.</li>
@@ -371,7 +376,7 @@
         </div>
 
         <!-- Performance & Memory -->
-        <h3 id="unreleased-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance &amp; Memory</h3>
+        <h3 id="v1-21-0-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance &amp; Memory</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white">Leaner multipart uploads</strong> &mdash; a <code class="text-cyan-400">multipart/form-data</code> body is no longer also copied into a lossy UTF-8 string alongside its raw bytes and parsed parts (a large upload was triple-buffered). <strong class="text-white">Behavior change:</strong> <code class="text-cyan-400">req["body"]</code> is now empty for multipart requests &mdash; read fields from <code class="text-cyan-400">params</code> / the form hash and files from the uploads API (the raw bytes are still retained). CSRF verification and <code class="text-cyan-400">_method</code> override are unaffected.</li>
@@ -379,7 +384,7 @@
         </div>
 
         <!-- Dev tools -->
-        <h3 id="unreleased-devtools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v1-21-0-devtools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
             <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
                 <li><strong class="text-white"><code class="text-cyan-400">soli graph build</code> &mdash; code graph in SolidB for agents (graph RAG)</strong> &mdash; extracts a graph of your project's source (nodes: files, classes, models, controllers, methods, functions, routes, views; edges: <code class="text-cyan-400">defines</code>, <code class="text-cyan-400">inherits</code>, <code class="text-cyan-400">imports</code>, <code class="text-cyan-400">calls</code>, <code class="text-cyan-400">renders</code>, <code class="text-cyan-400">routes_to</code>, <code class="text-cyan-400">relates</code>) into <code class="text-cyan-400">soli_graph_nodes</code> + <code class="text-cyan-400">soli_graph_edges</code>, so agents retrieve code by semantic search and traverse relationships from there. Every node's text is embedded (vector index over <code class="text-cyan-400">embedding</code>); <code class="text-cyan-400">--no-embed</code> builds a purely structural offline graph and <code class="text-cyan-400">--dry-run</code> prints the whole graph as JSON without touching SolidB or the embedding API. Connects to the same SolidB the app's Models use. <strong class="text-white">Incremental &amp; non-destructive</strong>: MD5-hashes files to skip unchanged re-runs, and updates SolidB in place (insert/update/prune) instead of dropping — unchanged embeddings are reused, only changed text is re-embedded; <code class="text-cyan-400">--fresh</code> forces a clean rebuild. Progress bar over the parse/embed/sync phases so big projects don't look frozen.</li>
