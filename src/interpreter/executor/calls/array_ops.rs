@@ -100,10 +100,20 @@ impl ValueSet {
         }
     }
 
-    fn contains(&self, v: &Value) -> bool {
+    /// Remove, returning `true` when the value was present. Lets a caller test
+    /// membership and consume it in one hash operation — which is why there is
+    /// no separate `contains`: every caller here needs to record something
+    /// alongside the answer, so a pure query would always be a wasted hash.
+    fn remove(&mut self, v: &Value) -> bool {
         match fast_key(v) {
-            Some(k) => self.hashed.contains(&k),
-            None => self.other.iter().any(|o| o == v),
+            Some(k) => self.hashed.remove(&k),
+            None => match self.other.iter().position(|o| o == v) {
+                Some(i) => {
+                    self.other.swap_remove(i);
+                    true
+                }
+                None => false,
+            },
         }
     }
 
@@ -135,7 +145,7 @@ pub(crate) fn flatten_values(items: &[Value], max_depth: Option<usize>) -> Vec<V
                 return arr.to_vec();
             }
         }
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(arr.len());
         for item in arr {
             if let Value::Array(inner) = item {
                 result.extend(recur(&inner.borrow(), depth + 1, max));
@@ -187,17 +197,25 @@ pub(crate) fn union_values(a: &[Value], b: &[Value]) -> Vec<Value> {
 }
 
 /// `a & b` — the distinct values of `a` that also appear in `b`, in `a`'s order.
+///
+/// One set, one hash operation per element. Seeding it with `b` and *removing*
+/// on a hit gives both halves of the contract at once: a hit means the value was
+/// in `b`, and the removal means a repeat of it in `a` cannot match again. The
+/// obvious two-set version — membership in `b`, plus a second "already emitted"
+/// set — hashes every element twice to learn the same thing.
 pub(crate) fn intersection_values(a: &[Value], b: &[Value]) -> Vec<Value> {
     let ra = resolve_deferred(a);
     let a = ra.as_deref().unwrap_or(a);
     let rb = resolve_deferred(b);
     let b = rb.as_deref().unwrap_or(b);
 
-    let other = ValueSet::from_slice(b);
-    let mut seen = ValueSet::with_capacity(a.len());
-    let mut result: Vec<Value> = Vec::new();
+    let mut remaining = ValueSet::from_slice(b);
+    // The result cannot exceed either input; sizing up front avoids the ~14
+    // reallocations (and the doubling memcpy behind them) that growing from
+    // empty costs on a 20k-element result.
+    let mut result: Vec<Value> = Vec::with_capacity(a.len().min(b.len()));
     for item in a {
-        if other.contains(item) && seen.insert(item) {
+        if remaining.remove(item) {
             result.push(item.clone());
         }
     }
@@ -205,17 +223,24 @@ pub(crate) fn intersection_values(a: &[Value], b: &[Value]) -> Vec<Value> {
 }
 
 /// `a - b` — the distinct values of `a` absent from `b`, in `a`'s order.
+///
+/// The same one-set trick as [`intersection_values`], read the other way round:
+/// seed with `b`, then *insert* each element of `a`. The insert succeeds only
+/// when the value was neither in `b` nor already emitted — which is exactly the
+/// keep condition — and marks it emitted in the same operation.
+///
+/// Note this dedups the result, where Ruby's `Array#-` keeps duplicates from
+/// `a` (`[1, 1, 2] - [3]` is `[1, 1, 2]` in Ruby, `[1, 2]` here).
 pub(crate) fn difference_values(a: &[Value], b: &[Value]) -> Vec<Value> {
     let ra = resolve_deferred(a);
     let a = ra.as_deref().unwrap_or(a);
     let rb = resolve_deferred(b);
     let b = rb.as_deref().unwrap_or(b);
 
-    let other = ValueSet::from_slice(b);
-    let mut seen = ValueSet::with_capacity(a.len());
-    let mut result: Vec<Value> = Vec::new();
+    let mut excluded = ValueSet::from_slice(b);
+    let mut result: Vec<Value> = Vec::with_capacity(a.len());
     for item in a {
-        if !other.contains(item) && seen.insert(item) {
+        if excluded.insert(item) {
             result.push(item.clone());
         }
     }
