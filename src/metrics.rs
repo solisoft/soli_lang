@@ -40,6 +40,15 @@ pub struct Metrics {
     /// A non-zero value means some production handlers run on the slower
     /// engine; set `SOLI_ENGINE_LOG=1` to log which handler and why.
     pub vm_handler_demotions_total: AtomicU64,
+    /// Number of requests whose handler panicked and was contained by the
+    /// per-request `catch_unwind` in the worker loop (the client got a `500`
+    /// and the worker survived). Any non-zero value is a bug worth chasing —
+    /// the panic payload and backtrace are on stderr.
+    ///
+    /// Counted unconditionally, like `vm_handler_demotions_total`: a panic is
+    /// rare enough that the atomic is free, and the number is most wanted
+    /// exactly when nobody thought to set `SOLI_METRICS` in advance.
+    pub handler_panics_total: AtomicU64,
     start_time: std::sync::OnceLock<Instant>,
 }
 
@@ -60,6 +69,7 @@ impl Metrics {
             db_query_duration_ns_total: AtomicU64::new(0),
             db_query_count: AtomicU64::new(0),
             vm_handler_demotions_total: AtomicU64::new(0),
+            handler_panics_total: AtomicU64::new(0),
             start_time: std::sync::OnceLock::new(),
         }
     }
@@ -187,6 +197,15 @@ impl Metrics {
         out.push_str(&format!(
             "soli_vm_handler_demotions_total {}\n",
             self.vm_handler_demotions_total.load(Ordering::Relaxed)
+        ));
+
+        out.push_str(
+            "# HELP soli_handler_panics_total Requests whose handler panicked and was contained by the worker (client received a 500; the worker stayed up).\n",
+        );
+        out.push_str("# TYPE soli_handler_panics_total counter\n");
+        out.push_str(&format!(
+            "soli_handler_panics_total {}\n",
+            self.handler_panics_total.load(Ordering::Relaxed)
         ));
 
         out

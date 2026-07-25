@@ -84,7 +84,8 @@ ryu = "1"
 hyper = { version = "1.4", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
 http-body-util = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "process", "io-std", "io-util"] }
+# "signal" powers the graceful-drain listener in `serve::spawn_drain_on_signal`.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "process", "io-std", "io-util", "signal"] }
 tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
@@ -310,8 +311,22 @@ harness = false
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
 strip = "symbols"
+
+# NOTE: do not set `panic = "abort"` here.
+#
+# The server's fault isolation is built on `std::panic::catch_unwind`, which is
+# a no-op under `panic = "abort"` — the process aborts at the panic site instead.
+# Setting it silently turns all three of these into dead code, so a single panic
+# in one worker takes down every worker in the process:
+#
+#   * the per-request guard in `serve::dispatch_http_request` (returns a 500 and
+#     keeps the worker serving),
+#   * the web-worker restart loop in `serve::run_hyper_server_worker_pool`,
+#   * the background-job pool restart loop in `serve::background_jobs`.
+#
+# Unwinding is the default; it is spelled out here only so the reason survives
+# the next binary-size or startup-time pass.
 
 [profile.bench]
 opt-level = 3

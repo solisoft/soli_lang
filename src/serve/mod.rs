@@ -31,6 +31,7 @@ pub mod route_log;
 mod router;
 pub mod sensors;
 mod server_constants;
+pub mod shutdown;
 pub mod span_log;
 pub mod template_warnings;
 mod uploads_prelude;
@@ -71,7 +72,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -976,9 +977,9 @@ fn run_hyper_server_worker_pool(
     // per-instance tick tasks that re-enter the worker queue.
     let _ = LV_EVENT_TX.set(lv_event_tx.clone());
     // crossbeam Sender is cheap to clone - no need for Arc<Mutex<Option<>>>
-    // Use AtomicBool for shutdown signaling (lock-free check)
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let shutdown_flag_for_tokio = shutdown_flag.clone();
+    // Shutdown state lives in `serve::shutdown` as process-global atomics rather
+    // than an Arc threaded through here: the readiness probe is answered deep
+    // inside `handle_hyper_request`, far from this scope.
 
     // Single shared queue drained by all workers: any free worker pulls the
     // next request, so a request is never stranded behind a busy worker.
@@ -1085,7 +1086,17 @@ fn run_hyper_server_worker_pool(
                 .unwrap_or(try_port);
             let _ = bound_port_tx.send(bound_port);
 
+            // Own SIGTERM/SIGINT for the lifetime of the server so shutdown
+            // drains instead of truncating.
+            spawn_drain_on_signal();
+
             loop {
+                // The accept loop deliberately keeps running during a drain.
+                // Breaking out would return from the enclosing `block_on`,
+                // dropping the tokio runtime and killing the in-flight
+                // connections this drain exists to protect. A load balancer also
+                // needs to *reach* `/_ready` to learn this instance is going
+                // away; a closed listener gives it a TCP refusal instead.
                 let (stream, peer_addr) = match listener.accept().await {
                     Ok(conn) => conn,
                     Err(_) => continue,
@@ -1103,10 +1114,13 @@ fn run_hyper_server_worker_pool(
                 let _ws_registry = ws_registry_for_tokio.clone();
                 let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
                 let lv_event_tx = lv_event_tx.clone(); // LiveView event sender
-                let shutdown_flag = shutdown_flag_for_tokio.clone();
                 let dev_mode = dev_mode_for_tokio;
 
                 tokio::spawn(async move {
+                    // Held for the whole connection so the drain knows when the
+                    // last client has actually finished. Dropped on every exit
+                    // path, including error and panic.
+                    let _conn = shutdown::ConnectionGuard::new();
                     let service = service_fn(move |req| {
                         let request_tx = request_tx.clone();
                         let reload_tx = reload_tx.clone();
@@ -1114,13 +1128,18 @@ fn run_hyper_server_worker_pool(
                         let asset_cache = asset_cache.clone(); // Arc clone is cheap
                         let ws_event_tx = ws_event_tx.clone();
                         let lv_event_tx = lv_event_tx.clone();
-                        let shutdown_flag = shutdown_flag.clone();
 
                         async move {
-                            // Lock-free shutdown check (AtomicBool)
-                            if shutdown_flag.load(Ordering::Relaxed) {
+                            // Draining: refuse new work, but let the probes
+                            // through — `/_ready` answering 503 is precisely how
+                            // a load balancer learns to stop routing here, and it
+                            // cannot do that if the drain check swallows it.
+                            if shutdown::is_draining()
+                                && !matches!(req.uri().path(), "/_health" | "/_ready")
+                            {
                                 return Ok(Response::builder()
                                     .status(StatusCode::SERVICE_UNAVAILABLE)
+                                    .header("Connection", "close")
                                     .body(full(Bytes::from("Server shutting down")))
                                     .unwrap());
                             }
@@ -1710,6 +1729,11 @@ fn run_hyper_server_worker_pool(
         "Using hyper async HTTP server with {} worker threads\n",
         num_workers
     );
+
+    // Workers are spawned and the listener is accepting: `/_ready` flips to 200
+    // here. Deliberately after the banner, so nothing routes to a process that
+    // has not finished announcing itself.
+    shutdown::mark_ready();
 
     // Eagerly initialize the shared HTTP client within the tokio runtime context.
     // reqwest::Client requires a Tokio reactor during construction.
@@ -2397,48 +2421,8 @@ fn worker_loop(
         if http_enabled {
             for _ in 0..server_constants::BATCH_SIZE {
                 match work_rx.try_recv() {
-                    Ok(mut data) => {
-                        crate::interpreter::builtins::streaming::clear_pending_stream();
-                        let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
-                        match crate::interpreter::builtins::streaming::take_pending_stream() {
-                            Some(spec) => {
-                                let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-                                let resp = WorkerResponse::Stream {
-                                    status: spec.status,
-                                    headers: spec.headers.clone(),
-                                    rx,
-                                };
-                                if let Some(topic) = spec.subscribe_topic.clone() {
-                                    // Async pub/sub: register the sender under the
-                                    // topic and return — the connection lives as
-                                    // the async StreamBody, NOT on this worker, so
-                                    // many idle subscribers cost no threads. Events
-                                    // arrive via sse_broadcast.
-                                    let _ = tx.try_send(b": connected\n\n".to_vec());
-                                    crate::interpreter::builtins::streaming::register_subscriber(
-                                        &topic, tx,
-                                    );
-                                    let _ = data.response_tx.send(resp);
-                                } else {
-                                    // Handler-driven streaming: hold the worker
-                                    // while the block runs and feeds chunks.
-                                    let id =
-                                        crate::interpreter::builtins::streaming::register_sender(
-                                            tx,
-                                        );
-                                    let _ = data.response_tx.send(resp);
-                                    crate::interpreter::builtins::streaming::run_stream_block(
-                                        interpreter,
-                                        &spec,
-                                        id,
-                                    );
-                                    crate::interpreter::builtins::streaming::unregister_sender(id);
-                                }
-                            }
-                            None => {
-                                let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
-                            }
-                        }
+                    Ok(data) => {
+                        dispatch_http_request(interpreter, &mut vm, data, dev_mode);
                     }
                     Err(channel::TryRecvError::Empty) => {
                         break;
@@ -2473,7 +2457,7 @@ fn worker_loop(
             if let Ok(oper) = result {
                 let idx = oper.index();
                 if Some(idx) == work_idx {
-                    if let Ok(mut data) = oper.recv(&work_rx) {
+                    if let Ok(data) = oper.recv(&work_rx) {
                         // Check hot reload before handling: a parked worker
                         // serves this request before the loop-top version scan
                         // runs, so clear both the template AST cache and this
@@ -2487,47 +2471,7 @@ fn worker_loop(
                                 crate::template::response_cache::clear_cache();
                             }
                         }
-                        crate::interpreter::builtins::streaming::clear_pending_stream();
-                        let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
-                        match crate::interpreter::builtins::streaming::take_pending_stream() {
-                            Some(spec) => {
-                                let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-                                let resp = WorkerResponse::Stream {
-                                    status: spec.status,
-                                    headers: spec.headers.clone(),
-                                    rx,
-                                };
-                                if let Some(topic) = spec.subscribe_topic.clone() {
-                                    // Async pub/sub: register the sender under the
-                                    // topic and return — the connection lives as
-                                    // the async StreamBody, NOT on this worker, so
-                                    // many idle subscribers cost no threads. Events
-                                    // arrive via sse_broadcast.
-                                    let _ = tx.try_send(b": connected\n\n".to_vec());
-                                    crate::interpreter::builtins::streaming::register_subscriber(
-                                        &topic, tx,
-                                    );
-                                    let _ = data.response_tx.send(resp);
-                                } else {
-                                    // Handler-driven streaming: hold the worker
-                                    // while the block runs and feeds chunks.
-                                    let id =
-                                        crate::interpreter::builtins::streaming::register_sender(
-                                            tx,
-                                        );
-                                    let _ = data.response_tx.send(resp);
-                                    crate::interpreter::builtins::streaming::run_stream_block(
-                                        interpreter,
-                                        &spec,
-                                        id,
-                                    );
-                                    crate::interpreter::builtins::streaming::unregister_sender(id);
-                                }
-                            }
-                            None => {
-                                let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
-                            }
-                        }
+                        dispatch_http_request(interpreter, &mut vm, data, dev_mode);
                     }
                 } else if Some(idx) == ws_idx {
                     if let Some(ref rx) = ws_event_rx_inner {
@@ -2677,6 +2621,38 @@ async fn handle_hyper_request(
                     .unwrap());
             }
         }
+    }
+
+    // Liveness: is this process up at all? Answers 200 for as long as the
+    // server is running, including mid-drain — a draining process is healthy, it
+    // just does not want new traffic. An orchestrator that gets a non-200 here
+    // restarts the container, so it must not fail during a normal shutdown.
+    if path == "/_health" && (method == "GET" || method == "HEAD") {
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .header("Cache-Control", "no-store")
+            .body(full(Bytes::from_static(b"ok")))
+            .unwrap());
+    }
+
+    // Readiness: should this instance be in the load balancer right now? 503
+    // while workers are still booting and again for the whole drain, so a
+    // rolling deploy stops routing here before connections start being refused.
+    if path == "/_ready" && (method == "GET" || method == "HEAD") {
+        let (status, body) = if shutdown::is_ready() {
+            (StatusCode::OK, &b"ready"[..])
+        } else if shutdown::is_draining() {
+            (StatusCode::SERVICE_UNAVAILABLE, &b"draining"[..])
+        } else {
+            (StatusCode::SERVICE_UNAVAILABLE, &b"starting"[..])
+        };
+        return Ok(Response::builder()
+            .status(status)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .header("Cache-Control", "no-store")
+            .body(full(Bytes::from_static(body)))
+            .unwrap());
     }
 
     // Prometheus metrics endpoint — no CSRF check, intended for scraping
@@ -4694,6 +4670,200 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     }
 }
 
+/// Listen for `SIGTERM`/`SIGINT` and drive the drain sequence.
+///
+/// On signal: flip to draining (so `/_ready` starts failing and the load
+/// balancer takes this instance out of rotation), wait for in-flight connections
+/// to finish, then exit `0`. A second signal skips the wait.
+///
+/// Exits via `std::process::exit`, never `abort`, so `atexit` handlers still run
+/// — including the `cargo llvm-cov` profile flush that `main.rs` documents.
+#[cfg(unix)]
+fn spawn_drain_on_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    // `main.rs` installs a `sigaction` handler that calls `process::exit(0)`
+    // immediately. Tokio's signal driver *chains* to whatever handler it finds,
+    // so leaving it installed would exit before a single connection drained.
+    // Reset to the default disposition first — tokio does not chain to
+    // `SIG_DFL`, and the coverage flush is preserved because the drain path
+    // below also ends in `process::exit(0)`.
+    unsafe {
+        use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+        let dfl = SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty());
+        let _ = sigaction(Signal::SIGTERM, &dfl);
+        let _ = sigaction(Signal::SIGINT, &dfl);
+    }
+
+    tokio::spawn(async move {
+        let mut term = match signal(SignalKind::terminate()) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let mut int = match signal(SignalKind::interrupt()) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+        }
+
+        if !shutdown::begin_drain() {
+            return;
+        }
+
+        let grace = shutdown::grace_period();
+        let outstanding = shutdown::in_flight();
+        if outstanding > 0 {
+            println!(
+                "Shutting down: draining {} connection(s), up to {}s (SOLI_SHUTDOWN_GRACE_SECS)",
+                outstanding,
+                grace.as_secs()
+            );
+        }
+
+        let drained = tokio::select! {
+            _ = async {
+                while shutdown::in_flight() > 0 {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            } => true,
+            _ = tokio::time::sleep(grace) => false,
+            _ = async {
+                tokio::select! {
+                    _ = term.recv() => {}
+                    _ = int.recv() => {}
+                }
+            } => false,
+        };
+
+        if !drained {
+            let stranded = shutdown::in_flight();
+            if stranded > 0 {
+                eprintln!(
+                    "Shutdown: {} connection(s) still open, exiting anyway",
+                    stranded
+                );
+            }
+        }
+
+        std::process::exit(0);
+    });
+}
+
+/// Windows has no `SIGTERM`, and the console-close path gives no window to drain
+/// in. Keeping the call site unconditional avoids a `#[cfg]` in the accept loop.
+#[cfg(not(unix))]
+fn spawn_drain_on_signal() {}
+
+/// The response a worker returns when a handler panics. Deliberately terse and
+/// identical in dev and production: the panic payload and backtrace already went
+/// to stderr, and echoing them to the client would leak internals.
+fn panic_response() -> ResponseData {
+    ResponseData {
+        status: 500,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
+        body: b"Internal Server Error".to_vec(),
+    }
+}
+
+/// Run a request handler, converting a panic into a `500` instead of losing the
+/// worker.
+///
+/// Kept separate from `dispatch_http_request` (which needs a live `Interpreter`
+/// and a wired-up channel) purely so it can be tested directly.
+///
+/// Note this is a no-op guard unless panics unwind — see the `compile_error!` in
+/// `serve::shutdown`, which fails the build if `panic = "abort"` comes back.
+fn run_caught<F>(handler: F, method: &str, path: &str) -> ResponseData
+where
+    F: FnOnce() -> ResponseData,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(handler)) {
+        Ok(resp) => resp,
+        Err(_) => {
+            crate::metrics::Metrics::global()
+                .handler_panics_total
+                .fetch_add(1, Ordering::Relaxed);
+            eprintln!(
+                "[soli] handler panicked serving {} {} — returning 500 (worker survived)",
+                method, path
+            );
+            crate::interpreter::builtins::streaming::clear_pending_stream();
+            panic_response()
+        }
+    }
+}
+
+/// Run one HTTP request on this worker and reply on its response channel.
+///
+/// Shared by `worker_loop`'s two dispatch arms — the non-blocking batch drain
+/// and the `select`-blocked path — which were otherwise byte-identical.
+///
+/// Without the guard a panicking handler never sends on `response_tx`, so the
+/// hyper side waits the full `RESPONSE_WAIT_TIMEOUT_SECS` before giving up with
+/// a `504` — and the worker is gone for the rest of the process's life.
+fn dispatch_http_request(
+    interpreter: &mut Interpreter,
+    vm: &mut Option<crate::vm::Vm>,
+    mut data: RequestData,
+    dev_mode: bool,
+) {
+    crate::interpreter::builtins::streaming::clear_pending_stream();
+
+    let method = data.method.to_string();
+    let path = data.path.clone();
+    let resp_data = run_caught(
+        || handle_request(interpreter, vm, &mut data, dev_mode),
+        &method,
+        &path,
+    );
+
+    match crate::interpreter::builtins::streaming::take_pending_stream() {
+        Some(spec) => {
+            let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+            let resp = WorkerResponse::Stream {
+                status: spec.status,
+                headers: spec.headers.clone(),
+                rx,
+            };
+            if let Some(topic) = spec.subscribe_topic.clone() {
+                let _ = tx.try_send(b": connected\n\n".to_vec());
+                crate::interpreter::builtins::streaming::register_subscriber(&topic, tx);
+                let _ = data.response_tx.send(resp);
+            } else {
+                let id = crate::interpreter::builtins::streaming::register_sender(tx);
+                let _ = data.response_tx.send(resp);
+                let streamed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::interpreter::builtins::streaming::run_stream_block(
+                        interpreter,
+                        &spec,
+                        id,
+                    );
+                }));
+                if streamed.is_err() {
+                    crate::metrics::Metrics::global()
+                        .handler_panics_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    eprintln!(
+                        "[soli] stream block panicked serving {} {} — closing the stream early",
+                        method, path
+                    );
+                }
+                crate::interpreter::builtins::streaming::unregister_sender(id);
+            }
+        }
+        None => {
+            let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
+        }
+    }
+}
+
 /// Call the route handler with the request hash.
 fn call_handler(
     interpreter: &mut Interpreter,
@@ -4832,7 +5002,7 @@ fn call_handler(
                         Span::default(),
                     )
                 } else {
-                    vm.call_value_direct(handler_value.clone(), Vec::new(), Span::default())
+                    vm.call_value_direct(handler_value.clone(), &[], Span::default())
                 };
                 match call_result {
                     Ok(result) => {
@@ -7681,6 +7851,70 @@ fn coverage_dump_json() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A panicking handler must become a `500` rather than take the worker with
+    /// it, and the panic must be counted so `/_metrics` can surface it.
+    #[test]
+    fn a_panicking_handler_becomes_500_and_is_counted() {
+        let before = crate::metrics::Metrics::global()
+            .handler_panics_total
+            .load(Ordering::Relaxed);
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let resp = run_caught(|| panic!("boom from a handler"), "GET", "/explode");
+        std::panic::set_hook(previous);
+        assert_eq!(resp.status, 500, "a panicking handler must yield a 500");
+        assert_eq!(resp.body, b"Internal Server Error".to_vec());
+        assert!(
+            crate::metrics::Metrics::global()
+                .handler_panics_total
+                .load(Ordering::Relaxed)
+                > before,
+            "the panic must be counted for /_metrics"
+        );
+    }
+
+    /// One panicking request must not stop the ones after it.
+    #[test]
+    fn a_panic_does_not_stop_subsequent_requests() {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let mut statuses = Vec::new();
+        for i in 0..5 {
+            let resp = run_caught(
+                || {
+                    if i == 2 {
+                        panic!("boom on the third request");
+                    }
+                    ResponseData {
+                        status: 200,
+                        headers: vec![],
+                        body: format!("ok {}", i).into_bytes(),
+                    }
+                },
+                "GET",
+                "/mixed",
+            );
+            statuses.push(resp.status);
+        }
+        std::panic::set_hook(previous);
+        assert_eq!(
+            statuses,
+            vec![200, 200, 500, 200, 200],
+            "only the panicking request may fail; the loop must keep serving"
+        );
+    }
+
+    /// `catch_unwind` is only a guard if panics actually unwind.
+    #[test]
+    fn panics_unwind_in_this_build_profile() {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught = std::panic::catch_unwind(|| panic!("must be catchable"));
+        std::panic::set_hook(previous);
+        assert!(caught.is_err(), "panics must unwind, not abort");
+    }
+
     use std::fs;
     use std::sync::Mutex;
 
