@@ -117,9 +117,37 @@ Two practical notes for anyone retrying it: `-Cllvm-args=...` alongside
 `-Cprofile-use` breaks the `openssl-sys` and `libwebp-sys` build scripts, and the
 instrumented run leaves ~105 `.profraw` files (~59 MB merged) that need cleaning up.
 
+## Tried: hot/cold dispatch split — also slower
+
+The note previously proposed this as the cheap probe worth doing. It was done.
+
+`run_dispatch` had ~140 arms inline. 50 of them — every arm that is neither hot nor
+steers the loop with `return`/`break`/`continue` — were moved into a
+`#[cold] #[inline(never)] fn dispatch_cold`, cutting 467 lines out of the hot
+function.
+
+**Result: `int_loop` −3.9%, won 1/6 rounds. Slower.**
+
+Correctness held (2501 tests, 151 specs, engine parity), so this is a clean
+negative: shrinking the hot function's instruction footprint does not help. Taken
+together with the PGO result, neither instruction-cache locality nor branch layout
+explains the ~44 cycles per dispatch.
+
 ## Suggested next step
 
-Try the hot/cold dispatch split and re-run the table above. If per-dispatch cost
-drops materially, threaded dispatch is worth the harder engineering. If it does not,
-the honest answer is that closing a 3.5x gap needs a JIT, and that should be a
-deliberate product decision rather than an optimisation task.
+Six hypotheses have now been tested and killed by measurement: optional-let
+demotion, drop glue, `Value` size, the frame-fetch bounds check, PGO, and the
+hot/cold dispatch split. What survives is the number itself — **~44 cycles per
+dispatch against ~1 cycle of work** — and no cheap explanation for it.
+
+The remaining candidates both change the shape of the VM rather than tune it:
+
+* **Threaded dispatch.** Rust has no computed `goto`; tail-call dispatch (`become`)
+  is unstable and a function-pointer table is not guaranteed to compile as
+  intended. Worth a spike, but it is a spike, not a tweak.
+* **A JIT.** This is what ZJIT is, and it is why an entire Ruby iteration fits
+  inside one Soli dispatch.
+
+Both are product decisions about what Soli's runtime should be, not optimisation
+tasks. Nothing smaller than that moved the number, and this note records the six
+attempts so the next person starts from evidence instead of the same intuitions.
