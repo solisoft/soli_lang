@@ -100,6 +100,23 @@ Note what this rules out: shrinking `Value` does not reduce dispatch count or
 dispatch cost. It would reduce bytes moved per push/pop — real, but second-order
 against a 45x work-to-overhead ratio, and paid for by heap-allocating short strings.
 
+## Tried: profile-guided optimisation — makes it worse
+
+PGO is the obvious "free" test of the branch-layout / I-cache hypothesis: no source
+changes at all. It was tried end to end (instrumented build, profile collected from
+`bench_all.sl`, `llvm-profdata merge`, `-Cprofile-use` rebuild).
+
+**Result: `int_loop` −15.2%, won 0/6 rounds. Consistently slower.**
+
+The PGO binary is 154 MB against 64 MB for the plain release build. That bloat is a
+plausible cause in itself — it works against the instruction-cache locality the
+hypothesis is about. Whatever the mechanism, "just turn on PGO" is a regression here,
+not a win, and it should not be the first thing the next attempt reaches for.
+
+Two practical notes for anyone retrying it: `-Cllvm-args=...` alongside
+`-Cprofile-use` breaks the `openssl-sys` and `libwebp-sys` build scripts, and the
+instrumented run leaves ~105 `.profraw` files (~59 MB merged) that need cleaning up.
+
 ## Suggested next step
 
 Try the hot/cold dispatch split and re-run the table above. If per-dispatch cost
