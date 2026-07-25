@@ -182,6 +182,33 @@ impl TypeChecker {
                     value_type: Box::new(Type::Any),
                 }),
             }),
+            // An average is a ratio, so it is always a `Float` (or null when
+            // there is nothing to average).
+            "avg" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Float),
+            }),
+            "avg_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Float),
+            }),
+            // These select *records*, so they carry the element type through.
+            "uniq_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
+            "max_by" | "min_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(inner_type.clone()),
+            }),
+            "filter_by" => Ok(Type::Function {
+                params: vec![Type::Any, Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
+            "find_by" => Ok(Type::Function {
+                params: vec![Type::Any, Type::Any],
+                return_type: Box::new(inner_type.clone()),
+            }),
             // `count` takes an optional value/predicate; `insert`/`unshift`/`rotate`
             // are variadic mutators — all use `Type::Any` to stay arity-flexible.
             "count" => Ok(Type::Function {

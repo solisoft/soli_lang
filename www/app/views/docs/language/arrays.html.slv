@@ -592,6 +592,91 @@ print(["a", "b", "a"].tally());            # {"a": 2, "b": 1}</code></pre>
                 </div>
             </section>
 
+            <section id="method-avg" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-avg" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.avg()</code> <span class="text-gray-600">/</span> <code class="text-lg font-mono text-amber-400">.avg_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Mean of a flat numeric array, or of one field across records. Always a <code>Float</code> &mdash; an average is a ratio, and integer division would report <code>[2, 3].avg()</code> as <code>2</code>. An empty array averages to <code>null</code>, not <code>0</code>, so &quot;no data&quot; stays distinguishable from a real zero mean.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">print([2, 3].avg());        # 2.5, not 2
+print([1, 2, 3, 4].avg());  # 2.5
+
+scores = [{ "n": 90 }, { "n": 95 }]
+print(scores.avg_by("n"));  # 92.5
+
+# Nothing to average is null, never a misleading zero
+print([].avg());            # null
+print([0].avg());           # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="method-filter-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-filter-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.filter_by(field, value)</code> <span class="text-gray-600">/</span> <code class="text-lg font-mono text-amber-400">.find_by(field, value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Select records by a field value, using the same equality as <code>==</code>. <code>filter_by</code> returns every match; <code>find_by</code> returns the first, or <code>null</code>. Same names and meaning as <a href="/docs/core-concepts/models" class="text-amber-400 hover:underline">the model methods</a>, so an in-memory filter and a database one read alike.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">users = [
+  { "name": "Alice", "role": "admin" },
+  { "name": "Bob",   "role": "member" },
+  { "name": "Carol", "role": "admin" }
+]
+
+print(users.filter_by("role", "admin").pluck("name"));  # ["Alice", "Carol"]
+print(users.find_by("role", "member")["name"]);         # "Bob"
+print(users.find_by("role", "ghost"));                  # null</code></pre>
+                </div>
+            </section>
+
+            <section id="method-uniq-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-uniq-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.uniq_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">One record per distinct field value, keeping the <em>first</em> seen and preserving input order. The usual way to deduplicate a list by email, SKU or external id.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">contacts = [
+  { "email": "a@x.com", "src": "import" },
+  { "email": "b@x.com", "src": "import" },
+  { "email": "a@x.com", "src": "manual" }
+]
+
+# The first "a@x.com" survives; the later duplicate is dropped
+print(contacts.uniq_by("email").pluck("src"));  # ["import", "import"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-max-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-max-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.max_by(field)</code> <span class="text-gray-600">/</span> <code class="text-lg font-mono text-amber-400">.min_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">The <em>record</em> holding the largest or smallest value of a field &mdash; not the value itself. Records missing the field are skipped rather than comparing as null, so a partly-populated list still gives a useful answer; <code>null</code> when nothing carries the field. Ties keep the first seen.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">players = [
+  { "name": "Alice", "score": 30 },
+  { "name": "Bob",   "score": 25 },
+  { "name": "Carol", "score": 30 }
+]
+
+print(players.max_by("score")["name"]);   # "Alice" — first of the tied 30s
+print(players.min_by("score")["name"]);   # "Bob"
+
+# A record with no score cannot win min_by by default
+print(([{ "name": "Ghost" }] + players).min_by("score")["name"]);  # "Bob"</code></pre>
+                </div>
+            </section>
+
             <section id="method-pluck" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-pluck" class="group flex items-center gap-2 mb-3">

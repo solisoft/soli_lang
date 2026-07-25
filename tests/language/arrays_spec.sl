@@ -574,3 +574,104 @@ describe("Array - Set Operations", fn() {
         assert_eq(b, [2, 3, 4]);
     });
 });
+
+class Person {
+    name: String;
+    role: String;
+    score: Int;
+    new(name: String, role: String, score: Int) {
+        this.name = name;
+        this.role = role;
+        this.score = score;
+    }
+}
+
+# Top level, not a describe-scope `let`: test closures do not capture those.
+const ROWS = [
+    { "sku": "a", "cents": 1250, "status": "paid" },
+    { "sku": "b", "cents": 900,  "status": "open" },
+    { "sku": "c", "cents": 350,  "status": "paid" }
+];
+
+describe("Field-keyed array methods", fn() {
+
+    test("sum_by keeps integers integral and skips missing fields", fn() {
+        assert_eq(ROWS.sum_by("cents"), 2500);
+        assert_eq(ROWS.sum_by("nope"), 0);
+    });
+
+    test("sum_by promotes to float only once a float appears", fn() {
+        assert_eq([{ "n": 1.5 }, { "n": 2 }].sum_by("n"), 3.5);
+    });
+
+    test("avg is a ratio, never integer division", fn() {
+        assert_eq([2, 3].avg(), 2.5);
+        assert_eq([{ "n": 90 }, { "n": 95 }].avg_by("n"), 92.5);
+    });
+
+    test("averaging nothing is null, not a misleading zero", fn() {
+        assert_null([].avg());
+        assert_null(ROWS.avg_by("nope"));
+        assert_eq([0].avg(), 0);
+    });
+
+    test("group_by preserves first-seen key order and group order", fn() {
+        assert_eq(ROWS.group_by("status").keys(), ["paid", "open"]);
+        assert_eq(ROWS.group_by("status")["paid"].pluck("sku"), ["a", "c"]);
+    });
+
+    test("index_by is last-write-wins and count_by totals the input", fn() {
+        assert_eq(ROWS.index_by("status")["paid"]["sku"], "c");
+        assert_eq(ROWS.count_by("status")["paid"], 2);
+        assert_eq([1, 2, 2, 3].tally()[2], 2);
+    });
+
+    test("filter_by and find_by select by field value", fn() {
+        assert_eq(ROWS.filter_by("status", "paid").pluck("sku"), ["a", "c"]);
+        assert_eq(ROWS.find_by("status", "open")["sku"], "b");
+        assert_null(ROWS.find_by("status", "void"));
+    });
+
+    test("uniq_by keeps the first of each group", fn() {
+        assert_eq(ROWS.uniq_by("status").pluck("sku"), ["a", "b"]);
+    });
+
+    test("max_by and min_by return the record, not the value", fn() {
+        assert_eq(ROWS.max_by("cents")["sku"], "a");
+        assert_eq(ROWS.min_by("cents")["sku"], "c");
+    });
+
+    test("extremes skip records missing the field instead of ranking null", fn() {
+        let with_gap = [{ "sku": "ghost" }, { "sku": "a", "cents": 900 }];
+        assert_eq(with_gap.min_by("cents")["sku"], "a");
+        assert_null([{ "sku": "ghost" }].max_by("cents"));
+    });
+
+    test("a record missing the grouping field lands under null", fn() {
+        let mixed = [{ "s": "x" }, { "other": 1 }];
+        assert_eq(mixed.count_by("s")[null], 1);
+    });
+
+    # Rows from the ORM are instances, not hashes — if the shared field
+    # accessor skipped them these would all silently return empty results.
+    test("the whole family reads instance fields, as ORM rows are instances", fn() {
+        let people = [Person("Ann", "admin", 5), Person("Bo", "member", 9)];
+        assert_eq(people.pluck("name"), ["Ann", "Bo"]);
+        assert_eq(people.filter_by("role", "admin").len(), 1);
+        assert_eq(people.find_by("role", "member").name, "Bo");
+        assert_eq(people.max_by("score").name, "Bo");
+        assert_eq(people.sum_by("score"), 14);
+        assert_eq(people.avg_by("score"), 7);
+        assert_eq(people.uniq_by("role").len(), 2);
+    });
+
+    test("a closure where a field name belongs raises instead of returning nothing", fn() {
+        let raised = false;
+        try {
+            ROWS.max_by(fn(r) r["cents"]);
+        } catch e {
+            raised = true;
+        }
+        assert(raised);
+    });
+});

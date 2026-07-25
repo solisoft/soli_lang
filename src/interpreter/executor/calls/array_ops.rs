@@ -242,8 +242,13 @@ pub(crate) fn compact_values(items: &[Value]) -> Vec<Value> {
 // callback precisely so the loop never re-enters the interpreter.
 // ---------------------------------------------------------------------------
 
-/// Read `field` from one record: a hash key, or an index into an array row.
-/// Mirrors `pluck`'s accessor so the whole family behaves identically.
+/// Read `field` from one record: a hash key, an instance attribute, or an index
+/// into an array row. Shared by `pluck`/`pick` and every field-keyed method, so
+/// the whole family reads a record the same way.
+///
+/// Instances matter as much as hashes here: rows from the ORM are instances, so
+/// without this arm `User.all().filter_by("role", "admin")` would match nothing
+/// and report it as an empty result rather than an error.
 pub(crate) fn field_of(value: &Value, key: &Value) -> Value {
     use crate::interpreter::value::HashKey;
     match (value, key) {
@@ -251,6 +256,12 @@ pub(crate) fn field_of(value: &Value, key: &Value) -> Value {
             let hk = HashKey::String(s.clone());
             h.borrow().get(&hk).cloned().unwrap_or(Value::Null)
         }
+        (Value::Instance(inst), Value::String(s)) => inst
+            .borrow()
+            .fields
+            .get(s.as_str())
+            .cloned()
+            .unwrap_or(Value::Null),
         (Value::Array(a), Value::Int(i)) => {
             let arr = a.borrow();
             let idx = if *i < 0 {
@@ -260,6 +271,8 @@ pub(crate) fn field_of(value: &Value, key: &Value) -> Value {
             };
             arr.get(idx).cloned().unwrap_or(Value::Null)
         }
+        // A `grouped {}` deferred stands for the row it resolves to.
+        _ if value.is_deferred() => field_of(&value.force_deferred(), key),
         _ => Value::Null,
     }
 }
@@ -382,6 +395,276 @@ pub(crate) fn tally(items: &[Value]) -> Value {
         }
     }
     Value::Hash(Rc::new(RefCell::new(out)))
+}
+
+/// Order two field values the way `sort_by` does. Canonical copy — both
+/// engines' `compare_sort_values` delegate here so the three families
+/// (`sort_by`, `max_by`, `min_by`) can never drift apart.
+pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Int(a), Value::Int(b)) => a.cmp(b),
+        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::String(a), Value::String(b)) => a.cmp(b),
+        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(Ordering::Equal),
+        _ => Ordering::Equal,
+    }
+}
+
+/// Reject a closure passed where a field name belongs.
+///
+/// Taking the field as *data* is the whole reason this family is fast, but a
+/// closure would read no field at all and quietly produce an empty or zero
+/// result — a wrong answer with no error. So name the mistake and point at the
+/// block-taking method that does what the caller meant.
+pub(crate) fn check_field_arg(method: &str, field: &Value) -> Result<(), String> {
+    match field {
+        Value::String(_) | Value::Int(_) => Ok(()),
+        Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_) => {
+            let alternative = match method {
+                "filter_by" | "find_by" => "filter(fn(x) ...)",
+                "max_by" => "sort_by(fn(x) ...).last()",
+                "min_by" => "sort_by(fn(x) ...).first()",
+                "uniq_by" => "map(fn(x) ...).uniq()",
+                _ => "map(fn(x) ...)",
+            };
+            Err(format!(
+                "`{method}` takes a field name as a string, not a function — \
+                 keeping the field as data is what lets it run entirely in Rust. \
+                 Use `{alternative}` if you need a block."
+            ))
+        }
+        other => Err(format!(
+            "`{method}` expects a field name as a string, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `filter_by(field, value)` — every record whose `field` equals `value`,
+/// using the same equality as `==`.
+pub(crate) fn filter_by(items: &[Value], field: &Value, wanted: &Value) -> Vec<Value> {
+    items
+        .iter()
+        .filter(|item| &field_of(item, field) == wanted)
+        .cloned()
+        .collect()
+}
+
+/// `find_by(field, value)` — the first matching record, or `null`.
+/// Same name and meaning as `Model.find_by`, so the in-memory and database
+/// forms read identically.
+pub(crate) fn find_by(items: &[Value], field: &Value, wanted: &Value) -> Value {
+    items
+        .iter()
+        .find(|item| &field_of(item, field) == wanted)
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+/// `uniq_by(field)` — one record per distinct field value, keeping the first
+/// seen (as Ruby's `uniq_by` does) and preserving input order.
+pub(crate) fn uniq_by(items: &[Value], field: &Value) -> Vec<Value> {
+    let mut seen: HashSet<crate::interpreter::value::HashKey> = HashSet::with_capacity(items.len());
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if seen.insert(key_or_null(&field_of(item, field))) {
+            out.push(item.clone());
+        }
+    }
+    out
+}
+
+/// `max_by(field)` / `min_by(field)` — the *record* holding the extreme value,
+/// not the value itself, matching Ruby. Records missing the field are skipped
+/// rather than comparing as null, so a partially-populated collection still
+/// gives a useful answer; `null` when nothing has the field. Ties keep the
+/// first seen.
+fn extreme_by(items: &[Value], field: &Value, want: std::cmp::Ordering) -> Value {
+    let mut best: Option<(Value, Value)> = None;
+    for item in items {
+        let key = field_of(item, field);
+        if matches!(key, Value::Null) {
+            continue;
+        }
+        match &best {
+            Some((best_key, _)) if compare_sort_values(&key, best_key) != want => {}
+            _ => best = Some((key, item.clone())),
+        }
+    }
+    best.map(|(_, item)| item).unwrap_or(Value::Null)
+}
+
+pub(crate) fn max_by(items: &[Value], field: &Value) -> Value {
+    extreme_by(items, field, std::cmp::Ordering::Greater)
+}
+
+pub(crate) fn min_by(items: &[Value], field: &Value) -> Value {
+    extreme_by(items, field, std::cmp::Ordering::Less)
+}
+
+/// Mean of the numeric values in `keys`. Always a `Float` — an average is a
+/// ratio, and integer division here would silently report `avg([2, 3]) == 2`.
+/// `null` for "nothing to average", rather than `0`, which would be
+/// indistinguishable from a real zero mean.
+fn mean_of(values: impl Iterator<Item = Value>) -> Value {
+    let mut total = 0.0f64;
+    let mut count = 0u64;
+    for value in values {
+        match value {
+            Value::Int(n) => {
+                total += n as f64;
+                count += 1;
+            }
+            Value::Float(f) => {
+                total += f;
+                count += 1;
+            }
+            _ => {}
+        }
+    }
+    if count == 0 {
+        Value::Null
+    } else {
+        Value::Float(total / count as f64)
+    }
+}
+
+/// `avg()` — mean of a flat numeric array.
+pub(crate) fn avg(items: &[Value]) -> Value {
+    mean_of(items.iter().cloned())
+}
+
+/// `avg_by(field)` — mean of one field across records.
+pub(crate) fn avg_by(items: &[Value], field: &Value) -> Value {
+    mean_of(items.iter().map(|item| field_of(item, field)))
+}
+
+#[cfg(test)]
+mod aggregate_selector_tests {
+    use super::*;
+
+    fn rec(pairs: &[(&str, Value)]) -> Value {
+        let mut h = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(
+                crate::interpreter::value::HashKey::String(SoliStr::from(*k)),
+                v.clone(),
+            );
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    fn people() -> Vec<Value> {
+        vec![
+            rec(&[
+                ("name", Value::String("ana".into())),
+                ("age", Value::Int(30)),
+            ]),
+            rec(&[
+                ("name", Value::String("bo".into())),
+                ("age", Value::Int(25)),
+            ]),
+            rec(&[
+                ("name", Value::String("cy".into())),
+                ("age", Value::Int(30)),
+            ]),
+        ]
+    }
+
+    fn name_of(v: &Value) -> String {
+        match field_of(v, &Value::String("name".into())) {
+            Value::String(s) => s.to_string(),
+            _ => "<none>".into(),
+        }
+    }
+
+    #[test]
+    fn filter_by_matches_across_numeric_types() {
+        let field = Value::String("age".into());
+        // Int/Float compare equal, as `==` does — so `30` finds `30.0` rows.
+        let hits = filter_by(&people(), &field, &Value::Float(30.0));
+        assert_eq!(hits.len(), 2);
+        assert_eq!(name_of(&hits[0]), "ana");
+    }
+
+    #[test]
+    fn find_by_returns_first_match_then_null() {
+        let field = Value::String("age".into());
+        let found = find_by(&people(), &field, &Value::Int(30));
+        assert_eq!(name_of(&found), "ana", "first match, not last");
+        assert!(matches!(
+            find_by(&people(), &field, &Value::Int(99)),
+            Value::Null
+        ));
+    }
+
+    #[test]
+    fn uniq_by_keeps_the_first_of_each_group_in_order() {
+        let kept = uniq_by(&people(), &Value::String("age".into()));
+        let names: Vec<String> = kept.iter().map(name_of).collect();
+        assert_eq!(names, vec!["ana", "bo"], "cy duplicates ana's age of 30");
+    }
+
+    #[test]
+    fn max_and_min_by_return_the_record_and_break_ties_by_first_seen() {
+        let field = Value::String("age".into());
+        assert_eq!(name_of(&max_by(&people(), &field)), "ana");
+        assert_eq!(name_of(&min_by(&people(), &field)), "bo");
+    }
+
+    #[test]
+    fn extremes_skip_records_missing_the_field() {
+        let mut rows = people();
+        rows.insert(0, rec(&[("name", Value::String("ghost".into()))]));
+        let field = Value::String("age".into());
+        // A row with no age must not win min_by by comparing as null.
+        assert_eq!(name_of(&min_by(&rows, &field)), "bo");
+        assert_eq!(name_of(&max_by(&rows, &field)), "ana");
+    }
+
+    #[test]
+    fn extremes_are_null_when_nothing_carries_the_field() {
+        let rows = vec![rec(&[("name", Value::String("ghost".into()))])];
+        let field = Value::String("age".into());
+        assert!(matches!(max_by(&rows, &field), Value::Null));
+        assert!(matches!(min_by(&[], &field), Value::Null));
+    }
+
+    #[test]
+    fn avg_is_a_ratio_not_an_integer_division() {
+        // The whole reason avg returns Float: `[2, 3]` averages to 2.5, and
+        // integer division would report 2.
+        assert_eq!(avg(&[Value::Int(2), Value::Int(3)]), Value::Float(2.5));
+        assert_eq!(
+            avg_by(&people(), &Value::String("age".into())),
+            Value::Float(85.0 / 3.0)
+        );
+    }
+
+    #[test]
+    fn avg_of_nothing_is_null_not_zero() {
+        // A real mean of zero must stay distinguishable from "no data".
+        assert!(matches!(avg(&[]), Value::Null));
+        assert!(matches!(
+            avg_by(&people(), &Value::String("missing".into())),
+            Value::Null
+        ));
+        assert_eq!(avg(&[Value::Int(0)]), Value::Float(0.0));
+    }
+
+    #[test]
+    fn a_closure_where_a_field_belongs_is_rejected_with_advice() {
+        let closure = Value::NativeFunction(crate::interpreter::value::NativeFunction::new(
+            "f",
+            Some(1),
+            |_args: &[Value]| Ok(Value::Null),
+        ));
+        let err = check_field_arg("max_by", &closure).expect_err("must not silently return null");
+        assert!(err.contains("sort_by"), "should name the block alternative");
+        assert!(check_field_arg("max_by", &Value::String("age".into())).is_ok());
+    }
 }
 
 #[cfg(test)]

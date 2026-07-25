@@ -2089,7 +2089,8 @@ impl Interpreter {
             | "flatten" | "first" | "last" | "empty?" | "includes?" | "include?" | "contains"
             | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum" | "min" | "max"
             | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick" | "to_string"
-            | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "to_json" | "join"
+            | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "avg" | "avg_by"
+            | "uniq_by" | "max_by" | "min_by" | "filter_by" | "find_by" | "to_json" | "join"
             | "is_a?" | "all" | "includes" | "order" | "delete" | "delete_at" | "shift"
             | "unshift" | "insert" | "rotate" | "reject" | "none?" | "one?" | "values_at"
             | "count" | "intersection" | "union" | "difference" => Ok(Value::method(ValueMethod {

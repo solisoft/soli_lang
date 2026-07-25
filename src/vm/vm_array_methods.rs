@@ -1085,27 +1085,53 @@ impl Vm {
                 }
                 Ok(current.unwrap_or(Value::Null))
             }
-            "sum_by" | "group_by" | "index_by" | "count_by" => {
+            "sum_by" | "group_by" | "index_by" | "count_by" | "avg_by" | "uniq_by" | "max_by"
+            | "min_by" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 use crate::interpreter::executor::calls::array_ops as ops;
                 let items = arr.borrow();
                 let f = &args[0];
+                ops::check_field_arg(name, f)
+                    .map_err(|msg| RuntimeError::type_error(&msg, span))?;
                 Ok(match name {
                     "sum_by" => ops::sum_by(&items, f),
                     "group_by" => ops::group_by_field(&items, f),
                     "index_by" => ops::index_by(&items, f),
+                    "avg_by" => ops::avg_by(&items, f),
+                    "max_by" => ops::max_by(&items, f),
+                    "min_by" => ops::min_by(&items, f),
+                    "uniq_by" => Value::Array(Rc::new(RefCell::new(ops::uniq_by(&items, f)))),
                     _ => ops::count_by(&items, f),
                 })
             }
-            "tally" => {
+            "filter_by" | "find_by" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, args.len(), span));
+                }
+                use crate::interpreter::executor::calls::array_ops as ops;
+                let items = arr.borrow();
+                let (f, wanted) = (&args[0], &args[1]);
+                ops::check_field_arg(name, f)
+                    .map_err(|msg| RuntimeError::type_error(&msg, span))?;
+                Ok(if name == "find_by" {
+                    ops::find_by(&items, f, wanted)
+                } else {
+                    Value::Array(Rc::new(RefCell::new(ops::filter_by(&items, f, wanted))))
+                })
+            }
+            "tally" | "avg" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                Ok(crate::interpreter::executor::calls::array_ops::tally(
-                    &arr.borrow(),
-                ))
+                use crate::interpreter::executor::calls::array_ops as ops;
+                let items = arr.borrow();
+                Ok(if name == "avg" {
+                    ops::avg(&items)
+                } else {
+                    ops::tally(&items)
+                })
             }
             "pluck" => {
                 if args.is_empty() {
@@ -1173,36 +1199,18 @@ fn extract_hash_value(value: &Value, key: &HashKey) -> Value {
 }
 
 /// Total order used by `sort`/`sort_by` (numeric cross-compare, strings, else equal).
+/// Delegates to the canonical comparator so `sort_by`, `max_by` and `min_by`
+/// order values identically across both engines.
 fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    match (a, b) {
-        (Value::Int(a), Value::Int(b)) => a.cmp(b),
-        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::String(a), Value::String(b)) => a.cmp(b),
-        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(Ordering::Equal),
-        _ => Ordering::Equal,
-    }
+    crate::interpreter::executor::calls::array_ops::compare_sort_values(a, b)
 }
 
 /// Field/index extraction shared by `pluck`/`pick`.
+/// Delegates to the shared accessor so `pluck`, `pick` and every field-keyed
+/// method read a record identically — including instances, which is what rows
+/// from the ORM are.
 fn extract_pluck_field(value: &Value, key: &Value) -> Value {
-    match (value, key) {
-        (Value::Hash(h), Value::String(s)) => h
-            .borrow()
-            .get(&HashKey::String(s.clone()))
-            .cloned()
-            .unwrap_or(Value::Null),
-        (Value::Array(a), Value::Int(i)) => {
-            let arr = a.borrow();
-            let idx = if *i < 0 { arr.len() as i64 + *i } else { *i };
-            usize::try_from(idx)
-                .ok()
-                .and_then(|i| arr.get(i).cloned())
-                .unwrap_or(Value::Null)
-        }
-        _ => Value::Null,
-    }
+    crate::interpreter::executor::calls::array_ops::field_of(value, key)
 }
 
 fn extract_array_arg(

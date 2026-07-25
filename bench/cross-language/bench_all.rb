@@ -103,4 +103,10 @@ best("Aggregate","group_by") { ROWS.group_by { |r| r["t"] } }
 best("Aggregate","index_by") { ROWS.to_h { |r| [r["t"], r] } }
 best("Aggregate","count_by") { ROWS.each_with_object(Hash.new(0)) { |r, h| h[r["t"]] += 1 } }
 best("Aggregate","tally")    { FLAT.tally }
+best("Aggregate","avg_by")    { ROWS.sum { |r| r["n"] }.to_f / ROWS.size }
+best("Aggregate","uniq_by")   { ROWS.uniq { |r| r["t"] } }
+best("Aggregate","max_by")    { ROWS.max_by { |r| r["n"] } }
+best("Aggregate","min_by")    { ROWS.min_by { |r| r["n"] } }
+best("Aggregate","filter_by") { ROWS.select { |r| r["t"] == "type3" } }
+best("Aggregate","find_by")   { ROWS.find { |r| r["n"] == N - 1 } }
 

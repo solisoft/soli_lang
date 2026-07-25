@@ -1003,23 +1003,51 @@ impl Interpreter {
             "get" => self.array_get(items, arguments, span),
             "dig" => self.array_dig(items, arguments, span),
             "pluck" => Self::array_pluck(items, arguments, span),
-            "sum_by" | "group_by" | "index_by" | "count_by" => {
+            "sum_by" | "group_by" | "index_by" | "count_by" | "avg_by" | "uniq_by" | "max_by"
+            | "min_by" => {
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let f = &arguments[0];
+                super::array_ops::check_field_arg(method_name, f)
+                    .map_err(|msg| RuntimeError::type_error(&msg, span))?;
                 Ok(match method_name {
                     "sum_by" => super::array_ops::sum_by(items, f),
                     "group_by" => super::array_ops::group_by_field(items, f),
                     "index_by" => super::array_ops::index_by(items, f),
+                    "avg_by" => super::array_ops::avg_by(items, f),
+                    "max_by" => super::array_ops::max_by(items, f),
+                    "min_by" => super::array_ops::min_by(items, f),
+                    "uniq_by" => {
+                        Value::Array(Rc::new(RefCell::new(super::array_ops::uniq_by(items, f))))
+                    }
                     _ => super::array_ops::count_by(items, f),
                 })
             }
-            "tally" => {
+            "filter_by" | "find_by" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let (f, wanted) = (&arguments[0], &arguments[1]);
+                super::array_ops::check_field_arg(method_name, f)
+                    .map_err(|msg| RuntimeError::type_error(&msg, span))?;
+                Ok(if method_name == "find_by" {
+                    super::array_ops::find_by(items, f, wanted)
+                } else {
+                    Value::Array(Rc::new(RefCell::new(super::array_ops::filter_by(
+                        items, f, wanted,
+                    ))))
+                })
+            }
+            "tally" | "avg" => {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                Ok(super::array_ops::tally(items))
+                Ok(if method_name == "avg" {
+                    super::array_ops::avg(items)
+                } else {
+                    super::array_ops::tally(items)
+                })
             }
             "pick" => Self::array_pick(items, arguments, span),
             "length" | "len" | "size" => self.array_length(items, arguments, span),
@@ -1674,21 +1702,10 @@ impl Interpreter {
         }
     }
 
+    /// Delegates to the canonical comparator so `sort_by`, `max_by` and
+    /// `min_by` order values identically across both engines.
     fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => a.cmp(b),
-            (Value::Float(a), Value::Float(b)) => {
-                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-            }
-            (Value::String(a), Value::String(b)) => a.cmp(b),
-            (Value::Int(a), Value::Float(b)) => (*a as f64)
-                .partial_cmp(b)
-                .unwrap_or(std::cmp::Ordering::Equal),
-            (Value::Float(a), Value::Int(b)) => a
-                .partial_cmp(&(*b as f64))
-                .unwrap_or(std::cmp::Ordering::Equal),
-            _ => std::cmp::Ordering::Equal,
-        }
+        super::array_ops::compare_sort_values(a, b)
     }
 
     fn array_reverse(
@@ -2276,27 +2293,11 @@ impl Interpreter {
         Ok(Value::Array(Rc::new(RefCell::new(row))))
     }
 
+    /// Delegates to the shared accessor so `pluck`, `pick` and every
+    /// field-keyed method read a record identically — including instances,
+    /// which is what rows from the ORM are.
     fn extract_pluck_field(value: &Value, key: &Value) -> Value {
-        match (value, key) {
-            (Value::Hash(h), Value::String(s)) => {
-                let hk = HashKey::String(s.clone());
-                h.borrow().get(&hk).cloned().unwrap_or(Value::Null)
-            }
-            (Value::Array(a), Value::Int(i)) => {
-                let arr = a.borrow();
-                let idx = if *i < 0 {
-                    (arr.len() as i64 + *i) as usize
-                } else {
-                    *i as usize
-                };
-                if idx < arr.len() {
-                    arr[idx].clone()
-                } else {
-                    Value::Null
-                }
-            }
-            _ => Value::Null,
-        }
+        super::array_ops::field_of(value, key)
     }
 
     fn array_length(

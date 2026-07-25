@@ -1445,6 +1445,28 @@ print(orders.count_by("status"));     # {"paid": 2, "open": 1}
 # tally - occurrence counts for a flat array (count_by's plain-value sibling)
 print([1, 2, 2, 3].tally());          # {1: 1, 2: 2, 3: 1}
 
+# avg / avg_by - mean, always a Float. An average is a ratio, so integer
+# division would report [2, 3].avg() as 2. Nothing to average is null, never a
+# misleading 0.
+print([2, 3].avg());                  # 2.5
+print(orders.avg_by("cents"));        # 833.3333333333334
+print([].avg());                      # null
+
+# filter_by / find_by - select records by field value, same equality as ==.
+# Same names as the Model methods, so in-memory and database filters read alike.
+print(orders.filter_by("status", "paid").pluck("sku"));  # ["a", "c"]
+print(orders.find_by("status", "open")["sku"]);          # "b"
+print(orders.find_by("status", "void"));                 # null
+
+# uniq_by - one record per distinct field value, keeping the first seen
+print(orders.uniq_by("status").pluck("sku"));            # ["a", "b"]
+
+# max_by / min_by - the *record* holding the extreme value, not the value.
+# Records missing the field are skipped rather than comparing as null; ties
+# keep the first seen.
+print(orders.max_by("cents")["sku"]);  # "a"
+print(orders.min_by("cents")["sku"]);  # "c"
+
 # pick - value(s) from the *first* element only (the “get one” companion to pluck)
 print(posts.pick("title"));      # "Hello"
 print(posts.pick("id", "title")); # [1, "Hello"]
