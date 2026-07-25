@@ -36,6 +36,10 @@ def getting_started_comparison
     render_docs("docs/getting-started/comparison", "How Soli Compares", "getting_started", "comparison")
 end
 
+def getting_started_benchmarks
+    render_docs("docs/getting-started/benchmarks", "Benchmarks vs Ruby", "getting_started", "benchmarks")
+end
+
 def getting_started_changelog
     render_docs("docs/getting-started/changelog", "Changelog", "getting_started", "changelog")
 end
@@ -321,8 +325,12 @@ def language_hashes
     render_docs("docs/language/hashes", "Hashes", "language", "hashes")
 end
 
+# /docs/language/collections was split into arrays + hashes; its view is gone.
+# The language index still labels the Arrays card "Collections", so that page is
+# the successor. Nothing in the site links here any more — the redirect exists
+# for external inbound links and search results.
 def language_collections
-    render_docs("docs/language/collections", "Collections", "language", "collections")
+    redirect("/docs/language/arrays")
 end
 
 def language_classes_oop

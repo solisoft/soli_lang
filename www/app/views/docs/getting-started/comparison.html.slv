@@ -93,11 +93,15 @@
     <div class="space-y-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Performance per server</h3>
-            <p class="text-gray-400 text-sm">A tree-walking dev mode and a bytecode VM in production, engine-per-worker with no GIL and no process fleet. Rails and Django applications typically measure in low thousands of req/s per server; Soli measures in the hundreds of thousands. Phoenix is the only peer here.</p>
+            <p class="text-gray-400 text-sm">A tree-walking dev mode and a bytecode VM in production, engine-per-worker with no GIL and no process fleet. Rails and Django applications typically measure in low thousands of req/s per server; Soli measures in the hundreds of thousands. Phoenix is the only peer here. For per-operation numbers against Ruby 4 (including YJIT and ZJIT), see <a href="/docs/getting-started/benchmarks" class="text-amber-400 hover:underline">Benchmarks vs Ruby</a> &mdash; which is candid that Soli loses on tight interpreted loops even while winning on native transforms.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Deployment simplicity</h3>
             <p class="text-gray-400 text-sm">One static binary runs your app, bundles it (<code>soli build</code>) into a single <code>.soli</code> file, or compiles app + runtime into one <strong class="text-white">self-executing binary</strong> (<code>soli build --standalone</code>, cross-buildable for linux-amd64/linux-arm64/darwin-arm64) &mdash; optionally AES-256-GCM encrypted with RAM-only extraction for licensed/on-prem distribution, and with <strong class="text-white">signed over-the-air auto-update</strong> (<code>--update-url</code>: P-256-signed manifests, sha256-gated, atomic self-replace) so a shipped artifact stays current. Those last capabilities have no first-party equivalent in Rails, Laravel, Phoenix or Django.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Container-native lifecycle</h3>
+            <p class="text-gray-400 text-sm">Liveness (<code>/_health</code>) and readiness (<code>/_ready</code>) endpoints, and a <strong class="text-white">graceful drain</strong> on <code>SIGTERM</code>: readiness starts failing so the load balancer stops routing, new requests get a clean <code>503</code>, and requests already in flight run to completion before the process exits (bounded by <code>SOLI_SHUTDOWN_GRACE_SECS</code>, default 25s). Rolling deploys don't truncate responses. Prometheus metrics at <code>/_metrics</code> round it out. Parity with the big four here, not an edge &mdash; but it means no sidecar or wrapper script is needed to deploy on Kubernetes or ECS.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Developer experience in <code>--dev</code></h3>
@@ -153,6 +157,7 @@
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No TLS in-process</strong> &mdash; you front Soli with a reverse proxy (HTTP/2 is cleartext-only behind it). Deliberate, but different from Phoenix.</li>
         <li><strong class="text-white">Jobs require a SolidB server</strong> &mdash; there is no standalone worker daemon and no dashboard (no Sidekiq/Horizon equivalent). The opt-in in-process pool for long jobs is fire-and-forget.</li>
+        <li><strong class="text-white">Observability stops at metrics.</strong> Prometheus counters at <code>/_metrics</code>, health and readiness probes, and a rich per-request breakdown in <code>--dev</code> &mdash; but <strong class="text-white">no distributed tracing and no structured (JSON) log output</strong>. There is no OpenTelemetry exporter, so Soli cannot yet join a trace that spans your other services, and production logs are human-formatted rather than machine-parseable. Rails, Laravel, Phoenix and Django all have mature OTel integrations.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Ecosystem</h3>

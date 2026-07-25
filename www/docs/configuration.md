@@ -40,7 +40,46 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
 | `SOLI_OPENAPI` | Set to `1`/`true` to expose an OpenAPI 3 spec at `/openapi.json` (generated from the routes) and a Scalar API-reference UI at `/openapi`. Opt-in (404 otherwise); served in every environment once on. See [Routing → OpenAPI](routing.md#openapi-soli_openapi). | unset |
 | `SOLI_OPENAPI_TITLE` | Title of the generated OpenAPI document. | `Soli API` |
+| `SOLI_SHUTDOWN_GRACE_SECS` | How long a `SIGTERM`/`SIGINT` shutdown waits for in-flight requests to finish before exiting anyway. See [Health checks and graceful shutdown](#health-checks-and-graceful-shutdown). `0` exits immediately. | `25` |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
+
+### Health checks and graceful shutdown
+
+Two endpoints let an orchestrator or load balancer see the server's lifecycle. Both are
+plain text, need no authentication, and are always available — there is nothing to enable.
+
+| Endpoint | Meaning | Answers |
+|----------|---------|---------|
+| `GET /_health` | **Liveness** — is this process alive? | `200 ok` for as long as the server runs, *including while it shuts down* |
+| `GET /_ready` | **Readiness** — should traffic be routed here right now? | `200 ready`, or `503 starting` before workers finish booting, or `503 draining` during shutdown |
+
+The distinction matters. A shutting-down process is perfectly healthy — it just does not
+want new work. If `/_health` failed during shutdown, an orchestrator would restart a
+container that was already exiting cleanly. Point liveness probes at `/_health` and
+readiness probes at `/_ready`.
+
+#### What happens on SIGTERM
+
+On `SIGTERM` or `SIGINT` the server drains rather than cutting requests off:
+
+1. `/_ready` starts answering `503 draining`, so the load balancer stops routing here.
+2. New requests get `503 Server shutting down` with `Connection: close`. Probes still answer.
+3. Requests already in flight **run to completion** and return their real response.
+4. Once the last one finishes — or `SOLI_SHUTDOWN_GRACE_SECS` elapses — the process exits `0`.
+
+A second signal skips the wait and exits immediately.
+
+The default 25s sits just under Kubernetes' default 30s `terminationGracePeriodSeconds`, so
+the process exits on its own rather than being `SIGKILL`ed. If you raise one, raise both.
+
+```yaml
+# Kubernetes
+livenessProbe:
+  httpGet: { path: /_health, port: 3000 }
+readinessProbe:
+  httpGet: { path: /_ready, port: 3000 }
+terminationGracePeriodSeconds: 30    # must exceed SOLI_SHUTDOWN_GRACE_SECS
+```
 
 ### Parsing And Security Limits
 

@@ -63,10 +63,48 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLI_DEV_REPL_SECRET</code></td><td class="py-3 px-4">Pins the <code>/__dev/repl</code> token to an explicit shared secret instead of an auto-generated UUID. Required when <code>SOLI_DEV_REPL_ALLOW_REMOTE=1</code> so the credential is never embedded in dev-mode HTML error pages.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_OPENAPI</code></td><td class="py-3 px-4">Set to <code>1</code>/<code>true</code> to expose an OpenAPI 3 spec at <code>/openapi.json</code> (from the routes) and a Scalar API-reference UI at <code>/openapi</code>. Opt-in (404 otherwise); served in every environment once on.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_OPENAPI_TITLE</code></td><td class="py-3 px-4">Title of the generated OpenAPI document.</td><td class="py-3 px-4"><code>Soli API</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SHUTDOWN_GRACE_SECS</code></td><td class="py-3 px-4">How long a <code>SIGTERM</code>/<code>SIGINT</code> shutdown waits for in-flight requests to finish before exiting anyway. See <a href="#health-checks" class="text-amber-400 hover:underline">Health checks and graceful shutdown</a>. <code>0</code> exits immediately.</td><td class="py-3 px-4"><code>25</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_TRACE_BOOT</code></td><td class="py-3 px-4">Prints boot timing trace when set.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>
         </div>
+
+        <h3 id="health-checks" class="text-xl font-bold text-white mt-8 mb-4">Health checks and graceful shutdown</h3>
+        <p class="text-gray-400 mb-4">
+            Two endpoints let an orchestrator or load balancer see the server's lifecycle. Both are plain text, need no authentication, and are always available &mdash; there is nothing to enable.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Endpoint</th><th class="py-3 px-4">Meaning</th><th class="py-3 px-4">Answers</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/10">
+                    <tr><td class="py-3 px-4"><code>GET /_health</code></td><td class="py-3 px-4"><strong class="text-white">Liveness</strong> &mdash; is this process alive?</td><td class="py-3 px-4"><code>200 ok</code> for as long as the server runs, <em>including while it shuts down</em></td></tr>
+                    <tr><td class="py-3 px-4"><code>GET /_ready</code></td><td class="py-3 px-4"><strong class="text-white">Readiness</strong> &mdash; should traffic be routed here right now?</td><td class="py-3 px-4"><code>200 ready</code>, or <code>503 starting</code> before workers finish booting, or <code>503 draining</code> during shutdown</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mt-4 mb-4">
+            The distinction matters. A shutting-down process is perfectly healthy &mdash; it just does not want new work. If <code>/_health</code> failed during shutdown, an orchestrator would restart a container that was already exiting cleanly. Point liveness probes at <code>/_health</code> and readiness probes at <code>/_ready</code>.
+        </p>
+
+        <h4 class="text-lg font-bold text-white mt-6 mb-3">What happens on SIGTERM</h4>
+        <p class="text-gray-400 mb-4">
+            On <code>SIGTERM</code> or <code>SIGINT</code> the server drains rather than cutting requests off:
+        </p>
+        <ol class="list-decimal list-inside text-gray-400 space-y-2 mb-4">
+            <li><code>/_ready</code> starts answering <code>503 draining</code>, so the load balancer stops routing here.</li>
+            <li>New requests get <code>503 Server shutting down</code> with <code>Connection: close</code>. Probes still answer.</li>
+            <li>Requests already in flight <strong class="text-white">run to completion</strong> and return their real response.</li>
+            <li>Once the last one finishes &mdash; or <code>SOLI_SHUTDOWN_GRACE_SECS</code> elapses &mdash; the process exits <code>0</code>.</li>
+        </ol>
+        <p class="text-gray-400 mb-4">
+            A second signal skips the wait and exits immediately. The default 25s sits just under Kubernetes' default 30s <code>terminationGracePeriodSeconds</code>, so the process exits on its own rather than being <code>SIGKILL</code>ed. If you raise one, raise both.
+        </p>
+        <pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto mb-4"><code class="language-yaml"># Kubernetes
+livenessProbe:
+  httpGet: { path: /_health, port: 3000 }
+readinessProbe:
+  httpGet: { path: /_ready, port: 3000 }
+terminationGracePeriodSeconds: 30    # must exceed SOLI_SHUTDOWN_GRACE_SECS</code></pre>
 
         <h3 class="text-xl font-bold text-white mt-8 mb-4">Parsing And Security Limits</h3>
         <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
