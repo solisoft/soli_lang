@@ -131,7 +131,7 @@ mod tests {
         let class = env.get("Markdown").unwrap();
         if let Value::Class(cls) = class {
             let method = cls.native_static_methods.get(method_name).unwrap();
-            (method.func)(vec![Value::String(input.to_string().into())])
+            (method.func)(&[Value::String(input.to_string().into())])
         } else {
             panic!("Markdown is not a class");
         }
@@ -265,7 +265,7 @@ mod tests {
         let class = env.get("Markdown").unwrap();
         if let Value::Class(cls) = class {
             let method = cls.native_static_methods.get("to_html").unwrap();
-            let result = (method.func)(vec![Value::Int(42)]);
+            let result = (method.func)(&[Value::Int(42)]);
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("expects string"));
         }

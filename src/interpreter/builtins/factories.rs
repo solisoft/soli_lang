@@ -227,7 +227,7 @@ pub fn insert(
                 span,
             })?;
 
-    (native_create.func)(vec![class_val, attrs])
+    (native_create.func)(&[class_val, attrs])
         .map_err(|e| RuntimeError::General { message: e, span })
 }
 
@@ -249,7 +249,7 @@ pub fn register_factories(env: &mut Environment) {
     );
 
     let stub = |msg: &'static str| {
-        move |_args: Vec<Value>| -> Result<Value, String> { Err(msg.to_string()) }
+        move |_args: &[Value]| -> Result<Value, String> { Err(msg.to_string()) }
     };
 
     native_static_methods.insert(

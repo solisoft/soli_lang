@@ -38,13 +38,13 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
     Value::NativeFunction(NativeFunction::new(
         name,
         arity,
-        move |args: Vec<Value>| -> Result<Value, String> {
+        move |args: &[Value]| -> Result<Value, String> {
             let call_env = Environment::with_enclosing(func.closure.clone());
             let mut env_inner = call_env;
             env_inner.define("this".to_string(), receiver.clone());
             env_inner.define("self".to_string(), receiver.clone());
             for (param, value) in func.params.iter().zip(args) {
-                env_inner.define(param.name.clone(), value);
+                env_inner.define(param.name.clone(), value.clone());
             }
             let env_rc = Rc::new(RefCell::new(env_inner));
             let env_clone = env_rc.borrow().clone();
@@ -90,7 +90,7 @@ pub(crate) fn bind_native_method_to_instance(
         move |args| {
             let mut new_args = vec![Value::Instance(instance_clone.clone())];
             new_args.extend(args.iter().cloned());
-            (native_method_clone.func)(new_args)
+            (native_method_clone.func)(&new_args)
         },
     );
     Value::NativeFunction(wrapper)
@@ -109,15 +109,36 @@ pub(crate) fn bind_native_method_to_instance(
 /// (excluding the receiver) against `native.arity`, matching the bound
 /// wrapper's arity semantics.
 #[inline]
+/// Native instance methods receive the receiver as `args[0]`, so the call has to
+/// materialise `[this, ..user_args]` somewhere.
+///
+/// That "somewhere" used to be a fresh heap allocation on **every** instance
+/// method call — `dt.year()`, `s.upcase()`, `d.total_seconds()`. Since
+/// `NativeFn` now takes a slice, the common case can build the argument list in
+/// a stack array instead and hand out a borrow of it. 560 of the 565
+/// fixed-arity natives take three arguments or fewer, so the spill path below
+/// is genuinely rare.
 pub(crate) fn call_native_instance_method(
     inst: &Rc<RefCell<Instance>>,
     native: &NativeFunction,
     user_args: &[Value],
 ) -> Result<Value, String> {
+    const INLINE_ARGS: usize = 3;
+    if user_args.len() <= INLINE_ARGS {
+        let n = user_args.len();
+        // `Value::Null` is a unit variant, so this initialiser is free and the
+        // overwrites below drop nothing.
+        let mut buf = [Value::Null, Value::Null, Value::Null, Value::Null];
+        buf[0] = Value::Instance(inst.clone());
+        for (slot, arg) in buf[1..=n].iter_mut().zip(user_args) {
+            *slot = arg.clone();
+        }
+        return (native.func)(&buf[..=n]);
+    }
     let mut args = Vec::with_capacity(user_args.len() + 1);
     args.push(Value::Instance(inst.clone()));
     args.extend_from_slice(user_args);
-    (native.func)(args)
+    (native.func)(&args)
 }
 
 /// Bind a Model subclass's native static method to the class value: model
@@ -153,8 +174,8 @@ pub(crate) fn bind_native_static_to_model_class(
                 }
             }
             let mut full_args = vec![class_val.clone()];
-            full_args.extend(args);
-            original_func(full_args)
+            full_args.extend_from_slice(args);
+            original_func(&full_args)
         },
     );
     Value::NativeFunction(bound_func)
@@ -541,7 +562,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "is_a?",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         if args.len() != 1 {
                             return Err("is_a? expects 1 argument".to_string());
                         }
@@ -570,7 +591,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "respond_to?",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let method_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -610,7 +631,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "send",
                     None, // Variable arity
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let method_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -630,7 +651,7 @@ impl Interpreter {
                             drop(inst_ref);
                             let mut new_args = vec![Value::Instance(inst_clone.clone())];
                             new_args.extend(call_args.iter().cloned());
-                            (native_method.func)(new_args)
+                            (native_method.func)(&new_args)
                         } else if let Some(method) = inst_ref.class.find_method(&method_name) {
                             // User-defined method - execute it directly
                             drop(inst_ref);
@@ -717,7 +738,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "instance_variable_get",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let var_name = match args.first() {
                             Some(Value::String(s)) => {
                                 if let Some(stripped) = s.strip_prefix('@') {
@@ -746,7 +767,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "instance_variable_set",
                     Some(2),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let var_name = match args.first() {
                             Some(Value::String(s)) => {
                                 if let Some(stripped) = s.strip_prefix('@') {
@@ -786,7 +807,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "define_method",
                     Some(2),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let method_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -822,7 +843,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "alias_method",
                     Some(2),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let new_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -868,7 +889,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "instance_eval",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let block = match args.first() {
                             Some(Value::Function(f)) => f.clone(),
                             _ => {
@@ -1467,10 +1488,10 @@ impl Interpreter {
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.method_missing", class_name),
                 None, // Variable arity
-                move |args: Vec<Value>| -> Result<Value, String> {
+                move |args: &[Value]| -> Result<Value, String> {
                     // Build the method_missing call arguments: [method_name, ...original_args]
                     let mut mm_args = vec![Value::String(method_name.clone().into())];
-                    mm_args.extend(args);
+                    mm_args.extend_from_slice(args);
 
                     // Build environment for method_missing execution
                     let call_env = Environment::with_enclosing(mm_method.closure.clone());
@@ -1648,7 +1669,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "respond_to?",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let method_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -1672,7 +1693,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "send",
                     None,
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         if args.is_empty() {
                             return Err("send expects at least a method name argument".to_string());
                         }
@@ -1717,7 +1738,7 @@ impl Interpreter {
                         } else if let Some(native_method) =
                             class_clone.find_native_static_method(&method_name)
                         {
-                            (native_method.func)(call_args)
+                            (native_method.func)(&call_args)
                         } else {
                             Err(format!("undefined method `{}`", method_name))
                         }
@@ -1736,7 +1757,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "define_method",
                     Some(2),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let method_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -1779,7 +1800,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "alias_method",
                     Some(2),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let new_name = match args.first() {
                             Some(Value::String(s)) => s.clone(),
                             Some(Value::Symbol(s)) => s.clone(),
@@ -1831,7 +1852,7 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     "class_eval",
                     Some(1),
-                    move |args: Vec<Value>| -> Result<Value, String> {
+                    move |args: &[Value]| -> Result<Value, String> {
                         let block = match args.first() {
                             Some(Value::Function(f)) => f.clone(),
                             _ => {
@@ -1893,8 +1914,8 @@ impl Interpreter {
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     name,
                     Some(arity),
-                    move |args: Vec<Value>| -> Result<Value, String> {
-                        execute_dynamic_finder(&class_rc, &attributes, &args)
+                    move |args: &[Value]| -> Result<Value, String> {
+                        execute_dynamic_finder(&class_rc, &attributes, args)
                     },
                 )));
             }
@@ -1916,7 +1937,7 @@ impl Interpreter {
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.method_missing", class_name),
                 None, // Variable arity
-                move |args: Vec<Value>| -> Result<Value, String> {
+                move |args: &[Value]| -> Result<Value, String> {
                     // Ruby-style handler signature: `method_missing(name, args)`,
                     // where `name` is the called method's name and `args` is an
                     // Array of the original call arguments. (The instance-level
@@ -1926,7 +1947,7 @@ impl Interpreter {
                     // dispatching to an action with multiple parameters.)
                     let mm_args = [
                         Value::String(method_name.clone().into()),
-                        Value::Array(Rc::new(RefCell::new(args))),
+                        Value::Array(Rc::new(RefCell::new(args.to_vec()))),
                     ];
 
                     let mut env_inner = Environment::with_enclosing(mm_method.closure.clone());
@@ -2020,7 +2041,7 @@ impl Interpreter {
                 move |args| {
                     let mut new_args = vec![Value::Instance(instance_clone.clone())];
                     new_args.extend(args.iter().cloned());
-                    (native_method_clone.func)(new_args)
+                    (native_method_clone.func)(&new_args)
                 },
             )));
         }

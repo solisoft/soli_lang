@@ -568,7 +568,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "visit".to_string(),
         Value::NativeFunction(NativeFunction::new("visit", None, |args| {
-            let path = string_arg(&args, 0, "visit")?;
+            let path = string_arg(args, 0, "visit")?;
             let origin = base_url()?;
             // Relative paths are the common case and keep specs portable across
             // the ephemeral ports each worker gets.
@@ -614,7 +614,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
                 return Ok(Value::Hash(std::rc::Rc::new(RefCell::new(fields))));
             }
 
-            let viewport = viewport_from_values(&args)?;
+            let viewport = viewport_from_values(args)?;
             // Remembered as well as applied: `viewport()` called inside a
             // `before_each` must survive the reset that runs before the next
             // test, or it would take effect for exactly one test.
@@ -691,7 +691,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "click".to_string(),
         Value::NativeFunction(NativeFunction::new("click", None, |args| {
-            let selector = string_arg(&args, 0, "click")?;
+            let selector = string_arg(args, 0, "click")?;
             let origin = base_url()?;
             with_browser(|browser| {
                 click_selector(browser, FIND_CLICKABLE_JS, &selector, "click")?;
@@ -704,7 +704,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "click_link".to_string(),
         Value::NativeFunction(NativeFunction::new("click_link", None, |args| {
-            let selector = string_arg(&args, 0, "click_link")?;
+            let selector = string_arg(args, 0, "click_link")?;
             let origin = base_url()?;
             with_browser(|browser| {
                 click_selector(browser, FIND_CLICKABLE_JS, &selector, "click_link")?;
@@ -717,7 +717,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "click_button".to_string(),
         Value::NativeFunction(NativeFunction::new("click_button", None, |args| {
-            let selector = string_arg(&args, 0, "click_button")?;
+            let selector = string_arg(args, 0, "click_button")?;
             let origin = base_url()?;
             with_browser(|browser| {
                 click_selector(browser, FIND_CLICKABLE_JS, &selector, "click_button")?;
@@ -730,7 +730,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "fill_in".to_string(),
         Value::NativeFunction(NativeFunction::new("fill_in", None, |args| {
-            let selector = string_arg(&args, 0, "fill_in")?;
+            let selector = string_arg(args, 0, "fill_in")?;
             let text = match args.get(1) {
                 Some(Value::String(s)) => s.to_string(),
                 Some(Value::Int(n)) => n.to_string(),
@@ -774,8 +774,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "select_option".to_string(),
         Value::NativeFunction(NativeFunction::new("select_option", None, |args| {
-            let selector = string_arg(&args, 0, "select_option")?;
-            let option = string_arg(&args, 1, "select_option")?;
+            let selector = string_arg(args, 0, "select_option")?;
+            let option = string_arg(args, 1, "select_option")?;
             with_browser(|browser| {
                 let ok = browser.evaluate(&format!(
                     "(function () {{ var el = ({})({}); if (!el) return false; \
@@ -807,7 +807,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
         env.define(
             name.to_string(),
             Value::NativeFunction(NativeFunction::new(name, None, move |args| {
-                let selector = string_arg(&args, 0, name)?;
+                let selector = string_arg(args, 0, name)?;
                 with_browser(|browser| {
                     let ok = browser.evaluate(&format!(
                         "(function () {{ var el = ({})({}); if (!el) return false; \
@@ -828,7 +828,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "choose".to_string(),
         Value::NativeFunction(NativeFunction::new("choose", None, |args| {
-            let selector = string_arg(&args, 0, "choose")?;
+            let selector = string_arg(args, 0, "choose")?;
             with_browser(|browser| {
                 click_selector(browser, FIND_JS, &selector, "choose")?;
                 Ok(Value::Null)
@@ -839,7 +839,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "press".to_string(),
         Value::NativeFunction(NativeFunction::new("press", None, |args| {
-            let chord = string_arg(&args, 0, "press")?;
+            let chord = string_arg(args, 0, "press")?;
             let (key, modifiers) = parse_chord(&chord);
             with_browser(|browser| {
                 browser.press_key(&key, modifiers)?;
@@ -851,7 +851,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "evaluate".to_string(),
         Value::NativeFunction(NativeFunction::new("evaluate", None, |args| {
-            let expression = string_arg(&args, 0, "evaluate")?;
+            let expression = string_arg(args, 0, "evaluate")?;
             with_browser(|browser| {
                 let result = browser.evaluate(&expression)?;
                 Ok(json_to_soli(result))
@@ -862,7 +862,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "screenshot".to_string(),
         Value::NativeFunction(NativeFunction::new("screenshot", None, |args| {
-            let path = string_arg(&args, 0, "screenshot")?;
+            let path = string_arg(args, 0, "screenshot")?;
             with_browser(|browser| {
                 let image = browser.screenshot()?;
                 std::fs::write(&path, image)
@@ -877,8 +877,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "wait_for".to_string(),
         Value::NativeFunction(NativeFunction::new("wait_for", None, |args| {
-            let selector = string_arg(&args, 0, "wait_for")?;
-            let timeout = wait_timeout(&args);
+            let selector = string_arg(args, 0, "wait_for")?;
+            let timeout = wait_timeout(args);
             with_browser(|browser| {
                 browser.wait_until(&exists_expr(&selector), timeout)?;
                 Ok(Value::Null)
@@ -889,8 +889,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "wait_for_text".to_string(),
         Value::NativeFunction(NativeFunction::new("wait_for_text", None, |args| {
-            let text = string_arg(&args, 0, "wait_for_text")?;
-            let timeout = wait_timeout(&args);
+            let text = string_arg(args, 0, "wait_for_text")?;
+            let timeout = wait_timeout(args);
             with_browser(|browser| {
                 browser.wait_until(&text_expr(&text), timeout)?;
                 Ok(Value::Null)
@@ -907,8 +907,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "assert_text".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_text", None, |args| {
-            let expected = string_arg(&args, 0, "assert_text")?;
-            let timeout = wait_timeout(&args);
+            let expected = string_arg(args, 0, "assert_text")?;
+            let timeout = wait_timeout(args);
             with_browser(|browser| {
                 if browser.wait_until(&text_expr(&expected), timeout).is_ok() {
                     increment_assertion_count();
@@ -927,7 +927,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "assert_no_text".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_no_text", None, |args| {
-            let unexpected = string_arg(&args, 0, "assert_no_text")?;
+            let unexpected = string_arg(args, 0, "assert_no_text")?;
             with_browser(|browser| {
                 let present = browser.evaluate(&text_expr(&unexpected))?;
                 if present.as_bool() == Some(true) {
@@ -945,8 +945,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "assert_selector".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_selector", None, |args| {
-            let selector = string_arg(&args, 0, "assert_selector")?;
-            let timeout = wait_timeout(&args);
+            let selector = string_arg(args, 0, "assert_selector")?;
+            let timeout = wait_timeout(args);
             with_browser(|browser| {
                 if browser.wait_until(&exists_expr(&selector), timeout).is_ok() {
                     increment_assertion_count();
@@ -960,7 +960,7 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "assert_no_selector".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_no_selector", None, |args| {
-            let selector = string_arg(&args, 0, "assert_no_selector")?;
+            let selector = string_arg(args, 0, "assert_no_selector")?;
             with_browser(|browser| {
                 let present = browser.evaluate(&exists_expr(&selector))?;
                 if present.as_bool() == Some(true) {
@@ -975,8 +975,8 @@ pub fn register_browser_helpers(env: &mut Environment) {
     env.define(
         "assert_page_path".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_page_path", None, |args| {
-            let expected = string_arg(&args, 0, "assert_page_path")?;
-            let timeout = wait_timeout(&args);
+            let expected = string_arg(args, 0, "assert_page_path")?;
+            let timeout = wait_timeout(args);
             with_browser(|browser| {
                 let condition = format!("(location.pathname === {})", json!(expected));
                 if browser.wait_until(&condition, timeout).is_ok() {

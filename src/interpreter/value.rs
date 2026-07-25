@@ -1097,6 +1097,11 @@ impl Function {
     }
 }
 
+/// The callable behind a `NativeFunction`. Takes a *slice*, not an owned `Vec`:
+/// every native call used to copy its arguments into a fresh allocation,
+/// including the zero-argument calls that dominate (`dt.year()`, `s.upcase()`).
+pub type NativeFn = Rc<dyn Fn(&[Value]) -> Result<Value, String>>;
+
 /// A native/builtin function. Newtype over `Rc<NativeFunctionInner>` so the
 /// `Value::NativeFunction` variant is pointer-sized (8B) instead of inlining
 /// the ~64B payload into every `Value` (arrays, hashes, model rows, env
@@ -1109,7 +1114,11 @@ pub struct NativeFunction(Rc<NativeFunctionInner>);
 pub struct NativeFunctionInner {
     pub name: String,
     pub arity: Option<usize>, // None means variadic
-    pub func: Rc<dyn Fn(Vec<Value>) -> Result<Value, String>>,
+    /// Takes a *slice*, not an owned `Vec`. Every native call used to copy its
+    /// arguments into a fresh `Vec` — including the zero-argument calls that
+    /// dominate (`dt.year()`, `s.upcase()`, `d.total_seconds()`), where the
+    /// allocation was pure overhead.
+    pub func: NativeFn,
     pub is_auto_invocable: bool, // Can be called without parentheses
 }
 
@@ -1124,14 +1133,14 @@ impl std::ops::Deref for NativeFunction {
 impl NativeFunction {
     pub fn new<F>(name: impl Into<String>, arity: Option<usize>, func: F) -> Self
     where
-        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+        F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
         Self::new_with_auto(name, arity, false, func)
     }
 
     pub fn new_auto_invocable<F>(name: impl Into<String>, arity: Option<usize>, func: F) -> Self
     where
-        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+        F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
         Self::new_with_auto(name, arity, true, func)
     }
@@ -1145,7 +1154,7 @@ impl NativeFunction {
         func: F,
     ) -> Self
     where
-        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+        F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
         Self(Rc::new(NativeFunctionInner {
             name: name.into(),

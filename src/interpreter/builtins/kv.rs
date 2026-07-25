@@ -143,7 +143,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             if args.len() < 2 || args.len() > 3 {
                 return Err("KV.set() expects 2 or 3 arguments (key, value, ttl?)".to_string());
             }
-            let key = extract_string(&args, 0, "KV.set", "key")?;
+            let key = extract_string(args, 0, "KV.set", "key")?;
             let value = &args[1];
             let ttl = args.get(2).and_then(|v| match v {
                 Value::Int(i) => Some(*i as u64),
@@ -161,7 +161,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "get".to_string(),
         Rc::new(NativeFunction::new("KV.get", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.get", "key")?;
+            let key = extract_string(args, 0, "KV.get", "key")?;
             match solikv_get(&key)? {
                 None => Ok(Value::Null),
                 Some(s) => Ok(Value::String(s.into())),
@@ -173,7 +173,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "delete".to_string(),
         Rc::new(NativeFunction::new("KV.delete", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.delete", "key")?;
+            let key = extract_string(args, 0, "KV.delete", "key")?;
             let count = solikv_del(&key)?;
             Ok(Value::Bool(count > 0))
         })),
@@ -183,7 +183,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "exists".to_string(),
         Rc::new(NativeFunction::new("KV.exists", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.exists", "key")?;
+            let key = extract_string(args, 0, "KV.exists", "key")?;
             let result = solikv_cmd(&["EXISTS", &key])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
         })),
@@ -224,7 +224,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "ttl".to_string(),
         Rc::new(NativeFunction::new("KV.ttl", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.ttl", "key")?;
+            let key = extract_string(args, 0, "KV.ttl", "key")?;
             let result = solikv_cmd(&["TTL", &key])?;
             match result.as_i64() {
                 Some(ttl) if ttl >= 0 => Ok(Value::Int(ttl)),
@@ -237,8 +237,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "expire".to_string(),
         Rc::new(NativeFunction::new("KV.expire", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.expire", "key")?;
-            let ttl = extract_int(&args, 1, "KV.expire", "seconds")?;
+            let key = extract_string(args, 0, "KV.expire", "key")?;
+            let ttl = extract_int(args, 1, "KV.expire", "seconds")?;
             let ttl_str = ttl.to_string();
             let result = solikv_cmd(&["EXPIRE", &key, &ttl_str])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -249,7 +249,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "persist".to_string(),
         Rc::new(NativeFunction::new("KV.persist", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.persist", "key")?;
+            let key = extract_string(args, 0, "KV.persist", "key")?;
             let result = solikv_cmd(&["PERSIST", &key])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
         })),
@@ -259,8 +259,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "rename".to_string(),
         Rc::new(NativeFunction::new("KV.rename", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.rename", "key")?;
-            let newkey = extract_string(&args, 1, "KV.rename", "newkey")?;
+            let key = extract_string(args, 0, "KV.rename", "key")?;
+            let newkey = extract_string(args, 1, "KV.rename", "newkey")?;
             solikv_cmd(&["RENAME", &key, &newkey])?;
             Ok(Value::Null)
         })),
@@ -270,7 +270,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "type".to_string(),
         Rc::new(NativeFunction::new("KV.type", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.type", "key")?;
+            let key = extract_string(args, 0, "KV.type", "key")?;
             let result = solikv_cmd(&["TYPE", &key])?;
             match result.as_str() {
                 Some(s) => Ok(Value::String(s.to_string().into())),
@@ -284,7 +284,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "incr".to_string(),
         Rc::new(NativeFunction::new("KV.incr", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.incr", "key")?;
+            let key = extract_string(args, 0, "KV.incr", "key")?;
             let result = solikv_cmd(&["INCR", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -293,7 +293,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "decr".to_string(),
         Rc::new(NativeFunction::new("KV.decr", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.decr", "key")?;
+            let key = extract_string(args, 0, "KV.decr", "key")?;
             let result = solikv_cmd(&["DECR", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -302,8 +302,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "incrby".to_string(),
         Rc::new(NativeFunction::new("KV.incrby", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.incrby", "key")?;
-            let amount = extract_int(&args, 1, "KV.incrby", "amount")?;
+            let key = extract_string(args, 0, "KV.incrby", "key")?;
+            let amount = extract_int(args, 1, "KV.incrby", "amount")?;
             let amount_str = amount.to_string();
             let result = solikv_cmd(&["INCRBY", &key, &amount_str])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
@@ -313,8 +313,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "decrby".to_string(),
         Rc::new(NativeFunction::new("KV.decrby", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.decrby", "key")?;
-            let amount = extract_int(&args, 1, "KV.decrby", "amount")?;
+            let key = extract_string(args, 0, "KV.decrby", "key")?;
+            let amount = extract_int(args, 1, "KV.decrby", "amount")?;
             let amount_str = amount.to_string();
             let result = solikv_cmd(&["DECRBY", &key, &amount_str])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
@@ -324,7 +324,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "incrbyfloat".to_string(),
         Rc::new(NativeFunction::new("KV.incrbyfloat", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.incrbyfloat", "key")?;
+            let key = extract_string(args, 0, "KV.incrbyfloat", "key")?;
             let amount = match args.get(1) {
                 Some(Value::Float(f)) => *f,
                 Some(Value::Int(i)) => *i as f64,
@@ -349,7 +349,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "setnx".to_string(),
         Rc::new(NativeFunction::new("KV.setnx", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.setnx", "key")?;
+            let key = extract_string(args, 0, "KV.setnx", "key")?;
             let value = value_to_raw(&args[1]);
             let result = solikv_cmd(&["SETNX", &key, &value])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -360,7 +360,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "getset".to_string(),
         Rc::new(NativeFunction::new("KV.getset", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.getset", "key")?;
+            let key = extract_string(args, 0, "KV.getset", "key")?;
             let value = value_to_raw(&args[1]);
             let result = solikv_cmd(&["GETSET", &key, &value])?;
             solikv_result_to_value(&result)
@@ -371,7 +371,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "getdel".to_string(),
         Rc::new(NativeFunction::new("KV.getdel", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.getdel", "key")?;
+            let key = extract_string(args, 0, "KV.getdel", "key")?;
             let result = solikv_cmd(&["GETDEL", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -381,7 +381,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "append".to_string(),
         Rc::new(NativeFunction::new("KV.append", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.append", "key")?;
+            let key = extract_string(args, 0, "KV.append", "key")?;
             let value = value_to_raw(&args[1]);
             let result = solikv_cmd(&["APPEND", &key, &value])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
@@ -392,7 +392,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "strlen".to_string(),
         Rc::new(NativeFunction::new("KV.strlen", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.strlen", "key")?;
+            let key = extract_string(args, 0, "KV.strlen", "key")?;
             let result = solikv_cmd(&["STRLEN", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -407,7 +407,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             }
             let mut cmd_args: Vec<String> = vec!["MGET".to_string()];
             for (idx, _) in args.iter().enumerate() {
-                cmd_args.push(extract_string(&args, idx, "KV.mget", "key")?);
+                cmd_args.push(extract_string(args, idx, "KV.mget", "key")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
@@ -425,7 +425,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 );
             }
             let mut cmd_args: Vec<String> = vec!["MSET".to_string()];
-            for v in &args {
+            for v in args {
                 cmd_args.push(value_to_raw(v));
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
@@ -440,8 +440,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "pexpire".to_string(),
         Rc::new(NativeFunction::new("KV.pexpire", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.pexpire", "key")?;
-            let ms = extract_int(&args, 1, "KV.pexpire", "milliseconds")?;
+            let key = extract_string(args, 0, "KV.pexpire", "key")?;
+            let ms = extract_int(args, 1, "KV.pexpire", "milliseconds")?;
             let ms_str = ms.to_string();
             let result = solikv_cmd(&["PEXPIRE", &key, &ms_str])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -452,7 +452,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "pttl".to_string(),
         Rc::new(NativeFunction::new("KV.pttl", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.pttl", "key")?;
+            let key = extract_string(args, 0, "KV.pttl", "key")?;
             let result = solikv_cmd(&["PTTL", &key])?;
             match result.as_i64() {
                 Some(ms) if ms >= 0 => Ok(Value::Int(ms)),
@@ -465,8 +465,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "expireat".to_string(),
         Rc::new(NativeFunction::new("KV.expireat", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.expireat", "key")?;
-            let ts = extract_int(&args, 1, "KV.expireat", "timestamp")?;
+            let key = extract_string(args, 0, "KV.expireat", "key")?;
+            let ts = extract_int(args, 1, "KV.expireat", "timestamp")?;
             let ts_str = ts.to_string();
             let result = solikv_cmd(&["EXPIREAT", &key, &ts_str])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -482,7 +482,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             }
             let mut cmd_args: Vec<String> = vec!["TOUCH".to_string()];
             for (idx, _) in args.iter().enumerate() {
-                cmd_args.push(extract_string(&args, idx, "KV.touch", "key")?);
+                cmd_args.push(extract_string(args, idx, "KV.touch", "key")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
@@ -499,7 +499,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             }
             let mut cmd_args: Vec<String> = vec!["UNLINK".to_string()];
             for (idx, _) in args.iter().enumerate() {
-                cmd_args.push(extract_string(&args, idx, "KV.unlink", "key")?);
+                cmd_args.push(extract_string(args, idx, "KV.unlink", "key")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
@@ -517,7 +517,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.lpush() expects at least 2 arguments (key, value, ...values)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.lpush", "key")?;
+            let key = extract_string(args, 0, "KV.lpush", "key")?;
             let mut cmd_args: Vec<String> = vec!["LPUSH".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -536,7 +536,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.rpush() expects at least 2 arguments (key, value, ...values)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.rpush", "key")?;
+            let key = extract_string(args, 0, "KV.rpush", "key")?;
             let mut cmd_args: Vec<String> = vec!["RPUSH".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -550,7 +550,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "lpop".to_string(),
         Rc::new(NativeFunction::new("KV.lpop", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.lpop", "key")?;
+            let key = extract_string(args, 0, "KV.lpop", "key")?;
             let result = solikv_cmd(&["LPOP", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -559,7 +559,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "rpop".to_string(),
         Rc::new(NativeFunction::new("KV.rpop", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.rpop", "key")?;
+            let key = extract_string(args, 0, "KV.rpop", "key")?;
             let result = solikv_cmd(&["RPOP", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -568,9 +568,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "lrange".to_string(),
         Rc::new(NativeFunction::new("KV.lrange", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.lrange", "key")?;
-            let start = extract_int(&args, 1, "KV.lrange", "start")?;
-            let stop = extract_int(&args, 2, "KV.lrange", "stop")?;
+            let key = extract_string(args, 0, "KV.lrange", "key")?;
+            let start = extract_int(args, 1, "KV.lrange", "start")?;
+            let stop = extract_int(args, 2, "KV.lrange", "stop")?;
             let start_str = start.to_string();
             let stop_str = stop.to_string();
             let result = solikv_cmd(&["LRANGE", &key, &start_str, &stop_str])?;
@@ -581,7 +581,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "llen".to_string(),
         Rc::new(NativeFunction::new("KV.llen", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.llen", "key")?;
+            let key = extract_string(args, 0, "KV.llen", "key")?;
             let result = solikv_cmd(&["LLEN", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -591,8 +591,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "lindex".to_string(),
         Rc::new(NativeFunction::new("KV.lindex", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.lindex", "key")?;
-            let index = extract_int(&args, 1, "KV.lindex", "index")?;
+            let key = extract_string(args, 0, "KV.lindex", "key")?;
+            let index = extract_int(args, 1, "KV.lindex", "index")?;
             let index_str = index.to_string();
             let result = solikv_cmd(&["LINDEX", &key, &index_str])?;
             solikv_result_to_value(&result)
@@ -603,8 +603,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "lset".to_string(),
         Rc::new(NativeFunction::new("KV.lset", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.lset", "key")?;
-            let index = extract_int(&args, 1, "KV.lset", "index")?;
+            let key = extract_string(args, 0, "KV.lset", "key")?;
+            let index = extract_int(args, 1, "KV.lset", "index")?;
             let index_str = index.to_string();
             let value = value_to_raw(&args[2]);
             solikv_cmd(&["LSET", &key, &index_str, &value])?;
@@ -616,8 +616,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "lrem".to_string(),
         Rc::new(NativeFunction::new("KV.lrem", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.lrem", "key")?;
-            let count = extract_int(&args, 1, "KV.lrem", "count")?;
+            let key = extract_string(args, 0, "KV.lrem", "key")?;
+            let count = extract_int(args, 1, "KV.lrem", "count")?;
             let count_str = count.to_string();
             let value = value_to_raw(&args[2]);
             let result = solikv_cmd(&["LREM", &key, &count_str, &value])?;
@@ -629,9 +629,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "ltrim".to_string(),
         Rc::new(NativeFunction::new("KV.ltrim", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.ltrim", "key")?;
-            let start = extract_int(&args, 1, "KV.ltrim", "start")?;
-            let stop = extract_int(&args, 2, "KV.ltrim", "stop")?;
+            let key = extract_string(args, 0, "KV.ltrim", "key")?;
+            let start = extract_int(args, 1, "KV.ltrim", "start")?;
+            let stop = extract_int(args, 2, "KV.ltrim", "stop")?;
             let start_str = start.to_string();
             let stop_str = stop.to_string();
             solikv_cmd(&["LTRIM", &key, &start_str, &stop_str])?;
@@ -643,8 +643,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "rpoplpush".to_string(),
         Rc::new(NativeFunction::new("KV.rpoplpush", Some(2), |args| {
-            let source = extract_string(&args, 0, "KV.rpoplpush", "source")?;
-            let dest = extract_string(&args, 1, "KV.rpoplpush", "dest")?;
+            let source = extract_string(args, 0, "KV.rpoplpush", "source")?;
+            let dest = extract_string(args, 1, "KV.rpoplpush", "dest")?;
             let result = solikv_cmd(&["RPOPLPUSH", &source, &dest])?;
             solikv_result_to_value(&result)
         })),
@@ -660,7 +660,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.sadd() expects at least 2 arguments (key, member, ...members)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.sadd", "key")?;
+            let key = extract_string(args, 0, "KV.sadd", "key")?;
             let mut cmd_args: Vec<String> = vec!["SADD".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -679,7 +679,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.srem() expects at least 2 arguments (key, member, ...members)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.srem", "key")?;
+            let key = extract_string(args, 0, "KV.srem", "key")?;
             let mut cmd_args: Vec<String> = vec!["SREM".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -693,7 +693,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "smembers".to_string(),
         Rc::new(NativeFunction::new("KV.smembers", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.smembers", "key")?;
+            let key = extract_string(args, 0, "KV.smembers", "key")?;
             let result = solikv_cmd(&["SMEMBERS", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -702,7 +702,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "sismember".to_string(),
         Rc::new(NativeFunction::new("KV.sismember", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.sismember", "key")?;
+            let key = extract_string(args, 0, "KV.sismember", "key")?;
             let member = value_to_raw(&args[1]);
             let result = solikv_cmd(&["SISMEMBER", &key, &member])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -712,7 +712,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "scard".to_string(),
         Rc::new(NativeFunction::new("KV.scard", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.scard", "key")?;
+            let key = extract_string(args, 0, "KV.scard", "key")?;
             let result = solikv_cmd(&["SCARD", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -725,10 +725,10 @@ pub fn register_kv_builtins(env: &mut Environment) {
             if args.is_empty() || args.len() > 2 {
                 return Err("KV.spop() expects 1 or 2 arguments (key, count?)".to_string());
             }
-            let key = extract_string(&args, 0, "KV.spop", "key")?;
+            let key = extract_string(args, 0, "KV.spop", "key")?;
             let result = match args.get(1) {
                 Some(_) => {
-                    let count = extract_int(&args, 1, "KV.spop", "count")?;
+                    let count = extract_int(args, 1, "KV.spop", "count")?;
                     let count_str = count.to_string();
                     solikv_cmd(&["SPOP", &key, &count_str])?
                 }
@@ -745,10 +745,10 @@ pub fn register_kv_builtins(env: &mut Environment) {
             if args.is_empty() || args.len() > 2 {
                 return Err("KV.srandmember() expects 1 or 2 arguments (key, count?)".to_string());
             }
-            let key = extract_string(&args, 0, "KV.srandmember", "key")?;
+            let key = extract_string(args, 0, "KV.srandmember", "key")?;
             let result = match args.get(1) {
                 Some(_) => {
-                    let count = extract_int(&args, 1, "KV.srandmember", "count")?;
+                    let count = extract_int(args, 1, "KV.srandmember", "count")?;
                     let count_str = count.to_string();
                     solikv_cmd(&["SRANDMEMBER", &key, &count_str])?
                 }
@@ -779,7 +779,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     let fn_name = format!("KV.{}", method);
                     let mut cmd_args: Vec<String> = vec![verb.to_string()];
                     for (idx, _) in args.iter().enumerate() {
-                        cmd_args.push(extract_string(&args, idx, &fn_name, "key")?);
+                        cmd_args.push(extract_string(args, idx, &fn_name, "key")?);
                     }
                     let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
                     let result = solikv_cmd(&refs)?;
@@ -799,7 +799,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                         .to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.smismember", "key")?;
+            let key = extract_string(args, 0, "KV.smismember", "key")?;
             let mut cmd_args: Vec<String> = vec!["SMISMEMBER".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -823,8 +823,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "smove".to_string(),
         Rc::new(NativeFunction::new("KV.smove", Some(3), |args| {
-            let source = extract_string(&args, 0, "KV.smove", "source")?;
-            let dest = extract_string(&args, 1, "KV.smove", "dest")?;
+            let source = extract_string(args, 0, "KV.smove", "source")?;
+            let dest = extract_string(args, 1, "KV.smove", "dest")?;
             let member = value_to_raw(&args[2]);
             let result = solikv_cmd(&["SMOVE", &source, &dest, &member])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -843,7 +843,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             if args.is_empty() {
                 return Err("KV.pfadd() expects at least 1 argument (key, ...elements)".to_string());
             }
-            let key = extract_string(&args, 0, "KV.pfadd", "key")?;
+            let key = extract_string(args, 0, "KV.pfadd", "key")?;
             let mut cmd_args: Vec<String> = vec!["PFADD".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -863,7 +863,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             }
             let mut cmd_args: Vec<String> = vec!["PFCOUNT".to_string()];
             for (idx, _) in args.iter().enumerate() {
-                cmd_args.push(extract_string(&args, idx, "KV.pfcount", "key")?);
+                cmd_args.push(extract_string(args, idx, "KV.pfcount", "key")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
@@ -882,7 +882,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             }
             let mut cmd_args: Vec<String> = vec!["PFMERGE".to_string()];
             for (idx, _) in args.iter().enumerate() {
-                cmd_args.push(extract_string(&args, idx, "KV.pfmerge", "key")?);
+                cmd_args.push(extract_string(args, idx, "KV.pfmerge", "key")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             solikv_cmd(&refs)?;
@@ -895,8 +895,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hset".to_string(),
         Rc::new(NativeFunction::new("KV.hset", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.hset", "key")?;
-            let field = extract_string(&args, 1, "KV.hset", "field")?;
+            let key = extract_string(args, 0, "KV.hset", "key")?;
+            let field = extract_string(args, 1, "KV.hset", "field")?;
             let val = value_to_raw(&args[2]);
             let result = solikv_cmd(&["HSET", &key, &field, &val])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
@@ -906,8 +906,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hget".to_string(),
         Rc::new(NativeFunction::new("KV.hget", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.hget", "key")?;
-            let field = extract_string(&args, 1, "KV.hget", "field")?;
+            let key = extract_string(args, 0, "KV.hget", "key")?;
+            let field = extract_string(args, 1, "KV.hget", "field")?;
             let result = solikv_cmd(&["HGET", &key, &field])?;
             solikv_result_to_value(&result)
         })),
@@ -921,7 +921,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.hdel() expects at least 2 arguments (key, field, ...fields)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.hdel", "key")?;
+            let key = extract_string(args, 0, "KV.hdel", "key")?;
             let mut cmd_args: Vec<String> = vec!["HDEL".to_string(), key];
             for v in &args[1..] {
                 match v {
@@ -943,7 +943,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hgetall".to_string(),
         Rc::new(NativeFunction::new("KV.hgetall", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.hgetall", "key")?;
+            let key = extract_string(args, 0, "KV.hgetall", "key")?;
             let result = solikv_cmd(&["HGETALL", &key])?;
 
             // HGETALL returns alternating key/value pairs as an array,
@@ -981,8 +981,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hexists".to_string(),
         Rc::new(NativeFunction::new("KV.hexists", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.hexists", "key")?;
-            let field = extract_string(&args, 1, "KV.hexists", "field")?;
+            let key = extract_string(args, 0, "KV.hexists", "key")?;
+            let field = extract_string(args, 1, "KV.hexists", "field")?;
             let result = solikv_cmd(&["HEXISTS", &key, &field])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
         })),
@@ -991,7 +991,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hkeys".to_string(),
         Rc::new(NativeFunction::new("KV.hkeys", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.hkeys", "key")?;
+            let key = extract_string(args, 0, "KV.hkeys", "key")?;
             let result = solikv_cmd(&["HKEYS", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -1000,7 +1000,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hlen".to_string(),
         Rc::new(NativeFunction::new("KV.hlen", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.hlen", "key")?;
+            let key = extract_string(args, 0, "KV.hlen", "key")?;
             let result = solikv_cmd(&["HLEN", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -1010,8 +1010,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hsetnx".to_string(),
         Rc::new(NativeFunction::new("KV.hsetnx", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.hsetnx", "key")?;
-            let field = extract_string(&args, 1, "KV.hsetnx", "field")?;
+            let key = extract_string(args, 0, "KV.hsetnx", "key")?;
+            let field = extract_string(args, 1, "KV.hsetnx", "field")?;
             let value = value_to_raw(&args[2]);
             let result = solikv_cmd(&["HSETNX", &key, &field, &value])?;
             Ok(Value::Bool(result.as_i64().unwrap_or(0) > 0))
@@ -1022,9 +1022,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hincrby".to_string(),
         Rc::new(NativeFunction::new("KV.hincrby", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.hincrby", "key")?;
-            let field = extract_string(&args, 1, "KV.hincrby", "field")?;
-            let amount = extract_int(&args, 2, "KV.hincrby", "amount")?;
+            let key = extract_string(args, 0, "KV.hincrby", "key")?;
+            let field = extract_string(args, 1, "KV.hincrby", "field")?;
+            let amount = extract_int(args, 2, "KV.hincrby", "amount")?;
             let amount_str = amount.to_string();
             let result = solikv_cmd(&["HINCRBY", &key, &field, &amount_str])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
@@ -1035,8 +1035,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hincrbyfloat".to_string(),
         Rc::new(NativeFunction::new("KV.hincrbyfloat", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.hincrbyfloat", "key")?;
-            let field = extract_string(&args, 1, "KV.hincrbyfloat", "field")?;
+            let key = extract_string(args, 0, "KV.hincrbyfloat", "key")?;
+            let field = extract_string(args, 1, "KV.hincrbyfloat", "field")?;
             let amount = match args.get(2) {
                 Some(Value::Float(f)) => *f,
                 Some(Value::Int(i)) => *i as f64,
@@ -1064,10 +1064,10 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.hmget() expects at least 2 arguments (key, field, ...fields)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.hmget", "key")?;
+            let key = extract_string(args, 0, "KV.hmget", "key")?;
             let mut cmd_args: Vec<String> = vec!["HMGET".to_string(), key];
             for (idx, _) in args.iter().enumerate().skip(1) {
-                cmd_args.push(extract_string(&args, idx, "KV.hmget", "field")?);
+                cmd_args.push(extract_string(args, idx, "KV.hmget", "field")?);
             }
             let refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
@@ -1079,7 +1079,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "hvals".to_string(),
         Rc::new(NativeFunction::new("KV.hvals", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.hvals", "key")?;
+            let key = extract_string(args, 0, "KV.hvals", "key")?;
             let result = solikv_cmd(&["HVALS", &key])?;
             solikv_result_to_value(&result)
         })),
@@ -1097,7 +1097,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                         .to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.zadd", "key")?;
+            let key = extract_string(args, 0, "KV.zadd", "key")?;
             let mut cmd_args: Vec<String> = vec!["ZADD".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -1117,7 +1117,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     "KV.zrem() expects at least 2 arguments (key, member, ...members)".to_string(),
                 );
             }
-            let key = extract_string(&args, 0, "KV.zrem", "key")?;
+            let key = extract_string(args, 0, "KV.zrem", "key")?;
             let mut cmd_args: Vec<String> = vec!["ZREM".to_string(), key];
             for v in &args[1..] {
                 cmd_args.push(value_to_raw(v));
@@ -1132,7 +1132,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "zscore".to_string(),
         Rc::new(NativeFunction::new("KV.zscore", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.zscore", "key")?;
+            let key = extract_string(args, 0, "KV.zscore", "key")?;
             let member = value_to_raw(&args[1]);
             let result = solikv_cmd(&["ZSCORE", &key, &member])?;
             Ok(solikv_result_to_float(&result))
@@ -1143,7 +1143,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "zincrby".to_string(),
         Rc::new(NativeFunction::new("KV.zincrby", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.zincrby", "key")?;
+            let key = extract_string(args, 0, "KV.zincrby", "key")?;
             let amount = match args.get(1) {
                 Some(Value::Float(f)) => *f,
                 Some(Value::Int(i)) => *i as f64,
@@ -1172,7 +1172,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 Some(2),
                 move |args| {
                     let fn_name = format!("KV.{}", method);
-                    let key = extract_string(&args, 0, &fn_name, "key")?;
+                    let key = extract_string(args, 0, &fn_name, "key")?;
                     let member = value_to_raw(&args[1]);
                     let result = solikv_cmd(&[verb, &key, &member])?;
                     match result.as_i64() {
@@ -1188,7 +1188,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "zcard".to_string(),
         Rc::new(NativeFunction::new("KV.zcard", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.zcard", "key")?;
+            let key = extract_string(args, 0, "KV.zcard", "key")?;
             let result = solikv_cmd(&["ZCARD", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -1198,7 +1198,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "zcount".to_string(),
         Rc::new(NativeFunction::new("KV.zcount", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.zcount", "key")?;
+            let key = extract_string(args, 0, "KV.zcount", "key")?;
             let min = value_to_raw(&args[1]);
             let max = value_to_raw(&args[2]);
             let result = solikv_cmd(&["ZCOUNT", &key, &min, &max])?;
@@ -1221,9 +1221,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
                         ));
                     }
                     let fn_name = format!("KV.{}", method);
-                    let key = extract_string(&args, 0, &fn_name, "key")?;
-                    let start = extract_int(&args, 1, &fn_name, "start")?.to_string();
-                    let stop = extract_int(&args, 2, &fn_name, "stop")?.to_string();
+                    let key = extract_string(args, 0, &fn_name, "key")?;
+                    let start = extract_int(args, 1, &fn_name, "start")?.to_string();
+                    let stop = extract_int(args, 2, &fn_name, "stop")?.to_string();
                     let with_scores = matches!(args.get(3), Some(v) if v.is_truthy());
                     let mut cmd_args = vec![verb, &key, &start, &stop];
                     if with_scores {
@@ -1240,7 +1240,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "zrangebyscore".to_string(),
         Rc::new(NativeFunction::new("KV.zrangebyscore", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.zrangebyscore", "key")?;
+            let key = extract_string(args, 0, "KV.zrangebyscore", "key")?;
             let min = value_to_raw(&args[1]);
             let max = value_to_raw(&args[2]);
             let result = solikv_cmd(&["ZRANGEBYSCORE", &key, &min, &max])?;
@@ -1254,9 +1254,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "setbit".to_string(),
         Rc::new(NativeFunction::new("KV.setbit", Some(3), |args| {
-            let key = extract_string(&args, 0, "KV.setbit", "key")?;
-            let offset = extract_int(&args, 1, "KV.setbit", "offset")?.to_string();
-            let bit = extract_int(&args, 2, "KV.setbit", "value")?;
+            let key = extract_string(args, 0, "KV.setbit", "key")?;
+            let offset = extract_int(args, 1, "KV.setbit", "offset")?.to_string();
+            let bit = extract_int(args, 2, "KV.setbit", "value")?;
             if bit != 0 && bit != 1 {
                 return Err("KV.setbit() value must be 0 or 1".to_string());
             }
@@ -1270,8 +1270,8 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "getbit".to_string(),
         Rc::new(NativeFunction::new("KV.getbit", Some(2), |args| {
-            let key = extract_string(&args, 0, "KV.getbit", "key")?;
-            let offset = extract_int(&args, 1, "KV.getbit", "offset")?.to_string();
+            let key = extract_string(args, 0, "KV.getbit", "key")?;
+            let offset = extract_int(args, 1, "KV.getbit", "offset")?.to_string();
             let result = solikv_cmd(&["GETBIT", &key, &offset])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),
@@ -1281,7 +1281,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "bitcount".to_string(),
         Rc::new(NativeFunction::new("KV.bitcount", Some(1), |args| {
-            let key = extract_string(&args, 0, "KV.bitcount", "key")?;
+            let key = extract_string(args, 0, "KV.bitcount", "key")?;
             let result = solikv_cmd(&["BITCOUNT", &key])?;
             Ok(Value::Int(result.as_i64().unwrap_or(0)))
         })),

@@ -1131,7 +1131,7 @@ fn call_function_value(
         Value::Function(_func_data) => {
             Err("Function calls not yet implemented for OOP controllers".to_string())
         }
-        Value::NativeFunction(native_func) => (native_func.func)(args.to_vec()),
+        Value::NativeFunction(native_func) => (native_func.func)(args),
         _ => Err("Cannot call non-function value".to_string()),
     }
 }

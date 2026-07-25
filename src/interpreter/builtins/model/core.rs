@@ -1187,7 +1187,7 @@ impl Model {
         env.define(
             "rerank".to_string(),
             Value::NativeFunction(NativeFunction::new("rerank", None, |args| {
-                super::rerank::exec_rerank(&args)
+                super::rerank::exec_rerank(args)
             })),
         );
 
@@ -1226,9 +1226,9 @@ impl Model {
         native_static_methods.insert(
             "validates".to_string(),
             Rc::new(NativeFunction::new("Model.validates", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
 
-                let field = arg_str_or_sym(&args, 1, "validates()", "field name")?;
+                let field = arg_str_or_sym(args, 1, "validates()", "field name")?;
 
                 let options = match args.get(2) {
                     Some(Value::Hash(hash)) => hash.borrow().clone(),
@@ -1263,9 +1263,9 @@ impl Model {
             native_static_methods.insert(
                 callback_name.clone(),
                 Rc::new(NativeFunction::new(&method_name, Some(2), move |args| {
-                    let class_name = get_class_name_from_class(&args)?;
+                    let class_name = get_class_name_from_class(args)?;
                     let method_name =
-                        arg_str_or_sym(&args, 1, &format!("{}()", callback_name), "method name")?;
+                        arg_str_or_sym(args, 1, &format!("{}()", callback_name), "method name")?;
                     register_callback(&class_name, &callback_name, &method_name);
                     Ok(Value::Null)
                 })),
@@ -1283,7 +1283,7 @@ impl Model {
         native_static_methods.insert(
             "attr_accessible".to_string(),
             Rc::new(NativeFunction::new("Model.attr_accessible", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let fields = collect_accessible_fields(&args[1..])?;
                 register_accessible_attributes(&class_name, fields);
                 Ok(Value::Null)
@@ -1305,8 +1305,8 @@ impl Model {
             native_static_methods.insert(
                 rel_method.to_string(),
                 Rc::new(NativeFunction::new(&method_label, None, move |args| {
-                    let class_name = get_class_name_from_class(&args)?;
-                    let name = arg_str_or_sym(&args, 1, "relation", "name")?;
+                    let class_name = get_class_name_from_class(args)?;
+                    let name = arg_str_or_sym(args, 1, "relation", "name")?;
 
                     // Optional config hash: class_name/foreign_key overrides
                     // plus dependent:/through:/source:/counter_cache: (validated
@@ -1328,7 +1328,7 @@ impl Model {
                 "Model.has_and_belongs_to_many",
                 None,
                 |args| {
-                    let class_name = get_class_name_from_class(&args)?;
+                    let class_name = get_class_name_from_class(args)?;
                     let name = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
                         Some(other) => {
@@ -1361,8 +1361,8 @@ impl Model {
         native_static_methods.insert(
             "uploader".to_string(),
             Rc::new(NativeFunction::new("Model.uploader", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let config = build_uploader_config_from_args(&class_name, &args)?;
+                let class_name = get_class_name_from_class(args)?;
+                let config = build_uploader_config_from_args(&class_name, args)?;
                 register_uploader(&class_name, config);
                 Ok(Value::Null)
             })),
@@ -1376,7 +1376,7 @@ impl Model {
         native_static_methods.insert(
             "translate".to_string(),
             Rc::new(NativeFunction::new("Model.translate", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
 
                 // Accept one or more field names as arguments
                 let field_names: Vec<String> = args[1..]
@@ -1411,7 +1411,7 @@ impl Model {
         native_static_methods.insert(
             "includes".to_string(),
             Rc::new(NativeFunction::new("Model.includes", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -1561,7 +1561,7 @@ impl Model {
         native_static_methods.insert(
             "includes_count".to_string(),
             Rc::new(NativeFunction::new("Model.includes_count", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -1596,7 +1596,7 @@ impl Model {
 
         // Model.select("name", "email") / Model.fields("name", "email") - field selection
         let select_fn = Rc::new(NativeFunction::new("Model.select", None, |args| {
-            let class = get_class_rc_from_args(&args)?;
+            let class = get_class_rc_from_args(args)?;
             let class_name = class.name.clone();
             let collection = class_name_to_collection(&class_name);
 
@@ -1626,7 +1626,7 @@ impl Model {
         native_static_methods.insert(
             "join".to_string(),
             Rc::new(NativeFunction::new("Model.join", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -1691,7 +1691,7 @@ impl Model {
         native_static_methods.insert(
             "create".to_string(),
             Rc::new(NativeFunction::new("Model.create", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -1845,7 +1845,7 @@ impl Model {
         native_static_methods.insert(
             "find".to_string(),
             Rc::new(NativeFunction::new("Model.find", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let collection = class_name_to_collection(&class.name);
 
                 let id = match args.get(1) {
@@ -1930,7 +1930,7 @@ impl Model {
         native_static_methods.insert(
             "where".to_string(),
             Rc::new(NativeFunction::new("Model.where", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -1998,7 +1998,7 @@ impl Model {
         native_static_methods.insert(
             "live_where".to_string(),
             Rc::new(NativeFunction::new("Model.live_where", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -2076,7 +2076,7 @@ impl Model {
         native_static_methods.insert(
             "broadcast".to_string(),
             Rc::new(NativeFunction::new("Model.broadcast", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let channel = class_name_to_collection(&class.name);
                 let payload = args
                     .get(1)
@@ -2141,7 +2141,7 @@ impl Model {
                 "Model.all",
                 Some(1),
                 |args| {
-                    let class = get_class_rc_from_args(&args)?;
+                    let class = get_class_rc_from_args(args)?;
                     let collection = class_name_to_collection(&class.name);
                     let sdbql = format!(
                         "FOR doc IN {}{} RETURN doc",
@@ -2179,7 +2179,7 @@ impl Model {
                 "Model.all_json",
                 Some(1),
                 |args| {
-                    let class_name = get_class_name_from_class(&args)?;
+                    let class_name = get_class_name_from_class(args)?;
                     let collection = class_name_to_collection(&class_name);
                     let sdbql = format!(
                         "FOR doc IN {}{} RETURN doc",
@@ -2195,7 +2195,7 @@ impl Model {
         native_static_methods.insert(
             "order".to_string(),
             Rc::new(NativeFunction::new("Model.order", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -2228,7 +2228,7 @@ impl Model {
         native_static_methods.insert(
             "limit".to_string(),
             Rc::new(NativeFunction::new("Model.limit", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -2256,7 +2256,7 @@ impl Model {
         native_static_methods.insert(
             "update".to_string(),
             Rc::new(NativeFunction::new("Model.update", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let collection = class_name_to_collection(&class_name);
 
                 if super::registry::is_timeseries_model(&class_name) {
@@ -2356,7 +2356,7 @@ impl Model {
         native_static_methods.insert(
             "delete".to_string(),
             Rc::new(NativeFunction::new("Model.delete", Some(2), |args| {
-                let collection = get_collection_from_class(&args)?;
+                let collection = get_collection_from_class(args)?;
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
@@ -2369,7 +2369,7 @@ impl Model {
                     None => return Err("Model.delete() requires id argument".to_string()),
                 };
 
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let needs_preread = super::counter_cache::class_has_counter_caches(&class_name)
                     || super::registry::is_sti_subclass(&class_name);
                 let old_doc = if needs_preread {
@@ -2408,7 +2408,7 @@ impl Model {
                 "Model.reset_counters",
                 Some(3),
                 |args| {
-                    let class_name = get_class_name_from_class(&args)?;
+                    let class_name = get_class_name_from_class(args)?;
                     let collection = class_name_to_collection(&class_name);
                     let id = match args.get(1) {
                         Some(Value::String(s)) => s.to_string(),
@@ -2439,7 +2439,7 @@ impl Model {
         native_static_methods.insert(
             "delete_all".to_string(),
             Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let collection = class_name_to_collection(&class_name);
                 let sdbql = format!(
                     "FOR doc IN {}{} RETURN doc._key",
@@ -2493,7 +2493,7 @@ impl Model {
                         )
                     }
                     None => {
-                        let class_name = get_class_name_from_class(&args)?;
+                        let class_name = get_class_name_from_class(args)?;
                         Ok(Value::Class(get_or_create_transaction_class(&class_name)))
                     }
                     Some(other) => Err(format!(
@@ -2512,11 +2512,11 @@ impl Model {
                 "Model.count",
                 Some(1),
                 |args| {
-                    let collection = get_collection_from_class(&args)?;
+                    let collection = get_collection_from_class(args)?;
 
                     // Columnar models count through the columnar engine
                     // (COLLECTION_COUNT only sees document collections).
-                    if let Ok(class_name) = get_class_name_from_class(&args) {
+                    if let Ok(class_name) = get_class_name_from_class(args) {
                         if super::registry::is_columnar_model(&class_name) {
                             let schema = super::registry::get_columnar_schema(&class_name)
                                 .unwrap_or_default();
@@ -2533,7 +2533,7 @@ impl Model {
                         }
                     }
 
-                    let sti_clause = get_class_name_from_class(&args)
+                    let sti_clause = get_class_name_from_class(args)
                         .map(|n| sti_scope_clause(&n))
                         .unwrap_or_default();
                     let sdbql = if sti_clause.is_empty() {
@@ -2574,7 +2574,7 @@ impl Model {
         native_static_methods.insert(
             "with_deleted".to_string(),
             Rc::new(NativeFunction::new("Model.with_deleted", Some(1), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let mut qb =
@@ -2588,7 +2588,7 @@ impl Model {
         native_static_methods.insert(
             "only_deleted".to_string(),
             Rc::new(NativeFunction::new("Model.only_deleted", Some(1), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let mut qb =
@@ -2602,7 +2602,7 @@ impl Model {
         native_static_methods.insert(
             "offset".to_string(),
             Rc::new(NativeFunction::new("Model.offset", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let offset = match args.get(1) {
@@ -2621,7 +2621,7 @@ impl Model {
         native_static_methods.insert(
             "paginate".to_string(),
             Rc::new(NativeFunction::new("Model.paginate", Some(2), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -2697,7 +2697,7 @@ impl Model {
         native_static_methods.insert(
             "find_by".to_string(),
             Rc::new(NativeFunction::new("Model.find_by", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
@@ -2743,7 +2743,7 @@ impl Model {
         native_static_methods.insert(
             "first_by".to_string(),
             Rc::new(NativeFunction::new("Model.first_by", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
@@ -2792,7 +2792,7 @@ impl Model {
                 "Model.find_or_create_by",
                 Some(4),
                 |args| {
-                    let class = get_class_rc_from_args(&args)?;
+                    let class = get_class_rc_from_args(args)?;
                     let class_name = class.name.clone();
                     let collection = class_name_to_collection(&class_name);
                     let field = match args.get(1) {
@@ -2902,7 +2902,7 @@ impl Model {
         native_static_methods.insert(
             "upsert".to_string(),
             Rc::new(NativeFunction::new("Model.upsert", Some(3), |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 if super::registry::is_timeseries_model(&class_name) {
@@ -2983,7 +2983,7 @@ impl Model {
         native_static_methods.insert(
             "create_many".to_string(),
             Rc::new(NativeFunction::new("Model.create_many", Some(2), |args| {
-                let _class = get_class_rc_from_args(&args)?;
+                let _class = get_class_rc_from_args(args)?;
                 let class_name = match &args[0] {
                     Value::Class(c) => c.name.clone(),
                     _ => return Err("Expected class".to_string()),
@@ -3052,7 +3052,7 @@ impl Model {
         native_static_methods.insert(
             "scope".to_string(),
             Rc::new(NativeFunction::new("Model.scope", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let name = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
                     Some(Value::Symbol(s)) => s.clone(),
@@ -3080,7 +3080,7 @@ impl Model {
         native_static_methods.insert(
             "states".to_string(),
             Rc::new(NativeFunction::new("Model.states", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let mut seen = std::collections::HashSet::new();
                 let mut out = Vec::new();
                 for machine in super::state_machine::machines_for(&class_name) {
@@ -3096,7 +3096,7 @@ impl Model {
         native_static_methods.insert(
             "events".to_string(),
             Rc::new(NativeFunction::new("Model.events", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class_name = get_class_name_from_class(args)?;
                 let mut seen = std::collections::HashSet::new();
                 let mut out = Vec::new();
                 for machine in super::state_machine::machines_for(&class_name) {
@@ -3114,7 +3114,7 @@ impl Model {
         native_static_methods.insert(
             "pluck".to_string(),
             Rc::new(NativeFunction::new("Model.pluck", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let mut fields = Vec::new();
@@ -3159,7 +3159,7 @@ impl Model {
                     Box::leak(format!("Model.{}", method_name).into_boxed_str()),
                     Some(2),
                     move |args| {
-                        let class = get_class_rc_from_args(&args)?;
+                        let class = get_class_rc_from_args(args)?;
                         let class_name = class.name.clone();
                         let collection = class_name_to_collection(&class_name);
                         let field = match args.get(1) {
@@ -3189,7 +3189,7 @@ impl Model {
         native_static_methods.insert(
             "aggregate".to_string(),
             Rc::new(NativeFunction::new("Model.aggregate", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3312,7 +3312,7 @@ impl Model {
             native_static_methods.insert(
                 "insert_rows".to_string(),
                 Rc::new(NativeFunction::new("Model.insert_rows", Some(2), |args| {
-                    let (class_name, collection) = require_columnar(&args, "insert_rows")?;
+                    let (class_name, collection) = require_columnar(args, "insert_rows")?;
                     let rows = match args.get(1) {
                         Some(rows @ Value::Array(_)) => {
                             crate::interpreter::value::value_to_json(rows)?
@@ -3335,7 +3335,7 @@ impl Model {
             native_static_methods.insert(
                 "query".to_string(),
                 Rc::new(NativeFunction::new("Model.query", Some(2), |args| {
-                    let (class_name, collection) = require_columnar(&args, "query")?;
+                    let (class_name, collection) = require_columnar(args, "query")?;
                     let options = args.get(1).ok_or_else(|| {
                         format!(
                             "{}.query expects an options hash with a \"columns\" array",
@@ -3355,7 +3355,7 @@ impl Model {
                     "Model.add_column_index",
                     None,
                     |args| {
-                        let (class_name, collection) = require_columnar(&args, "add_column_index")?;
+                        let (class_name, collection) = require_columnar(args, "add_column_index")?;
                         let column = match args.get(1) {
                             Some(Value::String(s)) => s.to_string(),
                             _ => {
@@ -3400,7 +3400,7 @@ impl Model {
                     "Model.column_indexes",
                     Some(1),
                     |args| {
-                        let (_, collection) = require_columnar(&args, "column_indexes")?;
+                        let (_, collection) = require_columnar(args, "column_indexes")?;
                         super::columnar::list_indexes(&collection)
                     },
                 )),
@@ -3412,8 +3412,7 @@ impl Model {
                     "Model.drop_column_index",
                     Some(2),
                     |args| {
-                        let (class_name, collection) =
-                            require_columnar(&args, "drop_column_index")?;
+                        let (class_name, collection) = require_columnar(args, "drop_column_index")?;
                         let column = match args.get(1) {
                             Some(Value::String(s)) => s.to_string(),
                             _ => {
@@ -3435,7 +3434,7 @@ impl Model {
                     "Model.columnar_stats",
                     Some(1),
                     |args| {
-                        let (_, collection) = require_columnar(&args, "columnar_stats")?;
+                        let (_, collection) = require_columnar(args, "columnar_stats")?;
                         super::columnar::stats(&collection)
                     },
                 )),
@@ -3450,7 +3449,7 @@ impl Model {
         native_static_methods.insert(
             "group_by".to_string(),
             Rc::new(NativeFunction::new("Model.group_by", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3530,7 +3529,7 @@ impl Model {
             "similar".to_string(),
             Rc::new(NativeFunction::new("Model.similar", None, |args| {
                 use super::query::{SimilarInput, SimilarSpec};
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3604,7 +3603,7 @@ impl Model {
         native_static_methods.insert(
             "search".to_string(),
             Rc::new(NativeFunction::new("Model.search", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3689,7 +3688,7 @@ impl Model {
         native_static_methods.insert(
             "hybrid".to_string(),
             Rc::new(NativeFunction::new("Model.hybrid", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3864,7 +3863,7 @@ impl Model {
         native_static_methods.insert(
             "graph_rag".to_string(),
             Rc::new(NativeFunction::new("Model.graph_rag", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3892,7 +3891,7 @@ impl Model {
         native_static_methods.insert(
             "rag".to_string(),
             Rc::new(NativeFunction::new("Model.rag", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -3965,8 +3964,8 @@ impl Model {
         native_static_methods.insert(
             "near".to_string(),
             Rc::new(NativeFunction::new("Model.near", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let (collection, field, class, lat, lon) = geo_args(&args, "near")?;
+                let class_name = get_class_name_from_class(args)?;
+                let (collection, field, class, lat, lon) = geo_args(args, "near")?;
                 let mut limit: f64 = 10.0;
                 if let Some(Value::Hash(opts)) = args.get(3) {
                     use crate::interpreter::value::HashKey;
@@ -4003,8 +4002,8 @@ impl Model {
         native_static_methods.insert(
             "within".to_string(),
             Rc::new(NativeFunction::new("Model.within", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let (collection, field, class, lat, lon) = geo_args(&args, "within")?;
+                let class_name = get_class_name_from_class(args)?;
+                let (collection, field, class, lat, lon) = geo_args(args, "within")?;
                 let radius = match args.get(3) {
                     Some(Value::Int(n)) if *n > 0 => *n as f64,
                     Some(Value::Float(f)) if *f > 0.0 => *f,
@@ -4033,7 +4032,7 @@ impl Model {
         native_static_methods.insert(
             "time_bucket".to_string(),
             Rc::new(NativeFunction::new("Model.time_bucket", None, |args| {
-                let class = get_class_rc_from_args(&args)?;
+                let class = get_class_rc_from_args(args)?;
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
@@ -4070,7 +4069,7 @@ impl Model {
                 "Model.prune",
                 None,
                 |args| {
-                    let class = get_class_rc_from_args(&args)?;
+                    let class = get_class_rc_from_args(args)?;
                     let class_name = class.name.clone();
                     let collection = class_name_to_collection(&class_name);
 
@@ -4695,7 +4694,7 @@ impl Model {
         native_methods.insert(
             "increment".to_string(),
             Rc::new(NativeFunction::new("Model#increment", None, |args| {
-                apply_field_delta(&args, /*sign=*/ 1, "increment")
+                apply_field_delta(args, /*sign=*/ 1, "increment")
             })),
         );
 
@@ -4703,7 +4702,7 @@ impl Model {
         native_methods.insert(
             "decrement".to_string(),
             Rc::new(NativeFunction::new("Model#decrement", None, |args| {
-                apply_field_delta(&args, /*sign=*/ -1, "decrement")
+                apply_field_delta(args, /*sign=*/ -1, "decrement")
             })),
         );
 
@@ -5210,9 +5209,9 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "validates".to_string(),
         Value::NativeFunction(NativeFunction::new("validates", Some(3), |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
 
-            let field = arg_str_or_sym(&args, 1, "validates()", "field name")?;
+            let field = arg_str_or_sym(args, 1, "validates()", "field name")?;
 
             let options = match args.get(2) {
                 Some(Value::Hash(hash)) => hash.borrow().clone(),
@@ -5237,7 +5236,7 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "attr_accessible".to_string(),
         Value::NativeFunction(NativeFunction::new("attr_accessible", None, |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let fields = collect_accessible_fields(&args[1..])?;
             register_accessible_attributes(&class_name, fields);
             Ok(Value::Null)
@@ -5264,9 +5263,9 @@ pub fn register_model_builtins(env: &mut Environment) {
                 &callback_name_for_fn,
                 Some(2),
                 move |args| {
-                    let class_name = get_class_name_from_class(&args)?;
+                    let class_name = get_class_name_from_class(args)?;
                     let method_name = arg_str_or_sym(
-                        &args,
+                        args,
                         1,
                         &format!("{}()", callback_name_for_closure),
                         "method name",
@@ -5300,7 +5299,7 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "soft_delete".to_string(),
         Value::NativeFunction(NativeFunction::new("soft_delete", Some(1), |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let mut metadata = get_or_create_metadata(&class_name);
             metadata.soft_delete = true;
             update_metadata(&class_name, metadata);
@@ -5317,7 +5316,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "edge".to_string(),
         Value::NativeFunction(NativeFunction::new("edge", Some(2), |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
 
             let usage = "edge requires from: and to: collections, e.g. \
@@ -5365,7 +5364,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "timeseries".to_string(),
         Value::NativeFunction(NativeFunction::new("timeseries", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
 
             let mut spec = super::registry::TimeseriesSpec::default();
@@ -5443,7 +5442,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "columnar".to_string(),
         Value::NativeFunction(NativeFunction::new("columnar", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
 
             let mut compression: Option<String> = None;
             if let Some(opts) = args.get(1) {
@@ -5501,7 +5500,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "column".to_string(),
         Value::NativeFunction(NativeFunction::new("column", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
 
             let name = match args.get(1) {
                 Some(Value::String(s)) => s.to_string(),
@@ -5589,7 +5588,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "vector_index".to_string(),
         Value::NativeFunction(NativeFunction::new("vector_index", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
 
             let field = match args.get(1) {
@@ -5675,7 +5674,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "fulltext_index".to_string(),
         Value::NativeFunction(NativeFunction::new("fulltext_index", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
 
             let mut fields: Vec<String> = Vec::new();
@@ -5738,7 +5737,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "geo_index".to_string(),
         Value::NativeFunction(NativeFunction::new("geo_index", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
 
             let field = match args.get(1) {
                 Some(Value::String(s)) => s.to_string(),
@@ -5784,7 +5783,7 @@ pub fn register_model_builtins(env: &mut Environment) {
         "index".to_string(),
         Value::NativeFunction(NativeFunction::new("index", None, |args| {
             use crate::interpreter::value::HashKey;
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
 
             let fields: Vec<String> = match args.get(1) {
@@ -5881,7 +5880,7 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "encrypts".to_string(),
         Value::NativeFunction(NativeFunction::new("encrypts", None, |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let collection = class_name_to_collection(&class_name);
             for arg in args.iter().skip(1) {
                 let field = match arg {
@@ -5907,7 +5906,7 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "enum_field".to_string(),
         Value::NativeFunction(NativeFunction::new("enum_field", Some(3), |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let field = match args.get(1) {
                 Some(Value::String(s)) => s.to_string(),
                 Some(Value::Symbol(s)) => s.to_string(),
@@ -5948,7 +5947,7 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "scope".to_string(),
         Value::NativeFunction(NativeFunction::new("scope", Some(3), |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class_name = get_class_name_from_class(args)?;
             let name = match args.get(1) {
                 Some(Value::String(s)) => s.clone(),
                 Some(Value::Symbol(s)) => s.clone(),
@@ -5995,8 +5994,8 @@ pub fn register_model_builtins(env: &mut Environment) {
     env.define(
         "uploader".to_string(),
         Value::NativeFunction(NativeFunction::new("uploader", Some(3), |args| {
-            let class_name = get_class_name_from_class(&args)?;
-            let config = build_uploader_config_from_args(&class_name, &args)?;
+            let class_name = get_class_name_from_class(args)?;
+            let config = build_uploader_config_from_args(&class_name, args)?;
             register_uploader(&class_name, config);
             Ok(Value::Null)
         })),
@@ -6107,8 +6106,8 @@ pub fn register_model_builtins(env: &mut Environment) {
         env.define(
             method_name.clone(),
             Value::NativeFunction(NativeFunction::new(&method_name, None, move |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let name = arg_str_or_sym(&args, 1, "relation", "name")?;
+                let class_name = get_class_name_from_class(args)?;
+                let name = arg_str_or_sym(args, 1, "relation", "name")?;
 
                 let options = parse_relation_options(args.get(2), &rel_type)?;
 
@@ -6126,8 +6125,8 @@ pub fn register_model_builtins(env: &mut Environment) {
             "has_and_belongs_to_many",
             None,
             |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let name = arg_str_or_sym(&args, 1, "has_and_belongs_to_many", "name")?;
+                let class_name = get_class_name_from_class(args)?;
+                let name = arg_str_or_sym(args, 1, "has_and_belongs_to_many", "name")?;
 
                 let options =
                     parse_relation_options(args.get(2), &RelationType::HasAndBelongsToMany)?;

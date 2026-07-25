@@ -244,8 +244,8 @@ fn format_sse(data: &str, event: Option<&str>) -> String {
 /// mode). Named `emit`, not `send`, because `send` is the universal
 /// metaprogramming method (it would treat the payload as a method name).
 /// Returns false if the client has disconnected.
-fn out_emit(args: Vec<Value>) -> Result<Value, String> {
-    let (id, sse) = instance_fields(&args)
+fn out_emit(args: &[Value]) -> Result<Value, String> {
+    let (id, sse) = instance_fields(args)
         .ok_or_else(|| "out.emit() must be called on a stream emitter".to_string())?;
     let data = as_text(args.get(1));
     let bytes = if sse {
@@ -261,8 +261,8 @@ fn out_emit(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `out.write(data)` — emit a raw body chunk (no SSE framing).
-fn out_write(args: Vec<Value>) -> Result<Value, String> {
-    let (id, _sse) = instance_fields(&args)
+fn out_write(args: &[Value]) -> Result<Value, String> {
+    let (id, _sse) = instance_fields(args)
         .ok_or_else(|| "out.write() must be called on a stream emitter".to_string())?;
     let data = as_text(args.get(1));
     Ok(Value::Bool(send_chunk(id, data.into_bytes())))
@@ -280,8 +280,8 @@ fn take_block(args: &[Value]) -> Option<Value> {
         .cloned()
 }
 
-fn sse_builtin(args: Vec<Value>) -> Result<Value, String> {
-    let block = take_block(&args).ok_or_else(|| {
+fn sse_builtin(args: &[Value]) -> Result<Value, String> {
+    let block = take_block(args).ok_or_else(|| {
         "sse(req) requires a block: sse(req) do |out| out.emit(...) end".to_string()
     })?;
     set_pending(StreamSpec {
@@ -300,8 +300,8 @@ fn sse_builtin(args: Vec<Value>) -> Result<Value, String> {
     Ok(sentinel())
 }
 
-fn stream_builtin(args: Vec<Value>) -> Result<Value, String> {
-    let block = take_block(&args).ok_or_else(|| {
+fn stream_builtin(args: &[Value]) -> Result<Value, String> {
+    let block = take_block(args).ok_or_else(|| {
         "stream(req, content_type) requires a block: stream(req, \"text/csv\") do |out| ... end"
             .to_string()
     })?;
@@ -334,8 +334,8 @@ fn last_string(args: &[Value]) -> Option<String> {
 /// `sse_subscribe(req, topic)` — open a long-lived SSE connection subscribed to
 /// `topic`. The worker registers the connection and returns immediately (no
 /// worker held); events arrive via `sse_broadcast`.
-fn sse_subscribe_builtin(args: Vec<Value>) -> Result<Value, String> {
-    let topic = last_string(&args)
+fn sse_subscribe_builtin(args: &[Value]) -> Result<Value, String> {
+    let topic = last_string(args)
         .ok_or_else(|| "sse_subscribe(req, topic) requires a topic string".to_string())?;
     set_pending(StreamSpec {
         block: Value::Null,
@@ -355,7 +355,7 @@ fn sse_subscribe_builtin(args: Vec<Value>) -> Result<Value, String> {
 /// `sse_broadcast(topic, data, event?)` — push an SSE event to every live
 /// subscriber of `topic` (from a controller, job, or callback). Returns the
 /// number of clients reached. Safe to call from any thread.
-fn sse_broadcast_builtin(args: Vec<Value>) -> Result<Value, String> {
+fn sse_broadcast_builtin(args: &[Value]) -> Result<Value, String> {
     let topic = match args.first() {
         Some(Value::String(s)) => s.to_string(),
         _ => return Err("sse_broadcast(topic, data, event?) requires a topic string".to_string()),
@@ -372,7 +372,7 @@ fn sse_broadcast_builtin(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `sse_subscribers(topic)` — count live subscribers on `topic`.
-fn sse_subscribers_builtin(args: Vec<Value>) -> Result<Value, String> {
+fn sse_subscribers_builtin(args: &[Value]) -> Result<Value, String> {
     let topic = match args.first() {
         Some(Value::String(s)) => s.to_string(),
         _ => return Err("sse_subscribers(topic) requires a topic string".to_string()),
@@ -415,8 +415,8 @@ pub fn run_stream_block(
 /// (an SSE `data:` frame in SSE mode, raw text otherwise); returns the full
 /// accumulated answer so the handler can persist it. Stops early if the client
 /// disconnects. Errors when the LLM isn't configured.
-fn out_llm_stream(args: Vec<Value>) -> Result<Value, String> {
-    let (id, sse) = instance_fields(&args).ok_or_else(|| {
+fn out_llm_stream(args: &[Value]) -> Result<Value, String> {
+    let (id, sse) = instance_fields(args).ok_or_else(|| {
         "out.llm_stream(system, user) must be called on a stream emitter".to_string()
     })?;
     let system = as_text(args.get(1));

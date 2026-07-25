@@ -14,8 +14,8 @@ pub fn register_json_class(env: &mut Environment) {
     // JSON.parse(string) - Parse JSON string to Value
     json_static_methods.insert(
         "parse".to_string(),
-        Rc::new(NativeFunction::new("JSON.parse", Some(1), |mut args| {
-            let json_str = match args.swap_remove(0) {
+        Rc::new(NativeFunction::new("JSON.parse", Some(1), |args| {
+            let json_str = match args[0].clone() {
                 Value::String(s) => s,
                 other => {
                     return Err(format!(
@@ -42,23 +42,19 @@ pub fn register_json_class(env: &mut Environment) {
     // parse the inner JSON into a Value.
     json_static_methods.insert(
         "parse_jsonp".to_string(),
-        Rc::new(NativeFunction::new(
-            "JSON.parse_jsonp",
-            Some(1),
-            |mut args| {
-                let jsonp_str = match args.swap_remove(0) {
-                    Value::String(s) => s,
-                    other => {
-                        return Err(format!(
-                            "JSON.parse_jsonp() expects string, got {}",
-                            other.type_name()
-                        ))
-                    }
-                };
-                let inner = crate::interpreter::jsonp::strip_jsonp_padding(&jsonp_str)?;
-                parse_json(inner)
-            },
-        )),
+        Rc::new(NativeFunction::new("JSON.parse_jsonp", Some(1), |args| {
+            let jsonp_str = match args[0].clone() {
+                Value::String(s) => s,
+                other => {
+                    return Err(format!(
+                        "JSON.parse_jsonp() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let inner = crate::interpreter::jsonp::strip_jsonp_padding(&jsonp_str)?;
+            parse_json(inner)
+        })),
     );
 
     // Create JSON class
@@ -90,8 +86,8 @@ pub fn register_json_class(env: &mut Environment) {
 
     env.define(
         "json_parse".to_string(),
-        Value::NativeFunction(NativeFunction::new("json_parse", Some(1), |mut args| {
-            let json_str = match args.swap_remove(0) {
+        Value::NativeFunction(NativeFunction::new("json_parse", Some(1), |args| {
+            let json_str = match args[0].clone() {
                 Value::String(s) => s,
                 other => {
                     return Err(format!(

@@ -1997,6 +1997,32 @@ impl Vm {
                     };
                     self.stack.push(Value::Bool(result));
                 }
+                // --- In-place local arithmetic: no push, no pop ---
+                //
+                // The fast arms mutate the slot directly. `Value` is 24 bytes with
+                // drop glue, so avoiding the push/pop pair matters more here than
+                // the saved dispatches. The slow arms fall back to the generic
+                // operators, which preserve overflow/coercion/error behaviour
+                // exactly — these opcodes are a peephole, not new semantics.
+                Op::AddLocalsInPlace(a, b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let (ia, ib) = (base + a as usize, base + b as usize);
+                    match (&self.stack[ia], &self.stack[ib]) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            let r = x.wrapping_add(*y);
+                            self.stack[ia] = Value::Int(r);
+                        }
+                        (Value::Float(x), Value::Float(y)) => {
+                            let r = x + y;
+                            self.stack[ia] = Value::Float(r);
+                        }
+                        _ => {
+                            let (x, y) = (self.stack[ia].clone(), self.stack[ib].clone());
+                            let span = self.current_span();
+                            self.stack[ia] = self.op_add(x, y, span)?;
+                        }
+                    }
+                }
                 Op::AddLocalConst(slot, const_idx) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let local = &self.stack[base + slot as usize];

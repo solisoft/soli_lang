@@ -669,6 +669,7 @@ fn stack_effect(op: Op) -> i32 {
         HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) => 0,
         HashSetConst(_) => -1,
         HashGetLocalConst(_, _) | HashHasKeyLocalConst(_, _) | HashDeleteLocalConst(_, _) => 1,
+        AddLocalsInPlace(_, _) => 0,
         HashSetLocalConst(_, _) => -1,
         HashGetGlobalConst(_, _) | HashHasKeyGlobalConst(_, _) | HashDeleteGlobalConst(_, _) => 1,
         HashSetGlobalConst(_, _) => -1,
@@ -800,6 +801,30 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         }
 
         // Pattern: GetLocal(a), GetLocal(b), Add, SetLocal(a), Pop → AddLocalLocal(a, b) + SetLocalPop(a)
+        // Pattern: a = a + b  (GetLocal, GetLocal, Add, SetLocal, Pop) → in place.
+        // Must precede the 3-op `AddLocalConst` rule below, which would otherwise
+        // consume the prefix and leave the SetLocal/Pop behind.
+        if i + 4 < len {
+            if let (
+                Op::GetLocal(slot_a),
+                Op::GetLocal(slot_b),
+                Op::Add,
+                Op::SetLocal(slot_target),
+                Op::Pop,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+            {
+                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
+                    code[i] = Op::AddLocalsInPlace(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
         // This is: a = a + b  → becomes two ops instead of five
         if i + 4 < len {
             if let (
@@ -1287,25 +1312,143 @@ fn any_jump_target(targets: &[bool], start: usize, count: usize) -> bool {
     false
 }
 
-/// Remove NOP (Pop) instructions inserted by peephole, adjusting jump offsets.
+/// Remove the `Op::Nop` placeholders the peephole leaves behind, rewriting every
+/// jump offset to match.
+///
+/// The peephole fuses instruction sequences by overwriting the head and blanking
+/// the tail with `NOP` rather than resizing the vector, which would invalidate
+/// every jump offset in the chunk. Those NOPs were then *left in the emitted
+/// code* and dispatched at runtime — and because fusing is most aggressive
+/// exactly where code is hottest, they concentrated in tight loops. A counter
+/// loop compiled to ten instructions per iteration of which five were NOPs:
+/// half the dispatches did nothing.
+///
+/// (The previous stub declined to do this, reasoning that peephole NOPs could
+/// not be told apart from real `Pop`s. That is no longer true — `NOP` is
+/// `Op::Nop`, its own variant, and the compiler emits it nowhere else.)
+///
+/// Offsets are relative to the instruction *after* the jump, so a forward jump
+/// at `i` with offset `d` targets `i + 1 + d`, and `Loop` targets `i + 1 - d`.
+/// Both are remapped through the old→new index table.
+///
+/// **Invariant:** every opcode that advances `ip` by one of its operands must be
+/// listed in the match below. Grepping for `Jump` is not sufficient — `ForIter`,
+/// `ForIterRange`, `RescueJump` and `CatchMatch` all do it under other names.
+/// `tests/differential_engines_test.rs` is what catches a miss.
 fn compact_nops(chunk: &mut Chunk) {
-    let code = &chunk.code;
-    let len = code.len();
-
-    // Build a mapping from old offset to new offset
-    let mut old_to_new = vec![0usize; len + 1];
-    let mut new_offset = 0usize;
-    for item in old_to_new.iter_mut().take(len) {
-        *item = new_offset;
-        // A NOP is a Pop that was inserted by peephole.
-        // We detect peephole NOPs by checking if there's a sequence of Pops that were part of a pattern.
-        // Actually, we can't distinguish original Pops from peephole NOPs easily.
-        // Better approach: use a separate marker. Let me just keep the NOPs and not compact.
-        new_offset += 1;
+    if !chunk.code.iter().any(|op| matches!(op, Op::Nop)) {
+        return;
     }
-    old_to_new[len] = new_offset;
+    let len = chunk.code.len();
 
-    // For now, don't compact - the NOPs (extra Pops) are essentially free.
-    // They add a tiny overhead but avoid the complexity of rewriting all jump offsets.
-    // The main win is from the super-instructions reducing work, not from fewer instructions.
+    // old index -> new index. Entry `len` is the one-past-the-end position, which
+    // a jump to the very end of the chunk legitimately targets.
+    let mut old_to_new = vec![0usize; len + 1];
+    let mut next = 0usize;
+    for (old, op) in chunk.code.iter().enumerate() {
+        old_to_new[old] = next;
+        if !matches!(op, Op::Nop) {
+            next += 1;
+        }
+    }
+    old_to_new[len] = next;
+
+    let mut code = Vec::with_capacity(next);
+    let mut lines = Vec::with_capacity(next);
+    for (old, op) in chunk.code.iter().enumerate() {
+        if matches!(op, Op::Nop) {
+            continue;
+        }
+        let here = old_to_new[old];
+        // `here + 1` is the ip the VM has already advanced to when the jump runs.
+        let fixed = match *op {
+            Op::Loop(d) => {
+                let target = old_to_new[old + 1 - d as usize];
+                Op::Loop((here + 1 - target) as u16)
+            }
+            Op::Jump(d) => Op::Jump(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfFalse(d) => Op::JumpIfFalse(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfFalseNoPop(d) => Op::JumpIfFalseNoPop(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfTrueNoPop(d) => Op::JumpIfTrueNoPop(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfNull(d) => Op::JumpIfNull(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfNotNull(d) => Op::JumpIfNotNull(fwd(&old_to_new, old, d, here)),
+            Op::TestLessJump(d) => Op::TestLessJump(fwd(&old_to_new, old, d, here)),
+            Op::TestLessEqualJump(d) => Op::TestLessEqualJump(fwd(&old_to_new, old, d, here)),
+            Op::TestGreaterJump(d) => Op::TestGreaterJump(fwd(&old_to_new, old, d, here)),
+            Op::TestGreaterEqualJump(d) => Op::TestGreaterEqualJump(fwd(&old_to_new, old, d, here)),
+            Op::TestNotEqualJump(d) => Op::TestNotEqualJump(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfParamSupplied(p, d) => {
+                Op::JumpIfParamSupplied(p, fwd(&old_to_new, old, d, here))
+            }
+            // These four do not have "jump" in their names and were missed on the
+            // first pass; the differential harness caught it immediately. Any new
+            // opcode that advances `ip` by an operand MUST be added here.
+            Op::ForIter(d) => Op::ForIter(fwd(&old_to_new, old, d, here)),
+            Op::ForIterRange(d) => Op::ForIterRange(fwd(&old_to_new, old, d, here)),
+            Op::RescueJump(d) => Op::RescueJump(fwd(&old_to_new, old, d, here)),
+            Op::CatchMatch(name_idx, d) => Op::CatchMatch(name_idx, fwd(&old_to_new, old, d, here)),
+            other => other,
+        };
+        code.push(fixed);
+        lines.push(chunk.lines.get(old).copied().unwrap_or(0));
+    }
+
+    chunk.code = code;
+    chunk.lines = lines;
+}
+
+/// Remap a forward jump offset through the old→new index table.
+#[inline]
+fn fwd(old_to_new: &[usize], old: usize, d: u16, here: usize) -> u16 {
+    let target = old_to_new[old + 1 + d as usize];
+    (target - (here + 1)) as u16
+}
+
+#[cfg(test)]
+mod inplace_peephole_tests {
+    use super::*;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    /// Compile `body` inside a function, because that is where locals live:
+    /// at top level `let x = 0` becomes a *global* (`DefineGlobal`), so a
+    /// script-scope loop never exercises the local peepholes at all.
+    fn fn_ops(body: &str) -> Vec<Op> {
+        let src = format!("def f() {{\n{}\n}}\n", body);
+        let tokens = Scanner::new(&src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        let m = Compiler::compile(&program).expect("compile");
+        for c in m.main.chunk.constants.iter() {
+            if let Constant::Function(proto) = c {
+                return proto.chunk.code.clone();
+            }
+        }
+        panic!("no function proto found");
+    }
+
+    /// The whole point of the in-place opcodes is that the canonical loop body
+    /// actually compiles to them. Without this, the peephole can silently stop
+    /// matching and the only symptom is a benchmark that quietly gets slower.
+    /// `i = i + 1` is already collapsed to `IncrLocal` by an earlier rule, and
+    /// `d = d - 1` to `DecrLocal`. Pinning that here so nobody re-adds a
+    /// redundant const/subtract in-place opcode: the seam is taken.
+    #[test]
+    fn counter_increment_uses_existing_incr_local() {
+        let ops = fn_ops("let i = 0\nwhile i < 5 { i = i + 1 }");
+        assert!(
+            ops.iter().any(|o| matches!(o, Op::IncrLocal(_))),
+            "expected the pre-existing IncrLocal, got: {:?}",
+            ops
+        );
+    }
+
+    #[test]
+    fn accumulator_compiles_in_place() {
+        let ops = fn_ops("let s = 0\nlet j = 0\nwhile j < 3 { s = s + j\n j = j + 1 }");
+        assert!(
+            ops.iter().any(|o| matches!(o, Op::AddLocalsInPlace(_, _))),
+            "expected AddLocalsInPlace, got: {:?}",
+            ops
+        );
+    }
 }

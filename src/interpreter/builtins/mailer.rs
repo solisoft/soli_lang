@@ -511,7 +511,7 @@ fn envelope_from_address(cfg: &MailerConfig, data: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// `__mailer_configure(opts_hash)` — merge options into the global config.
-fn mailer_configure(args: Vec<Value>) -> Result<Value, String> {
+fn mailer_configure(args: &[Value]) -> Result<Value, String> {
     let Some(Value::Hash(opts)) = args.first() else {
         return Err("Mailer.configure expects a Hash of options".to_string());
     };
@@ -562,7 +562,7 @@ fn mailer_configure(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `__mailer_deliver(mail_hash)` — send (or capture) a fully-rendered mail.
-fn mailer_deliver(args: Vec<Value>) -> Result<Value, String> {
+fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
     let Some(Value::Hash(mail)) = args.first() else {
         return Err("Mailer.deliver expects a Hash".to_string());
     };
@@ -601,13 +601,13 @@ fn mailer_deliver(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `__mailer_deliveries()` — captured mail in test mode (newest last).
-fn mailer_deliveries(_args: Vec<Value>) -> Result<Value, String> {
+fn mailer_deliveries(_args: &[Value]) -> Result<Value, String> {
     let list = DELIVERIES.with(|d| d.borrow().clone());
     Ok(Value::Array(Rc::new(RefCell::new(list))))
 }
 
 /// `__mailer_clear_deliveries()` — reset the test capture buffer.
-fn mailer_clear_deliveries(_args: Vec<Value>) -> Result<Value, String> {
+fn mailer_clear_deliveries(_args: &[Value]) -> Result<Value, String> {
     DELIVERIES.with(|d| d.borrow_mut().clear());
     Ok(Value::Null)
 }
@@ -615,7 +615,7 @@ fn mailer_clear_deliveries(_args: Vec<Value>) -> Result<Value, String> {
 /// `__mail_render(mailer_instance, opts_hash)` — resolve the convention view,
 /// render it with the mailer's instance variables, and return the rendered
 /// mail hash ready for delivery.
-fn mail_render(args: Vec<Value>) -> Result<Value, String> {
+fn mail_render(args: &[Value]) -> Result<Value, String> {
     let inst = match args.first() {
         Some(Value::Instance(inst)) => inst.clone(),
         _ => return Err("__mail_render must be called with a mailer instance".to_string()),
@@ -735,7 +735,7 @@ fn class_name_to_snake(name: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Signature of a native mailer builtin.
-type MailerBuiltin = fn(Vec<Value>) -> Result<Value, String>;
+type MailerBuiltin = fn(&[Value]) -> Result<Value, String>;
 
 /// Register the native mailer builtins. The user-facing `Mailer`/`Message`
 /// classes are defined by [`MAILER_PRELUDE`], loaded into top-level
@@ -769,7 +769,7 @@ pub fn register_mailer_builtins(env: &mut Environment) {
 /// enqueues a `__MailDelivery` job onto the SolidB-backed Job queue; if the
 /// queue is unavailable it logs and falls back to sending synchronously so
 /// mail is never silently dropped.
-pub(crate) fn mail_enqueue(args: Vec<Value>) -> Result<Value, String> {
+pub(crate) fn mail_enqueue(args: &[Value]) -> Result<Value, String> {
     let mail = args.first().cloned().unwrap_or(Value::Null);
     let method = MAILER_CONFIG
         .read()
@@ -777,7 +777,7 @@ pub(crate) fn mail_enqueue(args: Vec<Value>) -> Result<Value, String> {
         .unwrap_or(DeliveryMethod::Smtp);
 
     if matches!(method, DeliveryMethod::Test | DeliveryMethod::Logger) {
-        return mailer_deliver(vec![mail]);
+        return mailer_deliver(&[mail]);
     }
 
     let mut enqueue_args = vec![Value::String("__MailDelivery".into()), mail.clone()];
@@ -786,11 +786,11 @@ pub(crate) fn mail_enqueue(args: Vec<Value>) -> Result<Value, String> {
             enqueue_args.push(queue.clone());
         }
     }
-    match crate::interpreter::builtins::jobs::enqueue(enqueue_args) {
+    match crate::interpreter::builtins::jobs::enqueue(&enqueue_args) {
         Ok(id) => Ok(id),
         Err(e) => {
             eprintln!("[mailer] deliver_later: queue unavailable ({e}); sending synchronously");
-            mailer_deliver(vec![mail])
+            mailer_deliver(&[mail])
         }
     }
 }
@@ -801,7 +801,7 @@ pub(crate) fn mail_enqueue(args: Vec<Value>) -> Result<Value, String> {
 /// `Mailer.method_missing` forwards an arbitrary arity to the action (Soli has
 /// no call-site spread). Missing parameters bind to null, so mailer actions
 /// should not rely on default parameter values.
-pub(crate) fn mail_invoke(args: Vec<Value>) -> Result<Value, String> {
+pub(crate) fn mail_invoke(args: &[Value]) -> Result<Value, String> {
     let inst = match args.first() {
         Some(Value::Instance(i)) => i.clone(),
         _ => return Err("__mailer_invoke expects a mailer instance".to_string()),

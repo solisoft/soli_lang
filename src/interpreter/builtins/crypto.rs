@@ -2038,7 +2038,7 @@ mod tests {
     #[test]
     fn totp_generate_rejects_zero_period() {
         let f = crypto_static("totp_generate");
-        let err = (f.func)(vec![
+        let err = (f.func)(&[
             Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
             Value::Int(0),
@@ -2052,7 +2052,7 @@ mod tests {
         // The previous `*p as u64` cast turned -30 into a huge positive
         // period value, producing wildly wrong codes silently.
         let f = crypto_static("totp_generate");
-        let err = (f.func)(vec![
+        let err = (f.func)(&[
             Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
             Value::Int(-30),
@@ -2066,7 +2066,7 @@ mod tests {
         // The 30-second default path (no period arg) must remain
         // unchanged.
         let f = crypto_static("totp_generate");
-        let result = (f.func)(vec![
+        let result = (f.func)(&[
             Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
         ])
@@ -2080,7 +2080,7 @@ mod tests {
     #[test]
     fn totp_verify_rejects_zero_period() {
         let f = crypto_static("totp_verify");
-        let err = (f.func)(vec![
+        let err = (f.func)(&[
             Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::String("000000".into()),
             Value::Int(1_700_000_000),
@@ -2093,7 +2093,7 @@ mod tests {
     #[test]
     fn totp_verify_rejects_negative_period() {
         let f = crypto_static("totp_verify");
-        let err = (f.func)(vec![
+        let err = (f.func)(&[
             Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::String("000000".into()),
             Value::Int(1_700_000_000),
@@ -2110,11 +2110,11 @@ mod tests {
         let ver = crypto_static("totp_verify");
         let secret = Value::String("JBSWY3DPEHPK3PXP".into());
         let time = Value::Int(1_700_000_000);
-        let code = match (gen.func)(vec![secret.clone(), time.clone()]).unwrap() {
+        let code = match (gen.func)(&[secret.clone(), time.clone()]).unwrap() {
             Value::String(s) => s,
             other => panic!("expected String code, got {:?}", other),
         };
-        let valid = (ver.func)(vec![secret, Value::String(code), time]).unwrap();
+        let valid = (ver.func)(&[secret, Value::String(code), time]).unwrap();
         assert!(matches!(valid, Value::Bool(true)));
     }
 

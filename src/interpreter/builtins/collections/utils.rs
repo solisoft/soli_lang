@@ -713,7 +713,7 @@ mod base64_tests {
 
     fn call(method: &str, arg: Value) -> Value {
         let env = fresh_env();
-        (base64_fn(&env, method).func)(vec![arg]).unwrap()
+        (base64_fn(&env, method).func)(&[arg]).unwrap()
     }
 
     fn as_string(value: Value) -> String {
@@ -801,10 +801,11 @@ mod base64_tests {
     #[test]
     fn encode_rejects_out_of_range_bytes() {
         let env = fresh_env();
-        let err = (base64_fn(&env, "urlsafe_encode").func)(vec![Value::Array(Rc::new(
-            RefCell::new(vec![Value::Int(256)]),
-        ))])
-        .expect_err("byte values above 255 must error");
+        let err =
+            (base64_fn(&env, "urlsafe_encode").func)(&[Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(256),
+            ])))])
+            .expect_err("byte values above 255 must error");
         assert!(err.contains("out of range"), "{}", err);
     }
 }

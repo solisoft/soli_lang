@@ -676,7 +676,7 @@ mod tests {
     fn vapid_generate_keys_returns_b64url_pair() {
         let env = fresh_env();
         let gen = vapid_fn(&env, "vapid_generate_keys");
-        let result = (gen.func)(vec![]).unwrap();
+        let result = (gen.func)(&[]).unwrap();
         let hash = match result {
             Value::Hash(h) => h,
             other => panic!("expected hash, got {other:?}"),
@@ -701,7 +701,7 @@ mod tests {
         let gen = vapid_fn(&env, "vapid_generate_keys");
         let sign = vapid_fn(&env, "vapid_sign");
 
-        let keys = (gen.func)(vec![]).unwrap();
+        let keys = (gen.func)(&[]).unwrap();
         let priv_key = match keys {
             Value::Hash(h) => match hash_get(&h.borrow(), "private_key") {
                 Some(Value::String(s)) => s.clone(),
@@ -709,7 +709,7 @@ mod tests {
             },
             other => panic!("expected hash, got {other:?}"),
         };
-        let token = (sign.func)(vec![
+        let token = (sign.func)(&[
             Value::String(priv_key),
             Value::String("https://fcm.googleapis.com".into()),
             Value::String("mailto:dev@example.com".into()),
@@ -733,7 +733,7 @@ mod tests {
         let env = fresh_env();
         let gen = vapid_fn(&env, "vapid_generate_keys");
         let sign = vapid_fn(&env, "vapid_sign");
-        let keys = (gen.func)(vec![]).unwrap();
+        let keys = (gen.func)(&[]).unwrap();
         let priv_key = match keys {
             Value::Hash(h) => match hash_get(&h.borrow(), "private_key") {
                 Some(Value::String(s)) => s.clone(),
@@ -741,7 +741,7 @@ mod tests {
             },
             _ => panic!("hash missing"),
         };
-        let err = (sign.func)(vec![
+        let err = (sign.func)(&[
             Value::String(priv_key),
             Value::String("fcm.googleapis.com".into()),
             Value::String("mailto:dev@example.com".into()),
@@ -784,7 +784,7 @@ mod tests {
         );
 
         // Generate VAPID keys just to fill the trailing args.
-        let vapid_keys = (gen.func)(vec![]).unwrap();
+        let vapid_keys = (gen.func)(&[]).unwrap();
         let (pub_key, priv_key) = match vapid_keys {
             Value::Hash(h) => {
                 let h = h.borrow();
@@ -801,7 +801,7 @@ mod tests {
             _ => panic!(),
         };
 
-        let result = (encrypt.func)(vec![
+        let result = (encrypt.func)(&[
             Value::String("{\"title\":\"Hi\"}".into()),
             Value::Hash(Rc::new(RefCell::new(sub))),
             Value::String(pub_key),

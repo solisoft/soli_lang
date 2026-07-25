@@ -242,14 +242,14 @@ fn define_helpers_for(env: &mut Environment, base: &str) {
     env.define(
         path_name.clone(),
         Value::NativeFunction(NativeFunction::new(path_name, None, move |args| {
-            build_path_for_name(&path_base, &args).map(|s| Value::String(s.into()))
+            build_path_for_name(&path_base, args).map(|s| Value::String(s.into()))
         })),
     );
     let url_base = base_owned;
     env.define(
         url_name.clone(),
         Value::NativeFunction(NativeFunction::new(url_name, None, move |args| {
-            build_url_for_name(&url_base, &args).map(|s| Value::String(s.into()))
+            build_url_for_name(&url_base, args).map(|s| Value::String(s.into()))
         })),
     );
 }

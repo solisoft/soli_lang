@@ -482,7 +482,7 @@ fn parse_fetch_one(untagged: &[Vec<Piece>]) -> Option<Value> {
 // Constructor + instance methods
 // ---------------------------------------------------------------------------
 
-fn imap_new(class: Rc<Class>, args: Vec<Value>) -> Result<Value, String> {
+fn imap_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 || args.len() > 4 {
         return Err(format!(
             "Imap.new(host, user, password, opts?) expects 3 or 4 arguments, got {}",
@@ -547,8 +547,8 @@ fn imap_new(class: Rc<Class>, args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Instance(Rc::new(RefCell::new(inst))))
 }
 
-fn imap_select(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "select")?;
+fn imap_select(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "select")?;
     let mailbox = match args.get(1) {
         None | Some(Value::Null) => "INBOX".to_string(),
         Some(v) => as_string(v, "mailbox")?,
@@ -561,8 +561,8 @@ fn imap_select(args: Vec<Value>) -> Result<Value, String> {
     })
 }
 
-fn imap_mailboxes(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "mailboxes")?;
+fn imap_mailboxes(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "mailboxes")?;
     let untagged = with_conn(id, |c| c.command("LIST \"\" \"*\""))?;
     let mut out = Vec::new();
     for pieces in &untagged {
@@ -599,40 +599,40 @@ fn search_criteria(args: &[Value]) -> Result<String, String> {
     }
 }
 
-fn imap_search(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "search")?;
-    let criteria = search_criteria(&args)?;
+fn imap_search(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "search")?;
+    let criteria = search_criteria(args)?;
     let untagged = with_conn(id, |c| c.command(&format!("SEARCH {criteria}")))?;
     Ok(parse_search(&untagged))
 }
 
-fn imap_uid_search(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "uid_search")?;
-    let criteria = search_criteria(&args)?;
+fn imap_uid_search(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "uid_search")?;
+    let criteria = search_criteria(args)?;
     let untagged = with_conn(id, |c| c.command(&format!("UID SEARCH {criteria}")))?;
     Ok(parse_search(&untagged))
 }
 
-fn imap_fetch(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "fetch")?;
-    let seq = message_id_arg(&args, "fetch", "seq")?;
+fn imap_fetch(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch")?;
+    let seq = message_id_arg(args, "fetch", "seq")?;
     let untagged = with_conn(id, |c| {
         c.command(&format!("FETCH {seq} (UID FLAGS BODY.PEEK[])"))
     })?;
     parse_fetch_one(&untagged).ok_or_else(|| format!("Imap.fetch({seq}): no such message"))
 }
 
-fn imap_fetch_uid(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "fetch_uid")?;
-    let uid = message_id_arg(&args, "fetch_uid", "uid")?;
+fn imap_fetch_uid(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_uid")?;
+    let uid = message_id_arg(args, "fetch_uid", "uid")?;
     let untagged = with_conn(id, |c| {
         c.command(&format!("UID FETCH {uid} (UID FLAGS BODY.PEEK[])"))
     })?;
     parse_fetch_one(&untagged).ok_or_else(|| format!("Imap.fetch_uid({uid}): no such message"))
 }
 
-fn imap_fetch_all(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "fetch_all")?;
+fn imap_fetch_all(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_all")?;
     let untagged = with_conn(id, |c| {
         let exists = c.selected_exists.ok_or_else(|| {
             "Imap.fetch_all(): no mailbox selected — call select() first".to_string()
@@ -667,47 +667,47 @@ fn imap_fetch_all(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// Shared `STORE <seq> ±FLAGS (<flag>)` helper for the flag-mutating methods.
-fn store_flag(args: Vec<Value>, method: &str, op: char, flag: &str) -> Result<Value, String> {
-    let id = instance_id(&args, method)?;
-    let seq = message_id_arg(&args, method, "seq")?;
+fn store_flag(args: &[Value], method: &str, op: char, flag: &str) -> Result<Value, String> {
+    let id = instance_id(args, method)?;
+    let seq = message_id_arg(args, method, "seq")?;
     with_conn(id, |c| {
         c.command(&format!("STORE {seq} {op}FLAGS ({flag})"))
     })?;
     Ok(Value::Bool(true))
 }
 
-fn imap_mark_seen(args: Vec<Value>) -> Result<Value, String> {
+fn imap_mark_seen(args: &[Value]) -> Result<Value, String> {
     store_flag(args, "mark_seen", '+', "\\Seen")
 }
 
-fn imap_mark_unseen(args: Vec<Value>) -> Result<Value, String> {
+fn imap_mark_unseen(args: &[Value]) -> Result<Value, String> {
     store_flag(args, "mark_unseen", '-', "\\Seen")
 }
 
-fn imap_delete(args: Vec<Value>) -> Result<Value, String> {
+fn imap_delete(args: &[Value]) -> Result<Value, String> {
     store_flag(args, "delete", '+', "\\Deleted")
 }
 
-fn imap_expunge(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "expunge")?;
+fn imap_expunge(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "expunge")?;
     with_conn(id, |c| c.command("EXPUNGE"))?;
     Ok(Value::Bool(true))
 }
 
-fn imap_copy(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "copy")?;
-    let seq = message_id_arg(&args, "copy", "seq")?;
-    let mailbox = mailbox_arg(&args, "copy")?;
+fn imap_copy(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "copy")?;
+    let seq = message_id_arg(args, "copy", "seq")?;
+    let mailbox = mailbox_arg(args, "copy")?;
     with_conn(id, |c| {
         c.command(&format!("COPY {seq} {}", quote(&mailbox)))
     })?;
     Ok(Value::Bool(true))
 }
 
-fn imap_move(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "move")?;
-    let seq = message_id_arg(&args, "move", "seq")?;
-    let mailbox = mailbox_arg(&args, "move")?;
+fn imap_move(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "move")?;
+    let seq = message_id_arg(args, "move", "seq")?;
+    let mailbox = mailbox_arg(args, "move")?;
     // Uses the RFC 6851 MOVE extension (supported by Gmail, Dovecot, …). Servers
     // without it return NO/BAD, surfaced as an error to the caller.
     with_conn(id, |c| {
@@ -716,8 +716,8 @@ fn imap_move(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Bool(true))
 }
 
-fn imap_logout(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "logout")?;
+fn imap_logout(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "logout")?;
     let mut conns = IMAP_CONNS.lock().map_err(|e| e.to_string())?;
     if let Some(mut conn) = conns.remove(&id) {
         let _ = conn.command("LOGOUT");
@@ -732,7 +732,7 @@ fn imap_logout(args: Vec<Value>) -> Result<Value, String> {
 fn method(
     name: &'static str,
     arity: Option<usize>,
-    f: fn(Vec<Value>) -> Result<Value, String>,
+    f: fn(&[Value]) -> Result<Value, String>,
 ) -> (String, Rc<NativeFunction>) {
     (
         name.to_string(),

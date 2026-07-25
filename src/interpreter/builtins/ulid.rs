@@ -12,7 +12,7 @@ use ::ulid::Ulid;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
-fn make_ulid(_args: Vec<Value>) -> Result<Value, String> {
+fn make_ulid(_args: &[Value]) -> Result<Value, String> {
     Ok(Value::String(Ulid::new().to_string().into()))
 }
 
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn ulid_is_26_chars_crockford_base32() {
-        let v = make_ulid(vec![]).unwrap();
+        let v = make_ulid(&[]).unwrap();
         match v {
             Value::String(s) => {
                 assert_eq!(s.len(), 26);
@@ -81,8 +81,8 @@ mod tests {
     fn ulids_are_monotonic_within_a_millisecond_or_increasing() {
         // ULIDs minted in different millis sort by time. Same-ms ordering is not
         // guaranteed without a monotonic source, so assert distinctness instead.
-        let a = make_ulid(vec![]).unwrap();
-        let b = make_ulid(vec![]).unwrap();
+        let a = make_ulid(&[]).unwrap();
+        let b = make_ulid(&[]).unwrap();
         assert_ne!(format!("{}", a), format!("{}", b));
     }
 }

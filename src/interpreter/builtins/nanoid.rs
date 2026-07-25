@@ -52,8 +52,8 @@ fn parse_alphabet(value: &Value) -> Result<Vec<char>, String> {
     }
 }
 
-fn make_nanoid(args: Vec<Value>) -> Result<Value, String> {
-    let (size, alphabet) = match args.as_slice() {
+fn make_nanoid(args: &[Value]) -> Result<Value, String> {
+    let (size, alphabet) = match args {
         [] => (DEFAULT_SIZE, None),
         [size] => (parse_size(size)?, None),
         [size, alphabet] => (parse_size(size)?, Some(parse_alphabet(alphabet)?)),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn default_is_21_chars_url_safe() {
-        let v = make_nanoid(vec![]).unwrap();
+        let v = make_nanoid(&[]).unwrap();
         match v {
             Value::String(s) => {
                 assert_eq!(s.len(), DEFAULT_SIZE);
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn custom_size_respected() {
-        let v = make_nanoid(vec![Value::Int(10)]).unwrap();
+        let v = make_nanoid(&[Value::Int(10)]).unwrap();
         match v {
             Value::String(s) => assert_eq!(s.len(), 10),
             other => panic!("expected string, got {:?}", other),
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn custom_alphabet_respected() {
-        let v = make_nanoid(vec![Value::Int(16), Value::String("ABC".into())]).unwrap();
+        let v = make_nanoid(&[Value::Int(16), Value::String("ABC".into())]).unwrap();
         match v {
             Value::String(s) => {
                 assert_eq!(s.len(), 16);
@@ -146,22 +146,19 @@ mod tests {
 
     #[test]
     fn rejects_zero_or_negative_size() {
-        assert!(make_nanoid(vec![Value::Int(0)]).is_err());
-        assert!(make_nanoid(vec![Value::Int(-1)]).is_err());
+        assert!(make_nanoid(&[Value::Int(0)]).is_err());
+        assert!(make_nanoid(&[Value::Int(-1)]).is_err());
     }
 
     #[test]
     fn rejects_empty_alphabet() {
-        assert!(make_nanoid(vec![Value::Int(8), Value::String(String::new().into())]).is_err());
+        assert!(make_nanoid(&[Value::Int(8), Value::String(String::new().into())]).is_err());
     }
 
     #[test]
     fn rejects_too_many_args() {
-        assert!(make_nanoid(vec![
-            Value::Int(8),
-            Value::String("abc".into()),
-            Value::Int(1),
-        ])
-        .is_err());
+        assert!(
+            make_nanoid(&[Value::Int(8), Value::String("abc".into()), Value::Int(1),]).is_err()
+        );
     }
 }

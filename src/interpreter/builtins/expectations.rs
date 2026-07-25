@@ -54,7 +54,7 @@ pub fn register_expectation_class(env: &mut Environment) {
     expectation_native_methods.insert(
         "to_be".to_string(),
         Rc::new(NativeFunction::new("Expectation.to_be", Some(1), |args| {
-            let actual = get_actual(&args)?;
+            let actual = get_actual(args)?;
             let expected = &args[1];
             if actual == *expected {
                 crate::interpreter::builtins::assertions::increment_assertion_count();
@@ -75,7 +75,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_equal",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 if actual == *expected {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
@@ -97,7 +97,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_not_be",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 if actual != *expected {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
@@ -119,7 +119,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_not_equal",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 if actual != *expected {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
@@ -141,7 +141,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_null",
             Some(0),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 if matches!(actual, Value::Null) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
@@ -158,7 +158,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_not_be_null",
             Some(0),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 if !matches!(actual, Value::Null) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
@@ -175,7 +175,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_greater_than",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 let (actual_num, expected_num) = match (actual, expected) {
                     (Value::Int(a), Value::Int(b)) => (a as f64, *b as f64),
@@ -203,7 +203,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_less_than",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 let (actual_num, expected_num) = match (actual, expected) {
                     (Value::Int(a), Value::Int(b)) => (a as f64, *b as f64),
@@ -231,7 +231,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_greater_than_or_equal",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 let (actual_num, expected_num) = match (actual, expected) {
                     (Value::Int(a), Value::Int(b)) => (a as f64, *b as f64),
@@ -259,7 +259,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_less_than_or_equal",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let expected = &args[1];
                 let (actual_num, expected_num) = match (actual, expected) {
                     (Value::Int(a), Value::Int(b)) => (a as f64, *b as f64),
@@ -287,7 +287,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_contain",
             Some(1),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 let item = &args[1];
                 let contains = match (&actual, item) {
                     (Value::Array(arr), item) => arr.borrow().contains(item),
@@ -315,7 +315,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             "Expectation.to_be_valid_json",
             Some(0),
             |args| {
-                let actual = get_actual(&args)?;
+                let actual = get_actual(args)?;
                 if let Value::String(s) = actual {
                     match serde_json::from_str::<serde_json::Value>(&s) {
                         Ok(_) => {

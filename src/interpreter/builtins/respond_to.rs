@@ -30,7 +30,7 @@ pub fn make_format_hash() -> Value {
         let name = token.to_string();
         let recorder = NativeFunction::new(format!("format.{}", token), Some(1), move |args| {
             let handler = args
-                .into_iter()
+                .iter()
                 .next()
                 .ok_or_else(|| format!("format.{} expects 1 argument", name))?;
             if !matches!(
@@ -47,7 +47,7 @@ pub fn make_format_hash() -> Value {
                 if let Some(top) = stack.borrow_mut().last_mut() {
                     // Last-write-wins: replace any prior registration for this token.
                     top.retain(|(k, _)| k != &name);
-                    top.push((name.clone(), handler));
+                    top.push((name.clone(), handler.clone()));
                 }
             });
             Ok(Value::Null)

@@ -438,7 +438,7 @@ mod tests {
     }
 
     /// Pull a registered assertion builtin out of a fresh environment.
-    fn builtin(name: &str) -> Rc<dyn Fn(Vec<Value>) -> Result<Value, String>> {
+    fn builtin(name: &str) -> crate::interpreter::value::NativeFn {
         let mut env = Environment::new();
         register_assertions(&mut env);
         match env.get(name) {
@@ -450,13 +450,13 @@ mod tests {
     #[test]
     fn no_n_plus_one_passes_when_clean() {
         let f = builtin("assert_no_n_plus_one");
-        assert!(f(vec![response(3, &[])]).is_ok());
+        assert!(f(&[response(3, &[])]).is_ok());
     }
 
     #[test]
     fn no_n_plus_one_fails_and_names_the_template() {
         let f = builtin("assert_no_n_plus_one");
-        let err = f(vec![response(
+        let err = f(&[response(
             6,
             &[("FOR d IN posts FILTER d._key == @k RETURN d", 5)],
         )])
@@ -475,8 +475,8 @@ mod tests {
     #[test]
     fn query_count_exact_match() {
         let f = builtin("assert_query_count");
-        assert!(f(vec![response(3, &[]), Value::Int(3)]).is_ok());
-        let err = f(vec![response(3, &[]), Value::Int(1)]).unwrap_err();
+        assert!(f(&[response(3, &[]), Value::Int(3)]).is_ok());
+        let err = f(&[response(3, &[]), Value::Int(1)]).unwrap_err();
         assert!(
             err.contains("expected 1 query but 3 ran"),
             "message was: {err}"
@@ -486,15 +486,15 @@ mod tests {
     #[test]
     fn query_count_accepts_bare_int() {
         let f = builtin("assert_query_count");
-        assert!(f(vec![Value::Int(4), Value::Int(4)]).is_ok());
+        assert!(f(&[Value::Int(4), Value::Int(4)]).is_ok());
     }
 
     #[test]
     fn max_queries_bound() {
         let f = builtin("assert_max_queries");
-        assert!(f(vec![response(3, &[]), Value::Int(5)]).is_ok());
-        assert!(f(vec![response(3, &[]), Value::Int(3)]).is_ok());
-        let err = f(vec![response(7, &[]), Value::Int(5)]).unwrap_err();
+        assert!(f(&[response(3, &[]), Value::Int(5)]).is_ok());
+        assert!(f(&[response(3, &[]), Value::Int(3)]).is_ok());
+        let err = f(&[response(7, &[]), Value::Int(5)]).unwrap_err();
         assert!(
             err.contains("at most 5 queries but 7 ran"),
             "message was: {err}"
@@ -533,11 +533,11 @@ mod tests {
         // spec, or a non-dev server) should explain itself, not pass silently.
         let bare = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
         let no_n1 = builtin("assert_no_n_plus_one");
-        assert!(no_n1(vec![bare.clone()])
+        assert!(no_n1(std::slice::from_ref(&bare))
             .unwrap_err()
             .contains("no query instrumentation"));
         let count = builtin("assert_query_count");
-        assert!(count(vec![bare, Value::Int(0)])
+        assert!(count(&[bare, Value::Int(0)])
             .unwrap_err()
             .contains("no query instrumentation"));
     }

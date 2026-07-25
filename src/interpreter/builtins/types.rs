@@ -14,7 +14,7 @@ pub fn register_type_builtins(env: &mut Environment) {
     env.define(
         "str".to_string(),
         Value::NativeFunction(NativeFunction::new("str", Some(1), |args| {
-            let resolved = args.into_iter().next().unwrap().resolve()?;
+            let resolved = args[0].clone().resolve()?;
             Ok(Value::String(format!("{}", resolved).into()))
         })),
     );

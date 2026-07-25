@@ -323,31 +323,29 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
     // barf(path, content) - Write file (auto-detects text vs binary)
     env.define(
         "barf".to_string(),
-        Value::NativeFunction(NativeFunction::new("barf", None, move |args| {
-            match &args[..] {
-                [Value::String(path), Value::String(content)] => {
-                    let resolved = resolve(path, "barf")?;
-                    write_all_policy(&resolved, content.as_bytes(), follow)
-                        .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
-                    Ok(Value::Null)
-                }
-                [Value::String(path), Value::Array(bytes)] => {
-                    let resolved = resolve(path, "barf")?;
-                    let byte_vec: Result<Vec<u8>, String> = bytes
-                        .borrow()
-                        .iter()
-                        .map(|b| match b {
-                            Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
-                            Value::Int(n) => Err(format!("byte value {} out of range", n)),
-                            other => Err(format!("expected byte, got {}", other.type_name())),
-                        })
-                        .collect();
-                    write_all_policy(&resolved, &byte_vec?, follow)
-                        .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
-                    Ok(Value::Null)
-                }
-                _ => Err("barf expects (string, string) or (string, array<int>)".to_string()),
+        Value::NativeFunction(NativeFunction::new("barf", None, move |args| match args {
+            [Value::String(path), Value::String(content)] => {
+                let resolved = resolve(path, "barf")?;
+                write_all_policy(&resolved, content.as_bytes(), follow)
+                    .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
+                Ok(Value::Null)
             }
+            [Value::String(path), Value::Array(bytes)] => {
+                let resolved = resolve(path, "barf")?;
+                let byte_vec: Result<Vec<u8>, String> = bytes
+                    .borrow()
+                    .iter()
+                    .map(|b| match b {
+                        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+                        Value::Int(n) => Err(format!("byte value {} out of range", n)),
+                        other => Err(format!("expected byte, got {}", other.type_name())),
+                    })
+                    .collect();
+                write_all_policy(&resolved, &byte_vec?, follow)
+                    .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
+                Ok(Value::Null)
+            }
+            _ => Err("barf expects (string, string) or (string, array<int>)".to_string()),
         })),
     );
 
@@ -357,7 +355,7 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
         Value::NativeFunction(NativeFunction::new(
             "slurp",
             None,
-            move |args| match &args[..] {
+            move |args| match args {
                 [Value::String(path)] => {
                     let resolved = resolve(path, "slurp")?;
                     read_to_string_policy(&resolved, follow)

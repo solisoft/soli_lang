@@ -1668,7 +1668,7 @@ mod tests {
     use serde_json::json;
 
     /// Look up a registered native function by name and invoke it.
-    fn call_fn(env: &Environment, name: &str, args: Vec<Value>) -> Result<Value, String> {
+    fn call_fn(env: &Environment, name: &str, args: &[Value]) -> Result<Value, String> {
         match env.get(name) {
             Some(Value::NativeFunction(f)) => (f.func)(args),
             other => panic!("expected NativeFunction for {name}, got {other:?}"),
@@ -1804,7 +1804,7 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("user_id".into()), Value::Int(42)],
+            &[Value::String("user_id".into()), Value::Int(42)],
         )
         .unwrap();
 
@@ -1836,7 +1836,7 @@ mod tests {
         let cookie_session_id = Some(old_id.clone());
 
         // Login-style flow: regenerate, then write user_id.
-        let new_id = match call_fn(&env, "session_regenerate", vec![]).unwrap() {
+        let new_id = match call_fn(&env, "session_regenerate", &[]).unwrap() {
             Value::String(s) => s,
             other => panic!("expected String session id, got {other:?}"),
         };
@@ -1845,7 +1845,7 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("user_id".into()), Value::Int(42)],
+            &[Value::String("user_id".into()), Value::Int(42)],
         )
         .unwrap();
 
@@ -1879,7 +1879,7 @@ mod tests {
         let env = fresh_env();
         set_current_session_id(None);
 
-        let new_id = match call_fn(&env, "session_regenerate", vec![]).unwrap() {
+        let new_id = match call_fn(&env, "session_regenerate", &[]).unwrap() {
             Value::String(s) => s,
             other => panic!("expected String, got {other:?}"),
         };
@@ -1899,7 +1899,7 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("user_id".into()), Value::Int(42)],
+            &[Value::String("user_id".into()), Value::Int(42)],
         )
         .unwrap();
         let issued_id = get_current_session_id().expect("request 1 must create a session");
@@ -1914,7 +1914,7 @@ mod tests {
         );
         set_current_session_id(Some(resolved.clone()));
 
-        let got = call_fn(&env, "session_get", vec![Value::String("user_id".into())]).unwrap();
+        let got = call_fn(&env, "session_get", &[Value::String("user_id".into())]).unwrap();
         match got {
             Value::Int(n) => assert_eq!(n, 42),
             other => panic!("expected stored user_id, got {other:?}"),
@@ -2128,7 +2128,7 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("user_id".into()), Value::Int(42)],
+            &[Value::String("user_id".into()), Value::Int(42)],
         )
         .unwrap();
         let set_cookie = finalize_session_cookie(get_current_session_id().as_deref(), None, false)
@@ -2155,7 +2155,7 @@ mod tests {
             "opening the sealed cookie must restore the same session identity"
         );
         set_current_session_id(Some(resolved.clone()));
-        let got = call_fn(&env, "session_get", vec![Value::String("user_id".into())]).unwrap();
+        let got = call_fn(&env, "session_get", &[Value::String("user_id".into())]).unwrap();
         match got {
             Value::Int(n) => assert_eq!(n, 42),
             other => panic!("expected stored user_id, got {other:?}"),
@@ -2270,7 +2270,7 @@ mod tests {
     fn session_driver_returns_current_driver() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
-        let result = call_fn(&env, "session_driver", vec![]).unwrap();
+        let result = call_fn(&env, "session_driver", &[]).unwrap();
         match result {
             Value::String(s) => assert_eq!(s.as_str(), "in_memory"),
             other => panic!("expected String driver name, got {:?}", other),
@@ -2281,7 +2281,7 @@ mod tests {
     fn session_config_returns_hash() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
-        let result = call_fn(&env, "session_config", vec![]).unwrap();
+        let result = call_fn(&env, "session_config", &[]).unwrap();
         match result {
             Value::Hash(_) => {}
             other => panic!("expected Hash config, got {:?}", other),
@@ -2297,22 +2297,17 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("key".into()), Value::Int(1)],
+            &[Value::String("key".into()), Value::Int(1)],
         )
         .unwrap();
 
-        let result = call_fn(&env, "session_has", vec![Value::String("key".into())]).unwrap();
+        let result = call_fn(&env, "session_has", &[Value::String("key".into())]).unwrap();
         match result {
             Value::Bool(b) => assert!(b),
             other => panic!("expected Bool, got {:?}", other),
         }
 
-        let result = call_fn(
-            &env,
-            "session_has",
-            vec![Value::String("nonexistent".into())],
-        )
-        .unwrap();
+        let result = call_fn(&env, "session_has", &[Value::String("nonexistent".into())]).unwrap();
         match result {
             Value::Bool(b) => assert!(!b),
             other => panic!("expected Bool, got {:?}", other),
@@ -2328,28 +2323,18 @@ mod tests {
         call_fn(
             &env,
             "session_set",
-            vec![Value::String("to_delete".into()), Value::Int(42)],
+            &[Value::String("to_delete".into()), Value::Int(42)],
         )
         .unwrap();
 
-        let result = call_fn(
-            &env,
-            "session_delete",
-            vec![Value::String("to_delete".into())],
-        )
-        .unwrap();
+        let result = call_fn(&env, "session_delete", &[Value::String("to_delete".into())]).unwrap();
 
         match result {
             Value::Int(n) => assert_eq!(n, 42),
             other => panic!("expected deleted Int value, got {:?}", other),
         }
 
-        let result = call_fn(
-            &env,
-            "session_delete",
-            vec![Value::String("to_delete".into())],
-        )
-        .unwrap();
+        let result = call_fn(&env, "session_delete", &[Value::String("to_delete".into())]).unwrap();
         match result {
             Value::Null => {}
             other => panic!("expected Null for deleted key, got {:?}", other),

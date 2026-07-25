@@ -54,7 +54,7 @@ mod tests {
                 Some(Value::NativeFunction(f)) => f.clone(),
                 other => panic!("expected NativeFunction for {name}, got {other:?}"),
             };
-            let err = (f.func)(vec![]).unwrap_err();
+            let err = (f.func)(&[]).unwrap_err();
             assert!(
                 err.contains("SEC-033") && err.contains(".env"),
                 "expected SEC-033 migration error from {}, got: {}",

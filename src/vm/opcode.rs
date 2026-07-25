@@ -216,6 +216,13 @@ pub enum Op {
     AddLocalConst(u16, u16),
     /// Assign top of stack to local (without extra pop): local[slot] = pop()
     SetLocalPop(u16),
+    /// `local[a] += local[b]` entirely in place: no push, no pop, one dispatch.
+    ///
+    /// The stack round-trip these replace is not free — a `Value` is 24 bytes and
+    /// carries drop glue (five variants hold an `Rc`), so a push/pop pair is a
+    /// 24-byte move plus a drop check, not a register spill. Accumulator loops
+    /// (`s = s + i`) are the single most common shape in hot Soli code.
+    AddLocalsInPlace(u16, u16),
     /// Combined LessEqual + JumpIfFalse: pop two, compare <=, jump if false.
     TestLessEqualJump(u16),
     /// Combined Less + JumpIfFalse: pop two, compare <, jump if false.

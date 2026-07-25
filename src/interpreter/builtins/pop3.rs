@@ -243,7 +243,7 @@ fn as_string(v: &Value, field: &str) -> Result<String, String> {
     }
 }
 
-fn pop3_new(class: Rc<Class>, args: Vec<Value>) -> Result<Value, String> {
+fn pop3_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 || args.len() > 4 {
         return Err(format!(
             "Pop3.new(host, user, password, opts?) expects 3 or 4 arguments, got {}",
@@ -302,8 +302,8 @@ fn pop3_new(class: Rc<Class>, args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Instance(Rc::new(RefCell::new(inst))))
 }
 
-fn pop3_stat(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "stat")?;
+fn pop3_stat(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "stat")?;
     let resp = with_conn(id, |c| c.command("STAT"))?;
     let mut it = resp.split_whitespace();
     let count = it.next().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
@@ -314,8 +314,8 @@ fn pop3_stat(args: Vec<Value>) -> Result<Value, String> {
     ]))
 }
 
-fn pop3_list(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "list")?;
+fn pop3_list(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "list")?;
     let body = with_conn(id, |c| c.command_multiline("LIST"))?;
     let mut out = Vec::new();
     for line in body.lines() {
@@ -343,15 +343,15 @@ fn message_id_arg(args: &[Value], method: &str) -> Result<i64, String> {
     }
 }
 
-fn pop3_fetch(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "fetch")?;
-    let n = message_id_arg(&args, "fetch")?;
+fn pop3_fetch(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch")?;
+    let n = message_id_arg(args, "fetch")?;
     let raw = with_conn(id, |c| c.command_multiline(&format!("RETR {n}")))?;
     Ok(parse_message(&raw, n))
 }
 
-fn pop3_fetch_all(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "fetch_all")?;
+fn pop3_fetch_all(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_all")?;
     let stat = with_conn(id, |c| c.command("STAT"))?;
     let count = stat
         .split_whitespace()
@@ -380,15 +380,15 @@ fn pop3_fetch_all(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Array(Rc::new(RefCell::new(out))))
 }
 
-fn pop3_delete(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "delete")?;
-    let n = message_id_arg(&args, "delete")?;
+fn pop3_delete(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "delete")?;
+    let n = message_id_arg(args, "delete")?;
     with_conn(id, |c| c.command(&format!("DELE {n}")))?;
     Ok(Value::Bool(true))
 }
 
-fn pop3_quit(args: Vec<Value>) -> Result<Value, String> {
-    let id = instance_id(&args, "quit")?;
+fn pop3_quit(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "quit")?;
     let mut conns = POP3_CONNS.lock().map_err(|e| e.to_string())?;
     if let Some(mut conn) = conns.remove(&id) {
         // Best-effort: tell the server to commit deletions and close.

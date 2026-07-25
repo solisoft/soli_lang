@@ -58,7 +58,7 @@ fn run_vm(source: &str) {
         "str".to_string(),
         solilang::interpreter::value::Value::NativeFunction(
             solilang::interpreter::value::NativeFunction::new("str", Some(1), |args| {
-                let resolved = args.into_iter().next().unwrap();
+                let resolved = args.iter().next().unwrap();
                 Ok(solilang::interpreter::value::Value::String(
                     format!("{}", resolved).into(),
                 ))
@@ -69,7 +69,7 @@ fn run_vm(source: &str) {
         "len".to_string(),
         solilang::interpreter::value::Value::NativeFunction(
             solilang::interpreter::value::NativeFunction::new("len", Some(1), |args| {
-                let resolved = args.into_iter().next().unwrap();
+                let resolved = args.iter().next().unwrap();
                 Ok(solilang::interpreter::value::Value::Int(
                     resolved.display_len() as i64,
                 ))

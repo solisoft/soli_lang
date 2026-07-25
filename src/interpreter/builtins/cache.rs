@@ -164,7 +164,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
                     args.len()
                 ));
             }
-            let key = extract_string_key(&args, "Cache.set")?;
+            let key = extract_string_key(args, "Cache.set")?;
             let value = &args[1];
             let ttl = args.get(2).and_then(|v| match v {
                 Value::Int(i) => Some(*i as u64),
@@ -177,7 +177,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "get".to_string(),
         Rc::new(NativeFunction::new("Cache.get", Some(1), |args| {
-            let key = extract_string_key(&args, "Cache.get")?;
+            let key = extract_string_key(args, "Cache.get")?;
             cache_get_impl(&key)
         })),
     );
@@ -185,7 +185,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "delete".to_string(),
         Rc::new(NativeFunction::new("Cache.delete", Some(1), |args| {
-            let key = extract_string_key(&args, "Cache.delete")?;
+            let key = extract_string_key(args, "Cache.delete")?;
             cache_delete_impl(&key)
         })),
     );
@@ -193,7 +193,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "has".to_string(),
         Rc::new(NativeFunction::new("Cache.has", Some(1), |args| {
-            let key = extract_string_key(&args, "Cache.has")?;
+            let key = extract_string_key(args, "Cache.has")?;
             cache_has_impl(&key)
         })),
     );
@@ -234,7 +234,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "ttl".to_string(),
         Rc::new(NativeFunction::new("Cache.ttl", Some(1), |args| {
-            let key = extract_string_key(&args, "Cache.ttl")?;
+            let key = extract_string_key(args, "Cache.ttl")?;
             cache_ttl_impl(&key)
         })),
     );
@@ -242,7 +242,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "touch".to_string(),
         Rc::new(NativeFunction::new("Cache.touch", Some(2), |args| {
-            let key = extract_string_key(&args, "Cache.touch")?;
+            let key = extract_string_key(args, "Cache.touch")?;
             let ttl = match &args[1] {
                 Value::Int(i) => *i as u64,
                 other => {

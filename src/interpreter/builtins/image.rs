@@ -418,14 +418,14 @@ fn build_image_class() -> Rc<Class> {
     native_methods.insert(
         "width".to_string(),
         Rc::new(NativeFunction::new("Image.width", Some(0), |args| {
-            with_image_data(&args, |data| Ok(Value::Int(data.image.width() as i64)))
+            with_image_data(args, |data| Ok(Value::Int(data.image.width() as i64)))
         })),
     );
 
     native_methods.insert(
         "height".to_string(),
         Rc::new(NativeFunction::new("Image.height", Some(0), |args| {
-            with_image_data(&args, |data| Ok(Value::Int(data.image.height() as i64)))
+            with_image_data(args, |data| Ok(Value::Int(data.image.height() as i64)))
         })),
     );
 
@@ -440,7 +440,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as u32,
                 _ => return Err("Image.resize requires integer height".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 Ok(data
                     .image
                     .resize(width, height, image::imageops::FilterType::Lanczos3))
@@ -455,7 +455,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as u32,
                 _ => return Err("Image.thumbnail requires integer size".to_string()),
             };
-            transform_image(&args, |data| Ok(data.image.thumbnail(max_size, max_size)))
+            transform_image(args, |data| Ok(data.image.thumbnail(max_size, max_size)))
         })),
     );
 
@@ -480,7 +480,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as u32,
                 _ => return Err("Image.crop requires integer height".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 let cropped =
                     image::imageops::crop_imm(&data.image, x, y, width, height).to_image();
                 Ok(DynamicImage::ImageRgba8(cropped))
@@ -495,7 +495,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => (*n).clamp(1, 100) as u8,
                 _ => return Err("Image.quality requires integer".to_string()),
             };
-            with_image_data(&args, |data| {
+            with_image_data(args, |data| {
                 Ok(image_data_to_value(ImageData {
                     image: data.image.clone(),
                     format: data.format,
@@ -514,7 +514,7 @@ fn build_image_class() -> Rc<Class> {
             };
             let format =
                 format_from_str(&fmt).ok_or_else(|| format!("Unsupported format: {}", fmt))?;
-            with_image_data(&args, |data| {
+            with_image_data(args, |data| {
                 Ok(image_data_to_value(ImageData {
                     image: data.image.clone(),
                     format: Some(format),
@@ -527,7 +527,7 @@ fn build_image_class() -> Rc<Class> {
     native_methods.insert(
         "grayscale".to_string(),
         Rc::new(NativeFunction::new("Image.grayscale", Some(0), |args| {
-            transform_image(&args, |data| Ok(data.image.grayscale()))
+            transform_image(args, |data| Ok(data.image.grayscale()))
         })),
     );
 
@@ -537,7 +537,7 @@ fn build_image_class() -> Rc<Class> {
             "Image.flip_horizontal",
             Some(0),
             |args| {
-                transform_image(&args, |data| {
+                transform_image(args, |data| {
                     Ok(DynamicImage::ImageRgba8(image::imageops::flip_horizontal(
                         &data.image,
                     )))
@@ -552,7 +552,7 @@ fn build_image_class() -> Rc<Class> {
             "Image.flip_vertical",
             Some(0),
             |args| {
-                transform_image(&args, |data| {
+                transform_image(args, |data| {
                     Ok(DynamicImage::ImageRgba8(image::imageops::flip_vertical(
                         &data.image,
                     )))
@@ -564,21 +564,21 @@ fn build_image_class() -> Rc<Class> {
     native_methods.insert(
         "rotate90".to_string(),
         Rc::new(NativeFunction::new("Image.rotate90", Some(0), |args| {
-            transform_image(&args, |data| Ok(data.image.rotate90()))
+            transform_image(args, |data| Ok(data.image.rotate90()))
         })),
     );
 
     native_methods.insert(
         "rotate180".to_string(),
         Rc::new(NativeFunction::new("Image.rotate180", Some(0), |args| {
-            transform_image(&args, |data| Ok(data.image.rotate180()))
+            transform_image(args, |data| Ok(data.image.rotate180()))
         })),
     );
 
     native_methods.insert(
         "rotate270".to_string(),
         Rc::new(NativeFunction::new("Image.rotate270", Some(0), |args| {
-            transform_image(&args, |data| Ok(data.image.rotate270()))
+            transform_image(args, |data| Ok(data.image.rotate270()))
         })),
     );
 
@@ -590,7 +590,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as f32,
                 _ => return Err("Image.blur requires number".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 Ok(DynamicImage::ImageRgba8(image::imageops::blur(
                     &data.image,
                     sigma,
@@ -606,7 +606,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as i32,
                 _ => return Err("Image.brightness requires integer".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 Ok(DynamicImage::ImageRgba8(image::imageops::brighten(
                     &data.image,
                     value,
@@ -623,7 +623,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as f32,
                 _ => return Err("Image.contrast requires number".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 Ok(DynamicImage::ImageRgba8(image::imageops::contrast(
                     &data.image,
                     value,
@@ -635,7 +635,7 @@ fn build_image_class() -> Rc<Class> {
     native_methods.insert(
         "invert".to_string(),
         Rc::new(NativeFunction::new("Image.invert", Some(0), |args| {
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 let mut inverted = data.image.clone();
                 image::imageops::invert(&mut inverted);
                 Ok(inverted)
@@ -650,7 +650,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::Int(n) => *n as i32,
                 _ => return Err("Image.hue_rotate requires integer".to_string()),
             };
-            transform_image(&args, |data| {
+            transform_image(args, |data| {
                 Ok(DynamicImage::ImageRgba8(image::imageops::huerotate(
                     &data.image,
                     degrees,
@@ -662,7 +662,7 @@ fn build_image_class() -> Rc<Class> {
     native_methods.insert(
         "to_buffer".to_string(),
         Rc::new(NativeFunction::new("Image.to_buffer", Some(0), |args| {
-            with_image_data(&args, |data| {
+            with_image_data(args, |data| {
                 let format = data.format.unwrap_or(ImageFormat::Png);
                 let buffer = encode_image(data, format)?;
                 Ok(Value::String(
@@ -681,7 +681,7 @@ fn build_image_class() -> Rc<Class> {
                 _ => return Err("Image.to_file requires string path".to_string()),
             };
             validate_image_path(&path, "Image.to_file")?;
-            with_image_data(&args, |data| {
+            with_image_data(args, |data| {
                 let format = data
                     .format
                     .unwrap_or_else(|| ImageFormat::from_path(&*path).unwrap_or(ImageFormat::Png));
@@ -887,9 +887,9 @@ fn build_image_plan_class() -> Rc<Class> {
     native_methods.insert(
         "resize".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.resize", Some(2), |args| {
-            let w = nonneg_u32(&args, 1, "ImagePlan.resize")?;
-            let h = nonneg_u32(&args, 2, "ImagePlan.resize")?;
-            record_op(&args, PlanOp::Resize(w, h))
+            let w = nonneg_u32(args, 1, "ImagePlan.resize")?;
+            let h = nonneg_u32(args, 2, "ImagePlan.resize")?;
+            record_op(args, PlanOp::Resize(w, h))
         })),
     );
     native_methods.insert(
@@ -898,19 +898,19 @@ fn build_image_plan_class() -> Rc<Class> {
             "ImagePlan.thumbnail",
             Some(1),
             |args| {
-                let s = nonneg_u32(&args, 1, "ImagePlan.thumbnail")?;
-                record_op(&args, PlanOp::Thumbnail(s))
+                let s = nonneg_u32(args, 1, "ImagePlan.thumbnail")?;
+                record_op(args, PlanOp::Thumbnail(s))
             },
         )),
     );
     native_methods.insert(
         "crop".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.crop", Some(4), |args| {
-            let x = nonneg_u32(&args, 1, "ImagePlan.crop")?;
-            let y = nonneg_u32(&args, 2, "ImagePlan.crop")?;
-            let w = nonneg_u32(&args, 3, "ImagePlan.crop")?;
-            let h = nonneg_u32(&args, 4, "ImagePlan.crop")?;
-            record_op(&args, PlanOp::Crop(x, y, w, h))
+            let x = nonneg_u32(args, 1, "ImagePlan.crop")?;
+            let y = nonneg_u32(args, 2, "ImagePlan.crop")?;
+            let w = nonneg_u32(args, 3, "ImagePlan.crop")?;
+            let h = nonneg_u32(args, 4, "ImagePlan.crop")?;
+            record_op(args, PlanOp::Crop(x, y, w, h))
         })),
     );
     native_methods.insert(
@@ -918,7 +918,7 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.grayscale",
             Some(0),
-            |args| record_op(&args, PlanOp::Grayscale),
+            |args| record_op(args, PlanOp::Grayscale),
         )),
     );
     native_methods.insert(
@@ -926,7 +926,7 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.flip_horizontal",
             Some(0),
-            |args| record_op(&args, PlanOp::FlipHorizontal),
+            |args| record_op(args, PlanOp::FlipHorizontal),
         )),
     );
     native_methods.insert(
@@ -934,13 +934,13 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.flip_vertical",
             Some(0),
-            |args| record_op(&args, PlanOp::FlipVertical),
+            |args| record_op(args, PlanOp::FlipVertical),
         )),
     );
     native_methods.insert(
         "rotate90".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.rotate90", Some(0), |args| {
-            record_op(&args, PlanOp::Rotate90)
+            record_op(args, PlanOp::Rotate90)
         })),
     );
     native_methods.insert(
@@ -948,7 +948,7 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.rotate180",
             Some(0),
-            |args| record_op(&args, PlanOp::Rotate180),
+            |args| record_op(args, PlanOp::Rotate180),
         )),
     );
     native_methods.insert(
@@ -956,14 +956,14 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.rotate270",
             Some(0),
-            |args| record_op(&args, PlanOp::Rotate270),
+            |args| record_op(args, PlanOp::Rotate270),
         )),
     );
     native_methods.insert(
         "blur".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.blur", Some(1), |args| {
-            let sigma = float_arg(&args, 1, "ImagePlan.blur")?;
-            record_op(&args, PlanOp::Blur(sigma))
+            let sigma = float_arg(args, 1, "ImagePlan.blur")?;
+            record_op(args, PlanOp::Blur(sigma))
         })),
     );
     native_methods.insert(
@@ -972,22 +972,22 @@ fn build_image_plan_class() -> Rc<Class> {
             "ImagePlan.brightness",
             Some(1),
             |args| {
-                let v = int_arg(&args, 1, "ImagePlan.brightness")? as i32;
-                record_op(&args, PlanOp::Brightness(v))
+                let v = int_arg(args, 1, "ImagePlan.brightness")? as i32;
+                record_op(args, PlanOp::Brightness(v))
             },
         )),
     );
     native_methods.insert(
         "contrast".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.contrast", Some(1), |args| {
-            let v = float_arg(&args, 1, "ImagePlan.contrast")?;
-            record_op(&args, PlanOp::Contrast(v))
+            let v = float_arg(args, 1, "ImagePlan.contrast")?;
+            record_op(args, PlanOp::Contrast(v))
         })),
     );
     native_methods.insert(
         "invert".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.invert", Some(0), |args| {
-            record_op(&args, PlanOp::Invert)
+            record_op(args, PlanOp::Invert)
         })),
     );
     native_methods.insert(
@@ -996,8 +996,8 @@ fn build_image_plan_class() -> Rc<Class> {
             "ImagePlan.hue_rotate",
             Some(1),
             |args| {
-                let d = int_arg(&args, 1, "ImagePlan.hue_rotate")? as i32;
-                record_op(&args, PlanOp::HueRotate(d))
+                let d = int_arg(args, 1, "ImagePlan.hue_rotate")? as i32;
+                record_op(args, PlanOp::HueRotate(d))
             },
         )),
     );
@@ -1010,7 +1010,7 @@ fn build_image_plan_class() -> Rc<Class> {
             };
             let format =
                 format_from_str(&fmt).ok_or_else(|| format!("Unsupported format: {}", fmt))?;
-            extend_plan(&args, |p| p.format = Some(format))
+            extend_plan(args, |p| p.format = Some(format))
         })),
     );
     native_methods.insert(
@@ -1020,7 +1020,7 @@ fn build_image_plan_class() -> Rc<Class> {
                 Value::Int(n) => (*n).clamp(1, 100) as u8,
                 _ => return Err("ImagePlan.quality requires integer".to_string()),
             };
-            extend_plan(&args, |p| p.quality = q)
+            extend_plan(args, |p| p.quality = q)
         })),
     );
     native_methods.insert(
@@ -1030,13 +1030,13 @@ fn build_image_plan_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("ImagePlan.save_to requires string path".to_string()),
             };
-            extend_plan(&args, |p| p.dst = Some(path.to_string()))
+            extend_plan(args, |p| p.dst = Some(path.to_string()))
         })),
     );
     native_methods.insert(
         "run".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.run", Some(0), |args| {
-            let plan = with_plan(&args, |p| Ok(p.clone()))?;
+            let plan = with_plan(args, |p| Ok(p.clone()))?;
             match execute_plan(&plan)? {
                 PlanResult::Saved => Ok(Value::Bool(true)),
                 PlanResult::Image(data) => Ok(image_data_to_value(data)),
@@ -1046,7 +1046,7 @@ fn build_image_plan_class() -> Rc<Class> {
     native_methods.insert(
         "src".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.src", Some(0), |args| {
-            with_plan(&args, |p| Ok(Value::String(p.src.clone().into())))
+            with_plan(args, |p| Ok(Value::String(p.src.clone().into())))
         })),
     );
     native_methods.insert(
@@ -1054,7 +1054,7 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new(
             "ImagePlan.ops_count",
             Some(0),
-            |args| with_plan(&args, |p| Ok(Value::Int(p.ops.len() as i64))),
+            |args| with_plan(args, |p| Ok(Value::Int(p.ops.len() as i64))),
         )),
     );
 

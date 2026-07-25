@@ -703,7 +703,7 @@ mod tests {
         let payload_hash = Value::Hash(Rc::new(RefCell::new(payload)));
         // SEC-054: secret must be ≥ 32 bytes; the prior fixture was
         // only 23 chars and would now fail the minimum-length check.
-        let token = (sign.func)(vec![
+        let token = (sign.func)(&[
             payload_hash,
             Value::String("0123456789abcdef0123456789abcdef".into()),
         ])
@@ -713,7 +713,7 @@ mod tests {
             other => panic!("expected token string, got {other:?}"),
         };
 
-        let result = (decode.func)(vec![Value::String(token_str)]).unwrap();
+        let result = (decode.func)(&[Value::String(token_str)]).unwrap();
         let outer = match result {
             Value::Hash(h) => h,
             other => panic!("expected hash result, got {other:?}"),
@@ -748,7 +748,7 @@ mod tests {
 
         let payload = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
         let weak = "a".repeat(31);
-        let err = (sign.func)(vec![payload, Value::String(weak.into())]).unwrap_err();
+        let err = (sign.func)(&[payload, Value::String(weak.into())]).unwrap_err();
         assert!(
             err.contains("at least 32") && err.contains("openssl rand"),
             "expected 32-byte minimum + .env hint, got: {err}"
@@ -763,7 +763,7 @@ mod tests {
         // Even a structurally invalid token must trip the length gate
         // first — the key check fires before signature verification.
         let weak = "a".repeat(31);
-        let err = (verify.func)(vec![
+        let err = (verify.func)(&[
             Value::String("dummy.token.value".into()),
             Value::String(weak.into()),
         ])
@@ -781,7 +781,7 @@ mod tests {
         let env = fresh_env();
         let decode = jwt_fn(&env, "jwt_decode");
 
-        let err = (decode.func)(vec![Value::String("anything".into())]).unwrap_err();
+        let err = (decode.func)(&[Value::String("anything".into())]).unwrap_err();
         assert!(
             err.contains("SEC-029")
                 && err.contains("jwt_decode_unsafe")
@@ -809,7 +809,7 @@ mod tests {
         sign_opts.insert(HashKey::String("expires_in".into()), Value::Int(3600));
         let env = fresh_env();
         let sign = jwt_fn(&env, "jwt_sign");
-        let token = (sign.func)(vec![
+        let token = (sign.func)(&[
             Value::Hash(Rc::new(RefCell::new(payload))),
             Value::String(secret.to_string().into()),
             Value::Hash(Rc::new(RefCell::new(sign_opts))),
@@ -835,7 +835,7 @@ mod tests {
     fn sign_with(payload_pairs: &[(&str, Value)], sign_opts: &[(&str, Value)]) -> String {
         let env = fresh_env();
         let sign = jwt_fn(&env, "jwt_sign");
-        let token = (sign.func)(vec![
+        let token = (sign.func)(&[
             opts(payload_pairs),
             Value::String(TEST_SECRET.into()),
             opts(sign_opts),
@@ -851,7 +851,7 @@ mod tests {
     fn verify_claim(token: &str, verify_opts: &[(&str, Value)], claim: &str) -> Option<Value> {
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
-        let result = (verify.func)(vec![
+        let result = (verify.func)(&[
             Value::String(token.into()),
             Value::String(TEST_SECRET.into()),
             opts(verify_opts),
@@ -878,7 +878,7 @@ mod tests {
 
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
-        let result = (verify.func)(vec![
+        let result = (verify.func)(&[
             Value::String(token.into()),
             Value::String(TEST_SECRET.into()),
         ])
@@ -989,7 +989,7 @@ mod tests {
 
         let env = fresh_env();
         let decode = jwt_fn(&env, "jwt_decode_unsafe");
-        let result = (decode.func)(vec![Value::String(token.into())]).unwrap();
+        let result = (decode.func)(&[Value::String(token.into())]).unwrap();
         let outer = match result {
             Value::Hash(h) => h,
             other => panic!("expected hash result, got {other:?}"),
@@ -1079,7 +1079,7 @@ mod tests {
     fn jwt_sign_rejects_exp_with_expires_in() {
         let env = fresh_env();
         let sign = jwt_fn(&env, "jwt_sign");
-        let err = (sign.func)(vec![
+        let err = (sign.func)(&[
             opts(&[("sub", Value::String("u1".into()))]),
             Value::String(TEST_SECRET.into()),
             opts(&[("exp", Value::Int(123)), ("expires_in", Value::Int(60))]),
@@ -1105,7 +1105,7 @@ mod tests {
         let pretend_pub_key = "0123456789abcdef0123456789abcdef0123456789abcdef";
         let attacker_token = sign_hs256(pretend_pub_key, "alice");
 
-        let result = (verify.func)(vec![
+        let result = (verify.func)(&[
             Value::String(attacker_token.into()),
             Value::String(pretend_pub_key.to_string().into()),
             opts(&[("algorithm", Value::String("RS256".into()))]),
@@ -1129,7 +1129,7 @@ mod tests {
         let pretend_pub_key = "0123456789abcdef0123456789abcdef0123456789abcdef";
         let attacker_token = sign_hs256(pretend_pub_key, "alice");
 
-        let err = (verify.func)(vec![
+        let err = (verify.func)(&[
             Value::String(attacker_token.into()),
             Value::String(pretend_pub_key.to_string().into()),
             opts(&[("key", Value::String(pretend_pub_key.to_string().into()))]),
@@ -1149,11 +1149,8 @@ mod tests {
         let secret = "0123456789abcdef0123456789abcdef".to_string();
         let token = sign_hs256(&secret, "alice");
 
-        let result = (verify.func)(vec![
-            Value::String(token.into()),
-            Value::String(secret.into()),
-        ])
-        .unwrap();
+        let result =
+            (verify.func)(&[Value::String(token.into()), Value::String(secret.into())]).unwrap();
         let h = match result {
             Value::Hash(h) => h,
             other => panic!("expected verified-claims hash, got {:?}", other),
@@ -1181,7 +1178,7 @@ mod tests {
         let token_hs256 = sign_hs256(&secret, "alice");
 
         // Match → success.
-        let ok = (verify.func)(vec![
+        let ok = (verify.func)(&[
             Value::String(token_hs256.clone().into()),
             Value::String(secret.clone().into()),
             opts(&[("algorithm", Value::String("HS256".into()))]),
@@ -1190,7 +1187,7 @@ mod tests {
         assert!(matches!(ok, Value::Hash(_)));
 
         // Mismatch → error.
-        let err = (verify.func)(vec![
+        let err = (verify.func)(&[
             Value::String(token_hs256.into()),
             Value::String(secret.into()),
             opts(&[("algorithm", Value::String("HS512".into()))]),
@@ -1203,7 +1200,7 @@ mod tests {
     fn jwt_verify_unknown_algorithm_in_options_errors() {
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
-        let err = (verify.func)(vec![
+        let err = (verify.func)(&[
             Value::String("unused.token.value".into()),
             Value::String("0123456789abcdef0123456789abcdef".into()),
             opts(&[("algorithm", Value::String("none".into()))]),
@@ -1218,7 +1215,7 @@ mod tests {
         // now we accept 2 or 3 args and reject 4+.
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
-        let err = (verify.func)(vec![
+        let err = (verify.func)(&[
             Value::String("t".into()),
             Value::String("s".into()),
             Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),

@@ -661,7 +661,7 @@ impl Interpreter {
             if let Some(inherited_native) = superclass.find_native_static_method("inherited") {
                 let span = Span::new(0, 0, 1, 1);
                 let result: Result<Value, String> =
-                    (inherited_native.func)(vec![Value::Class(class_rc.clone())]);
+                    (inherited_native.func)(&[Value::Class(class_rc.clone())]);
                 result.map_err(|e| RuntimeError::new(e, span))?;
             }
         }

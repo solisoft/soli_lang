@@ -92,8 +92,38 @@ impl Compiler {
                 // GetIndex path and its key-allocation).
                 if let ExprKind::StringLiteral(key) = &index.kind {
                     let key_idx = self.add_string_constant(key);
-                    self.compile_expr(object)?;
-                    self.emit(Op::HashGetConst(key_idx), line);
+                    // Fuse the receiver load when it is a plain variable, so
+                    // `params["name"]` — the most common hash read in real
+                    // controller code — costs one dispatch instead of two.
+                    // `.get("name")` already compiled this way; index syntax did
+                    // not, which made the idiomatic spelling the slower one
+                    // (measured 79 ns/iter vs 63 ns for `.get`).
+                    //
+                    // An upvalue receiver has no fused opcode and falls through
+                    // to the generic path — emitting the global form for it
+                    // would read the wrong binding.
+                    let fused = match &object.kind {
+                        ExprKind::Variable(var_name) => match self.resolve_variable(var_name) {
+                            VariableAccess::Local(slot) => {
+                                Some(Op::HashGetLocalConst(slot, key_idx))
+                            }
+                            VariableAccess::Global(_) => {
+                                let gidx = self.add_string_constant(var_name);
+                                Some(Op::HashGetGlobalConst(gidx, key_idx))
+                            }
+                            VariableAccess::Upvalue(_) => None,
+                        },
+                        _ => None,
+                    };
+                    match fused {
+                        Some(op) => {
+                            self.emit(op, line);
+                        }
+                        None => {
+                            self.compile_expr(object)?;
+                            self.emit(Op::HashGetConst(key_idx), line);
+                        }
+                    }
                 } else {
                     self.compile_expr(object)?;
                     self.compile_expr(index)?;
@@ -844,12 +874,42 @@ impl Compiler {
                 self.emit(Op::SetProperty(idx), line);
             }
             ExprKind::Index { object, index } => {
-                // Peephole: hash[const_str] = value -> HashSetConst.
+                // Peephole: hash[const_str] = value -> HashSetConst, fusing the
+                // receiver load when it is a plain variable. Mirrors the read
+                // path: `h.set("k", v)` already compiled to one dispatch while
+                // `h["k"] = v` — the far more common spelling — took two.
+                //
+                // Safe to swap because both sequences leave exactly one value:
+                // the generic form pops receiver+value and pushes Null, the
+                // fused form pops value and pushes Null. Only a plain variable
+                // receiver is fused, so skipping its evaluation cannot lose a
+                // side effect.
                 if let ExprKind::StringLiteral(key) = &index.kind {
                     let key_idx = self.add_string_constant(key);
-                    self.compile_expr(object)?;
-                    self.compile_expr(value)?;
-                    self.emit(Op::HashSetConst(key_idx), line);
+                    let fused = match &object.kind {
+                        ExprKind::Variable(var_name) => match self.resolve_variable(var_name) {
+                            VariableAccess::Local(slot) => {
+                                Some(Op::HashSetLocalConst(slot, key_idx))
+                            }
+                            VariableAccess::Global(_) => {
+                                let gidx = self.add_string_constant(var_name);
+                                Some(Op::HashSetGlobalConst(gidx, key_idx))
+                            }
+                            VariableAccess::Upvalue(_) => None,
+                        },
+                        _ => None,
+                    };
+                    match fused {
+                        Some(op) => {
+                            self.compile_expr(value)?;
+                            self.emit(op, line);
+                        }
+                        None => {
+                            self.compile_expr(object)?;
+                            self.compile_expr(value)?;
+                            self.emit(Op::HashSetConst(key_idx), line);
+                        }
+                    }
                 } else {
                     self.compile_expr(object)?;
                     self.compile_expr(index)?;
@@ -986,7 +1046,16 @@ impl Compiler {
         line: usize,
     ) -> CompileResult<Option<()>> {
         if let ExprKind::Variable(var_name) = &object.kind {
-            if let Some(slot) = self.resolve_local(var_name) {
+            // Resolve the receiver exactly the way an ordinary variable read
+            // does. The global arm below used to be gated on `scope_depth == 0`
+            // instead, which is a proxy for "cannot be a local" — but it also
+            // meant the global super-instructions never fired inside a function,
+            // i.e. never in real handler code. `resolve_variable` is the honest
+            // test: it reports Upvalue for a captured binding, which has no
+            // fused form and must fall through to the generic path rather than
+            // be mistaken for a global.
+            let access = self.resolve_variable(var_name);
+            if let VariableAccess::Local(slot) = access {
                 match (name, arguments) {
                     ("get", [Argument::Positional(arg)])
                     | ("has_key", [Argument::Positional(arg)]) => {
@@ -1013,7 +1082,7 @@ impl Compiler {
                     _ => {}
                 }
             }
-            if self.scope_depth == 0 && self.resolve_local(var_name).is_none() {
+            if matches!(access, VariableAccess::Global(_)) {
                 match (name, arguments) {
                     ("get", [Argument::Positional(arg)])
                     | ("has_key", [Argument::Positional(arg)]) => {

@@ -2413,7 +2413,7 @@ mod parallel_ssrf_tests {
     #[test]
     fn get_all_rejects_blocked_scheme() {
         let f = http_static("get_all");
-        let err = (f.func)(vec![arr(vec![Value::String("file:///etc/passwd".into())])])
+        let err = (f.func)(&[arr(vec![Value::String("file:///etc/passwd".into())])])
             .expect_err("get_all should reject file:// URLs");
         assert!(err.contains("not allowed"), "got: {}", err);
     }
@@ -2421,7 +2421,7 @@ mod parallel_ssrf_tests {
     #[test]
     fn get_all_json_rejects_blocked_scheme() {
         let f = http_static("get_all_json");
-        let err = (f.func)(vec![arr(vec![
+        let err = (f.func)(&[arr(vec![
             Value::String("https://example.com/ok".into()),
             Value::String("gopher://internal/".into()),
         ])])
@@ -2440,7 +2440,7 @@ mod parallel_ssrf_tests {
             );
             Value::Hash(Rc::new(RefCell::new(h)))
         };
-        let err = (f.func)(vec![arr(vec![cfg])]).expect_err("parallel should reject ftp:// URLs");
+        let err = (f.func)(&[arr(vec![cfg])]).expect_err("parallel should reject ftp:// URLs");
         assert!(err.contains("not allowed"), "got: {}", err);
     }
 
@@ -2454,7 +2454,7 @@ mod parallel_ssrf_tests {
         let urls: Vec<Value> = (0..=cap)
             .map(|i| Value::String(format!("https://example.com/{}", i).into()))
             .collect();
-        let err = (f.func)(vec![arr(urls)]).expect_err("get_all should reject oversized input");
+        let err = (f.func)(&[arr(urls)]).expect_err("get_all should reject oversized input");
         assert!(
             err.contains("exceeds limit") && err.contains("SOLI_PARALLEL_MAX_ITEMS"),
             "got: {}",

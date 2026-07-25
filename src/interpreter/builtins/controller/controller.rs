@@ -88,7 +88,7 @@ mod tests {
         );
         let f = class.native_static_methods.get("before_action").unwrap();
         // No-op: returns Null regardless of arity so `before_action(:a, :b, handler)` is safe.
-        let result = (f.func)(vec![Value::Null, Value::Int(1)]).unwrap();
+        let result = (f.func)(&[Value::Null, Value::Int(1)]).unwrap();
         assert!(matches!(result, Value::Null));
     }
 }

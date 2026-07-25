@@ -248,7 +248,7 @@ where
 }
 
 /// `initial(StateEnum.Variant)` — sets the machine's initial state.
-fn record_initial(args: Vec<Value>) -> Result<Value, String> {
+fn record_initial(args: &[Value]) -> Result<Value, String> {
     let arg = args
         .first()
         .ok_or_else(|| "initial(state) expects one argument".to_string())?;
@@ -265,8 +265,8 @@ fn record_initial(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `transition(from, to)` or `transition({"from": ..., "to": ...})`.
-fn record_transition(args: Vec<Value>) -> Result<Value, String> {
-    let (from, to) = match args.as_slice() {
+fn record_transition(args: &[Value]) -> Result<Value, String> {
+    let (from, to) = match args {
         [Value::Hash(h)] => {
             let h = h.borrow();
             let from = hash_get(&h, "from")
@@ -286,7 +286,7 @@ fn record_transition(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `guard fn() { ... }` — a predicate run with `this` bound to the instance.
-fn record_guard(args: Vec<Value>) -> Result<Value, String> {
+fn record_guard(args: &[Value]) -> Result<Value, String> {
     let func = as_function(
         args.first()
             .ok_or_else(|| "guard(fn) expects a function".to_string())?,
@@ -299,7 +299,7 @@ fn record_guard(args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `before_transition(to_state, fn)` / `before_transition(to: X) do ... end`.
-fn record_hook(args: Vec<Value>, after: bool) -> Result<Value, String> {
+fn record_hook(args: &[Value], after: bool) -> Result<Value, String> {
     let label = if after {
         "after_transition"
     } else {

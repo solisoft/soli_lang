@@ -566,29 +566,29 @@ mod tests {
 
         // Miss before anything is stored.
         assert!(matches!(
-            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            (cached_table.func)(&[Value::String("zz-test".into())]).unwrap(),
             Value::Null
         ));
 
         // cache_table stores and echoes the table back.
         let table = hash_from_pairs(vec![("greeting", Value::String("hi".into()))]);
-        let stored = (cache_table.func)(vec![Value::String("zz-test".into()), table]).unwrap();
+        let stored = (cache_table.func)(&[Value::String("zz-test".into()), table]).unwrap();
         assert!(matches!(stored, Value::Hash(_)));
 
         // cached_table now returns the same table; a different locale stays a miss.
         assert!(matches!(
-            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            (cached_table.func)(&[Value::String("zz-test".into())]).unwrap(),
             Value::Hash(_)
         ));
         assert!(matches!(
-            (cached_table.func)(vec![Value::String("zz-other".into())]).unwrap(),
+            (cached_table.func)(&[Value::String("zz-other".into())]).unwrap(),
             Value::Null
         ));
 
         // Hot-reload contract: clearing empties the cache.
         clear_table_cache();
         assert!(matches!(
-            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            (cached_table.func)(&[Value::String("zz-test".into())]).unwrap(),
             Value::Null
         ));
     }
@@ -601,9 +601,9 @@ mod tests {
         let cached_table = static_fn(&env, "cached_table");
 
         // Non-string locale.
-        assert!((cached_table.func)(vec![Value::Int(1)]).is_err());
+        assert!((cached_table.func)(&[Value::Int(1)]).is_err());
         // Non-hash table.
-        let err = (cache_table.func)(vec![
+        let err = (cache_table.func)(&[
             Value::String("zz-test".into()),
             Value::String("not-a-hash".into()),
         ])

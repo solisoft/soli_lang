@@ -11,11 +11,11 @@ use uuid::Uuid;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
-fn make_v4(_args: Vec<Value>) -> Result<Value, String> {
+fn make_v4(_args: &[Value]) -> Result<Value, String> {
     Ok(Value::String(Uuid::new_v4().to_string().into()))
 }
 
-fn make_v7(_args: Vec<Value>) -> Result<Value, String> {
+fn make_v7(_args: &[Value]) -> Result<Value, String> {
     Ok(Value::String(Uuid::now_v7().to_string().into()))
 }
 
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn v4_returns_hyphenated_36_char_string() {
-        let v = make_v4(vec![]).unwrap();
+        let v = make_v4(&[]).unwrap();
         match v {
             Value::String(s) => {
                 assert_eq!(s.len(), 36);
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn v7_returns_version_7_uuid() {
-        let v = make_v7(vec![]).unwrap();
+        let v = make_v7(&[]).unwrap();
         match v {
             Value::String(s) => {
                 assert_eq!(s.len(), 36);
@@ -87,8 +87,8 @@ mod tests {
 
     #[test]
     fn v4_calls_produce_distinct_values() {
-        let a = make_v4(vec![]).unwrap();
-        let b = make_v4(vec![]).unwrap();
+        let a = make_v4(&[]).unwrap();
+        let b = make_v4(&[]).unwrap();
         assert_ne!(format!("{}", a), format!("{}", b));
     }
 }

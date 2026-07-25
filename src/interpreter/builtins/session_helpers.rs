@@ -488,7 +488,7 @@ mod tests {
     use crate::interpreter::value::HashKey;
     use serde_json::json;
 
-    fn call_fn(env: &Environment, name: &str, args: Vec<Value>) -> Result<Value, String> {
+    fn call_fn(env: &Environment, name: &str, args: &[Value]) -> Result<Value, String> {
         match env.get(name) {
             Some(Value::NativeFunction(f)) => (f.func)(args),
             other => panic!("expected NativeFunction for {name}, got {other:?}"),
@@ -528,7 +528,7 @@ mod tests {
             ("user_id", Value::Int(42)),
             ("role", Value::String("editor".into())),
         ]);
-        call_fn(&env, "with_session", vec![data]).unwrap();
+        call_fn(&env, "with_session", &[data]).unwrap();
 
         let session_id =
             session_id_from_cookies().expect("with_session must set the session_id cookie");
@@ -552,7 +552,7 @@ mod tests {
         call_fn(
             &env,
             "with_session",
-            vec![make_hash(vec![("a", Value::Int(1))])],
+            &[make_hash(vec![("a", Value::Int(1))])],
         )
         .unwrap();
         let first_id = session_id_from_cookies().unwrap();
@@ -560,7 +560,7 @@ mod tests {
         call_fn(
             &env,
             "with_session",
-            vec![make_hash(vec![("b", Value::Int(2))])],
+            &[make_hash(vec![("b", Value::Int(2))])],
         )
         .unwrap();
         let second_id = session_id_from_cookies().unwrap();
@@ -574,7 +574,7 @@ mod tests {
     #[test]
     fn with_session_rejects_non_hash_argument() {
         let env = fresh_env();
-        let err = call_fn(&env, "with_session", vec![Value::Int(7)]).unwrap_err();
+        let err = call_fn(&env, "with_session", &[Value::Int(7)]).unwrap_err();
         assert!(err.contains("expects a hash"), "got: {err}");
     }
 
@@ -584,10 +584,10 @@ mod tests {
     #[test]
     fn as_user_one_arg_sets_thread_local_only() {
         let env = fresh_env();
-        call_fn(&env, "as_user", vec![Value::Int(7)]).unwrap();
+        call_fn(&env, "as_user", &[Value::Int(7)]).unwrap();
 
         // TEST_USER is populated.
-        let user = call_fn(&env, "current_user", vec![]).unwrap();
+        let user = call_fn(&env, "current_user", &[]).unwrap();
         match user {
             Value::Hash(h) => {
                 let pairs = h.borrow();
@@ -615,7 +615,7 @@ mod tests {
             ("role", Value::String("admin".into())),
             ("tenant", Value::String("acme".into())),
         ]);
-        call_fn(&env, "as_user", vec![Value::Int(42), opts]).unwrap();
+        call_fn(&env, "as_user", &[Value::Int(42), opts]).unwrap();
 
         let session_id =
             session_id_from_cookies().expect("as_user(id, opts) must set session_id cookie");
@@ -628,13 +628,13 @@ mod tests {
     #[test]
     fn as_user_rejects_wrong_arity() {
         let env = fresh_env();
-        let err = call_fn(&env, "as_user", vec![]).unwrap_err();
+        let err = call_fn(&env, "as_user", &[]).unwrap_err();
         assert!(err.contains("1 or 2 arguments"), "got: {err}");
 
         let err = call_fn(
             &env,
             "as_user",
-            vec![Value::Int(1), Value::Int(2), Value::Int(3)],
+            &[Value::Int(1), Value::Int(2), Value::Int(3)],
         )
         .unwrap_err();
         assert!(err.contains("1 or 2 arguments"), "got: {err}");
@@ -646,7 +646,7 @@ mod tests {
         let err = call_fn(
             &env,
             "as_user",
-            vec![Value::Int(1), Value::String("admin".into())],
+            &[Value::Int(1), Value::String("admin".into())],
         )
         .unwrap_err();
         assert!(err.contains("expects a hash"), "got: {err}");
@@ -660,7 +660,7 @@ mod tests {
         call_fn(
             &env,
             "sign_in",
-            vec![Value::String("admin".into()), Value::Int(5)],
+            &[Value::String("admin".into()), Value::Int(5)],
         )
         .unwrap();
 
@@ -677,7 +677,7 @@ mod tests {
         call_fn(
             &env,
             "sign_in",
-            vec![
+            &[
                 Value::String("staff".into()),
                 Value::String("abc-123".into()),
             ],
@@ -691,26 +691,21 @@ mod tests {
     #[test]
     fn sign_in_rejects_empty_name() {
         let env = fresh_env();
-        let err = call_fn(
-            &env,
-            "sign_in",
-            vec![Value::String("".into()), Value::Int(1)],
-        )
-        .unwrap_err();
+        let err = call_fn(&env, "sign_in", &[Value::String("".into()), Value::Int(1)]).unwrap_err();
         assert!(err.contains("must not be empty"), "got: {err}");
     }
 
     #[test]
     fn sign_in_rejects_wrong_arity() {
         let env = fresh_env();
-        let err = call_fn(&env, "sign_in", vec![]).unwrap_err();
+        let err = call_fn(&env, "sign_in", &[]).unwrap_err();
         assert!(err.contains("1 or 2 arguments"), "got: {err}");
     }
 
     #[test]
     fn sign_in_rejects_non_string_name() {
         let env = fresh_env();
-        let err = call_fn(&env, "sign_in", vec![Value::Int(7), Value::Int(1)]).unwrap_err();
+        let err = call_fn(&env, "sign_in", &[Value::Int(7), Value::Int(1)]).unwrap_err();
         assert!(err.contains("expects string"), "got: {err}");
     }
 
@@ -720,7 +715,7 @@ mod tests {
         let err = call_fn(
             &env,
             "sign_in",
-            vec![
+            &[
                 Value::String("admin".into()),
                 Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
             ],

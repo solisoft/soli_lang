@@ -2648,7 +2648,7 @@ mod tests {
         Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
     }
 
-    fn call_builtin(name: &str, args: Vec<Value>) -> Result<Value, String> {
+    fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         let mut env = Environment::new();
         register_template_builtins(&mut env);
         let Value::NativeFunction(function) = env.get(name).unwrap() else {
@@ -2691,7 +2691,7 @@ mod tests {
 
     #[test]
     fn redirect_accepts_local_absolute_path() {
-        let response = call_builtin("redirect", vec![Value::String("/dashboard".into())])
+        let response = call_builtin("redirect", &[Value::String("/dashboard".into())])
             .expect("local redirect should succeed");
 
         assert_eq!(response_location(&response).as_deref(), Some("/dashboard"));
@@ -2707,7 +2707,7 @@ mod tests {
             "/\\evil.com",
             "/ok\r\nX-Injected: yes",
         ] {
-            let err = call_builtin("redirect", vec![Value::String(url.to_string().into())])
+            let err = call_builtin("redirect", &[Value::String(url.to_string().into())])
                 .expect_err("redirect should reject unsafe location");
             assert!(
                 err.contains("local") || err.contains("non-empty"),
@@ -2720,7 +2720,7 @@ mod tests {
     fn redirect_external_requires_explicit_http_url() {
         let response = call_builtin(
             "redirect_external",
-            vec![Value::String("https://example.com/login".into())],
+            &[Value::String("https://example.com/login".into())],
         )
         .expect("external redirect should succeed");
 
@@ -2738,7 +2738,7 @@ mod tests {
             assert!(
                 call_builtin(
                     "redirect_external",
-                    vec![Value::String(url.to_string().into())]
+                    &[Value::String(url.to_string().into())]
                 )
                 .is_err(),
                 "expected redirect_external to reject {url:?}"
@@ -2772,7 +2772,7 @@ mod tests {
             "https://app.test/posts/42?tab=comments",
         )));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())])
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())])
                 .expect("redirect(:back) should succeed");
             assert_eq!(
                 response_location(&resp).as_deref(),
@@ -2787,21 +2787,21 @@ mod tests {
         // External Referer → "/"
         set_current_request(make_request_with_referer(Some("https://evil.test/x")));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())]).unwrap();
             assert_eq!(response_location(&resp).as_deref(), Some("/"));
         });
 
         // Scheme mismatch → "/"
         set_current_request(make_request_with_referer(Some("http://app.test/x")));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())]).unwrap();
             assert_eq!(response_location(&resp).as_deref(), Some("/"));
         });
 
         // Missing Referer → "/"
         set_current_request(make_request_with_referer(None));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())]).unwrap();
             assert_eq!(response_location(&resp).as_deref(), Some("/"));
         });
 
@@ -2810,14 +2810,14 @@ mod tests {
             "https://app.test@evil.test/x",
         )));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())]).unwrap();
             assert_eq!(response_location(&resp).as_deref(), Some("/"));
         });
 
         // Non-http scheme → "/"
         set_current_request(make_request_with_referer(Some("javascript:alert(1)")));
         with_request_host("https", "app.test", || {
-            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            let resp = call_builtin("redirect", &[Value::Symbol("back".into())]).unwrap();
             assert_eq!(response_location(&resp).as_deref(), Some("/"));
         });
 
@@ -2826,7 +2826,7 @@ mod tests {
 
     #[test]
     fn redirect_rejects_unknown_symbols() {
-        let err = call_builtin("redirect", vec![Value::Symbol("forward".into())])
+        let err = call_builtin("redirect", &[Value::Symbol("forward".into())])
             .expect_err("unknown symbol must error");
         assert!(err.contains(":back"), "unexpected error: {err}");
     }
@@ -3008,7 +3008,7 @@ mod tests {
     #[test]
     fn render_jsonp_wraps_when_callback_present() {
         set_current_request(make_request_with_callback(Some("handleData")));
-        let result = call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+        let result = call_builtin("render_jsonp", &[one_key_data()]).expect("render_jsonp ok");
         assert_eq!(result, Value::Null);
 
         let resp = take_fast_path();
@@ -3024,7 +3024,7 @@ mod tests {
     #[test]
     fn render_jsonp_falls_back_to_json_without_callback() {
         set_current_request(make_request_with_callback(None));
-        call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+        call_builtin("render_jsonp", &[one_key_data()]).expect("render_jsonp ok");
 
         let resp = take_fast_path();
         assert_eq!(resp.status, 200);
@@ -3036,7 +3036,7 @@ mod tests {
     #[test]
     fn render_jsonp_rejects_invalid_callback_without_reflecting() {
         set_current_request(make_request_with_callback(Some("alert(document.cookie)")));
-        call_builtin("render_jsonp", vec![one_key_data()]).expect("render_jsonp ok");
+        call_builtin("render_jsonp", &[one_key_data()]).expect("render_jsonp ok");
 
         let resp = take_fast_path();
         assert_eq!(resp.status, 400);

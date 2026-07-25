@@ -2114,7 +2114,7 @@ impl Interpreter {
                 // Otherwise no-op so cheap builtins (`len`, `str`, …) don't
                 // flood the chart from inside iteration loops.
                 let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
-                let result = (native.func)(all_args)
+                let result = (native.func)(&all_args)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
                 drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();
@@ -2401,7 +2401,7 @@ impl Interpreter {
                 crate::interpreter::executor::variables::set_current_env(self.environment.clone());
                 // See call_value_with_named above — same whitelist gating.
                 let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
-                let result = (native.func)(arguments)
+                let result = (native.func)(&arguments)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
                 drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();

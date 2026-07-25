@@ -208,6 +208,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("ADD_LC       {:>3},{:>3}", slot, cidx))
         }
         Op::SetLocalPop(slot) => out.push_str(&format!("SET_LOCAL_POP {:>4}", slot)),
+        Op::AddLocalsInPlace(a, b) => out.push_str(&format!("ADD_LOCALS_IP {:>4} {:>4}", a, b)),
         Op::TestLessEqualJump(offset) => out.push_str(&format!("TEST_LE_JUMP {:>5}", offset)),
         Op::TestLessJump(offset) => out.push_str(&format!("TEST_LT_JUMP {:>5}", offset)),
         Op::CallGlobal(idx, argc) => {

@@ -406,7 +406,7 @@ impl Vm {
         // `span_log::is_request_path_native`); cheap builtins are
         // skipped to keep the chart readable.
         let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
-        let result = (native.func)(args).map_err(|e| RuntimeError::new(e, span))?;
+        let result = (native.func)(&args).map_err(|e| RuntimeError::new(e, span))?;
         drop(_native_span);
         self.push(result);
         Ok(())
@@ -595,43 +595,50 @@ impl Vm {
         // …) only fire through the tree-walker's interceptors. Calling the
         // native here would silently skip them — same EngineFallback carve-out
         // as `op_get_property` (see vm_classes.rs).
-        if let Value::Instance(inst) = &self.stack[receiver_idx] {
-            let (native, is_model) = {
-                let inst_ref = inst.borrow();
-                if inst_ref.fields.contains_key(name) {
-                    (None, false)
-                } else {
-                    let is_model = inst_ref.class.is_model_subclass();
-                    (inst_ref.class.find_native_method(name), is_model)
-                }
-            };
-            if let Some(native) = native {
-                let span = self.current_span();
-                if is_model {
-                    return Err(RuntimeError::EngineFallback(
-                        format!("model instance method '{}'", name),
-                        span,
-                    ));
-                }
-                if let Some(expected) = native.arity {
-                    if argc != expected {
-                        return Err(RuntimeError::wrong_arity(expected, argc, span));
-                    }
-                }
-                let user_args: Vec<Value> =
-                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
-                let inst = inst.clone();
-                let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
-                let result =
-                    crate::interpreter::executor::access::member::call_native_instance_method(
-                        &inst, &native, &user_args,
-                    )
-                    .map_err(|e| RuntimeError::new(e, span))?;
-                drop(_native_span);
-                self.stack.truncate(receiver_idx);
-                self.stack.push(result);
-                return Ok(());
+        // Resolve the native method and release the borrow on the value stack
+        // before calling, so the arguments can be passed as a *slice* of the
+        // stack rather than copied into a fresh `Vec`. That copy ran on every
+        // native instance-method call including zero-argument ones, which is
+        // most of them (`dt.year()`, `dt.to_unix()`, `d.total_seconds()`).
+        let resolved = if let Value::Instance(inst) = &self.stack[receiver_idx] {
+            let inst_ref = inst.borrow();
+            if inst_ref.fields.contains_key(name) {
+                None
+            } else {
+                let is_model = inst_ref.class.is_model_subclass();
+                inst_ref
+                    .class
+                    .find_native_method(name)
+                    .map(|native| (native, is_model, inst.clone()))
             }
+        } else {
+            None
+        };
+        if let Some((native, is_model, inst)) = resolved {
+            let span = self.current_span();
+            if is_model {
+                return Err(RuntimeError::EngineFallback(
+                    format!("model instance method '{}'", name),
+                    span,
+                ));
+            }
+            if let Some(expected) = native.arity {
+                if argc != expected {
+                    return Err(RuntimeError::wrong_arity(expected, argc, span));
+                }
+            }
+            let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
+            let result = {
+                let user_args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                crate::interpreter::executor::access::member::call_native_instance_method(
+                    &inst, &native, user_args,
+                )
+            }
+            .map_err(|e| RuntimeError::new(e, span))?;
+            drop(_native_span);
+            self.stack.truncate(receiver_idx);
+            self.stack.push(result);
+            return Ok(());
         }
 
         let span = self.current_span();
@@ -683,7 +690,7 @@ impl Vm {
     pub fn call_global(
         &mut self,
         name: &str,
-        args: Vec<Value>,
+        args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
         let func = self
@@ -693,7 +700,7 @@ impl Vm {
             .ok_or_else(|| RuntimeError::undefined_variable(name, span))?;
 
         self.push(func);
-        for arg in &args {
+        for arg in args {
             self.push(arg.clone());
         }
         self.call_value(args.len(), span)?;
@@ -705,13 +712,13 @@ impl Vm {
     pub fn call_value_direct(
         &mut self,
         callee: Value,
-        args: Vec<Value>,
+        args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
         self.push(callee);
         let argc = args.len();
         for arg in args {
-            self.push(arg);
+            self.push(arg.clone());
         }
         self.call_value(argc, span)?;
         self.run()
@@ -801,7 +808,7 @@ impl Vm {
     pub fn invoke_callable(
         &mut self,
         callee: Value,
-        args: Vec<Value>,
+        args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
         let saved_depth = self.return_depth;
@@ -809,7 +816,7 @@ impl Vm {
         self.push(callee);
         let argc = args.len();
         for arg in args {
-            self.push(arg);
+            self.push(arg.clone());
         }
         self.call_value(argc, span)?;
         if self.frames.len() == frames_before {

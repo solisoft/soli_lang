@@ -316,18 +316,18 @@ fn job_queue_and_opts(arg: Option<&Value>) -> Result<(String, serde_json::Value)
 
 /// Enqueue a named job class with a payload — the same path as `Job.enqueue`,
 /// exposed for built-in callers (e.g. `Mailer` `deliver_later`).
-pub(crate) fn enqueue(args: Vec<Value>) -> Result<Value, String> {
+pub(crate) fn enqueue(args: &[Value]) -> Result<Value, String> {
     job_enqueue(args)
 }
 
-fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
+fn job_enqueue(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
         return Err(
             "Job.enqueue(handler, args, queue_or_opts?) requires at least 2 arguments".to_string(),
         );
     }
-    let handler = arg_string(&args, 0, "Job.enqueue")?;
-    let payload = arg_hash_as_json(&args, 1)?;
+    let handler = arg_string(args, 0, "Job.enqueue")?;
+    let payload = arg_hash_as_json(args, 1)?;
     let (queue, opts) = job_queue_and_opts(args.get(2))?;
     let client = make_client()?;
     let callback = callback_for(&handler);
@@ -337,16 +337,16 @@ fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
+fn job_enqueue_in(args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
             "Job.enqueue_in(handler, duration, args, queue_or_opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
-    let handler = arg_string(&args, 0, "Job.enqueue_in")?;
+    let handler = arg_string(args, 0, "Job.enqueue_in")?;
     let secs = parse_duration(&args[1])?;
-    let payload = arg_hash_as_json(&args, 2)?;
+    let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts) = job_queue_and_opts(args.get(3))?;
     let when = iso_now_plus_seconds(secs);
     let client = make_client()?;
@@ -364,16 +364,16 @@ fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn job_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
+fn job_enqueue_at(args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
             "Job.enqueue_at(handler, datetime, args, queue_or_opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
-    let handler = arg_string(&args, 0, "Job.enqueue_at")?;
-    let when = arg_string(&args, 1, "Job.enqueue_at")?;
-    let payload = arg_hash_as_json(&args, 2)?;
+    let handler = arg_string(args, 0, "Job.enqueue_at")?;
+    let when = arg_string(args, 1, "Job.enqueue_at")?;
+    let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts) = job_queue_and_opts(args.get(3))?;
     let client = make_client()?;
     let callback = callback_for(&handler);
@@ -390,8 +390,8 @@ fn job_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn job_cancel(args: Vec<Value>) -> Result<Value, String> {
-    let id = arg_string(&args, 0, "Job.cancel")?;
+fn job_cancel(args: &[Value]) -> Result<Value, String> {
+    let id = arg_string(args, 0, "Job.cancel")?;
     let client = make_client()?;
     client
         .cancel_job(&id)
@@ -399,7 +399,7 @@ fn job_cancel(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Bool(true))
 }
 
-fn job_list(args: Vec<Value>) -> Result<Value, String> {
+fn job_list(args: &[Value]) -> Result<Value, String> {
     let queue = match args.first() {
         Some(Value::String(s)) => s.clone(),
         _ => jobs_config().default_queue.clone().into(),
@@ -411,7 +411,7 @@ fn job_list(args: Vec<Value>) -> Result<Value, String> {
     Ok(json_to_value_or_null(serde_json::Value::Array(jobs)))
 }
 
-fn job_queues(_args: Vec<Value>) -> Result<Value, String> {
+fn job_queues(_args: &[Value]) -> Result<Value, String> {
     let client = make_client()?;
     let queues = client
         .list_queues()
@@ -467,14 +467,14 @@ fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<(String, serde_json::V
     Ok((queue, serde_json::Value::Object(out)))
 }
 
-fn webhook_enqueue(args: Vec<Value>) -> Result<Value, String> {
+fn webhook_enqueue(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
         return Err(
             "Webhook.enqueue(url, payload, opts?) requires at least 2 arguments".to_string(),
         );
     }
-    let url = arg_string(&args, 0, "Webhook.enqueue")?;
-    let payload = arg_hash_as_json(&args, 1)?;
+    let url = arg_string(args, 0, "Webhook.enqueue")?;
+    let payload = arg_hash_as_json(args, 1)?;
     let (queue, opts_json) = webhook_build_opts(args.get(2))?;
     let client = make_client()?;
     let id = client
@@ -483,16 +483,16 @@ fn webhook_enqueue(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn webhook_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
+fn webhook_enqueue_in(args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
             "Webhook.enqueue_in(url, duration, payload, opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
-    let url = arg_string(&args, 0, "Webhook.enqueue_in")?;
+    let url = arg_string(args, 0, "Webhook.enqueue_in")?;
     let secs = parse_duration(&args[1])?;
-    let payload = arg_hash_as_json(&args, 2)?;
+    let payload = arg_hash_as_json(args, 2)?;
     let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
     if let serde_json::Value::Object(ref mut map) = opts_json {
         map.insert(
@@ -507,16 +507,16 @@ fn webhook_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn webhook_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
+fn webhook_enqueue_at(args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
             "Webhook.enqueue_at(url, datetime, payload, opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
-    let url = arg_string(&args, 0, "Webhook.enqueue_at")?;
-    let when = arg_string(&args, 1, "Webhook.enqueue_at")?;
-    let payload = arg_hash_as_json(&args, 2)?;
+    let url = arg_string(args, 0, "Webhook.enqueue_at")?;
+    let when = arg_string(args, 1, "Webhook.enqueue_at")?;
+    let payload = arg_hash_as_json(args, 2)?;
     let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
     if let serde_json::Value::Object(ref mut map) = opts_json {
         map.insert("run_at".to_string(), serde_json::Value::String(when));
@@ -530,16 +530,16 @@ fn webhook_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
 
 // ===== Cron class methods =====
 
-fn cron_schedule(args: Vec<Value>) -> Result<Value, String> {
+fn cron_schedule(args: &[Value]) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
             "Cron.schedule(name, expr, handler, args?) requires at least 3 arguments".to_string(),
         );
     }
-    let name = arg_string(&args, 0, "Cron.schedule")?;
-    let expr = arg_string(&args, 1, "Cron.schedule")?;
-    let handler = arg_string(&args, 2, "Cron.schedule")?;
-    let payload = arg_hash_as_json(&args, 3)?;
+    let name = arg_string(args, 0, "Cron.schedule")?;
+    let expr = arg_string(args, 1, "Cron.schedule")?;
+    let handler = arg_string(args, 2, "Cron.schedule")?;
+    let payload = arg_hash_as_json(args, 3)?;
 
     let client = make_client()?;
     let callback = callback_for(&handler);
@@ -581,7 +581,7 @@ fn cron_schedule(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::String(id.into()))
 }
 
-fn cron_list(_args: Vec<Value>) -> Result<Value, String> {
+fn cron_list(_args: &[Value]) -> Result<Value, String> {
     let client = make_client()?;
     let crons = client
         .list_crons()
@@ -589,11 +589,11 @@ fn cron_list(_args: Vec<Value>) -> Result<Value, String> {
     Ok(json_to_value_or_null(serde_json::Value::Array(crons)))
 }
 
-fn cron_update_method(args: Vec<Value>) -> Result<Value, String> {
+fn cron_update_method(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
         return Err("Cron.update(id, fields_hash) requires 2 arguments".to_string());
     }
-    let id = arg_string(&args, 0, "Cron.update")?;
+    let id = arg_string(args, 0, "Cron.update")?;
     let fields = match &args[1] {
         Value::Hash(_) => value_to_json(&args[1])?,
         other => {
@@ -610,8 +610,8 @@ fn cron_update_method(args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Bool(true))
 }
 
-fn cron_delete(args: Vec<Value>) -> Result<Value, String> {
-    let id = arg_string(&args, 0, "Cron.delete")?;
+fn cron_delete(args: &[Value]) -> Result<Value, String> {
+    let id = arg_string(args, 0, "Cron.delete")?;
     let client = make_client()?;
     client
         .delete_cron(&id)
@@ -807,7 +807,7 @@ fn register_cron_class(env: &mut Environment) {
     statics.insert(
         "daily_at".to_string(),
         Rc::new(NativeFunction::new("Cron.daily_at", Some(1), |args| {
-            let s = arg_string(&args, 0, "Cron.daily_at")?;
+            let s = arg_string(args, 0, "Cron.daily_at")?;
             cron_daily_at(&s).map(|s| Value::String(s.into()))
         })),
     );
@@ -820,8 +820,8 @@ fn register_cron_class(env: &mut Environment) {
     statics.insert(
         "weekly_at".to_string(),
         Rc::new(NativeFunction::new("Cron.weekly_at", Some(2), |args| {
-            let day = arg_string(&args, 0, "Cron.weekly_at")?;
-            let time = arg_string(&args, 1, "Cron.weekly_at")?;
+            let day = arg_string(args, 0, "Cron.weekly_at")?;
+            let time = arg_string(args, 1, "Cron.weekly_at")?;
             cron_weekly_at(&day, &time).map(|s| Value::String(s.into()))
         })),
     );
@@ -861,8 +861,8 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                 None,
                 move |args| {
                     let mut a = vec![Value::String(cn.clone().into())];
-                    a.extend(args);
-                    job_enqueue(a)
+                    a.extend_from_slice(args);
+                    job_enqueue(&a)
                 },
             )),
         );
@@ -891,7 +891,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                     if args.len() > 2 {
                         a.push(args[2].clone());
                     }
-                    job_enqueue_in(a)
+                    job_enqueue_in(&a)
                 },
             )),
         );
@@ -920,7 +920,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                     if args.len() > 2 {
                         a.push(args[2].clone());
                     }
-                    job_enqueue_at(a)
+                    job_enqueue_at(&a)
                 },
             )),
         );
@@ -948,7 +948,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                     if args.len() > 2 {
                         a.push(args[2].clone());
                     }
-                    cron_schedule(a)
+                    cron_schedule(&a)
                 },
             )),
         );
@@ -996,7 +996,7 @@ pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<Str
         Value::String(expr.to_string().into()),
         Value::String(handler.to_string().into()),
     ];
-    match cron_schedule(args)? {
+    match cron_schedule(&args)? {
         Value::String(id) => Ok(id.to_string()),
         _ => Ok(String::new()),
     }

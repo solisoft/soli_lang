@@ -112,7 +112,7 @@ mod tests {
             Value::Class(c) => c,
             _ => panic!("Hex not a class"),
         };
-        (class.native_static_methods.get(name).unwrap().func)(vec![arg])
+        (class.native_static_methods.get(name).unwrap().func)(&[arg])
     }
 
     #[test]

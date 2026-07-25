@@ -100,7 +100,7 @@ impl Vm {
                         return Ok(Value::NativeFunction(NativeFunction::new(
                             "is_a?",
                             Some(1),
-                            move |args: Vec<Value>| -> Result<Value, String> {
+                            move |args: &[Value]| -> Result<Value, String> {
                                 let class_name = match args.first() {
                                     Some(Value::String(s)) => s.clone(),
                                     _ => return Err("is_a? expects a string argument".to_string()),
@@ -330,7 +330,7 @@ impl Vm {
         // already carry their receiver in the closure.
         if let Value::NativeFunction(func) = &val {
             if func.is_auto_invocable || func.arity == Some(0) {
-                return (func.func)(Vec::new()).map_err(|msg| RuntimeError::new(msg, span));
+                return (func.func)(&[]).map_err(|msg| RuntimeError::new(msg, span));
             }
             return Ok(val);
         }

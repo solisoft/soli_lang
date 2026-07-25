@@ -212,7 +212,7 @@ pub fn register_s3_class(env: &mut Environment) {
     s3_static_methods.insert(
         "create_bucket".to_string(),
         Rc::new(NativeFunction::new("S3.create_bucket", Some(1), |args| {
-            let bucket_name = extract_string(&args, 0, "S3.create_bucket", "bucket name")?;
+            let bucket_name = extract_string(args, 0, "S3.create_bucket", "bucket name")?;
             let client = get_s3_client()?;
             let request = CreateBucketRequest {
                 bucket: bucket_name.clone(),
@@ -234,7 +234,7 @@ pub fn register_s3_class(env: &mut Environment) {
     s3_static_methods.insert(
         "delete_bucket".to_string(),
         Rc::new(NativeFunction::new("S3.delete_bucket", Some(1), |args| {
-            let bucket_name = extract_string(&args, 0, "S3.delete_bucket", "bucket name")?;
+            let bucket_name = extract_string(args, 0, "S3.delete_bucket", "bucket name")?;
             let client = get_s3_client()?;
             let request = DeleteBucketRequest {
                 bucket: bucket_name.clone(),
@@ -262,9 +262,9 @@ pub fn register_s3_class(env: &mut Environment) {
                     args.len()
                 ));
             }
-            let bucket = extract_string(&args, 0, "S3.put_object", "bucket")?;
-            let key = extract_string(&args, 1, "S3.put_object", "key")?;
-            let body = extract_string(&args, 2, "S3.put_object", "body")?;
+            let bucket = extract_string(args, 0, "S3.put_object", "bucket")?;
+            let key = extract_string(args, 1, "S3.put_object", "key")?;
+            let body = extract_string(args, 2, "S3.put_object", "body")?;
 
             let mut content_type = "application/octet-stream".to_string();
             if let Some(Value::Hash(options)) = args.get(3) {
@@ -300,8 +300,8 @@ pub fn register_s3_class(env: &mut Environment) {
     s3_static_methods.insert(
         "get_object".to_string(),
         Rc::new(NativeFunction::new("S3.get_object", Some(2), |args| {
-            let bucket = extract_string(&args, 0, "S3.get_object", "bucket")?;
-            let key = extract_string(&args, 1, "S3.get_object", "key")?;
+            let bucket = extract_string(args, 0, "S3.get_object", "bucket")?;
+            let key = extract_string(args, 1, "S3.get_object", "key")?;
 
             let client = get_s3_client()?;
             let request = GetObjectRequest {
@@ -341,8 +341,8 @@ pub fn register_s3_class(env: &mut Environment) {
     s3_static_methods.insert(
         "delete_object".to_string(),
         Rc::new(NativeFunction::new("S3.delete_object", Some(2), |args| {
-            let bucket = extract_string(&args, 0, "S3.delete_object", "bucket")?;
-            let key = extract_string(&args, 1, "S3.delete_object", "key")?;
+            let bucket = extract_string(args, 0, "S3.delete_object", "bucket")?;
+            let key = extract_string(args, 1, "S3.delete_object", "key")?;
 
             let client = get_s3_client()?;
             let request = DeleteObjectRequest {
@@ -373,9 +373,9 @@ pub fn register_s3_class(env: &mut Environment) {
                     args.len()
                 ));
             }
-            let bucket = extract_string(&args, 0, "S3.list_objects", "bucket")?;
+            let bucket = extract_string(args, 0, "S3.list_objects", "bucket")?;
             let prefix = if args.len() > 1 {
-                Some(extract_string(&args, 1, "S3.list_objects", "prefix")?)
+                Some(extract_string(args, 1, "S3.list_objects", "prefix")?)
             } else {
                 None
             };
@@ -418,8 +418,8 @@ pub fn register_s3_class(env: &mut Environment) {
     s3_static_methods.insert(
         "copy_object".to_string(),
         Rc::new(NativeFunction::new("S3.copy_object", Some(2), |args| {
-            let source = extract_string(&args, 0, "S3.copy_object", "source")?;
-            let dest = extract_string(&args, 1, "S3.copy_object", "dest")?;
+            let source = extract_string(args, 0, "S3.copy_object", "source")?;
+            let dest = extract_string(args, 1, "S3.copy_object", "dest")?;
 
             let (src_bucket, src_key) = source
                 .split_once('/')
