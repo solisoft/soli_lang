@@ -2089,14 +2089,13 @@ impl Interpreter {
             | "flatten" | "first" | "last" | "empty?" | "includes?" | "include?" | "contains"
             | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum" | "min" | "max"
             | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick" | "to_string"
-            | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" | "delete"
-            | "delete_at" | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?"
-            | "one?" | "values_at" | "count" | "intersection" | "union" | "difference" => {
-                Ok(Value::method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "to_json" | "join"
+            | "is_a?" | "all" | "includes" | "order" | "delete" | "delete_at" | "shift"
+            | "unshift" | "insert" | "rotate" | "reject" | "none?" | "one?" | "values_at"
+            | "count" | "intersection" | "union" | "difference" => Ok(Value::method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),

@@ -1085,6 +1085,28 @@ impl Vm {
                 }
                 Ok(current.unwrap_or(Value::Null))
             }
+            "sum_by" | "group_by" | "index_by" | "count_by" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                use crate::interpreter::executor::calls::array_ops as ops;
+                let items = arr.borrow();
+                let f = &args[0];
+                Ok(match name {
+                    "sum_by" => ops::sum_by(&items, f),
+                    "group_by" => ops::group_by_field(&items, f),
+                    "index_by" => ops::index_by(&items, f),
+                    _ => ops::count_by(&items, f),
+                })
+            }
+            "tally" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                Ok(crate::interpreter::executor::calls::array_ops::tally(
+                    &arr.borrow(),
+                ))
+            }
             "pluck" => {
                 if args.is_empty() {
                     return Err(RuntimeError::new(

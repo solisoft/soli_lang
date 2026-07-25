@@ -91,3 +91,16 @@ best("DateTime","to_unix")     { i=0; while i<M; T1.to_i; i+=1; end }
 best("Duration","of_days")     { i=0; while i<M; 3*86_400; i+=1; end }
 best("Duration","between")     { i=0; while i<M; (T2 - T1); i+=1; end }
 
+# --- Field-keyed aggregates ---
+# Soli expresses these with a field *name* (`rows.sum_by("n")`); Ruby's
+# equivalents take a block. The block call per element is the point of the
+# comparison, not an unfair handicap — it is how the operation is written in
+# idiomatic Ruby, and Ruby has no non-block form.
+ROWS = (0...N).map { |i| { "t" => "type#{i % 7}", "n" => i } }
+FLAT = (0...N).map { |i| i % 7 }
+best("Aggregate","sum_by")   { ROWS.sum { |r| r["n"] } }
+best("Aggregate","group_by") { ROWS.group_by { |r| r["t"] } }
+best("Aggregate","index_by") { ROWS.to_h { |r| [r["t"], r] } }
+best("Aggregate","count_by") { ROWS.each_with_object(Hash.new(0)) { |r, h| h[r["t"]] += 1 } }
+best("Aggregate","tally")    { FLAT.tally }
+

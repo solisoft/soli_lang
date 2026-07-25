@@ -491,6 +491,107 @@ print([10, 20, 30].dig(-1)); # 30</code></pre>
                 </div>
             </section>
 
+            <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5 mb-6">
+                <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-emerald-400">Why these take a field name, not a block.</strong> Each aggregate below names the field as <em>data</em>, so the entire traversal runs in Rust and never re-enters the interpreter. The hand-written equivalent &mdash; <code class="text-cyan-400">rows.reduce(fn(a, r) { return a + r["n"] }, 0)</code> &mdash; calls back into Soli once per element and measures <strong class="text-white">~235&times; slower</strong> on 20,000 rows. Reach for these before writing the loop. See <a href="/docs/getting-started/benchmarks" class="text-amber-400 hover:underline">Benchmarks</a>.</p>
+            </div>
+
+            <section id="method-sum-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sum-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.sum_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Total a numeric field across an array of records. Integers stay integral &mdash; useful for money held as cents &mdash; and the result promotes to a float only once a float is seen. Missing or non-numeric fields are skipped rather than raising.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">orders = [
+  { "sku": "a", "cents": 1250 },
+  { "sku": "b", "cents": 900 }
+]
+
+print(orders.sum_by("cents"));   # 2150
+
+# Mixed numeric types promote to Float
+print([{ "n": 1.5 }, { "n": 2 }].sum_by("n"));  # 3.5
+
+# Missing fields are skipped, not errors
+print(orders.sum_by("nope"));    # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="method-group-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-group-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.group_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Group records by the value of a field, returning a hash of <code>value &rarr; array of records</code>. Key order follows first appearance, and records keep their original order within each group.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">users = [
+  { "name": "Alice", "role": "admin" },
+  { "name": "Bob",   "role": "member" },
+  { "name": "Carol", "role": "admin" }
+]
+
+by_role = users.group_by("role")
+print(by_role["admin"].len());   # 2
+print(by_role.keys());           # ["admin", "member"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-index-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-index-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.index_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Build a lookup hash of <code>field value &rarr; record</code>. The usual way to turn a list into something you can index in O(1). On a duplicate key the last record wins.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">users = [
+  { "id": 7, "name": "Alice" },
+  { "id": 9, "name": "Bob" }
+]
+
+by_id = users.index_by("id")
+print(by_id[7]["name"]);   # "Alice"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-count-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-count-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.count_by(field)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Count records per distinct field value, returning <code>value &rarr; count</code>. The direct way to build dashboard tallies without a loop.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">tickets = [
+  { "status": "open" },
+  { "status": "closed" },
+  { "status": "open" }
+]
+
+print(tickets.count_by("status"));   # {"open": 2, "closed": 1}</code></pre>
+                </div>
+            </section>
+
+            <section id="method-tally" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-tally" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.tally()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Count occurrences of each value in a flat array, returning <code>value &rarr; count</code>. Like <code>count_by</code>, but for arrays of plain values rather than records.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">print([1, 2, 2, 3].tally());               # {1: 1, 2: 2, 3: 1}
+print(["a", "b", "a"].tally());            # {"a": 2, "b": 1}</code></pre>
+                </div>
+            </section>
+
             <section id="method-pluck" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-pluck" class="group flex items-center gap-2 mb-3">

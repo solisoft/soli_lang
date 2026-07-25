@@ -205,3 +205,24 @@ bench("DateTime", "to_unix",       fn() dt_tounix())
 bench("Duration", "of_days",       fn() du_ofdays())
 bench("Duration", "between",       fn() du_between())
 
+# --- Field-keyed aggregates ---
+def mk_rows(n) {
+    let a = []
+    let i = 0
+    while i < n { a.push({"t": "type#{i % 7}", "n": i}); i = i + 1 }
+    return a
+}
+def mk_flat(n) {
+    let a = []
+    let i = 0
+    while i < n { a.push(i % 7); i = i + 1 }
+    return a
+}
+const ROWS = mk_rows(N)
+const FLAT = mk_flat(N)
+bench("Aggregate", "sum_by",   fn() ROWS.sum_by("n"))
+bench("Aggregate", "group_by", fn() ROWS.group_by("t"))
+bench("Aggregate", "index_by", fn() ROWS.index_by("t"))
+bench("Aggregate", "count_by", fn() ROWS.count_by("t"))
+bench("Aggregate", "tally",    fn() FLAT.tally())
+

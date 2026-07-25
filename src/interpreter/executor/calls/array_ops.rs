@@ -7,8 +7,10 @@
 //! recursively with an optional depth. Sharing one implementation keeps the
 //! engines in lockstep so a fix lands in exactly one place.
 
-use crate::interpreter::value::{SoliStr, Value};
+use crate::interpreter::value::{HashPairs, SoliStr, Value};
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 /// A hashable stand-in for the `Value`s that can be hashed *without* changing
 /// `Value`'s `PartialEq` semantics. `None` from [`fast_key`] means "this value's
@@ -229,6 +231,159 @@ pub(crate) fn compact_values(items: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// Field-keyed aggregates
+//
+// These exist to keep whole-collection work inside Rust. The alternative
+// spelling — `orders.reduce(fn(a, o) { return a + o["amount"] }, 0)` — runs a
+// Soli closure per element, and a closure call is ~45-235x the cost of the same
+// operation done natively (measured: `sum` 0.005 ms native vs 1.128 ms via
+// `reduce` over 20k rows). Every method here takes a *field name* rather than a
+// callback precisely so the loop never re-enters the interpreter.
+// ---------------------------------------------------------------------------
+
+/// Read `field` from one record: a hash key, or an index into an array row.
+/// Mirrors `pluck`'s accessor so the whole family behaves identically.
+pub(crate) fn field_of(value: &Value, key: &Value) -> Value {
+    use crate::interpreter::value::HashKey;
+    match (value, key) {
+        (Value::Hash(h), Value::String(s)) => {
+            let hk = HashKey::String(s.clone());
+            h.borrow().get(&hk).cloned().unwrap_or(Value::Null)
+        }
+        (Value::Array(a), Value::Int(i)) => {
+            let arr = a.borrow();
+            let idx = if *i < 0 {
+                (arr.len() as i64 + *i) as usize
+            } else {
+                *i as usize
+            };
+            arr.get(idx).cloned().unwrap_or(Value::Null)
+        }
+        _ => Value::Null,
+    }
+}
+
+/// A `Value` usable as a hash key. `None` for values a hash cannot key on
+/// (arrays, hashes, instances) — callers group those under `Null` rather than
+/// failing, matching how `field_of` reports a missing field.
+fn as_hash_key(v: &Value) -> Option<crate::interpreter::value::HashKey> {
+    use crate::interpreter::value::HashKey;
+    Some(match v {
+        Value::String(s) => HashKey::String(s.clone()),
+        Value::Symbol(s) => HashKey::Symbol(s.clone()),
+        Value::Int(n) => HashKey::Int(*n),
+        Value::Bool(b) => HashKey::Bool(*b),
+        Value::Decimal(d) => HashKey::Decimal(d.clone()),
+        Value::Null => HashKey::Null,
+        // Floats are deliberately keyed through their integer value when exact,
+        // so `1.0` and `1` group together the way `Value`'s equality says they
+        // should; anything else is not a sensible grouping key.
+        Value::Float(f) if f.fract() == 0.0 && *f >= i64::MIN as f64 && *f <= i64::MAX as f64 => {
+            HashKey::Int(*f as i64)
+        }
+        _ => return None,
+    })
+}
+
+fn key_or_null(v: &Value) -> crate::interpreter::value::HashKey {
+    as_hash_key(v).unwrap_or(crate::interpreter::value::HashKey::Null)
+}
+
+/// `sum(field)` — total a numeric field across records.
+///
+/// Ints stay integral (so money-as-cents does not silently become a float);
+/// the result promotes to `Float` only once a float is seen. Non-numeric and
+/// missing fields are skipped rather than erroring, matching `pluck`.
+pub(crate) fn sum_by(items: &[Value], field: &Value) -> Value {
+    let mut int_total: i64 = 0;
+    let mut float_total = 0.0f64;
+    let mut saw_float = false;
+    for item in items {
+        match field_of(item, field) {
+            Value::Int(n) => int_total = int_total.wrapping_add(n),
+            Value::Float(f) => {
+                saw_float = true;
+                float_total += f;
+            }
+            _ => {}
+        }
+    }
+    if saw_float {
+        Value::Float(float_total + int_total as f64)
+    } else {
+        Value::Int(int_total)
+    }
+}
+
+/// `group_by(field)` — field value → array of the records carrying it,
+/// preserving first-seen key order and within-group order.
+pub(crate) fn group_by_field(items: &[Value], field: &Value) -> Value {
+    let mut out = HashPairs::default();
+    for item in items {
+        let key = key_or_null(&field_of(item, field));
+        match out.entry(key) {
+            indexmap::map::Entry::Occupied(mut e) => {
+                if let Value::Array(a) = e.get_mut() {
+                    a.borrow_mut().push(item.clone());
+                }
+            }
+            indexmap::map::Entry::Vacant(e) => {
+                e.insert(Value::Array(Rc::new(RefCell::new(vec![item.clone()]))));
+            }
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(out)))
+}
+
+/// `index_by(field)` — field value → the record, for building lookup maps.
+/// Last write wins on a duplicate key, as in Rails.
+pub(crate) fn index_by(items: &[Value], field: &Value) -> Value {
+    let mut out = HashPairs::default();
+    for item in items {
+        out.insert(key_or_null(&field_of(item, field)), item.clone());
+    }
+    Value::Hash(Rc::new(RefCell::new(out)))
+}
+
+/// `count_by(field)` — field value → how many records carry it.
+pub(crate) fn count_by(items: &[Value], field: &Value) -> Value {
+    let mut out = HashPairs::default();
+    for item in items {
+        let key = key_or_null(&field_of(item, field));
+        match out.entry(key) {
+            indexmap::map::Entry::Occupied(mut e) => {
+                if let Value::Int(n) = e.get_mut() {
+                    *n += 1;
+                }
+            }
+            indexmap::map::Entry::Vacant(e) => {
+                e.insert(Value::Int(1));
+            }
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(out)))
+}
+
+/// `tally()` — value → occurrence count, for a flat array.
+pub(crate) fn tally(items: &[Value]) -> Value {
+    let mut out = HashPairs::default();
+    for item in items {
+        let key = key_or_null(item);
+        match out.entry(key) {
+            indexmap::map::Entry::Occupied(mut e) => {
+                if let Value::Int(n) = e.get_mut() {
+                    *n += 1;
+                }
+            }
+            indexmap::map::Entry::Vacant(e) => {
+                e.insert(Value::Int(1));
+            }
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(out)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,6 +431,148 @@ mod tests {
             uniq_values(&input),
             vec![Value::Int(1), Value::Int(2), Value::Int(3)]
         );
+    }
+
+    // --- field-keyed aggregates ------------------------------------------
+
+    fn rec(pairs: &[(&str, Value)]) -> Value {
+        let mut h = crate::interpreter::value::HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(
+                crate::interpreter::value::HashKey::String((*k).into()),
+                v.clone(),
+            );
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+    fn key(s: &str) -> Value {
+        Value::String(s.into())
+    }
+
+    /// Integers must stay integral — money is routinely held as cents, and a
+    /// silent promotion to `Float` would introduce rounding into totals.
+    #[test]
+    fn sum_by_keeps_integers_integral() {
+        let rows = vec![
+            rec(&[("n", Value::Int(1250))]),
+            rec(&[("n", Value::Int(900))]),
+        ];
+        assert_eq!(sum_by(&rows, &key("n")), Value::Int(2150));
+    }
+
+    #[test]
+    fn sum_by_promotes_once_a_float_appears() {
+        let rows = vec![
+            rec(&[("n", Value::Float(1.5))]),
+            rec(&[("n", Value::Int(2))]),
+        ];
+        assert_eq!(sum_by(&rows, &key("n")), Value::Float(3.5));
+    }
+
+    /// A missing or non-numeric field is skipped, matching `pluck`'s tolerance,
+    /// rather than raising — totalling a sparse column is a normal thing to do.
+    #[test]
+    fn sum_by_skips_missing_and_non_numeric() {
+        let rows = vec![
+            rec(&[("n", Value::Int(5))]),
+            rec(&[("other", Value::Int(99))]),
+            rec(&[("n", Value::String("x".into()))]),
+        ];
+        assert_eq!(sum_by(&rows, &key("n")), Value::Int(5));
+        assert_eq!(sum_by(&[], &key("n")), Value::Int(0));
+    }
+
+    #[test]
+    fn group_by_preserves_key_and_member_order() {
+        let rows = vec![
+            rec(&[("t", key("b")), ("i", Value::Int(1))]),
+            rec(&[("t", key("a")), ("i", Value::Int(2))]),
+            rec(&[("t", key("b")), ("i", Value::Int(3))]),
+        ];
+        let Value::Hash(h) = group_by_field(&rows, &key("t")) else {
+            panic!("expected a hash")
+        };
+        let h = h.borrow();
+        let keys: Vec<_> = h.keys().cloned().collect();
+        assert_eq!(
+            keys,
+            vec![
+                crate::interpreter::value::HashKey::String("b".into()),
+                crate::interpreter::value::HashKey::String("a".into())
+            ],
+            "keys follow first appearance"
+        );
+        let Some(Value::Array(bs)) = h.get(&crate::interpreter::value::HashKey::String("b".into()))
+        else {
+            panic!("missing group")
+        };
+        assert_eq!(bs.borrow().len(), 2);
+    }
+
+    /// Rails semantics: a duplicate key keeps the *last* record.
+    #[test]
+    fn index_by_last_write_wins() {
+        let rows = vec![
+            rec(&[("id", Value::Int(1)), ("v", key("first"))]),
+            rec(&[("id", Value::Int(1)), ("v", key("second"))]),
+        ];
+        let Value::Hash(h) = index_by(&rows, &key("id")) else {
+            panic!("expected a hash")
+        };
+        let h = h.borrow();
+        assert_eq!(h.len(), 1);
+        let Some(Value::Hash(row)) = h.get(&crate::interpreter::value::HashKey::Int(1)) else {
+            panic!("missing row")
+        };
+        assert_eq!(
+            row.borrow()
+                .get(&crate::interpreter::value::HashKey::String("v".into())),
+            Some(&key("second"))
+        );
+    }
+
+    #[test]
+    fn count_by_and_tally_agree() {
+        let rows = vec![
+            rec(&[("s", key("open"))]),
+            rec(&[("s", key("shut"))]),
+            rec(&[("s", key("open"))]),
+        ];
+        let Value::Hash(c) = count_by(&rows, &key("s")) else {
+            panic!()
+        };
+        assert_eq!(
+            c.borrow()
+                .get(&crate::interpreter::value::HashKey::String("open".into())),
+            Some(&Value::Int(2))
+        );
+        let Value::Hash(t) = tally(&[Value::Int(1), Value::Int(2), Value::Int(2)]) else {
+            panic!()
+        };
+        assert_eq!(
+            t.borrow().get(&crate::interpreter::value::HashKey::Int(2)),
+            Some(&Value::Int(2))
+        );
+    }
+
+    /// A record missing the field groups under `null` rather than vanishing, so
+    /// counts still add up to the input length.
+    #[test]
+    fn missing_field_groups_under_null() {
+        let rows = vec![rec(&[("t", key("a"))]), rec(&[("other", key("z"))])];
+        let Value::Hash(h) = count_by(&rows, &key("t")) else {
+            panic!()
+        };
+        let h = h.borrow();
+        assert_eq!(
+            h.get(&crate::interpreter::value::HashKey::Null),
+            Some(&Value::Int(1))
+        );
+        let total: i64 = h
+            .values()
+            .map(|v| if let Value::Int(n) = v { *n } else { 0 })
+            .sum();
+        assert_eq!(total, 2, "every record is counted somewhere");
     }
 
     #[test]

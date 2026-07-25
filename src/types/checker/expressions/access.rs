@@ -161,6 +161,27 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
+            // Field-keyed aggregates. These take a field *name* rather than a
+            // callback so the whole traversal stays in Rust — see
+            // `array_ops::sum_by` for why that matters.
+            "sum_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            }),
+            "group_by" | "index_by" | "count_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::Any),
+                    value_type: Box::new(Type::Any),
+                }),
+            }),
+            "tally" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::Any),
+                    value_type: Box::new(Type::Any),
+                }),
+            }),
             // `count` takes an optional value/predicate; `insert`/`unshift`/`rotate`
             // are variadic mutators — all use `Type::Any` to stay arity-flexible.
             "count" => Ok(Type::Function {

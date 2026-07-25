@@ -1003,6 +1003,24 @@ impl Interpreter {
             "get" => self.array_get(items, arguments, span),
             "dig" => self.array_dig(items, arguments, span),
             "pluck" => Self::array_pluck(items, arguments, span),
+            "sum_by" | "group_by" | "index_by" | "count_by" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let f = &arguments[0];
+                Ok(match method_name {
+                    "sum_by" => super::array_ops::sum_by(items, f),
+                    "group_by" => super::array_ops::group_by_field(items, f),
+                    "index_by" => super::array_ops::index_by(items, f),
+                    _ => super::array_ops::count_by(items, f),
+                })
+            }
+            "tally" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(super::array_ops::tally(items))
+            }
             "pick" => Self::array_pick(items, arguments, span),
             "length" | "len" | "size" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),

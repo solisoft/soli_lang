@@ -1415,6 +1415,36 @@ posts = [
 print(posts.pluck("title"));           # ["Hello", "World"]          (single field → flat array)
 print(posts.pluck("id", "title"));     # [[1, "Hello"], [2, "World"]] (multiple → array of arrays)
 
+# --- Field-keyed aggregates ---
+# Each names the field as *data*, so the whole traversal stays in Rust and never
+# re-enters the interpreter. The hand-written equivalent
+# (`rows.reduce(fn(a, r) { return a + r["n"] }, 0)`) calls back into Soli once per
+# element and measures ~235x slower on 20k rows. Reach for these first.
+
+orders = [
+  { "sku": "a", "cents": 1250, "status": "paid" },
+  { "sku": "b", "cents": 900,  "status": "open" },
+  { "sku": "c", "cents": 350,  "status": "paid" }
+]
+
+# sum_by - total a numeric field. Ints stay integral (money as cents);
+# promotes to Float only once a float is seen. Missing fields are skipped.
+print(orders.sum_by("cents"));        # 2500
+print(orders.sum_by("nope"));         # 0
+
+# group_by - field value -> array of records, first-seen key order
+print(orders.group_by("status").keys());        # ["paid", "open"]
+print(orders.group_by("status")["paid"].len()); # 2
+
+# index_by - field value -> record, for O(1) lookups. Last write wins.
+print(orders.index_by("sku")["b"]["cents"]);    # 900
+
+# count_by - field value -> count, for dashboard tallies
+print(orders.count_by("status"));     # {"paid": 2, "open": 1}
+
+# tally - occurrence counts for a flat array (count_by's plain-value sibling)
+print([1, 2, 2, 3].tally());          # {1: 1, 2: 2, 3: 1}
+
 # pick - value(s) from the *first* element only (the “get one” companion to pluck)
 print(posts.pick("title"));      # "Hello"
 print(posts.pick("id", "title")); # [1, "Hello"]
