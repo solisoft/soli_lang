@@ -55,27 +55,54 @@ change than representation.
 is a pattern match that a tagged word cannot support — all 9,023 become accessor
 calls.
 
-## Where the evidence actually points
+## Where the evidence actually points — measured
 
-Roughly 27 cycles per opcode at ~3 GHz. That is far above the 2–3 cycles of real
-work per instruction, and neither representation nor drop explains it. The
-remaining candidate is the **indirect branch in the dispatch `match`** — the
-classic interpreter bottleneck, addressed by threaded dispatch (computed goto /
-tail-call dispatch), not by shrinking values.
+Roughly 27 cycles per opcode, far above the 2–3 cycles of real work. That is not
+representation, so it was tested directly, without a profiler: hold the arithmetic
+constant and vary only the number of dispatches per loop iteration.
 
-Caveat, and the reason this is a note rather than a plan: one cheap probe in that
-direction — `get_unchecked` on the per-instruction frame fetch — measured **+0.4%,
-4/8 rounds, i.e. noise**. That removes a *bounds check*, not the indirect branch,
-so it does not refute the dispatch hypothesis, but it is not evidence for it
-either.
+```
+adds/iter      ms      ns/iter   marginal
+    1        7.946       39.7
+    2       11.408       57.0     +17.3
+    3       13.978       69.9     +12.9
+    4       16.757       83.8     +13.9
+```
+
+Each added statement is a *fused, in-place* add — about one cycle (~0.3 ns) of real
+work. Its measured marginal cost is **14.7 ns, roughly 45x the work it performs.**
+
+**The cost is per-dispatch, not per-unit-work.** ~44 cycles per opcode is consistent
+with an indirect-branch misprediction (~20 cycles) plus poor instruction-cache
+locality across a ~300-arm `match`.
+
+This also explains why NOP compaction was the session's largest win (−26.7%): it
+removed dispatches, which is the thing that costs.
+
+## Consequences for the goal
+
+Ruby ZJIT completes an entire loop iteration in ~13 ns — less than **one** Soli
+dispatch. Beating it therefore requires attacking dispatch, and only two things do:
+
+1. **Reduce cost per dispatch.** Threaded dispatch is the classic fix. Rust has no
+   computed `goto`; the options are tail-call dispatch (`become`, unstable) or a
+   function-pointer table, neither of which LLVM guarantees to compile as intended.
+   A cheaper first probe: **split the dispatch `match` into a small hot inner match
+   (~20 opcodes) with a cold fallback**, for instruction-cache locality and better
+   prediction. Contained to one function — nothing like 9,023 sites — and directly
+   testable against the table above.
+2. **Reduce number of dispatches.** Super-instructions, which is what the peephole
+   already does. Beware the failure mode: fusing an entire loop shape keyed to a
+   benchmark would make `int_loop` look native without making Soli faster. That is
+   metric-gaming, not optimisation.
+
+Note what this rules out: shrinking `Value` does not reduce dispatch count or
+dispatch cost. It would reduce bytes moved per push/pop — real, but second-order
+against a 45x work-to-overhead ratio, and paid for by heap-allocating short strings.
 
 ## Suggested next step
 
-Before committing to any large change, **profile**. `perf` is blocked on the
-current machine (`perf_event_paranoid=4`); on a machine where it works, a single
-profile of `bench/cross-language/bench_all.sl` under `--vm` would settle whether
-the cost is branch mispredictions in dispatch. That is a few hours of work and it
-determines whether the answer is threaded dispatch, a JIT, or nothing worth doing.
-
-Committing to a 9,023-site refactor without that profile would be guessing — and
-two of the three hypotheses examined here were already wrong.
+Try the hot/cold dispatch split and re-run the table above. If per-dispatch cost
+drops materially, threaded dispatch is worth the harder engineering. If it does not,
+the honest answer is that closing a 3.5x gap needs a JIT, and that should be a
+deliberate product decision rather than an optimisation task.
