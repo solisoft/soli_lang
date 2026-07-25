@@ -30,6 +30,7 @@
 //!   which worker takes it — fine for read-only responses.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::num::NonZero;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -83,6 +84,47 @@ thread_local! {
 
     static DATA_DIRTY: RefCell<bool> = const { RefCell::new(false) };
     static RESPONSE_DIRTY: RefCell<bool> = const { RefCell::new(false) };
+
+    /// `(template, layout)` pairs observed to be uncacheable — see
+    /// [`is_known_uncacheable`].
+    static UNCACHEABLE: RefCell<HashSet<PairKey>> = RefCell::new(HashSet::new());
+}
+
+/// A `(template, layout)` pair, without the data signature. Identifies a
+/// *render site* rather than a specific render.
+type PairKey = (Arc<PathBuf>, Option<Arc<str>>);
+
+/// Whether this render site has already been shown to be uncacheable.
+///
+/// The dirty flags are set *during* a render, not before it: the canonical
+/// case is `csrf_meta_tag()` in the layout, which calls `csrf_token()` and
+/// marks the response dirty — and the layout renders after the cache lookup
+/// but before the store. So a render site whose layout embeds a per-session
+/// token looks clean on entry, pays a full `data_signature` walk, misses (the
+/// store was refused last time for the same reason), renders, and is refused
+/// again. Every request, forever.
+///
+/// The default `soli new` layout calls `csrf_meta_tag()`, so this is the
+/// common case for real apps rather than an edge case. Remembering the answer
+/// turns an O(data) hash per request into a set lookup.
+///
+/// Deliberately sticky: a site that is dirty *sometimes* (a controller that
+/// only sets a cookie for first-time visitors) stays marked and stops being
+/// cached. That is the safe direction to be wrong in — it forfeits a cache,
+/// never serves a stale body — and it keeps this free of a re-check schedule
+/// that would reintroduce the cost it removes.
+pub fn is_known_uncacheable(template_path: &Arc<PathBuf>, layout: Option<&str>) -> bool {
+    UNCACHEABLE.with(|c| {
+        let key: PairKey = (template_path.clone(), layout.map(Arc::from));
+        c.borrow().contains(&key)
+    })
+}
+
+fn mark_uncacheable(template_path: Arc<PathBuf>, layout: Option<&str>) {
+    UNCACHEABLE.with(|c| {
+        c.borrow_mut()
+            .insert((template_path, layout.map(Arc::from)));
+    });
 }
 
 /// Reset per-request cacheability state. Called at the top of
@@ -126,6 +168,9 @@ pub fn mark_data_dirty() {
 /// can't outlive the AST that produced it.
 pub fn clear_cache() {
     RESPONSE_CACHE.with(|c| c.borrow_mut().clear());
+    // An edited view can change whether it is cacheable at all (adding or
+    // removing a `csrf_meta_tag()`), so the negative cache must go with it.
+    UNCACHEABLE.with(|c| c.borrow_mut().clear());
 }
 
 /// Look up a cached response. Returns `None` if the request is
@@ -156,6 +201,10 @@ pub fn put(
     etag: String,
 ) {
     if is_response_dirty() || is_data_dirty() {
+        // The render itself tripped a dirty flag, so this site cannot be
+        // cached. Record that, so the next request skips the `data_signature`
+        // walk instead of paying it to reach this same line again.
+        mark_uncacheable(template_path, layout);
         return;
     }
     let key = CacheKey {
@@ -334,5 +383,79 @@ mod tests {
         );
         clear_cache();
         assert!(get(path, Some("application"), 42).is_none());
+    }
+
+    /// A render site whose render trips a dirty flag must be remembered as
+    /// uncacheable, so `render()` can skip the `data_signature` walk instead
+    /// of paying it every request to rediscover the same answer.
+    ///
+    /// This is the `csrf_meta_tag()`-in-the-layout case, which is the default
+    /// for `soli new`: the flag is set *during* the render, so the site looks
+    /// clean on entry and only `put` ever learns otherwise.
+    #[test]
+    fn a_dirty_render_marks_the_site_uncacheable() {
+        reset_for_new_request();
+        clear_cache();
+        let path = Arc::new(PathBuf::from("app/views/items/index.html.erb"));
+
+        assert!(
+            !is_known_uncacheable(&path, Some("application")),
+            "a site starts out assumed cacheable"
+        );
+
+        // Mid-render, something like `csrf_token()` trips the flag; `put` is
+        // then reached with the response already dirty.
+        mark_response_dirty();
+        put(
+            path.clone(),
+            Some("application"),
+            7,
+            "body".to_string(),
+            String::new(),
+        );
+
+        assert!(
+            is_known_uncacheable(&path, Some("application")),
+            "the refused store must be remembered"
+        );
+        // The refusal itself must still hold: nothing was cached.
+        reset_for_new_request();
+        assert!(get(path.clone(), Some("application"), 7).is_none());
+
+        // The mark is per (template, layout) — a different layout is its own
+        // decision, since cacheability usually comes from the layout.
+        assert!(!is_known_uncacheable(&path, Some("bare")));
+        assert!(!is_known_uncacheable(&path, None));
+
+        // An edited view can change whether it is cacheable, so a hot reload
+        // must clear the negative cache along with the bodies.
+        clear_cache();
+        assert!(
+            !is_known_uncacheable(&path, Some("application")),
+            "clear_cache must reset the negative cache too"
+        );
+    }
+
+    /// The negative cache must not touch sites that render cleanly — those
+    /// still cache normally.
+    #[test]
+    fn a_clean_render_stays_cacheable() {
+        reset_for_new_request();
+        clear_cache();
+        let path = Arc::new(PathBuf::from("app/views/docs/page.html.slv"));
+
+        put(
+            path.clone(),
+            Some("docs"),
+            99,
+            "rendered".to_string(),
+            String::new(),
+        );
+
+        assert!(!is_known_uncacheable(&path, Some("docs")));
+        assert_eq!(
+            get(path, Some("docs"), 99).map(|c| c.body),
+            Some("rendered".to_string())
+        );
     }
 }

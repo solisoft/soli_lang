@@ -114,12 +114,23 @@ impl TemplateCache {
         // body directly. The cached body is the raw (pre-ETag) body
         // produced by the template AST walk; the FNV-1a ETag is
         // recomputed in `html_response` on every request.
-        let data_sig = response_cache::data_signature(data);
         let layout_name: Option<&str> = match layout {
             Some(Some(name)) => Some(name),
             _ => None,
         };
         let template_path = self.resolve_template_path(template_name)?;
+
+        // Skip the cache machinery entirely for render sites already known to
+        // be uncacheable. `data_signature` is a full recursive walk that hashes
+        // every byte of every string in `data`, so on a list page it is
+        // proportional to the whole result set — and for a layout containing
+        // `csrf_meta_tag()` (the `soli new` default) the result is discarded
+        // every time. See `response_cache::is_known_uncacheable`.
+        if response_cache::is_known_uncacheable(&template_path, layout_name) {
+            return self.render_uncached(template_name, data, layout, &template_path, layout_name);
+        }
+
+        let data_sig = response_cache::data_signature(data);
         if let Some(cached) = response_cache::get(template_path.clone(), layout_name, data_sig) {
             return Ok(cached.body);
         }
