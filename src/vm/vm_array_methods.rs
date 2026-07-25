@@ -229,13 +229,10 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let other = extract_array_arg(&args[0], "intersection", span)?;
-                let items = arr.borrow();
-                let mut result: Vec<Value> = Vec::new();
-                for item in items.iter() {
-                    if other.contains(item) && !result.contains(item) {
-                        result.push(item.clone());
-                    }
-                }
+                let result = crate::interpreter::executor::calls::array_ops::intersection_values(
+                    &arr.borrow(),
+                    &other,
+                );
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "union" => {
@@ -243,18 +240,10 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let other = extract_array_arg(&args[0], "union", span)?;
-                let items = arr.borrow();
-                let mut result: Vec<Value> = Vec::new();
-                for item in items.iter() {
-                    if !result.contains(item) {
-                        result.push(item.clone());
-                    }
-                }
-                for item in &other {
-                    if !result.contains(item) {
-                        result.push(item.clone());
-                    }
-                }
+                let result = crate::interpreter::executor::calls::array_ops::union_values(
+                    &arr.borrow(),
+                    &other,
+                );
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "difference" => {
@@ -262,13 +251,10 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let other = extract_array_arg(&args[0], "difference", span)?;
-                let items = arr.borrow();
-                let mut result: Vec<Value> = Vec::new();
-                for item in items.iter() {
-                    if !other.contains(item) && !result.contains(item) {
-                        result.push(item.clone());
-                    }
-                }
+                let result = crate::interpreter::executor::calls::array_ops::difference_values(
+                    &arr.borrow(),
+                    &other,
+                );
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "compact" => {

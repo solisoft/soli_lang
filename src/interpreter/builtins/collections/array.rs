@@ -198,12 +198,8 @@ pub fn register_array_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Array(arr)) => {
-                    let mut result = Vec::new();
-                    for item in arr.borrow().iter() {
-                        if !result.contains(item) {
-                            result.push(item.clone());
-                        }
-                    }
+                    let result =
+                        crate::interpreter::executor::calls::array_ops::uniq_values(&arr.borrow());
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
                 _ => Err("Array missing internal value".to_string()),
@@ -294,12 +290,11 @@ pub fn register_array_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Array(arr)) => {
-                    let mut result: Vec<Value> = Vec::new();
-                    for item in arr.borrow().iter() {
-                        if other.contains(item) && !result.contains(item) {
-                            result.push(item.clone());
-                        }
-                    }
+                    let result =
+                        crate::interpreter::executor::calls::array_ops::intersection_values(
+                            &arr.borrow(),
+                            &other,
+                        );
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
                 _ => Err("Array missing internal value".to_string()),
@@ -321,17 +316,10 @@ pub fn register_array_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Array(arr)) => {
-                    let mut result: Vec<Value> = Vec::new();
-                    for item in arr.borrow().iter() {
-                        if !result.contains(item) {
-                            result.push(item.clone());
-                        }
-                    }
-                    for item in other.iter() {
-                        if !result.contains(item) {
-                            result.push(item.clone());
-                        }
-                    }
+                    let result = crate::interpreter::executor::calls::array_ops::union_values(
+                        &arr.borrow(),
+                        &other,
+                    );
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
                 _ => Err("Array missing internal value".to_string()),
@@ -353,12 +341,10 @@ pub fn register_array_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Array(arr)) => {
-                    let mut result: Vec<Value> = Vec::new();
-                    for item in arr.borrow().iter() {
-                        if !other.contains(item) && !result.contains(item) {
-                            result.push(item.clone());
-                        }
-                    }
+                    let result = crate::interpreter::executor::calls::array_ops::difference_values(
+                        &arr.borrow(),
+                        &other,
+                    );
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
                 _ => Err("Array missing internal value".to_string()),

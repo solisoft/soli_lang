@@ -399,12 +399,11 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                let mut result = Vec::with_capacity(items.len());
-                for item in items {
-                    if !result.contains(item) {
-                        result.push(item.clone());
-                    }
-                }
+                // Shared with the VM and `array_uniq` below — this borrowed
+                // fast path is the one a plain `[...].uniq()` actually reaches,
+                // so an inline copy here silently kept the quadratic behaviour
+                // after the shared helper was fixed.
+                let result = super::array_ops::uniq_values(items);
                 Some(Ok(Value::Array(Rc::new(RefCell::new(result)))))
             }
             "compact" => {
@@ -1711,12 +1710,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let other = extract_array_arg(&arguments[0], "intersection", span)?;
-        let mut result: Vec<Value> = Vec::new();
-        for item in items {
-            if other.contains(item) && !result.contains(item) {
-                result.push(item.clone());
-            }
-        }
+        let result = super::array_ops::intersection_values(items, &other);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
@@ -1730,17 +1724,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let other = extract_array_arg(&arguments[0], "union", span)?;
-        let mut result: Vec<Value> = Vec::new();
-        for item in items {
-            if !result.contains(item) {
-                result.push(item.clone());
-            }
-        }
-        for item in &other {
-            if !result.contains(item) {
-                result.push(item.clone());
-            }
-        }
+        let result = super::array_ops::union_values(items, &other);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
@@ -1754,12 +1738,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let other = extract_array_arg(&arguments[0], "difference", span)?;
-        let mut result: Vec<Value> = Vec::new();
-        for item in items {
-            if !other.contains(item) && !result.contains(item) {
-                result.push(item.clone());
-            }
-        }
+        let result = super::array_ops::difference_values(items, &other);
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
