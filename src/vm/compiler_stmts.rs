@@ -21,6 +21,21 @@ impl Compiler {
         let line = stmt.span.line as usize;
         match &stmt.kind {
             StmtKind::Expression(expr) => {
+                // `next` is a zero-argument builtin returning a sentinel the
+                // tree-walker recognises in this exact position. Compile it as
+                // the jump it means, in either of the two spellings the parser
+                // produces (`next` bare, via zero-arg auto-invoke, and
+                // `next()`). A local or a user-declared global of that name is
+                // an ordinary variable and is left alone.
+                if self.is_builtin_next(expr) {
+                    if !self.emit_continue(line) {
+                        return Err(CompileError::new(
+                            "`next` inside a `try` is not supported in compiled mode",
+                            stmt.span,
+                        ));
+                    }
+                    return Ok(());
+                }
                 self.compile_expr(expr)?;
                 self.emit(Op::Pop, line);
             }
@@ -128,6 +143,29 @@ impl Compiler {
         Ok(())
     }
 
+    /// Is this expression the `next` builtin used as a statement?
+    ///
+    /// Only the builtin: a local or a global the program declared itself is an
+    /// ordinary variable, and reading it must not turn into a jump.
+    fn is_builtin_next(&mut self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::ExprKind;
+        let name = match &expr.kind {
+            ExprKind::Variable(name) => name,
+            ExprKind::Call { callee, arguments } if arguments.is_empty() => match &callee.kind {
+                ExprKind::Variable(name) => name,
+                _ => return false,
+            },
+            _ => return false,
+        };
+        if name != "next" {
+            return false;
+        }
+        matches!(
+            self.resolve_variable(name),
+            super::compiler::VariableAccess::Global(_)
+        ) && !self.program_globals.borrow().contains("next")
+    }
+
     fn compile_let(
         &mut self,
         name: &str,
@@ -149,6 +187,9 @@ impl Compiler {
         } else {
             // Global variable
             self.known_globals.borrow_mut().insert(name.to_string());
+            // …and record that *this program* declared it, which is what tells
+            // a user's `next` from the builtin.
+            self.program_globals.borrow_mut().insert(name.to_string());
             let idx = self.add_string_constant(name);
             self.emit(Op::DefineGlobal(idx), line);
         }
@@ -191,7 +232,11 @@ impl Compiler {
         self.compile_expr(condition)?;
         let exit_jump = self.emit_jump(Op::JumpIfFalse(0), line);
 
+        self.set_continue_target();
         self.compile_stmt(body)?;
+        // `next` lands here and falls into the back-edge, re-testing the
+        // condition — a `while` has no per-iteration teardown of its own.
+        self.patch_continues();
         self.emit_loop(loop_start, line);
         self.patch_jump(exit_jump);
 
@@ -258,8 +303,15 @@ impl Compiler {
 
         // Bind the loop variable to the freshly-yielded element value.
         self.add_local(variable.to_string(), false);
+        // `next` unwinds to here — the loop variable stays, because the
+        // end-of-body teardown below is exactly what `next` jumps to.
+        self.set_continue_target();
 
         self.compile_stmt(body)?;
+
+        // `next` lands here: the loop variable is torn down and the index
+        // bumped, the same as finishing the body normally.
+        self.patch_continues();
 
         // Pop the loop variable (closing its upvalue if a body closure captured
         // it, so closures from different iterations don't share a binding).
@@ -495,6 +547,7 @@ impl Compiler {
         // resolve a bare assignment to this name as the global, not a new local.
         if self.scope_depth == 0 {
             self.known_globals.borrow_mut().insert(name.clone());
+            self.program_globals.borrow_mut().insert(name.clone());
         }
 
         // Start compiling the function body

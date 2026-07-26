@@ -480,13 +480,10 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_a_loop_caught_in_the_same_function",
         "let seen = []\nfor a in [\"x\", \"y\", \"z\"] {\n  seen.push(a)\n  try { for b in [1, 2, 3] { throw \"inner\" } } catch e { }\n}\nprint(seen)",
     ),
-    // `next` is deliberately refused by the compiler so the handler
-    // falls back to the interpreter, which implements them. This case is NOT in
-    // KNOWN_DIVERGENT: `run()` here type-checks, `next` fails the check, and both
-    // engines come back `<non-success>` — so they agree for a reason that has
-    // nothing to do with the refusal. Before it, `next` compiled fine and was
-    // silently *ignored*, which is the behaviour this case exists to prevent
-    // returning.
+    // `next` compiles natively now (see the `next_*` cases above). This one
+    // predates that and stays as the original regression: before any of this,
+    // `next` compiled fine and was silently *ignored*, so the loop body ran for
+    // every element.
     (
         "next_is_refused_rather_than_ignored",
         "let kept = []\nfor i in [1, 2, 3, 4] {\n  if i == 2 { next }\n  kept.push(i)\n}\nprint(kept)",
@@ -525,6 +522,55 @@ const CASES: &[(&str, &str)] = &[
     (
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
+    ),
+    // --- `next` compiles natively now ---
+    // It was refused, so any loop using it demoted. Unlike `break` the iterator
+    // stays (the same loop takes its next element), but the body's own locals
+    // still have to come off or each skipped iteration would leave its locals
+    // behind and the stack would grow for the life of the loop.
+    (
+        "next_in_for",
+        "let kept = []\nfor i in [1, 2, 3, 4] { if i == 2 { next }\n  kept.push(i) }\nprint(kept)",
+    ),
+    (
+        "next_with_parens",
+        "let kept = []\nfor i in [1, 2, 3, 4] { if i == 2 { next() }\n  kept.push(i) }\nprint(kept)",
+    ),
+    (
+        "next_in_while",
+        "let kept = []\nlet n = 0\nwhile n < 5 { n = n + 1\n  if n == 3 { next }\n  kept.push(n) }\nprint(kept)",
+    ),
+    (
+        "next_in_range_for",
+        "let kept = []\nfor i in 1..6 { if i % 2 == 0 { next }\n  kept.push(i) }\nprint(kept)",
+    ),
+    (
+        "next_with_body_locals",
+        "let kept = []\nfor i in [1, 2, 3] { let d = i * 2\n  if i == 2 { next }\n  kept.push(d) }\nprint(kept)",
+    ),
+    (
+        "next_with_index_variable",
+        "let kept = []\nfor v, idx in [9, 8, 7] { if idx == 1 { next }\n  kept.push(idx) }\nprint(kept)",
+    ),
+    (
+        "next_in_nested_loops",
+        "let out = []\nfor a in [1, 2] { for b in [1, 2, 3] { if b == 2 { next }\n    out.push(a * 10 + b) } }\nprint(out)",
+    ),
+    (
+        "next_and_break_together",
+        "let out = []\nfor i in [1, 2, 3, 4, 5] { if i == 2 { next }\n  if i == 4 { break }\n  out.push(i) }\nprint(out)",
+    ),
+    (
+        "next_with_closure_capture",
+        "let fns = []\nfor i in [1, 2, 3] { if i == 2 { next }\n  fns.push(fn() { return i }) }\nprint([fns[0](), fns[1]()])",
+    ),
+    (
+        "user_global_named_next_is_a_variable",
+        "let next = 42\nprint(next + 1)",
+    ),
+    (
+        "next_inside_try_falls_back",
+        "let kept = []\nfor i in [1, 2, 3] { try { if i == 2 { next }\n    kept.push(i) } catch e { } }\nprint(kept)",
     ),
     // --- `break` compiles natively now ---
     // It used to be refused outright, so every one of these demoted. The hard
@@ -713,6 +759,11 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // `break` inside a `try` is refused so the handler falls back; a direct
     // `--vm` run reports the compile error while the interpreter runs the
     // loop. Every other `break` shape compiles and is NOT listed here.
+    // `break` inside a `try` is refused so the handler falls back; a direct
+    // `--vm` run reports the compile error while the interpreter runs the loop.
+    // Its `next` counterpart is deliberately NOT listed: `run()` type-checks,
+    // `next` is not a declared name so the check rejects it in both engines,
+    // and they agree as `<non-success>` for a reason unrelated to the refusal.
     "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no

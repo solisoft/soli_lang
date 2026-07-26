@@ -1012,14 +1012,15 @@ mod tests {
         use crate::vm::Compiler;
 
         // `helper` is a tree-walking Function whose body cannot be compiled.
-        // `next` is a deliberate, documented VM punt — it signals through a
-        // sentinel `Value` the compiled engine has no handling for — which
-        // makes it a stable stand-in for "any construct the compiler refuses".
+        // Safe navigation is a deliberate, documented VM punt and a language
+        // feature rather than a control-flow gap, which makes it the most
+        // stable stand-in for "any construct the compiler refuses".
         //
-        // This used to use `break`, until `break` learned to compile. If this
-        // premise breaks again, swap in whatever the compiler still refuses;
-        // the test is about EngineFallback's routing, not about the construct.
-        let body_src = "for i in [1, 2] { next }";
+        // It has now outlived two earlier choices: `break`, then `next`, both
+        // of which learned to compile. The test is about EngineFallback's
+        // routing, not about the construct — if this premise breaks too, swap
+        // in whatever `grep "not supported in compiled mode" src/vm` reports.
+        let body_src = "let a = null\nlet b = a&.length";
         let body_tokens = Scanner::new(body_src).scan_tokens().expect("lexer error");
         let body = Parser::new(body_tokens)
             .parse()

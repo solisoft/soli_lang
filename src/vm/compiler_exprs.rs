@@ -355,35 +355,25 @@ impl Compiler {
                 self.emit(Op::GetUpvalue(idx), line);
             }
             VariableAccess::Global(name) => {
-                // Builtins that signal through a sentinel `Value` the
-                // tree-walker recognises in its statement evaluator, and the
-                // VM does not:
+                // `debug()` signals through a sentinel `Value` that the
+                // tree-walker recognises in a statement position and this
+                // engine has no handling for: it evaluated the call and popped
+                // the result, so the breakpoint never fired. Refuse it, so the
+                // handler falls back to the interpreter — which also supplies
+                // the captured environment the REPL needs.
                 //
-                //   next()   -> Value::Continue    "skip to the next iteration"
-                //   debug()  -> Value::Breakpoint  "stop here, open the REPL"
+                // `next` was the other sentinel. It is compiled natively now
+                // (see `is_builtin_next`), as the jump it means, so it is
+                // refused *here* only in an expression position — `let x =
+                // next` — where it is not control flow and there is nothing
+                // sensible to emit.
                 //
-                // Those are the only two sentinel variants on `Value`, so this
-                // list is complete — but it is the place to add another if one
-                // is ever introduced. The VM evaluated the call and popped the
-                // result as an ordinary expression statement, so both were
-                // **silently ignored**: the loop body ran for every element,
-                // and the breakpoint never fired.
-                //
-                // Refuse compilation, exactly as `break` does above, so the
-                // handler falls back to the interpreter, which implements them
-                // — for `debug()` that also gets the captured environment the
-                // REPL needs, which a VM-side implementation would not have.
-                //
-                // Only the *builtin* is refused. A local of either name
-                // resolves in an arm above, and a user-declared global is in
-                // `known_globals` (both `let` at global scope and a function
-                // declaration record themselves there), so `let debug = 42`
-                // still compiles — it is a name the program defined, not the
-                // sentinel-returning builtin. Without that check, a global
-                // named `debug` would demote a handler for no reason, and
-                // `debug` is a plausible variable name.
+                // Reached only for a *global*, and a user-declared one is in
+                // `known_globals`, so a program's own `let debug = 42`
+                // compiles. Without that check a plausible variable name would
+                // demote a handler for no reason.
                 if (name == "next" || name == "debug")
-                    && !self.known_globals.borrow().contains(name.as_str())
+                    && !self.program_globals.borrow().contains(name.as_str())
                 {
                     return Err(CompileError::new(
                         format!("`{name}` is not supported in compiled mode"),

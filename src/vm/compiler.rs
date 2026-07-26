@@ -108,6 +108,15 @@ pub struct Compiler {
     /// inside a lambda nested in a `try` correctly sees an empty stack rather
     /// than the enclosing function's `finally`.
     pub finally_stack: Vec<crate::ast::Stmt>,
+    /// Globals this *program* declares, as opposed to ones that merely exist.
+    ///
+    /// `known_globals` cannot answer that question: in `serve` it is seeded
+    /// with the worker's entire global table, builtins included, so asking it
+    /// whether `next` is a user global says yes and the builtin stops being
+    /// recognised — compiled fine at the CLI, silently wrong under the server.
+    /// This set only ever grows from a `let`/`const` at global scope or a
+    /// function declaration, so it means what it says in both modes.
+    pub program_globals: Rc<RefCell<HashSet<String>>>,
     /// How many `try` handlers are live at the current emit point.
     ///
     /// Only `break` consults it, to tell "inside a `try` this loop encloses"
@@ -133,6 +142,14 @@ pub struct LoopContext {
     /// inside a `try` the loop does not enclose, so jumping out would strand
     /// that handler — those are refused rather than mis-compiled.
     pub open_try_depth: usize,
+    /// Jumps emitted by `next`, patched to the loop's continue point.
+    pub continue_patches: Vec<usize>,
+    /// `locals.len()` at the point a `next` should unwind *to*.
+    ///
+    /// One deeper than `locals_base` in a `for`: the loop variable is torn down
+    /// by the end-of-body code that `next` jumps to, so `next` must leave it in
+    /// place. In a `while` there is no loop variable and the two coincide.
+    pub continue_locals_base: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +171,7 @@ impl Compiler {
             known_globals: Rc::new(RefCell::new(HashSet::new())),
             stack_height: 0,
             finally_stack: Vec::new(),
+            program_globals: Rc::new(RefCell::new(HashSet::new())),
             open_try_depth: 0,
         };
 
@@ -480,6 +498,7 @@ impl Compiler {
         // Nested functions share the module's known-globals set so they make
         // the same local-vs-global decision for bare assignments.
         new_compiler.known_globals = self.known_globals.clone();
+        new_compiler.program_globals = self.program_globals.clone();
 
         // Add parameters as locals
         for param in params {
@@ -568,7 +587,61 @@ impl Compiler {
             locals_base: self.locals.len(),
             has_iterator,
             open_try_depth: self.open_try_depth,
+            continue_patches: Vec::new(),
+            // Overwritten by `for` once its loop variable is declared.
+            continue_locals_base: self.locals.len(),
         });
+    }
+
+    /// Record where `next` should land, and what it must unwind to.
+    pub fn set_continue_target(&mut self) {
+        let base = self.locals.len();
+        if let Some(ref mut ctx) = self.loop_context {
+            ctx.continue_locals_base = base;
+        }
+    }
+
+    /// Emit the teardown a `next` needs, then the jump to the continue point.
+    ///
+    /// Unlike `break` the iterator stays — the same loop is about to take its
+    /// next element — but the body's own locals still have to come off, or each
+    /// skipped iteration would leave its locals behind and the stack would grow
+    /// for the life of the loop.
+    ///
+    /// Returns `false` for a `next` inside a `try` the loop does not enclose,
+    /// for the same reason `break` refuses one.
+    pub fn emit_continue(&mut self, line: usize) -> bool {
+        let Some(ctx) = self.loop_context.as_ref() else {
+            return false;
+        };
+        if ctx.open_try_depth != self.open_try_depth {
+            return false;
+        }
+        let base = ctx.continue_locals_base;
+
+        for idx in (base..self.locals.len()).rev() {
+            if self.locals[idx].is_captured {
+                self.emit(Op::CloseUpvalue, line);
+            } else {
+                self.emit(Op::Pop, line);
+            }
+        }
+        let patch = self.emit_jump(Op::Jump(0), line);
+        if let Some(ref mut ctx) = self.loop_context {
+            ctx.continue_patches.push(patch);
+        }
+        true
+    }
+
+    /// Patch every `next` in the current loop to land here.
+    pub fn patch_continues(&mut self) {
+        let patches = match self.loop_context {
+            Some(ref mut ctx) => std::mem::take(&mut ctx.continue_patches),
+            None => return,
+        };
+        for patch in patches {
+            self.patch_jump(patch);
+        }
     }
 
     /// Emit the teardown a `break` needs, then the jump out of the loop.

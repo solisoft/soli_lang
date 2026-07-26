@@ -4864,6 +4864,86 @@ mod tests {
         );
     }
 
+    /// The sentinel builtins must still be recognised when the compiler is
+    /// seeded with the worker's globals, which is how `serve` compiles.
+    ///
+    /// This is not hypothetical. `next` was first written to ask
+    /// `known_globals` whether the name was a user global — which is true at
+    /// the CLI and FALSE-negative under `serve`, because that set is seeded
+    /// with the whole global table, builtins included. The result compiled
+    /// clean and was silently ignored again, exactly the bug the native
+    /// compilation was meant to end, and only a request through a real server
+    /// showed it. `program_globals` answers the question the code actually
+    /// means, and this pins it.
+    #[test]
+    fn sentinel_builtins_survive_a_seeded_global_table() {
+        fn compile_seeded(source: &str) -> Result<(), crate::error::CompileError> {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            // Mimic serve: seed with a global table that contains the builtins.
+            let seeded = ["next", "debug", "print", "len"].map(str::to_string);
+            Compiler::compile_with_globals(&program, seeded).map(|_| ())
+        }
+
+        // `debug` is still refused even though it is in the seeded table.
+        let err = compile_seeded("for i in [1, 2] { debug }")
+            .expect_err("`debug` must be refused even when seeded as a global");
+        assert!(
+            err.to_string().contains("debug"),
+            "expected the debug refusal, got: {err}"
+        );
+
+        // `next` still compiles as control flow, not as a variable read.
+        compile_seeded("for i in [1, 2] { next }")
+            .unwrap_or_else(|e| panic!("`next` must compile when seeded, got: {e}"));
+
+        // And a program that declares its own `next` still gets a variable.
+        compile_seeded("let next = 42\nprint(next + 1)")
+            .unwrap_or_else(|e| panic!("a declared `next` must compile, got: {e}"));
+    }
+
+    /// `debug()` is refused so the handler falls back to the engine that
+    /// implements it; a program's own variable of that name is not.
+    ///
+    /// `debug()` signals through a sentinel `Value` the compiled engine has no
+    /// handling for — compiled, it was evaluated and discarded, so the
+    /// breakpoint never fired. `next` was the other one and is now compiled
+    /// natively as a jump, so only this one is left.
+    ///
+    /// The refusal must hit only the *builtin*: a program that declares its own
+    /// `debug` is talking about its own variable, and demoting for that would
+    /// cost speed for nothing.
+    #[test]
+    fn test_vm_refuses_sentinel_builtin_but_not_user_globals() {
+        fn compile_src(source: &str) -> Result<(), crate::error::CompileError> {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            Compiler::compile(&program).map(|_| ())
+        }
+
+        let err = compile_src("for i in [1, 2] { debug }")
+            .expect_err("the sentinel builtin must be refused");
+        assert!(
+            err.to_string().contains("debug"),
+            "expected the debug refusal, got: {err}"
+        );
+
+        // A user-declared global or local of the same name is not the builtin.
+        compile_src("let debug = 42\nprint(debug + 1)")
+            .unwrap_or_else(|e| panic!("a global named `debug` must compile, got: {e}"));
+        compile_src("fn f() { let debug = 1\n  return debug }")
+            .unwrap_or_else(|e| panic!("a local named `debug` must compile, got: {e}"));
+
+        // `next` compiles now, in both spellings, and a user global of that
+        // name stays an ordinary variable.
+        compile_src("for i in [1, 2] { next }")
+            .unwrap_or_else(|e| panic!("`next` must compile, got: {e}"));
+        compile_src("for i in [1, 2] { next() }")
+            .unwrap_or_else(|e| panic!("`next()` must compile, got: {e}"));
+        compile_src("let next = 42\nprint(next + 1)")
+            .unwrap_or_else(|e| panic!("a global named `next` must compile, got: {e}"));
+    }
+
     /// `try`/`finally` compiles, and the block runs on the edges that used to
     /// skip it.
     ///
