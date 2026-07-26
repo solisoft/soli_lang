@@ -1971,6 +1971,22 @@ impl Vm {
                         frame.ip += jump_offset as usize;
                     }
                 }
+                Op::MatchType(name_idx, jump_offset) => {
+                    let type_name = self.read_string_constant_owned(name_idx);
+                    let matches = match self.stack.last().unwrap() {
+                        Value::Int(_) => type_name == "Int",
+                        Value::Float(_) => type_name == "Float",
+                        Value::Bool(_) => type_name == "Bool",
+                        Value::String(_) => type_name == "String",
+                        Value::Null => type_name == "Void",
+                        Value::Instance(inst) => inst.borrow().class.name == type_name,
+                        _ => false,
+                    };
+                    if !matches {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip += jump_offset as usize;
+                    }
+                }
                 Op::Rethrow => {
                     let value = self.stack.pop().unwrap();
                     let span = self.current_span();

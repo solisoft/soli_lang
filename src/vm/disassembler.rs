@@ -217,6 +217,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::Nop => out.push_str("NOP"),
         Op::PopIter => out.push_str("POP_ITER"),
+        Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
         Op::CallMethod(idx, argc) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));

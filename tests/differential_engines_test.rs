@@ -523,6 +523,29 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- typed patterns (`Int: n`) compile, and a non-exhaustive match raises ---
+    (
+        "match_typed_primitive_arms",
+        "fn f(v) { return match v { Int: n => \"int:\" + str(n), String: s => \"str:\" + s, _ => \"other\" } }\nprint([f(3), f(\"hi\"), f(2.5)])",
+    ),
+    (
+        "match_typed_with_guard",
+        "fn f(v) { return match v { Int: n if n > 10 => \"big\", Int: n => \"small\", _ => \"no\" } }\nprint([f(50), f(2), f(\"x\")])",
+    ),
+    (
+        "match_typed_bool_and_void",
+        "fn f(v) { return match v { Bool: b => \"bool:\" + str(b), Void: x => \"null\", _ => \"?\" } }\nprint([f(true), f(null), f(1)])",
+    ),
+    (
+        "match_typed_then_variable_arm",
+        "fn f(v) { return match v { Int: n => \"int\", other => \"rest\" } }\nprint([f(1), f(\"x\")])",
+    ),
+    // A match that falls through every arm raised in the interpreter and
+    // silently produced null in the VM. Both raise now.
+    (
+        "non_exhaustive_match_raises",
+        "fn f(v) { return match v { 1 => \"one\" } }\nprint(f(9))",
+    ),
     // --- binding match patterns compile at a clean stack position ---
     // The subject now lives in a real local slot, so `x => …` can bind it and
     // the arm collapses [subject, binding, result] to [result] via SetLocal.

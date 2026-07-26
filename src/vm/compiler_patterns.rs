@@ -27,8 +27,10 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         // Wildcard and literal have a proven stack effect; `Variable` binds the
         // subject to a name, which `compile_match` now models by keeping the
         // subject in a real local slot (see there).
-        MatchPattern::Wildcard | MatchPattern::Literal(_) | MatchPattern::Variable(_) => false,
-        MatchPattern::Typed { .. } => true,
+        MatchPattern::Wildcard
+        | MatchPattern::Literal(_)
+        | MatchPattern::Variable(_)
+        | MatchPattern::Typed { .. } => false,
         MatchPattern::EnumVariant { .. } => true,
         // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
         MatchPattern::Array { .. }
@@ -41,7 +43,10 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
 
 /// Does this pattern bind a name?
 fn is_binding_pattern(pattern: &MatchPattern) -> bool {
-    matches!(pattern, MatchPattern::Variable(_))
+    matches!(
+        pattern,
+        MatchPattern::Variable(_) | MatchPattern::Typed { .. }
+    )
 }
 
 impl Compiler {
@@ -109,6 +114,13 @@ impl Compiler {
                     self.add_local(name.clone(), false);
                     bound = true;
                 }
+                // Tests the copy's type without consuming it, then binds it.
+                MatchPattern::Typed { name, type_name } => {
+                    let idx = self.add_string_constant(type_name);
+                    fail_jumps.push(self.emit_jump(Op::MatchType(idx, 0), line));
+                    self.add_local(name.clone(), false);
+                    bound = true;
+                }
                 other => {
                     return Err(CompileError::new(
                         format!("unsupported match pattern reached the compiler: {other:?}"),
@@ -153,11 +165,17 @@ impl Compiler {
             }
         }
 
-        // No arm matched: the match evaluates to null, in the subject's slot so
-        // the stack shape matches every arm's exit.
-        self.emit(Op::Null, line);
-        self.emit(Op::SetLocal(subject_slot), line);
-        self.emit(Op::Pop, line);
+        // No arm matched. The tree-walker raises "no pattern matched the
+        // value"; this engine used to push null and carry on, so a match that
+        // fell through every arm failed loudly under `soli test` and silently
+        // produced null under `soli serve`. Raise here too.
+        //
+        // Emitted as a throw of that message rather than a new opcode: it
+        // surfaces as an error either way, and code that relied on the null
+        // cannot exist — it would already have been failing in the interpreter.
+        let msg = self.add_string_constant("Type error: no pattern matched the value");
+        self.emit(Op::Constant(msg), line);
+        self.emit(Op::Throw, line);
 
         for ej in end_jumps {
             self.patch_jump(ej);
@@ -283,9 +301,12 @@ impl Compiler {
             }
         }
 
-        // Default: if no arm matched, pop the subject and push null
+        // Default: no arm matched — raise, as the tree-walker does, rather
+        // than yielding null (see the slot-based path for why).
         self.emit(Op::Pop, line); // pop subject
-        self.emit(Op::Null, line);
+        let msg = self.add_string_constant("Type error: no pattern matched the value");
+        self.emit(Op::Constant(msg), line);
+        self.emit(Op::Throw, line);
 
         // Patch all end jumps
         for ej in end_jumps {

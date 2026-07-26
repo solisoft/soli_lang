@@ -878,6 +878,8 @@ fn stack_effect(op: Op) -> i32 {
         GetLocalProperty(_, _) | GetLocalIndex(_, _) => 1,
         // Touches `iter_stack`, not the value stack.
         PopIter => 0,
+        // Peeks the subject and branches; leaves the stack alone.
+        MatchType(_, _) => 0,
     }
 }
 
@@ -925,6 +927,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             | Op::ForIterRange(offset)
             | Op::RescueJump(offset)
             | Op::CatchMatch(_, offset)
+            | Op::MatchType(_, offset)
             | Op::TestLessEqualJump(offset)
             | Op::TestGreaterJump(offset)
             | Op::TestGreaterEqualJump(offset)
@@ -1630,6 +1633,7 @@ fn compact_nops(chunk: &mut Chunk) {
             Op::ForIterRange(d) => Op::ForIterRange(fwd(&old_to_new, old, d, here)),
             Op::RescueJump(d) => Op::RescueJump(fwd(&old_to_new, old, d, here)),
             Op::CatchMatch(name_idx, d) => Op::CatchMatch(name_idx, fwd(&old_to_new, old, d, here)),
+            Op::MatchType(name_idx, d) => Op::MatchType(name_idx, fwd(&old_to_new, old, d, here)),
             // `TryBegin` carries TWO targets and neither has "jump" in its
             // name, so it was missed the same way the four above were — but
             // silently, because no test put a fusable instruction inside a
@@ -1724,6 +1728,7 @@ mod inplace_peephole_tests {
             Op::TestGreaterEqualJump(_) => Op::TestGreaterEqualJump(d),
             Op::TestNotEqualJump(_) => Op::TestNotEqualJump(d),
             Op::TryBegin(_, f) => Op::TryBegin(d, f),
+            Op::MatchType(n, _) => Op::MatchType(n, d),
             other => panic!("FORWARD_BRANCH_OPS holds a non-branch opcode: {other:?}"),
         }
     }
@@ -1747,6 +1752,7 @@ mod inplace_peephole_tests {
             | Op::TestGreaterJump(d)
             | Op::TestGreaterEqualJump(d)
             | Op::TestNotEqualJump(d)
+            | Op::MatchType(_, d)
             | Op::TryBegin(d, _) => d,
             _ => return None,
         })

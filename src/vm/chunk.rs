@@ -148,7 +148,8 @@ impl Chunk {
             | Op::NullishJump(target)
             | Op::ForIter(target)
             | Op::ForIterRange(target)
-            | Op::JumpIfParamSupplied(_, target) => {
+            | Op::JumpIfParamSupplied(_, target)
+            | Op::MatchType(_, target) => {
                 *target = jump;
             }
             _ => panic!("Tried to patch non-jump instruction at offset {}", offset),

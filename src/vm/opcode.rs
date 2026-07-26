@@ -340,6 +340,15 @@ pub enum Op {
     GetLocalProperty(u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
+    /// Match-pattern type test: peek the top value, jump by the operand when it
+    /// is NOT of the named type. Peeks rather than pops so the value is still
+    /// there to be bound by a `Typed` pattern.
+    ///
+    /// Distinct from `CatchMatch`, which tests only class instances because a
+    /// `catch` clause can only name a class. A `Typed` match pattern also names
+    /// primitives (`Int s`, `String s`), so this mirrors the tree-walker's
+    /// pattern rules instead.
+    MatchType(u16, u16),
     /// Discard the innermost `for` iterator.
     ///
     /// `ForIter` pops it when the sequence is exhausted, which is the only way
@@ -390,6 +399,7 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::TestGreaterJump(0),
     Op::TestGreaterEqualJump(0),
     Op::TestNotEqualJump(0),
+    Op::MatchType(0, 0),
     // Two targets, and neither name says "jump".
     Op::TryBegin(0, 0),
 ];
