@@ -5991,7 +5991,7 @@ fn try_render_template(
     if let Value::Instance(inst) = controller_instance {
         for (k, v) in inst.borrow().fields.iter() {
             if !k.starts_with('_') {
-                data_pairs.insert(HashKey::String(k.clone().into()), v.clone());
+                data_pairs.insert(HashKey::String(k.clone()), v.clone());
             }
         }
     }

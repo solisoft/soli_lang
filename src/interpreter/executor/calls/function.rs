@@ -41,7 +41,7 @@ fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &
     );
     let error_hash = Value::Hash(Rc::new(RefCell::new(entry)));
     instance.borrow_mut().set(
-        "_errors".to_string(),
+        "_errors",
         Value::Array(Rc::new(RefCell::new(vec![error_hash]))),
     );
 }
@@ -775,7 +775,7 @@ impl Interpreter {
         let inst_ref = inst_rc.borrow();
         let mut new_pairs = crate::interpreter::value::HashPairs::default();
         for (k, v) in &inst_ref.fields {
-            new_pairs.insert(HashKey::String(k.clone().into()), v.clone());
+            new_pairs.insert(HashKey::String(k.clone()), v.clone());
         }
         drop(inst_ref);
         arg_values[data_index] = Value::Hash(Rc::new(RefCell::new(new_pairs)));

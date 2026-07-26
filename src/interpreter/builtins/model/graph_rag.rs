@@ -67,9 +67,9 @@ fn doc_vector(value: &Value, field: &str) -> Vec<f64> {
 fn attach_graph_rag_meta(value: Value, score: f64, is_seed: bool, hops: i64) -> Value {
     if let Value::Instance(inst) = &value {
         let mut fields = inst.borrow().fields.clone();
-        fields.insert("_similarity_score".to_string(), Value::Float(score));
-        fields.insert("_graph_seed".to_string(), Value::Bool(is_seed));
-        fields.insert("_graph_hops".to_string(), Value::Int(hops));
+        fields.insert("_similarity_score".into(), Value::Float(score));
+        fields.insert("_graph_seed".into(), Value::Bool(is_seed));
+        fields.insert("_graph_hops".into(), Value::Int(hops));
         return Value::Instance(Rc::new(RefCell::new(crate::interpreter::value::Instance {
             class: inst.borrow().class.clone(),
             fields,

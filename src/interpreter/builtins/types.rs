@@ -44,7 +44,7 @@ pub fn register_type_builtins(env: &mut Environment) {
                 }
             };
             let mut instance = Instance::new(class_rc);
-            instance.set("__variant".to_string(), Value::String(variant));
+            instance.set("__variant", Value::String(variant));
             if let Value::Hash(pairs) = &args[2] {
                 for (key, value) in pairs.borrow().iter() {
                     if let HashKey::String(field) = key {

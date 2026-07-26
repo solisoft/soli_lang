@@ -750,10 +750,7 @@ pub fn register_array_class(env: &mut Environment) {
             let class_ref = empty_class.clone();
             move |_args| {
                 let mut inst = Instance::new(class_ref.clone());
-                inst.set(
-                    "__value".to_string(),
-                    Value::Array(Rc::new(RefCell::new(Vec::new()))),
-                );
+                inst.set("__value", Value::Array(Rc::new(RefCell::new(Vec::new()))));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             }
         })),

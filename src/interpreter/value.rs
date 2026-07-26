@@ -401,13 +401,13 @@ pub fn build_enum_value(class: &Rc<Class>, stored: &Value) -> Value {
     let mut inst = Instance::new(class.clone());
     match stored {
         Value::String(tag) => {
-            inst.set("__variant".to_string(), Value::String(tag.clone()));
+            inst.set("__variant", Value::String(tag.clone()));
         }
         Value::Hash(hash) => {
             for (key, value) in hash.borrow().iter() {
                 if let HashKey::String(name) = key {
                     if name.as_str() == "variant" {
-                        inst.set("__variant".to_string(), value.clone());
+                        inst.set("__variant", value.clone());
                     } else {
                         inst.set(name.to_string(), value.clone());
                     }
@@ -1501,20 +1501,26 @@ impl Class {
 #[derive(Debug, Clone)]
 pub struct Instance {
     pub class: Rc<Class>,
-    pub fields: HashMap<String, Value, AHasher>,
+    pub fields: HashMap<SoliStr, Value, AHasher>,
     /// Dirty-tracking baseline: the non-`_` fields as last loaded from or
     /// persisted to the database. `None` = new (never-loaded) record.
-    pub original_fields: Option<Box<HashMap<String, Value, AHasher>>>,
+    pub original_fields: Option<Box<HashMap<SoliStr, Value, AHasher>>>,
     /// Changes applied by the last successful create/save/update, as
     /// `(name, old, new)` sorted by name. `None` = never persisted.
-    pub previous_changes: Option<Box<Vec<(String, Value, Value)>>>,
+    pub previous_changes: Option<Box<Vec<(SoliStr, Value, Value)>>>,
 }
 
 impl Instance {
     pub fn new(class: Rc<Class>) -> Self {
+        // Size the map for the fields the class declares, so a constructor
+        // filling them in does not rehash partway through. Declared-field
+        // count is the right hint even for classes that add fields
+        // dynamically: it covers the common case exactly and merely
+        // under-reserves for the rare one.
+        let capacity = class.fields.len();
         Self {
             class,
-            fields: HashMap::default(),
+            fields: HashMap::with_capacity_and_hasher(capacity, Default::default()),
             original_fields: None,
             previous_changes: None,
         }
@@ -1524,8 +1530,8 @@ impl Instance {
         self.fields.get(name).cloned()
     }
 
-    pub fn set(&mut self, name: String, value: Value) {
-        self.fields.insert(name, value);
+    pub fn set(&mut self, name: impl Into<SoliStr>, value: Value) {
+        self.fields.insert(name.into(), value);
     }
 
     pub fn get_method(&self, name: &str) -> Option<Value> {
@@ -1700,7 +1706,7 @@ impl serde::Serialize for Value {
                 // via the model `enum_field` DSL and `Enum.from(value)`.
                 if let Some(tag) = enum_variant_tag(&borrow) {
                     use serde::ser::SerializeMap;
-                    let payload: Vec<(&String, &Value)> = borrow
+                    let payload: Vec<(&SoliStr, &Value)> = borrow
                         .fields
                         .iter()
                         .filter(|(k, _)| k.as_str() != "__variant")
@@ -1721,7 +1727,7 @@ impl serde::Serialize for Value {
                 // names match common-sensitive patterns and most
                 // `_`-prefixed framework internals; apps that need the
                 // raw shape can serialise explicitly via a Hash literal.
-                let visible: Vec<(&String, &Value)> = borrow
+                let visible: Vec<(&SoliStr, &Value)> = borrow
                     .fields
                     .iter()
                     .filter(|(k, _)| is_safe_serialised_field(k))

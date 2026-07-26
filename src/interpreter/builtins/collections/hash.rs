@@ -140,7 +140,7 @@ pub fn register_hash_class(env: &mut Environment) {
             move |_args| {
                 let mut inst = Instance::new(class_ref.clone());
                 inst.set(
-                    "__value".to_string(),
+                    "__value",
                     Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
                 );
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))

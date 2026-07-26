@@ -12,10 +12,10 @@ use std::collections::HashMap;
 
 use ahash::RandomState as AHasher;
 
-use crate::interpreter::value::{enum_aware_equal, Instance, Value};
+use crate::interpreter::value::{enum_aware_equal, Instance, SoliStr, Value};
 
 /// Shallow clone of the persistable (non-`_`) fields.
-fn snapshot_fields(inst: &Instance) -> HashMap<String, Value, AHasher> {
+fn snapshot_fields(inst: &Instance) -> HashMap<SoliStr, Value, AHasher> {
     inst.fields
         .iter()
         .filter(|(name, _)| !name.starts_with('_'))
@@ -31,12 +31,12 @@ pub fn seed_snapshot(inst: &mut Instance) {
 /// Compute `(name, old, new)` for every attribute whose current value
 /// differs from the baseline, sorted by name. A `None` baseline (new
 /// record) reports every non-`_` field as `[null, value]`.
-pub fn compute_changes(inst: &Instance) -> Vec<(String, Value, Value)> {
+pub fn compute_changes(inst: &Instance) -> Vec<(SoliStr, Value, Value)> {
     let empty = HashMap::default();
-    let original: &HashMap<String, Value, AHasher> =
+    let original: &HashMap<SoliStr, Value, AHasher> =
         inst.original_fields.as_deref().unwrap_or(&empty);
 
-    let mut names: Vec<&String> = inst
+    let mut names: Vec<&SoliStr> = inst
         .fields
         .keys()
         .filter(|name| !name.starts_with('_'))
@@ -47,8 +47,12 @@ pub fn compute_changes(inst: &Instance) -> Vec<(String, Value, Value)> {
 
     let mut changes = Vec::new();
     for name in names {
-        let old = original.get(name).cloned().unwrap_or(Value::Null);
-        let new = inst.fields.get(name).cloned().unwrap_or(Value::Null);
+        let old = original.get(name.as_str()).cloned().unwrap_or(Value::Null);
+        let new = inst
+            .fields
+            .get(name.as_str())
+            .cloned()
+            .unwrap_or(Value::Null);
         if !enum_aware_equal(&old, &new) {
             changes.push((name.clone(), old, new));
         }
@@ -59,7 +63,7 @@ pub fn compute_changes(inst: &Instance) -> Vec<(String, Value, Value)> {
 /// After a successful create/save/update: record what the persist changed
 /// into `previous_changes`, reseed the baseline, and return the changes
 /// (counter caches consume the return value for FK reassignment).
-pub fn finalize_persist(inst: &mut Instance) -> Vec<(String, Value, Value)> {
+pub fn finalize_persist(inst: &mut Instance) -> Vec<(SoliStr, Value, Value)> {
     let changes = compute_changes(inst);
     inst.previous_changes = Some(Box::new(changes.clone()));
     seed_snapshot(inst);
@@ -76,7 +80,7 @@ pub fn sync_snapshot_field(inst: &mut Instance, name: &str) {
     if let Some(original) = inst.original_fields.as_deref_mut() {
         match live {
             Some(value) => {
-                original.insert(name.to_string(), value);
+                original.insert(name.into(), value);
             }
             None => {
                 original.remove(name);
@@ -87,7 +91,7 @@ pub fn sync_snapshot_field(inst: &mut Instance, name: &str) {
 
 /// Build the `{ name: [old, new] }` hash the `changes`/`previous_changes`
 /// natives return.
-pub fn changes_to_hash(changes: &[(String, Value, Value)]) -> Value {
+pub fn changes_to_hash(changes: &[(SoliStr, Value, Value)]) -> Value {
     use crate::interpreter::value::{HashKey, HashPairs};
     use std::cell::RefCell;
     use std::rc::Rc;

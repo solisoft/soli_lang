@@ -147,7 +147,7 @@ impl Interpreter {
                 let mut bindings = Vec::new();
 
                 for (field_name, field_pattern) in fields {
-                    match instance.borrow().fields.get(field_name) {
+                    match instance.borrow().fields.get(field_name.as_str()) {
                         Some(field_value) => {
                             match self.match_pattern(field_value, field_pattern)? {
                                 Some(field_bindings) => {
@@ -203,7 +203,7 @@ impl Interpreter {
                 let mut result = Vec::new();
                 for (i, binding) in bindings.iter().enumerate() {
                     let field_value = match field_names.get(i) {
-                        Some(field) => instance.borrow().fields.get(field).cloned(),
+                        Some(field) => instance.borrow().fields.get(field.as_str()).cloned(),
                         None => None,
                     };
                     match field_value {

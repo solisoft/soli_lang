@@ -1858,7 +1858,7 @@ mod tests {
         });
         let mut inst = Instance::new(class);
         inst.fields
-            .insert("greeting".to_string(), Value::String("Bonjour".into()));
+            .insert("greeting".into(), Value::String("Bonjour".into()));
         set_current_controller(Value::Instance(Rc::new(RefCell::new(inst))));
 
         let dir = tempfile::tempdir().unwrap();

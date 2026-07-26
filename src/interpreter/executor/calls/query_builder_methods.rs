@@ -182,7 +182,7 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         // save path stamps an empty array) and an error array on failure.
         if matches!(result, Value::Bool(true)) {
             if let Value::Instance(inst) = &child_value {
-                inst.borrow_mut().set("_errors".to_string(), Value::Null);
+                inst.borrow_mut().set("_errors", Value::Null);
             }
         }
         Ok(child_value)

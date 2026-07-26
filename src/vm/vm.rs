@@ -1587,10 +1587,18 @@ impl Vm {
                                     let mut inst_mut = inst.borrow_mut();
                                     if let Some(slot) = inst_mut.fields.get_mut(name.as_ref()) {
                                         *slot = value.clone();
-                                        true
                                     } else {
-                                        false
+                                        // First write to this field. The general
+                                        // path below allocates the name *twice* —
+                                        // once in `read_string_constant_owned`,
+                                        // once in `op_set_property`'s
+                                        // `name.to_string()` — and every field of
+                                        // every constructor is a first write, so
+                                        // that second allocation sat on the path
+                                        // of every object Soli creates.
+                                        inst_mut.fields.insert(name.clone(), value.clone());
                                     }
+                                    true
                                 }
                                 _ => false,
                             }
@@ -3760,7 +3768,7 @@ mod tests {
             ..Default::default()
         });
         let mut instance = Instance::new(class);
-        instance.fields.insert("v".to_string(), Value::Int(7));
+        instance.fields.insert("v".into(), Value::Int(7));
         let obj = Value::Instance(Rc::new(RefCell::new(instance)));
 
         for source in ["let x = obj.val();", "let x = obj.val;"] {
@@ -3798,7 +3806,7 @@ mod tests {
             ..Default::default()
         });
         let mut instance = Instance::new(class);
-        instance.fields.insert("score".to_string(), Value::Int(42));
+        instance.fields.insert("score".into(), Value::Int(42));
         let obj = Value::Instance(Rc::new(RefCell::new(instance)));
         let tokens = Scanner::new("let x = obj.score();")
             .scan_tokens()

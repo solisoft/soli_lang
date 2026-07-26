@@ -1431,7 +1431,7 @@ fn register_solidb_class(env: &mut Environment) {
             drop(states);
 
             let mut inner = Instance::new(solidb_class.clone());
-            inner.set("_id".to_string(), Value::Int(instance_id as i64));
+            inner.set("_id", Value::Int(instance_id as i64));
             let instance = Rc::new(RefCell::new(inner));
 
             Ok(Value::Instance(instance))

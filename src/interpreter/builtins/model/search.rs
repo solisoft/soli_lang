@@ -167,12 +167,12 @@ pub fn exec_hybrid_search(
             if let Value::Instance(ref i) = inst {
                 let mut borrowed = i.borrow_mut();
                 let score = hit.get("score").and_then(|s| s.as_f64()).unwrap_or(0.0);
-                borrowed.set("_hybrid_score".to_string(), Value::Float(score));
+                borrowed.set("_hybrid_score", Value::Float(score));
                 if let Some(vs) = hit.get("vector_score").and_then(|s| s.as_f64()) {
-                    borrowed.set("_vector_score".to_string(), Value::Float(vs));
+                    borrowed.set("_vector_score", Value::Float(vs));
                 }
                 if let Some(ts) = hit.get("text_score").and_then(|s| s.as_f64()) {
-                    borrowed.set("_text_score".to_string(), Value::Float(ts));
+                    borrowed.set("_text_score", Value::Float(ts));
                 }
                 let sources: Vec<Value> = hit
                     .get("sources")
@@ -184,10 +184,7 @@ pub fn exec_hybrid_search(
                             .collect()
                     })
                     .unwrap_or_default();
-                borrowed.set(
-                    "_sources".to_string(),
-                    Value::Array(Rc::new(RefCell::new(sources))),
-                );
+                borrowed.set("_sources", Value::Array(Rc::new(RefCell::new(sources))));
             }
             Some(inst)
         })
@@ -236,8 +233,7 @@ pub fn exec_geo_query(
             let distance = hit.get("distance").and_then(|d| d.as_f64()).unwrap_or(0.0);
             let inst = json_doc_to_instance(class, doc);
             if let Value::Instance(ref i) = inst {
-                i.borrow_mut()
-                    .set("_distance".to_string(), Value::Float(distance));
+                i.borrow_mut().set("_distance", Value::Float(distance));
             }
             Some(inst)
         })

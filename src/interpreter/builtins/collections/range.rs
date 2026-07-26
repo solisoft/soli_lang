@@ -44,8 +44,8 @@ pub fn register_range_class(env: &mut Environment) {
                     _ => return Err("Range.new() requires integer end".to_string()),
                 };
                 let mut inst = Instance::new(class_ref.clone());
-                inst.set("__start".to_string(), Value::Int(start));
-                inst.set("__end".to_string(), Value::Int(end));
+                inst.set("__start", Value::Int(start));
+                inst.set("__end", Value::Int(end));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             }
         })),

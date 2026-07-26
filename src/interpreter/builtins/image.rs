@@ -173,10 +173,7 @@ fn get_image_class() -> Rc<Class> {
 fn image_data_to_value(data: ImageData) -> Value {
     let class = get_image_class();
     let mut inst = Instance::new(class);
-    inst.set(
-        "__image_data".to_string(),
-        Value::Image(Rc::new(RefCell::new(data))),
-    );
+    inst.set("__image_data", Value::Image(Rc::new(RefCell::new(data))));
     Value::Instance(Rc::new(RefCell::new(inst)))
 }
 
@@ -345,7 +342,7 @@ fn plan_to_value(plan: ImagePlan) -> Value {
     let class = get_image_plan_class();
     let mut inst = Instance::new(class);
     inst.set(
-        "__image_plan".to_string(),
+        "__image_plan",
         Value::ImagePlan(Rc::new(RefCell::new(plan))),
     );
     Value::Instance(Rc::new(RefCell::new(inst)))

@@ -597,7 +597,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(Value::Int(t)) => {
                         let new_ts = t + days * 86400 * 1_000_000_000;
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -624,7 +624,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(Value::Int(t)) => {
                         let new_ts = t + hours * 3600 * 1_000_000_000;
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -651,7 +651,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(Value::Int(t)) => {
                         let new_ts = t + minutes * 60 * 1_000_000_000;
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -678,7 +678,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(Value::Int(t)) => {
                         let new_ts = t - days * 86400 * 1_000_000_000;
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -772,7 +772,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                 })?;
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                             let mut inst = Instance::new(datetime_instance_class()?);
-                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            inst.set("_ts", Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
                         _ => Err("DateTime missing internal timestamp".to_string()),
@@ -805,7 +805,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -845,7 +845,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                 .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                             let mut inst = Instance::new(datetime_instance_class()?);
-                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            inst.set("_ts", Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
                         _ => Err("DateTime missing internal timestamp".to_string()),
@@ -879,7 +879,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -915,7 +915,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -949,7 +949,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -991,7 +991,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             let boundary = Local.from_local_datetime(&naive).unwrap();
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                             let mut inst = Instance::new(datetime_instance_class()?);
-                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            inst.set("_ts", Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
                         _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1032,7 +1032,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let boundary = Local.from_local_datetime(&naive).unwrap();
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1072,7 +1072,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             let boundary = Local.from_local_datetime(&naive).unwrap();
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                             let mut inst = Instance::new(datetime_instance_class()?);
-                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            inst.set("_ts", Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
                         _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1108,7 +1108,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let boundary = Local.from_local_datetime(&naive).unwrap();
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
                         let mut inst = Instance::new(datetime_instance_class()?);
-                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        inst.set("_ts", Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1128,10 +1128,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         Rc::new(NativeFunction::new("DateTime.now", Some(0), move |_args| {
             let now = Local::now();
             let mut inst = Instance::new(datetime_instance_class()?);
-            inst.set(
-                "_ts".to_string(),
-                Value::Int(now.timestamp() * 1_000_000_000),
-            );
+            inst.set("_ts", Value::Int(now.timestamp() * 1_000_000_000));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
@@ -1141,10 +1138,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         Rc::new(NativeFunction::new("DateTime.utc", Some(0), move |_args| {
             let now = chrono::Utc::now();
             let mut inst = Instance::new(datetime_instance_class()?);
-            inst.set(
-                "_ts".to_string(),
-                Value::Int(now.timestamp_nanos_opt().unwrap_or(0)),
-            );
+            inst.set("_ts", Value::Int(now.timestamp_nanos_opt().unwrap_or(0)));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
@@ -1161,7 +1155,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 };
                 let timestamp = parse_datetime_string(&s)?;
                 let mut inst = Instance::new(datetime_instance_class()?);
-                inst.set("_ts".to_string(), Value::Int(timestamp));
+                inst.set("_ts", Value::Int(timestamp));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             },
         )),
@@ -1193,7 +1187,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             move |_args| {
                 let mut inst = Instance::new(datetime_instance_class()?);
-                inst.set("_ts".to_string(), Value::Int(0));
+                inst.set("_ts", Value::Int(0));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             },
         )),
@@ -1212,7 +1206,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts_nanos = ts.checked_mul(1_000_000_000)
                 .ok_or_else(|| "DateTime.from_unix(): timestamp overflow (value too large, expected seconds not milliseconds)".to_string())?;
             let mut inst = Instance::new(datetime_instance_class()?);
-            inst.set("_ts".to_string(), Value::Int(ts_nanos));
+            inst.set("_ts", Value::Int(ts_nanos));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
@@ -1261,10 +1255,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     (Some(Value::Int(t1)), Some(Value::Int(t2))) => {
                         let mut dur = Instance::new(duration_instance_class()?);
                         // `_ts` is in nanoseconds; Duration stores seconds.
-                        dur.set(
-                            "seconds".to_string(),
-                            Value::Float((t2 - t1) as f64 / 1_000_000_000.0),
-                        );
+                        dur.set("seconds", Value::Float((t2 - t1) as f64 / 1_000_000_000.0));
                         Ok(Value::Instance(Rc::new(RefCell::new(dur))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1284,7 +1275,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("Duration.of_seconds() requires number".to_string()),
                 };
                 let mut dur = Instance::new(duration_instance_class()?);
-                dur.set("seconds".to_string(), Value::Float(s));
+                dur.set("seconds", Value::Float(s));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
         })),
@@ -1301,7 +1292,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("Duration.of_minutes() requires number".to_string()),
                 };
                 let mut dur = Instance::new(duration_instance_class()?);
-                dur.set("seconds".to_string(), Value::Float(m * 60.0));
+                dur.set("seconds", Value::Float(m * 60.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
         })),
@@ -1318,7 +1309,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("Duration.of_hours() requires number".to_string()),
                 };
                 let mut dur = Instance::new(duration_instance_class()?);
-                dur.set("seconds".to_string(), Value::Float(h * 3600.0));
+                dur.set("seconds", Value::Float(h * 3600.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
         })),
@@ -1335,7 +1326,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("Duration.of_days() requires number".to_string()),
                 };
                 let mut dur = Instance::new(duration_instance_class()?);
-                dur.set("seconds".to_string(), Value::Float(d * 86400.0));
+                dur.set("seconds", Value::Float(d * 86400.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
         })),
@@ -1352,7 +1343,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("Duration.of_weeks() requires number".to_string()),
                 };
                 let mut dur = Instance::new(duration_instance_class()?);
-                dur.set("seconds".to_string(), Value::Float(w * 86400.0 * 7.0));
+                dur.set("seconds", Value::Float(w * 86400.0 * 7.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
         })),

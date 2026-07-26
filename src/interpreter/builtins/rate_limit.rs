@@ -459,10 +459,10 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 let key = format!("ip:{}", ip);
 
                 let mut inst = Instance::new(Rc::clone(&class_for_from_ip));
-                inst.set("key".to_string(), Value::String(key.into()));
-                inst.set("limit".to_string(), Value::Int(limit as i64));
-                inst.set("window".to_string(), Value::Int(window as i64));
-                inst.set("reset".to_string(), Value::Int(0));
+                inst.set("key", Value::String(key.into()));
+                inst.set("limit", Value::Int(limit as i64));
+                inst.set("window", Value::Int(window as i64));
+                inst.set("reset", Value::Int(0));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             },
         )),

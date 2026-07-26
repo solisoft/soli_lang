@@ -622,7 +622,7 @@ pub fn inject_controller_instance_vars(data: &Value) {
         if matches!(name.as_str(), "req" | "params" | "session" | "headers") {
             continue;
         }
-        let key = HashKey::String(name.clone().into());
+        let key = HashKey::String(name.clone());
         if !h.contains_key(&key) {
             h.insert(key, value.clone());
         }
@@ -2639,7 +2639,7 @@ mod tests {
         });
         let mut inst = Instance::new(class);
         for (k, v) in fields {
-            inst.fields.insert(k.to_string(), v.clone());
+            inst.fields.insert((*k).into(), v.clone());
         }
         Value::Instance(Rc::new(RefCell::new(inst)))
     }

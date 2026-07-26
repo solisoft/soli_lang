@@ -310,7 +310,7 @@ impl Interpreter {
                                             crate::interpreter::value::HashPairs::default(),
                                         ));
                                         inst_mut.fields.insert(
-                                            "_pending_translations".to_string(),
+                                            "_pending_translations".into(),
                                             Value::Hash(new_hash.clone()),
                                         );
                                         new_hash
@@ -321,7 +321,7 @@ impl Interpreter {
                                         crate::interpreter::value::HashPairs::default(),
                                     ));
                                     inst_mut.fields.insert(
-                                        "_pending_translations".to_string(),
+                                        "_pending_translations".into(),
                                         Value::Hash(new_hash.clone()),
                                     );
                                     new_hash

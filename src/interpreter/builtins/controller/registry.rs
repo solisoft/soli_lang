@@ -1059,11 +1059,11 @@ pub fn setup_controller_context(
 ) {
     if let Value::Instance(inst_rc) = controller {
         let mut inst = inst_rc.borrow_mut();
-        inst.fields.insert("req".to_string(), req.clone());
-        inst.fields.insert("params".to_string(), params.clone());
-        inst.fields.insert("session".to_string(), session.clone());
-        inst.fields.insert("headers".to_string(), headers.clone());
-        inst.fields.insert("cookies".to_string(), cookies.clone());
+        inst.fields.insert("req".into(), req.clone());
+        inst.fields.insert("params".into(), params.clone());
+        inst.fields.insert("session".into(), session.clone());
+        inst.fields.insert("headers".into(), headers.clone());
+        inst.fields.insert("cookies".into(), cookies.clone());
     }
 
     // Also set the current request context for view rendering
@@ -1085,7 +1085,7 @@ pub fn get_controller_field(controller: &Value, field_name: &str) -> Option<Valu
 pub fn set_controller_field(controller: &Value, field_name: &str, value: Value) {
     if let Value::Instance(inst_rc) = controller {
         let mut inst = inst_rc.borrow_mut();
-        inst.fields.insert(field_name.to_string(), value);
+        inst.fields.insert(field_name.into(), value);
     }
 }
 

@@ -15,7 +15,7 @@
 //! reassignment treats the (type, id) pair as the parent identity.
 
 use super::relations::{RelationDef, RelationType};
-use crate::interpreter::value::{Instance, Value};
+use crate::interpreter::value::{Instance, SoliStr, Value};
 
 /// The owner class's belongs_to relations that maintain a parent counter.
 pub fn counter_cached_relations(class_name: &str) -> Vec<RelationDef> {
@@ -83,11 +83,11 @@ fn bump_parent(rel: &RelationDef, collection: &str, parent_key: &str, delta: i64
 
 /// The (collection, key) parent identity a relation points at on an instance.
 fn parent_target_from_instance(rel: &RelationDef, inst: &Instance) -> Option<(String, String)> {
-    let key = inst.fields.get(&rel.foreign_key).and_then(fk_key)?;
+    let key = inst.fields.get(rel.foreign_key.as_str()).and_then(fk_key)?;
     let type_value = rel
         .polymorphic_type_field
         .as_ref()
-        .and_then(|field| inst.fields.get(field))
+        .and_then(|field| inst.fields.get(field.as_str()))
         .and_then(type_string);
     let collection = parent_collection(rel, type_value.as_deref())?;
     Some((collection, key))
@@ -132,7 +132,7 @@ pub fn bump_for_json(class_name: &str, doc: &serde_json::Value, delta: i64) {
 /// identity is the (collection, key) pair — for polymorphic relations a
 /// type-only change moves the count too. `inst` supplies the unchanged
 /// component of the pair (its fields hold the post-update values).
-pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
+pub fn bump_for_changes(inst: &Instance, changes: &[(SoliStr, Value, Value)]) {
     if changes.is_empty() {
         return;
     }
@@ -146,7 +146,7 @@ pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
             continue;
         }
 
-        let new_key = inst.fields.get(&rel.foreign_key).and_then(fk_key);
+        let new_key = inst.fields.get(rel.foreign_key.as_str()).and_then(fk_key);
         let old_key = match fk_change {
             Some((_, old, _)) => fk_key(old),
             None => new_key.clone(),
@@ -154,7 +154,7 @@ pub fn bump_for_changes(inst: &Instance, changes: &[(String, Value, Value)]) {
         let new_type = rel
             .polymorphic_type_field
             .as_ref()
-            .and_then(|field| inst.fields.get(field))
+            .and_then(|field| inst.fields.get(field.as_str()))
             .and_then(type_string);
         let old_type = match type_change {
             Some((_, old, _)) => type_string(old),

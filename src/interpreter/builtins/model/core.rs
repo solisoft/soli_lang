@@ -934,7 +934,7 @@ fn instance_fields_to_hash(
     let mut pairs = HashPairs::default();
     for (k, v) in &inst.fields {
         if !k.starts_with('_') {
-            pairs.insert(HashKey::String(k.clone().into()), v.clone());
+            pairs.insert(HashKey::String(k.clone()), v.clone());
         }
     }
     Value::Hash(Rc::new(RefCell::new(pairs)))
@@ -1741,7 +1741,7 @@ impl Model {
                                     })
                                     .collect();
                                 instance.borrow_mut().set(
-                                    "_errors".to_string(),
+                                    "_errors",
                                     Value::Array(Rc::new(RefCell::new(error_values))),
                                 );
                                 return Ok(Value::Instance(instance));
@@ -1762,8 +1762,8 @@ impl Model {
                 // payload is the exception the caller should see.
                 if let Some((ref from_ref, ref to_ref)) = edge_refs {
                     let mut inst_mut = instance.borrow_mut();
-                    inst_mut.set("_from".to_string(), Value::String(from_ref.clone().into()));
-                    inst_mut.set("_to".to_string(), Value::String(to_ref.clone().into()));
+                    inst_mut.set("_from", Value::String(from_ref.clone().into()));
+                    inst_mut.set("_to", Value::String(to_ref.clone().into()));
                 }
 
                 // Run validations against the filtered input — non-permitted
@@ -1773,10 +1773,9 @@ impl Model {
                 let errors = run_validations(&class_name, &data, None)?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-                    instance.borrow_mut().set(
-                        "_errors".to_string(),
-                        Value::Array(Rc::new(RefCell::new(error_values))),
-                    );
+                    instance
+                        .borrow_mut()
+                        .set("_errors", Value::Array(Rc::new(RefCell::new(error_values))));
                     return Ok(Value::Instance(instance));
                 }
 
@@ -1806,10 +1805,9 @@ impl Model {
                             serde_json::Value::String(class_name.clone()),
                         );
                     }
-                    instance.borrow_mut().set(
-                        "type".to_string(),
-                        Value::String(class_name.as_str().into()),
-                    );
+                    instance
+                        .borrow_mut()
+                        .set("type", Value::String(class_name.as_str().into()));
                 }
 
                 match exec_insert(&collection, None, data_value) {
@@ -1822,7 +1820,7 @@ impl Model {
                                 }
                             }
                         }
-                        inst_mut.set("id".to_string(), json_to_value(&id));
+                        inst_mut.set("id", json_to_value(&id));
                         super::dirty::finalize_persist(&mut inst_mut);
                         super::counter_cache::bump_for_instance(&inst_mut, 1);
                         drop(inst_mut);
@@ -1830,10 +1828,9 @@ impl Model {
                     }
                     Err(e) => {
                         let error_values = build_persistence_errors(&class_name, e);
-                        instance.borrow_mut().set(
-                            "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(error_values))),
-                        );
+                        instance
+                            .borrow_mut()
+                            .set("_errors", Value::Array(Rc::new(RefCell::new(error_values))));
                         Ok(Value::Instance(instance))
                     }
                 }
@@ -2301,7 +2298,7 @@ impl Model {
                         let mut map = serde_json::Map::new();
                         for (k, v) in &inst_ref.fields {
                             if !k.starts_with('_') {
-                                map.insert(k.clone(), value_to_json(v)?);
+                                map.insert(k.to_string(), value_to_json(v)?);
                             }
                         }
                         Ok(serde_json::Value::Object(map))
@@ -4250,7 +4247,7 @@ impl Model {
                         drop(inst_ref);
                         let mut inst_mut = instance.borrow_mut();
                         inst_mut.fields.insert(
-                            "translated_fields".to_string(),
+                            "translated_fields".into(),
                             json_to_value(&serde_json::Value::Object(translated_fields_json)),
                         );
 
@@ -4269,17 +4266,16 @@ impl Model {
                         let error_values: Vec<Value> =
                             errors.iter().map(|e| e.to_value()).collect();
                         drop(inst_ref2);
-                        instance.borrow_mut().set(
-                            "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(error_values))),
-                        );
+                        instance
+                            .borrow_mut()
+                            .set("_errors", Value::Array(Rc::new(RefCell::new(error_values))));
                         return Ok(Value::Bool(false));
                     }
 
                     let mut map = serde_json::Map::new();
                     for (k, v) in &inst_ref2.fields {
                         if !k.starts_with('_') {
-                            map.insert(k.clone(), value_to_json(v)?);
+                            map.insert(k.to_string(), value_to_json(v)?);
                         }
                     }
                     drop(inst_ref2);
@@ -4288,23 +4284,19 @@ impl Model {
                             let mut inst_mut = instance.borrow_mut();
                             if let serde_json::Value::Object(ref res_map) = result {
                                 if let Some(rev) = res_map.get("_rev") {
-                                    inst_mut.set("_rev".to_string(), json_to_value(rev));
+                                    inst_mut.set("_rev", json_to_value(rev));
                                 }
                             }
-                            inst_mut.set(
-                                "_errors".to_string(),
-                                Value::Array(Rc::new(RefCell::new(vec![]))),
-                            );
+                            inst_mut.set("_errors", Value::Array(Rc::new(RefCell::new(vec![]))));
                             let changes = super::dirty::finalize_persist(&mut inst_mut);
                             super::counter_cache::bump_for_changes(&inst_mut, &changes);
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
                             let error_values = build_persistence_errors(&class_name, e);
-                            instance.borrow_mut().set(
-                                "_errors".to_string(),
-                                Value::Array(Rc::new(RefCell::new(error_values))),
-                            );
+                            instance
+                                .borrow_mut()
+                                .set("_errors", Value::Array(Rc::new(RefCell::new(error_values))));
                             Ok(Value::Bool(false))
                         }
                     }
@@ -4380,7 +4372,7 @@ impl Model {
                                             let err_hash =
                                                 Value::Hash(Rc::new(RefCell::new(pairs)));
                                             inst_mut.set(
-                                                "_errors".to_string(),
+                                                "_errors",
                                                 Value::Array(Rc::new(RefCell::new(vec![err_hash]))),
                                             );
                                             return Ok(Value::Bool(false));
@@ -4474,7 +4466,7 @@ impl Model {
                     for (k, v) in &inst_ref.fields {
                         if !k.starts_with('_') || (is_edge && matches!(k.as_str(), "_from" | "_to"))
                         {
-                            map.insert(k.clone(), value_to_json(v)?);
+                            map.insert(k.to_string(), value_to_json(v)?);
                         }
                     }
 
@@ -4485,7 +4477,7 @@ impl Model {
                     if let Some((translated_fields_json, _)) = translation_update {
                         let mut inst_mut = instance.borrow_mut();
                         inst_mut.fields.insert(
-                            "translated_fields".to_string(),
+                            "translated_fields".into(),
                             json_to_value(&serde_json::Value::Object(translated_fields_json)),
                         );
                         // Clear pending translations
@@ -4497,10 +4489,9 @@ impl Model {
                     if !errors.is_empty() {
                         let error_values: Vec<Value> =
                             errors.iter().map(|e| e.to_value()).collect();
-                        instance.borrow_mut().set(
-                            "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(error_values))),
-                        );
+                        instance
+                            .borrow_mut()
+                            .set("_errors", Value::Array(Rc::new(RefCell::new(error_values))));
                         return Ok(Value::Bool(false));
                     }
 
@@ -4516,13 +4507,11 @@ impl Model {
                                 let mut inst_mut = instance.borrow_mut();
                                 if let serde_json::Value::Object(ref res_map) = result {
                                     if let Some(rev) = res_map.get("_rev") {
-                                        inst_mut.set("_rev".to_string(), json_to_value(rev));
+                                        inst_mut.set("_rev", json_to_value(rev));
                                     }
                                 }
-                                inst_mut.set(
-                                    "_errors".to_string(),
-                                    Value::Array(Rc::new(RefCell::new(vec![]))),
-                                );
+                                inst_mut
+                                    .set("_errors", Value::Array(Rc::new(RefCell::new(vec![]))));
                                 let changes = super::dirty::finalize_persist(&mut inst_mut);
                                 super::counter_cache::bump_for_changes(&inst_mut, &changes);
                                 Ok(Value::Bool(true))
@@ -4530,7 +4519,7 @@ impl Model {
                             Err(e) => {
                                 let error_values = build_persistence_errors(&class_name, e);
                                 instance.borrow_mut().set(
-                                    "_errors".to_string(),
+                                    "_errors",
                                     Value::Array(Rc::new(RefCell::new(error_values))),
                                 );
                                 Ok(Value::Bool(false))
@@ -4546,10 +4535,9 @@ impl Model {
                                 "type".to_string(),
                                 serde_json::Value::String(class_name.clone()),
                             );
-                            instance.borrow_mut().set(
-                                "type".to_string(),
-                                Value::String(class_name.as_str().into()),
-                            );
+                            instance
+                                .borrow_mut()
+                                .set("type", Value::String(class_name.as_str().into()));
                         }
                         match exec_insert(&collection, None, serde_json::Value::Object(map)) {
                             Ok(result) => {
@@ -4563,10 +4551,8 @@ impl Model {
                                         }
                                     }
                                 }
-                                inst_mut.set(
-                                    "_errors".to_string(),
-                                    Value::Array(Rc::new(RefCell::new(vec![]))),
-                                );
+                                inst_mut
+                                    .set("_errors", Value::Array(Rc::new(RefCell::new(vec![]))));
                                 super::dirty::finalize_persist(&mut inst_mut);
                                 super::counter_cache::bump_for_instance(&inst_mut, 1);
                                 Ok(Value::Bool(true))
@@ -4574,7 +4560,7 @@ impl Model {
                             Err(e) => {
                                 let error_values = build_persistence_errors(&class_name, e);
                                 instance.borrow_mut().set(
-                                    "_errors".to_string(),
+                                    "_errors",
                                     Value::Array(Rc::new(RefCell::new(error_values))),
                                 );
                                 Ok(Value::Bool(false))
@@ -4622,7 +4608,7 @@ impl Model {
                     match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                         Ok(_) => {
                             let mut inst_mut = instance.borrow_mut();
-                            inst_mut.set("deleted_at".to_string(), Value::String(now.into()));
+                            inst_mut.set("deleted_at", Value::String(now.into()));
                             super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
                             // Counters track default-scope-visible children:
                             // vanishing from the scope decrements the parent.
@@ -4675,7 +4661,7 @@ impl Model {
                 match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
                         let mut inst_mut = instance.borrow_mut();
-                        inst_mut.set("deleted_at".to_string(), Value::Null);
+                        inst_mut.set("deleted_at", Value::Null);
                         super::dirty::sync_snapshot_field(&mut inst_mut, "deleted_at");
                         // Re-entering the default scope re-increments the parent.
                         if was_deleted {
@@ -4736,7 +4722,7 @@ impl Model {
                     Ok(_) => {
                         instance
                             .borrow_mut()
-                            .set("_updated_at".to_string(), Value::String(now.into()));
+                            .set("_updated_at", Value::String(now.into()));
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("touch failed: {}", e)),
@@ -4831,7 +4817,7 @@ impl Model {
                     let inst_ref = instance.borrow();
                     let names: Vec<Value> = super::dirty::compute_changes(&inst_ref)
                         .into_iter()
-                        .map(|(name, _, _)| Value::String(name.into()))
+                        .map(|(name, _, _)| Value::String(name))
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(names))))
                 },
@@ -4905,7 +4891,7 @@ impl Model {
                     let value = inst_ref
                         .original_fields
                         .as_deref()
-                        .and_then(|original| original.get(&name).cloned())
+                        .and_then(|original| original.get(name.as_str()).cloned())
                         .unwrap_or(Value::Null);
                     Ok(value)
                 },
@@ -5154,7 +5140,7 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
         Ok((new_value, new_rev)) => {
             let mut inst_mut = instance.borrow_mut();
             inst_mut.set(field.to_string(), Value::Int(new_value));
-            inst_mut.set("_rev".to_string(), Value::String(new_rev.into()));
+            inst_mut.set("_rev", Value::String(new_rev.into()));
             super::dirty::sync_snapshot_field(&mut inst_mut, &field);
             drop(inst_mut);
             Ok(Value::Instance(instance))

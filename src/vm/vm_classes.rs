@@ -373,7 +373,7 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         match object {
             Value::Instance(inst) => {
-                inst.borrow_mut().fields.insert(name.to_string(), value);
+                inst.borrow_mut().fields.insert(name.into(), value);
                 Ok(())
             }
             Value::Class(class) => {

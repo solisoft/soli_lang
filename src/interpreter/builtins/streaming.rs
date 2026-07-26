@@ -193,8 +193,8 @@ fn out_instance(id: usize, sse: bool) -> Value {
         }),
     };
     let mut inst = Instance::new(class);
-    inst.set("_id".to_string(), Value::Int(id as i64));
-    inst.set("_sse".to_string(), Value::Bool(sse));
+    inst.set("_id", Value::Int(id as i64));
+    inst.set("_sse", Value::Bool(sse));
     Value::Instance(Rc::new(RefCell::new(inst)))
 }
 

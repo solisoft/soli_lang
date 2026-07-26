@@ -637,7 +637,7 @@ fn mail_render(args: &[Value]) -> Result<Value, String> {
         let mut data: HashPairs = HashPairs::default();
         for (name, value) in inst_ref.fields.iter() {
             if !name.starts_with('_') {
-                data.insert(HashKey::String(name.clone().into()), value.clone());
+                data.insert(HashKey::String(name.clone()), value.clone());
             }
         }
         (class_name, action, data)

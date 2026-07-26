@@ -680,7 +680,7 @@ pub fn register_test_builtins(env: &mut Environment) {
             if let Some(class_rc) = class_rc {
                 let mut instance = crate::interpreter::value::Instance::new(class_rc.clone());
 
-                instance.set("actual".to_string(), actual);
+                instance.set("actual", actual);
                 let result = Value::Instance(Rc::new(RefCell::new(instance)));
 
                 return Ok(result);

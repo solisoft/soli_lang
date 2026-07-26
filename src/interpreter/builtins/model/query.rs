@@ -1137,7 +1137,7 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, spec: &SimilarSpec
                 .map(|(score, item)| match item {
                     Value::Instance(inst) => {
                         let mut fields = inst.borrow().fields.clone();
-                        fields.insert("_similarity_score".to_string(), Value::Float(*score));
+                        fields.insert("_similarity_score".into(), Value::Float(*score));
                         Value::Instance(std::rc::Rc::new(std::cell::RefCell::new(
                             crate::interpreter::value::Instance {
                                 class: inst.borrow().class.clone(),
