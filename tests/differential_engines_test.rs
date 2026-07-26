@@ -523,6 +523,31 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- enum-variant patterns compile ---
+    // Class name and `__variant` tag are both checked before any payload is
+    // bound. Payload field *names* come from the class's `__enum_variants`
+    // metadata, which is only known once the instance is in hand — hence the
+    // `EnumPayload` opcode rather than a compile-time property read.
+    (
+        "match_enum_variant_with_and_without_payload",
+        "enum Status { Active, Pending(reason: String) }\nfn f(s) { return match s { Status.Active => \"Live\", Status.Pending(r) => \"Waiting: \" + r, _ => \"?\" } }\nprint([f(Status.Active), f(Status.Pending(\"later\"))])",
+    ),
+    (
+        "match_enum_variant_two_payload_fields",
+        "enum Shape { Circle(radius: Float), Rect(w: Float, h: Float) }\nfn area(s) { return match s { Shape.Circle(r) => 3.0 * r * r, Shape.Rect(w, h) => w * h, _ => 0.0 } }\nprint([area(Shape.Circle(2.0)), area(Shape.Rect(3.0, 4.0))])",
+    ),
+    (
+        "match_enum_wrong_variant_falls_through",
+        "enum Status { Active, Pending(reason: String) }\nfn f(s) { return match s { Status.Active => \"live\", _ => \"other\" } }\nprint(f(Status.Pending(\"x\")))",
+    ),
+    (
+        "match_enum_non_enum_value_falls_through",
+        "enum Status { Active }\nfn f(s) { return match s { Status.Active => \"live\", _ => \"other\" } }\nprint(f(42))",
+    ),
+    (
+        "match_enum_variant_with_guard",
+        "enum Shape { Circle(radius: Float) }\nfn f(s) { return match s { Shape.Circle(r) if r > 5.0 => \"big\", Shape.Circle(r) => \"small\", _ => \"?\" } }\nprint([f(Shape.Circle(9.0)), f(Shape.Circle(1.0))])",
+    ),
     // --- hash patterns with named fields compile ---
     // Every key test runs before any binding is pushed, same provable shape as
     // the array form. A missing key falls through; extra keys are fine.

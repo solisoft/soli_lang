@@ -880,6 +880,8 @@ fn stack_effect(op: Op) -> i32 {
         PopIter => 0,
         // Peeks the subject and branches; leaves the stack alone.
         MatchType(_, _) => 0,
+        // Reads a payload field out of a slot and pushes it.
+        EnumPayload(_, _, _) => 1,
     }
 }
 

@@ -340,6 +340,14 @@ pub enum Op {
     GetLocalProperty(u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
+    /// Push the `index`-th payload field of the enum instance in `slot`, for
+    /// the variant named by the constant at `variant_idx`.
+    ///
+    /// An enum variant's payload field *names* live in the class's
+    /// `__enum_variants` metadata, so the mapping from position to field name
+    /// is only known once the instance is in hand — hence an opcode rather
+    /// than a compile-time `GetProperty`.
+    EnumPayload(u16, u16, u8),
     /// Match-pattern type test: peek the top value, jump by the operand when it
     /// is NOT of the named type. Peeks rather than pops so the value is still
     /// there to be bound by a `Typed` pattern.

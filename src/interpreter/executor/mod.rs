@@ -4,7 +4,7 @@ mod expressions;
 pub(crate) mod literals;
 mod loop_capture;
 mod operators;
-mod pattern_matching;
+pub(crate) mod pattern_matching;
 mod statements;
 mod variables;
 

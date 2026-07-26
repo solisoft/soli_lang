@@ -1971,6 +1971,27 @@ impl Vm {
                         frame.ip += jump_offset as usize;
                     }
                 }
+                Op::EnumPayload(slot, variant_idx, index) => {
+                    let variant = self.read_string_constant_owned(variant_idx);
+                    let base = self.frames.last().unwrap().stack_base;
+                    let value = match &self.stack[base + slot as usize] {
+                        Value::Instance(inst) => {
+                            let inst = inst.borrow();
+                            let names =
+                                crate::interpreter::executor::pattern_matching::enum_variant_field_names(
+                                    &inst.class,
+                                    &variant,
+                                );
+                            names
+                                .get(index as usize)
+                                .and_then(|n| inst.fields.get(n.as_str()))
+                                .cloned()
+                                .unwrap_or(Value::Null)
+                        }
+                        _ => Value::Null,
+                    };
+                    self.push(value);
+                }
                 Op::MatchType(name_idx, jump_offset) => {
                     let type_name = self.read_string_constant_owned(name_idx);
                     let matches = match self.stack.last().unwrap() {

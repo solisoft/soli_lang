@@ -51,7 +51,13 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
                     .iter()
                     .all(|(_, p)| matches!(p, MatchPattern::Variable(_) | MatchPattern::Wildcard))
         }
-        MatchPattern::EnumVariant { .. } => true,
+        // `Status.Active` / `Status.Pending(r)` — class name and `__variant`
+        // tag are both checked before any payload is bound, so the shape is the
+        // same provable one as the array and hash forms. A nested sub-pattern
+        // in the payload still defers.
+        MatchPattern::EnumVariant { bindings, .. } => !bindings
+            .iter()
+            .all(|b| matches!(b, MatchPattern::Variable(_) | MatchPattern::Wildcard)),
         // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
         MatchPattern::Destructuring { .. } | MatchPattern::And(_) | MatchPattern::Or(_) => true,
     }
@@ -65,6 +71,7 @@ fn is_binding_pattern(pattern: &MatchPattern) -> bool {
             | MatchPattern::Typed { .. }
             | MatchPattern::Array { .. }
             | MatchPattern::Hash { .. }
+            | MatchPattern::EnumVariant { .. }
     )
 }
 
@@ -167,6 +174,35 @@ impl Compiler {
                     }
                     peeked_fails.push(type_fail);
                     fail_jumps.push(len_fail);
+                }
+                // `Status.Pending(r)`: the class name identifies the enum, the
+                // `__variant` field identifies the case, and the payload is
+                // bound positionally. Both tests run before any binding.
+                MatchPattern::EnumVariant {
+                    enum_name,
+                    variant_name,
+                    bindings: payload,
+                } => {
+                    let ty = self.add_string_constant(enum_name);
+                    peeked_fails.push(self.emit_jump(Op::MatchType(ty, 0), line));
+                    self.emit(Op::Pop, line); // the copy; fields come from the slot
+
+                    let tag = self.add_string_constant("__variant");
+                    self.emit(Op::GetLocal(subject_slot), line);
+                    self.emit(Op::GetProperty(tag), line);
+                    let want = self.add_string_constant(variant_name);
+                    self.emit(Op::Constant(want), line);
+                    self.emit(Op::Equal, line);
+                    fail_jumps.push(self.emit_jump(Op::JumpIfFalse(0), line));
+
+                    let variant_idx = self.add_string_constant(variant_name);
+                    for (i, b) in payload.iter().enumerate() {
+                        if let MatchPattern::Variable(bind_name) = b {
+                            self.emit(Op::EnumPayload(subject_slot, variant_idx, i as u8), line);
+                            self.add_local(bind_name.clone(), false);
+                            bindings += 1;
+                        }
+                    }
                 }
                 // `{name: n}`: check it is a hash that has every named key,
                 // then read those keys out of the subject's slot and bind them.
