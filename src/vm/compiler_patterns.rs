@@ -11,51 +11,40 @@ use super::opcode::Op;
 /// Whether a pattern must run on the tree-walking interpreter rather than
 /// compile to bytecode.
 ///
-/// Two reasons land a pattern here. **Binding** patterns (`x`, `[a, b]`,
-/// `{k: v}`, enum variants) alias the subject's stack slot, which the VM's
-/// compilation does not yet model. **Composite** patterns (array, hash, and/or)
-/// interleave their own `Dup`/`Pop` with each sub-pattern's, and the two only
-/// balance when every sub-pattern leaves the duplicated subject in place — which
-/// a literal sub-pattern does not (its `Equal` consumes it). That mismatch
-/// silently popped one value too many, corrupting the value stack for whatever
-/// followed the match; see [`Compiler::compile_pattern`] for the contract that
-/// now makes dup-consumption explicit for the kinds the VM does compile.
+/// Almost nothing does any more. The compiled form keeps the match subject in a
+/// real local slot, so a pattern can bind by putting the value in the slot above
+/// it, and `compile_pattern_in_slot` recurses for nested sub-patterns by parking
+/// each extracted value in a slot of its own.
 ///
-/// Only wildcard and literal patterns compile — both have a proven stack effect.
+/// What is left needs machinery that does not exist yet rather than a different
+/// arrangement of what does:
+///
+/// * `{a: x, ...rest}` has to *build* the leftover hash — every other rest form
+///   is a slice of something that already exists.
+/// * `Destructuring` (`Type { field }`) has no compiled form yet.
+/// * `And`/`Or` are unreachable: no parser path constructs them. See
+///   tasks/todo/match-and-or-patterns-are-unreachable.md.
+///
+/// The historical hazard this gate guarded against is worth keeping in view: an
+/// early version interleaved each sub-pattern's stack traffic with the arm's own
+/// and popped one value too many, corrupting the value stack for whatever
+/// followed the match. `compile_pattern_in_slot` answers that by reporting, per
+/// failure jump, exactly how many values are live when it is taken.
 fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
     match pattern {
-        // Wildcard and literal have a proven stack effect; `Variable` binds the
-        // subject to a name, which `compile_match` now models by keeping the
-        // subject in a real local slot (see there).
         MatchPattern::Wildcard
         | MatchPattern::Literal(_)
         | MatchPattern::Variable(_)
         | MatchPattern::Typed { .. } => false,
-        // `[a, b]` / `[_, b]` — a fixed-length destructure whose parts only
-        // bind or ignore. Provable shape: every test runs before any binding is
-        // pushed, so a failing arm never unwinds a half-built set of bindings.
-        // `...rest` needs a slice, and a nested or literal sub-pattern needs
-        // recursion this does not have yet, so both still defer.
-        MatchPattern::Array { elements, .. } => !elements
-            .iter()
-            .all(|e| matches!(e, MatchPattern::Variable(_) | MatchPattern::Wildcard)),
-        // `{name: n, age: a}` — same bounded shape as the array form: every key
-        // test runs before any binding is pushed. `...rest` needs to build the
-        // leftover hash, which this does not do yet.
+        // Nested sub-patterns are compiled by recursion, so a composite is
+        // supported exactly when its parts are.
+        MatchPattern::Array { elements, .. } => elements.iter().any(pattern_needs_interpreter),
         MatchPattern::Hash { fields, rest } => {
-            rest.is_some()
-                || !fields
-                    .iter()
-                    .all(|(_, p)| matches!(p, MatchPattern::Variable(_) | MatchPattern::Wildcard))
+            rest.is_some() || fields.iter().any(|(_, p)| pattern_needs_interpreter(p))
         }
-        // `Status.Active` / `Status.Pending(r)` — class name and `__variant`
-        // tag are both checked before any payload is bound, so the shape is the
-        // same provable one as the array and hash forms. A nested sub-pattern
-        // in the payload still defers.
-        MatchPattern::EnumVariant { bindings, .. } => !bindings
-            .iter()
-            .all(|b| matches!(b, MatchPattern::Variable(_) | MatchPattern::Wildcard)),
-        // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
+        MatchPattern::EnumVariant { bindings, .. } => {
+            bindings.iter().any(pattern_needs_interpreter)
+        }
         MatchPattern::Destructuring { .. } | MatchPattern::And(_) | MatchPattern::Or(_) => true,
     }
 }
@@ -118,149 +107,15 @@ impl Compiler {
         let mut end_jumps = Vec::new();
 
         for arm in arms {
-            // A fresh copy of the subject for this arm's test or binding.
-            self.emit(Op::GetLocal(subject_slot), line);
+            // Compile the pattern against the subject's slot. `fails` pairs each
+            // failure jump with how many values are live on the stack at that
+            // point — nested patterns bind before their inner tests run, so a
+            // single "how much to clean up" number no longer covers every exit.
+            let (fails, bindings) =
+                self.compile_pattern_in_slot(&arm.pattern, subject_slot, line)?;
 
-            let mut fail_jumps = Vec::new();
-            // How many locals this arm's pattern pushed. The collapse pops that
-            // many; a failing guard drops them again.
-            let mut bindings: usize = 0;
-            // Fail jumps, split by what the stack looks like when they are
-            // taken. `peeked_fails` are tests that left the subject copy in
-            // place (they peek); `fail_jumps` are tests that already consumed
-            // it. Mixing the two is how the original pattern compilation
-            // corrupted the value stack.
-            let mut peeked_fails: Vec<usize> = Vec::new();
-            match &arm.pattern {
-                // Always matches; the copy is dead weight.
-                MatchPattern::Wildcard => {
-                    self.emit(Op::Pop, line);
-                }
-                // `Equal` consumes the copy, `JumpIfFalse` the boolean.
-                MatchPattern::Literal(expr_kind) => {
-                    fail_jumps = self.compile_literal_pattern(expr_kind, line)?;
-                }
-                // Always matches, and the copy *is* the binding.
-                MatchPattern::Variable(name) => {
-                    self.add_local(name.clone(), false);
-                    bindings += 1;
-                }
-                // `[a, b]`: check it is an array of the right length, then read
-                // each element out of the subject's slot and bind it. Both
-                // tests run before any binding is pushed.
-                MatchPattern::Array { elements, rest } => {
-                    let ty = self.add_string_constant("Array");
-                    let type_fail = self.emit_jump(Op::MatchType(ty, 0), line);
-                    self.emit(Op::Pop, line); // the copy; elements come from the slot
-
-                    // Without `...rest` the length must match exactly; with it,
-                    // the named elements are a prefix and anything longer is
-                    // fine. Same rule the tree-walker applies.
-                    self.emit(Op::GetLocal(subject_slot), line);
-                    let len_idx = self.add_string_constant("length");
-                    self.emit(Op::GetProperty(len_idx), line);
-                    self.emit_constant(Constant::Int(elements.len() as i64), line);
-                    if rest.is_some() {
-                        self.emit(Op::GreaterEqual, line);
-                    } else {
-                        self.emit(Op::Equal, line);
-                    }
-                    let len_fail = self.emit_jump(Op::JumpIfFalse(0), line);
-
-                    for (i, elem) in elements.iter().enumerate() {
-                        if let MatchPattern::Variable(elem_name) = elem {
-                            self.emit(Op::GetLocal(subject_slot), line);
-                            self.emit_constant(Constant::Int(i as i64), line);
-                            self.emit(Op::GetIndex, line);
-                            self.add_local(elem_name.clone(), false);
-                            bindings += 1;
-                        }
-                    }
-                    // `...rest` is the tail from the last named element on.
-                    if let Some(rest_name) = rest {
-                        self.emit(Op::GetLocal(subject_slot), line);
-                        self.emit_constant(Constant::Int(elements.len() as i64), line);
-                        let slice = self.add_string_constant("slice");
-                        let mid = super::method_table::resolve_method_id("slice");
-                        if mid != super::method_table::METHOD_UNKNOWN {
-                            self.emit(Op::CallMethodById(slice, 1, mid), line);
-                        } else {
-                            self.emit(Op::CallMethod(slice, 1), line);
-                        }
-                        self.add_local(rest_name.clone(), false);
-                        bindings += 1;
-                    }
-                    peeked_fails.push(type_fail);
-                    fail_jumps.push(len_fail);
-                }
-                // `Status.Pending(r)`: the class name identifies the enum, the
-                // `__variant` field identifies the case, and the payload is
-                // bound positionally. Both tests run before any binding.
-                MatchPattern::EnumVariant {
-                    enum_name,
-                    variant_name,
-                    bindings: payload,
-                } => {
-                    let ty = self.add_string_constant(enum_name);
-                    peeked_fails.push(self.emit_jump(Op::MatchType(ty, 0), line));
-                    self.emit(Op::Pop, line); // the copy; fields come from the slot
-
-                    let tag = self.add_string_constant("__variant");
-                    self.emit(Op::GetLocal(subject_slot), line);
-                    self.emit(Op::GetProperty(tag), line);
-                    let want = self.add_string_constant(variant_name);
-                    self.emit(Op::Constant(want), line);
-                    self.emit(Op::Equal, line);
-                    fail_jumps.push(self.emit_jump(Op::JumpIfFalse(0), line));
-
-                    let variant_idx = self.add_string_constant(variant_name);
-                    for (i, b) in payload.iter().enumerate() {
-                        if let MatchPattern::Variable(bind_name) = b {
-                            self.emit(Op::EnumPayload(subject_slot, variant_idx, i as u8), line);
-                            self.add_local(bind_name.clone(), false);
-                            bindings += 1;
-                        }
-                    }
-                }
-                // `{name: n}`: check it is a hash that has every named key,
-                // then read those keys out of the subject's slot and bind them.
-                // Every key test runs before any binding is pushed.
-                MatchPattern::Hash { fields, .. } => {
-                    let ty = self.add_string_constant("Hash");
-                    peeked_fails.push(self.emit_jump(Op::MatchType(ty, 0), line));
-                    self.emit(Op::Pop, line); // the copy; fields come from the slot
-
-                    for (field, _) in fields {
-                        let key = self.add_string_constant(field);
-                        self.emit(Op::HashHasKeyLocalConst(subject_slot, key), line);
-                        fail_jumps.push(self.emit_jump(Op::JumpIfFalse(0), line));
-                    }
-                    for (field, sub) in fields {
-                        if let MatchPattern::Variable(bind_name) = sub {
-                            let key = self.add_string_constant(field);
-                            self.emit(Op::HashGetLocalConst(subject_slot, key), line);
-                            self.add_local(bind_name.clone(), false);
-                            bindings += 1;
-                        }
-                    }
-                }
-                // Tests the copy's type without consuming it, then binds it.
-                MatchPattern::Typed { name, type_name } => {
-                    let idx = self.add_string_constant(type_name);
-                    peeked_fails.push(self.emit_jump(Op::MatchType(idx, 0), line));
-                    self.add_local(name.clone(), false);
-                    bindings += 1;
-                }
-                other => {
-                    return Err(CompileError::new(
-                        format!("unsupported match pattern reached the compiler: {other:?}"),
-                        arm.body.span,
-                    ));
-                }
-            }
-
-            // The guard sees the binding, which is the point of `n if n > 0`.
-            let guard_jump = if let Some(ref guard) = arm.guard {
+            // The guard sees the bindings, which is the point of `n if n > 0`.
+            let guard_fail = if let Some(ref guard) = arm.guard {
                 self.compile_expr(guard)?;
                 Some(self.emit_jump(Op::JumpIfFalse(0), line))
             } else {
@@ -269,7 +124,7 @@ impl Compiler {
 
             self.compile_expr(&arm.body)?;
 
-            // Collapse [subject, (binding,) result] down to [result].
+            // Collapse [subject, …bindings, result] down to [result].
             self.emit(Op::SetLocal(subject_slot), line);
             self.emit(Op::Pop, line);
             for _ in 0..bindings {
@@ -277,40 +132,27 @@ impl Compiler {
             }
             end_jumps.push(self.emit_jump(Op::Jump(0), line));
 
-            // Everything below is the fail path, where the binding is not in
-            // scope — drop it from the compiler's view before emitting it, or
-            // the next arm's slots are numbered one too high.
+            // Past here is failure. The bindings are not in scope on any of
+            // those paths, so drop the compiler's record of them before
+            // emitting the cleanup, or the next arm's slots are numbered high.
             for _ in 0..bindings {
                 self.locals.pop();
             }
-            // Each fail path cleans up only what it actually left behind.
-            //
-            //   guard failed          bindings are on the stack
-            //   array type test       its peeked copy is on the stack
-            //   array length test     the copy was already popped
-            //   Typed type test       its peeked copy is on the stack
-            //
-            // so they cannot share one label, and mixing them was how the
-            // original compilation corrupted the stack.
+
             let mut converge = Vec::new();
-            // A guard that failed still has the arm's bindings on the stack.
-            if let Some(guard_fail) = guard_jump {
-                self.patch_jump(guard_fail);
+            if let Some(gf) = guard_fail {
+                self.patch_jump(gf);
                 for _ in 0..bindings {
                     self.emit(Op::Pop, line);
                 }
                 converge.push(self.emit_jump(Op::Jump(0), line));
             }
-            // Tests that peeked: drop the copy, then fall into the clean group.
-            if !peeked_fails.is_empty() {
-                for fj in std::mem::take(&mut peeked_fails) {
-                    self.patch_jump(fj);
+            for (jump, live) in fails {
+                self.patch_jump(jump);
+                for _ in 0..live {
+                    self.emit(Op::Pop, line);
                 }
-                self.emit(Op::Pop, line);
-            }
-            // Tests that already consumed the copy.
-            for fj in std::mem::take(&mut fail_jumps) {
-                self.patch_jump(fj);
+                converge.push(self.emit_jump(Op::Jump(0), line));
             }
             for c in converge {
                 self.patch_jump(c);
@@ -339,6 +181,210 @@ impl Compiler {
         self.locals.pop();
 
         Ok(())
+    }
+
+    /// Compile `pattern` as a test against the value already sitting in `slot`.
+    ///
+    /// Returns each failure jump paired with **how many values are live on the
+    /// stack when it is taken**, plus how many the pattern pushed on success.
+    ///
+    /// That per-jump count is what makes nesting possible. Every non-nested
+    /// kind runs all its tests before pushing anything, so one number would do;
+    /// a nested sub-pattern is tested only after its container has extracted
+    /// and bound the value it lives in, so an inner failure unwinds with outer
+    /// bindings already on the stack. Collapsing those into a single count is
+    /// how this compilation corrupted the value stack the first time.
+    ///
+    /// Everything the pattern leaves is a local, whether a user binding or an
+    /// internal temporary holding an extracted field — the arm pops them all
+    /// the same way, so they do not need telling apart.
+    fn compile_pattern_in_slot(
+        &mut self,
+        pattern: &MatchPattern,
+        slot: u16,
+        line: usize,
+    ) -> CompileResult<(Vec<(usize, usize)>, usize)> {
+        let mut fails: Vec<(usize, usize)> = Vec::new();
+        let mut live: usize = 0;
+
+        match pattern {
+            // Always matches, pushes nothing.
+            MatchPattern::Wildcard => {}
+
+            // Always matches; the value becomes the binding.
+            MatchPattern::Variable(name) => {
+                self.emit(Op::GetLocal(slot), line);
+                self.add_local(name.clone(), false);
+                live += 1;
+            }
+
+            // `Equal` consumes the copy, `JumpIfFalse` the boolean.
+            MatchPattern::Literal(expr_kind) => {
+                self.emit(Op::GetLocal(slot), line);
+                for j in self.compile_literal_pattern(expr_kind, line)? {
+                    fails.push((j, live));
+                }
+            }
+
+            // `MatchType` peeks, so on failure its copy is still there; on
+            // success that same copy is the binding.
+            MatchPattern::Typed { name, type_name } => {
+                self.emit(Op::GetLocal(slot), line);
+                let idx = self.add_string_constant(type_name);
+                let f = self.emit_jump(Op::MatchType(idx, 0), line);
+                fails.push((f, live + 1));
+                self.add_local(name.clone(), false);
+                live += 1;
+            }
+
+            MatchPattern::Array { elements, rest } => {
+                self.emit(Op::GetLocal(slot), line);
+                let ty = self.add_string_constant("Array");
+                let f = self.emit_jump(Op::MatchType(ty, 0), line);
+                fails.push((f, live + 1));
+                self.emit(Op::Pop, line);
+
+                // Without `...rest` the length must match exactly; with it the
+                // named elements are a prefix. Same rule as the tree-walker.
+                self.emit(Op::GetLocal(slot), line);
+                let len_idx = self.add_string_constant("length");
+                self.emit(Op::GetProperty(len_idx), line);
+                self.emit_constant(Constant::Int(elements.len() as i64), line);
+                self.emit(
+                    if rest.is_some() {
+                        Op::GreaterEqual
+                    } else {
+                        Op::Equal
+                    },
+                    line,
+                );
+                let f = self.emit_jump(Op::JumpIfFalse(0), line);
+                fails.push((f, live));
+
+                for (i, elem) in elements.iter().enumerate() {
+                    if matches!(elem, MatchPattern::Wildcard) {
+                        continue;
+                    }
+                    self.emit(Op::GetLocal(slot), line);
+                    self.emit_constant(Constant::Int(i as i64), line);
+                    self.emit(Op::GetIndex, line);
+                    live += self.bind_or_recurse(elem, line, live, &mut fails)?;
+                }
+
+                if let Some(rest_name) = rest {
+                    self.emit(Op::GetLocal(slot), line);
+                    self.emit_constant(Constant::Int(elements.len() as i64), line);
+                    let name_idx = self.add_string_constant("slice");
+                    let mid = super::method_table::resolve_method_id("slice");
+                    if mid != super::method_table::METHOD_UNKNOWN {
+                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                    } else {
+                        self.emit(Op::CallMethod(name_idx, 1), line);
+                    }
+                    self.add_local(rest_name.clone(), false);
+                    live += 1;
+                }
+            }
+
+            MatchPattern::Hash { fields, rest } => {
+                // `...rest` would have to build the leftover hash; not yet.
+                if rest.is_some() {
+                    return Err(CompileError::new(
+                        "this match pattern is not yet supported by the bytecode VM",
+                        crate::span::Span::new(0, 0, line, 0),
+                    ));
+                }
+                self.emit(Op::GetLocal(slot), line);
+                let ty = self.add_string_constant("Hash");
+                let f = self.emit_jump(Op::MatchType(ty, 0), line);
+                fails.push((f, live + 1));
+                self.emit(Op::Pop, line);
+
+                // Every key must be present before anything is read out.
+                for (field, _) in fields {
+                    let key = self.add_string_constant(field);
+                    self.emit(Op::HashHasKeyLocalConst(slot, key), line);
+                    let f = self.emit_jump(Op::JumpIfFalse(0), line);
+                    fails.push((f, live));
+                }
+                for (field, sub) in fields {
+                    if matches!(sub, MatchPattern::Wildcard) {
+                        continue;
+                    }
+                    let key = self.add_string_constant(field);
+                    self.emit(Op::HashGetLocalConst(slot, key), line);
+                    live += self.bind_or_recurse(sub, line, live, &mut fails)?;
+                }
+            }
+
+            MatchPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                bindings: payload,
+            } => {
+                self.emit(Op::GetLocal(slot), line);
+                let ty = self.add_string_constant(enum_name);
+                let f = self.emit_jump(Op::MatchType(ty, 0), line);
+                fails.push((f, live + 1));
+                self.emit(Op::Pop, line);
+
+                let tag = self.add_string_constant("__variant");
+                self.emit(Op::GetLocal(slot), line);
+                self.emit(Op::GetProperty(tag), line);
+                let want = self.add_string_constant(variant_name);
+                self.emit(Op::Constant(want), line);
+                self.emit(Op::Equal, line);
+                let f = self.emit_jump(Op::JumpIfFalse(0), line);
+                fails.push((f, live));
+
+                let variant_idx = self.add_string_constant(variant_name);
+                for (i, b) in payload.iter().enumerate() {
+                    if matches!(b, MatchPattern::Wildcard) {
+                        continue;
+                    }
+                    self.emit(Op::EnumPayload(slot, variant_idx, i as u8), line);
+                    live += self.bind_or_recurse(b, line, live, &mut fails)?;
+                }
+            }
+
+            other => {
+                return Err(CompileError::new(
+                    format!(
+                        "this match pattern is not yet supported by the bytecode VM: {other:?}"
+                    ),
+                    crate::span::Span::new(0, 0, line, 0),
+                ));
+            }
+        }
+
+        Ok((fails, live))
+    }
+
+    /// The extracted value is on top of the stack. Either bind it directly, or
+    /// park it in a slot and recurse into the sub-pattern.
+    ///
+    /// Returns how many locals this added. Sub-pattern failures are recorded
+    /// with the outer `live` count added, because those values are still on the
+    /// stack when the inner test jumps.
+    fn bind_or_recurse(
+        &mut self,
+        sub: &MatchPattern,
+        line: usize,
+        live: usize,
+        fails: &mut Vec<(usize, usize)>,
+    ) -> CompileResult<usize> {
+        if let MatchPattern::Variable(name) = sub {
+            self.add_local(name.clone(), false);
+            return Ok(1);
+        }
+        // Anything else needs a slot of its own to be tested against.
+        self.add_local(String::new(), false);
+        let sub_slot = (self.locals.len() - 1) as u16;
+        let (sub_fails, sub_live) = self.compile_pattern_in_slot(sub, sub_slot, line)?;
+        for (j, inner) in sub_fails {
+            fails.push((j, live + 1 + inner));
+        }
+        Ok(1 + sub_live)
     }
 
     fn compile_literal_pattern(

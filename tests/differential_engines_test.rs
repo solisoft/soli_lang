@@ -523,6 +523,31 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- nested sub-patterns compile ---
+    // The last structural gap. A nested pattern is tested only after its
+    // container extracted and bound the value it lives in, so an inner failure
+    // unwinds with outer bindings already on the stack — which is why each fail
+    // jump now carries its own live count instead of one number per arm.
+    (
+        "match_nested_hash_in_hash",
+        "let data = {\"user\": {\"name\": \"Bob\"}}\nprint(match data { {user: {name: n}} => \"nested: \" + n, _ => \"no match\" })",
+    ),
+    (
+        "match_nested_miss_falls_through",
+        "let data = {\"user\": {\"other\": 1}}\nprint(match data { {user: {name: n}} => \"nested\", _ => \"no match\" })",
+    ),
+    (
+        "match_literal_inside_array",
+        "fn f(v) { return match v { [1, x] => \"one:\" + str(x), _ => \"no\" } }\nprint([f([1, 9]), f([2, 9])])",
+    ),
+    (
+        "match_hash_inside_array",
+        "print(match [{\"k\": 5}] { [{k: v}] => v, _ => 0 })",
+    ),
+    (
+        "match_nested_with_guard",
+        "let d = {\"u\": {\"age\": 30}}\nprint(match d { {u: {age: a}} if a > 18 => \"adult\", {u: {age: a}} => \"minor\", _ => \"?\" })",
+    ),
     // --- enum-variant patterns compile ---
     // Class name and `__variant` tag are both checked before any payload is
     // bound. Payload field *names* come from the class's `__enum_variants`
