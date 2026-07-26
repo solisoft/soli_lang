@@ -24,6 +24,12 @@ pub struct CallFrame {
     pub ip: usize,
     /// Base index into the value stack for this frame's locals.
     pub stack_base: usize,
+    /// Depth of `iter_stack` when this frame started. `Op::Return` truncates
+    /// back to it, because a `return` from inside a `for` loop skips the
+    /// `ForIter` that would have popped the iterator — leaking it to whatever
+    /// loop is running in the caller, which then iterates the callee's
+    /// leftovers. Same idea as `stack_base`, for the other stack.
+    pub iter_base: usize,
     /// The class that *defines* the method this frame is executing, when
     /// known (set by compiled-method dispatch). `super` resolves against
     /// this class's superclass — not the instance's class, which would
@@ -69,6 +75,7 @@ impl CallFrame {
     pub fn new(
         closure: Rc<VmClosure>,
         stack_base: usize,
+        iter_base: usize,
         class: Option<Rc<crate::interpreter::value::Class>>,
         supplied: u64,
     ) -> Self {
@@ -78,6 +85,7 @@ impl CallFrame {
             closure,
             ip: 0,
             stack_base,
+            iter_base,
             class,
             code,
             code_len,
@@ -164,7 +172,8 @@ impl Vm {
         let closure = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
         self.push(Value::VmClosure(closure.clone()));
 
-        self.frames.push(CallFrame::new(closure, 0, None, 0));
+        self.frames
+            .push(CallFrame::new(closure, 0, self.iter_stack.len(), None, 0));
 
         self.run()
     }
@@ -654,6 +663,7 @@ impl Vm {
                         self.frames.push(CallFrame::new(
                             closure,
                             stack_base,
+                            self.iter_stack.len(),
                             None,
                             positional_supplied_mask(argc),
                         ));
@@ -1514,6 +1524,11 @@ impl Vm {
 
                     // Restore the stack
                     self.stack.truncate(frame.stack_base);
+                    // …and the iterator stack. A `return` from inside a `for`
+                    // loop never reaches the `ForIter` that pops its iterator,
+                    // so without this the callee's iterator stays on top and the
+                    // caller's loop starts consuming it.
+                    self.iter_stack.truncate(frame.iter_base);
 
                     if self.frames.len() <= self.return_depth {
                         return Ok(result);

@@ -464,6 +464,14 @@ const CASES: &[(&str, &str)] = &[
         "min_and_max_compare_strings_not_just_numbers",
         "print([\"a\", \"b\", \"c\"].max())\nprint([\"c\", \"b\", \"a\"].min())\nprint([1, 2].max())",
     ),
+    (
+        "return_from_inside_a_loop_does_not_corrupt_the_callers_loop",
+        "fn inner(text) {\n  for line in text.split(\"|\") {\n    if len(line) > 2 { return line }\n  }\n  return \"none\"\n}\nfn run() {\n  let seen = []\n  for info in [{\"k\": \"one\"}, {\"k\": \"two\"}, {\"k\": \"three\"}] {\n    seen.push(info[\"k\"])\n    inner(\"aaa|bbb\")\n  }\n  return seen\n}\nprint(run())",
+    ),
+    (
+        "nested_iteration_across_a_call_keeps_both_loops_intact",
+        "fn count_up(n) {\n  let t = 0\n  for i in [1, 2, 3] {\n    if i == n { return t }\n    t = t + i\n  }\n  return t\n}\nlet out = []\nfor x in [\"a\", \"b\"] {\n  out.push(x)\n  count_up(2)\n}\nprint(out)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

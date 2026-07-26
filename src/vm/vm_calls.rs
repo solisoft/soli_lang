@@ -233,6 +233,7 @@ impl Vm {
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
+            self.iter_stack.len(),
             class,
             crate::vm::vm::positional_supplied_mask(argc),
         ));
@@ -260,8 +261,13 @@ impl Vm {
             self.push(value);
         }
         let stack_base = self.stack.len() - total_params - 1;
-        self.frames
-            .push(CallFrame::new(closure, stack_base, class, supplied));
+        self.frames.push(CallFrame::new(
+            closure,
+            stack_base,
+            self.iter_stack.len(),
+            class,
+            supplied,
+        ));
         Ok(())
     }
 
@@ -581,6 +587,7 @@ impl Vm {
             self.frames.push(CallFrame::new(
                 closure,
                 stack_base,
+                self.iter_stack.len(),
                 Some(defining_class),
                 crate::vm::vm::positional_supplied_mask(argc),
             ));
