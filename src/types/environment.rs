@@ -654,6 +654,162 @@ impl TypeEnvironment {
             },
         );
 
+        // --- General-purpose builtins that were registered at run time but
+        // --- unknown here, so `soli check` rejected valid code that used them.
+
+        // sha256(text) -> String (hex digest)
+        self.functions.insert(
+            "sha256".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // sha512(text) -> String (hex digest)
+        self.functions.insert(
+            "sha512".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // md5(text) -> String (hex digest)
+        self.functions.insert(
+            "md5".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // hmac(key, message) -> String (hex)
+        self.functions.insert(
+            "hmac".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // secure_compare(a, b) -> Bool (constant time)
+        self.functions.insert(
+            "secure_compare".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // password_hash(plain) -> String (argon2id)
+        self.functions.insert(
+            "password_hash".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // password_verify(plain, hash) -> Bool
+        self.functions.insert(
+            "password_verify".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // html_escape(text) -> String
+        self.functions.insert(
+            "html_escape".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // html_unescape(text) -> String
+        self.functions.insert(
+            "html_unescape".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // strip_html(html) -> String (tags removed)
+        self.functions.insert(
+            "strip_html".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // sanitize_html(html) -> String (safe subset kept)
+        self.functions.insert(
+            "sanitize_html".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // file_exists(path) -> Bool
+        self.functions.insert(
+            "file_exists".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // mkdir_p(path) -> Bool (creates parents)
+        self.functions.insert(
+            "mkdir_p".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // time_ago(timestamp) -> String ("5 minutes ago")
+        self.functions.insert(
+            "time_ago".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // setenv(name, value) -> Void
+        self.functions.insert(
+            "setenv".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
+        // unsetenv(name) -> Void
+        self.functions.insert(
+            "unsetenv".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
+        // sleep(seconds) -> Void
+        self.functions.insert(
+            "sleep".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
         // file_write_base64(path, base64_data) -> Bool (decodes + writes bytes)
         self.functions.insert(
             "file_write_base64".to_string(),
