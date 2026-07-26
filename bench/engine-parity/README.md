@@ -41,4 +41,14 @@ It also finds the opposite problem — an argument the runtime *accepts and
 ignores*, which is worse than one it rejects. `"ff".to_i(16)` returned 0 instead
 of 255 for exactly that reason.
 
-Both scripts currently report zero.
+**A `CHECKER` hit is a candidate, not a verdict.** The probe corpus is generated
+mechanically with stand-in arguments, so a rejection can equally mean the probe
+passed the wrong *type* — `{"a": 1}.has_value?("x")` is a genuine type error on a
+`Hash<String, Int>`, not a missing declaration. The script now filters out rejections whose message is a type
+mismatch, which removes most of that noise, but confirm each hit by hand before
+widening a declaration: loosening one to `Type::Any` to silence a bad probe makes
+the checker weaker, which is the opposite of the point. Three of the seven hits in
+the first generated run were exactly this, and `cargo clippy` caught them as
+unreachable duplicate match arms.
+
+Both scripts currently report zero actionable findings.

@@ -1054,7 +1054,10 @@ impl Interpreter {
             }
             "pick" => Self::array_pick(items, arguments, span),
             "length" | "len" | "size" => self.array_length(items, arguments, span),
-            "to_string" => self.array_to_string(items, arguments, span),
+            // `to_s` is the Ruby-conventional alias. The VM answered it and the
+            // interpreter did not, so `[1, 2].to_s()` worked in production and
+            // raised in tests — the same gap that hashes had.
+            "to_string" | "to_s" => self.array_to_string(items, arguments, span),
             "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
                 Ok(json) => Ok(Value::String(json.into())),
                 Err(e) => Err(RuntimeError::General { message: e, span }),

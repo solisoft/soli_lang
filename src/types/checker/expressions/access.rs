@@ -227,6 +227,12 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Float),
             }),
+            // `to_s` is the Ruby-conventional alias of `to_string`; the runtime
+            // has always answered it and only the checker did not know.
+            "to_s" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            }),
             "join" => Ok(Type::Function {
                 params: vec![Type::String],
                 return_type: Box::new(Type::String),
@@ -337,6 +343,14 @@ impl TypeChecker {
                 params: vec![Type::Any], // variadic - accepts multiple keys
                 return_type: Box::new(value_type.clone()),
             }),
+            // Implemented in both engines and absent from the checker, so both
+            // calls failed to compile. (`key`, `has_value?` and `value?` looked
+            // missing too, but were only rejecting a probe that passed the wrong
+            // value type — the existing declarations are correct and stricter.)
+            "assoc" | "rassoc" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            }),
             "invert" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Hash {
@@ -442,14 +456,31 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::String),
             }),
+            // `uppercase`/`lowercase` are runtime aliases of `upcase`/`downcase`
+            // the checker did not know at all, so calling them by their alias
+            // failed to compile.
             "chomp" | "chop" | "lstrip" | "rstrip" | "strip" | "capitalize" | "swapcase"
-            | "reverse" | "delete_prefix" | "delete_suffix" | "to_string" | "upcase"
-            | "downcase" | "trim" | "join" | "slugify" | "succ" | "next" | "html_entities" => {
+            | "reverse" | "to_string" | "upcase" | "downcase" | "uppercase" | "lowercase"
+            | "trim" | "join" | "slugify" | "succ" | "next" | "html_entities" => {
                 Ok(Type::Function {
                     params: vec![],
                     return_type: Box::new(Type::String),
                 })
             }
+            // These take the affix to strip. They were grouped with the
+            // zero-argument methods above, so a correct call was rejected.
+            "delete_prefix" | "delete_suffix" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            }),
+            "ascii_only?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
+            }),
+            "casecmp?" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            }),
             // `camelize` takes an optional bool; `prepend` takes one-or-more
             // strings — `Type::Any` keeps both arity-flexible.
             "camelize" | "prepend" => Ok(Type::Function {

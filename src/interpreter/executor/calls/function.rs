@@ -248,6 +248,7 @@ fn is_direct_array_method(name: &str) -> bool {
             | "len"
             | "size"
             | "to_string"
+            | "to_s"
             | "to_json"
             | "join"
             | "all"
