@@ -2542,7 +2542,11 @@ impl Interpreter {
 
     /// Produce a Soli-native inspect string (like Ruby's `p` / `.inspect`).
     /// Pretty-prints with indentation when the compact form exceeds 80 chars.
-    fn inspect_value(val: &Value) -> String {
+    /// Shared with the VM, which used to render `inspect` with the *display*
+    /// form and so dropped the quotes on strings nested in arrays and hashes —
+    /// `[1, "a"]` came out as `[1, a]`, which is exactly the ambiguity `inspect`
+    /// exists to remove.
+    pub(crate) fn inspect_value(val: &Value) -> String {
         let compact = Self::inspect_compact(val);
         if compact.len() <= 80 {
             compact

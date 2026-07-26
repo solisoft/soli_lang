@@ -671,7 +671,7 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(entries.is_empty())))
             }
-            "to_string" => {
+            "to_string" | "to_s" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }

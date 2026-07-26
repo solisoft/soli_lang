@@ -596,27 +596,10 @@ impl Vm {
             "blank?" => Ok(Value::Bool(arr.borrow().is_empty())),
             "present?" => Ok(Value::Bool(!arr.borrow().is_empty())),
             "inspect" => {
-                let items = arr.borrow();
-                if items.is_empty() {
-                    return Ok(Value::String("[]".into()));
-                }
-                let mut total_len = 2;
-                for (i, v) in items.iter().enumerate() {
-                    total_len += v.display_len();
-                    if i > 0 {
-                        total_len += 2;
-                    }
-                }
-                let mut result = String::with_capacity(total_len);
-                result.push('[');
-                for (i, v) in items.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    v.write_to_string(&mut result);
-                }
-                result.push(']');
-                Ok(Value::String(result.into()))
+                let rendered = crate::interpreter::executor::Interpreter::inspect_value(
+                    &Value::Array(arr.clone()),
+                );
+                Ok(Value::String(rendered.into()))
             }
             "is_a?" => {
                 if args.len() != 1 {

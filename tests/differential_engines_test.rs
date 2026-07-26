@@ -400,6 +400,14 @@ const CASES: &[(&str, &str)] = &[
         "hash_shift_still_resolves",
         "let h = {\"a\": 1}\nprint(h.shift())",
     ),
+    (
+        "inspect_quotes_nested_strings",
+        "print([1, \"a\"].inspect())\nprint({\"k\": \"v\"}.inspect())\nprint([[1, \"a\"], {\"k\": \"v\"}].inspect())",
+    ),
+    (
+        "hash_to_s_matches_to_string",
+        "let h = {\"a\": 1, \"b\": 2}\nprint(h.to_s())\nprint(h.to_string())",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

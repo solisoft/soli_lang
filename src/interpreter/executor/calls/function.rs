@@ -132,6 +132,7 @@ fn is_direct_hash_method(name: &str) -> bool {
             | "compact"
             | "dig"
             | "to_string"
+            | "to_s"
             | "to_json"
             | "keys"
             | "values"

@@ -37,7 +37,10 @@ impl Interpreter {
             "compact" => self.hash_compact(entries, arguments, span),
             "dig" => self.hash_dig(entries, arguments, span),
             "length" | "len" => self.hash_length(entries, arguments, span),
-            "to_string" => self.hash_to_string(entries, arguments, span),
+            // `to_s` is the Ruby-conventional name and the VM already accepted
+            // it; the interpreter only knew `to_string`, so `h.to_s()` raised
+            // in tests and worked in production.
+            "to_string" | "to_s" => self.hash_to_string(entries, arguments, span),
             "to_json" => {
                 match crate::interpreter::value::stringify_hash_entries_to_string(entries) {
                     Ok(json) => Ok(Value::String(json.into())),
@@ -640,7 +643,10 @@ impl Interpreter {
             .iter()
             .map(|(k, v)| format!("{} => {}", k.to_value(), v))
             .collect();
-        Ok(Value::String(format!("[{}]", parts.join(", ")).into()))
+        // Braces, not brackets. This fallback rendered a hash as `[a => 1]`;
+        // it never showed because `to_string` is answered by the borrowed fast
+        // path above, and only surfaced when `to_s` was routed here.
+        Ok(Value::String(format!("{{{}}}", parts.join(", ")).into()))
     }
 
     fn hash_keys(

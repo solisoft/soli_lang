@@ -186,22 +186,10 @@ impl Vm {
             "blank?" => Ok(Value::Bool(hash.borrow().is_empty())),
             "present?" => Ok(Value::Bool(!hash.borrow().is_empty())),
             "inspect" => {
-                let h = hash.borrow();
-                if h.is_empty() {
-                    return Ok(Value::String("{}".into()));
-                }
-                let mut result = String::with_capacity(2 + h.len() * 12);
-                result.push('{');
-                for (i, (k, v)) in h.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    k.write_key_to_string(&mut result);
-                    result.push_str(": ");
-                    v.write_to_string(&mut result);
-                }
-                result.push('}');
-                Ok(Value::String(result.into()))
+                let rendered = crate::interpreter::executor::Interpreter::inspect_value(
+                    &Value::Hash(hash.clone()),
+                );
+                Ok(Value::String(rendered.into()))
             }
             "is_a?" => {
                 if args.len() != 1 {
