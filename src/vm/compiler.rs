@@ -127,6 +127,16 @@ pub struct Compiler {
     pub open_try_depth: usize,
 }
 
+/// What `declare_variable` did with the name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclareOutcome {
+    /// A fresh local: the initializer's value is already sitting in its slot.
+    Declared,
+    /// The name already exists in this scope, so this `let` is an assignment —
+    /// the value is on top of the stack and belongs in the given slot.
+    Reassigns(u16),
+}
+
 #[derive(Debug, Clone)]
 pub struct LoopContext {
     pub start: usize,
@@ -417,24 +427,37 @@ impl Compiler {
         name: &str,
         is_const: bool,
         span: Span,
-    ) -> CompileResult<()> {
+    ) -> CompileResult<DeclareOutcome> {
         if self.scope_depth == 0 {
-            return Ok(()); // globals are handled differently
+            return Ok(DeclareOutcome::Declared); // globals are handled differently
         }
-        // Check for redeclaration in the same scope
-        for local in self.locals.iter().rev() {
+        // Re-`let` of the same name in the same scope. The tree-walker allows
+        // it — `define_or_update` writes the existing binding — so refusing
+        // here demoted a whole handler for code that runs perfectly well, and
+        // two of this repo's own spec files do it.
+        //
+        // Only the unambiguous case is taken over: `let` on top of a
+        // non-`const` local, which means "assign". Anything involving `const`
+        // still refuses and falls back, because the tree-walker's behaviour
+        // there is not consistent enough to reproduce confidently — `const x =
+        // 1; let x = 2` keeps 1, while `const x = 1; const x = 2` gives 2. The
+        // engine that defines those semantics should keep defining them.
+        for (idx, local) in self.locals.iter().enumerate().rev() {
             if local.depth != -1 && local.depth < self.scope_depth {
                 break;
             }
             if local.name == name {
-                return Err(CompileError::new(
-                    format!("Variable '{}' already declared in this scope", name),
-                    span,
-                ));
+                if local.is_const || is_const {
+                    return Err(CompileError::new(
+                        format!("Variable '{}' already declared in this scope", name),
+                        span,
+                    ));
+                }
+                return Ok(DeclareOutcome::Reassigns(idx as u16));
             }
         }
         self.add_local(name.to_string(), is_const);
-        Ok(())
+        Ok(DeclareOutcome::Declared)
     }
 
     pub fn resolve_local(&self, name: &str) -> Option<u16> {

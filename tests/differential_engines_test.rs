@@ -523,6 +523,34 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- re-`let` of a local in the same scope ---
+    // The tree-walker allows it (`define_or_update` writes the existing
+    // binding); the VM refused to compile, demoting the handler for code that
+    // runs fine. Two of this repo's own spec files do it.
+    (
+        "re_let_same_scope",
+        "fn f() { let x = 1\n  let x = 2\n  return x }\nprint(f())",
+    ),
+    (
+        "re_let_changes_type",
+        "fn f() { let x = 1\n  let x = \"two\"\n  return x }\nprint(f())",
+    ),
+    (
+        "re_let_three_times",
+        "fn f() { let x = 1\n  let x = 2\n  let x = 3\n  return x }\nprint(f())",
+    ),
+    (
+        "re_let_seen_by_an_earlier_closure",
+        "fn f() { let x = 1\n  let g = fn() { return x }\n  let x = 9\n  return g() }\nprint(f())",
+    ),
+    (
+        "re_let_in_a_loop_body",
+        "let out = []\nfor i in [1, 2] { let v = i\n  let v = i * 10\n  out.push(v) }\nprint(out)",
+    ),
+    (
+        "shadowing_in_a_nested_block_is_unchanged",
+        "fn f() { let x = 1\n  if true { let x = 2 }\n  return x }\nprint(f())",
+    ),
     // --- safe navigation compiles natively now ---
     // It was refused (and before that `unimplemented!()`, which panicked and,
     // with panic="abort" in release, took the server with it). The subtle part

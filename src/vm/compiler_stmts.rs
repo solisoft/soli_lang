@@ -182,8 +182,15 @@ impl Compiler {
 
         if self.scope_depth > 0 {
             // Local variable
-            self.declare_variable(name, is_const, span)?;
-            // The value is already on the stack at the right slot
+            match self.declare_variable(name, is_const, span)? {
+                // Fresh local: the value is already on the stack at its slot.
+                super::compiler::DeclareOutcome::Declared => {}
+                // Re-`let` of a name already in this scope means assignment.
+                super::compiler::DeclareOutcome::Reassigns(slot) => {
+                    self.emit(Op::SetLocal(slot), line);
+                    self.emit(Op::Pop, line);
+                }
+            }
         } else {
             // Global variable
             self.known_globals.borrow_mut().insert(name.to_string());
