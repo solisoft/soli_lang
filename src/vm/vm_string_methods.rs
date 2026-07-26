@@ -20,6 +20,28 @@ impl Vm {
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // Universal zero-argument methods, guarded in one place. The
+        // tree-walking interpreter already rejects `x.nil?("junk")`; the VM
+        // accepted the argument and threw it away, so the same call errored
+        // under `soli test` and quietly returned a value under `soli serve`.
+        // `to_i` is deliberately absent — it takes an optional radix.
+        if !args.is_empty()
+            && matches!(
+                name,
+                "class"
+                    | "nil?"
+                    | "blank?"
+                    | "present?"
+                    | "inspect"
+                    | "to_s"
+                    | "to_string"
+                    | "join"
+                    | "to_f"
+                    | "to_float"
+            )
+        {
+            return Err(RuntimeError::wrong_arity(0, args.len(), span));
+        }
         match name {
             // --- Zero-arg methods ---
             "upcase" | "uppercase" => {
