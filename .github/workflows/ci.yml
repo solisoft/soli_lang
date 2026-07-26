@@ -112,6 +112,43 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+  # The two engines must agree, `soli check` must not reject working code, and
+  # hostile input must not reach a Rust panic. Each is a separate failure mode
+  # that the unit tests structurally cannot see:
+  #
+  #   * A divergence needs both engines run over the same program. `soli test`
+  #     runs only the tree-walking interpreter and `soli serve` runs only the VM,
+  #     so a disagreement between them passes the suite and fails in production —
+  #     which is exactly how a function stored in a hash, `inspect` on nested
+  #     strings, `hash.to_s()` and `[].pop()` all came to differ.
+  #   * A too-narrow declared arity makes a working call fail `soli check`. Both
+  #     engines agree perfectly and the method is still unreachable.
+  #   * A panic is not how bad input should be reported, even now that release
+  #     builds unwind and a per-request guard turns it into a 500.
+  #
+  # Cheap enough to run on every push: three scripts over one release binary.
+  engine-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the release binary the sweeps run against
+        run: cargo build --release --locked
+
+      - name: Engines agree
+        run: ./bench/engine-parity/sweep.sh < bench/engine-parity/expressions.txt
+
+      - name: soli check does not reject working calls
+        run: ./bench/engine-parity/checkscan.sh < bench/engine-parity/arity-probes.txt
+
+      - name: Hostile input does not panic
+        run: ./bench/engine-parity/panicscan.sh < bench/engine-parity/hostile-inputs.txt
+
   # Drives Soli's own frontend in a real headless browser: instant-nav, the
   # LiveView client, and the dev bar. None of it was covered before — jsdom
   # cannot open a websocket or lay anything out, so a morph, an event dispatch

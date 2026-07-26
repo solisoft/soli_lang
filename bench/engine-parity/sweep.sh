@@ -13,3 +13,6 @@ while IFS= read -r expr; do
   fi
 done
 echo "--- $diffs divergences out of $total ---"
+# Exit non-zero so this is usable as a CI gate. Without it the job could only
+# ever be green, which is worse than not having the job.
+[ "$diffs" -eq 0 ]

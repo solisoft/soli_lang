@@ -73,3 +73,12 @@ neither a divergence nor a checker gap: integer arithmetic wraps silently on
 overflow, so `9223372036854775807 + 1` is negative and `2.pow(64)` is `0`. Filed
 as `tasks/todo/integer-overflow-wraps-silently.md` — it is a language-level
 decision, not a bug fix.
+
+## Running in CI
+
+All three run on every push, as the `engine-parity` job in
+`.github/workflows/ci.yml`. Each exits non-zero on a finding, which was worth
+checking rather than assuming: `sweep.sh` originally only printed a count and
+always exited 0, so as a gate it could have been green forever. All three were
+then verified to go red against a planted finding, using a stub binary that
+fakes the exact signature each one hunts for.
