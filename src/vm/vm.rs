@@ -1979,6 +1979,8 @@ impl Vm {
                         Value::Bool(_) => type_name == "Bool",
                         Value::String(_) => type_name == "String",
                         Value::Null => type_name == "Void",
+                        Value::Array(_) => type_name == "Array",
+                        Value::Hash(_) => type_name == "Hash",
                         Value::Instance(inst) => inst.borrow().class.name == type_name,
                         _ => false,
                     };

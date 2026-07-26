@@ -31,10 +31,20 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         | MatchPattern::Literal(_)
         | MatchPattern::Variable(_)
         | MatchPattern::Typed { .. } => false,
+        // `[a, b]` / `[_, b]` — a fixed-length destructure whose parts only
+        // bind or ignore. Provable shape: every test runs before any binding is
+        // pushed, so a failing arm never unwinds a half-built set of bindings.
+        // `...rest` needs a slice, and a nested or literal sub-pattern needs
+        // recursion this does not have yet, so both still defer.
+        MatchPattern::Array { elements, rest } => {
+            rest.is_some()
+                || !elements
+                    .iter()
+                    .all(|e| matches!(e, MatchPattern::Variable(_) | MatchPattern::Wildcard))
+        }
         MatchPattern::EnumVariant { .. } => true,
         // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
-        MatchPattern::Array { .. }
-        | MatchPattern::Hash { .. }
+        MatchPattern::Hash { .. }
         | MatchPattern::Destructuring { .. }
         | MatchPattern::And(_)
         | MatchPattern::Or(_) => true,
@@ -45,7 +55,7 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
 fn is_binding_pattern(pattern: &MatchPattern) -> bool {
     matches!(
         pattern,
-        MatchPattern::Variable(_) | MatchPattern::Typed { .. }
+        MatchPattern::Variable(_) | MatchPattern::Typed { .. } | MatchPattern::Array { .. }
     )
 }
 
@@ -99,7 +109,11 @@ impl Compiler {
             self.emit(Op::GetLocal(subject_slot), line);
 
             let mut fail_jumps = Vec::new();
-            let mut bound = false;
+            // How many locals this arm's pattern pushed. The collapse pops that
+            // many; a failing guard drops them again.
+            let mut bindings: usize = 0;
+            // An array pattern has two fail points needing different cleanup.
+            let mut array_fails: Option<(usize, usize)> = None;
             match &arm.pattern {
                 // Always matches; the copy is dead weight.
                 MatchPattern::Wildcard => {
@@ -112,14 +126,40 @@ impl Compiler {
                 // Always matches, and the copy *is* the binding.
                 MatchPattern::Variable(name) => {
                     self.add_local(name.clone(), false);
-                    bound = true;
+                    bindings += 1;
+                }
+                // `[a, b]`: check it is an array of the right length, then read
+                // each element out of the subject's slot and bind it. Both
+                // tests run before any binding is pushed.
+                MatchPattern::Array { elements, .. } => {
+                    let ty = self.add_string_constant("Array");
+                    let type_fail = self.emit_jump(Op::MatchType(ty, 0), line);
+                    self.emit(Op::Pop, line); // the copy; elements come from the slot
+
+                    self.emit(Op::GetLocal(subject_slot), line);
+                    let len_idx = self.add_string_constant("length");
+                    self.emit(Op::GetProperty(len_idx), line);
+                    self.emit_constant(Constant::Int(elements.len() as i64), line);
+                    self.emit(Op::Equal, line);
+                    let len_fail = self.emit_jump(Op::JumpIfFalse(0), line);
+
+                    for (i, elem) in elements.iter().enumerate() {
+                        if let MatchPattern::Variable(elem_name) = elem {
+                            self.emit(Op::GetLocal(subject_slot), line);
+                            self.emit_constant(Constant::Int(i as i64), line);
+                            self.emit(Op::GetIndex, line);
+                            self.add_local(elem_name.clone(), false);
+                            bindings += 1;
+                        }
+                    }
+                    array_fails = Some((type_fail, len_fail));
                 }
                 // Tests the copy's type without consuming it, then binds it.
                 MatchPattern::Typed { name, type_name } => {
                     let idx = self.add_string_constant(type_name);
                     fail_jumps.push(self.emit_jump(Op::MatchType(idx, 0), line));
                     self.add_local(name.clone(), false);
-                    bound = true;
+                    bindings += 1;
                 }
                 other => {
                     return Err(CompileError::new(
@@ -142,7 +182,7 @@ impl Compiler {
             // Collapse [subject, (binding,) result] down to [result].
             self.emit(Op::SetLocal(subject_slot), line);
             self.emit(Op::Pop, line);
-            if bound {
+            for _ in 0..bindings {
                 self.emit(Op::Pop, line);
             }
             end_jumps.push(self.emit_jump(Op::Jump(0), line));
@@ -150,18 +190,45 @@ impl Compiler {
             // Everything below is the fail path, where the binding is not in
             // scope — drop it from the compiler's view before emitting it, or
             // the next arm's slots are numbered one too high.
-            if bound {
+            for _ in 0..bindings {
                 self.locals.pop();
             }
+            // Each fail path cleans up only what it actually left behind.
+            //
+            //   guard failed          bindings are on the stack
+            //   array type test       its peeked copy is on the stack
+            //   array length test     the copy was already popped
+            //   Typed type test       its peeked copy is on the stack
+            //
+            // so they cannot share one label, and mixing them was how the
+            // original compilation corrupted the stack.
+            let mut converge = Vec::new();
             if let Some(guard_fail) = guard_jump {
                 self.patch_jump(guard_fail);
+                for _ in 0..bindings {
+                    self.emit(Op::Pop, line);
+                }
+                converge.push(self.emit_jump(Op::Jump(0), line));
+            }
+            if let Some((type_fail, len_fail)) = array_fails {
+                self.patch_jump(type_fail);
+                self.emit(Op::Pop, line);
+                self.patch_jump(len_fail);
+            } else {
+                for fj in std::mem::take(&mut fail_jumps) {
+                    self.patch_jump(fj);
+                }
+                // A Typed test peeked, so its copy survives; a literal test
+                // consumed it, and pushes no bindings.
+                if bindings > 0 {
+                    self.emit(Op::Pop, line);
+                }
             }
             for fj in fail_jumps {
                 self.patch_jump(fj);
             }
-            // The runtime stack still holds the binding on this path.
-            if bound {
-                self.emit(Op::Pop, line);
+            for c in converge {
+                self.patch_jump(c);
             }
         }
 

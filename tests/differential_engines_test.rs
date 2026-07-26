@@ -523,6 +523,30 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- fixed-length array patterns compile ---
+    // Every test runs before any binding is pushed, so a failing arm never has
+    // to unwind a half-built set of bindings. `...rest` and non-binding
+    // sub-patterns still defer — `array_rest_pattern_falls_back` pins that.
+    (
+        "match_array_two_elements",
+        "fn f(v) { return match v { [a, b] => \"two:\" + str(a) + str(b), _ => \"other\" } }\nprint([f([1, 2]), f([1, 2, 3]), f(\"x\")])",
+    ),
+    (
+        "match_array_wildcard_element",
+        "fn f(v) { return match v { [_, b] => \"second:\" + str(b), _ => \"no\" } }\nprint([f([9, 8]), f([1])])",
+    ),
+    (
+        "match_array_with_guard",
+        "fn f(v) { return match v { [a, b] if a > b => \"desc\", [a, b] => \"asc\", _ => \"no\" } }\nprint([f([5, 1]), f([1, 5]), f([1])])",
+    ),
+    (
+        "match_array_empty",
+        "fn f(v) { return match v { [] => \"empty\", _ => \"not\" } }\nprint([f([]), f([1])])",
+    ),
+    (
+        "array_rest_pattern_falls_back",
+        "fn f(v) { return match v { [a, ...rest] => \"has\", _ => \"no\" } }\nprint(f([1, 2, 3]))",
+    ),
     // --- typed patterns (`Int: n`) compile, and a non-exhaustive match raises ---
     (
         "match_typed_primitive_arms",
@@ -915,6 +939,7 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // falls back; a direct `--vm` run reports the compile error while the
     // interpreter runs it. Binding patterns at a clean position compile — see
     // the `match_binding_*` cases, which are NOT listed here.
+    "array_rest_pattern_falls_back",
     "binding_pattern_as_call_argument",
     "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
@@ -929,7 +954,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //   match epilogue then pops before the body — a body that uses the binding
     //   read a freed slot (panic). The VM now refuses to compile binding
     //   patterns (→ fallback); literal/wildcard arms still run on the VM.
-    "match_array_pattern",
     "match_hash_pattern",
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
