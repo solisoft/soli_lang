@@ -864,6 +864,28 @@ let db = MigrationDb();
     }
 }
 
+/// Serialises tests that touch the process-wide engine context.
+///
+/// `MOUNTED_ENGINES` and the model engine context are global, and cargo runs a
+/// binary's tests on parallel threads, so any two tests that register or reset
+/// an engine race — one clearing the registry while another is resolving
+/// against it. That showed up as `test_resolve_engine_view` failing in a full
+/// run and passing every time in isolation, which is the worst kind of failure:
+/// it teaches people to re-run rather than to look.
+///
+/// Lives next to the state it guards, not in one of the test modules, because
+/// the racing tests are spread across `template`, `engine_loader` and
+/// `app_loader`. Poison-tolerant: a panicking test must not cascade into
+/// unrelated failures in every other test that takes it.
+#[cfg(test)]
+pub(crate) static ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Take `ENGINE_TEST_LOCK` for the rest of the current scope.
+#[cfg(test)]
+pub(crate) fn lock_engine_context_for_test() -> std::sync::MutexGuard<'static, ()> {
+    ENGINE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 pub fn reset_engine_context() {
     crate::interpreter::builtins::model::set_model_engine_context(None);
     let mut mounted = MOUNTED_ENGINES.write().unwrap();
@@ -1034,6 +1056,7 @@ mount "blog", at: "/blog"
 
     #[test]
     fn test_mount_engines_registers_and_strips_path() {
+        let _engine_guard = crate::serve::engine_loader::lock_engine_context_for_test();
         // Clean state
         reset_engine_context();
 

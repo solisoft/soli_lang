@@ -1558,6 +1558,7 @@ mod tests {
 
     #[test]
     fn test_resolve_engine_view() {
+        let _engine_guard = crate::serve::engine_loader::lock_engine_context_for_test();
         // Simulate: project/app/views is the views_dir
         // Engine view at: project/engines/shop/app/views/shop/index.html.slv
         let dir = tempfile::tempdir().unwrap();
@@ -1584,6 +1585,7 @@ mod tests {
 
     #[test]
     fn test_resolve_main_view_preferred_over_engine() {
+        let _engine_guard = crate::serve::engine_loader::lock_engine_context_for_test();
         // If a view exists in both main views and engine views, main wins
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
