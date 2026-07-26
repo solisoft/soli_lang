@@ -723,6 +723,37 @@ mod tests {
                     if total.is_empty() {
                         return;
                     }
+
+                    // Drain the request body before answering.
+                    //
+                    // The loop above stops at the end of the headers, so a POST
+                    // body sat unread in the socket. Dropping a socket with
+                    // unread data makes the kernel send RST rather than FIN,
+                    // and the client then loses the response it was about to
+                    // read — `login_for_token` returns None, `get_jwt_token`
+                    // keeps serving the old token, and the test reports "no
+                    // re-login happened" for a login that did happen and was
+                    // answered. That is the whole flake.
+                    let head_end = total
+                        .windows(4)
+                        .position(|w| w == b"\r\n\r\n")
+                        .map(|i| i + 4)
+                        .unwrap_or(total.len());
+                    let content_length = String::from_utf8_lossy(&total[..head_end])
+                        .lines()
+                        .find_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            k.eq_ignore_ascii_case("content-length")
+                                .then(|| v.trim().parse::<usize>().ok())?
+                        })
+                        .unwrap_or(0);
+                    let mut body_read = total.len() - head_end;
+                    while body_read < content_length {
+                        match s.read(&mut buf) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => body_read += n,
+                        }
+                    }
                     let idx = counter.fetch_add(1, Ordering::SeqCst).min(tokens.len() - 1);
                     let body = format!("{{\"token\":\"{}\"}}", tokens[idx]);
                     let resp = format!(
