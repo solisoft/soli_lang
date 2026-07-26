@@ -150,7 +150,26 @@ mod tests {
         );
 
         drop(first);
-        let third = try_acquire(&path).expect("third acquire must evaluate");
+
+        // Retry briefly rather than asserting on the first attempt. `flock` is
+        // tied to the open file description, not the process, and other tests in
+        // this suite spawn children. Rust opens the lock file `O_CLOEXEC`, so a
+        // child only holds a duplicate of the fd between `fork` and `exec` — but
+        // that window is real, and if it overlaps this line the lock is
+        // *correctly* reported as still held and the assertion fires for a
+        // reason that has nothing to do with the code under test.
+        //
+        // The property being checked is release-on-drop, and that is unchanged:
+        // the loop still fails if the lock never becomes available. It only
+        // stops a transient inherited fd from failing an unrelated run.
+        let mut third = None;
+        for _ in 0..50 {
+            third = try_acquire(&path).expect("third acquire must evaluate");
+            if third.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         assert!(third.is_some(), "lock must be released on drop");
     }
 
