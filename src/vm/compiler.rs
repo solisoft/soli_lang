@@ -95,6 +95,19 @@ pub struct Compiler {
     /// over-count merely causes an extra (safe) fallback; the design must never
     /// under-count (which would pick a wrong slot).
     pub stack_height: usize,
+    /// `finally` blocks whose `try` statement encloses the current emit point,
+    /// outermost first.
+    ///
+    /// `finally` has no runtime support — `ExceptionHandler::finally_ip` is
+    /// stored and never read — so it is compiled by *inlining* the block on
+    /// every edge that leaves the `try`. A `return` is the edge that has to
+    /// consult this: it leaves the frame without passing through the code that
+    /// follows, so the block is emitted immediately before `Op::Return`.
+    ///
+    /// Per-`Compiler`, and `start_function` swaps in a fresh one, so a `return`
+    /// inside a lambda nested in a `try` correctly sees an empty stack rather
+    /// than the enclosing function's `finally`.
+    pub finally_stack: Vec<crate::ast::Stmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +135,7 @@ impl Compiler {
             class_context: None,
             known_globals: Rc::new(RefCell::new(HashSet::new())),
             stack_height: 0,
+            finally_stack: Vec::new(),
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise

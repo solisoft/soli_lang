@@ -822,11 +822,6 @@ def swallows() -> String
 end
 ```
 
-> **Engine note:** a `try` with a `finally` runs on the tree-walking interpreter. Under
-> `soli serve` the handler falls back to it automatically (visible as a demotion in
-> `soli_vm_handler_demotions_total`); a direct `soli run --vm` reports a compile error
-> instead. `soli run` and standalone builds are unaffected.
-
 A `rescue` that opens a new line inside a `begin`/`try` body is always a catch
 clause. The postfix `rescue` modifier (`expr rescue fallback`) is unaffected — it
 still works inline, including inside a `begin` body:

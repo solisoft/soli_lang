@@ -133,39 +133,6 @@ end</code></pre>
 end</code></pre>
             </div>
         </div>
-        <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-            <p class="text-sm text-gray-300">
-                <strong class="text-amber-400">Engine note.</strong> A <code class="text-amber-400">try</code> with a
-                <code class="text-amber-400">finally</code> runs on the tree-walking interpreter. Under
-                <code class="text-amber-400">soli serve</code> the handler falls back to it automatically (visible as
-                a demotion in <code class="text-amber-400">soli_vm_handler_demotions_total</code>); a direct
-                <code class="text-amber-400">soli run --vm</code> reports a compile error instead.
-                <code class="text-amber-400">soli run</code> and standalone builds are unaffected.
-            </p>
-        </div>
-    </section>
-
-    <!-- Catch Variable Syntax -->
-    <section id="section-catch-syntax" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Catch Variable Syntax</h2>
-        <p class="text-gray-400 mb-4">The catch variable can be written with or without parentheses:</p>
-        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-            <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Without parentheses
-try
-  risky()
-catch e
-  print(e)
-end
-
-# With parentheses
-try
-  risky()
-catch (e)
-  print(e)
-end</code></pre>
-            </div>
-        </div>
     </section>
 
     <!-- What catch receives -->

@@ -82,6 +82,12 @@ impl Compiler {
                 } else {
                     self.emit(Op::Null, line);
                 }
+                // Every enclosing `finally` runs before the frame goes away.
+                // The return value is already on the stack and each block is
+                // stack-neutral (a block scopes and pops its own locals), so
+                // `Op::Return` still pops the right value. Ruby's order too:
+                // the value is computed first, then `ensure` runs.
+                self.emit_pending_finallys(line)?;
                 self.emit(Op::Return, line);
             }
             StmtKind::Throw(expr) => {
@@ -281,59 +287,52 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_try(
+    /// Emit every enclosing `finally`, innermost first.
+    ///
+    /// While emitting block *i*, only the blocks outside it stay pending, so a
+    /// `return` inside a `finally` runs the outer ones and not itself.
+    fn emit_pending_finallys(&mut self, line: usize) -> CompileResult<()> {
+        if self.finally_stack.is_empty() {
+            return Ok(());
+        }
+        let _ = line;
+        let pending = self.finally_stack.clone();
+        for i in (0..pending.len()).rev() {
+            let saved = std::mem::replace(&mut self.finally_stack, pending[..i].to_vec());
+            let result = self.compile_stmt(&pending[i]);
+            self.finally_stack = saved;
+            result?;
+        }
+        Ok(())
+    }
+
+    /// `try`/`catch` with no `finally` — the original straight-line layout.
+    fn compile_try_catch(
         &mut self,
         try_block: &Stmt,
         catch_clauses: &[CatchClause],
-        finally_block: Option<&Stmt>,
         line: usize,
     ) -> CompileResult<()> {
-        // `finally` is compiled as straight-line code after the catch clauses,
-        // so it only runs when control *falls off the end* of the try — the
-        // one case where it matters least. A `return` inside the try emits
-        // Op::Return and leaves the frame without ever reaching it, so
-        // cleanup is skipped exactly when an early exit makes it necessary;
-        // and with no catch clause the pending exception is `Pop`ped and
-        // discarded, so a throw through a try/finally vanished silently.
-        //
-        // Compiling it correctly means running the block on every exit edge
-        // (duplicating it before each Return/Throw, tracked across nesting) —
-        // a real piece of work, filed as a task. Until then, refuse it and let
-        // the handler fall back to the interpreter, which runs `finally` on
-        // every path. Same trade as `break` and `next`: a demotion costs
-        // speed, a silent skip costs a leaked resource or a lost error.
-        if finally_block.is_some() {
-            return Err(CompileError::new(
-                "`try` with `finally` is not supported in compiled mode",
-                crate::span::Span::new(0, 0, line, 1),
-            ));
-        }
-
-        // Emit TryBegin with placeholder offsets
         let try_begin = self.emit(Op::TryBegin(0, 0), line);
 
-        // Compile try body
         self.compile_stmt(try_block)?;
         self.emit(Op::TryEnd, line);
 
-        // Jump over catch/finally if no exception
         let no_exception_jump = self.emit_jump(Op::Jump(0), line);
 
-        // Patch catch offset — exception value is now on the stack
         let catch_start = self.current_offset();
         let catch_offset = catch_start - try_begin - 1;
 
         if catch_clauses.is_empty() {
-            // No catch block — pop the exception
+            // No catch clause: discard the exception. Only reachable when
+            // there is no `finally` either — with one, `compile_try` routes
+            // the exception to the finally pad and rethrows instead.
             self.emit(Op::Pop, line);
         } else {
-            // Compile catch clauses. Exception value is on top of stack.
-            // For typed catches, emit CatchMatch to check type and jump to next clause.
             let mut end_jumps = Vec::new();
             let mut next_clause_patches: Vec<usize> = Vec::new();
 
             for (i, clause) in catch_clauses.iter().enumerate() {
-                // Patch the previous clause's "no match" jump to here
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
                     let jump_offset = target - patch_idx - 1;
@@ -343,29 +342,23 @@ impl Compiler {
                 }
 
                 if let Some(ref type_name) = clause.type_name {
-                    // Typed catch: check if exception matches the type
                     let name_idx = self.add_constant(Constant::String(type_name.clone().into()));
                     let catch_match_idx = self.emit(Op::CatchMatch(name_idx, 0), line);
                     next_clause_patches.push(catch_match_idx);
                 }
 
-                // Matched — compile the catch body in a new scope
                 self.begin_scope();
                 if let Some(ref var_name) = clause.var_name {
-                    // The exception value is on the stack — declare it as a local
                     self.add_local(var_name.clone(), false);
                 }
                 self.compile_stmt(&clause.body)?;
                 self.end_scope(line);
 
-                // Jump to after all catch clauses (to finally)
-                // But not for the last clause — it falls through
                 if i < catch_clauses.len() - 1 {
                     end_jumps.push(self.emit_jump(Op::Jump(0), line));
                 }
             }
 
-            // If the last clause was typed and didn't match, re-throw
             if !next_clause_patches.is_empty() {
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
@@ -377,27 +370,107 @@ impl Compiler {
                 self.emit(Op::Rethrow, line);
             }
 
-            // Patch all end jumps to here
             for j in end_jumps {
                 self.patch_jump(j);
             }
         }
 
-        // Patch the finally offset
         let finally_start = self.current_offset();
         let finally_offset = finally_start - try_begin - 1;
 
         self.patch_jump(no_exception_jump);
 
-        // Compile finally block
-        if let Some(finally_body) = finally_block {
-            self.compile_stmt(finally_body)?;
-        }
-
-        // Patch TryBegin offsets
         if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[try_begin] {
             *co = catch_offset as u16;
             *fo = finally_offset as u16;
+        }
+
+        Ok(())
+    }
+
+    /// `try`/`catch`/`finally`.
+    ///
+    /// There is no runtime support for `finally` — `ExceptionHandler` carries a
+    /// `finally_ip` that nothing ever reads — so the block is inlined on every
+    /// edge that leaves the `try`. It used to be emitted only after the catch
+    /// clauses, which meant it ran *only* when control fell off the end: a
+    /// `return` skipped it (dropping the cleanup precisely when an early exit
+    /// needed it) and, with no catch clause, the pending exception was popped
+    /// and discarded.
+    ///
+    /// The layout wraps the ordinary try/catch in a second handler:
+    ///
+    /// ```text
+    ///   TryBegin(PAD)          outer: anything the catch clauses do not take
+    ///     <try/catch as usual> inner handler is pushed and popped inside here
+    ///   PopHandler             normal path: drop the outer handler…
+    ///   <finally>              …and run the block
+    ///   Jump END
+    /// PAD:                     exception in flight, its value on the stack
+    ///   <finally>
+    ///   Rethrow
+    /// END:
+    /// ```
+    ///
+    /// The inner handler is pushed *after* the outer one, so it wins for an
+    /// exception raised in the try body; `throw_exception` pops it on the way
+    /// to the catch clause, which leaves the outer one live for the duration of
+    /// that clause — so a throw from inside `catch` reaches the pad too. The
+    /// `return` edge is handled by `emit_pending_finallys`, and `break`/`next`
+    /// are still refused, so they cannot skip a block.
+    fn compile_try(
+        &mut self,
+        try_block: &Stmt,
+        catch_clauses: &[CatchClause],
+        finally_block: Option<&Stmt>,
+        line: usize,
+    ) -> CompileResult<()> {
+        let Some(finally_body) = finally_block else {
+            return self.compile_try_catch(try_block, catch_clauses, line);
+        };
+
+        let outer = self.emit(Op::TryBegin(0, 0), line);
+
+        self.finally_stack.push(finally_body.clone());
+        let inner = if catch_clauses.is_empty() {
+            // No catch clause, so no inner handler: an exception must reach the
+            // pad, run the block and carry on unwinding. Registering one would
+            // hand the exception to `compile_try_catch`'s empty-clause path,
+            // which pops and discards it — that is how a throw through a
+            // `try`/`finally` used to vanish.
+            self.compile_stmt(try_block)
+        } else {
+            self.compile_try_catch(try_block, catch_clauses, line)
+        };
+        self.finally_stack.pop();
+        inner?;
+
+        // Normal path: the outer handler is no longer wanted.
+        self.emit(Op::PopHandler, line);
+        self.compile_stmt(finally_body)?;
+        let end_jump = self.emit_jump(Op::Jump(0), line);
+
+        // Exception path. `throw_exception` truncated the stack to the depth
+        // recorded at TryBegin and pushed the value, so it sits exactly where
+        // the next local would go — bind it as one, or the finally block's own
+        // locals are allocated one slot low.
+        let pad = self.current_offset();
+        let pad_offset = pad - outer - 1;
+        self.begin_scope();
+        self.add_local(String::new(), false);
+        let exc_slot = (self.locals.len() - 1) as u16;
+        self.compile_stmt(finally_body)?;
+        self.emit(Op::GetLocal(exc_slot), line);
+        self.emit(Op::Rethrow, line);
+        // Rethrow always leaves; end_scope's pops are unreachable but keep the
+        // compiler's local bookkeeping straight for whatever follows.
+        self.end_scope(line);
+
+        self.patch_jump(end_jump);
+
+        if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[outer] {
+            *co = pad_offset as u16;
+            *fo = pad_offset as u16;
         }
 
         Ok(())

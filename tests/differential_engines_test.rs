@@ -634,11 +634,10 @@ const CASES: &[(&str, &str)] = &[
         "class MyErr { message: String\n  new(m: String) { this.message = m } }\ntry { [1].map(fn(x) { throw MyErr(\"in-map\") }) } catch e { print(e.message) }",
     ),
     // --- `finally` runs on every exit path ---
-    // The VM currently refuses to compile these and falls back, so they agree
-    // by that route. They are here to catch a future VM implementation of
-    // `finally` that gets the exit edges wrong — which is exactly how the
-    // compiled version was wrong before: cleanup skipped on `return`, and a
-    // pending exception discarded when no catch clause matched.
+    // Both engines run these natively: the compiler inlines the `finally`
+    // block on every edge that leaves the `try`. They pin the edges that were
+    // wrong when it was emitted only after the catch clauses — cleanup skipped
+    // on `return`, and a pending exception discarded when no catch matched.
     (
         "finally_runs_when_try_returns",
         "def p() {\n  try { return \"ret\" } finally { print(\"CLEANUP\") }\n}\nprint(p())",
@@ -668,30 +667,6 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // --- `try` with `finally` is refused by the compiler ---
-    // Not a VM bug left unfixed — the opposite. The compiled `finally` ran only
-    // when control fell off the end of the try, so a `return` skipped the
-    // cleanup and a throw with no catch clause was discarded. It is now refused
-    // outright, which means a direct `--vm` run reports the compile error while
-    // the interpreter runs the block; the fallback that makes this correct
-    // exists in the server (verified: the handler demotes and the cleanup runs).
-    //
-    // `--vm` is an explicit opt-in flag, so this costs a developer running it
-    // by hand, not an application. These entries come OFF this list when the
-    // compiler learns to emit the finally body on every exit edge — see
-    // tasks/todo/vm-compile-finally-on-every-exit-edge.md.
-    //
-    // A blanket refusal, not a targeted one: the shapes that were broken are
-    // "try body returns", "catch body returns or throws" and "no catch clause",
-    // and a static check that misses one puts the silent wrong answer back.
-    "try_finally_runs",
-    "return_in_finally_block",
-    "finally_runs_when_try_returns",
-    "finally_does_not_swallow_exception",
-    "finally_runs_when_catch_returns",
-    "finally_return_replaces_pending_throw",
-    "finally_throw_replaces_pending_throw",
-    "finally_cleanup_no_leak_on_early_return",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no
     //      longer listed. As a SUB-EXPRESSION the VM still falls back (the

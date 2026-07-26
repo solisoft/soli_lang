@@ -4861,73 +4861,49 @@ mod tests {
         );
     }
 
-    /// `try`/`finally` is refused by the compiler rather than compiled wrongly.
+    /// `try`/`finally` compiles, and the block runs on the edges that used to
+    /// skip it.
     ///
-    /// This test used to assert that the compiled `finally` ran — which it did,
-    /// but only on the fall-through path this program happens to take. A
-    /// `return` inside the try skipped the block entirely (dropping the cleanup
-    /// exactly when an early exit needed it) and a throw with no catch clause
-    /// was popped and discarded. Passing here gave false confidence in both.
-    ///
-    /// The refusal routes such a handler to the interpreter, which runs
-    /// `finally` on every exit edge. See
-    /// tasks/todo/vm-compile-finally-on-every-exit-edge.md for the real fix,
-    /// and the `finally_*` cases in tests/differential_engines_test.rs for the
-    /// semantics it has to reproduce before this refusal can be lifted.
-    /// The two builtins that signal through a sentinel `Value` — `next()`
-    /// returning `Value::Continue` and `debug()` returning `Value::Breakpoint`
-    /// — are refused so the handler falls back to the interpreter that
-    /// implements them. Compiled, both were silently ignored: the loop body ran
-    /// for every element, and the breakpoint never fired.
-    ///
-    /// The refusal must hit only the *builtin*. A program that declares a
-    /// global of either name is talking about its own variable, and demoting
-    /// for that would cost speed for nothing.
+    /// This test used to assert the compiler *refused* `finally` — the stopgap
+    /// after the compiled version was found to run the block only when control
+    /// fell off the end of the try. It is compiled properly now: the block is
+    /// inlined on every edge that leaves, so the refusal is gone and the
+    /// handler no longer demotes for it.
     #[test]
-    fn test_vm_refuses_sentinel_builtins_but_not_user_globals() {
-        fn compile_src(source: &str) -> Result<(), crate::error::CompileError> {
-            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
-            let program = Parser::new(tokens).parse().expect("parser error");
-            Compiler::compile(&program).map(|_| ())
-        }
-
-        for name in ["next", "debug"] {
-            let err = compile_src(&format!("for i in [1, 2] {{ {name} }}"))
-                .expect_err("the sentinel builtin must be refused");
-            assert!(
-                err.to_string().contains(name),
-                "expected the {name} refusal, got: {err}"
-            );
-
-            // A user-declared global of the same name is not the builtin.
-            compile_src(&format!("let {name} = 42\nprint({name} + 1)"))
-                .unwrap_or_else(|e| panic!("a global named `{name}` must compile, got: {e}"));
-
-            // Nor is a local.
-            compile_src(&format!("fn f() {{ let {name} = 1\n  return {name} }}"))
-                .unwrap_or_else(|e| panic!("a local named `{name}` must compile, got: {e}"));
-        }
-    }
-
-    #[test]
-    fn test_vm_refuses_to_compile_finally() {
-        // Goes through the compiler directly: `compile_and_run` unwraps the
-        // compile step, and a refusal is exactly what this asserts.
-        let source = r#"
+    fn test_vm_compiles_finally_and_runs_it_on_return() {
+        // Falls off the end: the block runs.
+        let val = compile_and_get_global(
+            r#"
             let val = "";
             try {
                 val = "ok";
             } finally {
                 val = val + "+final";
             }
-            "#;
-        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
-        let program = Parser::new(tokens).parse().expect("parser error");
-        let err = Compiler::compile(&program).expect_err("try/finally must be refused");
-        assert!(
-            err.to_string().contains("`try` with `finally`"),
-            "expected the finally refusal, got: {err}"
+            "#,
+            "val",
         );
+        assert_eq!(val, Value::String("ok+final".into()));
+
+        // Leaves by `return`: the block still runs, and the returned value is
+        // the one computed before it. This is the edge that dropped cleanup —
+        // `cleaned` is appended only if the block ran, and the returned value
+        // proves the block did not disturb the value on the stack.
+        let out = compile_and_get_global(
+            r#"
+            let cleaned = "no";
+            fn probe() {
+                try {
+                    return "returned";
+                } finally {
+                    cleaned = "yes";
+                }
+            }
+            let out = probe() + "/" + cleaned;
+            "#,
+            "out",
+        );
+        assert_eq!(out, Value::String("returned/yes".into()));
     }
 
     #[test]
