@@ -144,9 +144,12 @@ impl Interpreter {
                         if !arguments.is_empty() {
                             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                         }
-                        arr.borrow_mut()
-                            .pop()
-                            .ok_or_else(|| RuntimeError::type_error("pop on empty array", span))
+                        // Empty array pops to null, like `shift`, `first`, `last`, `min` and
+                        // `max` already do in both engines — and like Ruby. Raising here made
+                        // `pop` the only one of that family that could blow up, and only in the
+                        // tree-walking interpreter: the VM's method table answered `pop` with
+                        // null, so the same code raised in `soli test` and ran in `soli serve`.
+                        Ok(arr.borrow_mut().pop().unwrap_or(Value::Null))
                     }
                     "clear" => {
                         if !arguments.is_empty() {

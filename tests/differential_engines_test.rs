@@ -408,6 +408,10 @@ const CASES: &[(&str, &str)] = &[
         "hash_to_s_matches_to_string",
         "let h = {\"a\": 1, \"b\": 2}\nprint(h.to_s())\nprint(h.to_string())",
     ),
+    (
+        "pop_on_empty_array_is_null_like_shift",
+        "let a = []\nprint(a.pop())\nprint(a.shift())\nprint(a.first())\nlet b = [1, 2]\nprint(b.pop())",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

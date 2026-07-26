@@ -171,9 +171,9 @@ impl Vm {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                arr.borrow_mut()
-                    .pop()
-                    .ok_or_else(|| RuntimeError::type_error("pop on empty array", span))
+                // Matches the VM's own method-table `pop` and the interpreter:
+                // an empty array pops to null rather than raising.
+                Ok(arr.borrow_mut().pop().unwrap_or(Value::Null))
             }
             "clear" => {
                 if !args.is_empty() {
