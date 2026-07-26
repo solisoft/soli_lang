@@ -173,9 +173,14 @@ mod tests {
             "class Account {\n  public void Save() {\n    var log = new Logger();\n    log.Write(\"x\");\n    Validate();\n    var items = new List<int>();\n  }\n}\n",
         );
         // `new Logger()` and a namespace/generic form both reduce to a simple name.
-        assert!(has_edge_from(&out, "instantiates", "Logger", "Account.Save"));
+        assert!(has_edge_from(
+            &out,
+            "instantiates",
+            "Logger",
+            "Account.Save"
+        ));
         assert!(has_edge(&out, "instantiates", "List")); // generic stripped
-        // `log.Write(...)` → callee `Write`; bare `Validate()` → `Validate`.
+                                                         // `log.Write(...)` → callee `Write`; bare `Validate()` → `Validate`.
         assert!(has_edge_from(&out, "calls", "Write", "Account.Save"));
         assert!(has_edge_from(&out, "calls", "Validate", "Account.Save"));
     }

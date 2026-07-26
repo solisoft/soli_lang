@@ -68,12 +68,12 @@ pub use html::*;
 /// Public API for text shaping using azul text3
 #[cfg(feature = "text_layout")]
 pub mod text_shaping {
-    pub use azul_layout::text3::cache::{FontManager, UnifiedLayout, ParsedFontTrait, LoadedFonts};
-    pub use azul_layout::text3::glyphs::{get_glyph_runs_pdf, PdfGlyphRun, PdfPositionedGlyph};
-    pub use azul_css::props::basic::ColorU;
-    pub use crate::shape::{layout_to_ops, layout_to_ops_with_offset};
     #[cfg(feature = "html")]
     pub use crate::html::bridge::render_unified_layout_public;
+    pub use crate::shape::{layout_to_ops, layout_to_ops_with_offset};
+    pub use azul_css::props::basic::ColorU;
+    pub use azul_layout::text3::cache::{FontManager, LoadedFonts, ParsedFontTrait, UnifiedLayout};
+    pub use azul_layout::text3::glyphs::{get_glyph_runs_pdf, PdfGlyphRun, PdfPositionedGlyph};
 }
 /// HTML component definitions
 #[cfg(feature = "html")]
@@ -297,7 +297,6 @@ pub struct PdfDocument {
 }
 
 impl PdfDocument {
-
     pub fn new(name: &str) -> Self {
         Self {
             metadata: PdfMetadata {
@@ -439,7 +438,7 @@ impl PdfDocument {
         warnings: &mut Vec<PdfWarnMsg>,
         font_pool: Option<crate::html::SharedFontPool>,
     ) -> Result<Self, String> {
-        use crate::html::{XmlRenderOptions, PageMargins};
+        use crate::html::{PageMargins, XmlRenderOptions};
         use base64::{engine::general_purpose::STANDARD, Engine as _};
 
         let mut pdf = Self::new("PDF Document");
@@ -448,7 +447,7 @@ impl PdfDocument {
         let mut xml_options = XmlRenderOptions::default();
         xml_options.page_width = Mm(options.page_width.unwrap_or(210.0));
         xml_options.page_height = Mm(options.page_height.unwrap_or(297.0));
-        
+
         // Apply page margins if configured
         xml_options.margins = PageMargins {
             top: Mm(options.margin_top.unwrap_or(0.0)),
@@ -456,7 +455,7 @@ impl PdfDocument {
             bottom: Mm(options.margin_bottom.unwrap_or(0.0)),
             left: Mm(options.margin_left.unwrap_or(0.0)),
         };
-        
+
         // Apply header/footer configuration
         // NOTE: Full CSS @page rule parsing is not yet implemented.
         // These options provide programmatic control over page decoration.
@@ -464,20 +463,24 @@ impl PdfDocument {
         xml_options.header_text = options.header_text.clone();
         xml_options.footer_text = options.footer_text.clone();
         xml_options.skip_first_page = options.skip_first_page.unwrap_or(false);
-        
+
         // Convert images and fonts
         for (key, img) in images {
             let bytes = match img {
                 Base64OrRaw::Raw(b) => b.clone(),
-                Base64OrRaw::B64(s) => STANDARD.decode(s).map_err(|e| format!("Base64 decode error: {}", e))?,
+                Base64OrRaw::B64(s) => STANDARD
+                    .decode(s)
+                    .map_err(|e| format!("Base64 decode error: {}", e))?,
             };
             xml_options.images.insert(key.clone(), bytes);
         }
-        
+
         for (key, font) in fonts {
             let bytes = match font {
                 Base64OrRaw::Raw(b) => b.clone(),
-                Base64OrRaw::B64(s) => STANDARD.decode(s).map_err(|e| format!("Base64 decode error: {}", e))?,
+                Base64OrRaw::B64(s) => STANDARD
+                    .decode(s)
+                    .map_err(|e| format!("Base64 decode error: {}", e))?,
             };
             xml_options.fonts.insert(key.clone(), bytes);
         }
@@ -492,11 +495,11 @@ impl PdfDocument {
                 for (font_hash, parsed_font) in font_data.iter() {
                     // The font ID matches what the bridge generated
                     let font_id = FontId(format!("F{}", font_hash.font_hash));
-                    
+
                     let pdf_font = crate::font::PdfFont::new(parsed_font.clone());
                     pdf.resources.fonts.map.insert(font_id, pdf_font);
                 }
-                
+
                 pdf.pages.extend(pages);
                 Ok(pdf)
             }
@@ -530,7 +533,7 @@ impl PdfDocument {
         warnings: &mut Vec<PdfWarnMsg>,
         font_pool: Option<crate::html::SharedFontPool>,
     ) -> Result<(Self, crate::html::PdfDebugInfo), String> {
-        use crate::html::{XmlRenderOptions, PageMargins};
+        use crate::html::{PageMargins, XmlRenderOptions};
         use base64::{engine::general_purpose::STANDARD, Engine as _};
 
         let mut pdf = Self::new("PDF Document");
@@ -539,7 +542,7 @@ impl PdfDocument {
         let mut xml_options = XmlRenderOptions::default();
         xml_options.page_width = Mm(options.page_width.unwrap_or(210.0));
         xml_options.page_height = Mm(options.page_height.unwrap_or(297.0));
-        
+
         // Apply page margins if configured
         xml_options.margins = PageMargins {
             top: Mm(options.margin_top.unwrap_or(0.0)),
@@ -547,25 +550,29 @@ impl PdfDocument {
             bottom: Mm(options.margin_bottom.unwrap_or(0.0)),
             left: Mm(options.margin_left.unwrap_or(0.0)),
         };
-        
+
         xml_options.show_page_numbers = options.show_page_numbers.unwrap_or(false);
         xml_options.header_text = options.header_text.clone();
         xml_options.footer_text = options.footer_text.clone();
         xml_options.skip_first_page = options.skip_first_page.unwrap_or(false);
-        
+
         // Convert images and fonts
         for (key, img) in images {
             let bytes = match img {
                 Base64OrRaw::Raw(b) => b.clone(),
-                Base64OrRaw::B64(s) => STANDARD.decode(s).map_err(|e| format!("Base64 decode error: {}", e))?,
+                Base64OrRaw::B64(s) => STANDARD
+                    .decode(s)
+                    .map_err(|e| format!("Base64 decode error: {}", e))?,
             };
             xml_options.images.insert(key.clone(), bytes);
         }
-        
+
         for (key, font) in fonts {
             let bytes = match font {
                 Base64OrRaw::Raw(b) => b.clone(),
-                Base64OrRaw::B64(s) => STANDARD.decode(s).map_err(|e| format!("Base64 decode error: {}", e))?,
+                Base64OrRaw::B64(s) => STANDARD
+                    .decode(s)
+                    .map_err(|e| format!("Base64 decode error: {}", e))?,
             };
             xml_options.fonts.insert(key.clone(), bytes);
         }
@@ -582,16 +589,19 @@ impl PdfDocument {
                     let pdf_font = crate::font::PdfFont::new(parsed_font.clone());
                     pdf.resources.fonts.map.insert(font_id, pdf_font);
                 }
-                
+
                 pdf.pages.extend(pages);
                 Ok((pdf, debug_info))
             }
             Err(errs) => {
                 warnings.extend(errs);
-                Ok((pdf, crate::html::PdfDebugInfo {
-                    display_list_debug: Vec::new(),
-                    pdf_ops_debug: Vec::new(),
-                }))
+                Ok((
+                    pdf,
+                    crate::html::PdfDebugInfo {
+                        display_list_debug: Vec::new(),
+                        pdf_ops_debug: Vec::new(),
+                    },
+                ))
             }
         }
     }
@@ -633,11 +643,11 @@ impl PdfDocument {
     }
 
     /// Appends another PDF document to the end of this document.
-    /// 
+    ///
     /// This merges resources (fonts, images, XObjects) and appends all pages
     /// from the other document. Bookmarks from the other document are adjusted
     /// to point to the correct page numbers.
-    /// 
+    ///
     /// # Example
     /// ```rust,ignore
     /// let mut main_doc = PdfDocument::new("Main");
@@ -652,15 +662,15 @@ impl PdfDocument {
     }
 
     /// Inserts another PDF document after a specific page index.
-    /// 
+    ///
     /// Page indices are 0-based. To insert at the beginning, use `insert_at` = 0.
     /// To insert after page 3, use `insert_at` = 3.
-    /// 
+    ///
     /// This merges resources (fonts, images, XObjects) and inserts all pages
     /// from the other document at the specified position. Existing bookmarks
     /// after the insertion point are adjusted, and bookmarks from the inserted
     /// document point to the correct page numbers.
-    /// 
+    ///
     /// # Example
     /// ```rust,ignore
     /// let mut main_doc = PdfDocument::new("Main");
@@ -671,17 +681,17 @@ impl PdfDocument {
     pub fn insert_document(&mut self, insert_at: usize, other: PdfDocument) {
         let insert_at = insert_at.min(self.pages.len());
         let pages_to_insert = other.pages.len();
-        
+
         // Adjust existing bookmarks that point to pages after insertion point
         for (_, annot) in self.bookmarks.map.iter_mut() {
             if annot.page >= insert_at {
                 annot.page += pages_to_insert;
             }
         }
-        
+
         self.merge_resources(other.resources);
         self.merge_bookmarks(other.bookmarks, insert_at);
-        
+
         // Insert pages at the specified position
         let mut new_pages = Vec::with_capacity(self.pages.len() + pages_to_insert);
         new_pages.extend(self.pages.drain(..insert_at));

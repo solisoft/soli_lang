@@ -102,6 +102,51 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- What catch receives -->
+    <section id="section-catch-value" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What <code class="text-amber-400">catch</code> Receives</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">throw</code> carries a <strong class="text-white">value</strong>, not a
+            message, and that value reaches <code class="text-amber-400">catch</code> intact no matter how many
+            function calls it crossed on the way. Structured errors work as written:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def find_user(id: Int) -> Hash
+  throw {"code": 404, "message": "no such user"} if id &lt; 1
+  return {"id": id}
+end
+
+try
+  find_user(0)
+catch e
+  print(e["code"])     # 404 — a hash, not the text of one
+  print(e["message"])  # no such user
+end</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Any value can be thrown — a hash, an array, an int, a class instance — and it is the same value when
+            caught. The one exception is an error Soli itself raised (a division by zero, an index out of bounds, a
+            failed <code class="text-amber-400">Model.find</code>): those have no user-supplied value, so
+            <code class="text-amber-400">catch</code> binds their message as a string. Check
+            <code class="text-amber-400">e.class</code> to tell the two apart:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">try
+  might_fail()
+catch e
+  if e.class == "hash"
+    print("app error #{e["code"]}")
+  else
+    print("runtime error: #{e}")
+  end
+end</code></pre>
+            </div>
+        </div>
+    </section>
+
     <!-- Throwing Exceptions -->
     <section id="section-throw" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

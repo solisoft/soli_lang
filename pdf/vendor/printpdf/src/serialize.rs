@@ -14,7 +14,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     color::IccProfile,
-    font::{ParsedFont, FontType},
+    font::{FontType, ParsedFont},
     Actions, BuiltinFont, Color, ColorArray, Destination, FontId, IccProfileType,
     ImageOptimizationOptions, Line, LinkAnnotation, Op, PageAnnotId, PageAnnotation, PaintMode,
     PdfDocument, PdfDocumentInfo, PdfPage, PdfResources, PdfWarnMsg, Polygon, TextItem, XObject,
@@ -262,7 +262,8 @@ pub fn to_lopdf_doc(
 
     // Build fonts dictionary with deferred subsetting
     let mut global_font_dict = LoDictionary::new();
-    let (font_infos, subset_fonts) = prepare_fonts_for_serialization(&pdf.resources, &pdf.pages, opts.subset_fonts, warnings);
+    let (font_infos, subset_fonts) =
+        prepare_fonts_for_serialization(&pdf.resources, &pdf.pages, opts.subset_fonts, warnings);
     for (font_id, subset_info) in subset_fonts.iter() {
         let font_dict = add_subset_font_to_pdf(&mut doc, font_id, subset_info);
         let font_dict_id = doc.add_object(font_dict);
@@ -348,8 +349,7 @@ pub fn to_lopdf_doc(
                 opts.secure,
                 warnings,
             ); // Vec<u8>
-            let merged_layer_stream =
-                LoStream::new(LoDictionary::new(), layer_stream);
+            let merged_layer_stream = LoStream::new(LoDictionary::new(), layer_stream);
 
             let page_obj = LoDictionary::from_iter(vec![
                 ("Type", "Page".into()),
@@ -398,10 +398,7 @@ pub fn to_lopdf_doc(
         let mut children: std::collections::BTreeMap<Option<PageAnnotId>, Vec<usize>> =
             std::collections::BTreeMap::new();
         for (i, (_, v, _)) in nodes.iter().enumerate() {
-            let parent = v
-                .parent
-                .clone()
-                .filter(|p| obj_ids.contains_key(p));
+            let parent = v.parent.clone().filter(|p| obj_ids.contains_key(p));
             children.entry(parent).or_default().push(i);
         }
 
@@ -424,10 +421,7 @@ pub fn to_lopdf_doc(
         for (i, (key, v, page_obj)) in nodes.iter().enumerate() {
             let self_id = obj_ids[key];
             let parent = v.parent.clone().filter(|p| obj_ids.contains_key(p));
-            let parent_obj = parent
-                .as_ref()
-                .map(|p| obj_ids[p])
-                .unwrap_or(bookmarks_id);
+            let parent_obj = parent.as_ref().map(|p| obj_ids[p]).unwrap_or(bookmarks_id);
             let siblings = &children[&parent];
             let pos = siblings.iter().position(|&s| s == i).unwrap_or(0);
             let prev = pos.checked_sub(1).map(|p| obj_ids[&nodes[siblings[p]].0]);
@@ -516,7 +510,7 @@ fn get_used_internal_fonts(pages: &[PdfPage]) -> BTreeSet<BuiltinFont> {
     // With new API, builtin fonts are referenced in SetFont operation
     // Parse SetFont operations to extract builtin font usage
     let mut fonts = BTreeSet::new();
-    
+
     for page in pages {
         for op in &page.ops {
             if let Op::SetFont { font, .. } = op {
@@ -527,7 +521,7 @@ fn get_used_internal_fonts(pages: &[PdfPage]) -> BTreeSet<BuiltinFont> {
             }
         }
     }
-    
+
     fonts
 }
 
@@ -548,7 +542,7 @@ pub(crate) fn translate_operations(
     warnings: &mut Vec<PdfWarnMsg>,
 ) -> Vec<u8> {
     let mut content = Vec::new();
-    
+
     // Track current font for ShowText operations
     let mut current_font_resource: Option<String> = None;
 
@@ -602,7 +596,10 @@ pub(crate) fn translate_operations(
                 current_font_resource = Some(font_resource_name.clone());
                 content.push(LoOp::new(
                     "Tf",
-                    vec![lopdf::Object::Name(font_resource_name.as_bytes().to_vec()), size.0.into()],
+                    vec![
+                        lopdf::Object::Name(font_resource_name.as_bytes().to_vec()),
+                        size.0.into(),
+                    ],
                 ));
             }
             Op::ShowText { items } => {
@@ -611,7 +608,7 @@ pub(crate) fn translate_operations(
                 let builtin_font = current_font_resource
                     .as_ref()
                     .and_then(|r| BuiltinFont::from_id(r));
-                
+
                 let font_info = if builtin_font.is_none() {
                     // Try to find external font by resource name
                     current_font_resource
@@ -620,7 +617,7 @@ pub(crate) fn translate_operations(
                 } else {
                     None
                 };
-                
+
                 encode_text_items_to_pdf(items, font_info, builtin_font.as_ref(), &mut content);
             }
             Op::SetLineHeight { lh } => {
@@ -751,7 +748,7 @@ pub(crate) fn translate_operations(
             Op::BeginMarkedContentWithProperties { tag, properties } => {
                 content.push(LoOp::new(
                     "BDC",
-                    vec![Name(tag.clone().into()), properties.to_lopdf()]
+                    vec![Name(tag.clone().into()), properties.to_lopdf()],
                 ));
             }
             Op::BeginOptionalContent { layer_id } => {
@@ -764,7 +761,9 @@ pub(crate) fn translate_operations(
                 let props = Array(properties.iter().map(|item| item.to_lopdf()).collect());
                 content.push(LoOp::new("DP", vec![Name(tag.clone().into()), props]));
             }
-            Op::EndMarkedContent { .. } | Op::EndMarkedContentWithProperties { .. } | Op::EndOptionalContent { .. } => {
+            Op::EndMarkedContent { .. }
+            | Op::EndMarkedContentWithProperties { .. }
+            | Op::EndOptionalContent { .. } => {
                 content.push(LoOp::new("EMC", vec![]));
             }
             Op::BeginCompatibilitySection => {
@@ -816,7 +815,7 @@ pub(crate) fn translate_operations(
 }
 
 // Helper function to encode text items to PDF operations
-// 
+//
 // IMPORTANT: This function uses ORIGINAL glyph IDs directly.
 // Font subsetting (if enabled) happens at font serialization time,
 // and the glyph ID remapping is done there, not here.
@@ -840,9 +839,12 @@ fn encode_text_items_to_pdf(
                 if let Some(font_info) = font_info {
                     // For custom fonts, convert each character to its glyph ID
                     // Use original GIDs - subsetting remapping happens at font serialization
-                    let bytes: Vec<u8> = text.chars()
+                    let bytes: Vec<u8> = text
+                        .chars()
                         .flat_map(|c| {
-                            font_info.parsed_font.lookup_glyph_index(c as u32)
+                            font_info
+                                .parsed_font
+                                .lookup_glyph_index(c as u32)
                                 .unwrap_or(0)
                                 .to_be_bytes()
                         })
@@ -885,7 +887,11 @@ fn encode_text_items_to_pdf(
     }
 
     // Choose appropriate operator based on complexity
-    if tj_array.len() == 1 && !items.iter().any(|i| matches!(i, TextItem::Offset(_) | TextItem::GlyphIds(_))) {
+    if tj_array.len() == 1
+        && !items
+            .iter()
+            .any(|i| matches!(i, TextItem::Offset(_) | TextItem::GlyphIds(_)))
+    {
         // Single text item with no kerning - use simpler Tj
         content.push(LoOp::new("Tj", vec![tj_array.swap_remove(0)]));
     } else {
@@ -929,10 +935,10 @@ fn collect_used_glyphs_from_pages(
     fonts: &BTreeMap<FontId, crate::font::PdfFont>,
 ) -> BTreeMap<FontId, BTreeMap<u16, char>> {
     let mut used_glyphs: BTreeMap<FontId, BTreeMap<u16, char>> = BTreeMap::new();
-    
+
     for page in pages {
         let mut current_font_id: Option<FontId> = None;
-        
+
         for op in &page.ops {
             match op {
                 Op::SetFont { font, .. } => {
@@ -949,14 +955,18 @@ fn collect_used_glyphs_from_pages(
                 Op::ShowText { items } => {
                     if let Some(ref font_id) = current_font_id {
                         if let Some(pdf_font) = fonts.get(font_id) {
-                            let font_glyphs = used_glyphs.entry(font_id.clone()).or_insert_with(BTreeMap::new);
-                            
+                            let font_glyphs = used_glyphs
+                                .entry(font_id.clone())
+                                .or_insert_with(BTreeMap::new);
+
                             for item in items {
                                 match item {
                                     TextItem::Text(text) => {
                                         // Convert each character to glyph ID using the font
                                         for c in text.chars() {
-                                            if let Some(glyph_id) = pdf_font.parsed_font.lookup_glyph_index(c as u32) {
+                                            if let Some(glyph_id) =
+                                                pdf_font.parsed_font.lookup_glyph_index(c as u32)
+                                            {
                                                 font_glyphs.insert(glyph_id, c);
                                             }
                                         }
@@ -971,7 +981,9 @@ fn collect_used_glyphs_from_pages(
                                                 cid.chars().next().unwrap_or('\u{FFFD}')
                                             } else {
                                                 // Try reverse lookup from the font's cache
-                                                pdf_font.parsed_font.get_glyph_primary_char(codepoint.gid)
+                                                pdf_font
+                                                    .parsed_font
+                                                    .get_glyph_primary_char(codepoint.gid)
                                                     .unwrap_or('\u{FFFD}')
                                             };
                                             // Only insert if we have a valid character (not replacement char)
@@ -995,7 +1007,7 @@ fn collect_used_glyphs_from_pages(
             }
         }
     }
-    
+
     used_glyphs
 }
 
@@ -1215,14 +1227,14 @@ fn rectangle_to_stream_ops(rectangle: &crate::Rect) -> Vec<LoOp> {
             rectangle.x.into(),
             rectangle.y.into(),
             rectangle.width.into(),
-            rectangle.height.into()
+            rectangle.height.into(),
         ],
     ));
 
     match rectangle.winding_order {
         Some(crate::WindingOrder::NonZero) => operations.push(LoOp::new("W", vec![])),
         Some(crate::WindingOrder::EvenOdd) => operations.push(LoOp::new("W*", vec![])),
-        None => {},
+        None => {}
     }
 
     // close the path
@@ -1240,31 +1252,39 @@ pub(crate) fn prepare_fonts_for_serialization(
     pages: &[PdfPage],
     do_subset: bool,
     warnings: &mut Vec<PdfWarnMsg>,
-) -> (BTreeMap<FontId, RuntimeFontInfo>, BTreeMap<FontId, RuntimeSubsetInfo>) {
+) -> (
+    BTreeMap<FontId, RuntimeFontInfo>,
+    BTreeMap<FontId, RuntimeSubsetInfo>,
+) {
     let mut font_infos = BTreeMap::new();
     let mut subset_infos = BTreeMap::new();
-    
+
     // First pass: collect used glyphs for each font
     let used_glyphs = collect_used_glyphs_from_pages(pages, &resources.fonts.map);
-    
+
     // Second pass: create info for each font
     for (font_id, pdf_font) in &resources.fonts.map {
         let glyph_usage = used_glyphs.get(font_id).cloned().unwrap_or_default();
-        
+
         if glyph_usage.is_empty() {
             continue; // Skip unused fonts
         }
-        
+
         // Always create RuntimeFontInfo for text encoding (uses original GIDs)
-        font_infos.insert(font_id.clone(), RuntimeFontInfo {
-            parsed_font: pdf_font.parsed_font.clone(),
-        });
-        
+        font_infos.insert(
+            font_id.clone(),
+            RuntimeFontInfo {
+                parsed_font: pdf_font.parsed_font.clone(),
+            },
+        );
+
         // Create RuntimeSubsetInfo for font dictionary
         #[cfg(feature = "text_layout")]
-        let subset_info = if false && do_subset && 
-                             pdf_font.meta.requires_subsetting && 
-                             pdf_font.meta.embedding_mode == crate::font::FontEmbeddingMode::Subset {
+        let subset_info = if false
+            && do_subset
+            && pdf_font.meta.requires_subsetting
+            && pdf_font.meta.embedding_mode == crate::font::FontEmbeddingMode::Subset
+        {
             // Try subsetting, fall back to full font if it fails
             create_subset_runtime_info(font_id, pdf_font, &glyph_usage, warnings)
                 .unwrap_or_else(|| create_full_font_runtime_info(font_id, pdf_font, &glyph_usage))
@@ -1272,13 +1292,13 @@ pub(crate) fn prepare_fonts_for_serialization(
             // Use full font without subsetting
             create_full_font_runtime_info(font_id, pdf_font, &glyph_usage)
         };
-        
+
         #[cfg(not(feature = "text_layout"))]
         let subset_info = create_full_font_runtime_info(font_id, pdf_font, &glyph_usage);
-        
+
         subset_infos.insert(font_id.clone(), subset_info);
     }
-    
+
     (font_infos, subset_infos)
 }
 
@@ -1291,34 +1311,36 @@ fn create_subset_runtime_info(
     warnings: &mut Vec<PdfWarnMsg>,
 ) -> Option<RuntimeSubsetInfo> {
     let subset_result = crate::font::subset_font(&pdf_font.parsed_font, glyph_usage);
-    
+
     match subset_result {
         Ok(subset) => {
             let mut font_warnings = Vec::new();
-            if let Some(subset_font) = ParsedFont::from_bytes(&subset.bytes, 0, &mut font_warnings) {
-                
+            if let Some(subset_font) = ParsedFont::from_bytes(&subset.bytes, 0, &mut font_warnings)
+            {
                 let new_glyph_ids: Vec<(u16, char)> = glyph_usage
                     .iter()
-                    .filter_map(|(orig_gid, char)| 
-                        subset.glyph_mapping.get(orig_gid)
+                    .filter_map(|(orig_gid, char)| {
+                        subset
+                            .glyph_mapping
+                            .get(orig_gid)
                             .map(|(subset_gid, _)| (*subset_gid, *char))
-                    )
+                    })
                     .collect();
-                
-                let cid_to_unicode_map = crate::font::generate_cmap_string(
-                    &subset_font, 
-                    font_id, 
-                    &new_glyph_ids
-                );
-                
+
+                let cid_to_unicode_map =
+                    crate::font::generate_cmap_string(&subset_font, font_id, &new_glyph_ids);
+
                 let widths = match subset_font.font_type {
-                    FontType::TrueType => crate::font::get_normalized_widths_ttf(&subset_font, &new_glyph_ids),
+                    FontType::TrueType => {
+                        crate::font::get_normalized_widths_ttf(&subset_font, &new_glyph_ids)
+                    }
                     _ => {
-                        let gid_to_cid_map = crate::font::generate_gid_to_cid_map(&subset_font, &new_glyph_ids);
+                        let gid_to_cid_map =
+                            crate::font::generate_gid_to_cid_map(&subset_font, &new_glyph_ids);
                         crate::font::get_normalized_widths_cff(&subset_font, &gid_to_cid_map)
                     }
                 };
-                
+
                 Some(RuntimeSubsetInfo {
                     original_font: pdf_font.parsed_font.clone(),
                     subset_font_bytes: subset.bytes,
@@ -1328,14 +1350,20 @@ fn create_subset_runtime_info(
                     descent: subset_font.font_metrics.descent as i64,
                 })
             } else {
-                warnings.push(PdfWarnMsg::error(0, 0, 
-                    format!("Failed to parse subset font for {}", font_id.0)));
+                warnings.push(PdfWarnMsg::error(
+                    0,
+                    0,
+                    format!("Failed to parse subset font for {}", font_id.0),
+                ));
                 None
             }
         }
         Err(e) => {
-            warnings.push(PdfWarnMsg::error(0, 0, 
-                format!("Failed to subset font {}: {}", font_id.0, e)));
+            warnings.push(PdfWarnMsg::error(
+                0,
+                0,
+                format!("Failed to subset font {}: {}", font_id.0, e),
+            ));
             None
         }
     }
@@ -1349,15 +1377,13 @@ fn create_full_font_runtime_info(
     glyph_usage: &BTreeMap<u16, char>,
 ) -> RuntimeSubsetInfo {
     let font_bytes = pdf_font.parsed_font.original_bytes.clone();
-    let glyph_ids: Vec<(u16, char)> = glyph_usage.iter()
+    let glyph_ids: Vec<(u16, char)> = glyph_usage
+        .iter()
         .map(|(gid, char)| (*gid, *char))
         .collect();
 
-    let cid_to_unicode_map = crate::font::generate_cmap_string(
-        &pdf_font.parsed_font,
-        font_id,
-        &glyph_ids
-    );
+    let cid_to_unicode_map =
+        crate::font::generate_cmap_string(&pdf_font.parsed_font, font_id, &glyph_ids);
 
     let widths = get_normalized_widths(&pdf_font.parsed_font, &glyph_ids);
 
@@ -1407,7 +1433,10 @@ fn get_normalized_widths(
         } else {
             widths_list.push(lopdf::Object::Integer(current_low_gid as i64));
             widths_list.push(lopdf::Object::Array(
-                current_width_vec.iter().map(|w| lopdf::Object::Integer(*w)).collect(),
+                current_width_vec
+                    .iter()
+                    .map(|w| lopdf::Object::Integer(*w))
+                    .collect(),
             ));
             current_low_gid = gid;
             current_high_gid = gid;
@@ -1418,7 +1447,10 @@ fn get_normalized_widths(
     if !current_width_vec.is_empty() {
         widths_list.push(lopdf::Object::Integer(current_low_gid as i64));
         widths_list.push(lopdf::Object::Array(
-            current_width_vec.iter().map(|w| lopdf::Object::Integer(*w)).collect(),
+            current_width_vec
+                .iter()
+                .map(|w| lopdf::Object::Integer(*w))
+                .collect(),
         ));
     }
 
@@ -1430,12 +1462,17 @@ fn add_subset_font_to_pdf(
     font_id: &FontId,
     subset_info: &RuntimeSubsetInfo,
 ) -> LoDictionary {
-    let font_name = subset_info.original_font
+    let font_name = subset_info
+        .original_font
         .font_name
         .clone()
         .unwrap_or(font_id.0.clone());
 
-    let face_name = format!("{}+{}", font_id.0.clone().get(0..6).unwrap_or(&font_id.0), font_name);
+    let face_name = format!(
+        "{}+{}",
+        font_id.0.clone().get(0..6).unwrap_or(&font_id.0),
+        font_name
+    );
 
     // Font stream and CID subtype depend on whether this is TrueType or CFF
     let (sub_type, font_tuple) = match &subset_info.original_font.font_type {
@@ -1495,28 +1532,26 @@ fn add_subset_font_to_pdf(
                 ("DW", Integer(DEFAULT_CHARACTER_WIDTH)),
                 (
                     "FontDescriptor",
-                    Reference(
-                        doc.add_object(LoDictionary::from_iter(vec![
-                            ("Type", Name("FontDescriptor".into())),
-                            ("FontName", Name(font_name.clone().into_bytes())),
-                            ("Ascent", Integer(subset_info.ascent)),
-                            ("Descent", Integer(subset_info.descent)),
-                            ("CapHeight", Integer(0)),
-                            ("ItalicAngle", Integer(0)),
-                            ("Flags", Integer(32)),
-                            ("StemV", Integer(80)),
-                            font_tuple,
-                            (
-                                "FontBBox",
-                                Array(vec![
-                                    Integer(subset_info.original_font.pdf_font_metrics.x_min as i64),
-                                    Integer(subset_info.original_font.pdf_font_metrics.y_min as i64),
-                                    Integer(subset_info.original_font.pdf_font_metrics.x_max as i64),
-                                    Integer(subset_info.original_font.pdf_font_metrics.y_max as i64),
-                                ]),
-                            ),
-                        ])),
-                    ),
+                    Reference(doc.add_object(LoDictionary::from_iter(vec![
+                        ("Type", Name("FontDescriptor".into())),
+                        ("FontName", Name(font_name.clone().into_bytes())),
+                        ("Ascent", Integer(subset_info.ascent)),
+                        ("Descent", Integer(subset_info.descent)),
+                        ("CapHeight", Integer(0)),
+                        ("ItalicAngle", Integer(0)),
+                        ("Flags", Integer(32)),
+                        ("StemV", Integer(80)),
+                        font_tuple,
+                        (
+                            "FontBBox",
+                            Array(vec![
+                                Integer(subset_info.original_font.pdf_font_metrics.x_min as i64),
+                                Integer(subset_info.original_font.pdf_font_metrics.y_min as i64),
+                                Integer(subset_info.original_font.pdf_font_metrics.x_max as i64),
+                                Integer(subset_info.original_font.pdf_font_metrics.y_max as i64),
+                            ]),
+                        ),
+                    ]))),
                 ),
             ]))]),
         ),

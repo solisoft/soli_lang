@@ -1,18 +1,14 @@
-use std::{
-    collections::btree_map::BTreeMap,
-    vec::Vec,
-};
+use std::{collections::btree_map::BTreeMap, vec::Vec};
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{
-    FontId,
-};
+use crate::FontId;
 
 // Use azul-layout's types instead of redefining them
 #[cfg(feature = "text_layout")]
 pub use azul_layout::{
-    PdfFontMetrics as FontMetrics, FontParseWarning as PdfFontParseWarning, FontType, OwnedGlyph, ParsedFont,
+    FontParseWarning as PdfFontParseWarning, FontType, OwnedGlyph, ParsedFont,
+    PdfFontMetrics as FontMetrics,
 };
 
 // Stub types when text_layout is disabled
@@ -100,7 +96,10 @@ impl ParsedFont {
             units_per_em,
             font_metrics,
             font_type: FontType::TrueType,
-            pdf_font_metrics: PdfFontMetricsStub { units_per_em, ..Default::default() },
+            pdf_font_metrics: PdfFontMetricsStub {
+                units_per_em,
+                ..Default::default()
+            },
         }
     }
 
@@ -526,7 +525,10 @@ impl Font {
 }
 
 #[cfg(feature = "text_layout")]
-pub fn subset_font(font: &ParsedFont, glyph_ids: &BTreeMap<u16, char>) -> Result<SubsetFont, String> {
+pub fn subset_font(
+    font: &ParsedFont,
+    glyph_ids: &BTreeMap<u16, char>,
+) -> Result<SubsetFont, String> {
     use allsorts::{binary::read::ReadScope, font_data::FontData, subset::CmapTarget};
 
     let scope = ReadScope::new(&font.original_bytes);
@@ -537,14 +539,15 @@ pub fn subset_font(font: &ParsedFont, glyph_ids: &BTreeMap<u16, char>) -> Result
 
     // Collect glyph IDs in a consistent order (BTreeMap gives sorted order)
     let ids: Vec<_> = glyph_ids.keys().copied().collect();
-    
+
     // Use SubsetProfile::Pdf for PDF embedding and CmapTarget::Unicode for Unicode cmap
     let bytes = allsorts::subset::subset(
         &provider,
         &ids,
         &allsorts::subset::SubsetProfile::Pdf,
         CmapTarget::Unicode,
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Build glyph mapping: allsorts subset assigns new GIDs starting at 1
     // (GID 0 is always .notdef), following the order of input glyph IDs
@@ -567,7 +570,10 @@ pub fn subset_font(font: &ParsedFont, glyph_ids: &BTreeMap<u16, char>) -> Result
 }
 
 #[cfg(not(feature = "text_layout"))]
-pub fn subset_font(font: &ParsedFont, _glyph_ids: &BTreeMap<u16, char>) -> Result<SubsetFont, String> {
+pub fn subset_font(
+    font: &ParsedFont,
+    _glyph_ids: &BTreeMap<u16, char>,
+) -> Result<SubsetFont, String> {
     Ok(SubsetFont {
         // Without text_layout, just return the original font bytes without subsetting
         bytes: font.original_bytes.clone(),
@@ -578,7 +584,11 @@ pub fn subset_font(font: &ParsedFont, _glyph_ids: &BTreeMap<u16, char>) -> Resul
 
 // PDF-specific helper functions for ParsedFont
 
-pub fn generate_cmap_string(_font: &ParsedFont, font_id: &FontId, glyph_ids: &[(u16, char)]) -> String {
+pub fn generate_cmap_string(
+    _font: &ParsedFont,
+    font_id: &FontId,
+    glyph_ids: &[(u16, char)],
+) -> String {
     let mappings = glyph_ids
         .iter()
         .map(|&(gid, unicode)| (gid as u32, vec![unicode as u32]))
@@ -602,7 +612,10 @@ fn get_glyph_width(font: &ParsedFont, gid: u16) -> Option<u16> {
 }
 
 #[cfg(feature = "text_layout")]
-pub fn get_normalized_widths_ttf(font: &ParsedFont, glyph_ids: &[(u16, char)]) -> Vec<lopdf::Object> {
+pub fn get_normalized_widths_ttf(
+    font: &ParsedFont,
+    glyph_ids: &[(u16, char)],
+) -> Vec<lopdf::Object> {
     let mut widths_list = Vec::new();
     let mut current_low_gid = 0;
     let mut current_high_gid = 0;
@@ -625,7 +638,10 @@ pub fn get_normalized_widths_ttf(font: &ParsedFont, glyph_ids: &[(u16, char)]) -
         } else {
             widths_list.push(lopdf::Object::Integer(current_low_gid as i64));
             widths_list.push(lopdf::Object::Array(
-                current_width_vec.iter().map(|w| lopdf::Object::Integer(*w)).collect(),
+                current_width_vec
+                    .iter()
+                    .map(|w| lopdf::Object::Integer(*w))
+                    .collect(),
             ));
             current_low_gid = *gid;
             current_high_gid = *gid;
@@ -636,7 +652,10 @@ pub fn get_normalized_widths_ttf(font: &ParsedFont, glyph_ids: &[(u16, char)]) -
     if !current_width_vec.is_empty() {
         widths_list.push(lopdf::Object::Integer(current_low_gid as i64));
         widths_list.push(lopdf::Object::Array(
-            current_width_vec.iter().map(|w| lopdf::Object::Integer(*w)).collect(),
+            current_width_vec
+                .iter()
+                .map(|w| lopdf::Object::Integer(*w))
+                .collect(),
         ));
     }
 
@@ -644,7 +663,10 @@ pub fn get_normalized_widths_ttf(font: &ParsedFont, glyph_ids: &[(u16, char)]) -
 }
 
 #[cfg(feature = "text_layout")]
-pub fn get_normalized_widths_cff(font: &ParsedFont, gid_to_cid_map: &[(u16, u16)]) -> Vec<lopdf::Object> {
+pub fn get_normalized_widths_cff(
+    font: &ParsedFont,
+    gid_to_cid_map: &[(u16, u16)],
+) -> Vec<lopdf::Object> {
     let percentage_font_scaling = 1000.0 / (font.pdf_font_metrics.units_per_em as f32);
 
     gid_to_cid_map
@@ -743,7 +765,7 @@ mod test {
     #[test]
     fn subset_test() {
         use std::collections::BTreeSet;
-        
+
         let charmap: BTreeSet<char> = WIN_1252.iter().copied().collect();
         let mut target_map = vec![];
 
@@ -752,11 +774,17 @@ mod test {
             let mut warnings = Vec::new();
             let font = ParsedFont::from_bytes(bytes, 0, &mut warnings).unwrap();
             // Convert charmap to Vec<(u16, char)> format for subset()
-            let glyph_ids: Vec<(u16, char)> = charmap.iter()
+            let glyph_ids: Vec<(u16, char)> = charmap
+                .iter()
                 .filter_map(|&ch| font.lookup_glyph_index(ch as u32).map(|gid| (gid, ch)))
                 .collect();
-            let (subset_bytes, glyph_mapping) = font.subset(&glyph_ids, allsorts::subset::CmapTarget::Unicode).unwrap();
-            let subset = crate::font::SubsetFont { bytes: subset_bytes, glyph_mapping };
+            let (subset_bytes, glyph_mapping) = font
+                .subset(&glyph_ids, allsorts::subset::CmapTarget::Unicode)
+                .unwrap();
+            let subset = crate::font::SubsetFont {
+                bytes: subset_bytes,
+                glyph_mapping,
+            };
             tm2.insert(name.clone(), subset.bytes.len());
             let _ = std::fs::write(
                 format!(
@@ -803,4 +831,3 @@ mod test {
         );
     }
 }
-

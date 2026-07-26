@@ -238,6 +238,12 @@ impl Interpreter {
                         }
                         ControlFlow::Throw(error) => Some(error),
                     },
+                    // A user `throw` that crossed a call boundary arrives as
+                    // `Thrown` and still holds its value — unwrap it, so
+                    // catching a thrown hash yields the hash and not its
+                    // rendering. Every other error is a Rust-side failure with
+                    // no value to recover, so it is caught as its message.
+                    Err(RuntimeError::Thrown { value, .. }) => Some(value),
                     Err(e) => {
                         let error_value = Value::String(format!("{}", e).into());
                         Some(error_value)

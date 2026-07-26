@@ -4,12 +4,12 @@ use base64::Engine;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    ops::PdfPage, Actions, BlackGenerationExtraFunction,
-    BlackGenerationFunction, BlendMode, BuiltinFont, BuiltinOrExternalFontId, ChangedField, Color,
-    CurTransMat, Destination, ExtendedGraphicsState, FontId, HalftoneType, Line, LineCapStyle,
-    LineDashPattern, LineJoinStyle, OutputImageFormat, OverprintMode, PaintMode, PdfResources,
-    PdfWarnMsg, Point, Polygon, Pt, RenderingIntent, SoftMask, TextItem, TextMatrix,
-    TextRenderingMode, TransferExtraFunction, TransferFunction, UnderColorRemovalExtraFunction,
+    ops::PdfPage, Actions, BlackGenerationExtraFunction, BlackGenerationFunction, BlendMode,
+    BuiltinFont, BuiltinOrExternalFontId, ChangedField, Color, CurTransMat, Destination,
+    ExtendedGraphicsState, FontId, HalftoneType, Line, LineCapStyle, LineDashPattern,
+    LineJoinStyle, OutputImageFormat, OverprintMode, PaintMode, PdfResources, PdfWarnMsg, Point,
+    Polygon, Pt, RenderingIntent, SoftMask, TextItem, TextMatrix, TextRenderingMode,
+    TransferExtraFunction, TransferFunction, UnderColorRemovalExtraFunction,
     UnderColorRemovalFunction, WindingOrder, XObject, XObjectId, XObjectTransform,
 };
 
@@ -518,7 +518,12 @@ fn render_to_svg_internal(
     svg.push('\n');
 
     // Handle fonts
-    let (_, subset_fonts) = crate::serialize::prepare_fonts_for_serialization(resources, &[page.clone()], true, warnings);
+    let (_, subset_fonts) = crate::serialize::prepare_fonts_for_serialization(
+        resources,
+        &[page.clone()],
+        true,
+        warnings,
+    );
     if !subset_fonts.is_empty() {
         // Embed fonts via a <style> block
         svg.push_str("<style>\n");
@@ -614,22 +619,12 @@ fn render_to_svg_internal(
                 // The renderer tracks current font in GraphicsState
                 if in_text_section {
                     if let Some(current_font) = gst.get_current_font() {
-                        let text_svg = render_text_items_to_svg(
-                            items,
-                            &current_font,
-                            &gst,
-                            height,
-                        );
+                        let text_svg = render_text_items_to_svg(items, &current_font, &gst, height);
                         svg.push_str(&text_svg);
                     } else {
                         // No font set - use default and emit warning if configured
                         let default_font = BuiltinOrExternalFontId::Builtin(BuiltinFont::default());
-                        let text_svg = render_text_items_to_svg(
-                            items,
-                            &default_font,
-                            &gst,
-                            height,
-                        );
+                        let text_svg = render_text_items_to_svg(items, &default_font, &gst, height);
                         svg.push_str(&text_svg);
                     }
                 }
@@ -1081,7 +1076,8 @@ fn render_text_items_to_svg(
                         let escaped = escape_xml_text(cid);
                         if x_offset != 0.0 {
                             processed_text.push_str(&format!(
-                                "<tspan dx=\"{}\">{}</tspan>", x_offset, escaped
+                                "<tspan dx=\"{}\">{}</tspan>",
+                                x_offset, escaped
                             ));
                             x_offset = 0.0;
                         } else {

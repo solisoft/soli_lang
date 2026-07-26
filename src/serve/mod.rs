@@ -5675,7 +5675,14 @@ fn call_class_method(
         let result = match result {
             Ok(v) => Ok(v),
             Err(e) => {
-                // If error already has env (breakpoint or WithEnv), keep it; otherwise capture
+                // If error already has env (breakpoint or WithEnv), keep it; otherwise capture.
+                //
+                // A `Thrown` is deliberately NOT exempt here, unlike at the two
+                // interpreter sites that preserve a throw in flight. This is the
+                // controller-action boundary: an error arriving here escaped every
+                // `catch` in user code, so nothing downstream will unwrap the value,
+                // and flattening it to its message is what the dev error page wants.
+                // Exempting it would cost those locals and buy nothing.
                 if e.breakpoint_env_json().is_some() {
                     Err(e)
                 } else {

@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     date::OffsetDateTime,
     deserialize::PageState,
-    image_types::{RawImage, ImageOptimizationOptions},
+    image_types::{ImageOptimizationOptions, RawImage},
     matrix::CurTransMat,
     units::{Pt, Px},
     Op,

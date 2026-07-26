@@ -490,6 +490,41 @@ const CASES: &[(&str, &str)] = &[
         "next_is_refused_rather_than_ignored",
         "let kept = []\nfor i in [1, 2, 3, 4] {\n  if i == 2 { next }\n  kept.push(i)\n}\nprint(kept)",
     ),
+    // --- a thrown value must survive the call boundary it is thrown across ---
+    // The interpreter used to stringify the payload when it left the function,
+    // so `catch` bound the *rendering* and any structured access on it failed.
+    (
+        "throw_hash_across_call_keeps_hash",
+        "def p() { throw {\"code\": 42} }\ntry { p() } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_int_across_call_keeps_int",
+        "def p() { throw 42 }\ntry { p() } catch e { print(e + 1) }",
+    ),
+    (
+        "throw_array_across_call_keeps_array",
+        "def p() { throw [1, 2, 3] }\ntry { p() } catch e { print(e[1]) }",
+    ),
+    (
+        "throw_across_two_call_frames",
+        "def i() { throw {\"code\": 7} }\ndef o() { i() }\ntry { o() } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_rethrown_from_catch_keeps_value",
+        "def p() { throw {\"a\": 1} }\ndef q() { try { p() } catch e { throw e } }\ntry { q() } catch e { print(e[\"a\"]) }",
+    ),
+    (
+        "throw_from_loop_in_fn_keeps_value",
+        "def p() { for i in [1, 2] { throw {\"n\": i} } }\ntry { p() } catch e { print(e[\"n\"]) }",
+    ),
+    (
+        "throw_from_method_keeps_value",
+        "class C { def m() { throw {\"m\": 3} } }\nlet c = C()\ntry { c.m() } catch e { print(e[\"m\"]) }",
+    ),
+    (
+        "throw_from_lambda_keeps_value",
+        "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

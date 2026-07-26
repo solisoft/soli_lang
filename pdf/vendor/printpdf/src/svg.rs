@@ -62,7 +62,13 @@ impl Svg {
 
         let stream = crate::serialize::translate_operations(
             &page.ops,
-            &crate::serialize::prepare_fonts_for_serialization(&PdfResources::default(), &[], false, warnings).0,
+            &crate::serialize::prepare_fonts_for_serialization(
+                &PdfResources::default(),
+                &[],
+                false,
+                warnings,
+            )
+            .0,
             &BTreeMap::new(),
             true,
             warnings,

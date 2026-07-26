@@ -7,24 +7,24 @@
 //! - Internal bridge module for translating azul PDF ops to printpdf Ops
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use azul_core::{
     dom::DomId,
-    geom::{LogicalSize, LogicalRect, LogicalPosition},
+    geom::{LogicalPosition, LogicalRect, LogicalSize},
     resources::RendererResources,
     xml::{str_to_dom, DynamicXmlComponent},
 };
 use azul_layout::{
     font::loading::build_font_cache,
+    font_traits::{FontManager, TextLayoutCache},
     paged::FragmentationContext,
     solver3::paged_layout::layout_document_paged_with_config,
     solver3::pagination::FakePageConfig,
     text3::cache::FontHash,
-    font_traits::{TextLayoutCache, FontManager},
-    Solver3LayoutCache,
     xml::parse_xml_string,
+    Solver3LayoutCache,
 };
 use serde_derive::{Deserialize, Serialize};
 
@@ -47,8 +47,8 @@ pub struct SharedFontPool {
     pub parsed_fonts: Arc<Mutex<HashMap<rust_fontconfig::FontId, azul_css::props::basic::FontRef>>>,
 }
 
-pub mod bridge;
 pub mod border;
+pub mod bridge;
 
 /// Page margins configuration in millimeters
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -78,7 +78,7 @@ impl PageMargins {
             left: margin,
         }
     }
-    
+
     /// Create new margins with symmetric horizontal and vertical values
     pub fn symmetric(vertical: Mm, horizontal: Mm) -> Self {
         Self {
@@ -88,17 +88,22 @@ impl PageMargins {
             left: horizontal,
         }
     }
-    
+
     /// Create new margins with explicit values for all sides
     pub fn new(top: Mm, right: Mm, bottom: Mm, left: Mm) -> Self {
-        Self { top, right, bottom, left }
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
     }
-    
+
     /// Returns the total horizontal margin (left + right)
     pub fn horizontal(&self) -> Mm {
         Mm(self.left.0 + self.right.0)
     }
-    
+
     /// Returns the total vertical margin (top + bottom)
     pub fn vertical(&self) -> Mm {
         Mm(self.top.0 + self.bottom.0)
@@ -247,7 +252,7 @@ pub fn xml_to_pdf_pages(
     let margin_right_pt = options.margins.right.0 * mm_to_pt;
     let margin_bottom_pt = options.margins.bottom.0 * mm_to_pt;
     let margin_left_pt = options.margins.left.0 * mm_to_pt;
-    
+
     // Content area is the page minus margins
     let content_width_pt = page_width_pt - margin_left_pt - margin_right_pt;
     let content_height_pt = page_height_pt - margin_top_pt - margin_bottom_pt;
@@ -265,7 +270,7 @@ pub fn xml_to_pdf_pages(
     // Convert XML nodes to StyledDom with registered HTML components
     // Use content width in CSS px (not pt) for layout
     let mut component_map = crate::components::printpdf_default_components();
-    
+
     let styled_dom = match str_to_dom(
         root_nodes.as_ref(),
         &mut component_map,
@@ -291,7 +296,7 @@ pub fn xml_to_pdf_pages(
         let pool = build_font_pool(&options.fonts, None);
         (pool.fc_cache, pool.parsed_fonts)
     };
-    
+
     let mut font_manager = match FontManager::from_arc_shared(fc_cache_arc, parsed_fonts_arc) {
         Ok(fm) => fm,
         Err(e) => {
@@ -306,11 +311,11 @@ pub fn xml_to_pdf_pages(
 
     // Use content size in CSS px for layout (converted from pt above)
     let content_size = LogicalSize::new(content_width_px, content_height_px);
-    
+
     // Create fragmentation context for paged layout using CONTENT size (in CSS px)
     // Page breaks happen at CSS px boundaries; the bridge converts back to pt.
     let fragmentation_context = FragmentationContext::new_paged(content_size);
-    
+
     // Create layout cache and text cache
     let mut layout_cache = Solver3LayoutCache {
         tree: None,
@@ -323,13 +328,13 @@ pub fn xml_to_pdf_pages(
         cache_map: Default::default(),
     };
     let mut text_cache = TextLayoutCache::new();
-    
+
     // Viewport is the content area in CSS px (layout is done within margins)
     let viewport = LogicalRect {
         origin: LogicalPosition::zero(),
         size: content_size,
     };
-    
+
     // Perform paged layout - returns Vec<DisplayList>
     let renderer_resources = RendererResources::default();
     let mut debug_messages = None; // None = skip debug format! overhead
@@ -338,28 +343,28 @@ pub fn xml_to_pdf_pages(
     use azul_layout::text3::default::PathLoader;
     let loader = PathLoader::new();
     let font_loader = |bytes: &[u8], index: usize| loader.load_font(bytes, index);
-    
+
     // Build page config from options
     // NOTE: Full CSS @page rule parsing is not yet implemented.
     // This uses FakePageConfig for programmatic control over headers/footers.
     let mut page_config = FakePageConfig::new();
-    
+
     if options.show_page_numbers {
         page_config = page_config.with_footer_page_numbers();
     }
-    
+
     if let Some(ref header) = options.header_text {
         page_config = page_config.with_header_text(header.clone());
     }
-    
+
     if let Some(ref footer) = options.footer_text {
         page_config = page_config.with_footer_text(footer.clone());
     }
-    
+
     if options.skip_first_page {
         page_config = page_config.skip_first_page(true);
     }
-    
+
     let display_lists = match layout_document_paged_with_config(
         &mut layout_cache,
         &mut text_cache,
@@ -376,7 +381,9 @@ pub fn xml_to_pdf_pages(
         DomId::ROOT_ID,
         font_loader,
         page_config,
-        azul_core::task::GetSystemTimeCallback { cb: azul_core::task::get_system_time_libstd },
+        azul_core::task::GetSystemTimeCallback {
+            cb: azul_core::task::get_system_time_libstd,
+        },
     ) {
         Ok(lists) => lists,
         Err(e) => {
@@ -392,51 +399,69 @@ pub fn xml_to_pdf_pages(
     // Convert each DisplayList to a PDF page
     let mut pages = Vec::new();
     // font_data_map now maps u64 (font hash) directly to ParsedFont
-    let mut font_data_map: BTreeMap<FontHash, azul_layout::font::parsed::ParsedFont> = BTreeMap::new();
-    
+    let mut font_data_map: BTreeMap<FontHash, azul_layout::font::parsed::ParsedFont> =
+        BTreeMap::new();
+
     // Full page size for PDF coordinate transformation
     let full_page_size = LogicalSize::new(page_width_pt, page_height_pt);
-    
+
     for display_list in display_lists.iter() {
         // Skip pages that have no meaningful content (only background fills)
         // A page needs at least one TextLayout item to be considered "real"
         let has_text_content = display_list.items.iter().any(|item| {
-            matches!(item, azul_layout::solver3::display_list::DisplayListItem::TextLayout { .. })
+            matches!(
+                item,
+                azul_layout::solver3::display_list::DisplayListItem::TextLayout { .. }
+            )
         });
-        
+
         if !has_text_content {
             // Skip this page - it only contains background rectangles
             continue;
         }
-        
+
         // Convert DisplayList to printpdf operations
         // We pass the FULL page size for Y-coordinate transformation (PDF origin is bottom-left)
         // The content was laid out in content_size, but coordinates need to be transformed
         // relative to the full page height
         let pdf_ops = bridge::display_list_to_printpdf_ops_with_margins(
-            &display_list, 
+            &display_list,
             full_page_size,
             margin_left_pt,
             margin_top_pt,
-            &font_manager
-        ).map_err(|e| vec![PdfWarnMsg::warning(0, 0, format!("Failed to convert display list: {}", e))])?;
-        
+            &font_manager,
+        )
+        .map_err(|e| {
+            vec![PdfWarnMsg::warning(
+                0,
+                0,
+                format!("Failed to convert display list: {}", e),
+            )]
+        })?;
+
         // Extract fonts from TextLayout items by collecting font hashes from the layout
         // and then looking them up in the font_manager
         for item in display_list.items.iter() {
-            if let azul_layout::solver3::display_list::DisplayListItem::TextLayout { layout, .. } = item {
+            if let azul_layout::solver3::display_list::DisplayListItem::TextLayout {
+                layout, ..
+            } = item
+            {
                 // Downcast the type-erased layout to UnifiedLayout
-                if let Some(unified_layout) = layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>() {
+                if let Some(unified_layout) =
+                    layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>()
+                {
                     // Collect all font hashes used in this layout by scanning the positioned items
                     let mut used_font_hashes = std::collections::HashSet::new();
                     for positioned_item in &unified_layout.items {
-                        if let azul_layout::text3::cache::ShapedItem::Cluster(cluster) = &positioned_item.item {
+                        if let azul_layout::text3::cache::ShapedItem::Cluster(cluster) =
+                            &positioned_item.item
+                        {
                             for glyph in &cluster.glyphs {
                                 used_font_hashes.insert(glyph.font_hash);
                             }
                         }
                     }
-                    
+
                     // Look up each font hash in the font_manager
                     for font_hash in used_font_hashes {
                         let font_hash_key = FontHash { font_hash };
@@ -446,7 +471,8 @@ pub fn xml_to_pdf_pages(
                                 // Extract ParsedFont from FontRef
                                 let parsed_font = unsafe {
                                     let parsed_ptr = font_ref.get_parsed();
-                                    let parsed_font = &*(parsed_ptr as *const azul_layout::font::parsed::ParsedFont);
+                                    let parsed_font = &*(parsed_ptr
+                                        as *const azul_layout::font::parsed::ParsedFont);
                                     parsed_font.clone()
                                 };
                                 font_data_map.insert(font_hash_key, parsed_font);
@@ -456,15 +482,19 @@ pub fn xml_to_pdf_pages(
                 }
             }
         }
-        
+
         // Create a page for this display list (using full page dimensions)
         let page = PdfPage::new(options.page_width, options.page_height, pdf_ops);
         pages.push(page);
     }
-    
+
     // If no pages were generated, create at least one empty page
     if pages.is_empty() {
-        warnings.push(PdfWarnMsg::warning(0, 0, "No content generated, creating empty page".to_string()));
+        warnings.push(PdfWarnMsg::warning(
+            0,
+            0,
+            "No content generated, creating empty page".to_string(),
+        ));
         let page = PdfPage::new(options.page_width, options.page_height, Vec::new());
         pages.push(page);
     }
@@ -489,7 +519,10 @@ pub fn xml_to_pdf_pages_debug(
     xml: &str,
     options: &XmlRenderOptions,
 ) -> Result<(Vec<PdfPage>, BTreeMap<FontHash, ParsedFont>, PdfDebugInfo), Vec<PdfWarnMsg>> {
-    eprintln!("[DEBUG xml_to_pdf_pages_debug] Starting, xml length={}", xml.len());
+    eprintln!(
+        "[DEBUG xml_to_pdf_pages_debug] Starting, xml length={}",
+        xml.len()
+    );
     let mut warnings = Vec::new();
     let mut debug_info = PdfDebugInfo {
         display_list_debug: Vec::new(),
@@ -500,15 +533,21 @@ pub fn xml_to_pdf_pages_debug(
     eprintln!("[DEBUG xml_to_pdf_pages_debug] Preprocessing HTML...");
     let preprocessed = RawHtml::new(xml).preprocess();
     let inlined_xml = preprocessed.as_str();
-    eprintln!("[DEBUG xml_to_pdf_pages_debug] Preprocessed, length={}", inlined_xml.len());
+    eprintln!(
+        "[DEBUG xml_to_pdf_pages_debug] Preprocessed, length={}",
+        inlined_xml.len()
+    );
 
     // Parse XML to XmlNode tree
     eprintln!("[DEBUG xml_to_pdf_pages_debug] Parsing XML...");
     let root_nodes = match parse_xml_string(inlined_xml) {
         Ok(nodes) => {
-            eprintln!("[DEBUG xml_to_pdf_pages_debug] XML parsed, got {} root nodes", nodes.len());
+            eprintln!(
+                "[DEBUG xml_to_pdf_pages_debug] XML parsed, got {} root nodes",
+                nodes.len()
+            );
             nodes
-        },
+        }
         Err(e) => {
             warnings.push(PdfWarnMsg::error(
                 0,
@@ -527,7 +566,7 @@ pub fn xml_to_pdf_pages_debug(
     let margin_right_pt = options.margins.right.0 * mm_to_pt;
     let margin_bottom_pt = options.margins.bottom.0 * mm_to_pt;
     let margin_left_pt = options.margins.left.0 * mm_to_pt;
-    
+
     // Content area is the page minus margins
     let content_width_pt = page_width_pt - margin_left_pt - margin_right_pt;
     let content_height_pt = page_height_pt - margin_top_pt - margin_bottom_pt;
@@ -542,16 +581,19 @@ pub fn xml_to_pdf_pages_debug(
     eprintln!("[DEBUG xml_to_pdf_pages_debug] Converting to StyledDom...");
     // Use content width in CSS px (not pt) for layout
     let mut component_map = crate::components::printpdf_default_components();
-    
+
     let styled_dom = match str_to_dom(
         root_nodes.as_ref(),
         &mut component_map,
         Some(content_width_px),
     ) {
         Ok(dom) => {
-            eprintln!("[DEBUG xml_to_pdf_pages_debug] StyledDom created with {} nodes", dom.node_data.as_container().len());
+            eprintln!(
+                "[DEBUG xml_to_pdf_pages_debug] StyledDom created with {} nodes",
+                dom.node_data.as_container().len()
+            );
             dom
-        },
+        }
         Err(e) => {
             warnings.push(PdfWarnMsg::error(
                 0,
@@ -571,7 +613,7 @@ pub fn xml_to_pdf_pages_debug(
         let pool = build_font_pool(&options.fonts, None);
         (pool.fc_cache, pool.parsed_fonts)
     };
-    
+
     eprintln!("[DEBUG xml_to_pdf_pages_debug] Creating font manager...");
     let mut font_manager = match FontManager::from_arc_shared(fc_cache_arc, parsed_fonts_arc) {
         Ok(fm) => fm,
@@ -588,10 +630,10 @@ pub fn xml_to_pdf_pages_debug(
 
     // Use content size in CSS px for layout (converted from pt above)
     let content_size = LogicalSize::new(content_width_px, content_height_px);
-    
+
     // Create fragmentation context for paged layout using CONTENT size (in CSS px)
     let fragmentation_context = FragmentationContext::new_paged(content_size);
-    
+
     // Create layout cache and text cache
     let mut layout_cache = Solver3LayoutCache {
         tree: None,
@@ -604,13 +646,13 @@ pub fn xml_to_pdf_pages_debug(
         cache_map: Default::default(),
     };
     let mut text_cache = TextLayoutCache::new();
-    
+
     // Viewport is the content area in CSS px (layout is done within margins)
     let viewport = LogicalRect {
         origin: LogicalPosition::zero(),
         size: content_size,
     };
-    
+
     // Perform paged layout - returns Vec<DisplayList>
     let renderer_resources = RendererResources::default();
     let mut debug_messages = Some(Vec::new());
@@ -619,26 +661,26 @@ pub fn xml_to_pdf_pages_debug(
     use azul_layout::text3::default::PathLoader;
     let loader = PathLoader::new();
     let font_loader = |bytes: &[u8], index: usize| loader.load_font(bytes, index);
-    
+
     // Build page config from options
     let mut page_config = FakePageConfig::new();
-    
+
     if options.show_page_numbers {
         page_config = page_config.with_footer_page_numbers();
     }
-    
+
     if let Some(ref header) = options.header_text {
         page_config = page_config.with_header_text(header.clone());
     }
-    
+
     if let Some(ref footer) = options.footer_text {
         page_config = page_config.with_footer_text(footer.clone());
     }
-    
+
     if options.skip_first_page {
         page_config = page_config.skip_first_page(true);
     }
-    
+
     eprintln!("[DEBUG xml_to_pdf_pages_debug] Starting paged layout...");
     let display_lists = match layout_document_paged_with_config(
         &mut layout_cache,
@@ -656,12 +698,17 @@ pub fn xml_to_pdf_pages_debug(
         DomId::ROOT_ID,
         font_loader,
         page_config,
-        azul_core::task::GetSystemTimeCallback { cb: azul_core::task::get_system_time_libstd },
+        azul_core::task::GetSystemTimeCallback {
+            cb: azul_core::task::get_system_time_libstd,
+        },
     ) {
         Ok(lists) => {
-            eprintln!("[DEBUG xml_to_pdf_pages_debug] Paged layout completed, got {} pages", lists.len());
+            eprintln!(
+                "[DEBUG xml_to_pdf_pages_debug] Paged layout completed, got {} pages",
+                lists.len()
+            );
             lists
-        },
+        }
         Err(e) => {
             warnings.push(PdfWarnMsg::error(
                 0,
@@ -677,18 +724,22 @@ pub fn xml_to_pdf_pages_debug(
     {
         let mut tree_debug = String::new();
         tree_debug.push_str("=== Layout Tree Debug ===\n\n");
-        
+
         if let Some(ref tree) = layout_cache.tree {
             tree_debug.push_str(&format!("Total nodes: {}\n", tree.nodes.len()));
-            tree_debug.push_str(&format!("Calculated positions: {}\n\n", layout_cache.calculated_positions.len()));
-            
+            tree_debug.push_str(&format!(
+                "Calculated positions: {}\n\n",
+                layout_cache.calculated_positions.len()
+            ));
+
             // Dump first 100 nodes with their positions and formatting context
             for (idx, node) in tree.nodes.iter().enumerate().take(100) {
                 let pos = layout_cache.calculated_positions.get(idx);
-                let dom_id_str = node.dom_node_id
+                let dom_id_str = node
+                    .dom_node_id
                     .map(|id| format!("DOM#{}", id.index()))
                     .unwrap_or_else(|| "anonymous".to_string());
-                
+
                 tree_debug.push_str(&format!(
                     "Node {}: {} fc={:?} pos={:?} size={:?} inline_result={}\n",
                     idx,
@@ -698,7 +749,7 @@ pub fn xml_to_pdf_pages_debug(
                     node.used_size,
                     node.inline_layout_result.is_some()
                 ));
-                
+
                 // Show children
                 if !node.children.is_empty() {
                     tree_debug.push_str(&format!("  children: {:?}\n", node.children));
@@ -707,43 +758,63 @@ pub fn xml_to_pdf_pages_debug(
         } else {
             tree_debug.push_str("Layout tree is None!\n");
         }
-        
+
         debug_info.display_list_debug.push(tree_debug);
     }
 
     // Convert each DisplayList to a PDF page
     let mut pages = Vec::new();
-    let mut font_data_map: BTreeMap<FontHash, azul_layout::font::parsed::ParsedFont> = BTreeMap::new();
-    
+    let mut font_data_map: BTreeMap<FontHash, azul_layout::font::parsed::ParsedFont> =
+        BTreeMap::new();
+
     // Full page size for PDF coordinate transformation
     let full_page_size = LogicalSize::new(page_width_pt, page_height_pt);
-    
+
     for (page_idx, display_list) in display_lists.iter().enumerate() {
         // Debug: capture display list info for first page only
         if page_idx == 0 {
             let mut dl_debug = String::new();
             dl_debug.push_str(&format!("=== Display List for Page {} ===\n", page_idx + 1));
             dl_debug.push_str(&format!("Total items: {}\n\n", display_list.items.len()));
-            
+
             // Count item types
             let mut text_layout_count = 0;
             let mut text_count = 0;
             let mut rect_count = 0;
             let mut other_count = 0;
-            
+
             for (item_idx, item) in display_list.items.iter().enumerate() {
                 use azul_layout::solver3::display_list::DisplayListItem;
                 match item {
-                    DisplayListItem::TextLayout { bounds, font_hash: _, font_size_px, color, .. } => {
+                    DisplayListItem::TextLayout {
+                        bounds,
+                        font_hash: _,
+                        font_size_px,
+                        color,
+                        ..
+                    } => {
                         text_layout_count += 1;
                         dl_debug.push_str(&format!("Item {}: TextLayout at ({:.1}, {:.1}) size {:.1}x{:.1} font_size={:.1} color=({},{},{},{})\n", 
                             item_idx, bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
                             font_size_px, color.r, color.g, color.b, color.a));
                     }
-                    DisplayListItem::Text { glyphs, font_size_px, color, .. } => {
+                    DisplayListItem::Text {
+                        glyphs,
+                        font_size_px,
+                        color,
+                        ..
+                    } => {
                         text_count += 1;
-                        dl_debug.push_str(&format!("Item {}: Text with {} glyphs, font_size={:.1} color=({},{},{},{})\n", 
-                            item_idx, glyphs.len(), font_size_px, color.r, color.g, color.b, color.a));
+                        dl_debug.push_str(&format!(
+                            "Item {}: Text with {} glyphs, font_size={:.1} color=({},{},{},{})\n",
+                            item_idx,
+                            glyphs.len(),
+                            font_size_px,
+                            color.r,
+                            color.g,
+                            color.b,
+                            color.a
+                        ));
                     }
                     DisplayListItem::Rect { bounds, color, .. } => {
                         rect_count += 1;
@@ -758,52 +829,69 @@ pub fn xml_to_pdf_pages_debug(
                     }
                 }
             }
-            dl_debug.push_str(&format!("\n=== Summary: {} TextLayout, {} Text, {} Rect, {} other ===\n", 
-                text_layout_count, text_count, rect_count, other_count));
+            dl_debug.push_str(&format!(
+                "\n=== Summary: {} TextLayout, {} Text, {} Rect, {} other ===\n",
+                text_layout_count, text_count, rect_count, other_count
+            ));
             debug_info.display_list_debug.push(dl_debug);
         }
-        
+
         // Convert DisplayList to printpdf operations
         let pdf_ops = bridge::display_list_to_printpdf_ops_with_margins(
-            &display_list, 
+            &display_list,
             full_page_size,
             margin_left_pt,
             margin_top_pt,
-            &font_manager
-        ).map_err(|e| vec![PdfWarnMsg::warning(0, 0, format!("Failed to convert display list: {}", e))])?;
-        
+            &font_manager,
+        )
+        .map_err(|e| {
+            vec![PdfWarnMsg::warning(
+                0,
+                0,
+                format!("Failed to convert display list: {}", e),
+            )]
+        })?;
+
         // Debug: capture PDF ops for first page only
         if page_idx == 0 {
             let mut ops_debug = String::new();
             ops_debug.push_str(&format!("=== PDF Ops for Page {} ===\n", page_idx + 1));
             ops_debug.push_str(&format!("Total ops: {}\n\n", pdf_ops.len()));
-            
+
             for (op_idx, op) in pdf_ops.iter().enumerate() {
                 ops_debug.push_str(&format!("Op {}: {:?}\n", op_idx, op));
             }
             debug_info.pdf_ops_debug.push(ops_debug);
         }
-        
+
         // Extract fonts from TextLayout items
         for item in display_list.items.iter() {
-            if let azul_layout::solver3::display_list::DisplayListItem::TextLayout { layout, .. } = item {
-                if let Some(unified_layout) = layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>() {
+            if let azul_layout::solver3::display_list::DisplayListItem::TextLayout {
+                layout, ..
+            } = item
+            {
+                if let Some(unified_layout) =
+                    layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>()
+                {
                     let mut used_font_hashes = std::collections::HashSet::new();
                     for positioned_item in &unified_layout.items {
-                        if let azul_layout::text3::cache::ShapedItem::Cluster(cluster) = &positioned_item.item {
+                        if let azul_layout::text3::cache::ShapedItem::Cluster(cluster) =
+                            &positioned_item.item
+                        {
                             for glyph in &cluster.glyphs {
                                 used_font_hashes.insert(glyph.font_hash);
                             }
                         }
                     }
-                    
+
                     for font_hash in used_font_hashes {
                         let font_hash_key = FontHash { font_hash };
                         if !font_data_map.contains_key(&font_hash_key) {
                             if let Some(font_ref) = font_manager.get_font_by_hash(font_hash) {
                                 let parsed_font = unsafe {
                                     let parsed_ptr = font_ref.get_parsed();
-                                    let parsed_font = &*(parsed_ptr as *const azul_layout::font::parsed::ParsedFont);
+                                    let parsed_font = &*(parsed_ptr
+                                        as *const azul_layout::font::parsed::ParsedFont);
                                     parsed_font.clone()
                                 };
                                 font_data_map.insert(font_hash_key, parsed_font);
@@ -813,16 +901,23 @@ pub fn xml_to_pdf_pages_debug(
                 }
             }
         }
-        
+
         // Create a page for this display list
         let page = PdfPage::new(options.page_width, options.page_height, pdf_ops);
         pages.push(page);
     }
-    eprintln!("[DEBUG xml_to_pdf_pages_debug] Display lists converted to {} pages", pages.len());
-    
+    eprintln!(
+        "[DEBUG xml_to_pdf_pages_debug] Display lists converted to {} pages",
+        pages.len()
+    );
+
     // If no pages were generated, create at least one empty page
     if pages.is_empty() {
-        warnings.push(PdfWarnMsg::warning(0, 0, "No content generated, creating empty page".to_string()));
+        warnings.push(PdfWarnMsg::warning(
+            0,
+            0,
+            "No content generated, creating empty page".to_string(),
+        ));
         let page = PdfPage::new(options.page_width, options.page_height, Vec::new());
         pages.push(page);
     }
@@ -859,7 +954,7 @@ impl RawHtml {
     pub fn new(html: impl Into<String>) -> Self {
         Self(html.into())
     }
-    
+
     /// Process raw HTML into preprocessed HTML with CSS inlined
     pub fn preprocess(self) -> PreprocessedHtml {
         let cleaned = clean_html_elements(&self.0);
@@ -908,14 +1003,14 @@ fn inline_css_in_xml(xml: &str) -> String {
     //
     // This function used to remove <style> tags, which broke global CSS application!
     // Now we just return the XML as-is, letting azul's str_to_dom() handle all CSS.
-    
+
     xml.to_string()
 }
 
 /// Extract HTML configuration from XML content (basic parsing)
 fn extract_html_config(xml: &str) -> HtmlExtractedConfig {
     let mut config = HtmlExtractedConfig::default();
-    
+
     // Extract title
     if let Some(title_start) = xml.find("<title>") {
         if let Some(title_end) = xml[title_start..].find("</title>") {
@@ -923,18 +1018,18 @@ fn extract_html_config(xml: &str) -> HtmlExtractedConfig {
             config.title = Some(title_content.trim().to_string());
         }
     }
-    
+
     // Extract meta tags
     let mut search_pos = 0;
     while let Some(meta_start) = xml[search_pos..].find("<meta ") {
         let meta_pos = search_pos + meta_start;
         if let Some(meta_end) = xml[meta_pos..].find('>') {
             let meta_tag = &xml[meta_pos..meta_pos + meta_end];
-            
+
             // Extract name and content attributes
             let name = extract_attribute(meta_tag, "name");
             let content = extract_attribute(meta_tag, "content");
-            
+
             if let (Some(name), Some(content)) = (name, content) {
                 if name.starts_with("pdf.options.") {
                     let option_name = &name[12..]; // Skip "pdf.options."
@@ -956,13 +1051,13 @@ fn extract_html_config(xml: &str) -> HtmlExtractedConfig {
                     config.metadata.insert(metadata_key.to_string(), content);
                 }
             }
-            
+
             search_pos = meta_pos + meta_end + 1;
         } else {
             break;
         }
     }
-    
+
     config
 }
 
@@ -1032,24 +1127,24 @@ pub fn apply_html_config(
 /// Remove non-renderable HTML elements from XML string
 fn clean_html_elements(xml: &str) -> String {
     let mut result = xml.to_string();
-    
+
     let non_renderable = [
-        "script", "noscript", "iframe", "canvas", "audio", "video", 
-        "source", "track", "embed", "object", "param", "picture",
+        "script", "noscript", "iframe", "canvas", "audio", "video", "source", "track", "embed",
+        "object", "param", "picture",
     ];
-    
+
     for elem in non_renderable {
         // Remove self-closing tags
         let self_closing = format!("<{} />", elem);
         result = result.replace(&self_closing, "");
-        
+
         let self_closing2 = format!("<{}/>", elem);
         result = result.replace(&self_closing2, "");
-        
+
         // Remove paired tags with content
         let open_tag = format!("<{}>", elem);
         let close_tag = format!("</{}>", elem);
-        
+
         while let Some(start) = result.find(&open_tag) {
             if let Some(end_pos) = result[start..].find(&close_tag) {
                 let end = start + end_pos + close_tag.len();
@@ -1058,7 +1153,7 @@ fn clean_html_elements(xml: &str) -> String {
                 break;
             }
         }
-        
+
         // Remove tags with attributes
         let open_tag_with_attr = format!("<{} ", elem);
         while let Some(start) = result.find(&open_tag_with_attr) {
@@ -1076,13 +1171,16 @@ fn clean_html_elements(xml: &str) -> String {
             }
         }
     }
-    
+
     result
 }
 
 /// Process HTML content for rendering: inline CSS, extract config, clean elements
 /// This function is now deprecated - use RawHtml::new().preprocess() instead
-#[deprecated(since = "0.8.0", note = "Use RawHtml::new().preprocess() for type-safe preprocessing")]
+#[deprecated(
+    since = "0.8.0",
+    note = "Use RawHtml::new().preprocess() for type-safe preprocessing"
+)]
 pub fn process_html_for_rendering(html: &str) -> (String, HtmlExtractedConfig) {
     let config = extract_html_config(html);
     let preprocessed = RawHtml::new(html).preprocess();
@@ -1129,12 +1227,15 @@ mod tests {
                 </head>
             </html>
         "#;
-        
+
         let config = extract_html_config(html);
         assert_eq!(config.title, Some("Test Document".to_string()));
         assert_eq!(config.page_width, Some(200.0));
         assert_eq!(config.page_height, Some(280.0));
-        assert_eq!(config.metadata.get("author"), Some(&"Test Author".to_string()));
+        assert_eq!(
+            config.metadata.get("author"),
+            Some(&"Test Author".to_string())
+        );
     }
 
     #[test]
@@ -1146,7 +1247,7 @@ mod tests {
                 <iframe src="test.html"></iframe>
             </div>
         "#;
-        
+
         let cleaned = clean_html_elements(html);
         assert!(!cleaned.contains("<script"));
         assert!(!cleaned.contains("<iframe"));
@@ -1159,7 +1260,7 @@ mod tests {
             <style>div { color: red; }</style>
             <div>Test</div>
         "#;
-        
+
         // inline_css_in_xml no longer removes <style> tags - they are left for azul's CSS engine
         let inlined = inline_css_in_xml(xml);
         // <style> tags are preserved for str_to_dom() to process

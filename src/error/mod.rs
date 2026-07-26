@@ -270,6 +270,27 @@ pub enum RuntimeError {
     #[error("{0} requires the interpreter at {1}")]
     EngineFallback(String, Span),
 
+    /// A user-level `throw` that escaped the function it was thrown in.
+    ///
+    /// Within one function body a throw travels as `ControlFlow::Throw(value)`
+    /// and reaches `catch` with the value intact. Crossing a call boundary
+    /// means leaving Soli's control-flow enum for Rust's `Result`, so the
+    /// thrown value needs somewhere to ride — hence this variant. Formatting
+    /// it stringifies the payload, which is what an *uncaught* throw should
+    /// print, but `try`/`catch` unwraps `value` instead of the message, so a
+    /// thrown hash is still a hash once it is caught.
+    ///
+    /// Before this existed the value was stringified at the call boundary and
+    /// `catch` re-wrapped that message as a `String`, so `throw {"code": 404}`
+    /// arrived as the *text* `Unhandled exception: {code => 404} at 0:0` and
+    /// `e["code"]` failed — but only in the interpreter. The VM has always
+    /// preserved the value, so this is the interpreter matching production.
+    #[error("Unhandled exception: {value} at {span}")]
+    Thrown {
+        value: crate::interpreter::value::Value,
+        span: Span,
+    },
+
     #[error("{message} at {span}")]
     General { message: String, span: Span },
 
@@ -397,6 +418,7 @@ impl RuntimeError {
             Self::NoSuchProperty { span, .. } => *span,
             Self::NotAClass(_, span) => *span,
             Self::EngineFallback(_, span) => *span,
+            Self::Thrown { span, .. } => *span,
             Self::General { span, .. } => *span,
             Self::Breakpoint { span, .. } => *span,
             Self::WithEnv { span, .. } => *span,
@@ -406,6 +428,20 @@ impl RuntimeError {
     /// Check if this is a breakpoint error.
     pub fn is_breakpoint(&self) -> bool {
         matches!(self, Self::Breakpoint { .. })
+    }
+
+    /// A user-level `throw` in flight across a call boundary.
+    ///
+    /// The error paths that capture locals for the dev error page must leave
+    /// these alone: wrapping one in `WithEnv` replaces the payload with its
+    /// rendering, and the `catch` that recovers the value is then handed a
+    /// string. `is_breakpoint` guards the same paths for the same reason.
+    ///
+    /// It is also a `throw` that is *about to be caught* in the overwhelming
+    /// majority of cases, so serializing the whole environment to JSON for it
+    /// is work thrown away — see the sites that call this.
+    pub fn is_thrown(&self) -> bool {
+        matches!(self, Self::Thrown { .. })
     }
 
     /// True when the VM deliberately punted this operation to the

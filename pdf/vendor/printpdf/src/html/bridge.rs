@@ -10,20 +10,18 @@
 //! generate ShowText operations (with SetFont for font/size), which map 1:1 to PDF operators.
 //! which is necessary for proper text shaping in complex scripts.
 
-use azul_core::{
-    geom::{LogicalRect, LogicalSize, LogicalPosition},
-};
+use azul_core::geom::{LogicalPosition, LogicalRect, LogicalSize};
 use azul_css::props::basic::ColorU;
 use azul_layout::{
     solver3::display_list::{DisplayList, DisplayListItem},
     text3::cache::{FontManager, ParsedFontTrait, UnifiedLayout},
 };
 
-use crate::{Color, Mm, Op, Pt, Rgb, FontId};
+use crate::{Color, FontId, Mm, Op, Pt, Rgb};
 
 use super::border::{
-    BorderConfig, extract_border_widths, extract_border_colors, 
-    extract_border_styles, extract_border_radii, render_border,
+    extract_border_colors, extract_border_radii, extract_border_styles, extract_border_widths,
+    render_border, BorderConfig,
 };
 
 /// Convert azul ColorU to printpdf Color
@@ -37,11 +35,11 @@ fn convert_color(color: &ColorU) -> Color {
 }
 
 /// Convert a display list directly to printpdf Ops with margin support.
-/// 
+///
 /// This version applies margins during coordinate transformation:
 /// - `margin_left_pt`: Shifts all X coordinates to the right
 /// - `margin_top_pt`: Shifts all Y coordinates down from the top
-/// 
+///
 /// The layout engine produces coordinates relative to (0,0) at top-left of the content area.
 /// PDF uses bottom-left origin. This function transforms coordinates as:
 /// - PDF_X = layout_x + margin_left
@@ -55,21 +53,26 @@ pub fn display_list_to_printpdf_ops_with_margins<T: ParsedFontTrait + 'static>(
 ) -> Result<Vec<Op>, String> {
     let mut ops = Vec::new();
     let page_height = page_size.height;
-    
-    // Track the current TextLayout for glyph-to-unicode mapping
-    let mut current_text_layout: Option<(&azul_layout::text3::cache::UnifiedLayout, LogicalRect)> = None;
 
-    let _text_layout_count = display_list.items.iter().filter(|item| matches!(item, DisplayListItem::TextLayout { .. })).count();
+    // Track the current TextLayout for glyph-to-unicode mapping
+    let mut current_text_layout: Option<(&azul_layout::text3::cache::UnifiedLayout, LogicalRect)> =
+        None;
+
+    let _text_layout_count = display_list
+        .items
+        .iter()
+        .filter(|item| matches!(item, DisplayListItem::TextLayout { .. }))
+        .count();
 
     for (_idx, item) in display_list.items.iter().enumerate() {
         convert_display_list_item_with_margins(
-            &mut ops, 
-            item, 
-            page_height, 
+            &mut ops,
+            item,
+            page_height,
             margin_left_pt,
             margin_top_pt,
-            &mut current_text_layout, 
-            font_manager
+            &mut current_text_layout,
+            font_manager,
         );
     }
 
@@ -102,14 +105,8 @@ fn pt_to_mm(pt: f32) -> Mm {
 /// Convert a CSS-px `LogicalRect` to PDF-pt `LogicalRect`.
 fn bounds_px_to_pt(b: &LogicalRect) -> LogicalRect {
     LogicalRect {
-        origin: LogicalPosition::new(
-            b.origin.x * CSS_PX_TO_PT,
-            b.origin.y * CSS_PX_TO_PT,
-        ),
-        size: LogicalSize::new(
-            b.size.width * CSS_PX_TO_PT,
-            b.size.height * CSS_PX_TO_PT,
-        ),
+        origin: LogicalPosition::new(b.origin.x * CSS_PX_TO_PT, b.origin.y * CSS_PX_TO_PT),
+        size: LogicalSize::new(b.size.width * CSS_PX_TO_PT, b.size.height * CSS_PX_TO_PT),
     }
 }
 
@@ -121,12 +118,7 @@ fn make_rect_polygon_pt(x: f32, y: f32, w: f32, h: f32) -> crate::graphics::Poly
     };
     crate::graphics::Polygon {
         rings: vec![crate::graphics::PolygonRing {
-            points: vec![
-                lp(x, y),
-                lp(x + w, y),
-                lp(x + w, y + h),
-                lp(x, y + h),
-            ],
+            points: vec![lp(x, y), lp(x + w, y), lp(x + w, y + h), lp(x, y + h)],
         }],
         mode: crate::graphics::PaintMode::Fill,
         winding_order: crate::graphics::WindingOrder::NonZero,
@@ -147,28 +139,32 @@ struct CoordTransform {
 
 impl CoordTransform {
     fn new(page_height: f32, margin_left: f32, margin_top: f32) -> Self {
-        Self { page_height, margin_left, margin_top }
+        Self {
+            page_height,
+            margin_left,
+            margin_top,
+        }
     }
-    
+
     /// Transform X coordinate from layout space (CSS px) to PDF space (pt)
     #[inline]
     fn x(&self, layout_x: f32) -> f32 {
         layout_x * CSS_PX_TO_PT + self.margin_left
     }
-    
+
     /// Transform Y coordinate from layout space (CSS px) to PDF space (pt)
     /// Layout Y is from top (increases downward), PDF Y is from bottom (increases upward)
     #[inline]
     fn y(&self, layout_y: f32) -> f32 {
         self.page_height - layout_y * CSS_PX_TO_PT - self.margin_top
     }
-    
+
     /// Transform a rectangle's Y position (accounts for rectangle height in CSS px)
     #[inline]
     fn rect_y(&self, layout_y: f32, height: f32) -> f32 {
         self.page_height - (layout_y + height) * CSS_PX_TO_PT - self.margin_top
     }
-    
+
     /// Convert a dimension (width, height, font size) from CSS px to PDF pt
     #[inline]
     fn dim(&self, px_value: f32) -> f32 {
@@ -186,7 +182,7 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
     font_manager: &FontManager<T>,
 ) {
     let transform = CoordTransform::new(page_height, margin_left, margin_top);
-    
+
     match item {
         DisplayListItem::Rect {
             bounds,
@@ -197,7 +193,7 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
             if bounds.size.width == 0.0 || bounds.size.height == 0.0 {
                 return;
             }
-            
+
             // Convert rectangle to PDF polygon
             ops.push(Op::SaveGraphicsState);
 
@@ -208,13 +204,17 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                 bottom_right: (border_radius.bottom_right, border_radius.bottom_right),
                 bottom_left: (border_radius.bottom_left, border_radius.bottom_left),
             };
-            
+
             // Check if we have border radius
-            let has_radius = radii.top_left.0 > 0.0 || radii.top_left.1 > 0.0
-                || radii.top_right.0 > 0.0 || radii.top_right.1 > 0.0
-                || radii.bottom_right.0 > 0.0 || radii.bottom_right.1 > 0.0
-                || radii.bottom_left.0 > 0.0 || radii.bottom_left.1 > 0.0;
-            
+            let has_radius = radii.top_left.0 > 0.0
+                || radii.top_left.1 > 0.0
+                || radii.top_right.0 > 0.0
+                || radii.top_right.1 > 0.0
+                || radii.bottom_right.0 > 0.0
+                || radii.bottom_right.1 > 0.0
+                || radii.bottom_left.0 > 0.0
+                || radii.bottom_left.1 > 0.0;
+
             if has_radius {
                 // Use rounded rectangle path for filling (with margin-adjusted coordinates)
                 // Convert layout coordinates from CSS px to PDF pt before passing
@@ -229,13 +229,13 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                     margin_left,
                     margin_top,
                 );
-                
+
                 let polygon = crate::graphics::Polygon {
                     rings: vec![crate::graphics::PolygonRing { points }],
                     mode: crate::graphics::PaintMode::Fill,
                     winding_order: crate::graphics::WindingOrder::NonZero,
                 };
-                
+
                 ops.push(Op::SetFillColor {
                     col: convert_color(color),
                 });
@@ -250,9 +250,11 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                 ops.push(Op::SetFillColor {
                     col: convert_color(color),
                 });
-                ops.push(Op::DrawPolygon { polygon: make_rect_polygon_pt(x, y, w, h) });
+                ops.push(Op::DrawPolygon {
+                    polygon: make_rect_polygon_pt(x, y, w, h),
+                });
             }
-            
+
             ops.push(Op::RestoreGraphicsState);
         }
 
@@ -264,19 +266,34 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
             color,
         } => {
             // Extract the UnifiedLayout from the type-erased Arc<dyn Any>
-            if let Some(unified_layout) = layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>() {
+            if let Some(unified_layout) =
+                layout.downcast_ref::<azul_layout::text3::cache::UnifiedLayout>()
+            {
                 // Process this TextLayout immediately with margin support
-                render_unified_layout_with_margins(ops, unified_layout, bounds, *color, &transform, font_manager);
-                
+                render_unified_layout_with_margins(
+                    ops,
+                    unified_layout,
+                    bounds,
+                    *color,
+                    &transform,
+                    font_manager,
+                );
+
                 // Also update the current text layout for any subsequent processing
                 *current_text_layout = Some((unified_layout, *bounds));
             }
         }
 
-        DisplayListItem::Text { glyphs, font_hash, font_size_px, color, clip_rect: _ } => {
+        DisplayListItem::Text {
+            glyphs,
+            font_hash,
+            font_size_px,
+            color,
+            clip_rect: _,
+        } => {
             // Render simple text items (used for headers/footers)
             // These use Unicode codepoints as glyph indices and a placeholder font hash (0)
-            // 
+            //
             // IMPORTANT: For external fonts (font_hash != 0), the TextLayout item already
             // renders the text via render_unified_layout_with_margins(). The Text items
             // are kept in the display list for other renderers (like WebRender for screen)
@@ -284,23 +301,23 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
             if glyphs.is_empty() {
                 return;
             }
-            
+
             // For text with font_hash == 0, use a builtin PDF font (Helvetica)
             // This is used for page headers/footers which don't go through text shaping
             let use_builtin_font = font_hash.font_hash == 0;
-            
+
             // Skip external fonts - they are rendered via TextLayout
             if !use_builtin_font {
                 return;
             }
-            
+
             ops.push(Op::SaveGraphicsState);
-            
+
             // Set text color
             ops.push(Op::SetFillColor {
                 col: convert_color(color),
             });
-            
+
             if use_builtin_font {
                 // Use Helvetica for system-generated text (headers/footers)
                 ops.push(Op::SetFont {
@@ -315,20 +332,20 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                     size: Pt(transform.dim(*font_size_px)),
                 });
             }
-            
+
             // Start text section
             ops.push(Op::StartTextSection);
-            
+
             // Render glyphs - collect all characters into a single text string for better rendering
             // Group glyphs by approximate y-position to handle potential line breaks
             let mut text_string = String::new();
             let mut first_glyph_pos: Option<(f32, f32)> = None;
-            
+
             for glyph in glyphs {
                 if first_glyph_pos.is_none() {
                     first_glyph_pos = Some((glyph.point.x, glyph.point.y));
                 }
-                
+
                 // For builtin fonts, glyph.index is the Unicode codepoint
                 if use_builtin_font {
                     if let Some(ch) = char::from_u32(glyph.index) {
@@ -336,40 +353,40 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                     }
                 }
             }
-            
+
             if let Some((x, y)) = first_glyph_pos {
                 // Convert coordinates
                 let pdf_x = transform.x(x);
                 let pdf_y = transform.y(y);
-                
+
                 // Set position for this text
                 ops.push(Op::SetTextMatrix {
                     matrix: crate::matrix::TextMatrix::Raw([
-                        1.0, 0.0,   // No scaling/rotation
-                        0.0, 1.0,
-                        pdf_x, pdf_y,
+                        1.0, 0.0, // No scaling/rotation
+                        0.0, 1.0, pdf_x, pdf_y,
                     ]),
                 });
-                
+
                 if use_builtin_font && !text_string.is_empty() {
                     ops.push(Op::ShowText {
                         items: vec![crate::text::TextItem::Text(text_string)],
                     });
                 } else if !use_builtin_font {
                     // For external fonts, use glyph IDs
-                    let glyph_ids: Vec<crate::text::Codepoint> = glyphs.iter().map(|g| {
-                        crate::text::Codepoint::new(g.index as u16, 0.0)
-                    }).collect();
-                    
+                    let glyph_ids: Vec<crate::text::Codepoint> = glyphs
+                        .iter()
+                        .map(|g| crate::text::Codepoint::new(g.index as u16, 0.0))
+                        .collect();
+
                     ops.push(Op::ShowText {
                         items: vec![crate::text::TextItem::GlyphIds(glyph_ids)],
                     });
                 }
             }
-            
+
             // End text section
             ops.push(Op::EndTextSection);
-            
+
             ops.push(Op::RestoreGraphicsState);
         }
 
@@ -393,17 +410,32 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                 margin_left,
                 margin_top,
             };
-            
+
             render_border(ops, &config);
         }
 
-        DisplayListItem::Image { bounds: _, image: _ } => {
+        DisplayListItem::Image {
+            bounds: _,
+            image: _,
+        } => {
             // Image rendering - not yet implemented
         }
 
-        DisplayListItem::Underline { bounds, color, thickness: _ }
-        | DisplayListItem::Strikethrough { bounds, color, thickness: _ }
-        | DisplayListItem::Overline { bounds, color, thickness: _ } => {
+        DisplayListItem::Underline {
+            bounds,
+            color,
+            thickness: _,
+        }
+        | DisplayListItem::Strikethrough {
+            bounds,
+            color,
+            thickness: _,
+        }
+        | DisplayListItem::Overline {
+            bounds,
+            color,
+            thickness: _,
+        } => {
             // Text decorations are rendered as simple filled rectangles.
             // The decoration thickness is already encoded in bounds.size.height.
             if bounds.size.width > 0.0 && bounds.size.height > 0.0 {
@@ -413,8 +445,12 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
                 let h = transform.dim(bounds.size.height);
 
                 ops.push(Op::SaveGraphicsState);
-                ops.push(Op::SetFillColor { col: convert_color(color) });
-                ops.push(Op::DrawPolygon { polygon: make_rect_polygon_pt(x, y, w, h) });
+                ops.push(Op::SetFillColor {
+                    col: convert_color(color),
+                });
+                ops.push(Op::DrawPolygon {
+                    polygon: make_rect_polygon_pt(x, y, w, h),
+                });
                 ops.push(Op::RestoreGraphicsState);
             }
         }
@@ -426,19 +462,19 @@ fn convert_display_list_item_with_margins<'a, T: ParsedFontTrait + 'static>(
 }
 
 /// Public API for rendering UnifiedLayout to PDF operations (without margins)
-/// 
+///
 /// This is useful for rendering text layouts directly without going through
 /// the full display list conversion.
 pub fn render_unified_layout_public<T: ParsedFontTrait + 'static>(
     layout: &UnifiedLayout,
     bounds_width: f32,
-    bounds_height: f32, 
+    bounds_height: f32,
     color: ColorU,
     page_height: f32,
     _font_manager: &FontManager<T>,
 ) -> Vec<Op> {
     let mut ops = Vec::new();
-    let bounds = LogicalRect { 
+    let bounds = LogicalRect {
         origin: LogicalPosition::new(0.0, 0.0),
         size: LogicalSize::new(bounds_width, bounds_height),
     };
@@ -451,7 +487,7 @@ fn render_unified_layout_impl<T: ParsedFontTrait + 'static>(
     ops: &mut Vec<Op>,
     layout: &UnifiedLayout,
     bounds: &LogicalRect,
-    _color: ColorU,  // Unused: per-glyph color from layout takes precedence
+    _color: ColorU, // Unused: per-glyph color from layout takes precedence
     page_height: f32,
     font_manager: &FontManager<T>,
 ) {
@@ -459,7 +495,7 @@ fn render_unified_layout_impl<T: ParsedFontTrait + 'static>(
 
     // Get loaded fonts from font manager for glyph run extraction
     let loaded_fonts = font_manager.get_loaded_fonts();
-    
+
     // Get PDF-optimized glyph runs (grouped by font/color/style/line)
     let glyph_runs = get_glyph_runs_pdf(layout, &loaded_fonts);
 
@@ -503,7 +539,7 @@ fn render_unified_layout_impl<T: ParsedFontTrait + 'static>(
             // Calculate absolute position for this glyph (in CSS px)
             let glyph_x_px = bounds.origin.x + glyph.position.x;
             let glyph_y_px = bounds.origin.y + glyph.position.y;
-            
+
             // Convert from CSS px to PDF pt, then flip Y axis
             // HTML: origin at top-left, Y increases downward
             // PDF: origin at bottom-left, Y increases upward
@@ -514,12 +550,12 @@ fn render_unified_layout_impl<T: ParsedFontTrait + 'static>(
             // The matrix values are in PDF user space units (points)
             ops.push(Op::SetTextMatrix {
                 matrix: crate::matrix::TextMatrix::Raw([
-                    1.0,    // a: Horizontal scaling (1.0 = no scaling)
-                    0.0,    // b: Horizontal skewing
-                    0.0,    // c: Vertical skewing
-                    1.0,    // d: Vertical scaling (1.0 = no scaling)
-                    pdf_x,  // e: Horizontal translation (in points)
-                    pdf_y,  // f: Vertical translation (in points)
+                    1.0,   // a: Horizontal scaling (1.0 = no scaling)
+                    0.0,   // b: Horizontal skewing
+                    0.0,   // c: Vertical skewing
+                    1.0,   // d: Vertical scaling (1.0 = no scaling)
+                    pdf_x, // e: Horizontal translation (in points)
+                    pdf_y, // f: Vertical translation (in points)
                 ]),
             });
 
@@ -530,7 +566,7 @@ fn render_unified_layout_impl<T: ParsedFontTrait + 'static>(
                         gid: glyph.glyph_id,
                         offset: 0.0,
                         cid: Some(glyph.unicode_codepoint.clone()),
-                    }
+                    },
                 ])],
             });
         }
@@ -545,7 +581,7 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
     ops: &mut Vec<Op>,
     layout: &UnifiedLayout,
     bounds: &LogicalRect,
-    _color: ColorU,  // Unused: per-glyph color from layout takes precedence
+    _color: ColorU, // Unused: per-glyph color from layout takes precedence
     transform: &CoordTransform,
     font_manager: &FontManager<T>,
 ) {
@@ -553,7 +589,7 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
 
     // Get loaded fonts from font manager for glyph run extraction
     let loaded_fonts = font_manager.get_loaded_fonts();
-    
+
     // Get PDF-optimized glyph runs (grouped by font/color/style/line)
     let glyph_runs = get_glyph_runs_pdf(layout, &loaded_fonts);
 
@@ -564,57 +600,59 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
     // ========================================================================
     // FIRST PASS: Render all inline background colors BEFORE any text
     // ========================================================================
-    // 
+    //
     // This two-pass approach ensures proper z-order:
     // - Pass 1: Draw all background rectangles (this loop)
     // - Pass 2: Draw all text on top of backgrounds (next loop)
-    // 
+    //
     // Without this separation, backgrounds would be drawn interleaved with text,
     // potentially covering text from previous runs.
-    // 
+    //
     // The background_color comes from CSS like: <span style="background-color: yellow">
     // It's propagated through: CSS -> StyleProperties -> ShapedGlyph -> PdfGlyphRun
-    // 
+    //
     for run in glyph_runs.iter() {
         if run.glyphs.is_empty() {
             continue;
         }
-        
+
         // Render background if present
         if let Some(bg_color) = run.background_color {
             if bg_color.a > 0 {
                 // Calculate bounding box of this glyph run
-                if let (Some(first_glyph), Some(last_glyph)) = 
-                    (run.glyphs.first(), run.glyphs.last()) 
+                if let (Some(first_glyph), Some(last_glyph)) =
+                    (run.glyphs.first(), run.glyphs.last())
                 {
                     let font_size = run.font_size_px;
                     // Estimate ascent/descent from font size (typical values)
                     let ascent = font_size * 0.8;
                     let descent = font_size * 0.2;
-                    
+
                     // Calculate background rectangle in layout space
                     let bg_start_x = bounds.origin.x + first_glyph.position.x;
                     let bg_end_x = bounds.origin.x + last_glyph.position.x + last_glyph.advance;
                     let bg_width = bg_end_x - bg_start_x;
-                    
+
                     // Background spans from ascent to descent relative to baseline
                     let baseline_y = bounds.origin.y + first_glyph.position.y;
                     let bg_top_y = baseline_y - ascent;
                     let bg_height = ascent + descent;
-                    
+
                     // Transform to PDF coordinates (px → pt via transform)
                     let pdf_x = transform.x(bg_start_x);
                     let pdf_y = transform.rect_y(bg_top_y, bg_height);
-                    
+
                     // Convert dimensions from CSS px to PDF pt
                     let pdf_w = transform.dim(bg_width);
                     let pdf_h = transform.dim(bg_height);
-                    
+
                     ops.push(Op::SaveGraphicsState);
                     ops.push(Op::SetFillColor {
                         col: convert_color(&bg_color),
                     });
-                    ops.push(Op::DrawPolygon { polygon: make_rect_polygon_pt(pdf_x, pdf_y, pdf_w, pdf_h) });
+                    ops.push(Op::DrawPolygon {
+                        polygon: make_rect_polygon_pt(pdf_x, pdf_y, pdf_w, pdf_h),
+                    });
                     ops.push(Op::RestoreGraphicsState);
                 }
             }
@@ -658,29 +696,29 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
             // NOTE: Glyphs have already been filtered by the pagination/clipping code
             // in display_list.rs (clip_and_offset_display_item). The glyph positions
             // are page-relative and should be rendered directly.
-            // 
+            //
             // The bounds.origin represents where this TextLayout block starts on the page,
             // and glyph.position is relative to the block origin (after the clipping pass).
-            
+
             // Calculate absolute position for this glyph in layout space
             let glyph_x_layout = bounds.origin.x + glyph.position.x;
             let glyph_y_layout = bounds.origin.y + glyph.position.y;
-            
+
             // Transform to PDF coordinate system with margins:
             // - Add margin_left to X
             // - Flip Y and subtract margin_top
             let pdf_x = transform.x(glyph_x_layout);
             let pdf_y = transform.y(glyph_y_layout);
-            
+
             // Set the text matrix to position this specific glyph
             ops.push(Op::SetTextMatrix {
                 matrix: crate::matrix::TextMatrix::Raw([
-                    1.0,    // a: Horizontal scaling
-                    0.0,    // b: Horizontal skewing
-                    0.0,    // c: Vertical skewing
-                    1.0,    // d: Vertical scaling
-                    pdf_x,  // e: Horizontal translation (in points)
-                    pdf_y,  // f: Vertical translation (in points)
+                    1.0,   // a: Horizontal scaling
+                    0.0,   // b: Horizontal skewing
+                    0.0,   // c: Vertical skewing
+                    1.0,   // d: Vertical scaling
+                    pdf_x, // e: Horizontal translation (in points)
+                    pdf_y, // f: Vertical translation (in points)
                 ]),
             });
 
@@ -691,7 +729,7 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
                         gid: glyph.glyph_id,
                         offset: 0.0,
                         cid: Some(glyph.unicode_codepoint.clone()),
-                    }
+                    },
                 ])],
             });
         }
@@ -699,11 +737,10 @@ fn render_unified_layout_with_margins<T: ParsedFontTrait + 'static>(
         // End text section after this run
         ops.push(Op::EndTextSection);
     }
-    
 }
 
 /// Apply margin offset to all PDF operations.
-/// 
+///
 /// This shifts all coordinates by the specified margins:
 /// - `offset_x` shifts content to the right (for left margin)
 /// - `offset_y` shifts content up (for bottom margin in PDF coordinate system)
@@ -712,11 +749,11 @@ pub fn apply_margin_offset(ops: &mut [Op], offset_x: crate::Mm, offset_y: crate:
     if offset_x.0 == 0.0 && offset_y.0 == 0.0 {
         return;
     }
-    
+
     // Convert mm offsets to pt (1 mm = 2.83465 pt)
     let offset_x_pt = crate::Pt(offset_x.0 * 2.83465);
     let offset_y_pt = crate::Pt(offset_y.0 * 2.83465);
-    
+
     for op in ops.iter_mut() {
         match op {
             Op::DrawPolygon { polygon } => {
@@ -740,10 +777,10 @@ pub fn apply_margin_offset(ops: &mut [Op], offset_x: crate::Mm, offset_y: crate:
             Op::UseXobject { transform, .. } => {
                 // Adjust the translation in the transform
                 transform.translate_x = Some(crate::Pt(
-                    transform.translate_x.unwrap_or(crate::Pt(0.0)).0 + offset_x_pt.0
+                    transform.translate_x.unwrap_or(crate::Pt(0.0)).0 + offset_x_pt.0,
                 ));
                 transform.translate_y = Some(crate::Pt(
-                    transform.translate_y.unwrap_or(crate::Pt(0.0)).0 + offset_y_pt.0
+                    transform.translate_y.unwrap_or(crate::Pt(0.0)).0 + offset_y_pt.0,
                 ));
             }
             Op::DrawRectangle { rectangle } => {

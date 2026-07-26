@@ -7,8 +7,8 @@ use crate::{ColorBits, ColorSpace, PdfWarnMsg};
 
 // Re-export types from image_types
 pub use crate::image_types::{
-    ImageOptimizationOptions, ImageCompression, OutputImageFormat,
-    RawImage, RawImageData, RawImageFormat,
+    ImageCompression, ImageOptimizationOptions, OutputImageFormat, RawImage, RawImageData,
+    RawImageFormat,
 };
 
 struct RawImageU8 {
@@ -1276,10 +1276,7 @@ const XOBJECT_CACHE_MAX: usize = 32;
 
 /// Turn encoded parts into the returned stream, registering the SMask (which
 /// needs a fresh object id) in `doc`.
-fn assemble_image_stream(
-    parts: &EncodedImageXObject,
-    doc: &mut lopdf::Document,
-) -> lopdf::Stream {
+fn assemble_image_stream(parts: &EncodedImageXObject, doc: &mut lopdf::Document) -> lopdf::Stream {
     let mut dict = parts.dict.clone();
     if let Some((smask_dict, smask_content)) = &parts.smask {
         let stream =

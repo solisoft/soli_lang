@@ -13,8 +13,16 @@ use lopdf::{
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
+    cmap::ToUnicodeCMap,
+    conformance::PdfConformance,
+    date::{parse_pdf_date, OffsetDateTime},
     font::ParsedFont,
-    BuiltinFont, BuiltinOrExternalFontId, Color, DictItem, ExtendedGraphicsState, ExtendedGraphicsStateId, ExtendedGraphicsStateMap, FontId, LayerInternalId, Line, LineDashPattern, LinePoint, LinkAnnotation, Op, PageAnnotId, PageAnnotMap, PaintMode, PdfDocument, PdfDocumentInfo, PdfFontMap, PdfLayerMap, PdfMetadata, PdfPage, PdfResources, Point, Polygon, PolygonRing, Pt, RawImage, Rect, RenderingIntent, TextMatrix, TextRenderingMode, WindingOrder, XObject, XObjectId, XObjectMap, cmap::ToUnicodeCMap, conformance::PdfConformance, date::{OffsetDateTime, parse_pdf_date}
+    BuiltinFont, BuiltinOrExternalFontId, Color, DictItem, ExtendedGraphicsState,
+    ExtendedGraphicsStateId, ExtendedGraphicsStateMap, FontId, LayerInternalId, Line,
+    LineDashPattern, LinePoint, LinkAnnotation, Op, PageAnnotId, PageAnnotMap, PaintMode,
+    PdfDocument, PdfDocumentInfo, PdfFontMap, PdfLayerMap, PdfMetadata, PdfPage, PdfResources,
+    Point, Polygon, PolygonRing, Pt, RawImage, Rect, RenderingIntent, TextMatrix,
+    TextRenderingMode, WindingOrder, XObject, XObjectId, XObjectMap,
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -851,7 +859,9 @@ impl RectangleBuilder {
         if self.rectangle.is_none() {
             vec![]
         } else {
-            vec![Op::DrawRectangle { rectangle: self.rectangle.as_ref().unwrap().clone() }]
+            vec![Op::DrawRectangle {
+                rectangle: self.rectangle.as_ref().unwrap().clone(),
+            }]
         }
     }
 
@@ -1618,9 +1628,7 @@ pub fn parse_op(
                 let text_items = crate::text::decode_tj_operands_as_glyph_ids(arr);
 
                 // Emit new ShowText operation (1:1 PDF mapping)
-                out_ops.push(Op::ShowText {
-                    items: text_items,
-                });
+                out_ops.push(Op::ShowText { items: text_items });
             } else {
                 warnings.push(PdfWarnMsg::error(
                     page,
@@ -1659,9 +1667,7 @@ pub fn parse_op(
                 let text_items = crate::text::decode_tj_string_as_glyph_ids(bytes);
 
                 // Emit new ShowText operation (1:1 PDF mapping)
-                out_ops.push(Op::ShowText {
-                    items: text_items,
-                });
+                out_ops.push(Op::ShowText { items: text_items });
             } else {
                 warnings.push(PdfWarnMsg::error(
                     page,
@@ -1845,14 +1851,16 @@ pub fn parse_op(
                 state.current_font_size = Some(crate::units::Pt(size_val));
 
                 // Emit new SetFont operation (1:1 PDF mapping)
-                if let (Some(font_resource), Some(sz)) = (&state.current_font_resource, &state.current_font_size) {
+                if let (Some(font_resource), Some(sz)) =
+                    (&state.current_font_resource, &state.current_font_size)
+                {
                     // Parse font_resource to determine if it's builtin or external
                     let font_handle = if let Some(builtin) = BuiltinFont::from_id(font_resource) {
                         crate::ops::PdfFontHandle::Builtin(builtin)
                     } else {
                         crate::ops::PdfFontHandle::External(crate::FontId(font_resource.clone()))
                     };
-                    
+
                     out_ops.push(Op::SetFont {
                         font: font_handle,
                         size: *sz,
@@ -1932,7 +1940,7 @@ pub fn parse_op(
                             tag: marked_content_nm.clone(),
                             properties: DictItem::from_lopdf(&Object::Dictionary(dict.to_owned())),
                         });
-                    },
+                    }
                     Err(_err) => {
                         warnings.push(PdfWarnMsg::warning(
                             page,
@@ -1979,7 +1987,7 @@ pub fn parse_op(
         }
         "EMC" => {
             if let Some(_marked_content_str) = state.current_marked_content.pop() {
-                out_ops.push(Op::EndMarkedContent { });
+                out_ops.push(Op::EndMarkedContent {});
             } else {
                 warnings.push(PdfWarnMsg::error(
                     page,
@@ -2231,21 +2239,27 @@ pub fn parse_op(
                 out_ops.push(path_to_op(&path));
             }
             // Note: We don't clear the path here since clipping doesn't consume the path
-            state.rectangle_builder.set_winding_order(WindingOrder::NonZero);
+            state
+                .rectangle_builder
+                .set_winding_order(WindingOrder::NonZero);
         }
         "W*" => {
             // Set clip path using even-odd winding rule
             let path = state
                 .path_builder
                 .build(PaintMode::Clip, WindingOrder::EvenOdd);
-            if !path.subpaths.is_empty() || out_ops.last().is_some_and(|last_op| match last_op {
-                Op::DrawRectangle { .. } => true,
-                _ => false,
-            }) {
+            if !path.subpaths.is_empty()
+                || out_ops.last().is_some_and(|last_op| match last_op {
+                    Op::DrawRectangle { .. } => true,
+                    _ => false,
+                })
+            {
                 out_ops.push(path_to_op(&path));
             }
             // Note: We don't clear the path here since clipping doesn't consume the path
-            state.rectangle_builder.set_winding_order(WindingOrder::EvenOdd);
+            state
+                .rectangle_builder
+                .set_winding_order(WindingOrder::EvenOdd);
         }
 
         // --- Painting state operators
@@ -3409,17 +3423,14 @@ mod parsefont {
             } else {
                 match process_standard_font(doc, font_dict, &font_id, warnings, page_num) {
                     Some(ParsedOrBuiltinFont::B(builtin)) => {
-                        fonts_map.insert(
-                            font_id,
-                            ParsedOrBuiltinFont::B(builtin)
-                        );
-                    },
+                        fonts_map.insert(font_id, ParsedOrBuiltinFont::B(builtin));
+                    }
                     Some(ParsedOrBuiltinFont::P(parsed_font, _)) => {
                         fonts_map.insert(
                             font_id,
-                            ParsedOrBuiltinFont::P(parsed_font, to_unicode_cmap)
+                            ParsedOrBuiltinFont::P(parsed_font, to_unicode_cmap),
                         );
-                    },
+                    }
                     None => {}
                 }
             }
@@ -3570,7 +3581,7 @@ mod parsefont {
                         None
                     }
                 }
-            },
+            }
             Ok(Object::Reference(id)) => doc.get_dictionary(*id).ok(),
             _ => {
                 warnings.push(PdfWarnMsg::warning(
@@ -3643,7 +3654,8 @@ mod parsefont {
 
                 // Parse the font
                 let mut font_warnings = Vec::new();
-                if let Some(parsed_font) = ParsedFont::from_bytes(&font_data, 0, &mut font_warnings) {
+                if let Some(parsed_font) = ParsedFont::from_bytes(&font_data, 0, &mut font_warnings)
+                {
                     // Convert FontParseWarnings to PdfWarnMsg if needed
                     #[cfg(feature = "text_layout")]
                     for fw in font_warnings {
@@ -3699,8 +3711,7 @@ mod parsefont {
         page_num: usize,
     ) -> Option<ParsedFont> {
         // Get the font descriptor
-        let font_descriptor =
-            get_font_descriptor(doc, font_dict, font_id, warnings, page_num)?;
+        let font_descriptor = get_font_descriptor(doc, font_dict, font_id, warnings, page_num)?;
 
         // Process font data (no need to handle CMap here anymore)
         process_font_data(doc, font_dict, font_descriptor, font_id, warnings, page_num)
@@ -3727,9 +3738,7 @@ mod parsefont {
                 #[cfg(feature = "text_layout")]
                 {
                     match process_type1_font(doc, font_dict, font_id, warnings, page_num) {
-                        Some(parsed_font) => {
-                            Some(ParsedOrBuiltinFont::P(parsed_font, None))
-                        },
+                        Some(parsed_font) => Some(ParsedOrBuiltinFont::P(parsed_font, None)),
                         None => {
                             warnings.push(PdfWarnMsg::warning(
                                 page_num,
@@ -3772,5 +3781,9 @@ fn decode_text_from_utf16be(bytes: &[u8]) -> String {
     let string = char::decode_utf16(chunks.iter().copied().map(u16::from_be_bytes))
         .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
         .collect();
-    if remainder.is_empty() { string } else { string + "\u{FFFD}" }
+    if remainder.is_empty() {
+        string
+    } else {
+        string + "\u{FFFD}"
+    }
 }

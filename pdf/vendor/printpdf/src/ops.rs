@@ -175,7 +175,8 @@ impl PdfPage {
                                 if let Some(font) = current_font {
                                     for codepoint in glyphs {
                                         // Check if we have unicode mapping for this glyph ID
-                                        let unicode_codepoint = codepoint.cid
+                                        let unicode_codepoint = codepoint
+                                            .cid
                                             .as_ref()
                                             .and_then(|s| s.chars().next())
                                             .or_else(|| Self::glyph_id_to_char(font, codepoint.gid))
@@ -309,7 +310,7 @@ pub enum Op {
     StartTextSection,
     /// `ET` - Ends a text section (inserted by default at the page end)
     EndTextSection,
-    
+
     // --- New 1:1 PDF operations (preferred) ---
     /// `Tf` operator: Set font and size
     /// This maps 1:1 to PDF and should be used instead of SetFontSize/SetFontSizeBuiltinFont
@@ -381,10 +382,7 @@ pub enum Op {
     /// Begins a marked content sequence.
     BeginMarkedContent { tag: String },
     /// Begins a marked content sequence with an accompanying property list.
-    BeginMarkedContentWithProperties {
-        tag: String,
-        properties: DictItem,
-    },
+    BeginMarkedContentWithProperties { tag: String, properties: DictItem },
     /// Starts an optional content layer
     BeginOptionalContent { layer_id: LayerInternalId },
     /// Defines a marked content point with properties.

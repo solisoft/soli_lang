@@ -881,6 +881,64 @@ end
 - A bare `catch e` catches everything (catch-all)
 - If no typed catch matches and there is no catch-all, the exception re-throws to the outer scope
 
+### What `catch` receives
+
+`throw` carries a **value**, not a message, and that value arrives at `catch` intact — no
+matter how many function calls it crossed on the way. So structured errors work:
+
+```soli
+def find_user(id: Int) -> Hash
+  throw {"code": 404, "message": "no such user"} if id < 1
+  return {"id": id}
+end
+
+try
+  find_user(0)
+catch e
+  print(e["code"])     # 404 — a hash, not the text of one
+  print(e["message"])  # no such user
+end
+```
+
+Any value can be thrown — a hash, an array, an int, a class instance — and it is the same
+value when caught:
+
+```soli
+try
+  throw [1, 2, 3]
+catch e
+  print(e[1])  # 2
+end
+```
+
+The one exception is an error Soli itself raised (a division by zero, an index out of
+bounds, a failed `Model.find`). Those have no user-supplied value, so `catch` binds their
+message as a string:
+
+```soli
+try
+  let numbers = [1]
+  print(numbers[99])
+catch e
+  print(e)  # Index out of bounds: 99 (length 1) at ...
+end
+```
+
+To tell the two apart, check `e.class` — it reads `hash` for your own structured throw and
+`string` for a runtime error:
+
+```soli
+try
+  might_fail()
+catch e
+  if e.class == "hash"
+    print("app error #{e["code"]}")
+  else
+    print("runtime error: #{e}")
+  end
+end
+```
+
 ### Brace Syntax
 
 Try/catch also supports brace-delimited blocks:

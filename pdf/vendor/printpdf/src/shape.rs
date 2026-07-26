@@ -305,7 +305,15 @@ pub fn layout_to_ops<T: ParsedFontTrait + 'static>(
     loaded_fonts: &LoadedFonts<T>,
     default_color: Color,
 ) -> Vec<Op> {
-    layout_to_ops_with_offset(layout, page_height, font_id, loaded_fonts, default_color, Pt(0.0), Pt(0.0))
+    layout_to_ops_with_offset(
+        layout,
+        page_height,
+        font_id,
+        loaded_fonts,
+        default_color,
+        Pt(0.0),
+        Pt(0.0),
+    )
 }
 
 /// Convert a `UnifiedLayout` to PDF operations with position offset.
@@ -380,12 +388,12 @@ pub fn layout_to_ops_with_offset<T: ParsedFontTrait + 'static>(
             // Set text matrix to position this glyph
             ops.push(Op::SetTextMatrix {
                 matrix: crate::matrix::TextMatrix::Raw([
-                    1.0,    // a: horizontal scaling
-                    0.0,    // b: horizontal skewing
-                    0.0,    // c: vertical skewing
-                    1.0,    // d: vertical scaling
-                    pdf_x,  // e: x translation
-                    pdf_y,  // f: y translation
+                    1.0,   // a: horizontal scaling
+                    0.0,   // b: horizontal skewing
+                    0.0,   // c: vertical skewing
+                    1.0,   // d: vertical scaling
+                    pdf_x, // e: x translation
+                    pdf_y, // f: y translation
                 ]),
             });
 
@@ -396,7 +404,7 @@ pub fn layout_to_ops_with_offset<T: ParsedFontTrait + 'static>(
                         gid: glyph.glyph_id,
                         offset: 0.0,
                         cid: Some(glyph.unicode_codepoint.clone()),
-                    }
+                    },
                 ])],
             });
         }

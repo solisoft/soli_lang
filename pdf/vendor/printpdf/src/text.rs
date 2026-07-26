@@ -14,11 +14,19 @@ pub struct Codepoint {
 
 impl Codepoint {
     pub fn new(gid: u16, offset: f32) -> Self {
-        Self { gid, offset, cid: None }
+        Self {
+            gid,
+            offset,
+            cid: None,
+        }
     }
-    
+
     pub fn with_cid(gid: u16, offset: f32, cid: String) -> Self {
-        Self { gid, offset, cid: Some(cid) }
+        Self {
+            gid,
+            offset,
+            cid: Some(cid),
+        }
     }
 }
 
@@ -157,7 +165,7 @@ pub fn decode_tj_operands(operands: &[Object], to_unicode: Option<&impl CMap>) -
 pub fn decode_tj_operands_as_glyph_ids(operands: &[Object]) -> Vec<TextItem> {
     let mut items = Vec::new();
     let mut current_glyphs = Vec::new();
-    
+
     for obj in operands {
         match obj {
             Object::String(bytes, _) => {
@@ -198,19 +206,19 @@ pub fn decode_tj_operands_as_glyph_ids(operands: &[Object]) -> Vec<TextItem> {
             }
         }
     }
-    
+
     // Flush remaining glyphs
     if !current_glyphs.is_empty() {
         items.push(TextItem::GlyphIds(current_glyphs));
     }
-    
+
     items
 }
 
 /// Decode Tj operator string as raw glyph IDs
 pub fn decode_tj_string_as_glyph_ids(bytes: &[u8]) -> Vec<TextItem> {
     let mut glyphs = Vec::new();
-    
+
     // Extract glyph IDs from the byte string
     if bytes.len() >= 2 && bytes.len() % 2 == 0 {
         // Assume CID font (2 bytes per glyph)
@@ -226,7 +234,7 @@ pub fn decode_tj_string_as_glyph_ids(bytes: &[u8]) -> Vec<TextItem> {
             glyphs.push(Codepoint::new(byte as u16, 0.0));
         }
     }
-    
+
     if glyphs.is_empty() {
         vec![]
     } else {

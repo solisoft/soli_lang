@@ -489,7 +489,11 @@ impl Interpreter {
         // Capture environment and stack trace BEFORE restoring if there's an error
         // This preserves local variables for debugging
         let result = match result {
-            Err(e) if !e.is_breakpoint() && e.breakpoint_env_json().is_none() => {
+            // `Thrown` is exempt alongside breakpoints: wrapping it would
+            // replace the thrown value with its rendering, and the `catch`
+            // that unwraps it would get a string. It also skips serializing
+            // the environment for a throw that is about to be caught.
+            Err(e) if !e.is_breakpoint() && !e.is_thrown() && e.breakpoint_env_json().is_none() => {
                 let captured_env = self.environment.borrow().get_all_variables();
                 let env_json = self.serialize_environment(&captured_env);
 
@@ -604,13 +608,18 @@ impl Interpreter {
             // A stray `break` outside a loop stops the body; it must not escape
             // the call boundary.
             Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(Value::Null),
-            Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
-                message: format!("Unhandled exception: {}", e),
+            // Carry the thrown *value* across the call boundary rather than
+            // its rendering — a `catch` further up rebuilds the value from
+            // this, so `throw {"code": 404}` is still a hash when caught.
+            Ok(ControlFlow::Throw(e)) => Err(RuntimeError::Thrown {
+                value: e,
                 span: Span::default(),
             }),
             Err(e) => {
-                // Preserve errors that already have captured environment (breakpoint or WithEnv)
-                if e.is_breakpoint() || e.breakpoint_env_json().is_some() {
+                // Preserve errors that already have captured environment
+                // (breakpoint or WithEnv), and user throws in flight — those
+                // carry a value that must not be flattened to its rendering.
+                if e.is_breakpoint() || e.is_thrown() || e.breakpoint_env_json().is_some() {
                     Err(e)
                 } else {
                     // Capture the local environment before it's lost

@@ -123,8 +123,8 @@ impl Interpreter {
                 match self.execute_block(statements, env)? {
                     ControlFlow::Normal(v) => Ok(v),
                     ControlFlow::Return(v) => Ok(v),
-                    ControlFlow::Throw(e) => Err(RuntimeError::General {
-                        message: format!("Unhandled exception: {}", e),
+                    ControlFlow::Throw(e) => Err(RuntimeError::Thrown {
+                        value: e,
                         span: expr.span,
                     }),
                     ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),

@@ -4,9 +4,8 @@ use azul_core::{
     dom::{Dom, NodeData, NodeType},
     styled_dom::StyledDom,
     xml::{
-        normalize_casing, CompileError, ComponentArguments,
-        FilteredComponentArguments, RenderDomError, XmlComponent, XmlComponentMap,
-        XmlComponentTrait, XmlNode, XmlTextContent,
+        normalize_casing, CompileError, ComponentArguments, FilteredComponentArguments,
+        RenderDomError, XmlComponent, XmlComponentMap, XmlComponentTrait, XmlNode, XmlTextContent,
     },
 };
 
@@ -48,7 +47,7 @@ macro_rules! html_component {
                     children: Vec::new().into(),
                     estimated_total_children: 0,
                 };
-                
+
                 // Add text content if present
                 if let Some(text_str) = text.as_ref() {
                     if !text_str.is_empty() {
@@ -61,14 +60,14 @@ macro_rules! html_component {
                         dom = dom.with_child(text_dom);
                     }
                 }
-                
+
                 // Apply default CSS if provided
                 let css = if $default_css.is_empty() {
                     azul_css::css::Css::default()
                 } else {
                     azul_css::css::Css::from_string($default_css.into())
                 };
-                
+
                 Ok(dom.style(css))
             }
 
