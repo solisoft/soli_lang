@@ -19,7 +19,11 @@ use super::opcode::Op;
 /// What is left needs machinery that does not exist yet rather than a different
 /// arrangement of what does:
 ///
-/// * `Destructuring` (`Type { field }`) has no compiled form yet.
+/// * `Destructuring` *with fields* — but no parser path produces one. The
+///   reachable spelling is `v: Type`, which carries no fields and compiles; the
+///   `Type { field }` branch in `parse_match_pattern` sits behind a guard that
+///   requires the identifier to be followed by `:`, so the `{` it then looks
+///   for can never be there.
 /// * `And`/`Or` are unreachable: no parser path constructs them. See
 ///   tasks/todo/match-and-or-patterns-are-unreachable.md.
 ///
@@ -43,11 +47,19 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         MatchPattern::EnumVariant { bindings, .. } => {
             bindings.iter().any(pattern_needs_interpreter)
         }
-        MatchPattern::Destructuring { .. } | MatchPattern::And(_) | MatchPattern::Or(_) => true,
+        // `v: Type` — a bare type test, which is all the parser can build.
+        MatchPattern::Destructuring { fields, .. } => !fields.is_empty(),
+        MatchPattern::And(_) | MatchPattern::Or(_) => true,
     }
 }
 
-/// Does this pattern bind a name?
+/// Does this pattern need the slot-based compilation?
+///
+/// Everything except wildcard and literal does: they either bind (and so need
+/// somewhere for the value to live) or test in a way the stack-only path has no
+/// form for. `Destructuring` binds nothing but still belongs here — the
+/// stack-only path has no compilation for it at all, and letting it through
+/// produced garbage rather than a refusal.
 fn is_binding_pattern(pattern: &MatchPattern) -> bool {
     matches!(
         pattern,
@@ -56,6 +68,7 @@ fn is_binding_pattern(pattern: &MatchPattern) -> bool {
             | MatchPattern::Array { .. }
             | MatchPattern::Hash { .. }
             | MatchPattern::EnumVariant { .. }
+            | MatchPattern::Destructuring { .. }
     )
 }
 
@@ -328,6 +341,18 @@ impl Compiler {
                     self.add_local(rest_name.clone(), false);
                     live += 1;
                 }
+            }
+
+            // `v: Type` — a type test that binds nothing, matching the
+            // tree-walker (the name before the colon is discarded there too).
+            // The field-carrying form is unreachable; see
+            // `pattern_needs_interpreter`.
+            MatchPattern::Destructuring { type_name, .. } => {
+                self.emit(Op::GetLocal(slot), line);
+                let ty = self.add_string_constant(type_name);
+                let f = self.emit_jump(Op::MatchType(ty, 0), line);
+                fails.push((f, live + 1));
+                self.emit(Op::Pop, line);
             }
 
             MatchPattern::EnumVariant {
