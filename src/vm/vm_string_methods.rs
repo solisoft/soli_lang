@@ -151,13 +151,17 @@ impl Vm {
             }
             "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
             "to_i" | "to_int" => {
-                let trimmed = s.trim();
-                Ok(Value::Int(
-                    trimmed
-                        .parse::<i64>()
-                        .or_else(|_| trimmed.replace(',', ".").parse::<f64>().map(|f| f as i64))
-                        .unwrap_or(0),
-                ))
+                let base = match args.first() {
+                    None => None,
+                    Some(Value::Int(b)) => Some(*b as u32),
+                    Some(_) => {
+                        return Err(RuntimeError::type_error("to_i base must be an Int", span))
+                    }
+                };
+                match crate::interpreter::executor::calls::string_methods::parse_to_int(s, base) {
+                    Ok(n) => Ok(Value::Int(n)),
+                    Err(msg) => Err(RuntimeError::type_error(msg, span)),
+                }
             }
             "to_f" | "to_float" => {
                 let trimmed = s.trim();

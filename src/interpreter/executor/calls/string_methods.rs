@@ -120,6 +120,52 @@ pub(crate) fn swapcase_string(s: &str) -> String {
     result
 }
 
+/// `to_i(base)` — parse an integer, optionally in a given radix.
+///
+/// The base used to be accepted and then silently discarded: `"ff".to_i(16)`
+/// returned 0 rather than 255, and `"10".to_i(2)` returned 10 rather than 2.
+/// Ignoring an argument is worse than rejecting it, because the wrong answer
+/// looks like a right one.
+///
+/// Base 10 keeps the long-standing lenient behaviour — trailing junk and a
+/// float-looking string still yield a number (`"4.88".to_i()` is 4), and
+/// anything unparseable is 0, as Ruby does. Other bases parse strictly, since
+/// there is no float form to fall back on.
+pub(crate) fn parse_to_int(s: &str, base: Option<u32>) -> Result<i64, String> {
+    let trimmed = s.trim();
+    match base {
+        None | Some(10) => Ok(trimmed
+            .parse::<i64>()
+            .or_else(|_| trimmed.replace(',', ".").parse::<f64>().map(|f| f as i64))
+            .unwrap_or(0)),
+        Some(b) if (2..=36).contains(&b) => {
+            let (negative, digits) = match trimmed.strip_prefix('-') {
+                Some(rest) => (true, rest),
+                None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+            };
+            // Accept the conventional prefixes for the bases that have them.
+            let digits = match b {
+                16 => digits
+                    .strip_prefix("0x")
+                    .or_else(|| digits.strip_prefix("0X"))
+                    .unwrap_or(digits),
+                8 => digits
+                    .strip_prefix("0o")
+                    .or_else(|| digits.strip_prefix("0O"))
+                    .unwrap_or(digits),
+                2 => digits
+                    .strip_prefix("0b")
+                    .or_else(|| digits.strip_prefix("0B"))
+                    .unwrap_or(digits),
+                _ => digits,
+            };
+            let value = i64::from_str_radix(digits, b).unwrap_or(0);
+            Ok(if negative { -value } else { value })
+        }
+        Some(b) => Err(format!("to_i base must be between 2 and 36, got {b}")),
+    }
+}
+
 /// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
 /// run of non-`[a-z0-9]` chars to a single `-`, trim leading/trailing `-`.
 pub(crate) fn slugify_string(s: &str) -> String {
@@ -388,14 +434,17 @@ impl Interpreter {
             "length" | "len" | "size" => self.string_length(s, arguments, span),
             "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
             "to_i" | "to_int" => {
-                let trimmed = s.trim();
-                // Try integer first, then float-truncate (e.g. "4.88".to_i => 4)
-                Ok(Value::Int(
-                    trimmed
-                        .parse::<i64>()
-                        .or_else(|_| trimmed.replace(',', ".").parse::<f64>().map(|f| f as i64))
-                        .unwrap_or(0),
-                ))
+                let base = match arguments.first() {
+                    None => None,
+                    Some(Value::Int(b)) => Some(*b as u32),
+                    Some(_) => {
+                        return Err(RuntimeError::type_error("to_i base must be an Int", span))
+                    }
+                };
+                match parse_to_int(s, base) {
+                    Ok(n) => Ok(Value::Int(n)),
+                    Err(msg) => Err(RuntimeError::type_error(msg, span)),
+                }
             }
             "to_f" | "to_float" => {
                 let trimmed = s.trim();
@@ -1486,7 +1535,7 @@ fn string_succ(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{camelize_string, reverse_string, slugify_string, string_succ};
+    use super::{camelize_string, parse_to_int, reverse_string, slugify_string, string_succ};
 
     #[test]
     fn camelize_snake_case_lower() {
@@ -1543,6 +1592,41 @@ mod tests {
         assert_eq!(camelize_string("foo__bar", false), "fooBar");
         assert_eq!(camelize_string("--foo--bar--", true), "FooBar");
         assert_eq!(camelize_string("___", false), "");
+    }
+
+    #[test]
+    fn to_i_honours_the_radix_and_matches_ruby() {
+        use super::parse_to_int;
+        // The base used to be accepted and discarded, so these all returned 0.
+        assert_eq!(parse_to_int("ff", Some(16)), Ok(255));
+        assert_eq!(parse_to_int("FF", Some(16)), Ok(255));
+        assert_eq!(parse_to_int("0xff", Some(16)), Ok(255));
+        assert_eq!(parse_to_int("10", Some(2)), Ok(2));
+        assert_eq!(parse_to_int("0b10", Some(2)), Ok(2));
+        assert_eq!(parse_to_int("777", Some(8)), Ok(511));
+        assert_eq!(parse_to_int("z", Some(36)), Ok(35));
+        assert_eq!(parse_to_int("-ff", Some(16)), Ok(-255));
+        assert_eq!(parse_to_int("+ff", Some(16)), Ok(255));
+    }
+
+    #[test]
+    fn to_i_base_ten_keeps_its_lenient_behaviour() {
+        // Base 10 has a float form to fall back on, and unparseable input has
+        // always been 0 rather than an error — matching Ruby.
+        assert_eq!(parse_to_int("42", None), Ok(42));
+        assert_eq!(parse_to_int("42", Some(10)), Ok(42));
+        assert_eq!(parse_to_int("4.88", None), Ok(4));
+        assert_eq!(parse_to_int("4,88", None), Ok(4));
+        assert_eq!(parse_to_int("  7  ", None), Ok(7));
+        assert_eq!(parse_to_int("abc", None), Ok(0));
+        assert_eq!(parse_to_int("", None), Ok(0));
+    }
+
+    #[test]
+    fn to_i_rejects_a_radix_outside_the_supported_range() {
+        assert!(parse_to_int("1", Some(1)).is_err());
+        assert!(parse_to_int("1", Some(37)).is_err());
+        assert!(parse_to_int("1", Some(0)).is_err());
     }
 
     #[test]

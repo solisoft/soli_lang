@@ -436,13 +436,20 @@ impl TypeChecker {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Bool),
             }),
-            "chomp" | "chop" | "lstrip" | "rstrip" | "strip" | "squeeze" | "capitalize"
-            | "swapcase" | "reverse" | "delete_prefix" | "delete_suffix" | "to_string"
-            | "upcase" | "downcase" | "trim" | "join" | "slugify" | "succ" | "next"
-            | "html_entities" => Ok(Type::Function {
-                params: vec![],
+            // `squeeze(chars)` restricts the squeeze to a character set, exactly
+            // as Ruby does; declaring it zero-arg made a working call fail.
+            "squeeze" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::String),
             }),
+            "chomp" | "chop" | "lstrip" | "rstrip" | "strip" | "capitalize" | "swapcase"
+            | "reverse" | "delete_prefix" | "delete_suffix" | "to_string" | "upcase"
+            | "downcase" | "trim" | "join" | "slugify" | "succ" | "next" | "html_entities" => {
+                Ok(Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::String),
+                })
+            }
             // `camelize` takes an optional bool; `prepend` takes one-or-more
             // strings — `Type::Any` keeps both arity-flexible.
             "camelize" | "prepend" => Ok(Type::Function {
@@ -484,8 +491,9 @@ impl TypeChecker {
                 params: vec![Type::Int, Type::Any],
                 return_type: Box::new(Type::String),
             }),
+            // `to_i` takes an optional radix: `"ff".to_i(16)`.
             "to_i" | "to_int" => Ok(Type::Function {
-                params: vec![],
+                params: vec![Type::Any],
                 return_type: Box::new(Type::Int),
             }),
             "to_f" | "to_float" => Ok(Type::Function {
