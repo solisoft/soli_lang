@@ -472,6 +472,14 @@ const CASES: &[(&str, &str)] = &[
         "nested_iteration_across_a_call_keeps_both_loops_intact",
         "fn count_up(n) {\n  let t = 0\n  for i in [1, 2, 3] {\n    if i == n { return t }\n    t = t + i\n  }\n  return t\n}\nlet out = []\nfor x in [\"a\", \"b\"] {\n  out.push(x)\n  count_up(2)\n}\nprint(out)",
     ),
+    (
+        "throw_from_inside_a_loop_does_not_corrupt_the_callers_loop",
+        "fn inner(xs) {\n  for x in xs {\n    if x == \"b\" { throw \"boom\" }\n  }\n  return \"ok\"\n}\nlet seen = []\nfor info in [{\"k\": \"one\"}, {\"k\": \"two\"}, {\"k\": \"three\"}] {\n  seen.push(info[\"k\"])\n  try { inner([\"a\", \"b\", \"c\"]) } catch e { }\n}\nprint(seen)",
+    ),
+    (
+        "throw_from_a_loop_caught_in_the_same_function",
+        "let seen = []\nfor a in [\"x\", \"y\", \"z\"] {\n  seen.push(a)\n  try { for b in [1, 2, 3] { throw \"inner\" } } catch e { }\n}\nprint(seen)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -27,6 +27,8 @@ impl Vm {
 
             // Unwind the stack
             self.stack.truncate(handler.stack_depth);
+            // …and any iterators the abandoned loops left behind.
+            self.iter_stack.truncate(handler.iter_depth);
 
             // Push the exception value for the catch block
             self.push(value.clone());

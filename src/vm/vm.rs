@@ -103,6 +103,11 @@ pub struct ExceptionHandler {
     pub finally_ip: usize,
     /// Stack depth when TryBegin was executed (to unwind the stack).
     pub stack_depth: usize,
+    /// `iter_stack` depth when TryBegin was executed. A `throw` from inside a
+    /// `for` loop skips the `ForIter` that pops the iterator, exactly as an
+    /// early `return` does, so unwinding must truncate here too — otherwise the
+    /// enclosing loop resumes on the abandoned iterator.
+    pub iter_depth: usize,
     /// Call frame depth when TryBegin was executed.
     pub frame_depth: usize,
 }
@@ -1905,6 +1910,7 @@ impl Vm {
                         finally_ip: frame.ip + finally_offset as usize,
                         stack_depth: self.stack.len(),
                         frame_depth: self.frames.len(),
+                        iter_depth: self.iter_stack.len(),
                     };
                     self.exception_handlers.push(handler);
                 }
