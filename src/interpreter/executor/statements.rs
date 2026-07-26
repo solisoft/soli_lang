@@ -248,8 +248,10 @@ impl Interpreter {
                     // no value to recover, so it is caught as its message.
                     Err(RuntimeError::Thrown { value, .. }) => Some(value),
                     Err(e) => {
-                        let error_value = Value::String(format!("{}", e).into());
-                        Some(error_value)
+                        // `catchable_message` strips the routing sentinels so a
+                        // caught RecordNotFound/forbidden reads as its message,
+                        // not as `__Forbidden__:nope`.
+                        Some(Value::String(e.catchable_message().into()))
                     }
                 };
 

@@ -355,18 +355,38 @@ impl Compiler {
                 self.emit(Op::GetUpvalue(idx), line);
             }
             VariableAccess::Global(name) => {
-                // `next` is a zero-argument builtin returning `Value::Continue`,
-                // which the tree-walking interpreter recognises as "skip to the
-                // next iteration". The VM has no such handling: it evaluated the
-                // call, popped the value as an ordinary expression statement,
-                // and carried on — so `next` was **silently ignored** and the
-                // loop body ran for every element. Refuse compilation instead,
-                // exactly as `break` does above, so the handler falls back to the
-                // interpreter, which implements it. A shadowed `next` costs a
-                // demotion and nothing else; the alternative was a wrong answer.
-                if name == "next" {
+                // Builtins that signal through a sentinel `Value` the
+                // tree-walker recognises in its statement evaluator, and the
+                // VM does not:
+                //
+                //   next()   -> Value::Continue    "skip to the next iteration"
+                //   debug()  -> Value::Breakpoint  "stop here, open the REPL"
+                //
+                // Those are the only two sentinel variants on `Value`, so this
+                // list is complete — but it is the place to add another if one
+                // is ever introduced. The VM evaluated the call and popped the
+                // result as an ordinary expression statement, so both were
+                // **silently ignored**: the loop body ran for every element,
+                // and the breakpoint never fired.
+                //
+                // Refuse compilation, exactly as `break` does above, so the
+                // handler falls back to the interpreter, which implements them
+                // — for `debug()` that also gets the captured environment the
+                // REPL needs, which a VM-side implementation would not have.
+                //
+                // Only the *builtin* is refused. A local of either name
+                // resolves in an arm above, and a user-declared global is in
+                // `known_globals` (both `let` at global scope and a function
+                // declaration record themselves there), so `let debug = 42`
+                // still compiles — it is a name the program defined, not the
+                // sentinel-returning builtin. Without that check, a global
+                // named `debug` would demote a handler for no reason, and
+                // `debug` is a plausible variable name.
+                if (name == "next" || name == "debug")
+                    && !self.known_globals.borrow().contains(name.as_str())
+                {
                     return Err(CompileError::new(
-                        "`next` is not supported in compiled mode",
+                        format!("`{name}` is not supported in compiled mode"),
                         crate::span::Span::new(0, 0, line, 1),
                     ));
                 }

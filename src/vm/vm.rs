@@ -234,7 +234,9 @@ impl Vm {
                 return Err(err);
             }
             let span = err.span();
-            self.throw_exception(Value::String(format!("{}", err).into()), span)?;
+            // Same helper the tree-walker uses, so the text a `catch` binds
+            // is identical in both engines and cannot drift.
+            self.throw_exception(Value::String(err.catchable_message().into()), span)?;
         }
     }
 
@@ -4839,6 +4841,41 @@ mod tests {
     /// tasks/todo/vm-compile-finally-on-every-exit-edge.md for the real fix,
     /// and the `finally_*` cases in tests/differential_engines_test.rs for the
     /// semantics it has to reproduce before this refusal can be lifted.
+    /// The two builtins that signal through a sentinel `Value` — `next()`
+    /// returning `Value::Continue` and `debug()` returning `Value::Breakpoint`
+    /// — are refused so the handler falls back to the interpreter that
+    /// implements them. Compiled, both were silently ignored: the loop body ran
+    /// for every element, and the breakpoint never fired.
+    ///
+    /// The refusal must hit only the *builtin*. A program that declares a
+    /// global of either name is talking about its own variable, and demoting
+    /// for that would cost speed for nothing.
+    #[test]
+    fn test_vm_refuses_sentinel_builtins_but_not_user_globals() {
+        fn compile_src(source: &str) -> Result<(), crate::error::CompileError> {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            Compiler::compile(&program).map(|_| ())
+        }
+
+        for name in ["next", "debug"] {
+            let err = compile_src(&format!("for i in [1, 2] {{ {name} }}"))
+                .expect_err("the sentinel builtin must be refused");
+            assert!(
+                err.to_string().contains(name),
+                "expected the {name} refusal, got: {err}"
+            );
+
+            // A user-declared global of the same name is not the builtin.
+            compile_src(&format!("let {name} = 42\nprint({name} + 1)"))
+                .unwrap_or_else(|e| panic!("a global named `{name}` must compile, got: {e}"));
+
+            // Nor is a local.
+            compile_src(&format!("fn f() {{ let {name} = 1\n  return {name} }}"))
+                .unwrap_or_else(|e| panic!("a local named `{name}` must compile, got: {e}"));
+        }
+    }
+
     #[test]
     fn test_vm_refuses_to_compile_finally() {
         // Goes through the compiler directly: `compile_and_run` unwraps the

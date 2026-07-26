@@ -425,6 +425,26 @@ impl RuntimeError {
         }
     }
 
+    /// The text a user's `catch` should bind for this error.
+    ///
+    /// Errors that the request handler routes by *sentinel* — `Model.find`
+    /// missing a record, `forbidden()` / the Policy layer — carry that
+    /// sentinel inside their message, because the marker is how the HTTP layer
+    /// recognises them (see `RECORD_NOT_FOUND_MARKER`, `FORBIDDEN_MARKER`).
+    /// That is an implementation detail of the routing, and it has no business
+    /// reaching application code: catching one and rendering it put the literal
+    /// text `__Forbidden__:nope at 2:3` on the page.
+    ///
+    /// Both engines call this at the single point where an error becomes a
+    /// catchable value, so they cannot drift apart on it. The sentinel is
+    /// untouched on the error itself — only the value handed to `catch` is
+    /// cleaned — so the 404/403 routing is unaffected.
+    pub fn catchable_message(&self) -> String {
+        self.record_not_found_message()
+            .or_else(|| self.forbidden_message())
+            .unwrap_or_else(|| self.to_string())
+    }
+
     /// Check if this is a breakpoint error.
     pub fn is_breakpoint(&self) -> bool {
         matches!(self, Self::Breakpoint { .. })
@@ -804,6 +824,33 @@ mod tests {
         assert!(RuntimeError::new("plain", span(1, 1))
             .forbidden_message()
             .is_none());
+    }
+
+    /// The sentinel that routes an error to a 404/403 must never reach the
+    /// value a user's `catch` binds — rendering it put `__Forbidden__:nope`
+    /// on the page.
+    #[test]
+    fn catchable_message_strips_routing_sentinels() {
+        let forbidden = RuntimeError::General {
+            message: format!("{}Not authorized", RuntimeError::FORBIDDEN_MARKER),
+            span: span(1, 1),
+        };
+        assert_eq!(forbidden.catchable_message(), "Not authorized");
+        assert!(!forbidden
+            .catchable_message()
+            .contains(RuntimeError::FORBIDDEN_MARKER));
+
+        let missing = RuntimeError::record_not_found("Post with id 5", span(1, 1));
+        assert_eq!(missing.catchable_message(), "Post with id 5");
+        assert!(!missing
+            .catchable_message()
+            .contains(RuntimeError::RECORD_NOT_FOUND_MARKER));
+
+        // An ordinary error is unchanged — it renders as it always did,
+        // span suffix included.
+        let plain = RuntimeError::new("something broke", span(3, 7));
+        assert_eq!(plain.catchable_message(), plain.to_string());
+        assert!(plain.catchable_message().contains("something broke"));
     }
 
     #[test]
