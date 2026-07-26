@@ -480,7 +480,7 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_a_loop_caught_in_the_same_function",
         "let seen = []\nfor a in [\"x\", \"y\", \"z\"] {\n  seen.push(a)\n  try { for b in [1, 2, 3] { throw \"inner\" } } catch e { }\n}\nprint(seen)",
     ),
-    // `next` and `break` are deliberately refused by the compiler so the handler
+    // `next` is deliberately refused by the compiler so the handler
     // falls back to the interpreter, which implements them. This case is NOT in
     // KNOWN_DIVERGENT: `run()` here type-checks, `next` fails the check, and both
     // engines come back `<non-success>` — so they agree for a reason that has
@@ -525,6 +525,49 @@ const CASES: &[(&str, &str)] = &[
     (
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
+    ),
+    // --- `break` compiles natively now ---
+    // It used to be refused outright, so every one of these demoted. The hard
+    // parts are what the jump site has to unwind: body locals (closing the
+    // upvalue when a closure captured one, so per-iteration bindings stay
+    // distinct) and the `for` iterator, which `ForIter` only pops when the
+    // sequence runs out.
+    (
+        "break_in_for",
+        "let out = []\nfor i in [1, 2, 3, 4, 5] { if i == 3 { break }\n  out.push(i) }\nprint(out)",
+    ),
+    (
+        "break_in_while",
+        "let n = 0\nwhile n < 100 { n = n + 1\n  if n == 4 { break } }\nprint(n)",
+    ),
+    (
+        "break_in_range_for",
+        "let out = []\nfor i in 1..10 { if i > 3 { break }\n  out.push(i) }\nprint(out)",
+    ),
+    (
+        "break_inner_loop_only",
+        "let out = []\nfor a in [1, 2] { for b in [10, 20, 30] { if b == 20 { break }\n    out.push(a * 100 + b) } }\nprint(out)",
+    ),
+    (
+        "break_does_not_leak_the_iterator",
+        "let first = []\nfor i in [1, 2, 3] { if i == 2 { break }\n  first.push(i) }\nlet second = []\nfor j in [7, 8, 9] { second.push(j) }\nprint([first, second])",
+    ),
+    (
+        "break_with_body_locals",
+        "let out = []\nfor i in [1, 2, 3] { let doubled = i * 2\n  let label = \"x\"\n  if i == 2 { break }\n  out.push(doubled) }\nprint(out)",
+    ),
+    (
+        "break_with_closure_capture",
+        "let fns = []\nfor i in [1, 2, 3] { fns.push(fn() { return i })\n  if i == 2 { break } }\nprint([fns[0](), fns[1]()])",
+    ),
+    (
+        "break_with_index_variable",
+        "let out = []\nfor v, idx in [9, 8, 7] { if idx == 2 { break }\n  out.push(idx) }\nprint(out)",
+    ),
+    // Still refused: jumping out would strand the handler that `try` pushed.
+    (
+        "break_inside_try_falls_back",
+        "let out = []\nfor i in [1, 2, 3] { try { if i == 2 { break }\n    out.push(i) } catch e { } }\nprint(out)",
     ),
     // --- uncaught throws must stop the program, in both engines ---
     // The tree-walker's top-level loop discarded the control-flow result, so a
@@ -667,6 +710,10 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
+    // `break` inside a `try` is refused so the handler falls back; a direct
+    // `--vm` run reports the compile error while the interpreter runs the
+    // loop. Every other `break` shape compiles and is NOT listed here.
+    "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no
     //      longer listed. As a SUB-EXPRESSION the VM still falls back (the

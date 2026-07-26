@@ -64,17 +64,19 @@ impl Compiler {
                 self.compile_for(variable, index_variable.as_deref(), iterable, body, line)?;
             }
             StmtKind::Break => {
-                // TODO: compile `break` natively. Doing it correctly means
-                // unwinding, at the jump site, everything the loop body pushed:
-                // body locals (Pop/CloseUpvalue above the loop's baseline), the
-                // `for` iterator on `iter_stack`, and any live exception handler
-                // when the `break` sits inside a `try`. Until that is in place,
-                // refuse compilation so the handler falls back to the
-                // tree-walking interpreter, which implements `break` fully.
-                return Err(CompileError::new(
-                    "`break` is not supported in compiled mode",
-                    stmt.span,
-                ));
+                // `emit_break` unwinds what the body pushed — locals above the
+                // loop's baseline and, for a `for`, the iterator — then jumps
+                // to the loop exit. It declines when the `break` sits inside a
+                // `try` the loop does not enclose, because jumping out would
+                // leave that handler live with its frame gone; those fall back
+                // to the interpreter, which implements `break` in every
+                // position.
+                if !self.emit_break(line) {
+                    return Err(CompileError::new(
+                        "`break` inside a `try` is not supported in compiled mode",
+                        stmt.span,
+                    ));
+                }
             }
             StmtKind::Return(expr) => {
                 if let Some(expr) = expr {
@@ -183,7 +185,8 @@ impl Compiler {
         line: usize,
     ) -> CompileResult<()> {
         let loop_start = self.current_offset();
-        self.begin_loop(loop_start);
+        // `while` parks no iterator.
+        self.begin_loop(loop_start, false);
 
         self.compile_expr(condition)?;
         let exit_jump = self.emit_jump(Op::JumpIfFalse(0), line);
@@ -245,7 +248,8 @@ impl Compiler {
         }
 
         let loop_start = self.current_offset();
-        self.begin_loop(loop_start);
+        // `GetIter`/`GetIterRange` above parked an iterator for this loop.
+        self.begin_loop(loop_start, true);
         let exit_jump = if is_range {
             self.emit_jump(Op::ForIterRange(0), line)
         } else {
@@ -315,7 +319,10 @@ impl Compiler {
     ) -> CompileResult<()> {
         let try_begin = self.emit(Op::TryBegin(0, 0), line);
 
-        self.compile_stmt(try_block)?;
+        self.open_try_depth += 1;
+        let body = self.compile_stmt(try_block);
+        self.open_try_depth -= 1;
+        body?;
         self.emit(Op::TryEnd, line);
 
         let no_exception_jump = self.emit_jump(Op::Jump(0), line);
@@ -432,6 +439,9 @@ impl Compiler {
         let outer = self.emit(Op::TryBegin(0, 0), line);
 
         self.finally_stack.push(finally_body.clone());
+        // The outer handler stays live across the try body AND the catch
+        // clauses, so it counts for the whole inner region.
+        self.open_try_depth += 1;
         let inner = if catch_clauses.is_empty() {
             // No catch clause, so no inner handler: an exception must reach the
             // pad, run the block and carry on unwinding. Registering one would
@@ -442,6 +452,7 @@ impl Compiler {
         } else {
             self.compile_try_catch(try_block, catch_clauses, line)
         };
+        self.open_try_depth -= 1;
         self.finally_stack.pop();
         inner?;
 

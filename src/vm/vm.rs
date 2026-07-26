@@ -2008,6 +2008,9 @@ impl Vm {
                         }
                     }
                 }
+                Op::PopIter => {
+                    self.iter_stack.pop();
+                }
                 Op::ForIter(exit_offset) => {
                     let next_val = self.iter_next();
                     if let Some(val) = next_val {

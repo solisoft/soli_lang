@@ -1012,10 +1012,14 @@ mod tests {
         use crate::vm::Compiler;
 
         // `helper` is a tree-walking Function whose body cannot be compiled.
-        // `break` is a deliberate, documented VM punt (it would need to unwind
-        // the iterator and handler stacks), which makes it a stable stand-in
-        // for "any construct the compiler refuses".
-        let body_src = "for i in [1, 2] { break }";
+        // `next` is a deliberate, documented VM punt — it signals through a
+        // sentinel `Value` the compiled engine has no handling for — which
+        // makes it a stable stand-in for "any construct the compiler refuses".
+        //
+        // This used to use `break`, until `break` learned to compile. If this
+        // premise breaks again, swap in whatever the compiler still refuses;
+        // the test is about EngineFallback's routing, not about the construct.
+        let body_src = "for i in [1, 2] { next }";
         let body_tokens = Scanner::new(body_src).scan_tokens().expect("lexer error");
         let body = Parser::new(body_tokens)
             .parse()

@@ -108,6 +108,14 @@ pub struct Compiler {
     /// inside a lambda nested in a `try` correctly sees an empty stack rather
     /// than the enclosing function's `finally`.
     pub finally_stack: Vec<crate::ast::Stmt>,
+    /// How many `try` handlers are live at the current emit point.
+    ///
+    /// Only `break` consults it, to tell "inside a `try` this loop encloses"
+    /// (safe to jump out of) from "inside a `try` opened outside the loop"
+    /// (would strand a handler). Counted around the *protected* region only: a
+    /// catch clause runs with its own handler already popped, so its body is
+    /// back at the enclosing depth.
+    pub open_try_depth: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +123,16 @@ pub struct LoopContext {
     pub start: usize,
     pub break_patches: Vec<usize>,
     pub enclosing: Option<Box<LoopContext>>,
+    /// `locals.len()` on entry. `break` pops everything the body pushed above
+    /// this before jumping, the way falling out of the loop would have.
+    pub locals_base: usize,
+    /// A `for` loop parked an iterator on `iter_stack`; `break` must discard it
+    /// (`ForIter` only does so when the sequence runs out).
+    pub has_iterator: bool,
+    /// `open_try_depth` on entry. A `break` under a *different* value sits
+    /// inside a `try` the loop does not enclose, so jumping out would strand
+    /// that handler — those are refused rather than mis-compiled.
+    pub open_try_depth: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +154,7 @@ impl Compiler {
             known_globals: Rc::new(RefCell::new(HashSet::new())),
             stack_height: 0,
             finally_stack: Vec::new(),
+            open_try_depth: 0,
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -540,13 +559,51 @@ impl Compiler {
 
     // --- Loop context ---
 
-    pub fn begin_loop(&mut self, start: usize) {
+    pub fn begin_loop(&mut self, start: usize, has_iterator: bool) {
         let enclosing = self.loop_context.take().map(Box::new);
         self.loop_context = Some(LoopContext {
             start,
             break_patches: Vec::new(),
             enclosing,
+            locals_base: self.locals.len(),
+            has_iterator,
+            open_try_depth: self.open_try_depth,
         });
+    }
+
+    /// Emit the teardown a `break` needs, then the jump out of the loop.
+    ///
+    /// Everything the body pushed has to come off exactly as it would when the
+    /// loop ends normally: body locals (closing upvalues that a closure
+    /// captured, so per-iteration bindings stay distinct) and, for a `for`
+    /// loop, the iterator. `self.locals` is left alone — the statements after
+    /// the `break` still refer to those slots on the fall-through path.
+    ///
+    /// Returns `false` when the `break` sits inside a `try` the loop does not
+    /// enclose; the caller refuses compilation so the handler falls back rather
+    /// than leaving a live handler pointing into an abandoned loop.
+    pub fn emit_break(&mut self, line: usize) -> bool {
+        let Some(ctx) = self.loop_context.as_ref() else {
+            return false;
+        };
+        if ctx.open_try_depth != self.open_try_depth {
+            return false;
+        }
+        let (locals_base, has_iterator) = (ctx.locals_base, ctx.has_iterator);
+
+        for idx in (locals_base..self.locals.len()).rev() {
+            if self.locals[idx].is_captured {
+                self.emit(Op::CloseUpvalue, line);
+            } else {
+                self.emit(Op::Pop, line);
+            }
+        }
+        if has_iterator {
+            self.emit(Op::PopIter, line);
+        }
+        let patch = self.emit_jump(Op::Jump(0), line);
+        self.add_break_patch(patch);
+        true
     }
 
     pub fn end_loop(&mut self) {
@@ -723,6 +780,8 @@ fn stack_effect(op: Op) -> i32 {
         | TestGreaterEqualJump(_)
         | TestNotEqualJump(_) => -2,
         GetLocalProperty(_, _) | GetLocalIndex(_, _) => 1,
+        // Touches `iter_stack`, not the value stack.
+        PopIter => 0,
     }
 }
 

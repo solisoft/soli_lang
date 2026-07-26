@@ -340,6 +340,13 @@ pub enum Op {
     GetLocalProperty(u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
+    /// Discard the innermost `for` iterator.
+    ///
+    /// `ForIter` pops it when the sequence is exhausted, which is the only way
+    /// a loop used to end. `break` leaves without reaching that, so it emits
+    /// this first — otherwise the abandoned iterator stays on `iter_stack` and
+    /// the next loop to run resumes on it. Same leak `return` and `throw` had.
+    PopIter,
 }
 
 /// Every opcode that advances `ip` by one of its operands.
