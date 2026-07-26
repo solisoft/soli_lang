@@ -107,7 +107,7 @@ pub struct Compiler {
     /// Per-`Compiler`, and `start_function` swaps in a fresh one, so a `return`
     /// inside a lambda nested in a `try` correctly sees an empty stack rather
     /// than the enclosing function's `finally`.
-    pub finally_stack: Vec<crate::ast::Stmt>,
+    pub try_stack: Vec<TryFrame>,
     /// Globals this *program* declares, as opposed to ones that merely exist.
     ///
     /// `known_globals` cannot answer that question: in `serve` it is seeded
@@ -117,14 +117,24 @@ pub struct Compiler {
     /// This set only ever grows from a `let`/`const` at global scope or a
     /// function declaration, so it means what it says in both modes.
     pub program_globals: Rc<RefCell<HashSet<String>>>,
-    /// How many `try` handlers are live at the current emit point.
-    ///
-    /// Only `break` consults it, to tell "inside a `try` this loop encloses"
-    /// (safe to jump out of) from "inside a `try` opened outside the loop"
-    /// (would strand a handler). Counted around the *protected* region only: a
-    /// catch clause runs with its own handler already popped, so its body is
-    /// back at the enclosing depth.
-    pub open_try_depth: usize,
+}
+
+/// One enclosing `try`, as the compiler sees it at the current emit point.
+///
+/// `break`, `next` and `return` all have to leave a `try` without passing
+/// through the code that would normally tidy it up, and each needs both facts
+/// together: how many exception handlers that `try` registered (so they can be
+/// popped) and whether it has a `finally` (so it can be run). Tracking those in
+/// two parallel stacks made per-level unwinding impossible to express, which is
+/// why `break` inside a `try` was refused rather than compiled.
+#[derive(Debug, Clone)]
+pub struct TryFrame {
+    /// Handlers this `try` pushed and that are still live here. Two while the
+    /// try body runs under a `finally` (the outer finally pad plus the inner
+    /// catch), one otherwise; a catch clause runs with its own already popped.
+    pub handlers: usize,
+    /// Its `finally` block, if any.
+    pub finally: Option<crate::ast::Stmt>,
 }
 
 /// What `declare_variable` did with the name.
@@ -148,10 +158,9 @@ pub struct LoopContext {
     /// A `for` loop parked an iterator on `iter_stack`; `break` must discard it
     /// (`ForIter` only does so when the sequence runs out).
     pub has_iterator: bool,
-    /// `open_try_depth` on entry. A `break` under a *different* value sits
-    /// inside a `try` the loop does not enclose, so jumping out would strand
-    /// that handler — those are refused rather than mis-compiled.
-    pub open_try_depth: usize,
+    /// `try_stack.len()` on entry. Anything above this is a `try` the loop
+    /// encloses, which `break`/`next` unwind on their way out.
+    pub try_base: usize,
     /// Jumps emitted by `next`, patched to the loop's continue point.
     pub continue_patches: Vec<usize>,
     /// `locals.len()` at the point a `next` should unwind *to*.
@@ -180,9 +189,8 @@ impl Compiler {
             class_context: None,
             known_globals: Rc::new(RefCell::new(HashSet::new())),
             stack_height: 0,
-            finally_stack: Vec::new(),
+            try_stack: Vec::new(),
             program_globals: Rc::new(RefCell::new(HashSet::new())),
-            open_try_depth: 0,
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -609,7 +617,7 @@ impl Compiler {
             enclosing,
             locals_base: self.locals.len(),
             has_iterator,
-            open_try_depth: self.open_try_depth,
+            try_base: self.try_stack.len(),
             continue_patches: Vec::new(),
             // Overwritten by `for` once its loop variable is declared.
             continue_locals_base: self.locals.len(),
@@ -634,13 +642,16 @@ impl Compiler {
     /// Returns `false` for a `next` inside a `try` the loop does not enclose,
     /// for the same reason `break` refuses one.
     pub fn emit_continue(&mut self, line: usize) -> bool {
+        if self.loop_context.is_none() {
+            return self.emit_loopless_exit(line);
+        }
         let Some(ctx) = self.loop_context.as_ref() else {
             return false;
         };
-        if ctx.open_try_depth != self.open_try_depth {
+        let (base, try_base) = (ctx.continue_locals_base, ctx.try_base);
+        if self.unwind_trys_to(try_base, line).is_err() {
             return false;
         }
-        let base = ctx.continue_locals_base;
 
         for idx in (base..self.locals.len()).rev() {
             if self.locals[idx].is_captured {
@@ -667,6 +678,63 @@ impl Compiler {
         }
     }
 
+    /// `break` or `next` with no enclosing loop *in this function*.
+    ///
+    /// The tree-walker absorbs both at the function boundary — `call_function`
+    /// maps `ControlFlow::Break`/`Continue` to a null return — so inside a
+    /// lambda they stop the lambda body without touching the loop that is
+    /// running outside it:
+    ///
+    /// ```soli
+    /// for n in [1, 2] {
+    ///     [10, 20, 30].each(fn(x) { break })   // stops each callback…
+    ///     seen.push(n)                          // …the for loop keeps going
+    /// }
+    /// ```
+    ///
+    /// A lambda gets its own `Compiler`, so its `loop_context` is empty even
+    /// when a loop encloses the lambda *lexically* — which is exactly the
+    /// distinction that makes this correct rather than a fallback.
+    ///
+    /// At script top level there is no frame to return from, and the
+    /// tree-walker's top-level loop ignores both, so this emits nothing.
+    fn emit_loopless_exit(&mut self, line: usize) -> bool {
+        if self.function_type == FunctionType::Script {
+            return true;
+        }
+        self.emit(Op::Null, line);
+        self.emit(Op::Return, line);
+        true
+    }
+
+    /// Leave every `try` the loop encloses, innermost first.
+    ///
+    /// Per level: drop that `try`'s handlers, then run its `finally`. In that
+    /// order, so an exception raised inside the `finally` reaches the handler
+    /// *outside* the `try` being left rather than the one it belongs to — the
+    /// same order the normal fall-through path emits.
+    ///
+    /// The stack is left as it was found: this emits an *exit* path, and the
+    /// code that follows the `break` still compiles inside those same `try`
+    /// blocks. While a level's `finally` is emitted, only the levels outside it
+    /// are active, so a `return` in there runs the outer ones and not itself.
+    fn unwind_trys_to(&mut self, base: usize, line: usize) -> CompileResult<()> {
+        let frames: Vec<TryFrame> = self.try_stack[base..].to_vec();
+        for (i, frame) in frames.iter().enumerate().rev() {
+            for _ in 0..frame.handlers {
+                self.emit(Op::PopHandler, line);
+            }
+            if let Some(body) = frame.finally.clone() {
+                let outer = self.try_stack[..base + i].to_vec();
+                let saved = std::mem::replace(&mut self.try_stack, outer);
+                let result = self.compile_stmt(&body);
+                self.try_stack = saved;
+                result?;
+            }
+        }
+        Ok(())
+    }
+
     /// Emit the teardown a `break` needs, then the jump out of the loop.
     ///
     /// Everything the body pushed has to come off exactly as it would when the
@@ -679,13 +747,17 @@ impl Compiler {
     /// enclose; the caller refuses compilation so the handler falls back rather
     /// than leaving a live handler pointing into an abandoned loop.
     pub fn emit_break(&mut self, line: usize) -> bool {
+        if self.loop_context.is_none() {
+            return self.emit_loopless_exit(line);
+        }
         let Some(ctx) = self.loop_context.as_ref() else {
             return false;
         };
-        if ctx.open_try_depth != self.open_try_depth {
+        let (locals_base, has_iterator, try_base) =
+            (ctx.locals_base, ctx.has_iterator, ctx.try_base);
+        if self.unwind_trys_to(try_base, line).is_err() {
             return false;
         }
-        let (locals_base, has_iterator) = (ctx.locals_base, ctx.has_iterator);
 
         for idx in (locals_base..self.locals.len()).rev() {
             if self.locals[idx].is_captured {

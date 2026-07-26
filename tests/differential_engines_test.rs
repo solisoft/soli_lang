@@ -787,6 +787,14 @@ const CASES: &[(&str, &str)] = &[
         "safe_nav_in_a_loop",
         "let rows = [{\"n\": \"a\"}, null, {\"n\": \"c\"}]\nlet out = []\nfor r in rows { out.push(r&.n) }\nprint(out)",
     ),
+    (
+        "break_in_a_lambda_is_absorbed_at_the_function_boundary",
+        "let seen = []\nfor n in [1, 2] { [10, 20, 30].each(fn(x) { break\n    seen.push(x) })\n  seen.push(n) }\nprint(seen)",
+    ),
+    (
+        "next_in_a_lambda_is_absorbed_at_the_function_boundary",
+        "let seen = []\nfor n in [1, 2] { [10, 20].each(fn(x) { next\n    seen.push(x) })\n  seen.push(n) }\nprint(seen)",
+    ),
     // --- `next` compiles natively now ---
     // It was refused, so any loop using it demoted. Unlike `break` the iterator
     // stays (the same loop takes its next element), but the body's own locals
@@ -876,8 +884,32 @@ const CASES: &[(&str, &str)] = &[
     ),
     // Still refused: jumping out would strand the handler that `try` pushed.
     (
-        "break_inside_try_falls_back",
+        "break_inside_try",
         "let out = []\nfor i in [1, 2, 3] { try { if i == 2 { break }\n    out.push(i) } catch e { } }\nprint(out)",
+    ),
+    (
+        "next_inside_try",
+        "let kept = []\nfor i in [1, 2, 3, 4] { try { if i == 2 { next }\n    kept.push(i) } catch e { } }\nprint(kept)",
+    ),
+    (
+        "break_inside_try_finally_runs_the_block",
+        "let log = []\nfor i in [1, 2, 3] { try { if i == 2 { break }\n    log.push(i) } finally { log.push(\"f\") } }\nprint(log)",
+    ),
+    (
+        "next_inside_try_finally_runs_the_block",
+        "let log = []\nfor i in [1, 2, 3] { try { if i == 2 { next }\n    log.push(i) } finally { log.push(\"f\") } }\nprint(log)",
+    ),
+    (
+        "break_out_of_nested_trys_runs_both_finallys",
+        "let log = []\nfor i in [1, 2] { try { try { if i == 1 { break }\n      log.push(i) } finally { log.push(\"in\") } } finally { log.push(\"out\") } }\nprint(log)",
+    ),
+    (
+        "break_inside_try_does_not_strand_the_handler",
+        "let out = []\nfor i in [1, 2, 3] { try { if i == 2 { break }\n    out.push(i) } catch e { } }\ntry { throw \"after\" } catch e { out.push(\"caught\") }\nprint(out)",
+    ),
+    (
+        "break_inside_try_does_not_leak_the_iterator",
+        "let a = []\nfor i in [1, 2, 3] { try { if i == 2 { break }\n    a.push(i) } catch e { } }\nlet b = []\nfor j in [7, 8] { b.push(j) }\nprint([a, b])",
     ),
     // --- uncaught throws must stop the program, in both engines ---
     // The tree-walker's top-level loop discarded the control-flow result, so a
@@ -1020,20 +1052,11 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // `break` inside a `try` is refused so the handler falls back; a direct
-    // `--vm` run reports the compile error while the interpreter runs the
-    // loop. Every other `break` shape compiles and is NOT listed here.
-    // `break` inside a `try` is refused so the handler falls back; a direct
-    // `--vm` run reports the compile error while the interpreter runs the loop.
-    // Its `next` counterpart is deliberately NOT listed: `run()` type-checks,
-    // `next` is not a declared name so the check rejects it in both engines,
-    // and they agree as `<non-success>` for a reason unrelated to the refusal.
     // A binding pattern mid-expression has no clean slot to bind into, so it
     // falls back; a direct `--vm` run reports the compile error while the
     // interpreter runs it. Binding patterns at a clean position compile — see
     // the `match_binding_*` cases, which are NOT listed here.
     "binding_pattern_as_call_argument",
-    "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no
     //      longer listed. As a SUB-EXPRESSION the VM still falls back (the

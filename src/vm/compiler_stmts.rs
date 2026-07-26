@@ -30,7 +30,7 @@ impl Compiler {
                 if self.is_builtin_next(expr) {
                     if !self.emit_continue(line) {
                         return Err(CompileError::new(
-                            "`next` inside a `try` is not supported in compiled mode",
+                            "`next` outside a loop is not supported in compiled mode",
                             stmt.span,
                         ));
                     }
@@ -88,7 +88,7 @@ impl Compiler {
                 // position.
                 if !self.emit_break(line) {
                     return Err(CompileError::new(
-                        "`break` inside a `try` is not supported in compiled mode",
+                        "`break` outside a loop is not supported in compiled mode",
                         stmt.span,
                     ));
                 }
@@ -355,16 +355,18 @@ impl Compiler {
     /// While emitting block *i*, only the blocks outside it stay pending, so a
     /// `return` inside a `finally` runs the outer ones and not itself.
     fn emit_pending_finallys(&mut self, line: usize) -> CompileResult<()> {
-        if self.finally_stack.is_empty() {
-            return Ok(());
-        }
         let _ = line;
-        let pending = self.finally_stack.clone();
-        for i in (0..pending.len()).rev() {
-            let saved = std::mem::replace(&mut self.finally_stack, pending[..i].to_vec());
-            let result = self.compile_stmt(&pending[i]);
-            self.finally_stack = saved;
-            result?;
+        // `Op::Return` truncates the handler stack by frame depth, so unlike
+        // `break` this only has to run the blocks, not pop handlers.
+        let frames = self.try_stack.clone();
+        for (i, frame) in frames.iter().enumerate().rev() {
+            if let Some(body) = frame.finally.clone() {
+                let outer = self.try_stack[..i].to_vec();
+                let saved = std::mem::replace(&mut self.try_stack, outer);
+                let result = self.compile_stmt(&body);
+                self.try_stack = saved;
+                result?;
+            }
         }
         Ok(())
     }
@@ -378,9 +380,12 @@ impl Compiler {
     ) -> CompileResult<()> {
         let try_begin = self.emit(Op::TryBegin(0, 0), line);
 
-        self.open_try_depth += 1;
+        self.try_stack.push(super::compiler::TryFrame {
+            handlers: 1,
+            finally: None,
+        });
         let body = self.compile_stmt(try_block);
-        self.open_try_depth -= 1;
+        self.try_stack.pop();
         body?;
         self.emit(Op::TryEnd, line);
 
@@ -497,10 +502,10 @@ impl Compiler {
 
         let outer = self.emit(Op::TryBegin(0, 0), line);
 
-        self.finally_stack.push(finally_body.clone());
-        // The outer handler stays live across the try body AND the catch
-        // clauses, so it counts for the whole inner region.
-        self.open_try_depth += 1;
+        self.try_stack.push(super::compiler::TryFrame {
+            handlers: 1,
+            finally: Some(finally_body.clone()),
+        });
         let inner = if catch_clauses.is_empty() {
             // No catch clause, so no inner handler: an exception must reach the
             // pad, run the block and carry on unwinding. Registering one would
@@ -511,8 +516,7 @@ impl Compiler {
         } else {
             self.compile_try_catch(try_block, catch_clauses, line)
         };
-        self.open_try_depth -= 1;
-        self.finally_stack.pop();
+        self.try_stack.pop();
         inner?;
 
         // Normal path: the outer handler is no longer wanted.
