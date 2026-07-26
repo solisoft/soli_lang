@@ -34,6 +34,15 @@ impl Parser {
                 break;
             }
 
+            // A condition ends with its line. `if (x < 0)` followed by a body line
+            // beginning `-x` would otherwise continue as `if ((x < 0) - x)`,
+            // because a leading `-` reads as binary subtraction. Same rule as the
+            // `rescue` and `[` cases here, scoped to conditions so an ordinary
+            // expression can still be split across lines.
+            if self.condition_context && self.peek().span.line != self.previous().span.line {
+                break;
+            }
+
             // A `[` that opens a new line starts an array-literal statement; it is
             // never an index into the expression that ended on the previous line.
             // Without this, `for n in [1, 2]` followed by a body line beginning

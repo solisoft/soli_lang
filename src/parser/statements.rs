@@ -46,16 +46,13 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::If)?;
 
-        // Parentheses are optional around the condition
-        let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = if has_paren {
-            self.expression()?
-        } else {
-            self.expression_no_trailing_brace()?
-        };
-        if has_paren {
-            self.expect(&TokenKind::RightParen)?;
-        }
+        // Parse the whole condition as one expression. Consuming a leading `(`
+        // as "parentheses around the condition" instead made the parser stop at
+        // the matching `)`, so `if (a ?? "") == ""` reported `Unexpected token
+        // '=='` — a guard that reads perfectly and parses fine on the right-hand
+        // side of an assignment. `(...)` is just a primary here, so the optional
+        // `if (cond)` form still works and can now be followed by an operator.
+        let condition = self.expression_condition()?;
 
         // Optional 'then' keyword
         self.match_token(&TokenKind::Then);
@@ -90,16 +87,13 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::Elsif)?;
 
-        // Parentheses are optional around the condition
-        let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = if has_paren {
-            self.expression()?
-        } else {
-            self.expression_no_trailing_brace()?
-        };
-        if has_paren {
-            self.expect(&TokenKind::RightParen)?;
-        }
+        // Parse the whole condition as one expression. Consuming a leading `(`
+        // as "parentheses around the condition" instead made the parser stop at
+        // the matching `)`, so `if (a ?? "") == ""` reported `Unexpected token
+        // '=='` — a guard that reads perfectly and parses fine on the right-hand
+        // side of an assignment. `(...)` is just a primary here, so the optional
+        // `if (cond)` form still works and can now be followed by an operator.
+        let condition = self.expression_condition()?;
 
         // Optional 'then' keyword
         self.match_token(&TokenKind::Then);
@@ -134,16 +128,13 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::While)?;
 
-        // Parentheses are optional around the condition
-        let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = if has_paren {
-            self.expression()?
-        } else {
-            self.expression_no_trailing_brace()?
-        };
-        if has_paren {
-            self.expect(&TokenKind::RightParen)?;
-        }
+        // Parse the whole condition as one expression. Consuming a leading `(`
+        // as "parentheses around the condition" instead made the parser stop at
+        // the matching `)`, so `if (a ?? "") == ""` reported `Unexpected token
+        // '=='` — a guard that reads perfectly and parses fine on the right-hand
+        // side of an assignment. `(...)` is just a primary here, so the optional
+        // `if (cond)` form still works and can now be followed by an operator.
+        let condition = self.expression_condition()?;
 
         let body = self.parse_block_body()?;
         let span = start_span.merge(&self.previous_span());
@@ -282,11 +273,9 @@ impl Parser {
         // Check for postfix if: return expr if cond
         if self.check(&TokenKind::If) && self.peek().span.line == return_end_line {
             self.advance();
-            let has_paren = self.match_token(&TokenKind::LeftParen);
-            let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
+            // One expression, no leading-paren special case — see `if_statement`.
+            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
+            let cond = self.expression_condition_inline()?;
             self.match_token(&TokenKind::Semicolon);
             let span = start_span.merge(&self.previous_span());
             return Ok(Stmt::new(
@@ -303,11 +292,9 @@ impl Parser {
         // Check for postfix unless: return expr unless cond
         if self.check(&TokenKind::Unless) && self.peek().span.line == return_end_line {
             self.advance();
-            let has_paren = self.match_token(&TokenKind::LeftParen);
-            let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
+            // One expression, no leading-paren special case — see `if_statement`.
+            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
+            let cond = self.expression_condition_inline()?;
             self.match_token(&TokenKind::Semicolon);
             let condition_expr = Expr::new(
                 ExprKind::Unary {
@@ -346,11 +333,9 @@ impl Parser {
 
         if self.check(&TokenKind::If) && self.peek().span.line == throw_end_line {
             self.advance();
-            let has_paren = self.match_token(&TokenKind::LeftParen);
-            let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
+            // One expression, no leading-paren special case — see `if_statement`.
+            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
+            let cond = self.expression_condition_inline()?;
             self.match_token(&TokenKind::Semicolon);
             let span = start_span.merge(&self.previous_span());
             return Ok(Stmt::new(
@@ -366,11 +351,9 @@ impl Parser {
 
         if self.check(&TokenKind::Unless) && self.peek().span.line == throw_end_line {
             self.advance();
-            let has_paren = self.match_token(&TokenKind::LeftParen);
-            let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
+            // One expression, no leading-paren special case — see `if_statement`.
+            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
+            let cond = self.expression_condition_inline()?;
             self.match_token(&TokenKind::Semicolon);
             let condition_expr = Expr::new(
                 ExprKind::Unary {
@@ -720,11 +703,9 @@ impl Parser {
         // Check for postfix if: expr if cond (parentheses optional)
         if self.check(&TokenKind::If) && self.peek().span.line == expr_end_line {
             self.advance(); // consume if
-            let has_paren = self.match_token(&TokenKind::LeftParen);
+                            // One expression, no leading-paren special case — see `if_statement`.
+                            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
             let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
 
             // Consume optional semicolon for postfix if
             if self.check(&TokenKind::Semicolon) {
@@ -751,11 +732,9 @@ impl Parser {
         // Check for postfix unless: expr unless cond (parentheses optional)
         if self.check(&TokenKind::Unless) && self.peek().span.line == expr_end_line {
             self.advance(); // consume unless
-            let has_paren = self.match_token(&TokenKind::LeftParen);
+                            // One expression, no leading-paren special case — see `if_statement`.
+                            // Consuming the `(` here stopped `stmt if (a + 1) == 2` at the `)`.
             let cond = self.expression()?;
-            if has_paren {
-                self.expect(&TokenKind::RightParen)?;
-            }
 
             // Consume optional semicolon for postfix unless
             if self.check(&TokenKind::Semicolon) {

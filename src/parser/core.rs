@@ -16,6 +16,11 @@ pub struct Parser {
     /// When true, trailing `{` blocks are NOT consumed after call expressions.
     /// Set while parsing if/while/for conditions to avoid stealing the statement body.
     pub(crate) no_trailing_brace: bool,
+    /// Set while parsing an `if`/`while`/`elsif`/postfix condition. A condition
+    /// ends at the end of its line: without this, `if (x < 0)` followed by a body
+    /// line beginning `-x` parses as `if ((x < 0) - x)`. (Ruby's rule, and the
+    /// same shape as the `rescue` and `[` line checks in `parse_precedence`.)
+    pub(crate) condition_context: bool,
     /// When true, a trailing `do … end` block is NOT consumed by a call/member
     /// expression. Set while parsing command-style argument values so the block
     /// binds to the outer command call (`after_transition to: X do … end`)
@@ -33,6 +38,7 @@ impl Parser {
             tokens,
             current: 0,
             no_trailing_brace: false,
+            condition_context: false,
             no_trailing_do: false,
             in_try_body: false,
         }
@@ -45,6 +51,29 @@ impl Parser {
         self.no_trailing_brace = true;
         let result = self.expression();
         self.no_trailing_brace = old;
+        result
+    }
+
+    /// Parse a condition: no trailing brace (that is the body), and no operator
+    /// continuation onto the next line (that is the body too).
+    pub(crate) fn expression_condition(&mut self) -> ParseResult<Expr> {
+        let old_brace = self.no_trailing_brace;
+        let old_cond = self.condition_context;
+        self.no_trailing_brace = true;
+        self.condition_context = true;
+        let result = self.expression();
+        self.no_trailing_brace = old_brace;
+        self.condition_context = old_cond;
+        result
+    }
+
+    /// Parse a condition that may span lines because a delimiter closes it —
+    /// the postfix modifiers, where `stmt if cond` has no body to confuse it.
+    pub(crate) fn expression_condition_inline(&mut self) -> ParseResult<Expr> {
+        let old_cond = self.condition_context;
+        self.condition_context = true;
+        let result = self.expression();
+        self.condition_context = old_cond;
         result
     }
 

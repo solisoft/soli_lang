@@ -385,19 +385,15 @@ impl Printer<'_> {
     }
 
     fn print_if(&mut self, condition: &Expr, then_branch: &Stmt, else_branch: Option<&Stmt>) {
-        // If the body's first statement starts with a token the parser would
-        // continue the condition expression with (`-`, `+`, `[`, `(`, `.`),
-        // wrap the condition in parens. Otherwise `if x < 0\n  -x\n end`
-        // reparses as `if (x < 0 - x) end`.
-        let needs_paren_guard = body_first_stmt_is_continuation_hazard(then_branch);
+        // No paren guard here any more. This used to wrap the condition when the
+        // body's first statement began with `-`, `+`, `[`, `(` or `.`, because
+        // the parser would otherwise continue the condition onto that line and
+        // `if x < 0\n  -x\n end` reparsed as `if (x < 0 - x) end`. The parser now
+        // ends a condition with its line, so the wrapping is unnecessary — and it
+        // was the reason `fmt` was not idempotent: the added parens parsed back as
+        // a grouping node, which printed as parens, which got wrapped again.
         self.write("if ");
-        if needs_paren_guard {
-            self.write("(");
-        }
         self.print_expr(condition);
-        if needs_paren_guard {
-            self.write(")");
-        }
         self.newline();
         self.print_block_or_stmt(then_branch);
         match else_branch {
@@ -413,15 +409,8 @@ impl Printer<'_> {
                     else_branch: e2,
                 } = &else_stmt.kind
                 {
-                    let needs_paren = body_first_stmt_is_continuation_hazard(t2);
                     self.write("elsif ");
-                    if needs_paren {
-                        self.write("(");
-                    }
                     self.print_expr(c2);
-                    if needs_paren {
-                        self.write(")");
-                    }
                     self.newline();
                     self.print_block_or_stmt(t2);
                     self.print_if_tail(e2.as_deref());
@@ -449,15 +438,8 @@ impl Printer<'_> {
                     else_branch: e2,
                 } = &else_stmt.kind
                 {
-                    let needs_paren = body_first_stmt_is_continuation_hazard(t2);
                     self.write("elsif ");
-                    if needs_paren {
-                        self.write("(");
-                    }
                     self.print_expr(c2);
-                    if needs_paren {
-                        self.write(")");
-                    }
                     self.newline();
                     self.print_block_or_stmt(t2);
                     self.print_if_tail(e2.as_deref());
@@ -950,56 +932,6 @@ fn expr_in_stmt_likely_breaks(s: &Stmt) -> bool {
         }
         StmtKind::Return(None) => false,
         _ => true,
-    }
-}
-
-/// True when the body's first statement, once printed, starts with `(`.
-/// Used to decide whether `fn name` may safely drop its empty parens —
-/// when the body opens with a parenthesized expression, the parser would
-/// otherwise consume it as the parameter list.
-/// True when the body of an `if`/`elsif`'s then-branch begins with a token
-/// the parser would continue the condition expression with — namely `-`
-/// (Unary Negate, parses as binary minus across the newline), `[` (Array,
-/// parses as index), `(` (Grouping, parses as call), or `.` (Member, parses
-/// as method call). When true the printer wraps the condition in parens so
-/// the body doesn't merge into the condition.
-fn body_first_stmt_is_continuation_hazard(stmt: &Stmt) -> bool {
-    let first = match &stmt.kind {
-        StmtKind::Block(stmts) => match stmts.first() {
-            Some(s) => s,
-            None => return false,
-        },
-        _ => stmt,
-    };
-    match &first.kind {
-        StmtKind::Expression(e) => expr_starts_with_continuation_hazard(e),
-        _ => false,
-    }
-}
-
-fn expr_starts_with_continuation_hazard(e: &Expr) -> bool {
-    match &e.kind {
-        ExprKind::Unary {
-            operator: crate::ast::expr::UnaryOp::Negate,
-            ..
-        } => true,
-        ExprKind::Array(_) | ExprKind::Grouping(_) => true,
-        ExprKind::Binary { left, .. }
-        | ExprKind::LogicalAnd { left, .. }
-        | ExprKind::LogicalOr { left, .. }
-        | ExprKind::Pipeline { left, .. } => expr_starts_with_continuation_hazard(left),
-        ExprKind::Call { callee: inner, .. }
-        | ExprKind::Member { object: inner, .. }
-        | ExprKind::SafeMember { object: inner, .. }
-        | ExprKind::Index { object: inner, .. }
-        | ExprKind::QualifiedName {
-            qualifier: inner, ..
-        } => expr_starts_with_continuation_hazard(inner),
-        ExprKind::Assign { target, .. } | ExprKind::CompoundAssign { target, .. } => {
-            expr_starts_with_continuation_hazard(target)
-        }
-        ExprKind::Rescue { expr, .. } => expr_starts_with_continuation_hazard(expr),
-        _ => false,
     }
 }
 

@@ -1090,3 +1090,55 @@ describe("Break Statement", fn() {
         assert_eq(seen, [1, 2]);
     });
 });
+
+# A condition that *begins* with a parenthesis used to end at the matching
+# `)`, so `if (a ?? "") == ""` reported `Unexpected token '=='` — a guard that
+# reads naturally and parses fine on the right of an assignment.
+describe("conditions starting with a parenthesis", fn() {
+    test("block if continues past the closing paren", fn() {
+        let row = { "url": "" }
+        let fired = false
+        if (row["url"] ?? "") == ""
+            fired = true
+        end
+        assert(fired);
+    });
+
+    test("postfix if and unless continue past it too", fn() {
+        let n = 1
+        let a = false
+        let b = false
+        a = true if (n + 1) == 2
+        b = true unless (n + 1) == 3
+        assert(a);
+        assert(b);
+    });
+
+    test("while and elsif conditions too", fn() {
+        let i = 0
+        while (i + 1) <= 2
+            i = i + 1
+        end
+        assert_eq(i, 2);
+
+        let label = ""
+        if (i) == 9
+            label = "no"
+        elsif (i + 1) == 3
+            label = "elsif"
+        end
+        assert_eq(label, "elsif");
+    });
+
+    test("the plain parenthesised form still works", fn() {
+        let n = 1
+        let seen = false
+        if (n == 1)
+            seen = true
+        end
+        assert(seen);
+        let braced = false
+        if (n) == 1 { braced = true }
+        assert(braced);
+    });
+});
