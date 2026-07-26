@@ -631,6 +631,7 @@ mod tests {
 
     #[test]
     fn force_refresh_clears_cached_token() {
+        let _guard = JWT_E2E_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         // Seed the cache, force-refresh, observe empty. This is the
         // path the 401-retry uses to recover from a server-side
         // revocation that beat the leeway window.
@@ -651,6 +652,12 @@ mod tests {
     // These tests touch SOLIDB_* env vars and the process-global
     // JWT_CACHE, so they must run serially. Pattern mirrors
     // `serve::mod::ENV_TEST_LOCK`.
+    /// Serialises the tests that touch `JWT_CACHE` or the `SOLIDB_*` env vars.
+    ///
+    /// Both are process-global and cargo runs these on parallel threads. Taken
+    /// poison-tolerantly on purpose: one of these tests spawns a stub server,
+    /// and when that fails the panic used to poison the mutex and turn a single
+    /// failure into three — two of them in tests that were working.
     static JWT_E2E_LOCK: Mutex<()> = Mutex::new(());
 
     /// Build a JWT-shaped string `header.payload.sig` whose decoded
@@ -725,7 +732,7 @@ mod tests {
     /// returned tokens differ.
     #[test]
     fn get_jwt_token_refreshes_when_cached_entry_is_near_expiry() {
-        let _guard = JWT_E2E_LOCK.lock().unwrap();
+        let _guard = JWT_E2E_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         // Fresh cache for the test, restored on the way out.
         let saved = JWT_CACHE.lock().unwrap().take();
@@ -801,7 +808,7 @@ mod tests {
     /// request into a double round-trip.
     #[test]
     fn get_jwt_token_does_not_refresh_when_cache_is_fresh() {
-        let _guard = JWT_E2E_LOCK.lock().unwrap();
+        let _guard = JWT_E2E_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let saved = JWT_CACHE.lock().unwrap().take();
 
         // Stub serves token-1 first, then would serve token-2 — if the
