@@ -293,7 +293,10 @@ pub fn emit(
                 let _ = write!(
                     out,
                     "\n    ({:.3}ms) {} {} -> {}",
-                    call.duration_ms, call.method, call.url, call.status
+                    call.duration_ms,
+                    call.method,
+                    crate::redaction::redact_url_query(&call.url),
+                    call.status
                 );
                 if let Some(err) = &call.error {
                     let _ = write!(out, " [error: {}]", err);
