@@ -74,6 +74,12 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(s.trim_end().to_string().into()))
             }
+            // First character, not first byte — must not split a multi-byte one.
+            "chr" => {
+                check_arity(0, args.len(), span)?;
+                let first: String = s.chars().next().map(String::from).unwrap_or_default();
+                Ok(Value::String(first.into()))
+            }
             "capitalize" => {
                 check_arity(0, args.len(), span)?;
                 let mut chars = s.chars();

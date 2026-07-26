@@ -387,6 +387,11 @@ print("x.rb".delete_suffix(".rb"));          # "x"
 print("abc".ascii_only?());      # true
 print("café".ascii_only?());     # false
 
+# First character (Ruby's String#chr) — a character, never half a multi-byte one
+print("abc".chr());        # "a"
+print("".chr());           # ""   (empty string, not an error)
+print("éx".chr());         # "é"
+
 # String successor
 next_id = "a".succ;    # "b" (increments with carry, wraps z->aa, 9->10)
 next_id = "9".succ;    # "10"

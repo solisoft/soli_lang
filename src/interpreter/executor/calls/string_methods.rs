@@ -466,6 +466,7 @@ impl Interpreter {
             "chars" => self.string_chars(s, arguments, span),
             "lines" => self.string_lines(s, arguments, span),
             "bytesize" => self.string_bytesize(s, arguments, span),
+            "chr" => self.string_chr(s, arguments, span),
             "capitalize" => self.string_capitalize(s, arguments, span),
             "swapcase" => self.string_swapcase(s, arguments, span),
             "insert" => self.string_insert(s, arguments, span),
@@ -1041,6 +1042,21 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(Value::Int(s.len() as i64))
+    }
+
+    /// `"abc".chr` -> `"a"`, `"".chr` -> `""` (Ruby's `String#chr`).
+    ///
+    /// The method registry, the type checker and the member whitelist all
+    /// already claimed this existed — only the two dispatch arms were missing,
+    /// so `soli check` accepted `"abc".chr()` and the runtime answered "Cannot
+    /// access property 'chr' on String". Takes the first *character*, not the
+    /// first byte, so it does not split a multi-byte one.
+    fn string_chr(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        let first: String = s.chars().next().map(String::from).unwrap_or_default();
+        Ok(Value::String(first.into()))
     }
 
     fn string_capitalize(

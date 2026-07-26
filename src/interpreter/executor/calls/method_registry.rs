@@ -113,16 +113,6 @@ pub const INT_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
-        name: "none?",
-        zero_arg: false,
-        ret: "bool",
-    },
-    MethodDef {
-        name: "one?",
-        zero_arg: false,
-        ret: "bool",
-    },
-    MethodDef {
         name: "odd?",
         zero_arg: true,
         ret: "bool",
@@ -1924,4 +1914,81 @@ pub fn method_return_type(type_name: &str, method_name: &str) -> Option<&'static
         .iter()
         .find(|m| m.name == method_name)
         .map(|m| if m.ret.is_empty() { static_type } else { m.ret })
+}
+
+#[cfg(test)]
+mod registry_reality_tests {
+    use super::*;
+    use crate::interpreter::Interpreter;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    /// Run a snippet, returning the error text if it failed.
+    fn run(src: &str) -> Result<(), String> {
+        let tokens = Scanner::new(src).scan_tokens().map_err(|e| e.to_string())?;
+        let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
+        Interpreter::new()
+            .interpret(&program)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Every method this registry advertises must actually resolve.
+    ///
+    /// The registry calls itself the single source of truth, but nothing
+    /// dispatches through it — it drives tab completion and auto-invoke, so a
+    /// wrong entry is invisible until a user tab-completes a method that does
+    /// not exist. Three had drifted: `chr` on string (the registry, the type
+    /// checker and the member whitelist all claimed it while both engines
+    /// lacked the dispatch arm, so `soli check` accepted a call the runtime
+    /// refused), and `none?`/`one?` on int, which are array predicates that
+    /// were never int methods.
+    ///
+    /// This walks every entry and asserts the runtime knows the name. It does
+    /// NOT assert behaviour — only that dispatch finds it — so it stays cheap
+    /// and does not duplicate the per-method suites.
+    ///
+    /// `query_builder` is skipped: its methods need a live database.
+    #[test]
+    fn every_registered_method_resolves_at_runtime() {
+        // Receiver literal per registered type.
+        let receivers: &[(&str, &str)] = &[
+            ("int", "7"),
+            ("float", "2.5"),
+            ("decimal", "1.5d"),
+            ("bool", "true"),
+            ("null", "null"),
+            ("symbol", ":sym"),
+            ("string", "\"abc\""),
+            ("array", "[3, 1, 2]"),
+            ("hash", "{\"a\": 1}"),
+        ];
+        // Argument shapes to try; a method "exists" if any shape gets past
+        // name resolution. Wrong arity or a type error both mean it was found.
+        let arg_shapes = ["", "1", "\"a\"", "\"a\", \"b\"", "fn(x) x", "1, 2"];
+
+        let mut absent: Vec<String> = Vec::new();
+        for (type_name, receiver) in receivers {
+            for def in known_methods(type_name) {
+                let shapes: &[&str] = if def.zero_arg { &[""] } else { &arg_shapes };
+                let found = shapes.iter().any(|args| {
+                    let src = format!("let _ = {receiver}.{}({args})\n", def.name);
+                    match run(&src) {
+                        Ok(()) => true,
+                        Err(msg) => {
+                            !msg.contains("Cannot access property")
+                                && !msg.contains("Unknown method")
+                        }
+                    }
+                });
+                if !found {
+                    absent.push(format!("{type_name}.{}", def.name));
+                }
+            }
+        }
+        assert!(
+            absent.is_empty(),
+            "the registry advertises methods that do not resolve at runtime \
+             (either implement them or drop the entry): {absent:?}"
+        );
+    }
 }
