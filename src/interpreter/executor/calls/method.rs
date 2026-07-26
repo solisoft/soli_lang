@@ -41,7 +41,7 @@ impl Interpreter {
                         _ => {
                             let hash_key = key.to_hash_key().ok_or_else(|| {
                                 RuntimeError::type_error(
-                                    format!("{} cannot be used as a hash key", key.type_name()),
+                                    format!("Cannot use {} as hash key", key.type_name()),
                                     span,
                                 )
                             })?;
@@ -570,7 +570,7 @@ impl Interpreter {
                     Some(Ok(default.clone()))
                 } else {
                     Some(Err(RuntimeError::type_error(
-                        format!("key not found: {:?}", arguments[0]),
+                        format!("key not found: {}", arguments[0]),
                         span,
                     )))
                 }
@@ -653,7 +653,7 @@ impl Interpreter {
                         Some(key) => key,
                         None => {
                             return Some(Err(RuntimeError::type_error(
-                                format!("{} cannot be used as a hash key", v.type_name()),
+                                format!("Cannot use {} as hash key", v.type_name()),
                                 span,
                             )))
                         }
@@ -864,7 +864,7 @@ impl Interpreter {
                 for key in keys.iter() {
                     let Some(hash_key) = key.to_hash_key() else {
                         return Some(Err(RuntimeError::type_error(
-                            format!("{} cannot be used as a hash key", key.type_name()),
+                            format!("Cannot use {} as hash key", key.type_name()),
                             span,
                         )));
                     };

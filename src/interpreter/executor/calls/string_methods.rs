@@ -166,6 +166,33 @@ pub(crate) fn parse_to_int(s: &str, base: Option<u32>) -> Result<i64, String> {
     }
 }
 
+/// `substring(start, end)` — a half-open slice counted in **characters**.
+///
+/// Counting in characters is the whole point: the VM used to slice the byte
+/// range directly, so `"é".substring(0, 1)` cut a UTF-8 character in half and
+/// panicked the process. Indices are clamped rather than rejected, so an
+/// out-of-range slice yields the empty string instead of raising, which is what
+/// the interpreter has always done.
+pub(crate) fn substring_chars(s: &str, start: i64, end: i64) -> String {
+    // ASCII can be sliced by byte, which skips materialising a Vec<char> — and
+    // ASCII cannot straddle a character boundary, so it is exactly equivalent.
+    if s.is_ascii() {
+        let start = start.max(0) as usize;
+        let end = (end.max(0) as usize).min(s.len());
+        if start >= end || start >= s.len() {
+            return String::new();
+        }
+        return s[start..end].to_string();
+    }
+    let chars: Vec<char> = s.chars().collect();
+    let start = start.max(0) as usize;
+    let end = (end.max(0) as usize).min(chars.len());
+    if start >= end || start >= chars.len() {
+        return String::new();
+    }
+    chars[start..end].iter().collect()
+}
+
 /// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
 /// run of non-`[a-z0-9]` chars to a single `-`, trim leading/trailing `-`.
 pub(crate) fn slugify_string(s: &str) -> String {
@@ -1334,23 +1361,7 @@ impl Interpreter {
                 ))
             }
         };
-        let chars: Vec<char> = s.chars().collect();
-        let start_usize = if start < 0 { 0 } else { start as usize };
-        let end_usize = if end < 0 {
-            0
-        } else {
-            (end as usize).min(chars.len())
-        };
-        if start_usize >= end_usize || start_usize >= chars.len() {
-            Ok(Value::String(String::new().into()))
-        } else {
-            Ok(Value::String(
-                chars[start_usize..end_usize]
-                    .iter()
-                    .collect::<String>()
-                    .into(),
-            ))
-        }
+        Ok(Value::String(substring_chars(s, start, end).into()))
     }
 
     fn string_replace(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {

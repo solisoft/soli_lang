@@ -117,7 +117,7 @@ impl Interpreter {
             (Value::Hash(hash), key) => {
                 let hash_key = key.to_hash_key().ok_or_else(|| {
                     RuntimeError::type_error(
-                        format!("{} cannot be used as a hash key", key.type_name()),
+                        format!("Cannot use {} as hash key", key.type_name()),
                         index.span,
                     )
                 })?;

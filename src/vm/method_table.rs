@@ -298,34 +298,47 @@ pub fn array_method_zero_arg(arr: &Rc<RefCell<Vec<Value>>>, mid: MethodId) -> Op
         43 => Some(Value::Bool(arr.borrow().is_empty())),     // blank?
         44 => Some(Value::Bool(!arr.borrow().is_empty())),    // present?
         72 => {
-            // sum
+            // sum — integers only. Anything else returns None so dispatch falls
+            // through to the full implementation, which handles floats and
+            // decimals and rejects non-numerics.
+            //
+            // This used to skip whatever it did not recognise and return the
+            // partial total, which meant `[1.5, 2.5].sum()` was 0 and
+            // `[1, "a"].sum()` was 1 — silently, in the engine that serves
+            // production, while the interpreter that runs the tests answered
+            // correctly or raised.
             let items = arr.borrow();
             let mut total = 0i64;
             for item in items.iter() {
-                if let Value::Int(n) = item {
-                    total += n;
+                match item {
+                    Value::Int(n) => total += n,
+                    _ => return None,
                 }
             }
             Some(Value::Int(total))
         }
         73 => {
-            // min
+            // min — integers only; see `sum` above. Skipping non-integers made
+            // `[1.5].min()` answer null instead of 1.5.
             let items = arr.borrow();
             let mut min: Option<i64> = None;
             for item in items.iter() {
-                if let Value::Int(n) = item {
-                    min = Some(min.map_or(*n, |m: i64| m.min(*n)));
+                match item {
+                    Value::Int(n) => min = Some(min.map_or(*n, |m: i64| m.min(*n))),
+                    _ => return None,
                 }
             }
             Some(min.map_or(Value::Null, Value::Int))
         }
         74 => {
-            // max
+            // max — integers only; see `sum` above. Skipping non-integers made
+            // `[1.5].max()` answer null instead of 1.5.
             let items = arr.borrow();
             let mut max: Option<i64> = None;
             for item in items.iter() {
-                if let Value::Int(n) = item {
-                    max = Some(max.map_or(*n, |m: i64| m.max(*n)));
+                match item {
+                    Value::Int(n) => max = Some(max.map_or(*n, |m: i64| m.max(*n))),
+                    _ => return None,
                 }
             }
             Some(max.map_or(Value::Null, Value::Int))
@@ -393,12 +406,16 @@ pub fn hash_method_one_arg(
     span: Span,
 ) -> Option<Result<Value, RuntimeError>> {
     match mid {
-        76 | 80 => {
-            let value = hash_get_value(&hash.borrow(), arg)
-                .cloned()
-                .unwrap_or(Value::Null);
-            Some(Ok(value))
-        }
+        // 76 = get, 80 = fetch. They agree on a hit and differ on a miss —
+        // `get` answers null, `fetch` raises — so only the hit can be answered
+        // here. A miss returns None and falls through to the full dispatcher,
+        // which knows the difference. Sharing one arm made `fetch` answer null
+        // for a missing key in the VM while the interpreter raised.
+        76 | 80 => match hash_get_value(&hash.borrow(), arg) {
+            Some(value) => Some(Ok(value.clone())),
+            None if mid == 76 => Some(Ok(Value::Null)),
+            None => None,
+        },
         83 => {
             let found = match arg {
                 Value::String(s) => hash.borrow().contains_key(&StrKey(s)),

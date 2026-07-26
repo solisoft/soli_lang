@@ -45,3 +45,8 @@
 DateTime.from_unix(9223372036854775807)
 DateTime.from_unix(-9223372036854775807)
 Duration.of_days(9223372036854775807)
+"é".substring(0, 1)
+"日本".substring(0, 1)
+"日本語".substring(1, 3)
+"日本".substring(0, 99)
+"é".substring(0 - 1, 1)

@@ -446,17 +446,16 @@ impl Vm {
                         ))
                     }
                 };
-                let start_usize = if start < 0 { 0 } else { start as usize };
-                let end_usize = if end > s.len() as i64 {
-                    s.len()
-                } else {
-                    end as usize
-                };
-                if start_usize >= end_usize || start_usize >= s.len() {
-                    Ok(Value::String(String::new().into()))
-                } else {
-                    Ok(Value::String(s[start_usize..end_usize].to_string().into()))
-                }
+                // Character-based, and shared with the interpreter. Slicing the
+                // byte range directly cut UTF-8 characters in half: `"é"` is two
+                // bytes, so `substring(0, 1)` panicked the process rather than
+                // returning anything.
+                Ok(Value::String(
+                    crate::interpreter::executor::calls::string_methods::substring_chars(
+                        s, start, end,
+                    )
+                    .into(),
+                ))
             }
             "insert" => {
                 check_arity(2, args.len(), span)?;

@@ -275,10 +275,7 @@ impl Interpreter {
         }
         let key = &arguments[0];
         let hash_key = key.to_hash_key().ok_or_else(|| {
-            RuntimeError::type_error(
-                format!("{} cannot be used as a hash key", key.type_name()),
-                span,
-            )
+            RuntimeError::type_error(format!("Cannot use {} as hash key", key.type_name()), span)
         })?;
         let default = arguments.get(1).cloned().unwrap_or(Value::Null);
 
@@ -297,10 +294,7 @@ impl Interpreter {
         }
         let key = &arguments[0];
         let hash_key = key.to_hash_key().ok_or_else(|| {
-            RuntimeError::type_error(
-                format!("{} cannot be used as a hash key", key.type_name()),
-                span,
-            )
+            RuntimeError::type_error(format!("Cannot use {} as hash key", key.type_name()), span)
         })?;
 
         let entries_map: HashPairs = entries.iter().cloned().collect();
@@ -310,7 +304,7 @@ impl Interpreter {
             Ok(default.clone())
         } else {
             Err(RuntimeError::type_error(
-                format!("key not found: {:?}", key),
+                format!("key not found: {}", key),
                 span,
             ))
         }
@@ -328,10 +322,7 @@ impl Interpreter {
         let mut result: HashPairs = HashPairs::default();
         for (k, v) in entries {
             let new_key = v.to_hash_key().ok_or_else(|| {
-                RuntimeError::type_error(
-                    format!("{} cannot be used as a hash key", v.type_name()),
-                    span,
-                )
+                RuntimeError::type_error(format!("Cannot use {} as hash key", v.type_name()), span)
             })?;
             result.insert(new_key, k.to_value());
         }
@@ -509,7 +500,7 @@ impl Interpreter {
         for key in keys_arr {
             let hash_key = key.to_hash_key().ok_or_else(|| {
                 RuntimeError::type_error(
-                    format!("{} cannot be used as a hash key", key.type_name()),
+                    format!("Cannot use {} as hash key", key.type_name()),
                     span,
                 )
             })?;
@@ -778,10 +769,7 @@ impl Interpreter {
         let key = &arguments[0];
         let value = arguments[1].clone();
         let hash_key = key.to_hash_key().ok_or_else(|| {
-            RuntimeError::type_error(
-                format!("{} cannot be used as a hash key", key.type_name()),
-                span,
-            )
+            RuntimeError::type_error(format!("Cannot use {} as hash key", key.type_name()), span)
         })?;
         let mut result: HashPairs = entries.iter().cloned().collect();
         result.insert(hash_key, value);

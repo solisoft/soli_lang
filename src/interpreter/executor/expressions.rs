@@ -654,7 +654,7 @@ impl Interpreter {
                     result.insert(hash_key, val_value);
                 } else {
                     return Err(RuntimeError::type_error(
-                        format!("{} cannot be used as a hash key", key_value.type_name()),
+                        format!("Cannot use {} as hash key", key_value.type_name()),
                         key.span,
                     ));
                 }

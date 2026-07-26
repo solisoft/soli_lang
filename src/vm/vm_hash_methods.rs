@@ -127,10 +127,22 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let found = hash_get_value(&hash.borrow(), &args[0]).cloned();
-                Ok(match found {
-                    Some(v) => v,
-                    None => args.get(1).cloned().unwrap_or(Value::Null),
-                })
+                match found {
+                    Some(v) => Ok(v),
+                    None => match args.get(1) {
+                        Some(default) => Ok(default.clone()),
+                        // `get` is the forgiving form and answers null; `fetch`
+                        // without a default raises, as it does in Ruby and as
+                        // the interpreter already did. Sharing one arm made the
+                        // VM answer null for both, so a missing key passed
+                        // silently in production and raised in tests.
+                        None if name == "fetch" => Err(RuntimeError::type_error(
+                            format!("key not found: {}", args[0]),
+                            span,
+                        )),
+                        None => Ok(Value::Null),
+                    },
+                }
             }
             "merge" => {
                 if args.len() != 1 {
@@ -384,7 +396,7 @@ impl Vm {
                 for key in keys.iter() {
                     let Some(hash_key) = key.to_hash_key() else {
                         return Err(RuntimeError::type_error(
-                            format!("{} cannot be used as a hash key", key.type_name()),
+                            format!("Cannot use {} as hash key", key.type_name()),
                             span,
                         ));
                     };

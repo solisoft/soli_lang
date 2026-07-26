@@ -35,7 +35,7 @@ impl Interpreter {
                 let key = self.evaluate(key_expr)?;
                 key.to_hash_key().ok_or_else(|| {
                     RuntimeError::type_error(
-                        format!("{} cannot be used as a hash key", key.type_name()),
+                        format!("Cannot use {} as hash key", key.type_name()),
                         key_expr.span,
                     )
                 })

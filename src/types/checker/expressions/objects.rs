@@ -57,7 +57,7 @@ impl TypeChecker {
                 | Type::Unknown
         ) {
             return Err(TypeError::General {
-                message: format!("{} cannot be used as a hash key", key_type),
+                message: format!("Cannot use {} as hash key", key_type),
                 span: first_key.span,
             });
         }

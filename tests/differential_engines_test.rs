@@ -432,6 +432,18 @@ const CASES: &[(&str, &str)] = &[
         "comparison_errors_name_operands_in_source_order",
         "try { print([1] > 1) } catch e { print(e) }\ntry { print(1 > [1]) } catch e { print(e) }",
     ),
+    (
+        "substring_counts_characters_not_bytes",
+        "print(\"日本語\".substring(0, 1))\nprint(\"é\".substring(0, 1))\nprint(\"abc\".substring(0, 2))",
+    ),
+    (
+        "sum_min_max_handle_floats",
+        "print([1.5, 2.5].sum())\nprint([1, 2.5].sum())\nprint([1.5].min())\nprint([1.5, 0.5].max())",
+    ),
+    (
+        "fetch_raises_without_a_default_but_get_does_not",
+        "let h = {\"a\": 1}\nprint(h.get(\"z\"))\nprint(h.fetch(\"z\", 9))\nlet caught = false\ntry { h.fetch(\"z\") } catch e { caught = true }\nprint(caught)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
