@@ -433,6 +433,7 @@ impl Interpreter {
         //   regular member route.
         // Anything else falls through to member resolution on the
         // already-evaluated value, then the generic call path below.
+        let mut missing_hash_member: Option<String> = None;
         let callee_val = match &callee.kind {
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
                 // Mirror `evaluate_member`'s template-lenient `@ivar`
@@ -593,6 +594,17 @@ impl Interpreter {
                         _ => {}
                     }
                 }
+                // Remember an absent hash key so the zero-arg fallback below
+                // can tell "this member resolved to null" from "there is no
+                // such member at all" — see the check after this match.
+                if let Value::Hash(h) = &obj_val {
+                    if !h
+                        .borrow()
+                        .contains_key(&crate::interpreter::value::HashKey::String(name.into()))
+                    {
+                        missing_hash_member = Some(name.to_string());
+                    }
+                }
                 self.evaluate_member_on_value(obj_val, name, callee.span)?
             }
             _ => self.evaluate_callee(callee)?,
@@ -608,6 +620,26 @@ impl Interpreter {
         // builtins return their result directly). Treat the parens form
         // like the bare form, Ruby-style, instead of "cannot call
         // non-function value". Only member callees: `5()` stays an error.
+        // A hash member access is a key lookup, so a typo — `h.lenght()` —
+        // resolves to null and the fallback below would hand that null straight
+        // back, silently. The VM raises, and `soli serve` runs the VM while
+        // `soli test` runs this interpreter, so the typo passed the whole suite
+        // and failed only in production. Raise the same error the VM does.
+        //
+        // Checked here rather than before the member access so that anything the
+        // member access *can* resolve — `shift`, methods added by
+        // `define_method`, universal members like `nil?` — still wins. Only a
+        // name that is neither a key nor resolvable to anything is an error.
+        if let Some(name) = &missing_hash_member {
+            if matches!(callee_val, Value::Null) {
+                return Err(RuntimeError::NoSuchProperty {
+                    value_type: "Hash".to_string(),
+                    property: name.clone(),
+                    span,
+                });
+            }
+        }
+
         if arguments.is_empty()
             && matches!(
                 callee.kind,

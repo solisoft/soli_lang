@@ -388,6 +388,18 @@ const CASES: &[(&str, &str)] = &[
         "hash_builtin_method_still_wins",
         "let h = {\"a\": 1, \"b\": 2}\nprint(h.keys())",
     ),
+    (
+        "hash_typo_raises_in_both_engines",
+        "let h = {\"a\": 1}\nlet caught = false\ntry { h.lenght() } catch e { caught = true }\nprint(caught)",
+    ),
+    (
+        "hash_universal_members_still_resolve",
+        "let h = {\"a\": 1}\nprint(h.present?())\nprint(h.blank?())\nprint(h.class())",
+    ),
+    (
+        "hash_shift_still_resolves",
+        "let h = {\"a\": 1}\nprint(h.shift())",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
