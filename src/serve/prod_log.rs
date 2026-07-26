@@ -164,6 +164,33 @@ pub fn channels() -> LogChannels {
     })
 }
 
+/// Render query bind variables for a log line, with secret-bearing ones
+/// redacted.
+///
+/// `SOLI_LOG=query` is a **production** channel — the documentation offers it
+/// as a way to get dev-grade diagnostics "without paying for full dev mode" —
+/// and bind variables are where a query's *values* live. A login is
+/// `FILTER u.email == @email AND u.password_digest == @password`, so printing
+/// binds verbatim wrote the submitted password to the production log.
+///
+/// Uses the same rule as the error log's request snapshot and environment dump
+/// (`crate::redaction`), so a value cannot be redacted in one log line and
+/// printed in the next.
+fn render_binds(binds: &std::collections::HashMap<String, serde_json::Value>) -> String {
+    let safe: std::collections::BTreeMap<&str, serde_json::Value> = binds
+        .iter()
+        .map(|(k, v)| {
+            let value = if crate::redaction::looks_sensitive(k) {
+                serde_json::Value::String(crate::redaction::REDACTED.to_string())
+            } else {
+                v.clone()
+            };
+            (k.as_str(), value)
+        })
+        .collect();
+    serde_json::to_string(&safe).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Collapse an AQL query to a single line so it stays one log entry.
 fn one_line(query: &str) -> String {
     query.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -177,6 +204,7 @@ fn one_line(query: &str) -> String {
 ///
 /// `queue_ms` is the time the request waited in the worker queue before a
 /// worker picked it up (None when the enqueue timestamp wasn't captured).
+///
 /// The slow threshold compares against queue + handler so a request stuck
 /// behind a busy worker is caught even when the handler itself was fast.
 pub fn emit(
@@ -243,9 +271,7 @@ pub fn emit(
                 let _ = write!(out, "\n    ({:.3}ms) {}", q.duration_ms, one_line(&q.query));
                 if let Some(binds) = &q.bind_vars {
                     if !binds.is_empty() {
-                        let rendered =
-                            serde_json::to_string(binds).unwrap_or_else(|_| "{}".to_string());
-                        let _ = write!(out, " binds={}", rendered);
+                        let _ = write!(out, " binds={}", render_binds(binds));
                     }
                 }
             }
@@ -369,6 +395,31 @@ mod tests {
         let ch = parse(None, true, None);
         assert!(ch.access);
         assert!(!ch.has_detail());
+    }
+
+    /// `SOLI_LOG=query` is a production channel, and bind variables are where a
+    /// query's values live — a login binds the submitted password. Verbatim
+    /// rendering wrote it to the log.
+    #[test]
+    fn bind_rendering_redacts_secret_names() {
+        use std::collections::HashMap;
+        let mut binds: HashMap<String, serde_json::Value> = HashMap::new();
+        binds.insert("email".into(), serde_json::json!("ada@example.com"));
+        binds.insert("password".into(), serde_json::json!("hunter2"));
+        binds.insert("api_key".into(), serde_json::json!("ak_live_123"));
+        binds.insert("limit".into(), serde_json::json!(10));
+
+        let out = super::render_binds(&binds);
+
+        assert!(!out.contains("hunter2"), "password leaked: {out}");
+        assert!(!out.contains("ak_live_123"), "api key leaked: {out}");
+        // …and the rest is still useful for debugging.
+        assert!(
+            out.contains("ada@example.com"),
+            "email should survive: {out}"
+        );
+        assert!(out.contains("10"), "limit should survive: {out}");
+        assert!(out.contains("[REDACTED]"), "expected the marker: {out}");
     }
 
     #[test]
