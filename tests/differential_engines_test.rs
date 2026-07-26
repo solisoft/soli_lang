@@ -526,12 +526,29 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
-    // A local declared in a `catch` reads a stale slot when the `try` block
-    // contains a `return` whose string interpolation calls a method — the
-    // interpolated return never runs, but compiling it shifts the catch
-    // block's slot allocation. Pre-existing (reproduces on the previous
-    // release binary) and filed as
-    // tasks/todo/vm-catch-block-local-reads-stale-slot.md.
+    // --- the peephole must remap `TryBegin`'s two targets ---
+    // Fusing an instruction inside a `try` shifts every later offset. The
+    // catch target was not remapped, so it landed one instruction into the
+    // catch body. Depending on what fused, that skipped a local's initialiser
+    // (garbage locals), skipped the handler entirely (the exception escaped an
+    // enclosing `catch`), or ran off the end of the chunk and panicked.
+    // Each case below puts a different fusable shape inside the try.
+    (
+        "peephole_try_local_prop",
+        "def thrower() -> String { throw \"boom\" }\ndef cb() -> String {\n  try {\n    let h = {\"n\": 1}\n    let v = h.n\n    let r = thrower()\n    return \"try\"\n  } catch e {\n    let marker = \"GOOD\"\n    return \"catch:\" + marker\n  }\n}\nprint(cb())",
+    ),
+    (
+        "peephole_try_incr_local",
+        "def thrower() -> String { throw \"boom\" }\ndef cb() -> String {\n  try {\n    let i = 0\n    i = i + 1\n    let r = thrower()\n    return \"try\"\n  } catch e {\n    return \"CAUGHT\"\n  }\n}\nprint(cb())",
+    ),
+    (
+        "peephole_try_mul_local_const",
+        "def thrower() -> String { throw \"boom\" }\ndef cb() -> String {\n  try {\n    let a = 3\n    let b = a * 2\n    let r = thrower()\n    return \"try\"\n  } catch e {\n    let marker = \"GOOD\"\n    return \"catch:\" + marker\n  }\n}\nprint(cb())",
+    ),
+    (
+        "peephole_try_nested_prop",
+        "def thrower() -> String { throw \"boom\" }\ndef cb() -> String {\n  try {\n    let h = {\"a\": {\"b\": 2}}\n    let v = h.a.b\n    let r = thrower()\n    return \"try\"\n  } catch e {\n    let marker = \"GOOD\"\n    return \"catch:\" + marker\n  }\n}\nprint(cb())",
+    ),
     (
         "catch_local_after_try_return_with_interpolated_call",
         "def thrower() -> Array {\n  throw \"boom\"\n}\ndef cb() -> String {\n  try {\n    let ok = thrower()\n    return \"try:#{ok.length}\"\n  } catch e {\n    let kind = \"CATCH-LOCAL\"\n    return \"catch:#{kind}\"\n  }\n}\nprint(cb())",
@@ -607,8 +624,6 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // Pre-existing VM slot-allocation bug; see the case comment.
-    "catch_local_after_try_return_with_interpolated_call",
     // --- `try` with `finally` is refused by the compiler ---
     // Not a VM bug left unfixed — the opposite. The compiled `finally` ran only
     // when control fell off the end of the try, so a `return` skipped the

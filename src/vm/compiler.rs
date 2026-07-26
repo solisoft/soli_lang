@@ -1425,6 +1425,19 @@ fn compact_nops(chunk: &mut Chunk) {
             Op::ForIterRange(d) => Op::ForIterRange(fwd(&old_to_new, old, d, here)),
             Op::RescueJump(d) => Op::RescueJump(fwd(&old_to_new, old, d, here)),
             Op::CatchMatch(name_idx, d) => Op::CatchMatch(name_idx, fwd(&old_to_new, old, d, here)),
+            // `TryBegin` carries TWO targets and neither has "jump" in its
+            // name, so it was missed the same way the four above were — but
+            // silently, because no test put a fusable instruction inside a
+            // `try` block. Fusing one shifts every later offset, and the
+            // unremapped catch target then landed one instruction *into* the
+            // catch body, skipping its first instruction: a `let` there kept
+            // whatever was in its slot, so the block ran with garbage locals
+            // and no error. Both operands are relative to the instruction
+            // after `TryBegin`, exactly like a forward jump.
+            Op::TryBegin(c, f) => Op::TryBegin(
+                fwd(&old_to_new, old, c, here),
+                fwd(&old_to_new, old, f, here),
+            ),
             other => other,
         };
         code.push(fixed);
@@ -1447,6 +1460,44 @@ mod inplace_peephole_tests {
     use super::*;
     use crate::lexer::Scanner;
     use crate::parser::Parser;
+
+    /// `compact_nops` must remap **both** of `TryBegin`'s targets.
+    ///
+    /// Neither has "jump" in its name, so it was missed like `ForIter` and
+    /// friends before it — but silently, because nothing put a fusable
+    /// instruction inside a `try` block. This checks the remapping directly
+    /// rather than through a program, so a future opcode with a hidden target
+    /// has a pattern to copy.
+    #[test]
+    fn compact_nops_remaps_try_begin_targets() {
+        // TryBegin at 0 targeting catch at 4 and finally at 6, with NOPs at 2
+        // and 3 that compaction will remove. Offsets are relative to the
+        // instruction after TryBegin (index 1), so catch = 4 - 1 = 3.
+        let mut chunk = Chunk::default();
+        for op in [
+            Op::TryBegin(3, 5), // 0 -> catch 4, finally 6
+            Op::Null,           // 1
+            Op::Nop,            // 2 (removed)
+            Op::Nop,            // 3 (removed)
+            Op::Null,           // 4  catch target
+            Op::Null,           // 5
+            Op::Null,           // 6  finally target
+        ] {
+            chunk.code.push(op);
+            chunk.lines.push(1);
+        }
+        compact_nops(&mut chunk);
+
+        // Two NOPs gone: old 4 -> new 2, old 6 -> new 4.
+        assert_eq!(chunk.code.len(), 5);
+        match chunk.code[0] {
+            Op::TryBegin(c, f) => {
+                assert_eq!(c, 1, "catch target must remap to new index 2 (1 + 1)");
+                assert_eq!(f, 3, "finally target must remap to new index 4 (1 + 3)");
+            }
+            ref other => panic!("expected TryBegin, got {other:?}"),
+        }
+    }
 
     /// Compile `body` inside a function, because that is where locals live:
     /// at top level `let x = 0` becomes a *global* (`DefineGlobal`), so a
