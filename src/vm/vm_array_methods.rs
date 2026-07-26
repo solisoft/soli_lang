@@ -496,6 +496,39 @@ impl Vm {
                 });
                 Ok(Value::Array(Rc::new(RefCell::new(sorted))))
             }
+            // ActiveRecord-style chainable query methods that also work on a
+            // materialized array, matching the tree-walker. `has_many`/
+            // `has_one` accessors return arrays, so a controller written with
+            // Rails habits does `org.contacts.order("name").all()` — which the
+            // tree-walker has always accepted and this engine answered with
+            // "Cannot access property 'order' on Array". That is the shape
+            // that passes `soli test` and 500s in production.
+            "all" | "includes" => {
+                let items = arr.borrow();
+                Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
+            }
+            "order" => {
+                let items = arr.borrow();
+                if args.is_empty() {
+                    return Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))));
+                }
+                let field = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "order() expects a string field name",
+                            span,
+                        ))
+                    }
+                };
+                // Shared with the tree-walker so the two cannot order differently.
+                let ascending =
+                    crate::interpreter::executor::calls::array_ops::order_is_ascending(args.get(1));
+                let sorted = crate::interpreter::executor::calls::array_ops::order_by(
+                    &items, &field, ascending,
+                );
+                Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+            }
             "join" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));

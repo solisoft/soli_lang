@@ -1083,24 +1083,9 @@ impl Interpreter {
                         ))
                     }
                 };
-                let ascending = match arguments.get(1) {
-                    Some(Value::String(d)) => {
-                        let d = d.to_lowercase();
-                        !(d == "desc" || d == "descending")
-                    }
-                    _ => true,
-                };
-                let mut sorted = items.to_vec();
-                sorted.sort_by(|a, b| {
-                    let av = extract_field_for_sort(a, &field);
-                    let bv = extract_field_for_sort(b, &field);
-                    let ord = cmp_sort_values(&av, &bv);
-                    if ascending {
-                        ord
-                    } else {
-                        ord.reverse()
-                    }
-                });
+                // Shared with the VM so the two cannot order differently.
+                let ascending = super::array_ops::order_is_ascending(arguments.get(1));
+                let sorted = super::array_ops::order_by(items, &field, ascending);
                 Ok(Value::Array(Rc::new(RefCell::new(sorted))))
             }
             "is_a?" => {
@@ -2842,39 +2827,5 @@ fn extract_array_arg(
             format!("Array.{}() argument must be an Array", method_name),
             span,
         )),
-    }
-}
-
-fn extract_field_for_sort(
-    v: &crate::interpreter::value::Value,
-    field: &str,
-) -> crate::interpreter::value::Value {
-    use crate::interpreter::value::{HashKey, Value};
-    match v {
-        Value::Instance(inst) => inst.borrow().get(field).unwrap_or(Value::Null),
-        Value::Hash(h) => h
-            .borrow()
-            .get(&HashKey::String(field.to_string().into()))
-            .cloned()
-            .unwrap_or(Value::Null),
-        _ => Value::Null,
-    }
-}
-
-fn cmp_sort_values(
-    a: &crate::interpreter::value::Value,
-    b: &crate::interpreter::value::Value,
-) -> std::cmp::Ordering {
-    use crate::interpreter::value::Value;
-    use std::cmp::Ordering;
-    match (a, b) {
-        (Value::Null, Value::Null) => Ordering::Equal,
-        (Value::Null, _) => Ordering::Less,
-        (_, Value::Null) => Ordering::Greater,
-        (Value::String(a), Value::String(b)) => a.cmp(b),
-        (Value::Int(a), Value::Int(b)) => a.cmp(b),
-        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-        _ => Ordering::Equal,
     }
 }

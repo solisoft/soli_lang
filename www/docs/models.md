@@ -276,6 +276,19 @@ boot; in production run `soli db:indexes` or create them in migrations. See
 | `.includes(rel, filter, binds)` | Eager load with filter and optional `"fields"` key |
 | `.includes({ rel: [fields] })` | Eager load with field projection |
 | `.includes_count(rel, ...)` | Eager load count as `<rel>_count` (HasMany/HABTM only) |
+
+**These also work on an already-loaded array.** A `has_many`/`has_one` accessor returns a
+plain array rather than a query builder, so a Rails-style chain lands on one:
+
+```soli
+# org.contacts is already an array — order/all/includes still work on it
+let sorted = org.contacts.order("name").all()
+```
+
+On an array, `.order(field, dir?)` sorts in memory, and `.all()` / `.includes(...)` return it
+unchanged so the chain reads the same whether it ran in the database or not. Rows missing the
+ordered field sort first.
+
 | `.select(field, ...)` | Select specific fields on the main collection |
 | `.fields(field, ...)` | Alias for `.select()` |
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |

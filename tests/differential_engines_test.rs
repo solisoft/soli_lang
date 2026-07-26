@@ -526,6 +526,27 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- ActiveRecord-style chainables on a materialized array ---
+    // `has_many` accessors hand back a plain array, so a Rails-habit chain
+    // lands on one. The tree-walker accepted these; the VM raised "Cannot
+    // access property", so the chain passed `soli test` and 500'd in
+    // production.
+    (
+        "array_order_by_field",
+        "print([{\"n\": 2}, {\"n\": 1}].order(\"n\"))",
+    ),
+    (
+        "array_order_desc_then_all",
+        "print([{\"n\": 1}, {\"n\": 2}].order(\"n\", \"desc\").all())",
+    ),
+    (
+        "array_order_missing_field_is_deterministic",
+        "print([{\"n\": 2}, {\"x\": 9}, {\"n\": 1}].order(\"n\"))",
+    ),
+    (
+        "array_all_and_includes_passthrough",
+        "print([1, 2].all())\nprint([1, 2].includes())",
+    ),
     // --- the peephole must remap `TryBegin`'s two targets ---
     // Fusing an instruction inside a `try` shifts every later offset. The
     // catch target was not remapped, so it landed one instruction into the

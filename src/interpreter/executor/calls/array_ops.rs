@@ -428,12 +428,55 @@ pub(crate) fn tally(items: &[Value]) -> Value {
 pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (a, b) {
+        // Null sorts before everything. It used to fall through to `Equal`,
+        // which left rows with a missing field wherever the sort happened to
+        // put them — a different order for the same data. Sorting a column
+        // that is absent on some rows is normal for schemaless documents, so
+        // this needs an answer rather than a coin flip.
+        (Value::Null, Value::Null) => Ordering::Equal,
+        (Value::Null, _) => Ordering::Less,
+        (_, Value::Null) => Ordering::Greater,
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
         (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
         (Value::String(a), Value::String(b)) => a.cmp(b),
+        (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
         (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(Ordering::Equal),
         (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(Ordering::Equal),
         _ => Ordering::Equal,
+    }
+}
+
+/// ActiveRecord-style `order(field[, "desc"])` over a materialized array.
+///
+/// `has_many`/`has_one` accessors hand back a plain array, and a controller
+/// written with Rails habits chains `org.contacts.order("name").all()` onto it.
+/// Both engines call this so the ordering cannot differ between them — the
+/// tree-walker had its own copy of the field lookup and the comparator, and
+/// the VM had neither, so the chain worked under `soli test` and raised
+/// "Cannot access property 'order' on Array" in production.
+pub(crate) fn order_by(items: &[Value], field: &str, ascending: bool) -> Vec<Value> {
+    let key = Value::String(field.into());
+    let mut sorted = items.to_vec();
+    sorted.sort_by(|a, b| {
+        let ord = compare_sort_values(&field_of(a, &key), &field_of(b, &key));
+        if ascending {
+            ord
+        } else {
+            ord.reverse()
+        }
+    });
+    sorted
+}
+
+/// Read the optional direction argument of `order(field, dir)`.
+/// Anything that is not "desc"/"descending" means ascending.
+pub(crate) fn order_is_ascending(direction: Option<&Value>) -> bool {
+    match direction {
+        Some(Value::String(d)) => {
+            let d = d.to_lowercase();
+            !(d == "desc" || d == "descending")
+        }
+        _ => true,
     }
 }
 
