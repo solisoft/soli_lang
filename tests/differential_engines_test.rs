@@ -526,6 +526,52 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // A local declared in a `catch` reads a stale slot when the `try` block
+    // contains a `return` whose string interpolation calls a method — the
+    // interpolated return never runs, but compiling it shifts the catch
+    // block's slot allocation. Pre-existing (reproduces on the previous
+    // release binary) and filed as
+    // tasks/todo/vm-catch-block-local-reads-stale-slot.md.
+    (
+        "catch_local_after_try_return_with_interpolated_call",
+        "def thrower() -> Array {\n  throw \"boom\"\n}\ndef cb() -> String {\n  try {\n    let ok = thrower()\n    return \"try:#{ok.length}\"\n  } catch e {\n    let kind = \"CATCH-LOCAL\"\n    return \"catch:#{kind}\"\n  }\n}\nprint(cb())",
+    ),
+    // --- a throw inside a native callback keeps its value ---
+    // Both engines destroyed it, differently: the interpreter replaced it with
+    // a generic "Exception in array method", the VM with the rendering of the
+    // value. `sort_by` swallowed it outright and returned the list unsorted.
+    (
+        "throw_in_map_keeps_value",
+        "try { [1, 2, 3].map(fn(x) { throw {\"code\": 404} }) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_in_filter_keeps_value",
+        "try { [1, 2, 3].filter(fn(x) { throw {\"code\": 404} }) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_in_reduce_keeps_value",
+        "try { [1, 2, 3].reduce(fn(a, x) { throw {\"code\": 404} }, 0) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_in_each_keeps_value",
+        "try { [1, 2, 3].each(fn(x) { throw {\"code\": 404} }) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_in_sort_by_is_not_swallowed",
+        "let out = \"none\"\ntry { [3, 1, 2].sort_by(fn(x) { throw {\"code\": 404} }) } catch e { out = str(e[\"code\"]) }\nprint(out)",
+    ),
+    (
+        "throw_in_hash_each_keeps_value",
+        "try { {\"a\": 1}.each(fn(k, v) { throw {\"code\": 404} }) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_in_int_times_keeps_value",
+        "try { 3.times(fn(i) { throw {\"code\": 404} }) } catch e { print(e[\"code\"]) }",
+    ),
+    (
+        "throw_class_instance_in_map_keeps_instance",
+        "class MyErr { message: String\n  new(m: String) { this.message = m } }\ntry { [1].map(fn(x) { throw MyErr(\"in-map\") }) } catch e { print(e.message) }",
+    ),
     // --- `finally` runs on every exit path ---
     // The VM currently refuses to compile these and falls back, so they agree
     // by that route. They are here to catch a future VM implementation of
@@ -561,6 +607,8 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
+    // Pre-existing VM slot-allocation bug; see the case comment.
+    "catch_local_after_try_return_with_interpolated_call",
     // --- `try` with `finally` is refused by the compiler ---
     // Not a VM bug left unfixed — the opposite. The compiled `finally` ran only
     // when control fell off the end of the try, so a `return` skipped the

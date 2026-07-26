@@ -234,9 +234,18 @@ impl Vm {
                 return Err(err);
             }
             let span = err.span();
-            // Same helper the tree-walker uses, so the text a `catch` binds
-            // is identical in both engines and cannot drift.
-            self.throw_exception(Value::String(err.catchable_message().into()), span)?;
+            // A user `throw` that came back out of a native driver still holds
+            // its value — re-throw the value itself, so a hash thrown inside
+            // `array.map` is still a hash at the caller's `catch`. Everything
+            // else is a Rust-side failure with no value to recover, and binds
+            // its message; `catchable_message` is the same helper the
+            // tree-walker uses, so the text cannot drift between engines.
+            match err {
+                RuntimeError::Thrown { value, .. } => self.throw_exception(value, span)?,
+                other => {
+                    self.throw_exception(Value::String(other.catchable_message().into()), span)?
+                }
+            }
         }
     }
 

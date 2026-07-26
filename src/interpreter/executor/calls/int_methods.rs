@@ -60,8 +60,11 @@ impl Interpreter {
                 | ControlFlow::Normal(_)
                 | ControlFlow::Continue
                 | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in int.times", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
         }
@@ -107,8 +110,11 @@ impl Interpreter {
                 | ControlFlow::Normal(_)
                 | ControlFlow::Continue
                 | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in int.upto", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
         }
@@ -155,8 +161,11 @@ impl Interpreter {
                 | ControlFlow::Normal(_)
                 | ControlFlow::Continue
                 | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in int.downto", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
             i -= 1;

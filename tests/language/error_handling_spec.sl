@@ -641,3 +641,109 @@ describe("finally on every exit path", fn() {
         assert_eq(seen, "TF")
     });
 });
+
+// ============================================================================
+// A throw inside a native callback keeps its value
+//
+// map/filter/each/reduce/sort_by and friends drive the callback from Rust, so
+// a `throw` has to cross that boundary to reach the caller's `catch`. Both
+// engines used to destroy it there — the interpreter replaced it with a
+// generic "Exception in array method", the VM with the rendering of the value
+// — and `sort_by` swallowed it outright and returned the list unsorted.
+//
+// These assert the VALUE, not just that something was raised, because both
+// engines failed identically and an engine-parity check cannot see that.
+// ============================================================================
+
+class CallbackErr
+    message: String
+    new(m: String)
+        this.message = m
+    end
+end
+
+describe("throw inside a native callback", fn() {
+    test("map keeps the thrown hash a hash", fn() {
+        let code = 0
+        try
+            [1, 2, 3].map(fn(x) { throw {"code": 404} })
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 404)
+    });
+
+    test("filter keeps the thrown value", fn() {
+        let code = 0
+        try
+            [1, 2, 3].filter(fn(x) { throw {"code": 422} })
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 422)
+    });
+
+    test("reduce keeps the thrown value", fn() {
+        let code = 0
+        try
+            [1, 2, 3].reduce(fn(acc, x) { throw {"code": 500} }, 0)
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 500)
+    });
+
+    test("each keeps the thrown value", fn() {
+        let code = 0
+        try
+            [1, 2, 3].each(fn(x) { throw {"code": 418} })
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 418)
+    });
+
+    test("sort_by does not swallow the throw", fn() {
+        let reached = false
+        let code = 0
+        try
+            [3, 1, 2].sort_by(fn(x) { throw {"code": 409} })
+            reached = true
+        catch e
+            code = e["code"]
+        end
+        assert(!reached)      // used to complete and return the list unsorted
+        assert_eq(code, 409)
+    });
+
+    test("hash each keeps the thrown value", fn() {
+        let code = 0
+        let pairs = {"a": 1, "b": 2}
+        try
+            pairs.each(fn(k, v) { throw {"code": 404} })
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 404)
+    });
+
+    test("int times keeps the thrown value", fn() {
+        let code = 0
+        try
+            3.times(fn(i) { throw {"code": 404} })
+        catch e
+            code = e["code"]
+        end
+        assert_eq(code, 404)
+    });
+
+    test("a thrown class instance is still an instance", fn() {
+        let msg = ""
+        try
+            [1].map(fn(x) { throw CallbackErr("in-map") })
+        catch e
+            msg = e.message
+        end
+        assert_eq(msg, "in-map")
+    });
+});

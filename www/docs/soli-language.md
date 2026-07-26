@@ -930,7 +930,9 @@ end
 ### What `catch` receives
 
 `throw` carries a **value**, not a message, and that value arrives at `catch` intact — no
-matter how many function calls it crossed on the way. So structured errors work:
+matter how many function calls it crossed on the way, including a `throw` from inside a
+callback given to `map`, `filter`, `each`, `reduce`, `sort_by` or `times`. So structured
+errors work:
 
 ```soli
 def find_user(id: Int) -> Hash

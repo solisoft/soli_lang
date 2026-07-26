@@ -223,6 +223,28 @@ impl CompileError {
     }
 }
 
+/// How an uncaught thrown value is written into an error message.
+///
+/// A class used as an exception carries its text in a `message` field, so
+/// rendering the instance itself would print `<AppError instance>` and lose
+/// the only part anyone wants to read. The VM did this extraction inline
+/// before thrown values were preserved end-to-end; it lives here now so both
+/// engines get it from the one place that formats a `Thrown`.
+fn render_thrown(value: &crate::interpreter::value::Value) -> String {
+    use crate::interpreter::value::Value;
+    match value {
+        Value::String(s) => s.to_string(),
+        Value::Instance(inst) => {
+            let inst = inst.borrow();
+            match inst.fields.get("message") {
+                Some(msg) => format!("{msg}"),
+                None => format!("<{} instance>", inst.class.name),
+            }
+        }
+        other => format!("{other}"),
+    }
+}
+
 /// Runtime errors.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -285,7 +307,7 @@ pub enum RuntimeError {
     /// arrived as the *text* `Unhandled exception: {code => 404} at 0:0` and
     /// `e["code"]` failed — but only in the interpreter. The VM has always
     /// preserved the value, so this is the interpreter matching production.
-    #[error("Unhandled exception: {value} at {span}")]
+    #[error("Unhandled exception: {} at {span}", render_thrown(.value))]
     Thrown {
         value: crate::interpreter::value::Value,
         span: Span,

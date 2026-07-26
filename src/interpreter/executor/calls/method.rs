@@ -1167,8 +1167,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => result.push(v),
                 ControlFlow::Normal(v) => result.push(v),
                 ControlFlow::Continue | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array method", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
         }
@@ -1218,8 +1221,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Continue | ControlFlow::Break => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array filter", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             };
 
@@ -1272,8 +1278,11 @@ impl Interpreter {
                 | ControlFlow::Normal(_)
                 | ControlFlow::Continue
                 | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array each", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
         }
@@ -1329,11 +1338,11 @@ impl Interpreter {
                 | ControlFlow::Normal(_)
                 | ControlFlow::Continue
                 | ControlFlow::Break => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new(
-                        "Exception in array each_with_index",
-                        span,
-                    ));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             }
         }
@@ -1403,8 +1412,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Continue | ControlFlow::Break => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array reduce", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             };
         }
@@ -1452,8 +1464,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Continue | ControlFlow::Break => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array find", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             };
 
@@ -1505,8 +1520,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Continue | ControlFlow::Break => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array any?", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             };
 
@@ -1558,8 +1576,11 @@ impl Interpreter {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Continue | ControlFlow::Break => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array all?", span));
+                ControlFlow::Throw(v) => {
+                    // Carry the thrown value out of the callback.
+                    // Replacing it with a generic message destroyed both the
+                    // payload and the message the author wrote.
+                    return Err(RuntimeError::Thrown { value: v, span });
                 }
             };
 
@@ -1690,7 +1711,16 @@ impl Interpreter {
                     // on the same code.
                     let key_val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                         ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-                        _ => Value::Null,
+                        // A `throw` is not an `Err`, so the `?` above never saw
+                        // it and this arm gave the element a null key —
+                        // `sort_by(fn(x) { throw ... })` returned the list
+                        // unsorted with the exception silently gone, while the
+                        // VM raised. Same swallow the comment above describes,
+                        // through the one door that fix did not cover.
+                        ControlFlow::Throw(v) => {
+                            return Err(RuntimeError::Thrown { value: v, span });
+                        }
+                        ControlFlow::Continue | ControlFlow::Break => Value::Null,
                     };
                     keyed.push((item.clone(), key_val));
                 }
@@ -2777,8 +2807,11 @@ impl Interpreter {
         let result = match self.execute_block(&func.body, call_env)? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
             ControlFlow::Continue | ControlFlow::Break => Value::Null,
-            ControlFlow::Throw(_) => {
-                return Err(RuntimeError::new("Exception in Cache.fetch block", span))
+            ControlFlow::Throw(v) => {
+                // Carry the thrown value out of the callback.
+                // Replacing it with a generic message destroyed both the
+                // payload and the message the author wrote.
+                return Err(RuntimeError::Thrown { value: v, span });
             }
         };
 

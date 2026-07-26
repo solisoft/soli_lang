@@ -40,20 +40,15 @@ impl Vm {
             }
         }
 
-        // No handler found — convert to a RuntimeError
-        let message = match &value {
-            Value::String(s) => s.to_string(),
-            Value::Instance(inst) => {
-                let inst = inst.borrow();
-                if let Some(msg) = inst.fields.get("message") {
-                    format!("{}", msg)
-                } else {
-                    format!("<{} instance>", inst.class.name)
-                }
-            }
-            other => format!("{}", other),
-        };
-
-        Err(RuntimeError::new(message, span))
+        // No handler found *here* — but "here" includes the case where a
+        // native driver (array.map and friends) is between the throw and the
+        // handler, because those handlers are gated off by `return_depth` so
+        // the driver can unwind its own state first. The error then travels
+        // back through `run`, which re-throws it at the outer handler.
+        //
+        // So this must keep the value, not a rendering of it: flattening here
+        // is what made `[1].map(fn(x) { throw {"code": 404} })` arrive at the
+        // caller's `catch` as a string.
+        Err(RuntimeError::Thrown { value, span })
     }
 }

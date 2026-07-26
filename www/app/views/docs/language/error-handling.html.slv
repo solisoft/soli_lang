@@ -174,7 +174,11 @@ end</code></pre>
         <p class="text-gray-400 mb-4">
             <code class="text-amber-400">throw</code> carries a <strong class="text-white">value</strong>, not a
             message, and that value reaches <code class="text-amber-400">catch</code> intact no matter how many
-            function calls it crossed on the way. Structured errors work as written:
+            function calls it crossed on the way &mdash; including a throw from inside a callback given to
+            <code class="text-amber-400">map</code>, <code class="text-amber-400">filter</code>,
+            <code class="text-amber-400">each</code>, <code class="text-amber-400">reduce</code>,
+            <code class="text-amber-400">sort_by</code> or <code class="text-amber-400">times</code>. Structured
+            errors work as written:
         </p>
         <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">

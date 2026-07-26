@@ -100,7 +100,6 @@ impl Interpreter {
         key_value: Value,
         value: Value,
         span: Span,
-        ctx: &'static str,
     ) -> RuntimeResult<Value> {
         {
             let mut e = env.borrow_mut();
@@ -115,8 +114,11 @@ impl Interpreter {
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
             ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
-            ControlFlow::Throw(_) => {
-                Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
+            ControlFlow::Throw(v) => {
+                // Carry the thrown value out of the callback.
+                // Replacing it with a generic message destroyed both the
+                // payload and the message the author wrote.
+                Err(RuntimeError::Thrown { value: v, span })
             }
         }
     }
@@ -131,7 +133,6 @@ impl Interpreter {
         env: &Rc<RefCell<Environment>>,
         bound: Value,
         span: Span,
-        ctx: &'static str,
     ) -> RuntimeResult<Value> {
         {
             let mut e = env.borrow_mut();
@@ -141,8 +142,11 @@ impl Interpreter {
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
             ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
-            ControlFlow::Throw(_) => {
-                Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
+            ControlFlow::Throw(v) => {
+                // Carry the thrown value out of the callback.
+                // Replacing it with a generic message destroyed both the
+                // payload and the message the author wrote.
+                Err(RuntimeError::Thrown { value: v, span })
             }
         }
     }
@@ -171,8 +175,7 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let v =
-                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span, "map")?;
+            let v = self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if let Value::Array(arr) = v {
                 let arr = arr.borrow();
                 if arr.len() == 2 {
@@ -211,14 +214,8 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "filter",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -250,14 +247,7 @@ impl Interpreter {
             func.closure.clone(),
         )));
         for (key, value) in entries {
-            self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "each",
-            )?;
+            self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -353,8 +343,7 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let new_value =
-                self.invoke_hash_single(&func, &call_env, value.clone(), span, "transform_values")?;
+            let new_value = self.invoke_hash_single(&func, &call_env, value.clone(), span)?;
             result.insert(key.clone(), new_value);
         }
 
@@ -385,8 +374,7 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let new_key =
-                self.invoke_hash_single(&func, &call_env, key.to_value(), span, "transform_keys")?;
+            let new_key = self.invoke_hash_single(&func, &call_env, key.to_value(), span)?;
             let new_hash_key = new_key.to_hash_key().ok_or_else(|| {
                 RuntimeError::type_error("transformed key must be hashable", span)
             })?;
@@ -420,14 +408,8 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "select",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -460,14 +442,8 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "reject",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if !result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -811,7 +787,7 @@ impl Interpreter {
             func.closure.clone(),
         )));
         for (key, _value) in entries {
-            self.invoke_hash_single(&func, &call_env, key.to_value(), span, "each_key")?;
+            self.invoke_hash_single(&func, &call_env, key.to_value(), span)?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -841,7 +817,7 @@ impl Interpreter {
             func.closure.clone(),
         )));
         for (_key, value) in entries {
-            self.invoke_hash_single(&func, &call_env, value.clone(), span, "each_value")?;
+            self.invoke_hash_single(&func, &call_env, value.clone(), span)?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -872,14 +848,8 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "keep_if",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -912,14 +882,8 @@ impl Interpreter {
         )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "delete_if",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if !result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -951,14 +915,8 @@ impl Interpreter {
             func.closure.clone(),
         )));
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "all?",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if !result_value.is_truthy() {
                 return Ok(Value::Bool(false));
             }
@@ -990,14 +948,8 @@ impl Interpreter {
             func.closure.clone(),
         )));
         for (key, value) in entries {
-            let result_value = self.invoke_hash_kv(
-                &func,
-                &call_env,
-                key.to_value(),
-                value.clone(),
-                span,
-                "any?",
-            )?;
+            let result_value =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
             if result_value.is_truthy() {
                 return Ok(Value::Bool(true));
             }
