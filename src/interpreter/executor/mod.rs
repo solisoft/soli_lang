@@ -514,6 +514,21 @@ impl Interpreter {
             // replace the thrown value with its rendering, and the `catch`
             // that unwraps it would get a string. It also skips serializing
             // the environment for a throw that is about to be caught.
+            //
+            // Measured through a server, all responses 200 so no error page is
+            // involved, median of 250 requests (X-Soli-Render-Us):
+            //
+            //     no error raised                      26 us
+            //     throw caught      (exempt, this arm) 29 us   +3 us
+            //     forbidden() caught (env captured)   108 us  +82 us
+            //
+            // So the capture costs ~80 us — three times the entire cost of a
+            // successful handler — and every error that is NOT a user `throw`
+            // still pays it, including the RecordNotFound behind every 404 and
+            // the forbidden() behind every 403. Whether to gate the capture on
+            // dev mode is a real decision with that number attached; see
+            // tasks/todo/error-paths-serialize-the-environment-in-production.md
+            // (untracked — `tasks*` is gitignored — so the number lives here).
             Err(e) if !e.is_breakpoint() && !e.is_thrown() && e.breakpoint_env_json().is_none() => {
                 let captured_env = self.environment.borrow().get_all_variables();
                 let env_json = self.serialize_environment(&captured_env);
