@@ -47,6 +47,14 @@
             </ul>
         </div>
 
+        <!-- Language additions -->
+        <h3 id="unreleased-language-add" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">
+            <ul class="space-y-3 text-gray-400 text-sm leading-relaxed">
+                <li><strong class="text-white">Block-form <code class="text-cyan-400">unless ... end</code>.</strong> <code class="text-cyan-400">unless</code> only existed as a postfix modifier, so a multi-line guard &mdash; the shape Soli's own guidance recommends &mdash; did not parse. It now does, and takes an <code class="text-cyan-400">else</code> branch. <code class="text-cyan-400">elsif</code> after <code class="text-cyan-400">unless</code> is deliberately not accepted: "unless A, else if B" reads as a puzzle rather than a guard, which is why Ruby rejects it too.</li>
+            </ul>
+        </div>
+
         <!-- Operations -->
         <h3 id="unreleased-ops" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Operations</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-10">

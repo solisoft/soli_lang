@@ -17,6 +17,8 @@ impl Parser {
             self.const_declaration()
         } else if self.check(&TokenKind::If) {
             self.if_statement()
+        } else if self.check(&TokenKind::Unless) {
+            self.unless_statement()
         } else if self.check(&TokenKind::While) {
             self.while_statement()
         } else if self.check(&TokenKind::For) {
@@ -75,6 +77,51 @@ impl Parser {
         Ok(Stmt::new(
             StmtKind::If {
                 condition,
+                then_branch,
+                else_branch,
+            },
+            span,
+            None,
+        ))
+    }
+
+    /// Block-form `unless cond ... end` — `if !cond`, the same desugaring the
+    /// postfix `stmt unless cond` already used. Only the postfix form existed,
+    /// so the multi-line guard shown in the project's own instructions
+    /// (`unless [...].includes?(status)` over several lines) did not parse.
+    ///
+    /// `else` is accepted for symmetry with `if`; `elsif` is not, because
+    /// "unless A, else if B" reads as a puzzle rather than a guard — Ruby
+    /// rejects `elsif` after `unless` for the same reason.
+    fn unless_statement(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Unless)?;
+
+        let condition = self.expression_condition()?;
+        let negated = Expr::new(
+            ExprKind::Unary {
+                operator: crate::ast::expr::UnaryOp::Not,
+                operand: Box::new(condition),
+            },
+            start_span.merge(&self.previous_span()),
+        );
+
+        self.match_token(&TokenKind::Then);
+        let then_branch = self.parse_branch_body()?;
+
+        let else_branch = if self.match_token(&TokenKind::End) {
+            None
+        } else if self.match_token(&TokenKind::Else) {
+            Some(self.parse_else_body()?)
+        } else {
+            None
+        };
+
+        let span = start_span.merge(&self.previous_span());
+
+        Ok(Stmt::new(
+            StmtKind::If {
+                condition: negated,
                 then_branch,
                 else_branch,
             },

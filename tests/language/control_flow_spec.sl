@@ -1142,3 +1142,47 @@ describe("conditions starting with a parenthesis", fn() {
         assert(braced);
     });
 });
+
+# `unless` existed only as a postfix modifier, so the multi-line guard shown in
+# the project's own instructions did not parse.
+describe("block-form unless", fn() {
+    test("guards a multi-line body", fn() {
+        let status = "banned"
+        let flagged = false
+        unless ["up", "late", "overdue"].includes?(status)
+            flagged = true
+        end
+        assert(flagged);
+    });
+
+    test("takes an else branch", fn() {
+        let n = 5
+        let which = ""
+        unless n > 10
+            which = "small"
+        else
+            which = "large"
+        end
+        assert_eq(which, "small");
+    });
+
+    test("does not run its body when the condition holds", fn() {
+        let ran = false
+        unless true
+            ran = true
+        end
+        assert(!ran);
+    });
+
+    test("accepts a parenthesised condition, and postfix still works", fn() {
+        let n = 5
+        let a = false
+        unless (n + 1) == 99
+            a = true
+        end
+        assert(a);
+        let b = false
+        b = true unless n > 10
+        assert(b);
+    });
+});

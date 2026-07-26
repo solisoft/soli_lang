@@ -268,7 +268,26 @@ impl Printer<'_> {
                     UnaryOp::Not => "!",
                 };
                 self.write(op);
+                // Parenthesise an operand that binds looser than the unary
+                // operator, or the output reparses with the wrong shape:
+                // `Not(n > 10)` printed bare is `!n > 10`, which is `(!n) > 10`
+                // and fails to even type-check. Source that was written with
+                // parens carries a `Grouping` node and prints correctly either
+                // way; an AST built without one — a desugared `unless`, say —
+                // did not.
+                let needs_parens = matches!(
+                    operand.kind,
+                    ExprKind::Binary { .. }
+                        | ExprKind::Assign { .. }
+                        | ExprKind::CompoundAssign { .. }
+                );
+                if needs_parens {
+                    self.write("(");
+                }
                 self.print_expr(operand);
+                if needs_parens {
+                    self.write(")");
+                }
             }
             ExprKind::Grouping(inner) => {
                 self.write("(");
