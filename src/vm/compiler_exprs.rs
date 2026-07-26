@@ -355,6 +355,21 @@ impl Compiler {
                 self.emit(Op::GetUpvalue(idx), line);
             }
             VariableAccess::Global(name) => {
+                // `next` is a zero-argument builtin returning `Value::Continue`,
+                // which the tree-walking interpreter recognises as "skip to the
+                // next iteration". The VM has no such handling: it evaluated the
+                // call, popped the value as an ordinary expression statement,
+                // and carried on — so `next` was **silently ignored** and the
+                // loop body ran for every element. Refuse compilation instead,
+                // exactly as `break` does above, so the handler falls back to the
+                // interpreter, which implements it. A shadowed `next` costs a
+                // demotion and nothing else; the alternative was a wrong answer.
+                if name == "next" {
+                    return Err(CompileError::new(
+                        "`next` is not supported in compiled mode",
+                        crate::span::Span::new(0, 0, line, 1),
+                    ));
+                }
                 let idx = self.add_string_constant(&name);
                 self.emit(Op::GetGlobal(idx), line);
             }

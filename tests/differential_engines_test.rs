@@ -480,6 +480,16 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_a_loop_caught_in_the_same_function",
         "let seen = []\nfor a in [\"x\", \"y\", \"z\"] {\n  seen.push(a)\n  try { for b in [1, 2, 3] { throw \"inner\" } } catch e { }\n}\nprint(seen)",
     ),
+    // `next` and `break` are deliberately refused by the compiler so the handler
+    // falls back to the interpreter, which implements them. Listed in
+    // KNOWN_DIVERGENT because a direct `--vm` run reports the compile error while
+    // the interpreter runs the loop — the fallback that makes them work only
+    // exists in the server. Before the refusal, `next` compiled fine and was
+    // silently *ignored*, which is why the divergence is an improvement.
+    (
+        "next_is_refused_rather_than_ignored",
+        "let kept = []\nfor i in [1, 2, 3, 4] {\n  if i == 2 { next }\n  kept.push(i)\n}\nprint(kept)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
