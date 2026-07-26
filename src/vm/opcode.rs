@@ -341,3 +341,48 @@ pub enum Op {
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
 }
+
+/// Every opcode that advances `ip` by one of its operands.
+///
+/// Three separate places have to know this set, and each kept its own
+/// hand-written copy until they drifted apart:
+///
+/// * `Chunk::patch_jump` — fills a target in after the fact. Fails **loudly**
+///   (it panics on an unlisted opcode), so drift here surfaces immediately.
+/// * `is_jump_target` in the peephole — an opcode missing here lets the
+///   optimizer fuse the instruction a branch lands on, so the branch arrives in
+///   the middle of a fused pair.
+/// * `compact_nops` — an opcode missing here keeps a stale offset after fusion
+///   shifts the code. `TryBegin` was missing, and the resulting one-instruction
+///   overshoot into a `catch` body produced garbage locals, skipped handlers,
+///   and an out-of-bounds panic.
+///
+/// The last two fail *silently*, which is why this list exists: the test
+/// `every_branch_op_is_remapped_by_compaction` walks it and holds them to it.
+/// **Add a branch opcode here when you add one to `Op`** — the operand values
+/// are placeholders, only the variants matter.
+///
+/// `Loop` is deliberately absent: it is the one backward branch, so it does not
+/// share the forward-offset arithmetic the others do, and it is checked
+/// separately.
+pub const FORWARD_BRANCH_OPS: &[Op] = &[
+    Op::Jump(0),
+    Op::JumpIfFalse(0),
+    Op::JumpIfFalseNoPop(0),
+    Op::JumpIfTrueNoPop(0),
+    Op::JumpIfNull(0),
+    Op::JumpIfNotNull(0),
+    Op::NullishJump(0),
+    Op::JumpIfParamSupplied(0, 0),
+    Op::ForIter(0),
+    Op::ForIterRange(0),
+    Op::RescueJump(0),
+    Op::CatchMatch(0, 0),
+    Op::TestLessJump(0),
+    Op::TestLessEqualJump(0),
+    Op::TestGreaterJump(0),
+    Op::TestGreaterEqualJump(0),
+    Op::TestNotEqualJump(0),
+    // Two targets, and neither name says "jump".
+    Op::TryBegin(0, 0),
+];

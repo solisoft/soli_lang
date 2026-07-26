@@ -728,18 +728,42 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
     let mut is_jump_target = vec![false; len];
     for (i, op) in code.iter().enumerate() {
         match op {
+            // Keep in step with `FORWARD_BRANCH_OPS`. An opcode missing here
+            // lets the peephole fuse the instruction a branch lands on, so the
+            // branch arrives in the middle of a fused pair and runs the head it
+            // was meant to skip. Several were absent — the null/nullish jumps,
+            // the greater/not-equal test-jumps, `RescueJump`, `CatchMatch` and
+            // `TryBegin` — which is the same drift that left `TryBegin`
+            // unremapped in `compact_nops`.
             Op::Jump(offset)
             | Op::JumpIfFalse(offset)
             | Op::JumpIfFalseNoPop(offset)
             | Op::JumpIfTrueNoPop(offset)
+            | Op::JumpIfNull(offset)
+            | Op::JumpIfNotNull(offset)
             | Op::NullishJump(offset)
+            | Op::JumpIfParamSupplied(_, offset)
             | Op::ForIter(offset)
             | Op::ForIterRange(offset)
+            | Op::RescueJump(offset)
+            | Op::CatchMatch(_, offset)
             | Op::TestLessEqualJump(offset)
+            | Op::TestGreaterJump(offset)
+            | Op::TestGreaterEqualJump(offset)
+            | Op::TestNotEqualJump(offset)
             | Op::TestLessJump(offset) => {
                 let target = i + 1 + *offset as usize;
                 if target < len {
                     is_jump_target[target] = true;
+                }
+            }
+            // Two targets, so it does not fit the single-operand arm above.
+            Op::TryBegin(catch_offset, finally_offset) => {
+                for offset in [catch_offset, finally_offset] {
+                    let target = i + 1 + *offset as usize;
+                    if target < len {
+                        is_jump_target[target] = true;
+                    }
                 }
             }
             Op::Loop(offset) => {
@@ -1410,6 +1434,9 @@ fn compact_nops(chunk: &mut Chunk) {
             Op::JumpIfTrueNoPop(d) => Op::JumpIfTrueNoPop(fwd(&old_to_new, old, d, here)),
             Op::JumpIfNull(d) => Op::JumpIfNull(fwd(&old_to_new, old, d, here)),
             Op::JumpIfNotNull(d) => Op::JumpIfNotNull(fwd(&old_to_new, old, d, here)),
+            // `??`. Missed for the same reason as `TryBegin` — the name does
+            // not end in "Jump" in the places people grep.
+            Op::NullishJump(d) => Op::NullishJump(fwd(&old_to_new, old, d, here)),
             Op::TestLessJump(d) => Op::TestLessJump(fwd(&old_to_new, old, d, here)),
             Op::TestLessEqualJump(d) => Op::TestLessEqualJump(fwd(&old_to_new, old, d, here)),
             Op::TestGreaterJump(d) => Op::TestGreaterJump(fwd(&old_to_new, old, d, here)),
@@ -1460,6 +1487,92 @@ mod inplace_peephole_tests {
     use super::*;
     use crate::lexer::Scanner;
     use crate::parser::Parser;
+
+    /// Every forward branch opcode must have its target remapped by
+    /// compaction.
+    ///
+    /// `compact_nops` matches on opcode variants, and an unlisted one falls
+    /// through `other => other` keeping a *stale* offset — silently, which is
+    /// how `TryBegin` stayed broken. This walks `FORWARD_BRANCH_OPS` and puts
+    /// a removable NOP between each branch and its target, so a variant that
+    /// is missing from that match fails here instead of in somebody's `catch`
+    /// block.
+    #[test]
+    fn every_branch_op_is_remapped_by_compaction() {
+        use crate::vm::opcode::FORWARD_BRANCH_OPS;
+
+        for proto in FORWARD_BRANCH_OPS {
+            // branch at 0 -> target at 3; NOP at 1 disappears, so after
+            // compaction the target sits at 2 and the offset must drop 2 -> 1.
+            let branch = set_first_offset(*proto, 2);
+            let mut chunk = Chunk::default();
+            for op in [branch, Op::Nop, Op::Null, Op::Null] {
+                chunk.code.push(op);
+                chunk.lines.push(1);
+            }
+            compact_nops(&mut chunk);
+
+            let got = first_offset(&chunk.code[0]);
+            assert_eq!(
+                got,
+                Some(1),
+                "{:?} kept a stale target through compaction — add it to the \
+                 match in compact_nops (see FORWARD_BRANCH_OPS)",
+                proto
+            );
+        }
+    }
+
+    /// Read/write the ip-relative operand, which is the last field on every
+    /// branch opcode (`CatchMatch`/`JumpIfParamSupplied` carry an unrelated
+    /// index first, `TryBegin` carries a second target after it).
+    fn set_first_offset(op: Op, d: u16) -> Op {
+        match op {
+            Op::Jump(_) => Op::Jump(d),
+            Op::JumpIfFalse(_) => Op::JumpIfFalse(d),
+            Op::JumpIfFalseNoPop(_) => Op::JumpIfFalseNoPop(d),
+            Op::JumpIfTrueNoPop(_) => Op::JumpIfTrueNoPop(d),
+            Op::JumpIfNull(_) => Op::JumpIfNull(d),
+            Op::JumpIfNotNull(_) => Op::JumpIfNotNull(d),
+            Op::NullishJump(_) => Op::NullishJump(d),
+            Op::JumpIfParamSupplied(p, _) => Op::JumpIfParamSupplied(p, d),
+            Op::ForIter(_) => Op::ForIter(d),
+            Op::ForIterRange(_) => Op::ForIterRange(d),
+            Op::RescueJump(_) => Op::RescueJump(d),
+            Op::CatchMatch(n, _) => Op::CatchMatch(n, d),
+            Op::TestLessJump(_) => Op::TestLessJump(d),
+            Op::TestLessEqualJump(_) => Op::TestLessEqualJump(d),
+            Op::TestGreaterJump(_) => Op::TestGreaterJump(d),
+            Op::TestGreaterEqualJump(_) => Op::TestGreaterEqualJump(d),
+            Op::TestNotEqualJump(_) => Op::TestNotEqualJump(d),
+            Op::TryBegin(_, f) => Op::TryBegin(d, f),
+            other => panic!("FORWARD_BRANCH_OPS holds a non-branch opcode: {other:?}"),
+        }
+    }
+
+    fn first_offset(op: &Op) -> Option<u16> {
+        Some(match *op {
+            Op::Jump(d)
+            | Op::JumpIfFalse(d)
+            | Op::JumpIfFalseNoPop(d)
+            | Op::JumpIfTrueNoPop(d)
+            | Op::JumpIfNull(d)
+            | Op::JumpIfNotNull(d)
+            | Op::NullishJump(d)
+            | Op::JumpIfParamSupplied(_, d)
+            | Op::ForIter(d)
+            | Op::ForIterRange(d)
+            | Op::RescueJump(d)
+            | Op::CatchMatch(_, d)
+            | Op::TestLessJump(d)
+            | Op::TestLessEqualJump(d)
+            | Op::TestGreaterJump(d)
+            | Op::TestGreaterEqualJump(d)
+            | Op::TestNotEqualJump(d)
+            | Op::TryBegin(d, _) => d,
+            _ => return None,
+        })
+    }
 
     /// `compact_nops` must remap **both** of `TryBegin`'s targets.
     ///
