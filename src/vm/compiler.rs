@@ -886,6 +886,44 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
+        // Pattern: GetLocal(s), GetProperty(c) → GetLocalProperty(s, c)
+        //
+        // `this.field` and `obj.field` are the most common shape in Soli's OO
+        // code — every model attribute read, every controller `this.` — and the
+        // pair costs ~27ns of which roughly 15ns is the second dispatch alone.
+        // The fused opcode already existed and was already implemented; nothing
+        // ever emitted it.
+        if i + 1 < len {
+            if let (Op::GetLocal(slot), Op::GetProperty(cidx)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::GetLocalProperty(slot, cidx);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), GetIndex → GetLocalIndex(a, b)
+        //
+        // `arr[i]` with both operands in locals — the shape of every indexed
+        // loop. Like GetLocalProperty above, the fused opcode was already
+        // implemented and simply never emitted; this collapses three dispatches
+        // into one.
+        if i + 2 < len {
+            if let (Op::GetLocal(obj_slot), Op::GetLocal(idx_slot), Op::GetIndex) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::GetLocalIndex(obj_slot, idx_slot);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
         // Pattern: Greater, JumpIfFalse(offset) → TestGreaterJump(offset+1)
         if i + 1 < len {
             if let (Op::Greater, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {

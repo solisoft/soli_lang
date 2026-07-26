@@ -2476,6 +2476,27 @@ impl Vm {
                 }
                 Op::GetLocalProperty(slot, idx) => {
                     let base = self.frames.last().unwrap().stack_base;
+                    // Fast path, mirroring Op::GetProperty: fields shadow
+                    // methods, so a present key fully decides the access — no
+                    // owned name, no span, one ahash probe. Without this the
+                    // fused form would be *slower* than the pair it replaces,
+                    // because the general path allocates the name as a String.
+                    let hit = {
+                        let frame = self.frames.last().unwrap();
+                        match (
+                            &self.stack[base + slot as usize],
+                            &frame.closure.proto.chunk.constants[idx as usize],
+                        ) {
+                            (Value::Instance(inst), Constant::String(name)) => {
+                                inst.borrow().fields.get(name.as_ref()).cloned()
+                            }
+                            _ => None,
+                        }
+                    };
+                    if let Some(val) = hit {
+                        self.stack.push(val);
+                        continue;
+                    }
                     let object = self.stack[base + slot as usize].clone();
                     let name = self.read_string_constant_owned(idx);
                     let span = self.current_span();
