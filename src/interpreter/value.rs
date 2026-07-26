@@ -683,7 +683,17 @@ impl Value {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
-            Value::Int(n) => n.to_string().len(),
+            // Count digits arithmetically. This used to be `n.to_string().len()`,
+            // which heap-allocated a String purely to read its length and then
+            // dropped it — and `join` calls this once per element to size its
+            // buffer, so a 1000-element join did 1000 pointless allocations.
+            Value::Int(n) => {
+                let digits = n
+                    .unsigned_abs()
+                    .checked_ilog10()
+                    .map_or(1, |l| l as usize + 1);
+                digits + usize::from(*n < 0)
+            }
             Value::Float(n) => n.to_string().len(),
             Value::Decimal(d) => d.to_string().len(),
             Value::String(s) => s.len(),
@@ -749,7 +759,10 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
-            Value::Int(n) => s.push_str(&n.to_string()),
+            // itoa writes into a stack buffer; `to_string()` allocated one
+            // String per element. Integers have a single decimal form, so the
+            // output is byte-identical.
+            Value::Int(n) => s.push_str(itoa::Buffer::new().format(*n)),
             Value::Float(n) => s.push_str(&n.to_string()),
             Value::Decimal(d) => s.push_str(&d.to_string()),
             Value::String(st) => s.push_str(st),
@@ -2608,6 +2621,59 @@ mod value_misc_tests {
     use super::*;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    /// `display_len` sizes the buffer that `write_to_string` then fills, so the
+    /// two must agree exactly — and both were rewritten to stop allocating a
+    /// throwaway String per value. A disagreement would only cost a realloc,
+    /// but a wrong *rendering* would corrupt every `join` and interpolation.
+    #[test]
+    fn integer_rendering_matches_to_string_and_its_reported_length() {
+        for n in [
+            0i64,
+            1,
+            -1,
+            9,
+            10,
+            -10,
+            99,
+            100,
+            -100,
+            999,
+            1000,
+            12345,
+            -12345,
+            i64::MAX,
+            i64::MIN,
+            i64::MAX - 1,
+            i64::MIN + 1,
+        ] {
+            let v = Value::Int(n);
+            let mut rendered = String::new();
+            v.write_to_string(&mut rendered);
+            assert_eq!(rendered, n.to_string(), "rendering changed for {n}");
+            assert_eq!(v.display_len(), rendered.len(), "length disagrees for {n}");
+        }
+    }
+
+    #[test]
+    fn integer_display_len_is_exact_at_every_digit_boundary() {
+        let mut n: i64 = 1;
+        loop {
+            for probe in [n - 1, n, n + 1] {
+                for signed in [probe, -probe] {
+                    assert_eq!(
+                        Value::Int(signed).display_len(),
+                        signed.to_string().len(),
+                        "at {signed}"
+                    );
+                }
+            }
+            match n.checked_mul(10) {
+                Some(next) => n = next,
+                None => break,
+            }
+        }
+    }
 
     /// Pin the zero-alloc lookup invariant after the SoliStr (Arc<str>)
     /// migration: a `StrKey`/`SymKey` borrowed key must hash byte-identically
