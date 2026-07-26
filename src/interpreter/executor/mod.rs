@@ -525,10 +525,34 @@ impl Interpreter {
             // So the capture costs ~80 us — three times the entire cost of a
             // successful handler — and every error that is NOT a user `throw`
             // still pays it, including the RecordNotFound behind every 404 and
-            // the forbidden() behind every 403. Whether to gate the capture on
-            // dev mode is a real decision with that number attached; see
+            // the forbidden() behind every 403.
+            //
+            // Do NOT "optimise" this away by gating it on dev mode. The obvious
+            // reading — that the capture only feeds the dev error page — is
+            // wrong: `serve::error_logging::log_production_error` writes this
+            // JSON into the production error log under `env:`, and its call
+            // sites are not dev-gated. Skipping the capture in production would
+            // turn every logged error's locals into
+            // `<no environment captured>`.
+            //
+            // It has to be captured *here*, at the raise site, rather than at
+            // the top: by the time the serve layer handles the error the inner
+            // frames are gone, so its `serialize_environment_for_debug()`
+            // fallback can only see the outermost one. The 80 us buys the
+            // locals of the frame that actually failed.
+            //
+            // So the trade is "80 us per error" against "locals in production
+            // error logs", not against nothing.
+            //
+            // Verified, not inferred: a non-dev server serving a handler that
+            // raises writes `env: {"secret_local": "...", "bad": [1], ...}` —
+            // the failing frame's locals, by value. Which is also worth a
+            // second look on its own merits: a local holding a token or a
+            // password ends up in the log. That is a policy question separate
+            // from the cost, and it cuts the other way from "keep capturing".
+            // See
             // tasks/todo/error-paths-serialize-the-environment-in-production.md
-            // (untracked — `tasks*` is gitignored — so the number lives here).
+            // (untracked — `tasks*` is gitignored — so this lives here).
             Err(e) if !e.is_breakpoint() && !e.is_thrown() && e.breakpoint_env_json().is_none() => {
                 let captured_env = self.environment.borrow().get_all_variables();
                 let env_json = self.serialize_environment(&captured_env);
