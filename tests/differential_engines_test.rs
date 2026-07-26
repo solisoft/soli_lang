@@ -523,6 +523,33 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- hash patterns with named fields compile ---
+    // Every key test runs before any binding is pushed, same provable shape as
+    // the array form. A missing key falls through; extra keys are fine.
+    (
+        "match_hash_two_fields",
+        "fn f(v) { return match v { {name: n, age: a} => n + \":\" + str(a), _ => \"other\" } }\nprint([f({\"name\": \"ada\", \"age\": 36}), f({\"name\": \"x\"}), f(7)])",
+    ),
+    (
+        "match_hash_extra_keys_are_fine",
+        "fn f(v) { return match v { {name: n} => \"got:\" + n, _ => \"no\" } }\nprint(f({\"name\": \"ada\", \"extra\": 1}))",
+    ),
+    (
+        "match_hash_missing_key_falls_through",
+        "fn f(v) { return match v { {name: n} => \"got\", _ => \"missing\" } }\nprint(f({\"other\": 1}))",
+    ),
+    (
+        "match_hash_with_guard",
+        "fn f(v) { return match v { {age: a} if a >= 18 => \"adult\", {age: a} => \"minor\", _ => \"no\" } }\nprint([f({\"age\": 30}), f({\"age\": 5}), f(1)])",
+    ),
+    (
+        "match_mixed_literal_array_hash_arms",
+        "fn f(v) { return match v { 1 => \"one\", [a, b] => \"arr\", {k: x} => \"hash:\" + str(x), _ => \"?\" } }\nprint([f(1), f([1, 2]), f({\"k\": 9}), f(\"z\")])",
+    ),
+    (
+        "hash_rest_pattern_falls_back",
+        "fn f(v) { return match v { {name: n, ...rest} => \"has\", _ => \"no\" } }\nprint(f({\"name\": \"a\", \"b\": 1}))",
+    ),
     // --- fixed-length array patterns compile ---
     // Every test runs before any binding is pushed, so a failing arm never has
     // to unwind a half-built set of bindings. `...rest` and non-binding
@@ -939,6 +966,7 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // falls back; a direct `--vm` run reports the compile error while the
     // interpreter runs it. Binding patterns at a clean position compile — see
     // the `match_binding_*` cases, which are NOT listed here.
+    "hash_rest_pattern_falls_back",
     "array_rest_pattern_falls_back",
     "binding_pattern_as_call_argument",
     "break_inside_try_falls_back",
@@ -954,7 +982,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //   match epilogue then pops before the body — a body that uses the binding
     //   read a freed slot (panic). The VM now refuses to compile binding
     //   patterns (→ fallback); literal/wildcard arms still run on the VM.
-    "match_hash_pattern",
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
     //   #6  assignment inside catch          — TryBegin catch_ip off-by-one

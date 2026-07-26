@@ -42,12 +42,18 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
                     .iter()
                     .all(|e| matches!(e, MatchPattern::Variable(_) | MatchPattern::Wildcard))
         }
+        // `{name: n, age: a}` — same bounded shape as the array form: every key
+        // test runs before any binding is pushed. `...rest` needs to build the
+        // leftover hash, which this does not do yet.
+        MatchPattern::Hash { fields, rest } => {
+            rest.is_some()
+                || !fields
+                    .iter()
+                    .all(|(_, p)| matches!(p, MatchPattern::Variable(_) | MatchPattern::Wildcard))
+        }
         MatchPattern::EnumVariant { .. } => true,
         // Composite patterns: unbalanced Dup/Pop against literal sub-patterns.
-        MatchPattern::Hash { .. }
-        | MatchPattern::Destructuring { .. }
-        | MatchPattern::And(_)
-        | MatchPattern::Or(_) => true,
+        MatchPattern::Destructuring { .. } | MatchPattern::And(_) | MatchPattern::Or(_) => true,
     }
 }
 
@@ -55,7 +61,10 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
 fn is_binding_pattern(pattern: &MatchPattern) -> bool {
     matches!(
         pattern,
-        MatchPattern::Variable(_) | MatchPattern::Typed { .. } | MatchPattern::Array { .. }
+        MatchPattern::Variable(_)
+            | MatchPattern::Typed { .. }
+            | MatchPattern::Array { .. }
+            | MatchPattern::Hash { .. }
     )
 }
 
@@ -112,8 +121,12 @@ impl Compiler {
             // How many locals this arm's pattern pushed. The collapse pops that
             // many; a failing guard drops them again.
             let mut bindings: usize = 0;
-            // An array pattern has two fail points needing different cleanup.
-            let mut array_fails: Option<(usize, usize)> = None;
+            // Fail jumps, split by what the stack looks like when they are
+            // taken. `peeked_fails` are tests that left the subject copy in
+            // place (they peek); `fail_jumps` are tests that already consumed
+            // it. Mixing the two is how the original pattern compilation
+            // corrupted the value stack.
+            let mut peeked_fails: Vec<usize> = Vec::new();
             match &arm.pattern {
                 // Always matches; the copy is dead weight.
                 MatchPattern::Wildcard => {
@@ -152,12 +165,35 @@ impl Compiler {
                             bindings += 1;
                         }
                     }
-                    array_fails = Some((type_fail, len_fail));
+                    peeked_fails.push(type_fail);
+                    fail_jumps.push(len_fail);
+                }
+                // `{name: n}`: check it is a hash that has every named key,
+                // then read those keys out of the subject's slot and bind them.
+                // Every key test runs before any binding is pushed.
+                MatchPattern::Hash { fields, .. } => {
+                    let ty = self.add_string_constant("Hash");
+                    peeked_fails.push(self.emit_jump(Op::MatchType(ty, 0), line));
+                    self.emit(Op::Pop, line); // the copy; fields come from the slot
+
+                    for (field, _) in fields {
+                        let key = self.add_string_constant(field);
+                        self.emit(Op::HashHasKeyLocalConst(subject_slot, key), line);
+                        fail_jumps.push(self.emit_jump(Op::JumpIfFalse(0), line));
+                    }
+                    for (field, sub) in fields {
+                        if let MatchPattern::Variable(bind_name) = sub {
+                            let key = self.add_string_constant(field);
+                            self.emit(Op::HashGetLocalConst(subject_slot, key), line);
+                            self.add_local(bind_name.clone(), false);
+                            bindings += 1;
+                        }
+                    }
                 }
                 // Tests the copy's type without consuming it, then binds it.
                 MatchPattern::Typed { name, type_name } => {
                     let idx = self.add_string_constant(type_name);
-                    fail_jumps.push(self.emit_jump(Op::MatchType(idx, 0), line));
+                    peeked_fails.push(self.emit_jump(Op::MatchType(idx, 0), line));
                     self.add_local(name.clone(), false);
                     bindings += 1;
                 }
@@ -203,6 +239,7 @@ impl Compiler {
             // so they cannot share one label, and mixing them was how the
             // original compilation corrupted the stack.
             let mut converge = Vec::new();
+            // A guard that failed still has the arm's bindings on the stack.
             if let Some(guard_fail) = guard_jump {
                 self.patch_jump(guard_fail);
                 for _ in 0..bindings {
@@ -210,21 +247,15 @@ impl Compiler {
                 }
                 converge.push(self.emit_jump(Op::Jump(0), line));
             }
-            if let Some((type_fail, len_fail)) = array_fails {
-                self.patch_jump(type_fail);
-                self.emit(Op::Pop, line);
-                self.patch_jump(len_fail);
-            } else {
-                for fj in std::mem::take(&mut fail_jumps) {
+            // Tests that peeked: drop the copy, then fall into the clean group.
+            if !peeked_fails.is_empty() {
+                for fj in std::mem::take(&mut peeked_fails) {
                     self.patch_jump(fj);
                 }
-                // A Typed test peeked, so its copy survives; a literal test
-                // consumed it, and pushes no bindings.
-                if bindings > 0 {
-                    self.emit(Op::Pop, line);
-                }
+                self.emit(Op::Pop, line);
             }
-            for fj in fail_jumps {
+            // Tests that already consumed the copy.
+            for fj in std::mem::take(&mut fail_jumps) {
                 self.patch_jump(fj);
             }
             for c in converge {
