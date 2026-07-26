@@ -1546,6 +1546,30 @@ impl Vm {
                     // caller's loop starts consuming it.
                     self.iter_stack.truncate(frame.iter_base);
 
+                    // …and any `try` handlers this frame registered. A `return`
+                    // from inside a `try` skips the `TryEnd` that pops the
+                    // handler, so it outlived its frame with a `catch_ip`
+                    // pointing into a chunk that is no longer running. The next
+                    // throw with no newer handler above it matched that corpse
+                    // and jumped the *current* frame's ip to an offset from a
+                    // different function — observed as the exception vanishing
+                    // entirely. Handlers are keyed by the frame depth at
+                    // `TryBegin`, so anything deeper than the frame we just
+                    // returned into belongs to a frame that is gone.
+                    //
+                    // Third stack with this exact bug (value, iterator, now
+                    // handlers): every piece of per-frame state has to be
+                    // unwound here, because `return` is the one exit that skips
+                    // the instruction that would have cleaned it up.
+                    let depth = self.frames.len();
+                    while self
+                        .exception_handlers
+                        .last()
+                        .is_some_and(|h| h.frame_depth > depth)
+                    {
+                        self.exception_handlers.pop();
+                    }
+
                     if self.frames.len() <= self.return_depth {
                         return Ok(result);
                     }

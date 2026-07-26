@@ -526,6 +526,29 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- uncaught throws must stop the program, in both engines ---
+    // The tree-walker's top-level loop discarded the control-flow result, so a
+    // `throw` with no enclosing `try` evaporated and the NEXT STATEMENT RAN.
+    (
+        "top_level_throw_stops_the_program",
+        "print(\"before\")\nthrow \"boom\"\nprint(\"AFTER-MUST-NOT-PRINT\")",
+    ),
+    // A `return` from inside a `try` skips the `TryEnd` that pops the handler,
+    // so the VM kept a handler whose catch_ip pointed into a dead frame. The
+    // next throw with no newer handler above it matched that corpse and the
+    // exception vanished.
+    (
+        "return_from_try_does_not_leak_its_handler",
+        "def leaky() -> String {\n  try { return \"early\" } catch e { return \"W\" }\n}\ndef boom() -> String { throw \"kaboom\" }\nprint(leaky())\nprint(boom())",
+    ),
+    (
+        "leaked_handler_does_not_shadow_an_outer_catch",
+        "def leaky() -> String {\n  try { return \"early\" } catch e { return \"W\" }\n}\ndef boom() -> String { throw \"kaboom\" }\nprint(leaky())\ntry { boom() } catch e { print(\"outer: \" + str(e)) }",
+    ),
+    (
+        "repeated_handler_leaks_then_throw",
+        "def leaky() -> String {\n  try { return \"e\" } catch e { return \"W\" }\n}\nlet i = 0\nwhile i < 5 { leaky()\n  i = i + 1 }\nprint(\"done\")\nthrow \"final\"",
+    ),
     // --- ActiveRecord-style chainables on a materialized array ---
     // `has_many` accessors hand back a plain array, so a Rails-habit chain
     // lands on one. The tree-walker accepted these; the VM raised "Cannot

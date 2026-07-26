@@ -428,7 +428,28 @@ impl Interpreter {
     /// Interpret a complete program.
     pub fn interpret(&mut self, program: &Program) -> RuntimeResult<()> {
         for stmt in &program.statements {
-            self.execute(stmt)?;
+            // A `throw` at the top level, with no enclosing `try`, is an
+            // uncaught exception and must stop the program. This discarded the
+            // control-flow result, so the throw evaporated and the *next
+            // statement ran*: `throw "boom"` followed by anything printed that
+            // anything and exited 0. Only the tree-walker did this — the VM has
+            // always reported it — so a script that raised passed under
+            // `soli run` and `soli test` and failed under `soli serve`.
+            //
+            // Return/Break/Continue keep their existing top-level behaviour
+            // (ignored); only the silently-dropped error is corrected here.
+            match self.execute(stmt)? {
+                ControlFlow::Throw(value) => {
+                    return Err(RuntimeError::Thrown {
+                        value,
+                        span: stmt.span,
+                    });
+                }
+                ControlFlow::Normal(_)
+                | ControlFlow::Return(_)
+                | ControlFlow::Break
+                | ControlFlow::Continue => {}
+            }
         }
         Ok(())
     }
