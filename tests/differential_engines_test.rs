@@ -523,6 +523,33 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- slot numbering around a `match` ---
+    // The subject sits on the value stack while arm bodies compile but is NOT
+    // registered in the compiler's locals, so a local declared in an arm could
+    // plausibly be numbered one slot low. It is not — these pin that, because
+    // compiling binding patterns means registering the subject as a local and
+    // renumbering, and that work must preserve this rather than repair it.
+    // See tasks/todo/vm-compile-binding-match-patterns.md.
+    (
+        "match_arm_reads_an_outer_local",
+        "fn f() { let a = 5\n  let r = match 1 { 1 => a, _ => 0 }\n  return r }\nprint(f())",
+    ),
+    (
+        "local_declared_after_a_match",
+        "fn f() { let r = match 1 { 1 => 10, _ => 0 }\n  let b = 7\n  return r + b }\nprint(f())",
+    ),
+    (
+        "match_inside_a_loop_with_locals",
+        "fn f() { let total = 0\n  for i in [1, 2, 3] { let m = match i { 1 => 100, 2 => 200, _ => 300 }\n    total = total + m }\n  return total }\nprint(f())",
+    ),
+    (
+        "two_matches_then_a_local",
+        "fn f() { let a = match 1 { 1 => 1, _ => 0 }\n  let b = match 2 { 2 => 2, _ => 0 }\n  let c = 3\n  return a + b + c }\nprint(f())",
+    ),
+    (
+        "match_arm_body_declares_a_local",
+        "fn f() { let a = 9\n  let r = match 1 { 1 => { let inner = a * 2\n      inner }, _ => 0 }\n  return r }\nprint(f())",
+    ),
     // --- re-`let` of a local in the same scope ---
     // The tree-walker allows it (`define_or_update` writes the existing
     // binding); the VM refused to compile, demoting the handler for code that
