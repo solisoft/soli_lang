@@ -11,6 +11,9 @@ gate; this is the wide net you cast when looking for *new* divergences.
 Span columns are normalised away, so an identical error reported at a different
 offset is not counted — the engines legitimately differ there.
 
+Keep the corpus deterministic. Anything random (`sample`, `shuffle`, `DateTime.now`)
+differs between *runs*, not between engines, and only produces false positives.
+
 This only became possible once `soli -e` started honouring `--vm`. Before that
 both sides of every comparison ran the tree-walking interpreter, which is how
 several divergences survived: a hash entry holding a function could not be called

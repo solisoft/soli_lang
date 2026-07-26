@@ -675,3 +675,35 @@ describe("Field-keyed array methods", fn() {
         assert(raised);
     });
 });
+
+# These all run correctly in both engines but were rejected by `soli check`,
+# which declared fewer parameters than the implementations accept. A checker
+# that refuses working code is as costly as one that misses broken code.
+describe("optional arguments the type checker used to reject", fn() {
+    test("hash get and fetch take a default", fn() {
+        let config = { "port": 8080 }
+        assert_eq(config.get("port", 3000), 8080);
+        assert_eq(config.get("missing", 3000), 3000);
+        assert_eq(config.fetch("missing", 42), 42);
+    });
+
+    test("padding helpers take a pad string", fn() {
+        assert_eq("abc".center(9, "*"), "***abc***");
+        assert_eq("abc".ljust(6, "*"), "abc***");
+        assert_eq("abc".rjust(6, "*"), "***abc");
+        assert_eq("abc".lpad(6, "0"), "000abc");
+    });
+
+    test("padding helpers still default to spaces", fn() {
+        assert_eq("abc".center(7), "  abc  ");
+        assert_eq("abc".ljust(5), "abc  ");
+    });
+
+    test("string search helpers take their needle", fn() {
+        assert_eq("banana".count("a"), 3);
+        assert_eq("banana".index_of("n"), 2);
+        assert_eq("banana".scan("a").len(), 3);
+        assert_eq("a,b".partition(",").len(), 3);
+        assert_eq("a,b".rpartition(",").len(), 3);
+    });
+});

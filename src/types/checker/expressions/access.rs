@@ -324,8 +324,13 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
+            // Both engines accept an optional second argument — the value to
+            // return when the key is missing — but the checker declared one
+            // parameter, so `config.get("port", 8080)` was rejected at check
+            // time despite running correctly. `Type::Any` keeps it
+            // arity-flexible, matching how `dig` and `count` are declared.
             "get" | "fetch" => Ok(Type::Function {
-                params: vec![key_type.clone()],
+                params: vec![key_type.clone(), Type::Any],
                 return_type: Box::new(value_type.clone()),
             }),
             "dig" => Ok(Type::Function {
@@ -472,8 +477,11 @@ impl TypeChecker {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Array(Box::new(Type::String))),
             }),
+            // Each takes an optional second argument — the pad string, or the
+            // omission marker for `truncate`. Declaring only the width made the
+            // checker reject `name.ljust(20, ".")`, which runs correctly.
             "center" | "ljust" | "rjust" | "truncate" | "lpad" | "rpad" => Ok(Type::Function {
-                params: vec![Type::Int],
+                params: vec![Type::Int, Type::Any],
                 return_type: Box::new(Type::String),
             }),
             "to_i" | "to_int" => Ok(Type::Function {
