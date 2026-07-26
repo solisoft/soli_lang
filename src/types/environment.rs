@@ -560,6 +560,17 @@ impl TypeEnvironment {
                 return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Float))))),
             },
         );
+
+        // rerank(query, documents) -> Array (documents by relevance).
+        // Sibling of embed/embed_batch/llm_generate, and the only one of the
+        // four that was missing here.
+        self.functions.insert(
+            "rerank".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Array(Box::new(Type::Any))],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            },
+        );
         // llm_generate(String, String) -> String
         self.functions.insert(
             "llm_generate".to_string(),
@@ -807,6 +818,69 @@ impl TypeEnvironment {
             Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Void),
+            },
+        );
+
+        // datetime_now() -> Int (epoch)
+        self.functions.insert(
+            "datetime_now".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Int),
+            },
+        );
+
+        // file_write_bytes(path, bytes) -> Bool
+        self.functions.insert(
+            "file_write_bytes".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // ed25519_keypair() -> Hash {private, public}
+        self.functions.insert(
+            "ed25519_keypair".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // x25519_keypair() -> Hash {private, public}
+        self.functions.insert(
+            "x25519_keypair".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // x25519_public_key(private) -> String
+        self.functions.insert(
+            "x25519_public_key".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // x25519_shared_secret(private, peer_public) -> String
+        self.functions.insert(
+            "x25519_shared_secret".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // x25519(private, peer_public) -> String (alias)
+        self.functions.insert(
+            "x25519".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::String),
             },
         );
 
