@@ -523,6 +523,35 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- binding match patterns compile at a clean stack position ---
+    // The subject now lives in a real local slot, so `x => …` can bind it and
+    // the arm collapses [subject, binding, result] to [result] via SetLocal.
+    // Mid-expression there are temporaries below the top and no slot to bind
+    // into, so those fall back — `binding_pattern_as_call_argument` pins that.
+    (
+        "match_binding_with_guard",
+        "fn f(n) { return match n { x if x < 0 => \"neg\", 0 => \"zero\", x => \"pos\" + str(x) } }\nprint([f(-2), f(0), f(5)])",
+    ),
+    (
+        "match_binding_used_twice_in_body",
+        "fn f(n) { return match n { x => x + x } }\nprint(f(4))",
+    ),
+    (
+        "match_binding_on_a_string_subject",
+        "fn f(s) { return match s { \"hi\" => \"greeting\", other => \"got:\" + other } }\nprint([f(\"hi\"), f(\"zz\")])",
+    ),
+    (
+        "match_binding_nested",
+        "fn f(a, b) { return match a { x => match b { y => x * 10 + y } } }\nprint(f(3, 4))",
+    ),
+    (
+        "match_literal_as_call_argument_still_compiles",
+        "let out = []\nfor i in [1, 2, 3] { out.push(match i { 1 => \"a\", _ => \"b\" }) }\nprint(out)",
+    ),
+    (
+        "binding_pattern_as_call_argument",
+        "let out = []\nfor i in [1, 2, 3] { out.push(match i { 1 => \"a\", n => \"n\" + str(n) }) }\nprint(out)",
+    ),
     // --- slot numbering around a `match` ---
     // The subject sits on the value stack while arm bodies compile but is NOT
     // registered in the compiler's locals, so a local declared in an arm could
@@ -859,6 +888,11 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // Its `next` counterpart is deliberately NOT listed: `run()` type-checks,
     // `next` is not a declared name so the check rejects it in both engines,
     // and they agree as `<non-success>` for a reason unrelated to the refusal.
+    // A binding pattern mid-expression has no clean slot to bind into, so it
+    // falls back; a direct `--vm` run reports the compile error while the
+    // interpreter runs it. Binding patterns at a clean position compile — see
+    // the `match_binding_*` cases, which are NOT listed here.
+    "binding_pattern_as_call_argument",
     "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no
@@ -872,7 +906,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //   match epilogue then pops before the body — a body that uses the binding
     //   read a freed slot (panic). The VM now refuses to compile binding
     //   patterns (→ fallback); literal/wildcard arms still run on the VM.
-    "match_var_binding",
     "match_array_pattern",
     "match_hash_pattern",
     // Fixed and locked in by this harness:
