@@ -596,8 +596,16 @@ const CASES: &[(&str, &str)] = &[
         "fn f(v) { return match v { [] => \"empty\", _ => \"not\" } }\nprint([f([]), f([1])])",
     ),
     (
-        "array_rest_pattern_falls_back",
-        "fn f(v) { return match v { [a, ...rest] => \"has\", _ => \"no\" } }\nprint(f([1, 2, 3]))",
+        "match_array_head_and_rest",
+        "fn f(v) { return match v { [first, ...rest] => \"first:\" + str(first) + \" rest:\" + str(rest), _ => \"no\" } }\nprint([f([1, 2, 3]), f([9]), f([])])",
+    ),
+    (
+        "match_array_two_named_then_rest",
+        "fn f(v) { return match v { [a, b, ...r] => str(a) + str(b) + \"/\" + str(r), _ => \"no\" } }\nprint([f([1, 2, 3, 4]), f([1, 2]), f([1])])",
+    ),
+    (
+        "match_array_rest_with_guard",
+        "fn f(v) { return match v { [a, ...r] if r.length > 1 => \"long\", [a, ...r] => \"short\", _ => \"no\" } }\nprint([f([1, 2, 3]), f([1]), f([])])",
     ),
     // --- typed patterns (`Int: n`) compile, and a non-exhaustive match raises ---
     (
@@ -992,7 +1000,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // interpreter runs it. Binding patterns at a clean position compile — see
     // the `match_binding_*` cases, which are NOT listed here.
     "hash_rest_pattern_falls_back",
-    "array_rest_pattern_falls_back",
     "binding_pattern_as_call_argument",
     "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see

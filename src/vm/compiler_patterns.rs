@@ -36,12 +36,9 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         // pushed, so a failing arm never unwinds a half-built set of bindings.
         // `...rest` needs a slice, and a nested or literal sub-pattern needs
         // recursion this does not have yet, so both still defer.
-        MatchPattern::Array { elements, rest } => {
-            rest.is_some()
-                || !elements
-                    .iter()
-                    .all(|e| matches!(e, MatchPattern::Variable(_) | MatchPattern::Wildcard))
-        }
+        MatchPattern::Array { elements, .. } => !elements
+            .iter()
+            .all(|e| matches!(e, MatchPattern::Variable(_) | MatchPattern::Wildcard)),
         // `{name: n, age: a}` — same bounded shape as the array form: every key
         // test runs before any binding is pushed. `...rest` needs to build the
         // leftover hash, which this does not do yet.
@@ -151,16 +148,23 @@ impl Compiler {
                 // `[a, b]`: check it is an array of the right length, then read
                 // each element out of the subject's slot and bind it. Both
                 // tests run before any binding is pushed.
-                MatchPattern::Array { elements, .. } => {
+                MatchPattern::Array { elements, rest } => {
                     let ty = self.add_string_constant("Array");
                     let type_fail = self.emit_jump(Op::MatchType(ty, 0), line);
                     self.emit(Op::Pop, line); // the copy; elements come from the slot
 
+                    // Without `...rest` the length must match exactly; with it,
+                    // the named elements are a prefix and anything longer is
+                    // fine. Same rule the tree-walker applies.
                     self.emit(Op::GetLocal(subject_slot), line);
                     let len_idx = self.add_string_constant("length");
                     self.emit(Op::GetProperty(len_idx), line);
                     self.emit_constant(Constant::Int(elements.len() as i64), line);
-                    self.emit(Op::Equal, line);
+                    if rest.is_some() {
+                        self.emit(Op::GreaterEqual, line);
+                    } else {
+                        self.emit(Op::Equal, line);
+                    }
                     let len_fail = self.emit_jump(Op::JumpIfFalse(0), line);
 
                     for (i, elem) in elements.iter().enumerate() {
@@ -171,6 +175,20 @@ impl Compiler {
                             self.add_local(elem_name.clone(), false);
                             bindings += 1;
                         }
+                    }
+                    // `...rest` is the tail from the last named element on.
+                    if let Some(rest_name) = rest {
+                        self.emit(Op::GetLocal(subject_slot), line);
+                        self.emit_constant(Constant::Int(elements.len() as i64), line);
+                        let slice = self.add_string_constant("slice");
+                        let mid = super::method_table::resolve_method_id("slice");
+                        if mid != super::method_table::METHOD_UNKNOWN {
+                            self.emit(Op::CallMethodById(slice, 1, mid), line);
+                        } else {
+                            self.emit(Op::CallMethod(slice, 1), line);
+                        }
+                        self.add_local(rest_name.clone(), false);
+                        bindings += 1;
                     }
                     peeked_fails.push(type_fail);
                     fail_jumps.push(len_fail);
