@@ -36,7 +36,9 @@ impl Interpreter {
             "except" => self.hash_except(entries, arguments, span),
             "compact" => self.hash_compact(entries, arguments, span),
             "dig" => self.hash_dig(entries, arguments, span),
-            "length" | "len" => self.hash_length(entries, arguments, span),
+            // `size` was missing here while the VM accepted it, so
+            // `h.size()` worked in production and raised in tests.
+            "length" | "len" | "size" => self.hash_length(entries, arguments, span),
             // `to_s` is the Ruby-conventional name and the VM already accepted
             // it; the interpreter only knew `to_string`, so `h.to_s()` raised
             // in tests and worked in production.

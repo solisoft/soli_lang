@@ -1029,7 +1029,7 @@ impl Interpreter {
             Value::String(str) => str,
             _ => {
                 return Err(RuntimeError::type_error(
-                    "insert expects a string to insert",
+                    "insert string expects a string argument",
                     span,
                 ))
             }

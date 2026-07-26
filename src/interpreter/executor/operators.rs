@@ -335,7 +335,7 @@ create the record first, or use {}.create({{...}})",
             (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
             (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
             _ => Err(RuntimeError::type_error(
-                format!("cannot add {} and {}", left.type_name(), right.type_name()),
+                format!("Cannot add {} and {}", left.type_name(), right.type_name()),
                 span,
             )),
         }
@@ -382,7 +382,7 @@ create the record first, or use {}.create({{...}})",
             }
             _ => Err(RuntimeError::type_error(
                 format!(
-                    "cannot subtract {} from {}",
+                    "Cannot subtract {} from {}",
                     right.type_name(),
                     left.type_name()
                 ),
@@ -422,7 +422,7 @@ create the record first, or use {}.create({{...}})",
             }
             _ => Err(RuntimeError::type_error(
                 format!(
-                    "cannot multiply {} and {}",
+                    "Cannot multiply {} and {}",
                     left.type_name(),
                     right.type_name()
                 ),
@@ -492,7 +492,7 @@ create the record first, or use {}.create({{...}})",
             }
             _ => Err(RuntimeError::type_error(
                 format!(
-                    "cannot divide {} by {}",
+                    "Cannot divide {} by {}",
                     left.type_name(),
                     right.type_name()
                 ),
@@ -526,7 +526,7 @@ create the record first, or use {}.create({{...}})",
             }
             _ => Err(RuntimeError::type_error(
                 format!(
-                    "cannot modulo {} by {}",
+                    "Cannot modulo {} by {}",
                     left.type_name(),
                     right.type_name()
                 ),
@@ -588,7 +588,7 @@ create the record first, or use {}.create({{...}})",
                 }
                 Err(RuntimeError::type_error(
                     format!(
-                        "cannot compare {} and {}",
+                        "Cannot compare {} and {}",
                         left.type_name(),
                         right.type_name()
                     ),
@@ -637,7 +637,7 @@ create the record first, or use {}.create({{...}})",
                     Ok(Value::Decimal(DecimalValue(-n.0, n.1)))
                 }
                 _ => Err(RuntimeError::type_error(
-                    format!("cannot negate {}", val.type_name()),
+                    format!("Cannot negate {}", val.type_name()),
                     span,
                 )),
             },

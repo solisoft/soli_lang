@@ -138,7 +138,12 @@ impl Interpreter {
                             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                         }
                         arr.borrow_mut().push(arguments[0].clone());
-                        Ok(Value::Null)
+                        // Return the array, not null. The VM compiles
+                        // `arr.push(x)` to `Op::ArrayPush`, which leaves the
+                        // array on the stack, so `a.push(1).push(2)` chained
+                        // under `soli serve` and returned null under
+                        // `soli test`. Ruby returns the array too.
+                        Ok(Value::Array(arr.clone()))
                     }
                     "pop" => {
                         if !arguments.is_empty() {
@@ -473,16 +478,11 @@ impl Interpreter {
                 } else {
                     idx as usize
                 };
-                Some(
-                    items
-                        .get(idx_usize)
-                        .cloned()
-                        .ok_or(RuntimeError::IndexOutOfBounds {
-                            index: idx,
-                            length: items.len(),
-                            span,
-                        }),
-                )
+                // Out of range reads as null, matching the VM and the rest of
+                // the family — `hash.get`, `first`, `last`, `pop` and `shift`
+                // all answer null rather than raising. Bracket indexing keeps
+                // raising; `get` is the deliberately forgiving form.
+                Some(Ok(items.get(idx_usize).cloned().unwrap_or(Value::Null)))
             }
             "length" | "len" => {
                 if !arguments.is_empty() {
@@ -1680,8 +1680,14 @@ impl Interpreter {
                         .borrow_mut()
                         .define_or_update(&param_name, item.clone());
 
-                    let key_val = match self.execute_block_in(&func.body, call_env_rc.clone()) {
-                        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => v,
+                    // Propagate with `?`, exactly as `reject`/`none?`/`one?`/
+                    // `count` already do. Matching on the whole `Result` instead
+                    // swallowed every error the key expression raised and gave
+                    // that element a null key — so `sort_by(fn(x) x.typo())`
+                    // returned the list *unsorted* and silent, and the VM raised
+                    // on the same code.
+                    let key_val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                        ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                         _ => Value::Null,
                     };
                     keyed.push((item.clone(), key_val));

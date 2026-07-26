@@ -552,7 +552,20 @@ impl Vm {
                         (Value::Float(x), Value::Float(y)) => *x > *y,
                         _ => {
                             let span = self.current_span();
-                            self.op_compare_less(&b, &a, span)?
+                            // `a > b` is evaluated as `b < a` to reuse one
+                            // comparator. Report the operands in source order,
+                            // or the message names them backwards: `[1] > 1`
+                            // said "Cannot compare int and array".
+                            self.op_compare_less(&b, &a, span).map_err(|_| {
+                                RuntimeError::type_error(
+                                    format!(
+                                        "Cannot compare {} and {}",
+                                        a.type_name(),
+                                        b.type_name()
+                                    ),
+                                    span,
+                                )
+                            })?
                         }
                     };
                     self.stack.push(Value::Bool(result));
@@ -564,7 +577,17 @@ impl Vm {
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
                         _ => {
                             let span = self.current_span();
-                            self.op_compare_less_equal(&b, &a, span)?
+                            // Same swap as `>` above: report source order.
+                            self.op_compare_less_equal(&b, &a, span).map_err(|_| {
+                                RuntimeError::type_error(
+                                    format!(
+                                        "Cannot compare {} and {}",
+                                        a.type_name(),
+                                        b.type_name()
+                                    ),
+                                    span,
+                                )
+                            })?
                         }
                     };
                     self.stack.push(Value::Bool(result));
@@ -1034,11 +1057,31 @@ impl Vm {
                             self.push(value);
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "get".to_string(),
-                                span: self.current_span(),
-                            });
+                            // Same reasoning as `HashGetGlobalConst`: the string
+                            // literal made this look like a hash access, but an
+                            // array or string reaching here still has a `get` —
+                            // let normal dispatch produce the message that says
+                            // what is actually wrong.
+                            let receiver = other.clone();
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            let span = self.current_span();
+                            let value = match &receiver {
+                                Value::Array(arr) => {
+                                    self.vm_call_array_method(&arr.clone(), "get", &[arg], span)?
+                                }
+                                Value::String(st) => {
+                                    let st = st.clone();
+                                    self.vm_call_string_method(&st, "get", &[arg], span)?
+                                }
+                                _ => {
+                                    return Err(RuntimeError::NoSuchProperty {
+                                        value_type: receiver.type_name(),
+                                        property: "get".to_string(),
+                                        span,
+                                    })
+                                }
+                            };
+                            self.push(value);
                         }
                     }
                 }
@@ -1133,18 +1176,44 @@ impl Vm {
                         }
                     };
                     let key: &str = unsafe { &*key };
-                    let result = match &self.stack[base + slot as usize] {
-                        Value::Hash(hash) => hash
-                            .borrow()
-                            .get(&StrKey(key))
-                            .cloned()
-                            .unwrap_or(Value::Null),
-                        other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "get".to_string(),
-                                span: self.current_span(),
-                            });
+                    // Hash hit stays borrow-only — no receiver clone on the hot
+                    // path, which is the whole point of this super-instruction.
+                    let hit = match &self.stack[base + slot as usize] {
+                        Value::Hash(hash) => Some(
+                            hash.borrow()
+                                .get(&StrKey(key))
+                                .cloned()
+                                .unwrap_or(Value::Null),
+                        ),
+                        _ => None,
+                    };
+                    let result = match hit {
+                        Some(value) => value,
+                        // Same reasoning as `HashGetGlobalConst`: the string
+                        // literal made this look like a hash access, but an array
+                        // or string reaching here still has a `get` — let normal
+                        // dispatch produce the message that says what is actually
+                        // wrong.
+                        None => {
+                            let receiver = self.stack[base + slot as usize].clone();
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            let span = self.current_span();
+                            match &receiver {
+                                Value::Array(arr) => {
+                                    self.vm_call_array_method(&arr.clone(), "get", &[arg], span)?
+                                }
+                                Value::String(st) => {
+                                    let st = st.clone();
+                                    self.vm_call_string_method(&st, "get", &[arg], span)?
+                                }
+                                _ => {
+                                    return Err(RuntimeError::NoSuchProperty {
+                                        value_type: receiver.type_name(),
+                                        property: "get".to_string(),
+                                        span,
+                                    })
+                                }
+                            }
                         }
                     };
                     self.push(result);
@@ -1253,11 +1322,33 @@ impl Vm {
                             self.push(value);
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "get".to_string(),
-                                span: self.current_span(),
-                            });
+                            // This super-instruction assumes a hash, because the
+                            // key is a string literal. When the receiver turns
+                            // out to be something else, hand the call back to
+                            // normal dispatch instead of claiming the method does
+                            // not exist: an array *does* have `get`, it just
+                            // wants an integer index, and saying otherwise sends
+                            // the reader hunting for the wrong bug.
+                            let receiver = other.clone();
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            let span = self.current_span();
+                            let value = match &receiver {
+                                Value::Array(arr) => {
+                                    self.vm_call_array_method(&arr.clone(), "get", &[arg], span)?
+                                }
+                                Value::String(st) => {
+                                    let st = st.clone();
+                                    self.vm_call_string_method(&st, "get", &[arg], span)?
+                                }
+                                _ => {
+                                    return Err(RuntimeError::NoSuchProperty {
+                                        value_type: receiver.type_name(),
+                                        property: "get".to_string(),
+                                        span,
+                                    })
+                                }
+                            };
+                            self.push(value);
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -2261,7 +2352,20 @@ impl Vm {
                         (Value::Float(x), Value::Float(y)) => *x > *y,
                         _ => {
                             let span = self.current_span();
-                            self.op_compare_less(&b, &a, span)?
+                            // `a > b` is evaluated as `b < a` to reuse one
+                            // comparator. Report the operands in source order,
+                            // or the message names them backwards: `[1] > 1`
+                            // said "Cannot compare int and array".
+                            self.op_compare_less(&b, &a, span).map_err(|_| {
+                                RuntimeError::type_error(
+                                    format!(
+                                        "Cannot compare {} and {}",
+                                        a.type_name(),
+                                        b.type_name()
+                                    ),
+                                    span,
+                                )
+                            })?
                         }
                     };
                     if !result {
@@ -2275,7 +2379,17 @@ impl Vm {
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
                         _ => {
                             let span = self.current_span();
-                            self.op_compare_less_equal(&b, &a, span)?
+                            // Same swap as `>` above: report source order.
+                            self.op_compare_less_equal(&b, &a, span).map_err(|_| {
+                                RuntimeError::type_error(
+                                    format!(
+                                        "Cannot compare {} and {}",
+                                        a.type_name(),
+                                        b.type_name()
+                                    ),
+                                    span,
+                                )
+                            })?
                         }
                     };
                     if !result {

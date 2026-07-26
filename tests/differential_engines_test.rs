@@ -412,6 +412,26 @@ const CASES: &[(&str, &str)] = &[
         "pop_on_empty_array_is_null_like_shift",
         "let a = []\nprint(a.pop())\nprint(a.shift())\nprint(a.first())\nlet b = [1, 2]\nprint(b.pop())",
     ),
+    (
+        "sort_by_propagates_an_error_from_the_key",
+        "let caught = false\ntry { [1, 2, 3].sort_by(fn(x) x.no_such_method()) } catch e { caught = true }\nprint(caught)",
+    ),
+    (
+        "push_returns_the_array_so_it_chains",
+        "print([1].push(2).push(3))",
+    ),
+    (
+        "hash_size_matches_len",
+        "let h = {\"a\": 1, \"b\": 2}\nprint(h.size())\nprint(h.len())",
+    ),
+    (
+        "array_get_out_of_range_is_null",
+        "print([10, 20].get(99))\nprint([10, 20].get(1))\nprint([10, 20].get(0 - 1))",
+    ),
+    (
+        "comparison_errors_name_operands_in_source_order",
+        "try { print([1] > 1) } catch e { print(e) }\ntry { print(1 > [1]) } catch e { print(e) }",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
