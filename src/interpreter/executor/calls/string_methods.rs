@@ -589,7 +589,12 @@ impl Interpreter {
                 }
                 let other = match &arguments[0] {
                     Value::String(o) => o,
-                    _ => return Err(RuntimeError::type_error("prepend expects a string", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "prepend expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 let mut result = other.to_string();
                 result.push_str(s);
@@ -734,8 +739,11 @@ impl Interpreter {
     }
 
     fn string_gsub(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
+        // Two required, an optional third limits the replacements. Report the
+        // minimum: saying "expected 3" implies all three are required, and the
+        // VM already reports 2.
         if arguments.len() < 2 || arguments.len() > 3 {
-            return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+            return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let pattern = match &arguments[0] {
             Value::String(p) => p,

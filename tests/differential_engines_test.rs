@@ -452,6 +452,14 @@ const CASES: &[(&str, &str)] = &[
         "truncate_is_not_capped_like_padding_is",
         "print(\"abcdef\".truncate(9223372036854775807))\nprint(\"abcdef\".truncate(3))",
     ),
+    (
+        "reduce_without_an_initial_value_seeds_from_the_first_element",
+        "print([1, 2, 3].reduce(fn(a, b) a + b))\nprint([5].reduce(fn(a, b) a + b))\nprint([1, 2, 3].reduce(fn(a, b) a + b, 100))",
+    ),
+    (
+        "a_non_function_where_a_callback_belongs_names_the_method",
+        "let caught = false\ntry { [1, 2, 3].all?(null) } catch e { caught = true }\nprint(caught)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

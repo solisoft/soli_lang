@@ -948,7 +948,7 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         match method_name {
             "map" => self.array_map(items, arguments, span),
-            "filter" | "select" => self.array_filter(items, arguments, span),
+            "filter" | "select" => self.array_filter(items, arguments, method_name, span),
             "each" => self.array_each(items, arguments, span),
             "each_with_index" => self.array_each_with_index(items, arguments, span),
             "index_of" => {
@@ -962,7 +962,7 @@ impl Interpreter {
                     .unwrap_or(-1);
                 Ok(Value::Int(idx))
             }
-            "reduce" | "fold" => self.array_reduce(items, arguments, span),
+            "reduce" | "fold" => self.array_reduce(items, arguments, method_name, span),
             "find" => self.array_find(items, arguments, span),
             "any?" => self.array_any(items, arguments, span),
             "all?" => self.array_all(items, arguments, span),
@@ -1180,6 +1180,7 @@ impl Interpreter {
         &mut self,
         items: &[Value],
         arguments: Vec<Value>,
+        method_name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
         if arguments.len() != 1 {
@@ -1189,7 +1190,7 @@ impl Interpreter {
             Value::Function(f) => f.clone(),
             _ => {
                 return Err(RuntimeError::type_error(
-                    "filter expects a function argument",
+                    format!("{method_name} expects a function argument"),
                     span,
                 ))
             }
@@ -1344,6 +1345,7 @@ impl Interpreter {
         &mut self,
         items: &[Value],
         arguments: Vec<Value>,
+        method_name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
         if arguments.is_empty() || arguments.len() > 2 {
@@ -1353,7 +1355,7 @@ impl Interpreter {
             Value::Function(f) => f.clone(),
             _ => {
                 return Err(RuntimeError::type_error(
-                    "reduce expects a function argument",
+                    format!("{method_name} expects a function argument"),
                     span,
                 ))
             }
@@ -2519,7 +2521,12 @@ impl Interpreter {
         }
         let func = match &arguments[0] {
             Value::Function(f) => f.clone(),
-            _ => return Err(RuntimeError::type_error("reject expects a function", span)),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "reject expects a function argument",
+                    span,
+                ))
+            }
         };
         let param_name = func
             .params
@@ -2558,7 +2565,12 @@ impl Interpreter {
         }
         let func = match &arguments[0] {
             Value::Function(f) => f.clone(),
-            _ => return Err(RuntimeError::type_error("none? expects a function", span)),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "none? expects a function argument",
+                    span,
+                ))
+            }
         };
         let param_name = func
             .params
@@ -2596,7 +2608,12 @@ impl Interpreter {
         }
         let func = match &arguments[0] {
             Value::Function(f) => f.clone(),
-            _ => return Err(RuntimeError::type_error("one? expects a function", span)),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "one? expects a function argument",
+                    span,
+                ))
+            }
         };
         let param_name = func
             .params

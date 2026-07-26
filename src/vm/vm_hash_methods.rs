@@ -463,7 +463,7 @@ impl Vm {
             }
             // --- Closure-taking methods ---
             "map" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let two = callback_wants_two_args(&cb);
                 let len = hash.borrow().len();
                 let mut result = new_hash(len);
@@ -491,7 +491,7 @@ impl Vm {
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "filter" | "select" | "reject" | "keep_if" | "delete_if" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let two = callback_wants_two_args(&cb);
                 let keep_when_truthy = !matches!(name, "reject" | "delete_if");
                 let len = hash.borrow().len();
@@ -515,7 +515,7 @@ impl Vm {
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "transform_values" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let len = hash.borrow().len();
                 let mut result = new_hash(len);
                 let batch = self.enter_callable_batch();
@@ -534,7 +534,7 @@ impl Vm {
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "transform_keys" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let len = hash.borrow().len();
                 let mut result = new_hash(len);
                 let batch = self.enter_callable_batch();
@@ -556,7 +556,7 @@ impl Vm {
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "each" | "each_value" | "each_key" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let two = name == "each" && callback_wants_two_args(&cb);
                 let len = hash.borrow().len();
                 let batch = self.enter_callable_batch();
@@ -584,7 +584,7 @@ impl Vm {
                 Ok(Value::Hash(hash.clone()))
             }
             "all?" | "any?" => {
-                let cb = Self::single_callback(args, span)?;
+                let cb = Self::single_callback(args, name, span)?;
                 let two = callback_wants_two_args(&cb);
                 let want_any = name == "any?";
                 let len = hash.borrow().len();
@@ -643,10 +643,11 @@ impl Vm {
 
     /// Extract the single closure argument shared by hash iterator methods.
     #[inline]
-    fn single_callback(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    fn single_callback(args: &[Value], method: &str, span: Span) -> Result<Value, RuntimeError> {
         if args.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, args.len(), span));
         }
+        super::vm_array_methods::expect_callback(&args[0], method, span)?;
         Ok(args[0].clone())
     }
 

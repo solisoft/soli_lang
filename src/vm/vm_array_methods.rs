@@ -9,6 +9,24 @@ use crate::span::Span;
 
 use super::vm::Vm;
 
+/// Reject a non-function where a callback belongs, naming the method.
+///
+/// The VM used to discover this only when it tried to invoke the value, and
+/// reported "Cannot call non-function value" — which says neither which call was
+/// wrong nor what it wanted, and is useless in a chain. The interpreter has
+/// always said `all? expects a function argument`; this says the same thing.
+#[inline]
+pub(crate) fn expect_callback(value: &Value, method: &str, span: Span) -> Result<(), RuntimeError> {
+    if value.is_callable() {
+        Ok(())
+    } else {
+        Err(RuntimeError::type_error(
+            format!("{method} expects a function argument"),
+            span,
+        ))
+    }
+}
+
 impl Vm {
     /// Dispatch an array method call.
     pub fn vm_call_array_method(
@@ -43,6 +61,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut result = Vec::with_capacity(len);
@@ -68,6 +87,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut result = Vec::new();
@@ -92,15 +112,32 @@ impl Vm {
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "reduce" | "fold" => {
-                if args.len() != 2 {
+                // The initial value is optional, as it is in Ruby and as the
+                // interpreter has always allowed: without one, the first element
+                // seeds the accumulator. Requiring it here meant the idiomatic
+                // `xs.reduce(fn(a, b) a + b)` ran under `soli test` and failed
+                // under `soli serve`.
+                if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::wrong_arity(2, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
-                let mut acc = args[1].clone();
                 let len = arr.borrow().len();
+                let seeded = args.len() == 2;
+                let mut acc = if seeded {
+                    args[1].clone()
+                } else if len > 0 {
+                    arr.borrow()[0].clone()
+                } else {
+                    return Err(RuntimeError::type_error(
+                        "reduce on empty array requires initial value",
+                        span,
+                    ));
+                };
+                let start_idx = if seeded { 0 } else { 1 };
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
-                    for i in 0..len {
+                    for i in start_idx..len {
                         let b = arr.borrow();
                         if i >= b.len() {
                             break;
@@ -119,6 +156,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let batch = self.enter_callable_batch();
@@ -142,6 +180,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let batch = self.enter_callable_batch();
@@ -656,7 +695,12 @@ impl Vm {
                             b.len().saturating_sub((-*i) as usize)
                         }
                     }
-                    _ => return Err(RuntimeError::type_error("delete_at expects integer", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "delete_at expects an integer index",
+                            span,
+                        ))
+                    }
                 };
                 if idx < b.len() {
                     let mut new_arr = b.clone();
@@ -718,7 +762,7 @@ impl Vm {
                 let count = match args.first() {
                     Some(Value::Int(n)) => *n,
                     None => 1,
-                    _ => return Err(RuntimeError::type_error("rotate expects integer", span)),
+                    _ => return Err(RuntimeError::type_error("rotate expects an integer", span)),
                 };
                 if b.is_empty() {
                     return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
@@ -737,6 +781,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut result = Vec::new();
@@ -764,6 +809,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let batch = self.enter_callable_batch();
@@ -789,6 +835,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let batch = self.enter_callable_batch();
@@ -858,6 +905,7 @@ impl Vm {
                 }
                 if args.len() == 1 {
                     if let Value::Function(_) = &args[0] {
+                        expect_callback(&args[0], name, span)?;
                         let cb = args[0].clone();
                         let len = arr.borrow().len();
                         let mut count = 0i64;
@@ -891,6 +939,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut found = Value::Null;
@@ -921,6 +970,7 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
+                expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let want_any = name == "any?";
                 let len = arr.borrow().len();
@@ -1226,12 +1276,12 @@ fn extract_array_arg(
         Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
             Some(Value::Array(arr)) => Ok(arr.borrow().clone()),
             _ => Err(RuntimeError::type_error(
-                format!("Array.{}() argument must be an Array", method_name),
+                format!("{method_name} expects an array argument"),
                 span,
             )),
         },
         _ => Err(RuntimeError::type_error(
-            format!("Array.{}() argument must be an Array", method_name),
+            format!("{method_name} expects an array argument"),
             span,
         )),
     }
