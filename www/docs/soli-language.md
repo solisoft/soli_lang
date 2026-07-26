@@ -371,6 +371,22 @@ camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> numeric HTML entities, ASCII untouched)
 
+# Numeric conversion. `to_i` takes an optional radix from 2 to 36; the
+# conventional 0x / 0o / 0b prefixes are accepted.
+print("ff".to_i(16));      # 255
+print("1010".to_i(2));     # 10
+print("-ff".to_i(16));     # -255
+print("4.88".to_i());      # 4   (base 10 is lenient; other bases parse strictly)
+print("nope".to_i());      # 0
+
+# Character-set variants
+print("aaabbb".squeeze());       # "ab"   (collapse every run)
+print("aaabbb".squeeze("a"));    # "abbb" (collapse only runs of "a")
+print("prefix-x".delete_prefix("prefix-"));  # "x"
+print("x.rb".delete_suffix(".rb"));          # "x"
+print("abc".ascii_only?());      # true
+print("café".ascii_only?());     # false
+
 # String successor
 next_id = "a".succ;    # "b" (increments with carry, wraps z->aa, 9->10)
 next_id = "9".succ;    # "10"

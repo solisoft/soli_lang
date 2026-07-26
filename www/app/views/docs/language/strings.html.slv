@@ -745,9 +745,21 @@ end</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Type conversion methods. <code class="text-amber-300">to_int</code>/<code class="text-amber-300">to_float</code> are aliases for <code class="text-amber-300">to_i</code>/<code class="text-amber-300">to_f</code>.</p>
+                    <p class="text-gray-400 mb-3">Type conversion methods. <code class="text-amber-300">to_int</code>/<code class="text-amber-300">to_float</code> are aliases for <code class="text-amber-300">to_i</code>/<code class="text-amber-300">to_f</code>. <code class="text-amber-300">to_i</code> takes an optional radix from 2 to 36.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"42".to_i        # 42
 "3.14".to_f      # 3.14
+
+# Optional radix, 2 to 36. The conventional 0x / 0o / 0b prefixes are accepted.
+"ff".to_i(16)    # 255
+"0xff".to_i(16)  # 255
+"1010".to_i(2)   # 10
+"777".to_i(8)    # 511
+"-ff".to_i(16)   # -255
+
+# Base 10 is lenient: trailing junk and a decimal point still yield a number,
+# and anything unparseable is 0. Other bases parse strictly.
+"4.88".to_i      # 4
+"nope".to_i      # 0
 42.to_s          # "42"
 [1,2,3].to_string  # "[1, 2, 3]"
 
