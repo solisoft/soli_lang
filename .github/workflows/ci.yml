@@ -97,7 +97,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ github.sha }}
 
       - name: Clippy
-        run: cargo clippy --locked -- -D warnings
+        # `--all-targets` so the test code is linted too: without it the unit
+        # tests and integration suites — the majority of the tree by file count —
+        # are never seen by clippy, and lints there rot indefinitely. `--all-features`
+        # because `llm`, `embedding` and `codegraph` are default-on, and a
+        # `--no-default-features` build path exists for lean standalone runtimes
+        # that should not be the only thing to discover a broken cfg.
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
