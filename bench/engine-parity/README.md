@@ -14,6 +14,15 @@ offset is not counted — the engines legitimately differ there.
 Keep the corpus deterministic. Anything random (`sample`, `shuffle`, `DateTime.now`)
 differs between *runs*, not between engines, and only produces false positives.
 
+Programs that **mutate the collection they are iterating** are also kept out, and
+for a different reason: the engines genuinely disagree there, deliberately and on
+both sides — the VM iterates the live array like Ruby, the interpreter iterates a
+snapshot. That is filed as
+`tasks/todo/mutation-during-iteration-differs-between-engines.md` and needs a
+language decision, not a fix. Including it would mean the sweep reported a known
+difference on every run, and a sweep that always prints a finding stops being
+read.
+
 This only became possible once `soli -e` started honouring `--vm`. Before that
 both sides of every comparison ran the tree-walking interpreter, which is how
 several divergences survived: a hash entry holding a function could not be called
