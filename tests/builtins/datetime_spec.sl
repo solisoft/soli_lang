@@ -368,3 +368,42 @@ describe("DateTime Comparison", fn() {
         assert(!(dt > dt));
     });
 });
+
+describe("DateTime before 1970", fn() {
+    # Splitting the epoch nanoseconds by hand — `t / 1e9` and `(t % 1e9) as u32`
+    # — wrapped for negative instants: the remainder is negative before 1970, and
+    # casting it to an unsigned 32-bit value produced ~4.29e9 nanoseconds, which
+    # is not a valid sub-second offset. Every accessor then raised
+    # "Invalid timestamp". It only showed up with sub-second precision, because
+    # a whole-second instant has a zero remainder and slipped through.
+    # Mid-July and mid-year dates are used throughout so the assertions hold in
+    # every timezone.
+
+    test("accessors work on a pre-1970 instant carrying milliseconds", fn() {
+        let dt = DateTime.parse("1969-07-20T20:17:00.500Z");
+        assert_eq(dt.year(), 1969);
+        assert_eq(dt.month(), 7);
+    });
+
+    test("whole-second pre-1970 instants still work", fn() {
+        let dt = DateTime.parse("1969-07-20T20:17:00Z");
+        assert_eq(dt.year(), 1969);
+    });
+
+    test("a long-past instant with milliseconds is readable", fn() {
+        let dt = DateTime.parse("1900-06-15T12:30:45.123Z");
+        assert_eq(dt.year(), 1900);
+        assert_eq(dt.month(), 6);
+    });
+
+    test("negative unix timestamps round-trip", fn() {
+        let dt = DateTime.from_unix(-100000000);
+        assert_eq(dt.to_unix(), -100000000);
+        assert_eq(dt.year(), 1966);
+    });
+
+    test("formatting a pre-1970 instant does not raise", fn() {
+        let dt = DateTime.parse("1969-07-20T20:17:00.500Z");
+        assert(dt.format("%Y").len() == 4);
+    });
+});
