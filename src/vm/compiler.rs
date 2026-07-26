@@ -881,6 +881,15 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             // the greater/not-equal test-jumps, `RescueJump`, `CatchMatch` and
             // `TryBegin` — which is the same drift that left `TryBegin`
             // unremapped in `compact_nops`.
+            //
+            // Completing this list costs a little speed, because it withdraws
+            // fusion opportunities: measured at +4.8% on `String|replace_all`
+            // and +0.1% on `String|chars` (medians of 8 interleaved runs of
+            // bench/cross-language), with the median across all 67 cases
+            // unmoved. That is the price of not mis-compiling a branch, so it
+            // is the right trade — but if a future pass wants those cycles
+            // back, the way to get them is a peephole that can fuse *around* a
+            // target rather than a shorter list here.
             Op::Jump(offset)
             | Op::JumpIfFalse(offset)
             | Op::JumpIfFalseNoPop(offset)

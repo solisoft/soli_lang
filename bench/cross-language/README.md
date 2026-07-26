@@ -21,3 +21,16 @@ Rules the two files follow, so the comparison stays fair:
 
 Results are published at `/docs/getting-started/benchmarks`; regenerate that page's numbers
 from these outputs rather than editing them by hand.
+
+## Regenerating
+
+`render_docs.py` rewrites the table bodies in both documentation surfaces. It needs all
+four engines, **including Ruby 4 with `--zjit`** — the published page compares against
+Ruby's best mode, and re-running with an older Ruby swaps the engine under the comparison
+and makes the page *less* accurate rather than more. If Ruby 4 is not available, leave the
+page alone: a stale-but-consistent comparison beats one whose two halves were measured
+against different interpreters.
+
+The Soli side alone can be checked at any time by diffing two `soli --vm bench_all.sl`
+runs, which is enough to catch a regression from a compiler change without touching the
+published numbers.
