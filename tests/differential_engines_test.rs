@@ -481,11 +481,12 @@ const CASES: &[(&str, &str)] = &[
         "let seen = []\nfor a in [\"x\", \"y\", \"z\"] {\n  seen.push(a)\n  try { for b in [1, 2, 3] { throw \"inner\" } } catch e { }\n}\nprint(seen)",
     ),
     // `next` and `break` are deliberately refused by the compiler so the handler
-    // falls back to the interpreter, which implements them. Listed in
-    // KNOWN_DIVERGENT because a direct `--vm` run reports the compile error while
-    // the interpreter runs the loop — the fallback that makes them work only
-    // exists in the server. Before the refusal, `next` compiled fine and was
-    // silently *ignored*, which is why the divergence is an improvement.
+    // falls back to the interpreter, which implements them. This case is NOT in
+    // KNOWN_DIVERGENT: `run()` here type-checks, `next` fails the check, and both
+    // engines come back `<non-success>` — so they agree for a reason that has
+    // nothing to do with the refusal. Before it, `next` compiled fine and was
+    // silently *ignored*, which is the behaviour this case exists to prevent
+    // returning.
     (
         "next_is_refused_rather_than_ignored",
         "let kept = []\nfor i in [1, 2, 3, 4] {\n  if i == 2 { next }\n  kept.push(i)\n}\nprint(kept)",
@@ -525,11 +526,65 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- `finally` runs on every exit path ---
+    // The VM currently refuses to compile these and falls back, so they agree
+    // by that route. They are here to catch a future VM implementation of
+    // `finally` that gets the exit edges wrong — which is exactly how the
+    // compiled version was wrong before: cleanup skipped on `return`, and a
+    // pending exception discarded when no catch clause matched.
+    (
+        "finally_runs_when_try_returns",
+        "def p() {\n  try { return \"ret\" } finally { print(\"CLEANUP\") }\n}\nprint(p())",
+    ),
+    (
+        "finally_does_not_swallow_exception",
+        "def p() {\n  try { throw \"BOOM\" } finally { print(\"CLEANUP\") }\n  return \"SWALLOWED\"\n}\ntry { print(p()) } catch e { print(\"propagated\") }",
+    ),
+    (
+        "finally_runs_when_catch_returns",
+        "def p() {\n  try { throw \"x\" } catch e { return \"from-catch\" } finally { print(\"CLEANUP\") }\n}\nprint(p())",
+    ),
+    (
+        "finally_return_replaces_pending_throw",
+        "def p() {\n  try { throw \"T\" } finally { return \"from-finally\" }\n}\nprint(p())",
+    ),
+    (
+        "finally_throw_replaces_pending_throw",
+        "def p() {\n  try { throw \"T\" } finally { throw \"TF\" }\n}\ntry { p() } catch e { print(e) }",
+    ),
+    (
+        "finally_cleanup_no_leak_on_early_return",
+        "let handles = []\ndef p() {\n  handles.push(\"h\")\n  try { return \"early\" } finally { handles.pop() }\n}\nprint(p())\nprint(handles.length)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
+    // --- `try` with `finally` is refused by the compiler ---
+    // Not a VM bug left unfixed — the opposite. The compiled `finally` ran only
+    // when control fell off the end of the try, so a `return` skipped the
+    // cleanup and a throw with no catch clause was discarded. It is now refused
+    // outright, which means a direct `--vm` run reports the compile error while
+    // the interpreter runs the block; the fallback that makes this correct
+    // exists in the server (verified: the handler demotes and the cleanup runs).
+    //
+    // `--vm` is an explicit opt-in flag, so this costs a developer running it
+    // by hand, not an application. These entries come OFF this list when the
+    // compiler learns to emit the finally body on every exit edge — see
+    // tasks/todo/vm-compile-finally-on-every-exit-edge.md.
+    //
+    // A blanket refusal, not a targeted one: the shapes that were broken are
+    // "try body returns", "catch body returns or throws" and "no catch clause",
+    // and a static check that misses one puts the silent wrong answer back.
+    "try_finally_runs",
+    "return_in_finally_block",
+    "finally_runs_when_try_returns",
+    "finally_does_not_swallow_exception",
+    "finally_runs_when_catch_returns",
+    "finally_return_replaces_pending_throw",
+    "finally_throw_replaces_pending_throw",
+    "finally_cleanup_no_leak_on_early_return",
     // #9 — comprehensions now run on the VM at a clean stack position (see
     //      compile_list_comprehension), so `list_comprehension` AGREES and is no
     //      longer listed. As a SUB-EXPRESSION the VM still falls back (the

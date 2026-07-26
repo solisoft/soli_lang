@@ -522,3 +522,122 @@ describe("Ruby-style begin/rescue/ensure", fn() {
         assert_eq(result, 42)
     });
 });
+
+// ============================================================================
+// `finally` runs on EVERY exit path, and can take over
+//
+// These pin behaviour that used to differ between the two engines: the VM
+// compiled `finally` as straight-line code after the catch clauses, so it ran
+// only when control fell off the end of the try. A `return` skipped it (the
+// cleanup was dropped exactly when an early exit made it necessary) and a
+// throw with no catch clause was discarded outright.
+// ============================================================================
+
+// Module-scope helpers: `def` inside a test closure is not in scope for it.
+let _handles = []
+
+def _acquire_then_return() -> String
+    _handles.push("h")
+    try
+        return "early"
+    finally
+        _handles.pop()
+    end
+end
+
+def _acquire_then_throw() -> String
+    _handles.push("h")
+    try
+        throw "failed"
+    finally
+        _handles.pop()
+    end
+    return "unreachable"
+end
+
+def _throws_through_finally() -> String
+    try
+        throw "BOOM"
+    finally
+        _handles.push("cleaned")
+    end
+    return "SWALLOWED"
+end
+
+def _return_from_finally() -> String
+    try
+        throw "T"
+    finally
+        return "from-finally"
+    end
+end
+
+def _throw_from_finally() -> String
+    try
+        throw "T"
+    finally
+        throw "TF"
+    end
+end
+
+def _return_from_catch() -> String
+    try
+        throw "x"
+    catch e
+        return "from-catch"
+    finally
+        _handles.push("cleaned")
+    end
+end
+
+describe("finally on every exit path", fn() {
+    test("runs when the try block returns, and the return value stands", fn() {
+        _handles = []
+        assert_eq(_acquire_then_return(), "early")
+        assert_eq(_handles.length, 0)   // cleanup ran — no leak
+    });
+
+    test("runs when the try block throws", fn() {
+        _handles = []
+        let caught = false
+        try
+            _acquire_then_throw()
+        catch e
+            caught = true
+        end
+        assert(caught)
+        assert_eq(_handles.length, 0)
+    });
+
+    test("does not swallow an exception when there is no catch clause", fn() {
+        _handles = []
+        let outcome = "never-set"
+        try
+            outcome = _throws_through_finally()
+        catch e
+            outcome = "propagated"
+        end
+        assert_eq(outcome, "propagated")     // not "SWALLOWED"
+        assert_eq(_handles.length, 1)        // and finally still ran
+    });
+
+    test("runs when a catch clause returns", fn() {
+        _handles = []
+        assert_eq(_return_from_catch(), "from-catch")
+        assert_eq(_handles.length, 1)
+    });
+
+    test("a return inside finally replaces a pending exception", fn() {
+        assert_eq(_return_from_finally(), "from-finally")
+    });
+
+    test("a throw inside finally replaces a pending exception", fn() {
+        let seen = "none"
+        try
+            _throw_from_finally()
+        catch e
+            seen = str(e)
+        end
+        assert_eq(seen, "TF")
+    });
+});

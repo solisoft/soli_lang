@@ -288,6 +288,27 @@ impl Compiler {
         finally_block: Option<&Stmt>,
         line: usize,
     ) -> CompileResult<()> {
+        // `finally` is compiled as straight-line code after the catch clauses,
+        // so it only runs when control *falls off the end* of the try — the
+        // one case where it matters least. A `return` inside the try emits
+        // Op::Return and leaves the frame without ever reaching it, so
+        // cleanup is skipped exactly when an early exit makes it necessary;
+        // and with no catch clause the pending exception is `Pop`ped and
+        // discarded, so a throw through a try/finally vanished silently.
+        //
+        // Compiling it correctly means running the block on every exit edge
+        // (duplicating it before each Return/Throw, tracked across nesting) —
+        // a real piece of work, filed as a task. Until then, refuse it and let
+        // the handler fall back to the interpreter, which runs `finally` on
+        // every path. Same trade as `break` and `next`: a demotion costs
+        // speed, a silent skip costs a leaked resource or a lost error.
+        if finally_block.is_some() {
+            return Err(CompileError::new(
+                "`try` with `finally` is not supported in compiled mode",
+                crate::span::Span::new(0, 0, line, 1),
+            ));
+        }
+
         // Emit TryBegin with placeholder offsets
         let try_begin = self.emit(Op::TryBegin(0, 0), line);
 

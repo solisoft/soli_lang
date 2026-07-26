@@ -776,6 +776,52 @@ ensure
 end
 ```
 
+### What `finally` guarantees
+
+`finally` runs on **every** way out of the `try`, not just the one where the block reaches
+its end — that is the whole reason to write one:
+
+| how the try is left | does `finally` run? |
+|---|---|
+| the block finishes normally | yes |
+| the try block `return`s | yes, then the return proceeds |
+| a `catch` clause `return`s | yes, then the return proceeds |
+| the try throws and a `catch` handles it | yes |
+| the try throws and **nothing** catches it | yes, then the exception keeps propagating |
+
+So the release always happens, however the function leaves:
+
+```soli
+def with_connection() -> Hash
+  let conn = open_connection()
+  try
+    return conn.query("...")   # finally still runs before this returns
+  finally
+    conn.close()
+  end
+end
+```
+
+A `return` or `throw` inside the `finally` block itself **takes over** from whatever was in
+progress, including discarding an exception that was propagating. This matches Ruby's
+`ensure`, and it is worth avoiding for that reason — a `return` in a `finally` silently
+swallows errors:
+
+```soli
+def swallows() -> String
+  try
+    throw "the error is lost"
+  finally
+    return "this wins"   # the throw is discarded
+  end
+end
+```
+
+> **Engine note:** a `try` with a `finally` runs on the tree-walking interpreter. Under
+> `soli serve` the handler falls back to it automatically (visible as a demotion in
+> `soli_vm_handler_demotions_total`); a direct `soli run --vm` reports a compile error
+> instead. `soli run` and standalone builds are unaffected.
+
 A `rescue` that opens a new line inside a `begin`/`try` body is always a catch
 clause. The postfix `rescue` modifier (`expr rescue fallback`) is unaffected — it
 still works inline, including inside a `begin` body:

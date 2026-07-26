@@ -79,6 +79,72 @@ end</code></pre>
         </section>
     </section>
 
+    <!-- What finally guarantees -->
+    <section id="section-finally-guarantee" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What <code class="text-amber-400">finally</code> Guarantees</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">finally</code> runs on <strong class="text-white">every</strong> way out of
+            the <code class="text-amber-400">try</code>, not only the one where the block reaches its end — that is
+            the whole reason to write one.
+        </p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="text-gray-300 border-b border-white/10">
+                    <tr><th class="py-2 pr-4 font-semibold">How the try is left</th><th class="py-2 font-semibold">Does <code class="text-amber-400">finally</code> run?</th></tr>
+                </thead>
+                <tbody class="text-gray-400">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">the block finishes normally</td><td class="py-2">yes</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">the try block <code class="text-amber-400">return</code>s</td><td class="py-2">yes, then the return proceeds</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a <code class="text-amber-400">catch</code> clause <code class="text-amber-400">return</code>s</td><td class="py-2">yes, then the return proceeds</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">the try throws and a <code class="text-amber-400">catch</code> handles it</td><td class="py-2">yes</td></tr>
+                    <tr><td class="py-2 pr-4">the try throws and <strong class="text-white">nothing</strong> catches it</td><td class="py-2">yes, then the exception keeps propagating</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">So the release always happens, however the function leaves:</p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def with_connection() -> Hash
+  let conn = open_connection()
+  try
+    return conn.query("...")   # finally still runs before this returns
+  finally
+    conn.close()
+  end
+end</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            A <code class="text-amber-400">return</code> or <code class="text-amber-400">throw</code> inside the
+            <code class="text-amber-400">finally</code> block itself <strong class="text-white">takes over</strong>
+            from whatever was in progress, including discarding an exception that was propagating. This matches
+            Ruby's <code class="text-amber-400">ensure</code>, and it is worth avoiding for that reason — a
+            <code class="text-amber-400">return</code> in a <code class="text-amber-400">finally</code> silently
+            swallows errors.
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def swallows() -> String
+  try
+    throw "the error is lost"
+  finally
+    return "this wins"   # the throw is discarded
+  end
+end</code></pre>
+            </div>
+        </div>
+        <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <p class="text-sm text-gray-300">
+                <strong class="text-amber-400">Engine note.</strong> A <code class="text-amber-400">try</code> with a
+                <code class="text-amber-400">finally</code> runs on the tree-walking interpreter. Under
+                <code class="text-amber-400">soli serve</code> the handler falls back to it automatically (visible as
+                a demotion in <code class="text-amber-400">soli_vm_handler_demotions_total</code>); a direct
+                <code class="text-amber-400">soli run --vm</code> reports a compile error instead.
+                <code class="text-amber-400">soli run</code> and standalone builds are unaffected.
+            </p>
+        </div>
+    </section>
+
     <!-- Catch Variable Syntax -->
     <section id="section-catch-syntax" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Catch Variable Syntax</h2>

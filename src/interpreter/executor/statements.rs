@@ -214,6 +214,9 @@ impl Interpreter {
                 Ok(ControlFlow::Throw(error_value))
             }
 
+            // NOTE: every path out of this statement must run `finally`
+            // through `run_finally` and honour what it returns — see that
+            // helper for why discarding it is wrong.
             StmtKind::Try {
                 try_block,
                 catch_clauses,
@@ -225,14 +228,14 @@ impl Interpreter {
                     Ok(control_flow) => match control_flow {
                         ControlFlow::Normal(_) | ControlFlow::Continue => None,
                         ControlFlow::Break => {
-                            if let Some(finally_blk) = finally_block {
-                                self.execute(finally_blk)?;
+                            if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                return Ok(over);
                             }
                             return Ok(ControlFlow::Break);
                         }
                         ControlFlow::Return(v) => {
-                            if let Some(finally_blk) = finally_block {
-                                self.execute(finally_blk)?;
+                            if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                return Ok(over);
                             }
                             return Ok(ControlFlow::Return(v));
                         }
@@ -277,26 +280,26 @@ impl Interpreter {
                         match catch_result {
                             Ok(ControlFlow::Normal(_) | ControlFlow::Continue) => {}
                             Ok(ControlFlow::Break) => {
-                                if let Some(finally_blk) = finally_block {
-                                    self.execute(finally_blk)?;
+                                if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                    return Ok(over);
                                 }
                                 return Ok(ControlFlow::Break);
                             }
                             Ok(ControlFlow::Return(v)) => {
-                                if let Some(finally_blk) = finally_block {
-                                    self.execute(finally_blk)?;
+                                if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                    return Ok(over);
                                 }
                                 return Ok(ControlFlow::Return(v));
                             }
                             Ok(ControlFlow::Throw(new_error)) => {
-                                if let Some(finally_blk) = finally_block {
-                                    self.execute(finally_blk)?;
+                                if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                    return Ok(over);
                                 }
                                 return Ok(ControlFlow::Throw(new_error));
                             }
                             Err(e) => {
-                                if let Some(finally_blk) = finally_block {
-                                    self.execute(finally_blk)?;
+                                if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                                    return Ok(over);
                                 }
                                 return Err(e);
                             }
@@ -306,21 +309,19 @@ impl Interpreter {
                     }
 
                     if !caught {
-                        // No clause matched — re-throw
-                        if let Some(finally_blk) = finally_block {
-                            self.execute(finally_blk)?;
+                        // No clause matched — run `finally`, then re-throw. A
+                        // `return`/`throw` from the finally block itself wins
+                        // over the exception in flight, which is how it
+                        // discards a pending error in Ruby.
+                        if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                            return Ok(over);
                         }
                         return Ok(ControlFlow::Throw(error));
                     }
                 }
 
-                if let Some(finally_blk) = finally_block {
-                    match self.execute(finally_blk)? {
-                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
-                        ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
-                        ControlFlow::Break => return Ok(ControlFlow::Break),
-                        ControlFlow::Normal(_) | ControlFlow::Continue => {}
-                    }
+                if let Some(over) = self.run_finally(finally_block.as_deref())? {
+                    return Ok(over);
                 }
 
                 Ok(ControlFlow::Normal(Value::Null))
@@ -346,6 +347,29 @@ impl Interpreter {
             return Self::class_matches_name(superclass, type_name);
         }
         false
+    }
+
+    /// Run a `finally` block on a path that is already leaving the `try`
+    /// statement, and report whether the block took over.
+    ///
+    /// `finally` runs on *every* exit — normal, `return`, `throw`, `break`,
+    /// and a Rust-side error — which is the whole point of writing one. Each
+    /// of those paths used to run it and then throw away its result, so a
+    /// `return` or `throw` inside the finally block was silently ignored
+    /// whenever the try was already unwinding. `Some(cf)` here means the
+    /// finally block exited on its own and its exit replaces the one in
+    /// progress, including discarding a pending exception — which is what
+    /// Ruby's `ensure` does, and what the fall-through path here already did.
+    fn run_finally(&mut self, finally_block: Option<&Stmt>) -> RuntimeResult<Option<ControlFlow>> {
+        let Some(block) = finally_block else {
+            return Ok(None);
+        };
+        Ok(match self.execute(block)? {
+            ControlFlow::Return(v) => Some(ControlFlow::Return(v)),
+            ControlFlow::Throw(e) => Some(ControlFlow::Throw(e)),
+            ControlFlow::Break => Some(ControlFlow::Break),
+            ControlFlow::Normal(_) | ControlFlow::Continue => None,
+        })
     }
 
     fn execute_for_loop(

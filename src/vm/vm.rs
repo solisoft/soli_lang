@@ -4826,20 +4826,38 @@ mod tests {
         );
     }
 
+    /// `try`/`finally` is refused by the compiler rather than compiled wrongly.
+    ///
+    /// This test used to assert that the compiled `finally` ran — which it did,
+    /// but only on the fall-through path this program happens to take. A
+    /// `return` inside the try skipped the block entirely (dropping the cleanup
+    /// exactly when an early exit needed it) and a throw with no catch clause
+    /// was popped and discarded. Passing here gave false confidence in both.
+    ///
+    /// The refusal routes such a handler to the interpreter, which runs
+    /// `finally` on every exit edge. See
+    /// tasks/todo/vm-compile-finally-on-every-exit-edge.md for the real fix,
+    /// and the `finally_*` cases in tests/differential_engines_test.rs for the
+    /// semantics it has to reproduce before this refusal can be lifted.
     #[test]
-    fn test_vm_finally_runs_without_throw() {
-        let result = compile_and_get_global(
-            r#"
+    fn test_vm_refuses_to_compile_finally() {
+        // Goes through the compiler directly: `compile_and_run` unwraps the
+        // compile step, and a refusal is exactly what this asserts.
+        let source = r#"
             let val = "";
             try {
                 val = "ok";
             } finally {
                 val = val + "+final";
             }
-            "#,
-            "val",
+            "#;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let err = Compiler::compile(&program).expect_err("try/finally must be refused");
+        assert!(
+            err.to_string().contains("`try` with `finally`"),
+            "expected the finally refusal, got: {err}"
         );
-        assert_eq!(result, Value::String("ok+final".into()));
     }
 
     #[test]
