@@ -523,6 +523,46 @@ const CASES: &[(&str, &str)] = &[
         "throw_from_lambda_keeps_value",
         "let f = fn() { throw {\"z\": 5} }\ntry { f() } catch e { print(e[\"z\"]) }",
     ),
+    // --- safe navigation compiles natively now ---
+    // It was refused (and before that `unimplemented!()`, which panicked and,
+    // with panic="abort" in release, took the server with it). The subtle part
+    // is that a null receiver must NOT evaluate the arguments.
+    (
+        "safe_nav_null_property",
+        "let a = null\nprint(a&.name)",
+    ),
+    (
+        "safe_nav_present_property",
+        "let a = {\"name\": \"x\"}\nprint(a&.name)",
+    ),
+    (
+        "safe_nav_null_method_call",
+        "let a = null\nprint(a&.upcase())",
+    ),
+    (
+        "safe_nav_present_method_call",
+        "let a = \"hi\"\nprint(a&.upcase())",
+    ),
+    (
+        "safe_nav_null_skips_arguments",
+        "let a = null\nlet seen = []\nprint(a&.foo(seen.push(1)))\nprint(seen.length)",
+    ),
+    (
+        "safe_nav_chained_through_null",
+        "let a = {\"b\": null}\nprint(a&.b&.c)",
+    ),
+    (
+        "safe_nav_chained_present",
+        "let a = {\"b\": {\"c\": \"deep\"}}\nprint(a&.b&.c)",
+    ),
+    (
+        "safe_nav_with_nullish_fallback",
+        "let a = null\nlet r = (a&.name) ?? \"fallback\"\nprint(r)",
+    ),
+    (
+        "safe_nav_in_a_loop",
+        "let rows = [{\"n\": \"a\"}, null, {\"n\": \"c\"}]\nlet out = []\nfor r in rows { out.push(r&.n) }\nprint(out)",
+    ),
     // --- `next` compiles natively now ---
     // It was refused, so any loop using it demoted. Unlike `break` the iterator
     // stays (the same loop takes its next element), but the body's own locals

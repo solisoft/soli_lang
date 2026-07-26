@@ -130,10 +130,21 @@ impl Chunk {
         let jump = self.code.len() - offset - 1;
         let jump = jump as u16;
         match &mut self.code[offset] {
+            // Single-target forward branches. `CatchMatch`, `RescueJump`
+            // and `TryBegin` are patched by hand at their emit sites (the
+            // last carries two targets), so they are deliberately absent.
+            //
+            // This match is the one of the three branch-op lists that fails
+            // LOUDLY — an unlisted opcode panics here rather than silently
+            // keeping a wrong offset. That is how the missing `JumpIfNull`
+            // announced itself the moment safe navigation started emitting
+            // one, instead of mis-jumping at run time.
             Op::Jump(target)
             | Op::JumpIfFalse(target)
             | Op::JumpIfFalseNoPop(target)
             | Op::JumpIfTrueNoPop(target)
+            | Op::JumpIfNull(target)
+            | Op::JumpIfNotNull(target)
             | Op::NullishJump(target)
             | Op::ForIter(target)
             | Op::ForIterRange(target)
@@ -258,6 +269,8 @@ mod tests {
             Op::JumpIfFalse(0),
             Op::JumpIfFalseNoPop(0),
             Op::JumpIfTrueNoPop(0),
+            Op::JumpIfNull(0),
+            Op::JumpIfNotNull(0),
             Op::NullishJump(0),
             Op::ForIter(0),
             Op::ForIterRange(0),
@@ -275,6 +288,8 @@ mod tests {
                 | Op::JumpIfFalse(t)
                 | Op::JumpIfFalseNoPop(t)
                 | Op::JumpIfTrueNoPop(t)
+                | Op::JumpIfNull(t)
+                | Op::JumpIfNotNull(t)
                 | Op::NullishJump(t)
                 | Op::ForIter(t)
                 | Op::ForIterRange(t) => t,

@@ -1012,15 +1012,40 @@ mod tests {
         use crate::vm::Compiler;
 
         // `helper` is a tree-walking Function whose body cannot be compiled.
-        // Safe navigation is a deliberate, documented VM punt and a language
-        // feature rather than a control-flow gap, which makes it the most
-        // stable stand-in for "any construct the compiler refuses".
         //
-        // It has now outlived two earlier choices: `break`, then `next`, both
-        // of which learned to compile. The test is about EngineFallback's
-        // routing, not about the construct — if this premise breaks too, swap
-        // in whatever `grep "not supported in compiled mode" src/vm` reports.
-        let body_src = "let a = null\nlet b = a&.length";
+        // The construct does not matter — this test is about EngineFallback's
+        // routing — but every hard-coded choice so far has been overtaken by
+        // the compiler learning to handle it: `break`, then `next`, then safe
+        // navigation, each breaking this test's premise in turn. So rather than
+        // name a fourth, take the first candidate the compiler still refuses.
+        // The test then keeps testing what it means to test, and only fails for
+        // real if NOTHING is refused any more — at which point EngineFallback
+        // has no callers left and this test should be deleted, which is exactly
+        // what the message says.
+        let candidates = [
+            "let x = `echo hi`",                             // command substitution
+            "for i in [1, 2] { debug }",                     // sentinel builtin
+            "for i in [1, 2] { try { break } catch e { } }", // break under a try
+            "let r = [[y for y in [1, 2]]]",                 // comprehension as a sub-expression
+        ];
+        let body_src = candidates
+            .iter()
+            .copied()
+            .find(|src| {
+                let toks = match Scanner::new(src).scan_tokens() {
+                    Ok(t) => t,
+                    Err(_) => return false,
+                };
+                let prog = match Parser::new(toks).parse() {
+                    Ok(p) => p,
+                    Err(_) => return false,
+                };
+                Compiler::compile(&prog).is_err()
+            })
+            .expect(
+                "no candidate is refused by the compiler any more — if nothing \
+                 is, EngineFallback has no callers and this test should go",
+            );
         let body_tokens = Scanner::new(body_src).scan_tokens().expect("lexer error");
         let body = Parser::new(body_tokens)
             .parse()

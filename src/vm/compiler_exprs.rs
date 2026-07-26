@@ -71,16 +71,20 @@ impl Compiler {
                 let idx = self.add_string_constant(name);
                 self.emit(Op::GetProperty(idx), line);
             }
-            ExprKind::SafeMember { .. } => {
-                // Not implemented in the VM — return a compile error so the
-                // handler falls back to the tree-walking interpreter. This
-                // used to be `unimplemented!()`, which panicked (and with
-                // panic="abort" in release, core-dumped the whole server)
-                // the moment any handler used `&.` safe navigation.
-                return Err(CompileError::new(
-                    "Safe navigation (&.) is not supported in compiled mode",
-                    expr.span,
-                ));
+            ExprKind::SafeMember { object, name } => {
+                // `a&.b` — null receiver yields null, otherwise an ordinary
+                // member read. `JumpIfNull` *peeks*, so the null already on the
+                // stack is the result and nothing has to be pushed back.
+                //
+                // This was refused before (and before that it was
+                // `unimplemented!()`, which panicked — with panic="abort" in
+                // release, core-dumping the server the moment a handler used
+                // `&.`). Refusing was safe but demoted the whole handler.
+                self.compile_expr(object)?;
+                let skip = self.emit_jump(Op::JumpIfNull(0), line);
+                let idx = self.add_string_constant(name);
+                self.emit(Op::GetProperty(idx), line);
+                self.patch_jump(skip);
             }
             ExprKind::QualifiedName { qualifier, name } => {
                 self.compile_expr(qualifier)?;
@@ -538,6 +542,37 @@ impl Compiler {
                 }
                 let name_idx = self.add_string_constant(name);
                 self.emit(Op::CallSuperMethod(name_idx, argc), line);
+                return Ok(());
+            }
+        }
+
+        // `a&.foo(args)` — a call whose callee is a safe member. A null
+        // receiver yields null *without evaluating the arguments*, which is
+        // what the tree-walker does and what Ruby does: `nil&.foo(bar())`
+        // never runs `bar()`. Emitting the arguments before the null test
+        // would run them.
+        if let ExprKind::SafeMember { object, name } = &callee.kind {
+            let all_positional = arguments
+                .iter()
+                .all(|a| matches!(a, Argument::Positional(_)));
+            if all_positional && arguments.len() <= 255 {
+                self.compile_expr(object)?;
+                let skip = self.emit_jump(Op::JumpIfNull(0), line);
+                let mut argc = 0u8;
+                for arg in arguments {
+                    if let Argument::Positional(expr) = arg {
+                        self.compile_expr(expr)?;
+                        argc += 1;
+                    }
+                }
+                let name_idx = self.add_string_constant(name);
+                let method_id = super::method_table::resolve_method_id(name);
+                if method_id != super::method_table::METHOD_UNKNOWN {
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                } else {
+                    self.emit(Op::CallMethod(name_idx, argc), line);
+                }
+                self.patch_jump(skip);
                 return Ok(());
             }
         }
