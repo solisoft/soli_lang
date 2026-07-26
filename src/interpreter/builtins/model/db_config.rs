@@ -468,6 +468,8 @@ pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
 
     /// SEC-027: explicit schemes survive the parse round-trip.
     #[test]
@@ -674,16 +676,20 @@ mod tests {
     /// Spawn a stub `/auth/login` server on a random localhost port.
     /// Each incoming POST gets the next token from `tokens` (cycling on
     /// the last). Returns the bound port.
-    fn spawn_login_stub(tokens: Vec<String>) -> u16 {
+    /// Returns the port and a counter of *served logins*, so a test can say
+    /// which of "no re-login was attempted" and "the re-login failed" happened
+    /// instead of inferring it from token equality.
+    fn spawn_login_stub(tokens: Vec<String>) -> (u16, Arc<AtomicUsize>) {
         use std::io::{Read, Write};
         use std::net::TcpListener;
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::atomic::Ordering;
         use std::sync::Arc;
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub login");
         let port = listener.local_addr().unwrap().port();
         let tokens = Arc::new(tokens);
         let counter = Arc::new(AtomicUsize::new(0));
+        let served = Arc::clone(&counter);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let tokens = Arc::clone(&tokens);
@@ -705,6 +711,18 @@ mod tests {
                             break;
                         }
                     }
+                    // Count *served logins*, not connections. A connection
+                    // that carried no request still reached here and consumed a
+                    // token index, so anything that opened one — a pooled
+                    // client probing the socket, a dropped connect — shifted
+                    // every later login onto the wrong token. That is what made
+                    // the near-expiry test flake: with the first login handed
+                    // token B instead of A, `first != second` is false and the
+                    // assertion reports "no re-login happened" for what was
+                    // really a stray connection.
+                    if total.is_empty() {
+                        return;
+                    }
                     let idx = counter.fetch_add(1, Ordering::SeqCst).min(tokens.len() - 1);
                     let body = format!("{{\"token\":\"{}\"}}", tokens[idx]);
                     let resp = format!(
@@ -716,7 +734,25 @@ mod tests {
                 });
             }
         });
-        port
+
+        // Wait until the listener actually answers before returning. `bind`
+        // makes the port reachable, but the accepting thread may not have
+        // reached `incoming()` yet, and a request that arrives in that window
+        // is refused — surfacing as "first login should succeed via stub"
+        // rather than anything about JWTs. The probe carries no request, so
+        // the handler returns before touching the counter and it is not
+        // mistaken for a login.
+        for _ in 0..50 {
+            match std::net::TcpStream::connect(("127.0.0.1", port)) {
+                Ok(probe) => {
+                    drop(probe);
+                    break;
+                }
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(2)),
+            }
+        }
+
+        (port, served)
     }
 
     /// Regression test for the pre-v1.3.1 bug where the JWT was cached
@@ -742,7 +778,7 @@ mod tests {
         // they wouldn't otherwise trip the leeway check.
         let fresh_exp_a = now_epoch() + 24 * 3600;
         let fresh_exp_b = now_epoch() + 12 * 3600;
-        let port = spawn_login_stub(vec![
+        let (port, served) = spawn_login_stub(vec![
             make_jwt_with_exp(fresh_exp_a),
             make_jwt_with_exp(fresh_exp_b),
         ]);
@@ -792,6 +828,15 @@ mod tests {
             exp_after_first, fresh_exp_a,
             "first call must cache the stub's first response"
         );
+        // Say which failure happened rather than leaving it to be inferred:
+        // two served logins means the refresh was attempted, so a token
+        // mismatch after that is a stub/transport problem, not the cache logic
+        // this test is about.
+        assert_eq!(
+            served.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "expected exactly two logins to reach the stub (one per get_jwt_token call)"
+        );
         assert_ne!(
             first, second,
             "near-expiry cache must trigger a real re-login (this fails against the old OnceLock design)"
@@ -813,7 +858,7 @@ mod tests {
 
         // Stub serves token-1 first, then would serve token-2 — if the
         // second call somehow re-logs in, we'll see the swap.
-        let port = spawn_login_stub(vec![
+        let (port, served) = spawn_login_stub(vec![
             make_jwt_with_exp(now_epoch() + 24 * 3600),
             make_jwt_with_exp(now_epoch() + 12 * 3600),
         ]);
@@ -843,6 +888,16 @@ mod tests {
         }
         *JWT_CACHE.lock().unwrap() = saved;
 
+        // Exactly one login should have reached the stub: the second call is
+        // served from cache. Asserting the count says *why* the tokens match,
+        // instead of leaving "cache reused" and "stub repeated itself"
+        // indistinguishable — which is the ambiguity that makes the sibling
+        // test's failures hard to read.
+        assert_eq!(
+            served.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "a fresh cache must not re-login: exactly one request should reach the stub"
+        );
         assert_eq!(first, second, "cached call must return identical token");
         assert_eq!(
             exp_after_first, exp_after_second,
