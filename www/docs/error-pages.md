@@ -88,7 +88,7 @@ For every 500 the server writes a multi-line block to stderr — useful when you
   env: {"current_user": null, "user_id": null, ...}
 ```
 
-The first `[ERROR] request_id=… METHOD PATH - msg` line is preserved verbatim from earlier versions so any log parser keyed on that prefix keeps working. Secrets are redacted in the stderr snapshot: auth headers and password / token / api-key params are replaced with `[REDACTED]`, and the request body is always redacted.
+The first `[ERROR] request_id=… METHOD PATH - msg` line is preserved verbatim from earlier versions so any log parser keyed on that prefix keeps working. Secrets are redacted in the stderr snapshot: auth headers and password / token / api-key params are replaced with `[REDACTED]`, and the request body is always redacted. The `env:` line is filtered the same way — a **local variable** whose name looks like a secret is logged as `[REDACTED]` rather than by value. It uses the *same* rule as the param redaction above (case-insensitive substring: `password`, `passwd`, `secret`, `token`, `api_key`, `private_key`, `authorization`, `auth`, `session_id`, `csrf`), so a value cannot be hidden in the request snapshot and printed in full in the environment dump a few lines below. Substring matching over-redacts slightly — a local called `author` matches `auth` — which is the intended direction: a redacted local costs some debugging context, a logged credential costs a rotation.
 
 Correlate a customer's "Error ID" (shown on the error page) to the matching stderr block by searching the logs for `request_id=<that id>`.
 

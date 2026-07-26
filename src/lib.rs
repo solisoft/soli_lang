@@ -29,6 +29,7 @@ pub mod migration;
 pub mod module;
 pub mod parser;
 pub mod platform;
+pub(crate) mod redaction;
 pub mod regex_cache;
 pub mod repl_common;
 pub mod repl_highlight;

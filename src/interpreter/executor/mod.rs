@@ -178,7 +178,16 @@ impl Interpreter {
                 value
             };
 
-            let json_value = self.value_to_json(&resolved_value);
+            // Redact anything whose *name* says it holds a secret. This JSON
+            // reaches the `env:` line of the production error log, so a local
+            // called `password` or `api_token` would otherwise be written out
+            // by value every time its handler raised. Same predicate Model
+            // serialisation uses, so the two cannot disagree about what counts.
+            let json_value = if crate::redaction::looks_sensitive(name.as_str()) {
+                format!("{:?}", crate::redaction::REDACTED)
+            } else {
+                self.value_to_json(&resolved_value)
+            };
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
@@ -210,7 +219,16 @@ impl Interpreter {
                 value.clone()
             };
 
-            let json_value = self.value_to_json(&resolved_value);
+            // Redact anything whose *name* says it holds a secret. This JSON
+            // reaches the `env:` line of the production error log, so a local
+            // called `password` or `api_token` would otherwise be written out
+            // by value every time its handler raised. Same predicate Model
+            // serialisation uses, so the two cannot disagree about what counts.
+            let json_value = if crate::redaction::looks_sensitive(name.as_str()) {
+                format!("{:?}", crate::redaction::REDACTED)
+            } else {
+                self.value_to_json(&resolved_value)
+            };
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 

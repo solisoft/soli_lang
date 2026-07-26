@@ -163,7 +163,7 @@ this.page_owner           # controller instance vars</code></pre>
     }
   env: {"current_user": null, "user_id": null, ...}</code></pre>
             <p class="text-gray-500 text-xs mt-3">
-                Secrets are redacted in the stderr snapshot: <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted. Failure context is written only to stderr — never to the production HTML page.
+                Secrets are redacted in the stderr snapshot: <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted. The <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">env:</code> line is filtered by the same rule, so a <strong class="text-white">local variable</strong> named like a secret (<code class="text-xs bg-[#171412] px-1 py-0.5 rounded">password</code>, <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">api_key</code>, <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">access_token</code>, …) is logged as <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[REDACTED]</code> instead of by value. Failure context is written only to stderr — never to the production HTML page.
             </p>
             <p class="text-gray-500 text-xs mt-2">
                 Correlate a customer's <em>Error ID</em> to a stderr block by searching the logs for <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">request_id=&lt;that id&gt;</code>.

@@ -1660,24 +1660,40 @@ pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
     if name.starts_with('_') {
         return false;
     }
-    // Sensitive name patterns. Case-insensitive on the suffix/prefix to
-    // catch `Password`, `Password_Digest`, etc. Matching is done in
-    // lowercase so "PasswordHash" is filtered out too.
+    !is_sensitive_field_name(name)
+}
+
+/// Does this *model field* name look like it holds a secret?
+///
+/// Deliberately narrower than `crate::redaction::looks_sensitive`, and NOT a
+/// drifted copy of it — the two answer different questions and should stay
+/// apart:
+///
+/// * This one decides what a model omits from its serialised output, which is
+///   API shape. Over-hiding here silently removes a field an app depends on,
+///   so it matches precise prefixes and suffixes: `password…`, `…_token`,
+///   `…_digest`, `…_secret`, `…_hash`.
+/// * `redaction::looks_sensitive` decides what never reaches a log, and matches
+///   substrings. Over-redacting there costs a little debugging context, which
+///   is the cheaper mistake.
+///
+/// So a field called `author` is serialised normally and still redacted in an
+/// error log. That asymmetry is the point.
+///
+/// Case-insensitive on the prefix/suffix, matched in lowercase so `PasswordHash`
+/// is caught as well as `password_hash`.
+pub(crate) fn is_sensitive_field_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     // Catches `password`, `password_digest`, `password_hash`,
     // `password_reset_token`, `passwordHash` (lowercased to
     // `passwordhash`), etc.
     if lower.starts_with("password") {
-        return false;
+        return true;
     }
-    if lower.ends_with("_token")
+    lower.ends_with("_token")
         || lower.ends_with("_digest")
         || lower.ends_with("_secret")
         || lower.ends_with("_hash")
-    {
-        return false;
-    }
-    true
 }
 
 /// Implement serde::Serialize for Value to leverage serde_json's optimized writer.
@@ -2964,3 +2980,53 @@ mod value_misc_tests {
 /// Every array cell, hash slot, model-row field, env binding and VM stack slot
 /// is one `Value`, so this is a broad multiplier.
 const _: () = assert!(std::mem::size_of::<Value>() <= 24);
+
+#[cfg(test)]
+mod sensitive_name_tests {
+    use super::is_sensitive_field_name;
+
+    /// One definition of "sensitive", used by Model serialisation and by the
+    /// error-path environment dump. The second consumer is why this matters
+    /// beyond cosmetics: that dump reaches the `env:` line of the production
+    /// error log, so a name this misses is a secret written to disk.
+    #[test]
+    fn sensitive_names_are_recognised() {
+        for name in [
+            "password",
+            "password_digest",
+            "password_hash",
+            "PasswordHash",
+            "password_reset_token",
+            "api_token",
+            "session_secret",
+            "csrf_token",
+            "content_hash",
+            "SESSION_SECRET",
+        ] {
+            assert!(
+                is_sensitive_field_name(name),
+                "{name} should be treated as sensitive"
+            );
+        }
+    }
+
+    /// It must not swallow ordinary names — over-redacting an error log makes
+    /// it useless in the other direction.
+    #[test]
+    fn ordinary_names_are_left_alone() {
+        for name in [
+            "user_name",
+            "email",
+            "id",
+            "tokens",
+            "hashes",
+            "secretary",
+            "count",
+        ] {
+            assert!(
+                !is_sensitive_field_name(name),
+                "{name} should NOT be treated as sensitive"
+            );
+        }
+    }
+}

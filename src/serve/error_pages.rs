@@ -909,26 +909,6 @@ const REDACTED_HEADER_NAMES: &[&str] = &[
     "x-coverage-token",
 ];
 
-/// SEC-083: substrings that signal a secret-bearing query / form / param
-/// key. Match case-insensitively as a substring so `csrf_token`,
-/// `access_token`, `user_password`, etc. all get redacted along with the
-/// bare names.
-const REDACTED_PARAM_SUBSTRINGS: &[&str] = &[
-    "password",
-    "passwd",
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "private_key",
-    "privatekey",
-    "authorization",
-    "auth",
-    "session_id",
-    "sessionid",
-    "csrf",
-];
-
 /// Lower-case match against the redaction list. `value`-side casing is
 /// irrelevant — we're inspecting the *key*.
 fn header_should_redact(name: &str) -> bool {
@@ -937,10 +917,10 @@ fn header_should_redact(name: &str) -> bool {
 }
 
 fn param_should_redact(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    REDACTED_PARAM_SUBSTRINGS
-        .iter()
-        .any(|sub| lower.contains(sub))
+    // Shared with the error log's `env:` line — see `crate::redaction`. They
+    // used to be separate, and a local named `api_key` was redacted as a
+    // request param while being printed in full a few lines below it.
+    crate::redaction::looks_sensitive(key)
 }
 
 /// Apply the redaction pattern to a key/value map: key preserved, value
