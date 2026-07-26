@@ -410,12 +410,18 @@ impl TypeChecker {
     /// Check string method access.
     fn check_string_method(&self, name: &str, span: Span) -> TypeResult<Type> {
         match name {
-            "length" | "len" | "size" | "count" | "ord" | "bytesize" | "index_of" => {
-                Ok(Type::Function {
-                    params: vec![],
-                    return_type: Box::new(Type::Int),
-                })
-            }
+            "length" | "len" | "size" | "ord" | "bytesize" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Int),
+            }),
+            // These take a needle. Declaring them with no parameters made the
+            // checker auto-invoke the member, so `s.count("a")` resolved to
+            // `Int` and then reported "Cannot call non-function type 'Int'" —
+            // `soli check` rejected a call that runs correctly.
+            "count" | "index_of" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Int),
+            }),
             "casecmp" => Ok(Type::Function {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Int),
@@ -450,12 +456,17 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
-            "scan" | "chars" | "lines" | "bytes" | "partition" | "rpartition" => {
-                Ok(Type::Function {
-                    params: vec![],
-                    return_type: Box::new(Type::Array(Box::new(Type::String))),
-                })
-            }
+            "chars" | "lines" | "bytes" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            }),
+            // Same auto-invoke trap as `count`/`index_of` above: each of these
+            // takes a pattern or separator, so declaring zero parameters made
+            // `soli check` reject working code.
+            "scan" | "partition" | "rpartition" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            }),
             // split accepts an optional String delimiter (defaults to " ")
             "split" => Ok(Type::Function {
                 params: vec![Type::String],

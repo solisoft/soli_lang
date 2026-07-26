@@ -65,19 +65,9 @@ impl Vm {
             }
             "swapcase" => {
                 check_arity(0, args.len(), span)?;
-                let mut result = String::with_capacity(s.len());
-                for c in s.chars() {
-                    if c.is_uppercase() {
-                        for lc in c.to_lowercase() {
-                            result.push(lc);
-                        }
-                    } else {
-                        for uc in c.to_uppercase() {
-                            result.push(uc);
-                        }
-                    }
-                }
-                Ok(Value::String(result.into()))
+                Ok(Value::String(
+                    crate::interpreter::executor::calls::string_methods::swapcase_string(s).into(),
+                ))
             }
             "chomp" => {
                 check_arity(0, args.len(), span)?;
@@ -116,16 +106,15 @@ impl Vm {
             }
             "reverse" => {
                 check_arity(0, args.len(), span)?;
-                let result: String = s.chars().rev().collect();
+                let result: String =
+                    crate::interpreter::executor::calls::string_methods::reverse_string(s);
                 Ok(Value::String(result.into()))
             }
             "chars" => {
                 check_arity(0, args.len(), span)?;
-                let mut chars = Vec::with_capacity(s.len());
-                for c in s.chars() {
-                    chars.push(Value::String(c.to_string().into()));
-                }
-                Ok(Value::Array(Rc::new(RefCell::new(chars))))
+                Ok(Value::Array(Rc::new(RefCell::new(
+                    crate::interpreter::executor::calls::string_methods::chars_to_values(s),
+                ))))
             }
             "bytes" => {
                 check_arity(0, args.len(), span)?;

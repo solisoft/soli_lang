@@ -185,7 +185,10 @@ pub fn evaluate_with_interpreter(
                 }
                 (Value::String(s), "empty?") => return Ok(Value::Bool(s.is_empty())),
                 (Value::String(s), "reverse") => {
-                    return Ok(Value::String(s.chars().rev().collect::<String>().into()))
+                    return Ok(Value::String(
+                        crate::interpreter::executor::calls::string_methods::reverse_string(s)
+                            .into(),
+                    ))
                 }
                 (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
                 (Value::Float(f), "to_i") => return Ok(Value::Int(*f as i64)),

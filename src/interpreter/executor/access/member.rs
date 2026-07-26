@@ -2313,7 +2313,9 @@ impl Interpreter {
             "chr" => {
                 if (0..=0x10FFFF).contains(&n) {
                     if let Some(c) = char::from_u32(n as u32) {
-                        return Ok(Value::String(c.to_string().into()));
+                        return Ok(
+                            crate::interpreter::executor::calls::string_methods::char_to_value(c),
+                        );
                     }
                 }
                 Err(RuntimeError::type_error(

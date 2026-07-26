@@ -135,19 +135,9 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         }
         12 => {
             // swapcase
-            let mut result = String::with_capacity(s.len());
-            for c in s.chars() {
-                if c.is_uppercase() {
-                    for lc in c.to_lowercase() {
-                        result.push(lc);
-                    }
-                } else {
-                    for uc in c.to_uppercase() {
-                        result.push(uc);
-                    }
-                }
-            }
-            Some(Value::String(result.into()))
+            Some(Value::String(
+                crate::interpreter::executor::calls::string_methods::swapcase_string(s).into(),
+            ))
         }
         13 => {
             // chomp
@@ -160,16 +150,15 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         }
         14 => {
             // reverse
-            let out: String = s.chars().rev().collect();
+            let out: String =
+                crate::interpreter::executor::calls::string_methods::reverse_string(s);
             Some(Value::String(out.into()))
         }
         15 => {
             // chars
-            let v: Vec<Value> = s
-                .chars()
-                .map(|c| Value::String(c.to_string().into()))
-                .collect();
-            Some(Value::Array(Rc::new(RefCell::new(v))))
+            Some(Value::Array(Rc::new(RefCell::new(
+                crate::interpreter::executor::calls::string_methods::chars_to_values(s),
+            ))))
         }
         16 => {
             // bytes

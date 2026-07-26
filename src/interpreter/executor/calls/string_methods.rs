@@ -2,7 +2,7 @@
 
 use crate::error::RuntimeError;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{SoliStr, Value};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -43,6 +43,81 @@ pub(crate) fn camelize_string(s: &str, upper: bool) -> String {
         }
     }
     out
+}
+
+/// Reverse a string by character, with a byte-wise fast path for ASCII.
+///
+/// The general path decodes each `char` (scanning backwards over continuation
+/// bytes) and re-encodes it. For ASCII — which nearly every string a web app
+/// reverses actually is — the reversed bytes are exactly the reversed
+/// characters, so a plain byte reverse gives the identical answer without
+/// touching UTF-8 at all.
+///
+/// `is_ascii` and `from_utf8` are both vectorised scans, so the fast path is
+/// three cheap linear passes against one decode-and-re-encode pass. Written
+/// once here because six sites across the two engines had their own copy.
+pub(crate) fn reverse_string(s: &str) -> String {
+    if s.is_ascii() {
+        let mut bytes = s.as_bytes().to_vec();
+        bytes.reverse();
+        // Reversing ASCII bytes can only produce ASCII, so this never fails;
+        // going through the checked conversion keeps the function safe and
+        // still beats decoding chars.
+        debug_assert!(std::str::from_utf8(&bytes).is_ok());
+        return String::from_utf8(bytes).unwrap_or_else(|_| s.chars().rev().collect());
+    }
+    s.chars().rev().collect()
+}
+
+/// One `Value::String` per character.
+///
+/// Builds each character's text in a stack buffer rather than via
+/// `c.to_string()`. A one-character name fits inline in `SoliStr`, so the
+/// intermediate `String` was a heap allocation, a copy and a free per
+/// character — pure overhead on a 50-character string, 50 times over.
+pub(crate) fn char_to_value(c: char) -> Value {
+    let mut buf = [0u8; 4];
+    Value::String(SoliStr::from(&*c.encode_utf8(&mut buf)))
+}
+
+pub(crate) fn chars_to_values(s: &str) -> Vec<Value> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut buf = [0u8; 4];
+    for c in s.chars() {
+        out.push(Value::String(SoliStr::from(&*c.encode_utf8(&mut buf))));
+    }
+    out
+}
+
+/// Swap the case of every character, with a byte-wise fast path for ASCII.
+///
+/// The general path is Unicode-correct and must stay: case mapping can change
+/// length (`ß` uppercases to `SS`), so it cannot be done in place. ASCII has no
+/// such case, and there the swap is a single pass over the bytes.
+pub(crate) fn swapcase_string(s: &str) -> String {
+    if s.is_ascii() {
+        let mut bytes = s.as_bytes().to_vec();
+        for b in bytes.iter_mut() {
+            if b.is_ascii_uppercase() {
+                *b = b.to_ascii_lowercase();
+            } else if b.is_ascii_lowercase() {
+                *b = b.to_ascii_uppercase();
+            }
+        }
+        debug_assert!(std::str::from_utf8(&bytes).is_ok());
+        if let Ok(swapped) = String::from_utf8(bytes) {
+            return swapped;
+        }
+    }
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_uppercase() {
+            result.extend(c.to_lowercase());
+        } else {
+            result.extend(c.to_uppercase());
+        }
+    }
+    result
 }
 
 /// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
@@ -144,9 +219,7 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(
-                    s.chars().rev().collect::<String>().into(),
-                )))
+                Some(Ok(Value::String(reverse_string(s).into())))
             }
             "slugify" => {
                 if !arguments.is_empty() {
@@ -843,11 +916,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let mut chars = Vec::with_capacity(s.len());
-        for c in s.chars() {
-            chars.push(Value::String(c.to_string().into()));
-        }
-        Ok(Value::Array(Rc::new(RefCell::new(chars))))
+        Ok(Value::Array(Rc::new(RefCell::new(chars_to_values(s)))))
     }
 
     fn string_lines(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -891,19 +960,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let mut result = String::with_capacity(s.len());
-        for c in s.chars() {
-            if c.is_uppercase() {
-                for lower in c.to_lowercase() {
-                    result.push(lower);
-                }
-            } else {
-                for upper in c.to_uppercase() {
-                    result.push(upper);
-                }
-            }
-        }
-        Ok(Value::String(result.into()))
+        Ok(Value::String(swapcase_string(s).into()))
     }
 
     fn string_insert(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1083,7 +1140,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let result: String = s.chars().rev().collect();
+        let result: String = reverse_string(s);
         Ok(Value::String(result.into()))
     }
 
@@ -1429,7 +1486,7 @@ fn string_succ(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{camelize_string, slugify_string, string_succ};
+    use super::{camelize_string, reverse_string, slugify_string, string_succ};
 
     #[test]
     fn camelize_snake_case_lower() {
@@ -1486,6 +1543,36 @@ mod tests {
         assert_eq!(camelize_string("foo__bar", false), "fooBar");
         assert_eq!(camelize_string("--foo--bar--", true), "FooBar");
         assert_eq!(camelize_string("___", false), "");
+    }
+
+    #[test]
+    fn reverse_ascii_matches_the_char_by_char_result() {
+        for input in ["", "a", "hello", "hello world", "12345", "a b c"] {
+            assert_eq!(
+                reverse_string(input),
+                input.chars().rev().collect::<String>()
+            );
+        }
+    }
+
+    #[test]
+    fn reverse_keeps_multibyte_characters_intact() {
+        // The ASCII fast path must not touch these — reversing their bytes
+        // would produce invalid UTF-8 rather than reversed text.
+        assert_eq!(reverse_string("café"), "éfac");
+        assert_eq!(reverse_string("日本語"), "語本日");
+        assert_eq!(reverse_string("a→b"), "b→a");
+        assert_eq!(reverse_string("héllo wörld"), "dlröw olléh");
+    }
+
+    #[test]
+    fn reverse_agrees_with_the_general_path_on_mixed_input() {
+        for input in ["ünïcode", "🙂ok", "ascii-then-é", "é-then-ascii"] {
+            assert_eq!(
+                reverse_string(input),
+                input.chars().rev().collect::<String>()
+            );
+        }
     }
 
     #[test]

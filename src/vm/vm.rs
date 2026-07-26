@@ -744,7 +744,7 @@ impl Vm {
                                     }
                                     "trim" => Some(Value::String(s.trim().to_string().into())),
                                     "reverse" => {
-                                        let out: String = s.chars().rev().collect();
+                                        let out: String = crate::interpreter::executor::calls::string_methods::reverse_string(s);
                                         Some(Value::String(out.into()))
                                     }
                                     "nil?" => Some(Value::Bool(false)),
@@ -2901,7 +2901,7 @@ impl Vm {
                 };
                 chars
                     .get(idx)
-                    .map(|c| Value::String(c.to_string().into()))
+                    .map(|c| crate::interpreter::executor::calls::string_methods::char_to_value(*c))
                     .ok_or(RuntimeError::IndexOutOfBounds {
                         index: *i,
                         length: chars.len(),
