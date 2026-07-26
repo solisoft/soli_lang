@@ -193,6 +193,26 @@ pub(crate) fn substring_chars(s: &str, start: i64, end: i64) -> String {
     chars[start..end].iter().collect()
 }
 
+/// Largest width the padding helpers will build.
+///
+/// `"x".ljust(9223372036854775807)` asked the allocator for nine exabytes and
+/// aborted the process — reachable from any request that passes a user-supplied
+/// number through `to_i()`, so a single crafted parameter could take down a
+/// worker. A million characters is already far past any real column alignment,
+/// and refusing beyond it turns a crash into an ordinary error.
+pub(crate) const MAX_PAD_WIDTH: i64 = 1 << 20;
+
+/// Validate a padding width: positive (or non-negative for the `pad` variants)
+/// and within [`MAX_PAD_WIDTH`].
+pub(crate) fn check_pad_width(width: i64, method: &str) -> Result<usize, String> {
+    if width > MAX_PAD_WIDTH {
+        return Err(format!(
+            "{method} width {width} exceeds the maximum of {MAX_PAD_WIDTH}"
+        ));
+    }
+    Ok(width.max(0) as usize)
+}
+
 /// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
 /// run of non-`[a-z0-9]` chars to a single `-`, trim leading/trailing `-`.
 pub(crate) fn slugify_string(s: &str) -> String {
@@ -595,10 +615,6 @@ impl Interpreter {
                 }
                 Ok(Value::String(string_succ(s).into()))
             }
-            "chr" => Err(RuntimeError::type_error(
-                "chr is not a string instance method",
-                span,
-            )),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "String".to_string(),
                 property: method_name.to_string(),
@@ -883,7 +899,9 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let width = match &arguments[0] {
-            Value::Int(w) if *w > 0 => *w as usize,
+            Value::Int(w) if *w > 0 => {
+                check_pad_width(*w, "center").map_err(|m| RuntimeError::type_error(m, span))?
+            }
             _ => {
                 return Err(RuntimeError::type_error(
                     "center expects a positive integer width",
@@ -916,7 +934,9 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let width = match &arguments[0] {
-            Value::Int(w) if *w > 0 => *w as usize,
+            Value::Int(w) if *w > 0 => {
+                check_pad_width(*w, "ljust").map_err(|m| RuntimeError::type_error(m, span))?
+            }
             _ => {
                 return Err(RuntimeError::type_error(
                     "ljust expects a positive integer width",
@@ -945,7 +965,9 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let width = match &arguments[0] {
-            Value::Int(w) if *w > 0 => *w as usize,
+            Value::Int(w) if *w > 0 => {
+                check_pad_width(*w, "rjust").map_err(|m| RuntimeError::type_error(m, span))?
+            }
             _ => {
                 return Err(RuntimeError::type_error(
                     "rjust expects a positive integer width",
@@ -1389,7 +1411,9 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let width = match &arguments[0] {
-            Value::Int(w) if *w >= 0 => *w as usize,
+            Value::Int(w) if *w >= 0 => {
+                check_pad_width(*w, "lpad").map_err(|m| RuntimeError::type_error(m, span))?
+            }
             _ => {
                 return Err(RuntimeError::type_error(
                     "lpad expects non-negative integer width",
@@ -1419,7 +1443,9 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let width = match &arguments[0] {
-            Value::Int(w) if *w >= 0 => *w as usize,
+            Value::Int(w) if *w >= 0 => {
+                check_pad_width(*w, "rpad").map_err(|m| RuntimeError::type_error(m, span))?
+            }
             _ => {
                 return Err(RuntimeError::type_error(
                     "rpad expects non-negative integer width",

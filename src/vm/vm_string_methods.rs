@@ -492,6 +492,11 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let width = expect_positive_int(&args[0], "center", span)?;
+                crate::interpreter::executor::calls::string_methods::check_pad_width(
+                    width as i64,
+                    "center",
+                )
+                .map_err(|e| RuntimeError::type_error(e, span))?;
                 let pad_char = args
                     .get(1)
                     .and_then(|v| match v {
@@ -521,6 +526,11 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let width = expect_positive_int(&args[0], "ljust", span)?;
+                crate::interpreter::executor::calls::string_methods::check_pad_width(
+                    width as i64,
+                    "ljust",
+                )
+                .map_err(|e| RuntimeError::type_error(e, span))?;
                 let pad_char = args
                     .get(1)
                     .and_then(|v| match v {
@@ -544,6 +554,11 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let width = expect_positive_int(&args[0], "rjust", span)?;
+                crate::interpreter::executor::calls::string_methods::check_pad_width(
+                    width as i64,
+                    "rjust",
+                )
+                .map_err(|e| RuntimeError::type_error(e, span))?;
                 let pad_char = args
                     .get(1)
                     .and_then(|v| match v {
@@ -567,7 +582,12 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let width = match &args[0] {
-                    Value::Int(w) if *w >= 0 => *w as usize,
+                    Value::Int(w) if *w >= 0 => {
+                        crate::interpreter::executor::calls::string_methods::check_pad_width(
+                            *w, name,
+                        )
+                        .map_err(|m| RuntimeError::type_error(m, span))?
+                    }
                     _ => {
                         return Err(RuntimeError::type_error(
                             "lpad expects non-negative integer width",
@@ -599,7 +619,12 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let width = match &args[0] {
-                    Value::Int(w) if *w >= 0 => *w as usize,
+                    Value::Int(w) if *w >= 0 => {
+                        crate::interpreter::executor::calls::string_methods::check_pad_width(
+                            *w, name,
+                        )
+                        .map_err(|m| RuntimeError::type_error(m, span))?
+                    }
                     _ => {
                         return Err(RuntimeError::type_error(
                             "rpad expects non-negative integer width",
@@ -630,7 +655,7 @@ impl Vm {
                 if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let length = expect_positive_int(&args[0], "truncate", span)?;
+                let length = expect_positive_int_named(&args[0], "truncate", "length", span)?;
                 let suffix = args
                     .get(1)
                     .and_then(|v| match v {
@@ -781,10 +806,23 @@ fn expect_string<'a>(val: &'a Value, method: &str, span: Span) -> Result<&'a str
 
 #[inline]
 fn expect_positive_int(val: &Value, method: &str, span: Span) -> Result<usize, RuntimeError> {
+    expect_positive_int_named(val, method, "width", span)
+}
+
+/// `noun` names what the number means — a padding `width`, `truncate`'s
+/// `length` — so each message matches the interpreter's wording for that method
+/// instead of calling every integer a width.
+#[inline]
+fn expect_positive_int_named(
+    val: &Value,
+    method: &str,
+    noun: &str,
+    span: Span,
+) -> Result<usize, RuntimeError> {
     match val {
         Value::Int(w) if *w > 0 => Ok(*w as usize),
         _ => Err(RuntimeError::type_error(
-            format!("{} expects a positive integer", method),
+            format!("{method} expects a positive integer {noun}"),
             span,
         )),
     }

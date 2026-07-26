@@ -444,6 +444,14 @@ const CASES: &[(&str, &str)] = &[
         "fetch_raises_without_a_default_but_get_does_not",
         "let h = {\"a\": 1}\nprint(h.get(\"z\"))\nprint(h.fetch(\"z\", 9))\nlet caught = false\ntry { h.fetch(\"z\") } catch e { caught = true }\nprint(caught)",
     ),
+    (
+        "padding_rejects_an_absurd_width_instead_of_aborting",
+        "let caught = false\ntry { \"x\".ljust(9223372036854775807) } catch e { caught = true }\nprint(caught)\nprint(\"x\".ljust(5))",
+    ),
+    (
+        "truncate_is_not_capped_like_padding_is",
+        "print(\"abcdef\".truncate(9223372036854775807))\nprint(\"abcdef\".truncate(3))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
