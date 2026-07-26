@@ -108,31 +108,53 @@ fn build_standalone(
 }
 
 struct Fixtures {
-    _dir: tempfile::TempDir,
     plain_exe: PathBuf,
     protected_exe: PathBuf,
 }
 
 static FIXTURES: OnceLock<Fixtures> = OnceLock::new();
 
+/// Where the shared, expensive-to-build fixtures live.
+///
+/// This used to be a `tempfile::TempDir` parked in the `OnceLock` below, which
+/// leaked its directory on every single run: a static's contents are never
+/// dropped, because Rust does not run destructors for statics at process exit.
+/// Each run therefore left ~1.5 GB of standalone executables in `/tmp`, and
+/// after twenty-five runs the disk hit 99% — surfacing as six standalone tests
+/// failing with nothing in the output mentioning disk space.
+///
+/// A fixed path cleared on the way in fixes it without giving up the one-time
+/// build: the cost is bounded to a single directory that every run reuses, it
+/// sits under `target/` so `cargo clean` takes it, and nothing depends on a
+/// destructor that will never run. Only this test binary uses the path, and
+/// `OnceLock` serialises initialisation within it.
+fn fixture_root() -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("tmp")
+        .join("standalone-fixtures");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create standalone fixture root");
+    root
+}
+
 fn fixtures() -> &'static Fixtures {
     FIXTURES.get_or_init(|| {
-        let dir = tempfile::tempdir().unwrap();
-        let app_dir = dir.path().join("app_src");
+        let dir = fixture_root();
+        let app_dir = dir.join("app_src");
         std::fs::create_dir_all(&app_dir).unwrap();
         write_fixture_app(&app_dir);
 
-        let plain_exe = dir.path().join("app_plain");
+        let plain_exe = dir.join("app_plain");
         let (status, stderr) = build_standalone(&app_dir, Some(&plain_exe), &[], &[], None);
         assert!(status.success(), "plain build failed: {stderr}");
 
-        let protected_exe = dir.path().join("app_protected");
+        let protected_exe = dir.join("app_protected");
         let (status, stderr) =
             build_standalone(&app_dir, Some(&protected_exe), &["--protect"], &[], None);
         assert!(status.success(), "protected build failed: {stderr}");
 
         Fixtures {
-            _dir: dir,
             plain_exe,
             protected_exe,
         }
