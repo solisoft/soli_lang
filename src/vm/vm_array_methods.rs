@@ -427,6 +427,8 @@ impl Vm {
                 let mut min = &items[0];
                 for item in items.iter().skip(1) {
                     match (min, item) {
+                        // See `max` above — same missing String arm.
+                        (Value::String(a), Value::String(b)) if b < a => min = item,
                         (Value::Int(a), Value::Int(b)) if b < a => min = item,
                         (Value::Float(a), Value::Float(b)) if b < a => min = item,
                         (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
@@ -456,6 +458,11 @@ impl Vm {
                 let mut max = &items[0];
                 for item in items.iter().skip(1) {
                     match (max, item) {
+                        // Strings had no arm here, so they never displaced the
+                        // running candidate: `["a", "b", "c"].max()` answered
+                        // "a", the first element. The interpreter compares them
+                        // through the shared sort comparator and always has.
+                        (Value::String(a), Value::String(b)) if b > a => max = item,
                         (Value::Int(a), Value::Int(b)) if b > a => max = item,
                         (Value::Float(a), Value::Float(b)) if b > a => max = item,
                         (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,

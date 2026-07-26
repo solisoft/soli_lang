@@ -460,6 +460,10 @@ const CASES: &[(&str, &str)] = &[
         "a_non_function_where_a_callback_belongs_names_the_method",
         "let caught = false\ntry { [1, 2, 3].all?(null) } catch e { caught = true }\nprint(caught)",
     ),
+    (
+        "min_and_max_compare_strings_not_just_numbers",
+        "print([\"a\", \"b\", \"c\"].max())\nprint([\"c\", \"b\", \"a\"].min())\nprint([1, 2].max())",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
