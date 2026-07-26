@@ -931,6 +931,29 @@ impl Vm {
         }
         self.run()
     }
+
+    /// Arbitrary-arity form of [`Self::invoke_in_batch_one`], for callers that
+    /// forward a caller-supplied argument list — a function held in a hash
+    /// entry, say. The batch is what bounds the nested `run()`; calling
+    /// `call_value_direct` from inside a dispatch handler instead lets `run()`
+    /// unwind past the bottom frame and panic.
+    pub fn invoke_in_batch(
+        &mut self,
+        batch: &CallableBatch,
+        callee: &Value,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.push(callee.clone());
+        for arg in args {
+            self.push(arg.clone());
+        }
+        self.call_value(args.len(), span)?;
+        if self.frames.len() == batch.frames_before {
+            return Ok(self.pop());
+        }
+        self.run()
+    }
 }
 
 /// Snapshot of VM state for a batch of closure invocations made by a single

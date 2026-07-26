@@ -363,8 +363,32 @@ const CASES: &[(&str, &str)] = &[
         "enum_serialization_and_parse",
         "enum C { Red, Blue, Tag(name: String) }\nprint(json_stringify({\"c\": C.Red, \"t\": C.Tag(\"x\")}))\nprint(C.parse(\"Red\") == C.Red)\nprint(C.parse({\"variant\": \"Tag\", \"name\": \"y\"}) == C.Tag(\"y\"))",
     ),
+    // --- functions stored in hash entries (dispatch tables) ---
+    // The VM used to reject `handlers.on_create(rec)` outright: an unknown hash
+    // method raised NoSuchProperty without ever checking whether the key held a
+    // callable. The tree-walker called it, so the pattern passed every test and
+    // failed only in production, where the VM runs.
+    (
+        "hash_entry_function_called",
+        "let h = {\"cb\": fn(x) { return x * 2 }}\nprint(h.cb(21))",
+    ),
+    (
+        "hash_entry_function_zero_args",
+        "let h = {\"f\": fn() { return 7 }}\nprint(h.f())",
+    ),
+    (
+        "hash_entry_function_two_args",
+        "let h = {\"j\": fn(a, b) { return a + b }}\nprint(h.j(2, 3))",
+    ),
+    (
+        "hash_entry_function_via_local",
+        "let h = {\"f\": fn() { return 7 }}\nlet g = h.f\nprint(g())",
+    ),
+    (
+        "hash_builtin_method_still_wins",
+        "let h = {\"a\": 1, \"b\": 2}\nprint(h.keys())",
+    ),
 ];
-
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.

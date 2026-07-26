@@ -597,11 +597,33 @@ impl Vm {
                 outcome?;
                 Ok(Value::Bool(answer))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Hash".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            // Not a built-in hash method. A hash entry holding a function is a
+            // dispatch table — `handlers.on_save(record)` — and the
+            // tree-walking interpreter has always called it. The VM did not, so
+            // that pattern passed every test and then failed in production,
+            // where the VM runs. Look the name up and invoke it when it is
+            // callable; anything else still reports an unknown property, which
+            // is what catches `h.lenght()`.
+            _ => {
+                let entry = hash
+                    .borrow()
+                    .get(&HashKey::String(name.into()))
+                    .filter(|v| v.is_callable())
+                    .cloned();
+                match entry {
+                    Some(callable) => {
+                        let batch = self.enter_callable_batch();
+                        let outcome = self.invoke_in_batch(&batch, &callable, args, span);
+                        self.exit_callable_batch(batch);
+                        outcome
+                    }
+                    None => Err(RuntimeError::NoSuchProperty {
+                        value_type: "Hash".to_string(),
+                        property: name.to_string(),
+                        span,
+                    }),
+                }
+            }
         }
     }
 

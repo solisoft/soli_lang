@@ -889,7 +889,14 @@ pub fn run_file(path: &str, options: &Options) {
 }
 
 pub fn run_eval(code: &str, options: &Options) {
-    let result = solilang::run_with_type_check(code, !options.no_type_check);
+    // Honour `--vm`, as `run_script` does. Without this branch `soli --vm -e`
+    // silently ran the tree-walking interpreter, so the one command people
+    // reach for to check VM behaviour was the one command that could not.
+    let result = if options.use_vm {
+        solilang::run_vm(code, None, !options.no_type_check)
+    } else {
+        solilang::run_with_type_check(code, !options.no_type_check)
+    };
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
