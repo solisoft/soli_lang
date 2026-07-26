@@ -52,3 +52,24 @@ the first generated run were exactly this, and `cargo clippy` caught them as
 unreachable duplicate match arms.
 
 Both scripts currently report zero actionable findings.
+
+## The third axis: can hostile input panic?
+
+`panicscan.sh` runs deliberately awful arguments — negative widths, out-of-range
+indices, zero chunk sizes, `i64::MIN`/`MAX` — through both engines and reports
+anything that reaches a Rust panic rather than a Soli error.
+
+```bash
+./bench/engine-parity/panicscan.sh < bench/engine-parity/hostile-inputs.txt
+```
+
+Release builds unwind and a per-request guard turns a panicking handler into a
+500, so a panic is no longer fatal to the process — but it is still never the
+intended way to report bad input, and it aborts whatever was in flight.
+
+Currently zero panics across 47 expressions in both engines, and the two agree on
+every one. It did surface something the other two axes cannot see, because it is
+neither a divergence nor a checker gap: integer arithmetic wraps silently on
+overflow, so `9223372036854775807 + 1` is negative and `2.pow(64)` is `0`. Filed
+as `tasks/todo/integer-overflow-wraps-silently.md` — it is a language-level
+decision, not a bug fix.
