@@ -19,8 +19,6 @@ use super::opcode::Op;
 /// What is left needs machinery that does not exist yet rather than a different
 /// arrangement of what does:
 ///
-/// * `{a: x, ...rest}` has to *build* the leftover hash — every other rest form
-///   is a slice of something that already exists.
 /// * `Destructuring` (`Type { field }`) has no compiled form yet.
 /// * `And`/`Or` are unreachable: no parser path constructs them. See
 ///   tasks/todo/match-and-or-patterns-are-unreachable.md.
@@ -39,8 +37,8 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         // Nested sub-patterns are compiled by recursion, so a composite is
         // supported exactly when its parts are.
         MatchPattern::Array { elements, .. } => elements.iter().any(pattern_needs_interpreter),
-        MatchPattern::Hash { fields, rest } => {
-            rest.is_some() || fields.iter().any(|(_, p)| pattern_needs_interpreter(p))
+        MatchPattern::Hash { fields, .. } => {
+            fields.iter().any(|(_, p)| pattern_needs_interpreter(p))
         }
         MatchPattern::EnumVariant { bindings, .. } => {
             bindings.iter().any(pattern_needs_interpreter)
@@ -287,13 +285,6 @@ impl Compiler {
             }
 
             MatchPattern::Hash { fields, rest } => {
-                // `...rest` would have to build the leftover hash; not yet.
-                if rest.is_some() {
-                    return Err(CompileError::new(
-                        "this match pattern is not yet supported by the bytecode VM",
-                        crate::span::Span::new(0, 0, line, 0),
-                    ));
-                }
                 self.emit(Op::GetLocal(slot), line);
                 let ty = self.add_string_constant("Hash");
                 let f = self.emit_jump(Op::MatchType(ty, 0), line);
@@ -314,6 +305,28 @@ impl Compiler {
                     let key = self.add_string_constant(field);
                     self.emit(Op::HashGetLocalConst(slot, key), line);
                     live += self.bind_or_recurse(sub, line, live, &mut fails)?;
+                }
+
+                // `...rest` is everything except the named keys. Built with the
+                // `except` the language already exposes, so the two engines
+                // agree on the leftover by construction rather than by two
+                // implementations happening to match.
+                if let Some(rest_name) = rest {
+                    self.emit(Op::GetLocal(slot), line);
+                    for (field, _) in fields {
+                        let k = self.add_string_constant(field);
+                        self.emit(Op::Constant(k), line);
+                    }
+                    self.emit(Op::Array(fields.len() as u16), line);
+                    let name_idx = self.add_string_constant("except");
+                    let mid = super::method_table::resolve_method_id("except");
+                    if mid != super::method_table::METHOD_UNKNOWN {
+                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                    } else {
+                        self.emit(Op::CallMethod(name_idx, 1), line);
+                    }
+                    self.add_local(rest_name.clone(), false);
+                    live += 1;
                 }
             }
 

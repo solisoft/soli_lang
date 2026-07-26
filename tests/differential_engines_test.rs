@@ -597,8 +597,16 @@ const CASES: &[(&str, &str)] = &[
         "fn f(v) { return match v { 1 => \"one\", [a, b] => \"arr\", {k: x} => \"hash:\" + str(x), _ => \"?\" } }\nprint([f(1), f([1, 2]), f({\"k\": 9}), f(\"z\")])",
     ),
     (
-        "hash_rest_pattern_falls_back",
-        "fn f(v) { return match v { {name: n, ...rest} => \"has\", _ => \"no\" } }\nprint(f({\"name\": \"a\", \"b\": 1}))",
+        "match_hash_with_rest",
+        "fn f(v) { return match v { {name: n, ...rest} => n + \"/\" + str(rest), _ => \"no\" } }\nprint(f({\"name\": \"a\", \"b\": 1, \"c\": 2}))",
+    ),
+    (
+        "match_hash_rest_is_empty_when_nothing_is_left",
+        "fn f(v) { return match v { {name: n, ...rest} => str(rest), _ => \"no\" } }\nprint(f({\"name\": \"a\"}))",
+    ),
+    (
+        "match_hash_rest_still_requires_the_named_keys",
+        "fn f(v) { return match v { {name: n, ...rest} => \"has\", _ => \"no\" } }\nprint(f({\"other\": 1}))",
     ),
     // --- fixed-length array patterns compile ---
     // Every test runs before any binding is pushed, so a failing arm never has
@@ -1024,7 +1032,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // falls back; a direct `--vm` run reports the compile error while the
     // interpreter runs it. Binding patterns at a clean position compile — see
     // the `match_binding_*` cases, which are NOT listed here.
-    "hash_rest_pattern_falls_back",
     "binding_pattern_as_call_argument",
     "break_inside_try_falls_back",
     // #9 — comprehensions now run on the VM at a clean stack position (see
