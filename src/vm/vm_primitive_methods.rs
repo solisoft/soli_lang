@@ -36,6 +36,20 @@ impl Vm {
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // Universal zero-argument methods, guarded before dispatch. Without
+        // this, `5.nil?("junk")` reported "cannot access property 'nil?' on
+        // int" — the lookup missed because of the argument, so the message
+        // blamed the method rather than the call. The collection dispatchers
+        // report a wrong-arity error here; say the same thing for primitives.
+        //
+        // `to_s`/`to_string` are NOT in this list: on an Int they take an
+        // optional radix, so `255.to_s(16)` is `"ff"`. Including them broke
+        // that, which `test_vm_int_to_s_radix` caught immediately.
+        if !args.is_empty() && matches!(name, "class" | "nil?" | "blank?" | "present?" | "inspect")
+        {
+            return Err(RuntimeError::wrong_arity(0, args.len(), span));
+        }
+
         // Int handles its own empty-args delegation (vm_call_int_method).
         if let Value::Int(n) = receiver {
             return self.vm_call_int_method(*n, name, args, span);

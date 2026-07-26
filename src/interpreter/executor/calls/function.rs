@@ -106,6 +106,17 @@ fn is_universal_instance_member(name: &str) -> bool {
     )
 }
 
+/// Universal members that take no arguments, in the sense the VM's dispatchers
+/// enforce. Kept beside [`is_universal_instance_member`] so the two lists are
+/// read together; this one exists only to turn a wrong call into a wrong-arity
+/// error rather than a confusing "cannot call non-function value".
+fn is_universal_zero_arg_member(name: &str) -> bool {
+    // `to_s`/`to_string` are deliberately absent: on an Int they take an
+    // optional radix (`255.to_s(16)` is `"ff"`), so they are not universally
+    // zero-argument and must not be reported as such.
+    matches!(name, "class" | "nil?" | "blank?" | "present?" | "inspect")
+}
+
 /// Hash method names eligible for the direct `h.method(args)` dispatch in
 /// `evaluate_call`. These resolve as METHODS even when the hash stores a
 /// value under the same string key (matching the long-standing fast-path
@@ -436,6 +447,7 @@ impl Interpreter {
         // Anything else falls through to member resolution on the
         // already-evaluated value, then the generic call path below.
         let mut missing_hash_member: Option<String> = None;
+        let mut member_call_name: Option<String> = None;
         let callee_val = match &callee.kind {
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
                 // Mirror `evaluate_member`'s template-lenient `@ivar`
@@ -607,6 +619,7 @@ impl Interpreter {
                         missing_hash_member = Some(name.to_string());
                     }
                 }
+                member_call_name = Some(name.to_string());
                 self.evaluate_member_on_value(obj_val, name, callee.span)?
             }
             _ => self.evaluate_callee(callee)?,
@@ -632,6 +645,20 @@ impl Interpreter {
         // member access *can* resolve — `shift`, methods added by
         // `define_method`, universal members like `nil?` — still wins. Only a
         // name that is neither a key nor resolvable to anything is an error.
+        // `x.nil?("junk")` — a universal zero-argument method handed an
+        // argument. Member access already resolved it to its answer, so calling
+        // that answer reports "cannot call non-function value", which says
+        // nothing about the actual mistake. The VM reports a wrong-arity error;
+        // say the same thing here so a wrong call reads identically whichever
+        // engine ran it.
+        if !arguments.is_empty() && !callee_val.is_callable() {
+            if let Some(name) = &member_call_name {
+                if is_universal_zero_arg_member(name) {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+            }
+        }
+
         if let Some(name) = &missing_hash_member {
             if matches!(callee_val, Value::Null) {
                 return Err(RuntimeError::NoSuchProperty {
