@@ -17,7 +17,7 @@ returns a **byte-identical payload** for the JSON and DB rows, and every stack r
 |---|---|
 | Soli | 1.25.0, `soli serve .`, 16 HTTP workers, SoliDB (loopback HTTP) for the DB row |
 | Rails | 8.1.3 + Puma 8.0.2 on Ruby 3.4.9 — production, eager-loaded, 16 workers × 5 threads, PostgreSQL via ActiveRecord |
-| Express | 5.2.1 on Node 25.9, 16 cluster workers — **+ EJS 6.0 + node-postgres 8.22**: Express ships no view layer and no DB layer, both had to be added. Note what that means for the DB rows: node-postgres is a **driver, not an ORM** — Express issues hand-written SQL and gets rows built in the driver, with no model layer in the path, while Soli and Rails both go through one |
+| Express | 5.2.1 on Node 25.9, 16 cluster workers — **+ EJS 6.0 + Sequelize 6.37.8** (on node-postgres 8.22): Express ships no view layer and no DB layer, both had to be added. The DB rows put it on an **ORM**, not the raw driver, so all three stacks compare like for like; the driver number is kept below as a reference |
 | Database | PostgreSQL 18.3 for Rails and Express (same table, same 50 rows); SoliDB for Soli — all client-server over a local socket, no in-process storage anywhere |
 | Load | `oha` 1.12 — 30s at concurrency 200 per cell, after warming all nine endpoints |
 | Machine | 16-core x86-64 Linux, load generator on the same box |
@@ -56,20 +56,25 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Express + EJS + pg | 43,480 | 9.67 ms | 223 µs | 4.6x |
-| **Soli** | 22,831 | 10.32 ms | 312 µs (534 incl. SoliDB) | **2.4x** |
-| Rails + Puma | 9,524 | 34.74 ms | 1,278 µs | 1.0x |
+| Express + EJS + Sequelize | 28,388 | 15.08 ms | 397 µs | 3.0x |
+| **Soli** | 22,769 | 11.00 ms | 306 µs (522 incl. SoliDB) | **2.4x** |
+| Rails + Puma | 9,594 | 38.83 ms | 1,291 µs | 1.0x |
 
 > **This row compares database access architectures as much as frameworks.** Each request
 > from Soli is one blocking HTTP round trip to SoliDB per worker — 16 in flight, no more.
 > Rails holds 80 threads against PostgreSQL; Express's driver is fully asynchronous,
-> effectively unbounded — which is most of why it dominates here. The other part is that
-> it is a driver: Express runs `SELECT id, title, views FROM posts` by hand with no ORM in
-> the path, where Soli and Rails each pay a model layer. That is the honest shape of this
-> row — a framework with an ORM against a framework with a hand-written query. Soli's CPU column shows
-> both truths: 312µs in the Soli process, **534µs system-wide once SoliDB's own CPU is
+> effectively unbounded — which is most of why it still leads here.
+>
+> **All three stacks go through an ORM in this table.** An earlier revision measured
+> Express on the raw `pg` driver, which is not the same workload: hand-written SQL with no
+> model layer against two frameworks paying one. Putting Sequelize in the path costs
+> Express **34%** — 42,818 req/s on the driver against 28,388 through the ORM — and that
+> is the number published, because Soli's and Rails' rows include their ORMs too. If your
+> Node app talks to the database through a driver rather than an ORM, the driver row is
+> the one that describes you. Soli's CPU column shows
+> both truths: 306µs in the Soli process, **522µs system-wide once SoliDB's own CPU is
 > counted** — publishing the smaller number alone would hide an entire process. Even so,
-> Soli's DB row costs 2.4x less system CPU than Rails'; the remaining gap to Express is
+> Soli's DB row costs 2.5x less system CPU than Rails'; the remaining gap to Express is
 > the 16-in-flight cap, not the machine.
 
 Every stack serves the same self-describing hash rows on its fastest idiom for that
@@ -91,17 +96,18 @@ variable.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **39,716** | 6.58 ms | 185 µs (304 incl. SoliDB) | **4.9x** |
-| Express + EJS + pg | 33,579 | 11.64 ms | 320 µs | 4.2x |
-| Rails + Puma | 8,040 | 46.24 ms | 1,536 µs | 1.0x |
+| **Soli** | **40,034** | 6.49 ms | 182 µs (301 incl. SoliDB) | **4.9x** |
+| Express + EJS + Sequelize | 23,580 | 16.26 ms | 503 µs | 2.9x |
+| Rails + Puma | 8,155 | 41.95 ms | 1,509 µs | 1.0x |
 
-Soli takes this row — **4.9x Rails' throughput and 1.2x Express's** — and it is the row
+Soli takes this row — **4.9x Rails' throughput and 1.7x Express's** — and it is the row
 whose shape matters most, because it is the only one where every stack does the two things
-a page does. Express's asynchronous driver — with no ORM in the path — still wins the raw
-DB read above; once the same rows have to become HTML, its lead is gone.
+a page does, each through its own ORM. Express's asynchronous driver still wins the raw DB
+read above; once the same rows have to go through an ORM *and* become HTML, that lead is
+gone. On the raw driver Express reaches 32,754 here, still short of Soli.
 
 The result worth pausing on is Soli's own: **the database-backed HTML page is nearly
-twice the throughput of the database-backed JSON response** (39,716 vs 22,831) on the same
+twice the throughput of the database-backed JSON response** (40,034 vs 22,769) on the same
 query and the same 50 rows. Nothing about the database changed — `render_json` is simply
 more expensive than the template engine, the same asymmetry the JSON row notes. If you are
 building pages rather than an API, the cheaper path is the one you were going to write
@@ -191,8 +197,27 @@ The controllers, views and routes are line-for-line equivalent; the visible diff
 the migration. That is a trade, not a win: SoliDB is schemaless, so Soli needs no
 migration *and* gets no database-enforced schema — Rails guarantees the table's shape,
 Soli lets you persist anything. The Express version is a working app too, but its view
-engine, DB driver, pooling and template compilation are hand-assembled — the ~40 lines it
-takes are the frameworkless tax the other two don't pay.
+engine, ORM, pooling and template compilation are hand-assembled — the ~40 lines it
+takes are the frameworkless tax the other two don't pay. Its DB action, for the record:
+
+```javascript
+// Express + Sequelize — the model has to be declared in the app
+const PostModel = sequelize.define('Post', {
+  title: DataTypes.STRING,
+  views: DataTypes.INTEGER,
+}, { tableName: 'posts', timestamps: false });
+
+const ORM_PROJECTION = { attributes: ['id', 'title', 'views'], raw: true };
+
+app.get('/db', async (req, res) => res.json(await PostModel.findAll(ORM_PROJECTION)));
+app.get('/db-template', async (req, res) => {
+  const rows = await PostModel.findAll(ORM_PROJECTION);
+  res.type('html').send(layout({ title: 'Posts', body: list({ items: rows }) }));
+});
+```
+
+`raw: true` is what makes this the same workload as the other two: it projects without
+instantiating models, exactly as Rails' `pluck` and Soli's `pluck` do.
 
 ## What these multiples do and don't mean
 
