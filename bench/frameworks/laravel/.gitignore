@@ -1,0 +1,9 @@
+# Dependencies and generated state — composer.lock pins the versions instead.
+app/vendor/
+app/storage/logs/*
+app/storage/framework/cache/*
+app/storage/framework/sessions/*
+app/storage/framework/views/*
+app/bootstrap/cache/*
+app/.env
+app/node_modules/

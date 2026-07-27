@@ -1,0 +1,19 @@
+# Laravel on php-fpm + nginx — the ordinary production shape, not Octane.
+# host networking so the container pays no NAT overhead the native stacks avoid,
+# and so it reaches the same PostgreSQL on 127.0.0.1:5433 the others use.
+services:
+  php:
+    build: .
+    network_mode: host
+    user: "1778654605:1778654605"
+    volumes:
+      - ./app:/var/www/html
+    restart: unless-stopped
+  nginx:
+    image: nginx:alpine
+    network_mode: host
+    volumes:
+      - ./app:/var/www/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [php]
+    restart: unless-stopped
