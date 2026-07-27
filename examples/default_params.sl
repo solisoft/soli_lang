@@ -1,6 +1,6 @@
 // Test default parameters
 def greet(name: String = "World") -> String {
-    return "Hello \(name)!";
+    return "Hello #{name}!";
 }
 
 print("Testing default parameters:");
@@ -15,7 +15,7 @@ print(add(5));     // 15
 print(add(5, 3));  // 8
 
 def configure(debug: Bool = false, port: Int = 3000, host: String = "localhost") -> String {
-    return "debug=\(debug), port=\(port), host=\(host)";
+    return "debug=#{debug}, port=#{port}, host=#{host}";
 }
 
 print(configure());                    // debug=false, port=3000, host=localhost
