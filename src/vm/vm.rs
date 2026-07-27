@@ -907,7 +907,8 @@ impl Vm {
                         | Value::Float(_)
                         | Value::Bool(_)
                         | Value::Null
-                        | Value::Decimal(_) => {
+                        | Value::Decimal(_)
+                        | Value::DateTime(_) => {
                             let receiver = self.stack[receiver_idx].clone();
                             let args: Vec<Value> =
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
@@ -1047,7 +1048,8 @@ impl Vm {
                         | Value::Float(_)
                         | Value::Bool(_)
                         | Value::Null
-                        | Value::Decimal(_) => {
+                        | Value::Decimal(_)
+                        | Value::DateTime(_) => {
                             let receiver = self.stack[receiver_idx].clone();
                             let args: Vec<Value> =
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();

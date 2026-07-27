@@ -239,6 +239,8 @@ len({"a": 1})     # 1
 
 Array operations like `push()`, `pop()`, `map()`, `filter()`, and more are available as methods on the Array class. See the Array class documentation for details.
 
+The field-keyed aggregate family — `sum_by`, `avg` / `avg_by`, `group_by`, `index_by`, `count_by`, `tally`, `filter_by` / `find_by`, `uniq_by`, `max_by` / `min_by` — is documented with the other [Array methods](/docs/language/arrays#method-sum-by). Prefer them over hand-written `reduce` loops: the whole traversal stays in native code instead of re-entering the interpreter once per element.
+
 #### concat(other, ...)
 
 Appends the elements of one or more arrays to the receiver **in place**, then returns the receiver. Mirrors Ruby's `Array#concat` — unlike `+`, which produces a new array, `.concat` mutates the original. The passed-in arrays are not modified. Raises if any argument is not an Array.
@@ -3130,6 +3132,46 @@ Sets the date to January 1st and time to 00:00:00.000, keeping the same year.
 Sets the date to December 31st and time to 23:59:59.999, keeping the same year.
 
 **Returns:** DateTime - A new DateTime instance
+
+#### How a DateTime prints and serialises
+
+A `DateTime` is a value, not an object. In string position it renders as local
+wall clock — the same thing `to_string()` returns — and in JSON it becomes an
+RFC 3339 string, matching `to_iso()`:
+
+```soli
+dt = DateTime.parse("2026-11-15 12:00:00")
+
+str(dt)                      # "2026-11-15 12:00:00"   (local)
+"#{dt}"                      # "2026-11-15 12:00:00"
+{"at": dt}.to_json()         # {"at":"2026-11-15T12:00:00+00:00"}
+```
+
+Because it is a value rather than an object, two DateTimes built from the same
+instant are equal (`==` compares the moment, not identity), and passing one
+around copies it rather than sharing a reference.
+
+#### Boundary methods and daylight saving
+
+The `beginning_of_*` / `end_of_*` methods work on **local** wall-clock time, so
+on the two days a year the clocks change, the boundary they ask for may not be
+a real instant. Both cases resolve to a value — these methods never fail:
+
+- **The hour repeats** (clocks go back). `2026-11-01 00:00:00` happens twice in
+  `America/Havana`. The **earliest** of the two instants is used — the first
+  time the wall clock reads that value, which is what "beginning of" means.
+- **The hour is skipped** (clocks go forward). `2023-10-01 00:00:00` never
+  happens in `America/Asuncion`. The first instant that *does* exist is used,
+  i.e. the moment the gap closes.
+
+The local zone comes from `$TZ` when set, otherwise from the system zone —
+matching the behaviour of the rest of the runtime.
+
+```soli
+# Under TZ=America/Havana
+dt = DateTime.parse("2026-11-15 12:00:00")
+dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00
+```
 
 ### Comparison
 

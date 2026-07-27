@@ -54,6 +54,14 @@ impl Vm {
         if let Value::Int(n) = receiver {
             return self.vm_call_int_method(*n, name, args, span);
         }
+        // DateTime is a native value with no class to look methods up on. One
+        // path covers both arities because the lookup is a map read, so the
+        // zero-arg `direct` phase below has nothing extra to do.
+        if let Value::DateTime(ts) = receiver {
+            return crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
+                *ts, name, args, span,
+            );
+        }
         if args.is_empty() {
             let direct = match receiver {
                 Value::Float(n) => Interpreter::float_member_access(*n, name, span)?,

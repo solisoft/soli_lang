@@ -353,6 +353,7 @@ impl Interpreter {
                         self.hash_member_access(&hash_ref, name, span, Value::Hash(hash_rc))
                     }
                     Value::Symbol(ref s) => Self::symbol_member_access(s, name, span),
+                    Value::DateTime(ts) => Self::datetime_member_access(ts, name, span),
                     Value::Int(n) => Self::int_member_access(n, name, span),
                     Value::Float(n) => Self::float_member_access(n, name, span),
                     Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -381,6 +382,7 @@ impl Interpreter {
             Value::QueryBuilder(_) => self.query_builder_member_access(name, span, obj_val),
             Value::String(ref _s) => self.string_member_access(name, span, obj_val),
             Value::Symbol(ref _s) => Self::symbol_member_access(_s, name, span),
+            Value::DateTime(ts) => Self::datetime_member_access(ts, name, span),
             Value::Int(n) => Self::int_member_access(n, name, span),
             Value::Float(n) => Self::float_member_access(n, name, span),
             Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -2277,6 +2279,37 @@ impl Interpreter {
             })),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "String".to_string(),
+                property: name.to_string(),
+                span,
+            }),
+        }
+    }
+
+    /// Member access on a native `DateTime`.
+    ///
+    /// Every DateTime member is a method, so this either invokes it (zero-arg,
+    /// which is how `d.year` and `d.year()` both work) or hands back a bound
+    /// method for the call path to invoke with its arguments.
+    pub(crate) fn datetime_member_access(ts: i64, name: &str, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::builtins::datetime_class::datetime_method;
+        match datetime_method(name) {
+            Some(f) if f.arity == Some(0) => {
+                // Arity excludes the receiver (`DateTime.year` is registered
+                // `Some(0)` yet reads `args[0]` as the instant), so 0 means
+                // "takes no user arguments" and bare access invokes it.
+                crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
+                    ts,
+                    name,
+                    &[],
+                    span,
+                )
+            }
+            Some(_) => Ok(Value::method(crate::interpreter::value::ValueMethod {
+                receiver: Box::new(Value::DateTime(ts)),
+                method_name: name.to_string(),
+            })),
+            None => Err(RuntimeError::NoSuchProperty {
+                value_type: "DateTime".to_string(),
                 property: name.to_string(),
                 span,
             }),

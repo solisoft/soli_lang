@@ -1,8 +1,6 @@
 //! Database CRUD operations and JSON conversion utilities.
 
-use crate::interpreter::builtins::http_class::get_http_client;
 use crate::interpreter::value::{Class, Instance, Value};
-use crate::serve::get_tokio_handle;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -51,41 +49,16 @@ where
     Ok(resp)
 }
 
-// Fallback tokio runtime for DB operations outside of a server context
-// (e.g., REPL, scripts). Uses a lightweight current-thread runtime instead
-// of a full multi-thread runtime to save ~1-2MB of RSS.
-thread_local! {
-    static FALLBACK_RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create fallback tokio runtime");
-}
-
-/// Run a future using the worker's thread-local tokio handle,
-/// falling back to a lightweight per-thread runtime (e.g. from the REPL).
+/// Run a model-layer DB future to completion on this thread's DB runtime.
 ///
-/// If called from within an async runtime context, creates a dedicated single-thread
-/// runtime to avoid blocking the I/O driver and causing potential deadlocks.
+/// Shares one runtime (and therefore one connection pool) with every other DB
+/// path via `http_class::block_on_db` — see `WORKER_DB_RT` for why this module
+/// must not keep a reactor of its own.
 fn run_db_future<F, T>(future: F) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>> + 'static,
 {
-    if let Some(rt) = get_tokio_handle() {
-        if tokio::runtime::Handle::try_current().is_ok() {
-            // Already inside async runtime — create a dedicated single-thread runtime
-            // so we don't block the caller's I/O driver thread
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(future)
-        } else {
-            // Outside async context — safe to block
-            rt.block_on(future)
-        }
-    } else {
-        FALLBACK_RT.with(|rt| rt.block_on(future))
-    }
+    crate::interpreter::builtins::http_class::block_on_db(future)
 }
 
 // Thread-local transaction state for managing database transactions.
@@ -169,7 +142,7 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
     });
 
     run_db_future(async move {
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
         let body_str = body.to_string();
         let response = send_with_db_auth_retry(|| {
             client
@@ -230,7 +203,7 @@ pub fn commit_transaction() -> Result<(), String> {
     // the tokio future). On any error the tx state is left for the block-form
     // runner's defensive `clear_current_tx`.
     let affected: Vec<String> = run_db_future(async move {
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
         let response = send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
             .await
             .map_err(|e| format!("HTTP error: {}", e))?;
@@ -271,7 +244,7 @@ pub fn rollback_transaction() -> Result<(), String> {
     ));
 
     run_db_future(async move {
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
         let response = send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
             .await
             .map_err(|e| format!("HTTP error: {}", e))?;
@@ -460,7 +433,7 @@ pub fn exec_async_query_with_binds(
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     // Capture inputs for the dev-mode query log before the future moves them.
     let log_enabled = super::query_log::is_enabled();
@@ -575,7 +548,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
         None
     };
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
     let result = match run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
             client
@@ -642,7 +615,7 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
         Err(e) => return Value::String(format!("Error: {}", e).into()),
     };
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
     let db_name = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solipay".to_string());
     let url = format!(
         "{}/_api/database/{}/cursor",
@@ -707,7 +680,7 @@ fn create_database_sync(name: &str) -> Result<(), String> {
 
     let body = serde_json::json!({ "name": name }).to_string();
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
@@ -781,7 +754,7 @@ fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
     })
     .to_string();
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
@@ -821,7 +794,7 @@ fn try_create_collection_once(name: &str) -> Result<(), String> {
         None => serde_json::json!({ "name": name }).to_string(),
     };
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
@@ -876,7 +849,7 @@ pub fn exec_db_api_request(
     );
 
     let body_str = body.map(|b| b.to_string());
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
@@ -920,7 +893,7 @@ pub fn exec_prune(collection: &str, older_than_iso: &str) -> Result<i64, String>
 
     let body = serde_json::json!({ "older_than": older_than_iso }).to_string();
 
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
 
     run_db_future(async move {
         let resp = send_with_db_auth_retry(|| {
@@ -1052,7 +1025,7 @@ fn exec_document_request_with_headers(
     body: Option<serde_json::Value>,
     extra_headers: &[(&'static str, String)],
 ) -> Result<serde_json::Value, String> {
-    let client = get_http_client().clone();
+    let client = crate::interpreter::builtins::http_class::db_http_client();
     let extra: Vec<(&'static str, String)> =
         extra_headers.iter().map(|(k, v)| (*k, v.clone())).collect();
 

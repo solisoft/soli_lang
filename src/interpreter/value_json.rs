@@ -87,6 +87,10 @@ pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
 /// Convert a Soli Value to serde_json::Value.
 pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
     match value {
+        // RFC 3339, matching `to_iso()`. This is the path `.to_json()` and
+        // model persistence take, so a DateTime field round-trips as a
+        // standard timestamp string rather than the `{}` it used to produce.
+        Value::DateTime(ts) => Ok(serde_json::Value::String(Value::datetime_to_rfc3339(*ts))),
         Value::Int(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
         Value::Float(f) => Ok(serde_json::Value::Number(
             serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,

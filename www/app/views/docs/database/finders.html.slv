@@ -177,9 +177,9 @@ names = User.where("active = @a", { "a": true }).pluck("name").all
                 Pluck Multiple Fields
             </h3>
             <p class="text-gray-400 mb-4">
-                Returns an array of objects with the requested keys.
+                Returns an array of plain hashes with the requested keys &mdash; self-describing in JSON output, and the projection runs <strong class="text-white">in the database</strong>, so only the requested fields travel over the wire. (<code>Array#pluck</code> on an in-memory array returns arrays of values instead &mdash; the two forms differ deliberately.) Rows are plain hashes, not model instances: <code>row.name</code> and <code>row["name"]</code> both work, model methods like <code>save</code> don't apply.
             </p>
-            <pre><code class="language-soli text-sm"># Get multiple fields as objects
+            <pre><code class="language-soli text-sm"># Get multiple fields as hashes
 users = User.pluck("name", "email").all
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]</code></pre>
         </div>

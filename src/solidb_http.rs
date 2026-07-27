@@ -2,8 +2,6 @@ use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::interpreter::builtins::http_class::get_http_client;
-
 fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
         message: format!("MessagePack deserialization error: {}", e),
@@ -21,42 +19,16 @@ fn cursor_result_rows(response: &Value) -> Vec<Value> {
         .cloned()
         .unwrap_or_default()
 }
-use crate::serve::get_tokio_handle;
-
-// Fallback tokio runtime for SoliDB operations outside of a server context
-// (e.g., migrations, REPL). Uses a lightweight current-thread runtime.
-thread_local! {
-    static FALLBACK_RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create fallback tokio runtime");
-}
-
-/// Run an async future synchronously, using the server's tokio handle if available,
-/// otherwise falling back to a lightweight per-thread runtime.
+/// Run an async future synchronously on this thread's DB runtime.
 ///
-/// If called from within an async runtime context, creates a dedicated single-thread
-/// runtime to avoid blocking the I/O driver and causing potential deadlocks.
+/// Shares one runtime (and therefore one connection pool) with every other DB
+/// path via `http_class::block_on_db` — see `WORKER_DB_RT` for why this module
+/// must not keep a reactor of its own.
 fn block_on<F>(future: F) -> F::Output
 where
     F: std::future::Future + 'static,
 {
-    if let Some(rt) = get_tokio_handle() {
-        if tokio::runtime::Handle::try_current().is_ok() {
-            // Already inside async runtime — create a dedicated single-thread runtime
-            // so we don't block the caller's I/O driver thread
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(future)
-        } else {
-            // Outside async context — safe to block on the runtime handle
-            rt.block_on(future)
-        }
-    } else {
-        FALLBACK_RT.with(|rt| rt.block_on(future))
-    }
+    crate::interpreter::builtins::http_class::block_on_db(future)
 }
 
 pub struct SoliDBClient {
@@ -203,7 +175,7 @@ impl SoliDBClient {
         timeout: Option<std::time::Duration>,
     ) -> Result<Value, SoliDBError> {
         let url = format!("{}{}", self.base_url, path);
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
         let mut request = self.apply_auth(client.request(method.clone(), &url));
 
         request = request.header("Accept", "application/json");
@@ -749,7 +721,7 @@ impl SoliDBClient {
     ) -> Result<String, SoliDBError> {
         let db = self.get_db()?.to_string();
         let url = format!("{}/_api/blob/{}/{}", self.base_url, db, collection);
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
 
         let data_owned = data.to_vec();
         let filename = filename.to_string();
@@ -821,7 +793,7 @@ impl SoliDBClient {
             "{}/_api/blob/{}/{}/{}",
             self.base_url, db, collection, blob_id
         );
-        let client = get_http_client().clone();
+        let client = crate::interpreter::builtins::http_class::db_http_client();
 
         let jwt = self.jwt_token.clone();
         let api_key = self.api_key.clone();

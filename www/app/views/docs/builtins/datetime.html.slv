@@ -644,6 +644,49 @@ dt.end_of_month().hour()   # 23</code></pre>
                     <code class="text-orange-400">DateTime</code> - A new DateTime instance
                 </div>
             </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/5 p-5 mt-8">
+                <h3 class="text-lg font-semibold text-white mb-3">How a DateTime prints and serialises</h3>
+                <p class="text-gray-300 text-sm leading-relaxed mb-3">
+                    A <code class="text-amber-400">DateTime</code> is a value, not an object. In string position it renders as local wall clock
+                    &mdash; the same thing <code class="text-amber-400">to_string()</code> returns &mdash; and in JSON it becomes an RFC 3339
+                    string, matching <code class="text-amber-400">to_iso()</code>.
+                </p>
+                <pre class="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto mb-3"><code class="language-soli">dt = DateTime.parse("2026-11-15 12:00:00")
+
+str(dt)                      # "2026-11-15 12:00:00"   (local)
+"#{dt}"                      # "2026-11-15 12:00:00"
+{"at": dt}.to_json()         # {"at":"2026-11-15T12:00:00+00:00"}</code></pre>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Because it is a value rather than an object, two DateTimes built from the same instant are equal
+                    (<code class="text-amber-400">==</code> compares the moment, not identity), and passing one around copies it rather than
+                    sharing a reference.
+                </p>
+            </div>
+
+            <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mt-8">
+                <h3 class="text-lg font-semibold text-amber-400 mb-3">Boundary methods and daylight saving</h3>
+                <p class="text-gray-300 text-sm leading-relaxed mb-3">
+                    The <code class="text-amber-400">beginning_of_*</code> / <code class="text-amber-400">end_of_*</code> methods work on
+                    <strong class="text-white">local</strong> wall-clock time, so on the two days a year the clocks change, the boundary they
+                    ask for may not be a real instant. Both cases resolve to a value &mdash; these methods never fail:
+                </p>
+                <ul class="list-disc pl-6 text-gray-400 text-sm space-y-2 mb-3">
+                    <li><strong class="text-white">The hour repeats</strong> (clocks go back). <code class="text-amber-400">2026-11-01 00:00:00</code>
+                        happens twice in <code class="text-amber-400">America/Havana</code>. The <strong class="text-white">earliest</strong> of the two
+                        instants is used &mdash; the first time the wall clock reads that value, which is what &ldquo;beginning of&rdquo; means.</li>
+                    <li><strong class="text-white">The hour is skipped</strong> (clocks go forward). <code class="text-amber-400">2023-10-01 00:00:00</code>
+                        never happens in <code class="text-amber-400">America/Asuncion</code>. The first instant that <em>does</em> exist is used,
+                        i.e. the moment the gap closes.</li>
+                </ul>
+                <p class="text-gray-300 text-sm leading-relaxed mb-3">
+                    The local zone comes from <code class="text-amber-400">$TZ</code> when set, otherwise from the system zone &mdash; matching the
+                    behaviour of the rest of the runtime.
+                </p>
+                <pre class="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto"><code class="language-soli"># Under TZ=America/Havana
+dt = DateTime.parse("2026-11-15 12:00:00")
+dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00</code></pre>
+            </div>
         </section>
     </section>
 

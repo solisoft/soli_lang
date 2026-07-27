@@ -3,6 +3,7 @@
 pub(crate) mod array_ops;
 pub(crate) mod bool_methods;
 mod cascade;
+pub(crate) mod datetime_methods;
 pub(crate) mod decimal_methods;
 pub(crate) mod float_methods;
 mod function;

@@ -26,11 +26,14 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 |----------|---------|---------|
 | `SOLI_HOST` | IP address the server binds to. Set `127.0.0.1` to keep a dev server off the LAN (only local processes can connect); the default listens on all interfaces. An invalid value is a startup error. | `0.0.0.0` |
 | `SOLI_WORKERS` | Number of request-handling worker threads. Each worker is a full interpreter copy (its own parsed app + builtins), so this is the primary lever on baseline RSS: pin it low (e.g. `2`) on many-core boxes to cap memory from duplicated interpreter state + the tokio runtime. Defaults to the number of CPU cores. | CPU cores |
+| `SOLI_WS_WORKERS` | Worker threads reserved exclusively for realtime (WebSocket/LiveView) events, so a burst of them can't starve HTTP and a slow handler can't delay presence/broadcasts. The reservation costs a whole HTTP worker, so by default it only applies once the pool has **4 or more** workers; below that every worker drains both channels and realtime shares the pool. Set it explicitly to force the split at any size (`1` on a 2-worker pool leaves 1 HTTP worker), or `0` to disable it entirely. Always clamped so at least one HTTP worker remains. The startup line reports the resulting layout. | `1` when workers ≥ 4, else `0` |
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
 | `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration; bind values whose name looks like a credential are logged as `[REDACTED]`), `http` (outgoing `HTTP.*` calls; query-string values whose parameter name looks like a credential are logged as `[REDACTED]`), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
 | `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
-| `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections in the internal HTTP client. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. | `90` |
+| `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. Two defaults, because the two clients can afford different windows: the shared client holds a connection for 90s (its reactor runs continuously, so it sees the server close one and drops it), while a per-worker pool holds one for 25s — a worker's reactor only runs during a query, so between requests nothing notices the peer closing an idle connection and the pool must retire it first. SoliDB closes idle keep-alives after 30s. Setting this overrides both; keep it below the idle-close of whatever is on the other end. | `90` shared, `25` per-worker |
 | `SOLI_DB_KEEP_WARM` | Set to `0` to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (`SOLIDB_HOST` or credentials set). | enabled |
+| `SOLI_DB_POOL_MAX_IDLE` | Max idle SoliDB connections kept per host by the shared internal HTTP client. Per-worker DB clients hold one hot connection each and are unaffected; this sizes the pool for the paths that still share a client (async contexts, keep-warm). | `8` |
+| `SOLI_DB_SHARED_REACTOR` | Set to `1` to drive DB queries on the server's shared tokio runtime instead of each worker's own reactor. Escape hatch for the pre-worker-reactor behavior — the default is faster (readiness is polled by the thread that waits on it) and creates no TCP churn. | unset |
 | `SOLI_NAV` | Controls instant-navigation injection (link clicks fetch + swap `<body>` in place instead of a full page load). Set `off`, `false`, `0`, or `no` to disable and fall back to plain hover prefetch. | enabled |
 | `SOLI_PREFETCH` | Controls hover prefetch injection (and hover warming inside instant navigation). Set `off`, `false`, `0`, or `no` to disable. | enabled |
 | `SOLI_PREFETCH_TTL` | Freshness window (seconds, clamped 1–300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip — keeps prefetch working behind a CDN. | `30` |
@@ -167,13 +170,18 @@ threshold adds the `[SLOW]` block on top.
 
 ### DB connection keep-warm
 
-Pooled SoliDB connections idle out after `SOLI_DB_POOL_IDLE_SECS` (default
-90s). On a quiet server, a request arriving after a longer gap used to pay a
-fresh DNS + TCP (+ TLS for remote hosts) connect mid-request — visible as
-intermittent latency spikes. When a DB is configured, `soli serve` now runs
-a periodic read-only `RETURN 1` ping that keeps a live connection pooled at
-all times (and pre-warms the model DB at boot). Disable it with
-`SOLI_DB_KEEP_WARM=0`.
+Pooled SoliDB connections idle out after `SOLI_DB_POOL_IDLE_SECS`. On a quiet
+server, a request arriving after a longer gap used to pay a fresh DNS + TCP
+(+ TLS for remote hosts) connect mid-request — visible as intermittent latency
+spikes. When a DB is configured, `soli serve` now runs a periodic read-only
+`RETURN 1` ping that keeps a live connection pooled at all times (and pre-warms
+the model DB at boot). Disable it with `SOLI_DB_KEEP_WARM=0`.
+
+The ping runs on its own thread, and with one connection pool per worker it can
+only refresh its own — so a worker's connection is instead kept inside the 25s
+idle window described above, short enough that the pool retires it before
+SoliDB's 30s idle close. A worker idle longer than that pays one reconnect on
+its next query, which is the fresh-connect cost the ping avoids elsewhere.
 
 ### Keeping memory low
 
@@ -185,7 +193,7 @@ locale tables) — with the size of that app. The levers, cheapest first:
 
 | Lever | Effect |
 |-------|--------|
-| `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. On a many-core box a small app still spawns one worker per core; pin `2` (or `1` for a low-traffic service) to cut baseline RSS proportionally. |
+| `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. On a many-core box a small app still spawns one worker per core; pin `2` (or `1` for a low-traffic service) to cut baseline RSS proportionally. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near `workers × (1 / query latency)` — roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves >140k req/s). |
 | `SOLI_JOB_WORKERS=1` (or `0`) | The background-job pool is a second set of full interpreters. It defaults to `1`; `0` runs jobs inline with no extra interpreter. |
 | `SOLI_JOB_VIEW_HELPERS=0` | Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don't render helper-using templates. |
 | `MIMALLOC_PURGE_DELAY=0` | mimalloc returns freed pages to the OS promptly instead of after its default delay — trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more `madvise`/decommit syscalls under churny allocation. |

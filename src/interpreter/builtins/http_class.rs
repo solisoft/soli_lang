@@ -385,13 +385,188 @@ pub fn db_pool_idle_secs() -> u64 {
     })
 }
 
+/// How many idle DB connections the pool keeps per host.
+///
+/// At 8, a server serving more than 8 concurrent DB-backed requests discards
+/// every connection past the eighth and re-connects on the next query. Measured
+/// on loopback at 200 concurrent requests that is ~1300 TCP connects/sec, which
+/// puts sustained pressure on the ephemeral port range (28k ports against a
+/// 60s TIME-WAIT) and shows up as a throughput ceiling that does not move when
+/// you add workers. Tunable so the tradeoff can be measured rather than argued.
+pub fn db_pool_max_idle() -> usize {
+    static MAX_IDLE: OnceLock<usize> = OnceLock::new();
+    *MAX_IDLE.get_or_init(|| {
+        std::env::var("SOLI_DB_POOL_MAX_IDLE")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(8)
+            .max(1)
+    })
+}
+
+/// Kill-switch: `SOLI_DB_SHARED_REACTOR=1` restores the pre-worker-reactor
+/// behavior where every DB query is driven by the server's shared tokio
+/// runtime. The shared reactor funnels all DB I/O readiness through a single
+/// driver thread that must cross-thread-wake each parked worker (two futex
+/// handoffs per query, ~190µs at 16 workers and growing with worker count),
+/// which is why per-worker reactors are now the default. Keep this only as an
+/// escape hatch while the new path proves itself.
+pub fn db_shared_reactor() -> bool {
+    static SHARED: OnceLock<bool> = OnceLock::new();
+    *SHARED.get_or_init(|| std::env::var("SOLI_DB_SHARED_REACTOR").as_deref() == Ok("1"))
+}
+
+thread_local! {
+    /// Per-worker internal HTTP client. A connection's background task is
+    /// spawned on whatever runtime is current when the connection is
+    /// established, so connections created on a worker's thread-local reactor
+    /// must never be handed to another thread's pool — hence one client (and
+    /// one pool) per worker thread. Each worker drives at most one DB query at
+    /// a time, so this pool holds a single hot connection that is reused on
+    /// every query with zero cross-thread wakeups.
+    static WORKER_DB_CLIENT: std::cell::OnceCell<Client> = const { std::cell::OnceCell::new() };
+
+    /// This thread's DB reactor, paired 1:1 with [`WORKER_DB_CLIENT`].
+    ///
+    /// The pairing is load-bearing, and it is why every DB code path must go
+    /// through [`block_on_db`] rather than spinning up its own thread-local
+    /// runtime. A pooled connection may only ever be driven by the runtime
+    /// that created it: give one pool two runtimes and whichever path checks
+    /// out the other's connection writes its request onto a reactor nobody is
+    /// currently driving, then waits for a response that cannot arrive until
+    /// the client timeout fires. That is a silent multi-second stall per
+    /// alternation, not an error, so keep this the only DB runtime per thread.
+    static WORKER_DB_RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create per-thread DB runtime");
+
+    /// True while this thread is inside a [`block_on_db`] driving DB work on
+    /// its own reactor. Lets `db_http_client()` pick the thread-local client
+    /// even though `Handle::try_current()` reports an (ambient,
+    /// current-thread) runtime.
+    static DRIVING_LOCAL_DB_REACTOR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Drive a DB future to completion from synchronous code.
+///
+/// The single entry point for all blocking DB I/O — the Model layer,
+/// `SoliDBClient`, sessions, jobs and uploads all funnel through here so that
+/// one thread means one runtime, one client and one connection pool. See
+/// [`WORKER_DB_RT`] for why a second per-thread DB runtime would reintroduce
+/// multi-second stalls.
+pub fn block_on_db<F>(future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        // Called from inside an async context, where this thread's reactor
+        // cannot be driven. Use a runtime scoped to this one call rather than
+        // blocking the caller's I/O driver. `db_http_client()` hands the
+        // shared client to this path, whose connections are retired when the
+        // scoped runtime drops, so nothing outlives its driver.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create scoped DB runtime");
+        rt.block_on(future)
+    } else if db_shared_reactor() {
+        // Kill-switch: old behavior — drive the future on the server's shared
+        // runtime (single I/O driver, cross-thread wakeup per completion).
+        match get_tokio_handle() {
+            Some(rt) => rt.block_on(future),
+            None => WORKER_DB_RT.with(|rt| rt.block_on(future)),
+        }
+    } else {
+        // Default: drive DB I/O on this thread's own reactor. Readiness is
+        // polled by the very thread that waits on it — no shared-driver
+        // handoff, no futex wakeup queue growing with worker count.
+        let _guard = enter_local_db_reactor();
+        WORKER_DB_RT.with(|rt| rt.block_on(future))
+    }
+}
+
+/// RAII guard marking this thread as driving DB futures on its local reactor.
+pub struct LocalDbReactorGuard(bool);
+
+pub fn enter_local_db_reactor() -> LocalDbReactorGuard {
+    let prev = DRIVING_LOCAL_DB_REACTOR.with(|f| f.replace(true));
+    LocalDbReactorGuard(prev)
+}
+
+impl Drop for LocalDbReactorGuard {
+    fn drop(&mut self) {
+        let prev = self.0;
+        DRIVING_LOCAL_DB_REACTOR.with(|f| f.set(prev));
+    }
+}
+
+/// The internal HTTP client to use for a DB request, chosen to match the
+/// reactor that will drive it:
+///
+/// - worker/REPL thread (no ambient runtime, or inside the thread-local
+///   fallback runtime) → this thread's own client, so the connection lives
+///   and dies with this thread's reactor;
+/// - inside an async context (scoped runtime path) or with the kill-switch
+///   on → the shared static client, exactly as before.
+pub fn db_http_client() -> Client {
+    if db_shared_reactor() {
+        return get_http_client().clone();
+    }
+    let local = DRIVING_LOCAL_DB_REACTOR.with(|f| f.get())
+        || tokio::runtime::Handle::try_current().is_err();
+    if local {
+        WORKER_DB_CLIENT.with(|c| {
+            c.get_or_init(|| build_internal_client(local_db_pool_idle_secs()))
+                .clone()
+        })
+    } else {
+        get_http_client().clone()
+    }
+}
+
 /// Internal HTTP client — used by Model queries and SoliDB's HTTP path.
 /// URL is operator-configured (`SOLIDB_HOST`, typically loopback in dev
 /// and a private hostname behind a VPC in production), so the SSRF
 /// blocklist would refuse every connection. Default DNS resolver +
 /// SEC-007 redirect policy.
 pub fn get_http_client() -> &'static Client {
-    HTTP_CLIENT.get_or_init(|| {
+    HTTP_CLIENT.get_or_init(|| build_internal_client(db_pool_idle_secs()))
+}
+
+/// Idle window for a *thread-local* DB pool, which cannot be as generous as
+/// the shared one.
+///
+/// A thread-local reactor is only polled inside [`block_on_db`], so between
+/// requests nothing observes the peer closing an idle keep-alive connection:
+/// the pool goes on handing out a socket the server has already dropped, and
+/// the request fails (or stalls) on first use. The shared-reactor client has
+/// no such problem — its driver thread runs continuously and evicts the
+/// connection the moment the FIN lands.
+///
+/// So the pool must retire idle connections before the server does. SoliDB
+/// closes idle HTTP/1 keep-alives after 30s (`header_read_timeout` in the
+/// db crate's `main.rs`); 25s leaves margin without giving up reuse across
+/// the queries of a single page. `SOLI_DB_POOL_IDLE_SECS` still overrides it,
+/// but must be kept below the idle-close of whatever is on the other end.
+///
+/// The keep-warm ping cannot cover this: it runs on its own thread, and with
+/// one pool per thread it only ever refreshes its own connection.
+const LOCAL_REACTOR_POOL_IDLE_SECS: u64 = 25;
+
+fn local_db_pool_idle_secs() -> u64 {
+    static SECS: OnceLock<u64> = OnceLock::new();
+    *SECS.get_or_init(|| {
+        std::env::var("SOLI_DB_POOL_IDLE_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(LOCAL_REACTOR_POOL_IDLE_SECS)
+            .max(1)
+    })
+}
+
+fn build_internal_client(pool_idle_secs: u64) -> Client {
+    {
         Client::builder()
             // Bound any residual stall (e.g. a stale-connection half-open read)
             // to 10s instead of 30s. The real deadlock that produced 30s hangs
@@ -407,13 +582,15 @@ pub fn get_http_client() -> &'static Client {
             // so a connection the peer/intermediary silently dropped would be
             // retired quickly — but that meant ANY >5s gap between requests
             // forced a cold DNS+TCP+TLS connect mid-request (400ms+ spikes on
-            // quiet servers). It is now 90s (SOLI_DB_POOL_IDLE_SECS) and the
-            // half-open-socket concern is handled by the periodic keep-warm
-            // ping (`spawn_db_keep_warm`), which exercises the pooled
-            // connection well inside both this window and typical NAT/LB
-            // idle limits, plus the tcp_keepalive probe below.
-            .pool_idle_timeout(std::time::Duration::from_secs(db_pool_idle_secs()))
-            .pool_max_idle_per_host(8)
+            // quiet servers). For the shared client it is 90s
+            // (SOLI_DB_POOL_IDLE_SECS) and the half-open-socket concern is
+            // handled by the periodic keep-warm ping (`spawn_db_keep_warm`),
+            // which exercises the pooled connection well inside both this
+            // window and typical NAT/LB idle limits, plus the tcp_keepalive
+            // probe below. Thread-local pools pass a shorter window — see
+            // `LOCAL_REACTOR_POOL_IDLE_SECS`.
+            .pool_idle_timeout(std::time::Duration::from_secs(pool_idle_secs))
+            .pool_max_idle_per_host(db_pool_max_idle())
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
             // SEC-042: pin a hard floor of TLS 1.2. The `rustls-tls`
@@ -424,7 +601,7 @@ pub fn get_http_client() -> &'static Client {
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .expect("Failed to create internal HTTP client")
-    })
+    }
 }
 
 /// SEC-018: maximum bytes Soli will buffer from a single outbound HTTP

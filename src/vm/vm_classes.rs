@@ -44,6 +44,12 @@ impl Vm {
             }
         }
         match object {
+            // A DateTime is a native value with no class, so it resolves
+            // through the same helper the tree-walker uses — one definition of
+            // what `d.year` means, for both engines.
+            Value::DateTime(ts) => {
+                crate::interpreter::executor::Interpreter::datetime_member_access(*ts, name, span)
+            }
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
                 // Check instance fields first
@@ -354,7 +360,8 @@ impl Vm {
                 | Value::Float(_)
                 | Value::Bool(_)
                 | Value::Null
-                | Value::Decimal(_) => {
+                | Value::Decimal(_)
+                | Value::DateTime(_) => {
                     self.vm_call_primitive_method(&receiver, &method_name, &[], span)
                 }
                 _ => Ok(val),

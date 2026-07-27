@@ -238,6 +238,9 @@ len({"a": 1})     # 1
                 <strong>Tip:</strong> Most array functions are also available as <a href="/docs/language/arrays" class="underline hover:text-yellow-200">Array class methods</a>.
                 Use <code class="text-yellow-300">arr.push(42)</code> instead of <code class="text-yellow-300">push(arr, 42)</code> for a more object-oriented style.
             </p>
+            <p class="text-yellow-300 text-sm mt-2">
+                The field-keyed aggregate family &mdash; <code class="text-yellow-300">sum_by</code>, <code class="text-yellow-300">avg</code>&thinsp;/&thinsp;<code class="text-yellow-300">avg_by</code>, <code class="text-yellow-300">group_by</code>, <code class="text-yellow-300">index_by</code>, <code class="text-yellow-300">count_by</code>, <code class="text-yellow-300">tally</code>, <code class="text-yellow-300">filter_by</code>&thinsp;/&thinsp;<code class="text-yellow-300">find_by</code>, <code class="text-yellow-300">uniq_by</code>, <code class="text-yellow-300">max_by</code>&thinsp;/&thinsp;<code class="text-yellow-300">min_by</code> &mdash; lives with the other <a href="/docs/language/arrays#method-sum-by" class="underline hover:text-yellow-200">Array methods</a>. Prefer them over hand-written <code class="text-yellow-300">reduce</code> loops: the traversal stays in native code instead of re-entering the interpreter per element.
+            </p>
         </div>
 
         <div class="space-y-6">

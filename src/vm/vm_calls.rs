@@ -678,7 +678,12 @@ impl Vm {
             Value::Array(arr) => self.vm_call_array_method(arr, method_name, &args, span)?,
             Value::String(s) => self.vm_call_string_method(s.as_ref(), method_name, &args, span)?,
             Value::Hash(hash) => self.vm_call_hash_method(hash, method_name, &args, span)?,
-            Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Null | Value::Decimal(_) => {
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Decimal(_)
+            | Value::DateTime(_) => {
                 self.vm_call_primitive_method(&receiver, method_name, &args, span)?
             }
             _ => {

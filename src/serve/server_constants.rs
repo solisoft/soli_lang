@@ -11,6 +11,35 @@ pub const DEFAULT_WORKER_COUNT: usize = 4;
 /// bump `SOLI_JOB_WORKERS` for higher background throughput.
 pub const DEFAULT_JOB_WORKERS: usize = 1;
 
+/// Smallest worker pool that gets a *default* realtime (WS/LiveView) worker.
+///
+/// Reserving a thread for realtime events stops a burst of them starving HTTP
+/// (and vice versa), but the reservation costs one whole HTTP worker. On a tiny
+/// pool that is the wrong default: at `--workers 2` it halved HTTP throughput,
+/// making `--workers 2` measure identically to `--workers 1` — a DB-read route
+/// stayed at ~11k req/s instead of ~20k. At 4 workers the same reservation
+/// costs 25%, which is a fair price for the isolation.
+///
+/// Below this threshold every worker drains both channels (the behavior from
+/// before the split), so realtime still works — it just shares the pool.
+/// An explicit `SOLI_WS_WORKERS` overrides this and is always honored.
+pub const MIN_WORKERS_FOR_REALTIME_SPLIT: usize = 4;
+
+/// Split a worker pool into (http_workers, realtime_workers).
+///
+/// `explicit_rt` is the parsed `SOLI_WS_WORKERS` value when the operator set
+/// it. An explicit value is always honored (clamped so at least one HTTP worker
+/// survives); otherwise a realtime worker is reserved only once the pool is at
+/// least `MIN_WORKERS_FOR_REALTIME_SPLIT`. A result of 0 realtime workers means
+/// the split collapses and every worker drains both channels.
+pub fn realtime_worker_split(num_workers: usize, explicit_rt: Option<usize>) -> (usize, usize) {
+    let requested =
+        explicit_rt.unwrap_or(usize::from(num_workers >= MIN_WORKERS_FOR_REALTIME_SPLIT));
+    // Never starve HTTP: at least one worker must keep serving requests.
+    let rt = requested.min(num_workers.saturating_sub(1));
+    (num_workers - rt, rt)
+}
+
 /// Capacity per worker for request queue (bounded channels for backpressure)
 pub const CAPACITY_PER_WORKER: usize = 64;
 
@@ -254,6 +283,77 @@ mod tests {
             RESPONSE_WAIT_TIMEOUT_SECS > OUTBOUND_CLIENT_TIMEOUT_SECS,
             "RESPONSE_WAIT_TIMEOUT_SECS ({RESPONSE_WAIT_TIMEOUT_SECS}) must exceed the 30s client timeout"
         );
+    }
+
+    // ---------- realtime_worker_split ----------
+
+    #[test]
+    fn small_pools_keep_every_worker_on_http_by_default() {
+        // The regression this guards: defaulting the realtime reservation on at
+        // every pool size made `--workers 2` allocate 1 HTTP worker, so it
+        // measured identically to `--workers 1` (a DB-read route stuck at ~11k
+        // req/s instead of ~20k).
+        assert_eq!(realtime_worker_split(1, None), (1, 0));
+        assert_eq!(realtime_worker_split(2, None), (2, 0));
+        assert_eq!(realtime_worker_split(3, None), (3, 0));
+    }
+
+    #[test]
+    fn pools_at_the_threshold_reserve_one_realtime_worker() {
+        assert_eq!(realtime_worker_split(4, None), (3, 1));
+        assert_eq!(realtime_worker_split(8, None), (7, 1));
+        assert_eq!(realtime_worker_split(16, None), (15, 1));
+    }
+
+    #[test]
+    fn threshold_is_the_boundary_between_the_two_regimes() {
+        // Pin the boundary itself, so moving the constant has to move this test.
+        const N: usize = MIN_WORKERS_FOR_REALTIME_SPLIT;
+        assert_eq!(realtime_worker_split(N - 1, None).1, 0);
+        assert_eq!(realtime_worker_split(N, None).1, 1);
+    }
+
+    #[test]
+    fn explicit_setting_is_honored_below_the_threshold() {
+        // An operator running LiveView on a small pool can still buy the
+        // isolation the default declines to take.
+        assert_eq!(realtime_worker_split(2, Some(1)), (1, 1));
+        assert_eq!(realtime_worker_split(3, Some(2)), (1, 2));
+    }
+
+    #[test]
+    fn explicit_zero_disables_the_split_on_a_large_pool() {
+        assert_eq!(realtime_worker_split(16, Some(0)), (16, 0));
+    }
+
+    #[test]
+    fn at_least_one_http_worker_always_survives() {
+        // Even an absurd request cannot leave HTTP with nothing to serve on.
+        for workers in 1..=16 {
+            for req in [1, 2, 5, 100, usize::MAX] {
+                let (http, rt) = realtime_worker_split(workers, Some(req));
+                assert!(http >= 1, "workers={workers} req={req} left 0 HTTP workers");
+                assert_eq!(
+                    http + rt,
+                    workers,
+                    "workers={workers} req={req} lost a worker"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn split_never_loses_or_invents_a_worker() {
+        for workers in 0..=32 {
+            for explicit in [None, Some(0), Some(1), Some(3)] {
+                let (http, rt) = realtime_worker_split(workers, explicit);
+                assert_eq!(
+                    http + rt,
+                    workers,
+                    "workers={workers} explicit={explicit:?}"
+                );
+            }
+        }
     }
 
     // ---------- get_mime_type ----------

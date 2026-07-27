@@ -297,6 +297,18 @@ impl QueryBuilder {
         self.pluck_fields = Some(fields);
     }
 
+    /// Class to hydrate result rows into — `None` when the query projects via
+    /// `pluck`. Projected rows are plain values (a scalar for one field, an
+    /// array for several), not documents: hydrating them into instances yields
+    /// field-less objects that serialise as `{}`.
+    pub fn hydration_class(&self) -> Option<&Rc<Class>> {
+        if self.pluck_fields.is_some() {
+            None
+        } else {
+            self.class.as_ref()
+        }
+    }
+
     pub fn set_filter(&mut self, filter: String, bind_vars: HashMap<String, serde_json::Value>) {
         // An empty filter (e.g. from `where({})`) is a no-op — leave `filter`
         // unset so no `FILTER` clause is emitted and the AQL stays valid.
@@ -535,6 +547,13 @@ impl QueryBuilder {
             if fields.len() == 1 {
                 format!("doc.{}", fields[0])
             } else {
+                // Plain objects: `[{a: .., b: ..}, ..]`. Deliberately NOT the
+                // array-of-arrays shape `Array#pluck` (and Rails) uses — the
+                // hash form is self-describing in JSON API output and keeps
+                // `row["a"]` / `row.a` reads working. The projection still
+                // runs in the database, which is where the performance is
+                // (only the named fields travel; ~2x on a full request vs
+                // fetching whole documents and projecting client-side).
                 let pairs: Vec<String> =
                     fields.iter().map(|f| format!("{}: doc.{}", f, f)).collect();
                 format!("{{{}}}", pairs.join(", "))
@@ -999,7 +1018,7 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
     // Inside a `grouped {}` block, register this read for coalescing instead of
     // firing it now; the rows→instances transform mirrors the paths below.
     if super::batch::is_active() {
-        let class = qb.class.clone();
+        let class = qb.hydration_class().cloned();
         return super::batch::register(
             query,
             bind_vars,
@@ -1015,7 +1034,7 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
         );
     }
 
-    if let Some(ref class) = qb.class {
+    if let Some(class) = qb.hydration_class() {
         if bind_vars.is_empty() {
             exec_auto_collection_as_instances(query, &collection, class)
         } else {
@@ -1080,7 +1099,7 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, spec: &SimilarSpec
     fetch_qb.limit_val = None;
     let (query, bind_vars) = fetch_qb.build_query();
 
-    let results = if let Some(ref class) = qb.class {
+    let results = if let Some(class) = qb.hydration_class() {
         if bind_vars.is_empty() {
             exec_auto_collection_as_instances(query, collection, class)
         } else {
@@ -1233,7 +1252,7 @@ fn execute_similar_pushdown(
     );
 
     let (query, bind_vars) = fetch_qb.build_query();
-    let results = if let Some(ref class) = qb.class {
+    let results = if let Some(class) = qb.hydration_class() {
         exec_auto_collection_as_instances_with_binds(query, bind_vars, collection, class)
     } else {
         exec_auto_collection_with_binds(query, bind_vars, collection)
@@ -1276,7 +1295,7 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     let (query, bind_vars) = qb_with_limit.build_query();
 
     if super::batch::is_active() {
-        let class = qb.class.clone();
+        let class = qb.hydration_class().cloned();
         return super::batch::register(
             query,
             bind_vars,
@@ -1302,7 +1321,7 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     match raw_result {
         Ok(results) => {
             if let Some(doc) = results.first() {
-                if let Some(ref class) = qb.class {
+                if let Some(class) = qb.hydration_class() {
                     json_doc_to_instance(class, doc)
                 } else {
                     super::crud::json_to_value(doc)

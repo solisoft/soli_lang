@@ -1789,21 +1789,32 @@ fn run_hyper_server_worker_pool(
     // Partition the pool into HTTP and realtime (WS/LiveView) workers so a
     // burst of realtime events can't starve HTTP request handling and a slow
     // HTTP handler can't delay presence/move broadcasts. `SOLI_WS_WORKERS`
-    // (default 1) reserves that many threads for realtime, clamped so at least
-    // one HTTP worker always remains. With a single total worker the split
-    // collapses (num_rt_workers == 0) and that one worker drains every channel,
-    // preserving the prior single-worker behavior.
-    let requested_rt_workers = std::env::var("SOLI_WS_WORKERS")
+    // reserves that many threads for realtime, clamped so at least one HTTP
+    // worker always remains. When the split collapses (num_rt_workers == 0)
+    // every worker drains every channel, preserving the pre-split behavior —
+    // realtime still works, it just shares the pool.
+    //
+    // The reservation costs one whole HTTP worker, so it is only applied *by
+    // default* once the pool is big enough to absorb it
+    // (`MIN_WORKERS_FOR_REALTIME_SPLIT`). Defaulting it on at every size made
+    // `--workers 2` behave exactly like `--workers 1` — one HTTP worker either
+    // way — which silently halved throughput for anyone running a small pool.
+    // An explicit `SOLI_WS_WORKERS` is always honored, at any pool size.
+    let explicit_rt_workers = std::env::var("SOLI_WS_WORKERS")
         .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(1);
-    let num_rt_workers = requested_rt_workers.min(num_workers.saturating_sub(1));
-    let num_http_workers = num_workers - num_rt_workers;
+        .and_then(|v| v.parse::<usize>().ok());
+    let (num_http_workers, num_rt_workers) =
+        server_constants::realtime_worker_split(num_workers, explicit_rt_workers);
     let split_realtime = num_rt_workers > 0;
     if split_realtime {
         println!(
             "Worker pool: {} HTTP + {} realtime (WS/LiveView)",
             num_http_workers, num_rt_workers
+        );
+    } else {
+        println!(
+            "Worker pool: {} HTTP (realtime shares the pool)",
+            num_http_workers
         );
     }
 

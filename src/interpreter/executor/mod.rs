@@ -307,6 +307,10 @@ impl Interpreter {
     #[allow(clippy::only_used_in_recursion)]
     fn value_to_json(&self, value: &Value) -> String {
         match value {
+            // RFC 3339, matching `to_iso()`. As an `Instance` carrying only a
+            // private `_ts` field this serialised as `{}`, so every DateTime in
+            // a JSON response was an empty object.
+            Value::DateTime(ts) => format!("\"{}\"", Value::datetime_to_rfc3339(*ts)),
             Value::Null => "null".to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Int(n) => n.to_string(),

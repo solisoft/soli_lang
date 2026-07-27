@@ -1454,7 +1454,8 @@ Quick queries for specific data:
 names = User.where("active = @a", { "a": true }).pluck("name");
 # Returns: ["Alice", "Bob", "Charlie"]
 
-# Get multiple fields as objects
+# Get multiple fields as hashes — self-describing, and the projection runs
+# in the database: only the named fields travel over the wire
 users = User.pluck("name", "email");
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
 

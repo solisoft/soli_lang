@@ -250,6 +250,16 @@ impl Interpreter {
                     self.call_string_method(s, &method.method_name, arguments, span)
                 }
             }
+            // A DateTime is a native value, not an object, so it dispatches
+            // like the other primitives rather than through a class.
+            Value::DateTime(ts) => {
+                crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
+                    ts,
+                    &method.method_name,
+                    &arguments,
+                    span,
+                )
+            }
             Value::Int(n) => self.call_int_method(n, &method.method_name, arguments, span),
             Value::Float(n) => self.call_float_method(n, &method.method_name, arguments, span),
             Value::Bool(b) => self.call_bool_method(b, &method.method_name, arguments, span),

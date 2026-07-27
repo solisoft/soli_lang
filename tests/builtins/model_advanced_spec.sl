@@ -43,6 +43,8 @@ describe("Model.pluck() query generation", fn() {
     });
 
     test("generates PLUCK query for multiple fields", fn() {
+        # Hashes, self-describing in JSON output. (Array#pluck on in-memory
+        # arrays returns arrays — the two forms differ deliberately.)
         let q = TestUser.pluck("name", "email").to_query;
         assert(q.contains("RETURN {name: doc.name, email: doc.email}"));
     });

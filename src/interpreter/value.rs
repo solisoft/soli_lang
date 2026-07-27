@@ -313,6 +313,9 @@ pub enum Value {
     Class(Rc<Class>),
     /// Class instance
     Instance(Rc<RefCell<Instance>>),
+    /// An instant, as nanoseconds since the Unix epoch. Native rather than
+    /// an `Instance` so a DateTime costs no allocation and no hash lookup.
+    DateTime(i64),
     /// Future value (async result that auto-resolves when used)
     Future(Arc<Mutex<FutureState>>),
     /// Method on a value (array/hash) - captures receiver and method name.
@@ -483,6 +486,9 @@ impl Value {
     /// ordering so two distinct `DateTime` instances pointing at the same
     /// moment compare equal and order correctly.
     pub fn datetime_ts(&self) -> Option<i64> {
+        if let Value::DateTime(ts) = self {
+            return Some(*ts);
+        }
         if let Value::Instance(inst) = self {
             let inst = inst.borrow();
             if inst.class.name == "DateTime" {
@@ -510,8 +516,27 @@ impl Value {
         )
     }
 
+    /// How a `DateTime` renders in string position — local wall clock, the
+    /// same format `to_string()` produces, so `str(d)` and `d.to_string()`
+    /// agree. Previously a DateTime was an `Instance` and rendered with the
+    /// generic object form, leaking the internal field as
+    /// `<DateTime _ts: 1794744000000000000>`.
+    pub fn render_datetime(ts: i64) -> String {
+        crate::interpreter::builtins::datetime::local_zone::local_from_nanos(ts)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+    }
+
+    /// How a `DateTime` serialises to JSON: RFC 3339, matching `to_iso()`.
+    /// Previously it serialised as `{}` — an `Instance` with only a private
+    /// field, so every DateTime in an API response came out an empty object.
+    pub fn datetime_to_rfc3339(ts: i64) -> String {
+        chrono::DateTime::from_timestamp_nanos(ts).to_rfc3339()
+    }
+
     pub fn type_name(&self) -> String {
         match self {
+            Value::DateTime(_) => "DateTime".to_string(),
             Value::Int(_) => "int".to_string(),
             Value::Float(_) => "float".to_string(),
             Value::Decimal(_) => "decimal".to_string(),
@@ -668,6 +693,10 @@ impl Value {
     /// Value equality for hash key comparison (legacy method, kept for compatibility).
     pub fn hash_eq(&self, other: &Self) -> bool {
         match (self, other) {
+            // By instant, so two DateTimes built from the same moment are
+            // equal. As an `Instance` this was handled by the Instance arm's
+            // `datetime_ts` comparison; the native variant needs its own.
+            (Value::DateTime(a), Value::DateTime(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Decimal(a), Value::Decimal(b)) => a == b,
@@ -683,6 +712,7 @@ impl Value {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
+            Value::DateTime(ts) => Self::render_datetime(*ts).len(),
             // Count digits arithmetically. This used to be `n.to_string().len()`,
             // which heap-allocated a String purely to read its length and then
             // dropped it — and `join` calls this once per element to size its
@@ -759,6 +789,7 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
+            Value::DateTime(ts) => s.push_str(&Self::render_datetime(*ts)),
             // itoa writes into a stack buffer; `to_string()` allocated one
             // String per element. Integers have a single decimal form, so the
             // output is byte-identical.
@@ -842,6 +873,11 @@ impl PartialEq for Value {
             return self.force_deferred() == other.force_deferred();
         }
         match (self, other) {
+            // By instant, so two DateTimes built from the same moment compare
+            // equal. While a DateTime was an `Instance` this fell to the
+            // Instance arm below, which compares `datetime_ts`; the native
+            // variant needs its own arm or `a == b` is always false.
+            (Value::DateTime(a), Value::DateTime(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Decimal(a), Value::Decimal(b)) => a == b,
@@ -890,6 +926,7 @@ impl PartialEq for Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Value::DateTime(ts) => write!(f, "{}", Value::render_datetime(*ts)),
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
@@ -1700,6 +1737,11 @@ pub(crate) fn is_sensitive_field_name(name: &str) -> bool {
 impl serde::Serialize for Value {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
+            // RFC 3339, matching `to_iso()`. As an `Instance` its only field was
+            // `_ts`, which the `_`-prefix filter below strips — so a DateTime
+            // serialised as `{}` and every timestamp in an API response was an
+            // empty object.
+            Value::DateTime(ts) => serializer.serialize_str(&Value::datetime_to_rfc3339(*ts)),
             Value::Null => serializer.serialize_unit(),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Int(n) => serializer.serialize_i64(*n),

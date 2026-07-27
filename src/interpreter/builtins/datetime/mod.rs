@@ -1,4 +1,5 @@
 pub mod helpers;
+pub mod local_zone;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
