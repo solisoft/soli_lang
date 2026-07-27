@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [1.25.0] - 2026-07-27
+
 ### Fixed
 
 * **fix(model): multi-field `Model.pluck(...)` rows are plain hashes, not half-hydrated model instances.** Projected rows were run through the same instance hydration as full documents, producing `Post` instances that carried only the plucked fields — accessors read fine, but they *looked* like models while `save`/`update` on one would have operated on a partial document with no `_key`. Rows from `pluck` now bypass instance hydration on every path that can produce them (`.all`, `.first`, batch-coalesced reads, `.similar()` chains) via one `hydration_class()` accessor; the output shape is unchanged (`[{a: .., b: ..}, ...]`, single-field pluck stays a flat array of values). Note the deliberate asymmetry, now documented: builder `pluck` returns self-describing hashes, while `Array#pluck` on an in-memory array returns arrays of values. Performance guidance from the same investigation: prefer builder-side `Model.pluck(...).all` over `Model.all.pluck(...)` — the former projects **in the database**: the benchmark's 50-row route went from 13.3k to 21.2k req/s at 16 workers, with the wire transfer dropping from full ~15 KB documents to 2.3 KB of named fields per request.
