@@ -50,6 +50,36 @@ describe("Model.pluck() query generation", fn() {
     });
 });
 
+describe("Symbols as field names", fn() {
+    # Ruby-style symbols are accepted wherever a field name is expected, on
+    # both the Model statics and the chained QueryBuilder methods.
+    test("pluck accepts symbols", fn() {
+        let q = TestUser.pluck(:name, :email).to_query;
+        assert(q.contains("RETURN {name: doc.name, email: doc.email}"));
+    });
+
+    test("chained pluck accepts symbols", fn() {
+        let q = TestUser.where("active = @a", { "a": true }).pluck(:name).to_query;
+        assert(q.contains("RETURN doc.name"));
+    });
+
+    test("order accepts a symbol field and direction", fn() {
+        let q = TestUser.order(:created_at, :desc).to_query;
+        assert(q.contains("SORT doc.created_at DESC"));
+    });
+
+    test("select accepts symbols", fn() {
+        let q = TestUser.select(:name, :email).to_query;
+        assert(q.contains("name: doc.name"));
+        assert(q.contains("_key: doc._key"));
+    });
+
+    test("aggregates accept symbols", fn() {
+        let q = TestUser.sum(:balance).to_query;
+        assert(q.contains("RETURN SUM(doc.balance)"));
+    });
+});
+
 describe("Model.sum/avg/min/max query generation", fn() {
     test("sum generates correct query", fn() {
         let q = TestUser.where("age > @a", { "a": 18 }).sum("balance").to_query;

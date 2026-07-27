@@ -20,7 +20,10 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 mb-10">Nothing yet &mdash; changes land here as they reach <code class="text-cyan-400">main</code>.</p>
+        <h3 class="text-xl font-semibold text-white mb-3">ORM</h3>
+        <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-10">
+            <li><strong class="text-white">Symbols as field names.</strong> Every Model static and chained QueryBuilder method now accepts Ruby-style symbols wherever a field name is expected &mdash; <code class="text-cyan-400">Post.pluck(:id, :title, :views).all</code>, <code class="text-cyan-400">User.order(:created_at, :desc)</code>, <code class="text-cyan-400">User.sum(:balance)</code>, <code class="text-cyan-400">find_by(:email, ...)</code>, <code class="text-cyan-400">increment(:views)</code>. The language always had symbol literals; the argument matchers just refused them. Strings keep working &mdash; this is sugar, and a Soli controller line now reads almost byte-for-byte like its Rails equivalent.</li>
+        </ul>
     </section>
 
     <section id="v1-25-0" class="mb-16 scroll-mt-24">

@@ -181,7 +181,10 @@ names = User.where("active = @a", { "a": true }).pluck("name").all
             </p>
             <pre><code class="language-soli text-sm"># Get multiple fields as hashes
 users = User.pluck("name", "email").all
-# Returns: [{ name: "Alice", email: "alice@example.com" }, ...]</code></pre>
+# Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
+
+# Symbols work wherever a field name is expected — same query, Rails-style
+users = User.pluck(:name, :email).all</code></pre>
         </div>
     </div>
 

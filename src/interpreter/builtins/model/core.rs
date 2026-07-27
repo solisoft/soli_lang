@@ -678,10 +678,10 @@ fn collect_accessible_fields(args: &[Value]) -> Result<Vec<String>, String> {
             let mut out = Vec::with_capacity(arr.len());
             for v in arr.iter() {
                 match v {
-                    Value::String(s) => out.push(s.to_string()),
+                    Value::String(s) | Value::Symbol(s) => out.push(s.to_string()),
                     other => {
                         return Err(format!(
-                            "attr_accessible() expects string field names, got {} in array",
+                            "attr_accessible() expects a field name (string or symbol)s, got {} in array",
                             other.type_name()
                         ))
                     }
@@ -693,10 +693,10 @@ fn collect_accessible_fields(args: &[Value]) -> Result<Vec<String>, String> {
     let mut out = Vec::with_capacity(args.len());
     for v in args {
         match v {
-            Value::String(s) => out.push(s.to_string()),
+            Value::String(s) | Value::Symbol(s) => out.push(s.to_string()),
             other => {
                 return Err(format!(
-                    "attr_accessible() expects string field names, got {}",
+                    "attr_accessible() expects a field name (string or symbol)s, got {}",
                     other.type_name()
                 ))
             }
@@ -715,10 +715,10 @@ fn build_uploader_config_from_args(
     use crate::interpreter::value::HashKey;
 
     let name = match args.get(1) {
-        Some(Value::String(s)) => s.clone(),
+        Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
         Some(other) => {
             return Err(format!(
-                "uploader() expects string field name, got {}",
+                "uploader() expects a field name (string or symbol), got {}",
                 other.type_name()
             ))
         }
@@ -1604,13 +1604,13 @@ impl Model {
             let mut fields = Vec::new();
             for arg in &args[1..] {
                 match arg {
-                    Value::String(s) => {
+                    Value::String(s) | Value::Symbol(s) => {
                         validate_field_name(s, "select")?;
                         fields.push(s.to_string());
                     }
                     other => {
                         return Err(format!(
-                            "select() expects string field names, got {}",
+                            "select() expects a field name (string or symbol)s, got {}",
                             other.type_name()
                         ))
                     }
@@ -2197,10 +2197,10 @@ impl Model {
                 let collection = class_name_to_collection(&class_name);
 
                 let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                     Some(other) => {
                         return Err(format!(
-                            "Model.order() expects string field name, got {}",
+                            "Model.order() expects a field name (string or symbol), got {}",
                             other.type_name()
                         ))
                     }
@@ -2209,7 +2209,7 @@ impl Model {
                 validate_field_name(&field, "order")?;
 
                 let direction = match args.get(2) {
-                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                     _ => "asc".into(),
                 };
                 validate_order_direction(&direction, "order")?;
@@ -2698,8 +2698,8 @@ impl Model {
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    _ => return Err("find_by() expects string field name".to_string()),
+                    Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
+                    _ => return Err("find_by() expects a field name (string or symbol)".to_string()),
                 };
                 validate_field_name(&field, "find_by")?;
                 let value = match args.get(2) {
@@ -2744,8 +2744,8 @@ impl Model {
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    _ => return Err("first_by() expects string field name".to_string()),
+                    Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
+                    _ => return Err("first_by() expects a field name (string or symbol)".to_string()),
                 };
                 validate_field_name(&field, "first_by")?;
                 let value = match args.get(2) {
@@ -2793,9 +2793,9 @@ impl Model {
                     let class_name = class.name.clone();
                     let collection = class_name_to_collection(&class_name);
                     let field = match args.get(1) {
-                        Some(Value::String(s)) => s.clone(),
+                        Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                         _ => {
-                            return Err("find_or_create_by() expects string field name".to_string())
+                            return Err("find_or_create_by() expects a field name (string or symbol)".to_string())
                         }
                     };
                     validate_field_name(&field, "find_or_create_by")?;
@@ -3117,11 +3117,11 @@ impl Model {
                 let mut fields = Vec::new();
                 for arg in args.iter().skip(1) {
                     match arg {
-                        Value::String(s) => {
+                        Value::String(s) | Value::Symbol(s) => {
                             validate_field_name(s, "pluck")?;
                             fields.push(s.to_string());
                         }
-                        _ => return Err("pluck() expects string field names".to_string()),
+                        _ => return Err("pluck() expects a field name (string or symbol)s".to_string()),
                     }
                 }
                 if fields.is_empty() {
@@ -3160,9 +3160,9 @@ impl Model {
                         let class_name = class.name.clone();
                         let collection = class_name_to_collection(&class_name);
                         let field = match args.get(1) {
-                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                             _ => {
-                                return Err(format!("{}() expects string field name", method_name))
+                                return Err(format!("{}() expects a field name (string or symbol)", method_name))
                             }
                         };
                         validate_field_name(&field, &method_name)?;
@@ -3458,10 +3458,10 @@ impl Model {
                             let mut out = Vec::with_capacity(arr.len());
                             for v in arr.iter() {
                                 match v {
-                                    Value::String(s) => out.push(s.to_string()),
+                                    Value::String(s) | Value::Symbol(s) => out.push(s.to_string()),
                                     other => {
                                         return Err(format!(
-                                            "group_by() expects string field names, got {} in \
+                                            "group_by() expects a field name (string or symbol)s, got {} in \
                                              array",
                                             other.type_name()
                                         ))
@@ -5116,8 +5116,8 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
         }
     }
     let field = match args.get(1) {
-        Some(Value::String(s)) => s.clone(),
-        _ => return Err(format!("{}() expects a string field name", op_name)),
+        Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
+        _ => return Err(format!("{}() expects a field name (string or symbol)", op_name)),
     };
     let amount = match args.get(2) {
         Some(Value::Int(n)) => *n,
@@ -5784,7 +5784,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                             Value::Symbol(s) => out.push(s.to_string()),
                             other => {
                                 return Err(format!(
-                                    "index expects string field names, got {} in array",
+                                    "index expects a field name (string or symbol)s, got {} in array",
                                     other.type_name()
                                 ))
                             }

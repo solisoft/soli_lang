@@ -106,7 +106,7 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.pluck(field, ...)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set pluck mode for specified fields (chain with <code>.all</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Set pluck mode for specified fields (chain with <code>.all</code> to execute). Field names may be strings or symbols &mdash; <code>.pluck(:id, :title)</code> &mdash; as in every field-taking builder method.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.sum(field)</code></td>

@@ -45,6 +45,18 @@ impl Interpreter {
             });
         }
 
+        // Ruby-style symbols read naturally as field names — `.pluck(:id,
+        // :title)`, `.order(:created_at, :desc)`. Normalize them to strings
+        // once here so every builder method accepts both forms without each
+        // argument matcher having to care.
+        let arguments: Vec<Value> = arguments
+            .into_iter()
+            .map(|a| match a {
+                Value::Symbol(s) => Value::String(s),
+                other => other,
+            })
+            .collect();
+
         match method_name {
             "create" => self.qb_create(qb, arguments, span),
             "where" => self.qb_where(qb, arguments, span),

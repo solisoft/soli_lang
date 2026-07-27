@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(model): Ruby-style symbols are accepted wherever a field name is expected.** `Post.pluck(:id, :title, :views).all`, `User.order(:created_at, :desc)`, `User.select(:name, :email)`, `User.sum(:balance)`, `find_by(:email, ...)`, `group_by(:country, ...)`, `increment(:views)` — every Model static and every chained QueryBuilder method now takes `:name` alongside `"name"`. The language always had symbol literals (`:name`, `%i[...]`) and `Value::Symbol`; the field-name argument matchers just refused them. Chained builder methods normalize symbols once at dispatch, the Model statics accept both in their matchers, and the error messages now say "expects a field name (string or symbol)". Strings remain fully supported — this is sugar, and it makes a Soli controller line read almost byte-for-byte like its Rails equivalent.
 
 ## [1.25.0] - 2026-07-27
 

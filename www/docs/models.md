@@ -1459,6 +1459,10 @@ names = User.where("active = @a", { "a": true }).pluck("name");
 users = User.pluck("name", "email");
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
 
+# Symbols work wherever a field name is expected — same query, Rails-style
+users = User.pluck(:name, :email).all
+posts = Post.order(:created_at, :desc).limit(10).all
+
 # Check if records exist (returns boolean)
 exists = User.where("role = @r", { "r": "admin" }).exists;
 # Returns: true or false
