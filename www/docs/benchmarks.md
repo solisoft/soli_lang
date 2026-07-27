@@ -56,9 +56,9 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Express + EJS + Sequelize | 28,388 | 15.08 ms | 397 µs | 3.0x |
-| **Soli** | 22,769 | 11.00 ms | 306 µs (522 incl. SoliDB) | **2.4x** |
-| Rails + Puma | 9,594 | 38.83 ms | 1,291 µs | 1.0x |
+| **Soli** | **36,944** | 6.78 ms | 215 µs (332 incl. SoliDB) | **4.1x** |
+| Express + EJS + Sequelize | 27,761 | 14.35 ms | 407 µs | 3.1x |
+| Rails + Puma | 9,026 | 38.74 ms | 1,352 µs | 1.0x |
 
 > **This row compares database access architectures as much as frameworks.** Each request
 > from Soli is one blocking HTTP round trip to SoliDB per worker — 16 in flight, no more.
@@ -72,10 +72,10 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 > is the number published, because Soli's and Rails' rows include their ORMs too. If your
 > Node app talks to the database through a driver rather than an ORM, the driver row is
 > the one that describes you. Soli's CPU column shows
-> both truths: 306µs in the Soli process, **522µs system-wide once SoliDB's own CPU is
-> counted** — publishing the smaller number alone would hide an entire process. Even so,
-> Soli's DB row costs 2.5x less system CPU than Rails'; the remaining gap to Express is
-> the 16-in-flight cap, not the machine.
+> both truths: 215µs in the Soli process, **332µs system-wide once SoliDB's own CPU is
+> counted** — publishing the smaller number alone would hide an entire process. Even
+> counted that way Soli's DB row costs **4.1x less system CPU than Rails'**, and the
+> 16-in-flight cap is not the ceiling it looked like: it is enough to lead this row.
 
 Every stack serves the same self-describing hash rows on its fastest idiom for that
 shape: Soli's `Post.pluck(:id, :title, :views).all` builds the hashes **in the
@@ -96,22 +96,78 @@ variable.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **40,034** | 6.49 ms | 182 µs (301 incl. SoliDB) | **4.9x** |
-| Express + EJS + Sequelize | 23,580 | 16.26 ms | 503 µs | 2.9x |
-| Rails + Puma | 8,155 | 41.95 ms | 1,509 µs | 1.0x |
+| **Soli** | **39,130** | 6.55 ms | 188 µs (310 incl. SoliDB) | **5.0x** |
+| Express + EJS + Sequelize | 23,626 | 15.09 ms | 500 µs | 3.0x |
+| Rails + Puma | 7,776 | 43.81 ms | 1,590 µs | 1.0x |
 
-Soli takes this row — **4.9x Rails' throughput and 1.7x Express's** — and it is the row
+Soli takes this row — **5.0x Rails' throughput and 1.7x Express's** — and it is the row
 whose shape matters most, because it is the only one where every stack does the two things
-a page does, each through its own ORM. Express's asynchronous driver still wins the raw DB
-read above; once the same rows have to go through an ORM *and* become HTML, that lead is
-gone. On the raw driver Express reaches 32,754 here, still short of Soli.
+a page does, each through its own ORM. Express on the raw driver reaches 32,416 here,
+still short of Soli with an ORM in the way.
 
-The result worth pausing on is Soli's own: **the database-backed HTML page is nearly
-twice the throughput of the database-backed JSON response** (40,034 vs 22,769) on the same
-query and the same 50 rows. Nothing about the database changed — `render_json` is simply
-more expensive than the template engine, the same asymmetry the JSON row notes. If you are
-building pages rather than an API, the cheaper path is the one you were going to write
-anyway.
+The result worth pausing on is Soli's own: this row and the JSON row above are within 6%
+of each other (39,130 and 36,944) on the same query and the same 50 rows. Once a database
+round trip is in the request, it dominates — whether the result leaves as JSON or as a
+rendered page is close to noise. The large render-path gap the JSON and Template rows show
+on in-memory data does not survive contact with a real query, which is worth knowing before
+optimising a template for a page that is really waiting on the database.
+
+## Writes — create, update and delete, one row per request
+
+The read rows above are only half of CRUD. These three measure a single write per request
+against an isolated 800,000-row table, reset to exactly that state before every cell so no
+stack inherits a table another stack grew or emptied. Update and delete address one row by
+primary key, drawn at random from the same 1..800,000 range in all three stacks.
+
+**Durability is matched, and that matters more than anything else here.** SoliDB's writes
+go through RocksDB's default write path — the WAL reaches the operating system but is not
+`fsync`ed before the write returns. PostgreSQL's default (`synchronous_commit=on`) *does*
+flush before commit returns, which is a stronger guarantee and a much slower one. Compared
+head to head that way, Soli would be winning an argument the other stacks were not having.
+So PostgreSQL runs with `synchronous_commit=off` for these rows, which is the setting that
+matches what SoliDB actually promises: survive a process crash, not a power cut. Neither
+column is "durable writes" — read them as buffered writes on both sides.
+
+### Create — one INSERT per request
+
+| Stack | req/s | p99 | CPU/req | vs Rails |
+|---|---:|---:|---:|---:|
+| **Soli** | **35,392** | 8.05 ms | 121 µs (316 incl. SoliDB) | **3.8x** |
+| Express + EJS + Sequelize | 24,482 | 19.59 ms | 453 µs | 2.6x |
+| Rails + Puma | 9,242 | 41.22 ms | 1,336 µs | 1.0x |
+
+### Update — one row by primary key
+
+| Stack | req/s | p99 | CPU/req | vs Rails |
+|---|---:|---:|---:|---:|
+| **Soli** | **32,659** | 8.74 ms | 127 µs (352 incl. SoliDB) | **3.0x** |
+| Express + EJS + Sequelize | 22,005 | 18.45 ms | 500 µs | 2.0x |
+| Rails + Puma | 10,748 | 33.35 ms | 1,097 µs | 1.0x |
+
+### Delete — one row by primary key
+
+| Stack | req/s | p99 | CPU/req | rows removed | vs Rails |
+|---|---:|---:|---:|---:|---:|
+| Express + EJS + Sequelize | 32,339 | 12.85 ms | 318 µs | 58% of requests | 3.0x |
+| **Soli** | 29,959 | 8.86 ms | 147 µs (399 incl. SoliDB) | 60% of requests | **2.7x** |
+| Rails + Puma | 10,953 | 32.09 ms | 1,082 µs | 82% of requests | 1.0x |
+
+> **Read the delete row with its caveat.** Delete is the one operation that consumes its
+> own workload: a key already deleted is a miss, and a miss is cheaper than a delete. The
+> "rows removed" column is measured, not assumed — the table is counted before and after
+> each cell — and it shows the effect plainly: the faster a stack runs, the more of the
+> 800,000-row pool it exhausts and the higher its miss rate climbs. Rails, at a third of
+> the throughput, does the largest share of real deletes. So this row understates the gap
+> to Rails and should be read as a rough ordering, not a precise multiple. The create and
+> update rows have no such problem: every create inserts, and every update targets a key
+> that still exists.
+
+Two things stand out across all three. Soli's own CPU per write is **8 to 11x lower than
+Rails'** and roughly a third of Express's, but the system-wide figure — the number in
+parentheses, which counts SoliDB's process too — is where the honest comparison sits, and
+even there Soli leads. And every stack writes far more slowly than it reads: Soli's create
+row is 35,392 against 137,924 on the in-memory template row, because a write has to reach
+another process and a log, whichever framework issued it.
 
 ## Memory
 
@@ -222,7 +278,7 @@ instantiating models, exactly as Rails' `pluck` and Soli's `pluck` do.
 ## What these multiples do and don't mean
 
 Trivial handlers measure *fixed framework overhead*, which is precisely where Rails is
-weakest — that is why the JSON and template rows show 5–11x and the DB row shows 2.4x. On
+weakest — that is why the JSON and template rows show 5–11x and the DB rows show 4–5x. On
 a page dominated by real query work the multiple compresses toward the DB row, not the
 template row. The honest claim this page supports is: **Soli's framework overhead is
 roughly a tenth of Rails' and its render path beats Express's, while database-bound routes
