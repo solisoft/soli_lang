@@ -155,6 +155,13 @@ jobs:
       - name: Hostile input does not panic
         run: ./bench/engine-parity/panicscan.sh < bench/engine-parity/hostile-inputs.txt
 
+      # Nothing ran `examples/` until this existed, so three of them had been
+      # failing to lex since they were written — a reader opening one got an
+      # error instead of an example. Parsing only: an example may legitimately
+      # need a database or a running server.
+      - name: Shipped examples parse
+        run: ./scripts/check-examples.sh
+
   # Drives Soli's own frontend in a real headless browser: instant-nav, the
   # LiveView client, and the dev bar. None of it was covered before — jsdom
   # cannot open a websocket or lay anything out, so a morph, an event dispatch
