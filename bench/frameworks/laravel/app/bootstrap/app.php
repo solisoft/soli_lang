@@ -16,12 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // are a benchmark fixture, not a form endpoint. Sessions and cookies are
         // dropped too so the read rows are not measuring session middleware the
         // other three stacks do not run.
+        // Only forgery protection is dropped — the load generator carries no
+        // token. The rest of the default web stack stays, so Laravel is measured
+        // running what a Laravel app actually runs, as Rails and Django are.
         $middleware->web(remove: [
             \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
-            \Illuminate\Session\Middleware\StartSession::class,
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-            \Illuminate\Cookie\Middleware\EncryptCookies::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
