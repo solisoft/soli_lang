@@ -22,11 +22,28 @@ no NAT overhead the native stacks avoid and reaches the same PostgreSQL on
   and it cost this app two thirds of its database throughput (1,498 -> 4,286
   req/s). They are the php-fpm equivalent of the pool the other three hold.
 
-This is the ordinary php-fpm deployment, **not** Laravel Octane. Octane keeps
-the application resident between requests and is substantially faster; measuring
-it and calling the result "Laravel" would flatter it the same way the raw `pg`
-driver once flattered Express. If Octane is added it belongs as a separate,
-labelled row.
+## Octane
+
+The php-fpm stack above is the default deployment. `docker-compose.octane.yml`
+runs the **same application** on Octane 2.18 / FrankenPHP with 16 resident
+workers, on port **5100**, and it is published as a labelled reference row
+rather than as "Laravel" — it roughly doubles every result, so presenting it as
+the headline would flatter Laravel the way the raw `pg` driver once flattered
+Express.
+
+```bash
+docker compose -f docker-compose.octane.yml up -d --build
+```
+
+Measured: 1.8x to 2.1x php-fpm across all seven workloads, and **43 MB** resident
+against php-fpm's 55 MB idle / 70 MB loaded — 16 warm workers cost less than
+rebuilding the framework per request.
+
+Three things it needed, all in the compose file and worth knowing if you rebuild
+it: the `pcntl` extension (Octane's signal handling), an explicit `--admin-port`,
+and the app mounted at the **same path** as the php-fpm stack, because compiled
+Blade views embed absolute paths and a different mount point makes every view
+lookup fail. Its runtime state file is moved off the host-owned bind mount.
 
 ## Running
 

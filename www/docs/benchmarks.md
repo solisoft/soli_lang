@@ -17,7 +17,8 @@ full stacks on one machine, one load generator, one protocol. Every server retur
 |---|---|
 | Soli | 1.25.0, `soli serve .`, 16 HTTP workers, SoliDB (loopback HTTP) for the DB row |
 | Rails | 8.1.3 + Puma 8.0.2 on Ruby 3.4.9 — production, eager-loaded, 16 workers × 5 threads, PostgreSQL via ActiveRecord |
-| Laravel | 13.8 on PHP 8.4 (php-fpm, `pm = static`, 16 workers) + nginx, in Docker with host networking — Eloquent + Blade, OPcache, config/route/view cached, persistent PDO connections. php-fpm, deliberately, not Octane |
+| Laravel | 13.8 on PHP 8.4 (php-fpm, `pm = static`, 16 workers) + nginx, in Docker with host networking — Eloquent + Blade, OPcache, config/route/view cached, persistent PDO connections |
+| Laravel + Octane | The same application on Octane 2.18 / FrankenPHP, 16 workers, app resident between requests. Published as a **labelled reference row**, not as "Laravel", because it roughly doubles every result and is a deployment choice rather than the default |
 | Django | 6.0.7 on Python 3.14, gunicorn with 16 workers — Django ORM + Django templates, `DEBUG=False`, persistent connections (`CONN_MAX_AGE`) |
 | Express | 5.2.1 on Node 25.9, 16 cluster workers — **+ EJS 6.0 + Sequelize 6.37.8** (on node-postgres 8.22): Express ships no view layer and no DB layer, both had to be added. The DB rows put it on an **ORM**, not the raw driver, so all three stacks compare like for like; the driver number is kept below as a reference |
 | Database | PostgreSQL 18.3 for Rails, Express, Laravel and Django (same table, same 50 rows); SoliDB for Soli — all client-server over a local socket, no in-process storage anywhere |
@@ -38,6 +39,7 @@ barely moves with core count or client speed.
 | Django + gunicorn | 18,174 | 16.41 ms | 657 µs | 1.1x |
 | Rails + Puma | 15,838 | 25.28 ms | 913 µs | 1.0x |
 | Laravel + php-fpm | 6,208 | 36.95 ms | 2,344 µs | 0.4x |
+| Laravel + Octane *(reference)* | 11,635 | 25.50 ms | 1,253 µs | 0.7x |
 
 Soli serialises the API response at 4.9x Rails' throughput on 5.3x less CPU. Express wins
 this row outright — printed as measured. Worth knowing: in Soli, serialising these 50
@@ -53,6 +55,7 @@ template engine is currently cheaper than `render_json`.
 | Rails + Puma | 11,075 | 32.87 ms | 1,188 µs | 1.0x |
 | Django + gunicorn | 7,194 | 34.53 ms | 1,946 µs | 0.6x |
 | Laravel + php-fpm | 5,620 | 40.87 ms | 2,605 µs | 0.5x |
+| Laravel + Octane *(reference)* | 9,883 | 27.45 ms | 1,491 µs | 0.9x |
 
 The strongest row, and the one a server-rendered framework should care about: **11.6x
 Rails' throughput on 12.5x less CPU** — and 1.9x faster than Express even though Soli's
@@ -68,6 +71,7 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 | Django + gunicorn | 9,632 | 25.35 ms | 1,253 µs | 1.0x |
 | Rails + Puma | 9,565 | 36.69 ms | 1,308 µs | 1.0x |
 | Laravel + php-fpm | 4,268 | 55.94 ms | 3,127 µs | 0.4x |
+| Laravel + Octane *(reference)* | 8,667 | 28.45 ms | 1,553 µs | 0.9x |
 
 > **This row compares database access architectures as much as frameworks.** Each request
 > from Soli is one blocking HTTP round trip to SoliDB per worker — 16 in flight, no more.
@@ -110,6 +114,7 @@ variable.
 | Rails + Puma | 8,090 | 45.36 ms | 1,536 µs | 1.0x |
 | Django + gunicorn | 5,476 | 46.89 ms | 2,525 µs | 0.7x |
 | Laravel + php-fpm | 3,995 | 57.55 ms | 3,367 µs | 0.5x |
+| Laravel + Octane *(reference)* | 7,651 | 31.49 ms | 1,787 µs | 0.9x |
 
 Soli takes this row — **4.9x Rails' throughput and 1.6x Express's** — and it is the row
 whose shape matters most, because it is the only one where every stack does the two things
@@ -139,6 +144,13 @@ So PostgreSQL runs with `synchronous_commit=off` for these rows, which is the se
 matches what SoliDB actually promises: survive a process crash, not a power cut. Neither
 column is "durable writes" — read them as buffered writes on both sides.
 
+**Octane roughly doubles Laravel on every row** (1.8x to 2.1x), which is the whole reason
+it is published separately. On php-fpm the framework is rebuilt per request; on Octane it
+stays in memory, and that single change moves Laravel from last place into the same band as
+Rails and Django — it beats Django on the template, database-backed page and delete rows.
+Read the php-fpm rows as the default deployment and the Octane rows as what the same code
+does when you opt into the resident runtime.
+
 ### Create — one INSERT per request
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
@@ -148,6 +160,7 @@ column is "durable writes" — read them as buffered writes on both sides.
 | Django + gunicorn | 10,423 | 23.66 ms | 1,128 µs | 1.1x |
 | Rails + Puma | 9,246 | 41.34 ms | 1,352 µs | 1.0x |
 | Laravel + php-fpm | 4,199 | 55.06 ms | 3,237 µs | 0.5x |
+| Laravel + Octane *(reference)* | 8,620 | 28.57 ms | 1,543 µs | 0.9x |
 
 ### Update — one row by primary key
 
@@ -158,6 +171,7 @@ column is "durable writes" — read them as buffered writes on both sides.
 | Rails + Puma | 11,355 | 36.96 ms | 1,089 µs | 1.0x |
 | Django + gunicorn | 9,609 | 25.63 ms | 1,221 µs | 0.8x |
 | Laravel + php-fpm | 4,258 | 53.65 ms | 3,165 µs | 0.4x |
+| Laravel + Octane *(reference)* | 8,722 | 28.35 ms | 1,497 µs | 0.8x |
 
 ### Delete — one row by primary key
 
@@ -168,6 +182,7 @@ column is "durable writes" — read them as buffered writes on both sides.
 | Rails + Puma | 11,742 | 33.26 ms | 1,070 µs | 81% of requests | 1.0x |
 | Django + gunicorn | 8,436 | 29.18 ms | 1,372 µs | 86% of requests | 0.7x |
 | Laravel + php-fpm | 4,193 | 56.21 ms | 3,161 µs | 93% of requests | 0.4x |
+| Laravel + Octane *(reference)* | 8,895 | 28.14 ms | 1,483 µs | 88% of requests | 0.8x |
 
 > **Read the delete row with its caveat.** Delete is the one operation that consumes its
 > own workload: a key already deleted is a miss, and a miss is cheaper than a delete. The
@@ -283,8 +298,11 @@ worker now drives DB I/O on its own reactor with its own connection pool, which 
 bought the throughput above.
 
 Laravel is the interesting one here: at 55 MB idle it is nearly as lean as Soli, and for the
-same reason it is last on every throughput row — php-fpm keeps no application resident
-between requests, so there is little to hold. Express's idle figure grew from 342 MB when it
+same reason it is last on every php-fpm row — the framework is not resident between
+requests, so there is little to hold. Octane holds the application in memory and still
+measures **43 MB idle and 43 MB under load**, flat because the workers are already warm —
+lower than php-fpm's 55/70, since 16 resident workers cost less than repeatedly rebuilding
+the framework. Express's idle figure grew from 342 MB when it
 ran the raw driver to 638 MB with Sequelize loaded in all 16 workers, which is what an ORM
 costs when every worker is a separate heap.
 

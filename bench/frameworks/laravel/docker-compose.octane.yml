@@ -1,0 +1,23 @@
+# Reference configuration, published beside php-fpm rather than instead of it.
+# Host networking for the same reason as the php-fpm stack: no NAT the native
+# stacks avoid, and the same PostgreSQL on 127.0.0.1:5433.
+services:
+  octane:
+    build:
+      context: .
+      dockerfile: octane.Dockerfile
+    network_mode: host
+    user: "1778654605:1778654605"
+    volumes:
+      # Same path as the php-fpm stack: compiled Blade views embed absolute
+      # paths, so the two runtimes must agree on where the app lives.
+      - ./app:/var/www/html
+    environment:
+      # storage/ is a bind mount owned by the host user; keep Octane's runtime
+      # state on the container's own writable tmpfs instead.
+      OCTANE_STATE_FILE: /tmp/octane-server-state.json
+    command: >
+      php artisan octane:start --server=frankenphp
+      --host=127.0.0.1 --port=5100 --admin-port=5101
+      --workers=16 --max-requests=0
+    restart: unless-stopped
