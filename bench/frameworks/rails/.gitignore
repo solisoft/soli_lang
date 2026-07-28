@@ -1,0 +1,5 @@
+/tmp/
+/log/
+/vendor/bundle/
+/storage/*.sqlite3*
+/vendor/bundle

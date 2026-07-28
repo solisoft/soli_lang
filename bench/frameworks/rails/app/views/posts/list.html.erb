@@ -1,0 +1,6 @@
+<h1>Posts</h1>
+<table>
+<% items.each do |item| %>
+<tr><td><%= item[:id] %></td><td><%= item[:title] %></td><td><%= item[:views] %></td></tr>
+<% end %>
+</table>

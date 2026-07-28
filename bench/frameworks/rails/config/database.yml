@@ -1,0 +1,18 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: 127.0.0.1
+  port: 5433
+  username: bench
+  password: bench
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: bench
+test:
+  <<: *default
+  database: bench_test
+production:
+  <<: *default
+  database: bench

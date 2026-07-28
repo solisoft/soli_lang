@@ -1,0 +1,6 @@
+<h1>Posts</h1>
+<table>
+<% for item in items %>
+<tr><td><%= item["id"] %></td><td><%= h(item["title"]) %></td><td><%= item["views"] %></td></tr>
+<% end %>
+</table>

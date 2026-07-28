@@ -1,0 +1,8 @@
+get("/json", "posts#json_only")
+get("/template", "posts#template_only")
+get("/db", "posts#db_json")
+get("/find", "posts#find_one")
+get("/db-template", "posts#db_template")
+post("/w", "posts#w_create")
+patch("/w", "posts#w_update")
+delete("/w", "posts#w_delete")
