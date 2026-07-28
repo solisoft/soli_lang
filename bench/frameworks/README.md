@@ -70,23 +70,44 @@ they are worth stating plainly.
 
 ## WebSockets
 
-`./ws_sweep.sh` measures three things `oha` cannot, on the two stacks that serve
-sockets from the same process as their HTTP rows:
+`./ws_sweep.sh` measures what `oha` cannot, on the three stacks that serve
+sockets from the same process as their HTTP rows. Rails' ActionCable speaks a
+JSON subprotocol rather than raw WebSocket, so the client negotiates
+`actioncable-v1-json` and completes welcome → subscribe → confirm before timing
+anything (`PROTOCOL=actioncable`).
 
-| Cell | Soli | Express |
+### Echo — round trip, 1,000 connections
+
+| Stack | msg/s | p50 | p99 |
+|---|---:|---:|---:|
+| Express + ws | **411,340** | 2.01 ms | 6.83 ms |
+| Soli | 241,790 | 4.02 ms | 6.20 ms |
+| Rails + ActionCable | 98,529 | 0.58 ms | **63.83 ms** |
+
+Rails' p50 is not a win. At 98,529 msg/s over 1,000 connections the *mean* must
+be 10.15 ms — seventeen times its median — because ActionCable dispatches
+through a bounded worker pool, so some sockets are served immediately and the
+rest queue. Soli and Express hold p99 within ~3x of their medians; Rails' spread
+is 110x.
+
+### Fan-out — one publisher, rate-limited
+
+| Stack | reached per publish | deliveries/s |
 |---|---:|---:|
-| echo, 1,000 conns | 232,327 msg/s (p50 4.18 ms) | **407,310 msg/s** (p50 2.08 ms) |
-| room fan-out | **1,000 / publish — 100% of the room** | 63 / publish — 6% of the room |
+| Soli, 16 workers | **1,000 of 1,000** | 45,264 |
+| Rails + ActionCable, 16 workers + Redis | 1,000 of 1,000 | 45,545 |
+| Express + ws, 16 workers + Redis | 1,000 of 1,000 | 44,217 |
+| Express + ws, 1 worker | 1,000 of 1,000 | 44,106 |
+| Express + ws, 16 workers, no bus | 63 of 1,000 | 2,846 |
 
-Express wins the round trip. The room row is the one that matters
-architecturally: Soli's workers are threads in one process, so a broadcast
-reaches every connection, while Node's cluster gives each of its 16 workers its
-own sockets — a broadcast reaches only the ~1/16th that worker accepted. Making
-Express's fan-out real needs a shared bus (Redis); the number above is what the
-obvious implementation actually does.
+**Equal throughput, unequal defaults.** Once the broadcast is complete all four
+are one number. Soli's workers are threads in one process, so it reaches every
+connection with nothing configured; clustered Node and ActionCable each need
+Redis, and clustered Node without it *silently* delivers to 6% of the room
+rather than erroring.
 
-Two things this harness had to get right, both of which produced wrong answers
-first:
+Two things this harness had to get right, both of which produced confident wrong
+answers first:
 
 * **Shard the client.** A single Node client saturates long before the servers:
   it reported 74k msg/s against Soli where eight client processes reported 238k,
@@ -94,12 +115,12 @@ first:
   signature of a bottlenecked generator. `SHARDS` defaults to 8.
 * **Rate-limit the publisher.** Pumping broadcasts flat out just outruns the
   server — a publish costs the client nothing and the server N sends — so the
-  fan-out ratio collapses and measures the client's send loop. At a fixed rate
-  (`PUBLISH_RATE`, default 50/s) the ratio means what it says.
+  ratio collapses and measures the client's send loop. At a fixed rate
+  (`PUBLISH_RATE`, default 50/s) it means what it says.
 
-Rails, Django and Laravel are not here: ActionCable needs Redis, Channels needs
-ASGI and Laravel needs Reverb, each a different server process from the one
-serving their HTTP rows.
+Django and Laravel have no WebSocket rows: Channels needs ASGI and Reverb is a
+separate process, so neither would be the same server that produced their HTTP
+rows.
 
 ## A trap worth knowing
 
