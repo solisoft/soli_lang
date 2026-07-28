@@ -26,7 +26,7 @@ cpu_pat() {  # sum over every process matching a pattern (Laravel: fpm + nginx)
 cpu_one() { local u s; read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$1/stat 2>/dev/null || { echo 0; return; }; echo $((u+s)); }
 DBPID=$(listener 6745)
 
-srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; *) cpu_grp "$(listener "$2")";; esac; }
+srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; adonis) cpu_pat 'bin/cluster.js';; *) cpu_grp "$(listener "$2")";; esac; }
 
 pg_count()  { psql "$PGURL" -tAc "SELECT count(*) FROM wposts;"; }
 sdb_count() { curl -s -u admin:admin -X POST $SDB/cursor -H 'Content-Type: application/json' \
@@ -71,16 +71,16 @@ print(f\"  {os.environ['S']:<8} {d['summary']['requestsPerSec']:>9,.0f} req/s  p
 "
 }
 
-declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099)
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102)
 # Express serves the ORM form of the DB routes; the others use their only form.
 url_for() { case "$1:$2" in express:/db) echo /db-orm;; express:/db-template) echo /db-template-orm;; *) echo "$2";; esac; }
 
 for wl in /json /template /db /db-template; do
   echo "### $wl"
-  for s in soli rails express laravel django; do cell "$s" "${PORT[$s]}" GET "$(url_for $s $wl)"; done
+  for s in soli rails express laravel django adonis; do cell "$s" "${PORT[$s]}" GET "$(url_for $s $wl)"; done
 done
 for m in POST PATCH DELETE; do
   echo "### $m /w"
-  for s in soli rails express laravel django; do cell "$s" "${PORT[$s]}" "$m" /w w; done
+  for s in soli rails express laravel django adonis; do cell "$s" "${PORT[$s]}" "$m" /w w; done
 done
 echo SWEEP_DONE

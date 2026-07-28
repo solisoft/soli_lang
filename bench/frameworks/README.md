@@ -9,6 +9,7 @@ workloads over the same data, and every one runs **16 workers**.
 | [Soli](soli/) | 5080 | `soli serve`, 16 worker threads | Model / ERB |
 | [Rails](rails/) | 5096 | Puma, 16 workers × 5 threads | ActiveRecord / ERB |
 | [Express](express/) | 5097 | Node cluster, 16 workers | Sequelize / EJS |
+| [AdonisJS](adonis/) | 5102 | Node cluster, 16 workers | Lucid / Edge |
 | [Laravel](laravel/) | 5098 | php-fpm 16 workers + nginx (Docker) | Eloquent / Blade |
 | [Django](django/) | 5099 | gunicorn, 16 workers | Django ORM / Django templates |
 
@@ -37,6 +38,9 @@ workloads over the same data, and every one runs **16 workers**.
 reports req/s, p99 and CPU-time per request summed over **every process** of the
 stack. Write cells reset their dataset first and count rows before and after, so
 the delete row's hit rate is measured rather than assumed.
+
+AdonisJS builds to JavaScript first (`node ace build`) and runs from `build/`
+via `adonis/start-bench.sh`; it needs `pg`, `luxon` and `@types/pg` installed.
 
 Requires `oha`, `psql`, a PostgreSQL on `127.0.0.1:5433` (user/db `bench`) and a
 SoliDB on `6745`. Override with `PGURL` and `SDB`.

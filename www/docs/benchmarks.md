@@ -1,7 +1,7 @@
 # Benchmarks
 
 Seven HTTP workloads, plus WebSockets — a JSON API response, a rendered HTML page, a database read, a
-database-backed HTML page, and one create, update and delete per request — through five
+database-backed HTML page, and one create, update and delete per request — through six
 full stacks on one machine, one load generator, one protocol. Every server returns a
 **byte-identical payload** for the JSON and DB rows, and every stack runs **16 workers**.
 
@@ -20,13 +20,14 @@ full stacks on one machine, one load generator, one protocol. Every server retur
 | Laravel | 13.8 on PHP 8.4 (php-fpm, `pm = static`, 16 workers) + nginx, in Docker with host networking — Eloquent + Blade, OPcache, config/route/view cached, persistent PDO connections |
 | Laravel + Octane | The same application on Octane 2.18 / FrankenPHP, 16 workers, app resident between requests. Published as a **labelled reference row**, not as "Laravel", because it roughly doubles every result and is a deployment choice rather than the default |
 | Django | 6.0.7 on Python 3.14, gunicorn with 16 workers — Django ORM + Django templates, `DEBUG=False`, persistent connections (`CONN_MAX_AGE`) |
+| AdonisJS | 6.18 on Node 25.9, 16 cluster workers — Lucid ORM + Edge templates, built to JavaScript and run from `build/`, `NODE_ENV=production` |
 | Express | 5.2.1 on Node 25.9, 16 cluster workers — **+ EJS 6.0 + Sequelize 6.37.8** (on node-postgres 8.22): Express ships no view layer and no DB layer, both had to be added. The DB rows put it on an **ORM**, not the raw driver, so all three stacks compare like for like; the driver number is kept below as a reference |
-| Database | PostgreSQL 18.3 for Rails, Express, Laravel and Django (same table, same 50 rows); SoliDB for Soli — all client-server over a local socket, no in-process storage anywhere |
+| Database | PostgreSQL 18.3 for Rails, Express, AdonisJS, Laravel and Django (same table, same 50 rows); SoliDB for Soli — all client-server over a local socket, no in-process storage anywhere |
 | Load | `oha` 1.12 — 30s at concurrency 200 per cell, after an 8s warm-up of that cell |
 | Machine | 16-core x86-64 Linux, load generator on the same box |
 
 **CPU/req** is server CPU-time per request, summed across every process of the stack
-(all 17 for Rails, Express and Django; php-fpm plus nginx for Laravel). It is the most
+(all 17 for Rails, Express, AdonisJS and Django; php-fpm plus nginx for Laravel). It is the most
 portable column here — unlike req/s it
 barely moves with core count or client speed.
 
@@ -34,31 +35,33 @@ barely moves with core count or client speed.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Express + EJS + Sequelize | 116,248 | 6.17 ms | 106 µs | 7.3x |
-| **Soli** | **77,452** | 5.99 ms | 173 µs | **4.9x** |
-| Django + gunicorn | 18,174 | 16.41 ms | 657 µs | 1.1x |
-| Rails + Puma | 15,838 | 25.28 ms | 913 µs | 1.0x |
-| Laravel + php-fpm | 6,208 | 36.95 ms | 2,344 µs | 0.4x |
-| Laravel + Octane *(reference)* | 11,635 | 25.50 ms | 1,253 µs | 0.7x |
+| Express + EJS + Sequelize | 110,182 | 6.63 ms | 110 µs | 8.1x |
+| **Soli** | 70,398 | 6.44 ms | 191 µs | 5.2x |
+| AdonisJS + Lucid + Edge | 22,461 | 17.96 ms | 619 µs | 1.7x |
+| Django + gunicorn | 17,952 | 15.53 ms | 677 µs | 1.3x |
+| Rails + Puma | 13,535 | 28.58 ms | 941 µs | 1.0x |
+| Laravel + php-fpm | 5,108 | 46.18 ms | 2,838 µs | 0.4x |
+| Laravel + Octane *(reference)* | 10,854 | 26.24 ms | 1,349 µs | 0.8x |
 
-Soli serialises the API response at 4.9x Rails' throughput on 5.3x less CPU. Express wins
+Soli serialises the API response at 5.2x Rails' throughput on 4.9x less CPU. Express wins
 this row outright — printed as measured. Worth knowing: in Soli, serialising these 50
-objects to JSON costs ~173µs where rendering the *same data* as HTML costs 95µs — the
+objects to JSON costs ~191µs where rendering the *same data* as HTML costs 98µs — the
 template engine is currently cheaper than `render_json`.
 
 ## Template — 50-row HTML table + layout, ~3 KB
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **128,075** | 4.24 ms | 95 µs | **11.6x** |
-| Express + EJS + Sequelize | 67,249 | 7.87 ms | 198 µs | 6.1x |
-| Rails + Puma | 11,075 | 32.87 ms | 1,188 µs | 1.0x |
-| Django + gunicorn | 7,194 | 34.53 ms | 1,946 µs | 0.6x |
-| Laravel + php-fpm | 5,620 | 40.87 ms | 2,605 µs | 0.5x |
-| Laravel + Octane *(reference)* | 9,883 | 27.45 ms | 1,491 µs | 0.9x |
+| **Soli** | 124,314 | 4.27 ms | 98 µs | 11.6x |
+| Express + EJS + Sequelize | 65,762 | 8.32 ms | 203 µs | 6.1x |
+| AdonisJS + Lucid + Edge | 22,309 | 16.75 ms | 576 µs | 2.1x |
+| Rails + Puma | 10,724 | 35.91 ms | 1,205 µs | 1.0x |
+| Django + gunicorn | 7,086 | 34.55 ms | 2,011 µs | 0.7x |
+| Laravel + php-fpm | 4,801 | 49.38 ms | 3,062 µs | 0.4x |
+| Laravel + Octane *(reference)* | 9,275 | 28.56 ms | 1,597 µs | 0.9x |
 
 The strongest row, and the one a server-rendered framework should care about: **11.6x
-Rails' throughput on 12.5x less CPU** — and 1.9x faster than Express even though Soli's
+Rails' throughput on 12.3x less CPU** — and 1.9x faster than Express even though Soli's
 page carries its instant-navigation script (~130 extra bytes of work per request that EJS
 doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a given.
 
@@ -66,12 +69,13 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **36,323** | 6.76 ms | 216 µs (330 incl. SoliDB) | **3.8x** |
-| Express + EJS + Sequelize | 28,061 | 13.75 ms | 399 µs | 2.9x |
-| Django + gunicorn | 9,632 | 25.35 ms | 1,253 µs | 1.0x |
-| Rails + Puma | 9,565 | 36.69 ms | 1,308 µs | 1.0x |
-| Laravel + php-fpm | 4,268 | 55.94 ms | 3,127 µs | 0.4x |
-| Laravel + Octane *(reference)* | 8,667 | 28.45 ms | 1,553 µs | 0.9x |
+| **Soli** | 35,472 | 6.93 ms | 221 µs (339 incl. SoliDB) | 3.9x |
+| Express + EJS + Sequelize | 26,689 | 15.67 ms | 425 µs | 2.9x |
+| AdonisJS + Lucid + Edge | 13,958 | 26.69 ms | 928 µs | 1.5x |
+| Django + gunicorn | 9,842 | 25.12 ms | 1,236 µs | 1.1x |
+| Rails + Puma | 9,122 | 38.00 ms | 1,351 µs | 1.0x |
+| Laravel + php-fpm | 3,773 | 61.23 ms | 3,569 µs | 0.4x |
+| Laravel + Octane *(reference)* | 8,256 | 30.02 ms | 1,639 µs | 0.9x |
 
 > **This row compares database access architectures as much as frameworks.** Each request
 > from Soli is one blocking HTTP round trip to SoliDB per worker — 16 in flight, no more.
@@ -85,7 +89,7 @@ doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a give
 > is the number published, because Soli's and Rails' rows include their ORMs too. If your
 > Node app talks to the database through a driver rather than an ORM, the driver row is
 > the one that describes you. Soli's CPU column shows
-> both truths: 216µs in the Soli process, **330µs system-wide once SoliDB's own CPU is
+> both truths: 221µs in the Soli process, **339µs system-wide once SoliDB's own CPU is
 > counted** — publishing the smaller number alone would hide an entire process. Even
 > counted that way Soli's DB row costs **4.0x less system CPU than Rails'**, and the
 > 16-in-flight cap is not the ceiling it looked like: it is enough to lead this row.
@@ -109,20 +113,21 @@ variable.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **39,285** | 6.38 ms | 185 µs (301 incl. SoliDB) | **4.9x** |
-| Express + EJS + Sequelize | 23,870 | 15.51 ms | 493 µs | 3.0x |
-| Rails + Puma | 8,090 | 45.36 ms | 1,536 µs | 1.0x |
-| Django + gunicorn | 5,476 | 46.89 ms | 2,525 µs | 0.7x |
-| Laravel + php-fpm | 3,995 | 57.55 ms | 3,367 µs | 0.5x |
-| Laravel + Octane *(reference)* | 7,651 | 31.49 ms | 1,787 µs | 0.9x |
+| **Soli** | 38,616 | 6.53 ms | 187 µs (304 incl. SoliDB) | 4.9x |
+| Express + EJS + Sequelize | 23,008 | 16.12 ms | 513 µs | 2.9x |
+| AdonisJS + Lucid + Edge | 13,667 | 26.65 ms | 955 µs | 1.7x |
+| Rails + Puma | 7,840 | 43.44 ms | 1,577 µs | 1.0x |
+| Django + gunicorn | 5,438 | 44.85 ms | 2,545 µs | 0.7x |
+| Laravel + php-fpm | 3,548 | 63.55 ms | 3,822 µs | 0.5x |
+| Laravel + Octane *(reference)* | 7,328 | 33.75 ms | 1,868 µs | 0.9x |
 
-Soli takes this row — **4.9x Rails' throughput and 1.6x Express's** — and it is the row
+Soli takes this row — **4.9x Rails' throughput and 1.7x Express's** — and it is the row
 whose shape matters most, because it is the only one where every stack does the two things
 a page does, each through its own ORM. Express on the raw driver reaches 32,416 here,
 still short of Soli with an ORM in the way.
 
-The result worth pausing on is Soli's own: this row and the JSON row above are within 8%
-of each other (39,285 and 36,323) on the same query and the same 50 rows. Once a database
+The result worth pausing on is Soli's own: this row and the JSON row above are within 9%
+of each other (38,616 and 35,472) on the same query and the same 50 rows. Once a database
 round trip is in the request, it dominates — whether the result leaves as JSON or as a
 rendered page is close to noise. The large render-path gap the JSON and Template rows show
 on in-memory data does not survive contact with a real query, which is worth knowing before
@@ -155,34 +160,37 @@ does when you opt into the resident runtime.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **33,232** | 8.59 ms | 130 µs (336 incl. SoliDB) | **3.6x** |
-| Express + EJS + Sequelize | 24,042 | 18.15 ms | 460 µs | 2.6x |
-| Django + gunicorn | 10,423 | 23.66 ms | 1,128 µs | 1.1x |
-| Rails + Puma | 9,246 | 41.34 ms | 1,352 µs | 1.0x |
-| Laravel + php-fpm | 4,199 | 55.06 ms | 3,237 µs | 0.5x |
-| Laravel + Octane *(reference)* | 8,620 | 28.57 ms | 1,543 µs | 0.9x |
+| **Soli** | 32,607 | 8.99 ms | 132 µs (344 incl. SoliDB) | 3.9x |
+| Express + EJS + Sequelize | 22,816 | 19.67 ms | 487 µs | 2.7x |
+| AdonisJS + Lucid + Edge | 14,372 | 26.95 ms | 881 µs | 1.7x |
+| Django + gunicorn | 10,949 | 22.83 ms | 1,077 µs | 1.3x |
+| Rails + Puma | 8,320 | 46.55 ms | 1,494 µs | 1.0x |
+| Laravel + php-fpm | 3,726 | 61.47 ms | 3,659 µs | 0.4x |
+| Laravel + Octane *(reference)* | 8,383 | 30.05 ms | 1,599 µs | 1.0x |
 
 ### Update — one row by primary key
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | **32,335** | 8.81 ms | 128 µs (350 incl. SoliDB) | **2.8x** |
-| Express + EJS + Sequelize | 22,622 | 17.32 ms | 481 µs | 2.0x |
-| Rails + Puma | 11,355 | 36.96 ms | 1,089 µs | 1.0x |
-| Django + gunicorn | 9,609 | 25.63 ms | 1,221 µs | 0.8x |
-| Laravel + php-fpm | 4,258 | 53.65 ms | 3,165 µs | 0.4x |
-| Laravel + Octane *(reference)* | 8,722 | 28.35 ms | 1,497 µs | 0.8x |
+| **Soli** | 31,693 | 8.73 ms | 131 µs (359 incl. SoliDB) | 3.0x |
+| Express + EJS + Sequelize | 21,856 | 18.50 ms | 503 µs | 2.1x |
+| AdonisJS + Lucid + Edge | 14,940 | 26.74 ms | 817 µs | 1.4x |
+| Rails + Puma | 10,438 | 42.26 ms | 1,173 µs | 1.0x |
+| Django + gunicorn | 10,112 | 24.93 ms | 1,168 µs | 1.0x |
+| Laravel + php-fpm | 3,811 | 60.21 ms | 3,570 µs | 0.4x |
+| Laravel + Octane *(reference)* | 8,566 | 28.57 ms | 1,545 µs | 0.8x |
 
 ### Delete — one row by primary key
 
 | Stack | req/s | p99 | CPU/req | rows removed | vs Rails |
 |---|---:|---:|---:|---:|---:|
-| Express + EJS + Sequelize | 32,732 | 13.11 ms | 311 µs | 58% of requests | 2.8x |
-| **Soli** | **30,194** | 8.85 ms | 147 µs (393 incl. SoliDB) | 60% of requests | **2.6x** |
-| Rails + Puma | 11,742 | 33.26 ms | 1,070 µs | 81% of requests | 1.0x |
-| Django + gunicorn | 8,436 | 29.18 ms | 1,372 µs | 86% of requests | 0.7x |
-| Laravel + php-fpm | 4,193 | 56.21 ms | 3,161 µs | 93% of requests | 0.4x |
-| Laravel + Octane *(reference)* | 8,895 | 28.14 ms | 1,483 µs | 88% of requests | 0.8x |
+| Express + EJS + Sequelize | 30,910 | 16.40 ms | 324 µs | 2.9x | 59% of requests |
+| **Soli** | 29,588 | 8.99 ms | 150 µs (399 incl. SoliDB) | 2.7x | 60% of requests |
+| AdonisJS + Lucid + Edge | 14,994 | 27.11 ms | 832 µs | 1.4x | 77% of requests |
+| Rails + Puma | 10,837 | 35.40 ms | 1,151 µs | 1.0x | 82% of requests |
+| Django + gunicorn | 8,843 | 28.81 ms | 1,316 µs | 0.8x | 85% of requests |
+| Laravel + php-fpm | 3,869 | 59.10 ms | 3,534 µs | 0.4x | 93% of requests |
+| Laravel + Octane *(reference)* | 8,725 | 28.07 ms | 1,525 µs | 0.8x | 88% of requests |
 
 > **Read the delete row with its caveat.** Delete is the one operation that consumes its
 > own workload: a key already deleted is a miss, and a miss is cheaper than a delete. The
@@ -198,7 +206,7 @@ Two things stand out across all three. Soli's own CPU per write is **8 to 10x lo
 Rails'** and roughly a third of Express's, but the system-wide figure — the number in
 parentheses, which counts SoliDB's process too — is where the honest comparison sits, and
 even there Soli leads. And every stack writes far more slowly than it reads: Soli's create
-row is 33,232 against 128,075 on the in-memory template row, because a write has to reach
+row is 32,607 against 124,314 on the in-memory template row, because a write has to reach
 another process and a log, whichever framework issued it.
 
 ## WebSockets — echo and fan-out
@@ -281,31 +289,28 @@ effect, not a steady-state one.
 
 | Stack | Processes | Idle | Under load |
 |---|---:|---:|---:|
-| **Soli** | 1 × 16 threads | **50 MB** | **71 MB** |
-| Laravel + php-fpm | 17 (fpm + nginx) | 55 MB | 70 MB |
+| **Soli** | 1 x 16 threads | 50 MB | 70 MB |
+| Laravel + php-fpm | 17 (fpm + nginx) | 84 MB | 84 MB |
 | Laravel + Octane *(reference)* | 16 resident workers | 43 MB | 43 MB |
-| Rails + Puma | 17 (fork + CoW) | 205 MB | 921 MB |
-| Express + EJS + Sequelize | 17 (fork + CoW) | 638 MB | 1,138 MB |
+| Rails + Puma | 17 (fork + CoW) | 255 MB | 924 MB |
+| Express + EJS + Sequelize | 17 (fork + CoW) | 442 MB | 1,055 MB |
 | Django + gunicorn | 17 (fork + CoW) | 648 MB | 921 MB |
+| AdonisJS + Lucid + Edge | 17 (fork + CoW) | 2,815 MB | 3,068 MB |
 
 Figures are **PSS** (proportional set size) summed over the whole process group — the
 honest measure for multi-process servers, because summing RSS counts every fork-shared
-page 17 times (an idle Rails' RSS sum reads 1.9 GB against a real 205 MB). "Under load" is read at
-the end of a 30s run on the DB + HTML route. The architectural cause is simple: Soli is one
-process whose 16 workers are threads; the other four fork 16 processes with a heap apiece.
-**At idle Soli runs in a quarter of Rails' memory and a thirteenth of Django's; under load,
-in a thirteenth of Rails'.** Soli's own figures grew this release (28 → 50 MB idle): each
-worker now drives DB I/O on its own reactor with its own connection pool, which is what
-bought the throughput above.
+page 17 times. "Under load" is read at the end of a 30s run on the DB + HTML route. The
+architectural cause is simple: Soli is one process whose 16 workers are threads; the others
+fork 16 processes with a heap apiece.
 
-Laravel is the interesting one here: at 55 MB idle it is nearly as lean as Soli, and for the
-same reason it is last on every php-fpm row — the framework is not resident between
-requests, so there is little to hold. Octane holds the application in memory and still
-measures **43 MB idle and 43 MB under load**, flat because the workers are already warm —
-lower than php-fpm's 55/70, since 16 resident workers cost less than repeatedly rebuilding
-the framework. Express's idle figure grew from 342 MB when it
-ran the raw driver to 638 MB with Sequelize loaded in all 16 workers, which is what an ORM
-costs when every worker is a separate heap.
+**At idle Soli runs in a fifth of Rails' memory and a thirteenth of Django's.** Two results
+cut against the throughput order and are worth reading together. Laravel is nearly as lean
+as Soli (84 MB, flat under load) *because* it is slowest — php-fpm keeps no application
+resident, so there is nothing to hold; and Octane, which keeps the app resident and doubles
+Laravel's throughput, uses **less** still at 43 MB, because 16 warm workers cost less than
+rebuilding the framework on every request. AdonisJS is the other end: **2,815 MB idle**,
+roughly 197 MB per worker against Express's 65 MB, which is what a full TypeScript
+framework, ORM and template engine cost when each of 16 workers carries its own copy.
 
 ## The code being measured
 

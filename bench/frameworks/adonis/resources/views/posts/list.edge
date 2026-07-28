@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+</head>
+<body>
+<h1>Posts</h1>
+<table>
+@each(item in items)
+<tr><td>{{ item.id }}</td><td>{{ item.title }}</td><td>{{ item.views }}</td></tr>
+@end
+</table>
+</body>
+</html>
