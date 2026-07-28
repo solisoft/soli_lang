@@ -68,6 +68,39 @@ they are worth stating plainly.
   worker split off (`SOLI_WS_WORKERS=0`) so all 16 workers serve HTTP. Both are
   choices that move the numbers a long way; both are stated rather than assumed.
 
+## WebSockets
+
+`./ws_sweep.sh` measures three things `oha` cannot, on the two stacks that serve
+sockets from the same process as their HTTP rows:
+
+| Cell | Soli | Express |
+|---|---:|---:|
+| echo, 1,000 conns | 232,327 msg/s (p50 4.18 ms) | **407,310 msg/s** (p50 2.08 ms) |
+| room fan-out | **1,000 / publish — 100% of the room** | 63 / publish — 6% of the room |
+
+Express wins the round trip. The room row is the one that matters
+architecturally: Soli's workers are threads in one process, so a broadcast
+reaches every connection, while Node's cluster gives each of its 16 workers its
+own sockets — a broadcast reaches only the ~1/16th that worker accepted. Making
+Express's fan-out real needs a shared bus (Redis); the number above is what the
+obvious implementation actually does.
+
+Two things this harness had to get right, both of which produced wrong answers
+first:
+
+* **Shard the client.** A single Node client saturates long before the servers:
+  it reported 74k msg/s against Soli where eight client processes reported 238k,
+  and throughput *fell* as connections rose while latency scaled linearly — the
+  signature of a bottlenecked generator. `SHARDS` defaults to 8.
+* **Rate-limit the publisher.** Pumping broadcasts flat out just outruns the
+  server — a publish costs the client nothing and the server N sends — so the
+  fan-out ratio collapses and measures the client's send loop. At a fixed rate
+  (`PUBLISH_RATE`, default 50/s) the ratio means what it says.
+
+Rails, Django and Laravel are not here: ActionCable needs Redis, Channels needs
+ASGI and Laravel needs Reverb, each a different server process from the one
+serving their HTTP rows.
+
 ## A trap worth knowing
 
 Soli's `db_json` binds the query builder to a local before rendering:

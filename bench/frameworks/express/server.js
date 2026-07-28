@@ -113,5 +113,24 @@ if (cluster.isPrimary) {
     }
   });
 
-  app.listen(5097);
+  // ---- WebSocket: echo, and fan-out to every socket on this worker ----
+  // Node's cluster gives each worker its own set of sockets, so a broadcast
+  // only reaches the clients this worker accepted. Fanning out across all 16
+  // would need a shared bus (Redis); the room row is reported per worker.
+  const { WebSocketServer } = require('ws');
+  const server = app.listen(5097);
+  const wssEcho = new WebSocketServer({ noServer: true });
+  const wssRoom = new WebSocketServer({ noServer: true });
+
+  wssEcho.on('connection', (ws) => ws.on('message', (m) => ws.send(m.toString())));
+  wssRoom.on('connection', (ws) => ws.on('message', (m) => {
+    const text = m.toString();
+    for (const client of wssRoom.clients) if (client.readyState === 1) client.send(text);
+  }));
+
+  server.on('upgrade', (req, socket, head) => {
+    const wss = req.url === '/ws/echo' ? wssEcho : req.url === '/ws/room' ? wssRoom : null;
+    if (!wss) return socket.destroy();
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  });
 }
