@@ -283,6 +283,7 @@ effect, not a steady-state one.
 |---|---:|---:|---:|
 | **Soli** | 1 × 16 threads | **50 MB** | **71 MB** |
 | Laravel + php-fpm | 17 (fpm + nginx) | 55 MB | 70 MB |
+| Laravel + Octane *(reference)* | 16 resident workers | 43 MB | 43 MB |
 | Rails + Puma | 17 (fork + CoW) | 205 MB | 921 MB |
 | Express + EJS + Sequelize | 17 (fork + CoW) | 638 MB | 1,138 MB |
 | Django + gunicorn | 17 (fork + CoW) | 648 MB | 921 MB |
