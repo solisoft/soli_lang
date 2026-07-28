@@ -16,45 +16,163 @@
 <p class="text-gray-400 mb-8"><strong class="text-white">CPU/req</strong> is server CPU-time per request, summed across every process of the stack (all 17 for Rails, Express and Django; php-fpm plus nginx for Laravel). It is the most portable column here &mdash; unlike req/s it barely moves with core count or client speed.</p>
 
 <h2 class="text-2xl font-bold text-white mb-4">JSON &mdash; 50 objects, 2,268 bytes, built in the handler</h2>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">116,248</td><td class="py-3 px-4 text-right">6.17 ms</td><td class="py-3 px-4 text-right">106 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">7.3&times;</td></tr>
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">77,452</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">5.99 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">173 &micro;s</td><td class="py-3 px-4 text-right text-emerald-400 font-bold">4.9&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">18,174</td><td class="py-3 px-4 text-right">16.41 ms</td><td class="py-3 px-4 text-right">657 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.1&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">15,838</td><td class="py-3 px-4 text-right">25.28 ms</td><td class="py-3 px-4 text-right">913 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">6,208</td><td class="py-3 px-4 text-right">36.95 ms</td><td class="py-3 px-4 text-right">2,344 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.4&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def rows
+  return (0..50).map(fn(i) {
+    return { &quot;id&quot;: i + 1, &quot;title&quot;: &quot;Post title #{i + 1}&quot;, &quot;views&quot;: (i + 1) * 7 }
+  })
+end
+
+def json_only
+  render_json(this.rows())
+end</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def rows
+  (1..50).map { |i| { id: i, title: &quot;Post title #{i}&quot;, views: i * 7 } }
+end
+
+def json_only
+  render json: rows
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">const rows = () =&gt;
+  Array.from({ length: 50 }, (_, i) =&gt;
+    ({ id: i + 1, title: `Post title ${i + 1}`, views: (i + 1) * 7 }));
+
+app.get(&#x27;/json&#x27;, (req, res) =&gt; res.json(rows()));</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">private function rows(): array
+{
+    $out = [];
+    for ($i = 1; $i &lt;= 50; $i++) {
+        $out[] = (object) [&#x27;id&#x27; =&gt; $i, &#x27;title&#x27; =&gt; &quot;Post title {$i}&quot;, &#x27;views&#x27; =&gt; $i * 7];
+    }
+    return $out;
+}
+
+public function jsonOnly() { return response()-&gt;json($this-&gt;rows()); }</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">def _rows():
+    return [{&quot;id&quot;: i, &quot;title&quot;: f&quot;Post title {i}&quot;, &quot;views&quot;: i * 7} for i in range(1, 51)]
+
+
+def json_only(request):
+    # compact separators, or the payload is 299 bytes larger than everyone else&#x27;s
+    return JsonResponse(_rows(), safe=False, json_dumps_params={&quot;separators&quot;: (&quot;,&quot;, &quot;:&quot;)})</code></pre></div>
+</div>
+
 <p class="text-gray-400 leading-relaxed mb-8">Soli serialises the API response at 4.9&times; Rails' throughput on 5.3&times; less CPU. Express wins this row outright &mdash; printed as measured. Worth knowing: in Soli, serialising these 50 objects to JSON costs ~173&micro;s where rendering the <em>same data</em> as HTML costs 95&micro;s &mdash; the template engine is currently cheaper than <code class="text-cyan-400">render_json</code>.</p>
 
 <h2 class="text-2xl font-bold text-white mb-4">Template &mdash; 50-row HTML table + layout, ~3 KB</h2>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">128,075</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">4.24 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">95 &micro;s</td><td class="py-3 px-4 text-right text-emerald-400 font-bold">11.6&times;</td></tr>
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">67,249</td><td class="py-3 px-4 text-right">7.87 ms</td><td class="py-3 px-4 text-right">198 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">6.1&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">11,075</td><td class="py-3 px-4 text-right">32.87 ms</td><td class="py-3 px-4 text-right">1,188 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">7,194</td><td class="py-3 px-4 text-right">34.53 ms</td><td class="py-3 px-4 text-right">1,946 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.6&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">5,620</td><td class="py-3 px-4 text-right">40.87 ms</td><td class="py-3 px-4 text-right">2,605 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.5&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def template_only
+  render(&quot;posts/list&quot;, { &quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: this.rows() })
+end</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def template_only
+  @title = &quot;Posts&quot;
+  render &quot;posts/list&quot;, locals: { items: rows }
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">app.get(&#x27;/template&#x27;, (req, res) =&gt;
+  res.type(&#x27;html&#x27;).send(layout({ title: &#x27;Posts&#x27;, body: list({ items: rows() }) })));</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">public function templateOnly()
+{
+    return view(&#x27;posts.list&#x27;, [&#x27;title&#x27; =&gt; &#x27;Posts&#x27;, &#x27;items&#x27; =&gt; $this-&gt;rows()]);
+}</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">def template_only(request):
+    return render(request, &quot;posts/list.html&quot;, {&quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: _rows()})</code></pre></div>
+</div>
+
 <p class="text-gray-400 leading-relaxed mb-8">The strongest row, and the one a server-rendered framework should care about: <strong class="text-white">11.6&times; Rails' throughput on 12.5&times; less CPU</strong> &mdash; and 1.9&times; faster than Express even though Soli's page carries its instant-navigation script (~130 extra bytes of work per request that EJS doesn't do). Soli's ERB engine outrunning a compiled EJS template was not a given.</p>
 
 <h2 class="text-2xl font-bold text-white mb-4">Database read &mdash; 50 rows, projected columns, 2,268 bytes</h2>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">36,323</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">6.76 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">216 &micro;s&nbsp;<span class="text-gray-500">(330 incl. SoliDB)</span></td><td class="py-3 px-4 text-right text-emerald-400 font-bold">3.8&times;</td></tr>
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">28,061</td><td class="py-3 px-4 text-right">13.75 ms</td><td class="py-3 px-4 text-right">399 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">2.9&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">9,632</td><td class="py-3 px-4 text-right">25.35 ms</td><td class="py-3 px-4 text-right">1,253 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">9,565</td><td class="py-3 px-4 text-right">36.69 ms</td><td class="py-3 px-4 text-right">1,308 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">4,268</td><td class="py-3 px-4 text-right">55.94 ms</td><td class="py-3 px-4 text-right">3,127 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.4&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># The builder is bound to a local BEFORE render_json: passed inline as a call
+# argument it is evaluated twice and the query goes out twice.
+def db_json
+  let rows = Post.pluck(:id, :title, :views).all
+  return render_json(rows)
+end</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># pluck returns arrays, so the map is what makes the payload match the others.
+def db_json
+  render json: Post.pluck(:id, :title, :views)
+    .map { |id, title, views| { id: id, title: title, views: views } }
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">// raw: true projects without instantiating models — the analogue of pluck.
+const ORM_PROJECTION = { attributes: [&#x27;id&#x27;, &#x27;title&#x27;, &#x27;views&#x27;], raw: true };
+
+app.get(&#x27;/db&#x27;, async (req, res) =&gt; res.json(await PostModel.findAll(ORM_PROJECTION)));</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">// toBase() is Eloquent&#x27;s own way to project without hydrating models.
+private function dbRows()
+{
+    return Post::query()-&gt;toBase()-&gt;select(&#x27;id&#x27;, &#x27;title&#x27;, &#x27;views&#x27;)-&gt;get();
+}
+
+public function dbJson() { return response()-&gt;json($this-&gt;dbRows()); }</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python"># .values() projects without instantiating model objects.
+def _db_rows():
+    return list(Post.objects.values(&quot;id&quot;, &quot;title&quot;, &quot;views&quot;))
+
+
+def db_json(request):
+    return JsonResponse(_db_rows(), safe=False, json_dumps_params=COMPACT)</code></pre></div>
+</div>
+
 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-4"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-400">This row compares database access architectures as much as frameworks.</strong> Each request from Soli is one blocking HTTP round trip to SoliDB per worker &mdash; 16 in flight, no more. Rails holds 80 threads against PostgreSQL; Express's driver is fully asynchronous, effectively unbounded &mdash; which is most of why it still leads here.</p><p class="text-gray-300 text-sm leading-relaxed mt-3"><strong class="text-amber-400">Every stack goes through an ORM in this table.</strong> An earlier revision measured Express on the raw <code class="text-cyan-400">pg</code> driver, which is not the same workload: hand-written SQL with no model layer against two frameworks paying one. Putting Sequelize in the path costs Express <strong class="text-white">34%</strong> &mdash; 42,818 req/s on the driver against 28,388 through the ORM &mdash; and that is the number published, because Soli's and Rails' rows include their ORMs too. If your Node app talks to the database through a driver rather than an ORM, the driver row is the one that describes you. Soli's CPU column shows both truths: 216&micro;s in the Soli process, <strong class="text-white">330&micro;s system-wide once SoliDB's own CPU is counted</strong> &mdash; publishing the smaller number alone would hide an entire process. Even counted that way Soli's DB row costs <strong class="text-white">4.0&times; less system CPU than Rails'</strong>, and the 16-in-flight cap is not the ceiling it looked like: it is enough to lead this row.</p></div>
 <p class="text-gray-400 leading-relaxed mb-8">Every stack serves the same self-describing hash rows on its fastest idiom for that shape: Soli's <code class="text-cyan-400">Post.pluck(:id, :title, :views).all</code> builds the hashes <strong class="text-white">in the database</strong> (<code class="text-cyan-400">RETURN {id: doc.id, ...}</code>); Rails' is <code class="text-cyan-400">pluck</code> + a <code class="text-cyan-400">map</code> &mdash; the canonical-looking <code class="text-cyan-400">render json: Post.select(:id, :title, :views)</code> measured <strong class="text-white">3.2&times; slower</strong> (3,481 req/s), because it instantiates fifty ActiveRecord models per request; node-postgres builds the objects in the driver. Two lessons worth taking home: projection must happen in the database (Soli fetching full ~15&nbsp;KB documents and projecting client-side measured 13,251 req/s), and if you can accept positional arrays instead of hashes, everyone gets faster &mdash; Soli measured 26,666 and Express 44,515 on the array form of the same route.</p>
 
 <h2 class="text-2xl font-bold text-white mb-4">Database read + HTML render &mdash; 50 rows from the database into a page, ~3 KB</h2>
 <p class="text-gray-400 leading-relaxed mb-4">The row a server-rendered framework actually lives on: query, then render. It is the <code class="text-cyan-400">/db</code> read and the <code class="text-cyan-400">/template</code> render in one request, so the response is the same page as the Template row above, byte-for-byte the same size, and the database is the only added variable.</p>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">39,285</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">6.38 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">185 &micro;s&nbsp;<span class="text-gray-500">(301 incl. SoliDB)</span></td><td class="py-3 px-4 text-right text-emerald-400 font-bold">4.9&times;</td></tr>
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">23,870</td><td class="py-3 px-4 text-right">15.51 ms</td><td class="py-3 px-4 text-right">493 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">3.0&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">8,090</td><td class="py-3 px-4 text-right">45.36 ms</td><td class="py-3 px-4 text-right">1,536 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">5,476</td><td class="py-3 px-4 text-right">46.89 ms</td><td class="py-3 px-4 text-right">2,525 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.7&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">3,995</td><td class="py-3 px-4 text-right">57.55 ms</td><td class="py-3 px-4 text-right">3,367 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.5&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def db_template
+  render(&quot;posts/list&quot;, { &quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: Post.pluck(:id, :title, :views).all })
+end</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def db_template
+  @title = &quot;Posts&quot;
+  render &quot;posts/list&quot;, locals: {
+    items: Post.pluck(:id, :title, :views)
+      .map { |id, title, views| { id: id, title: title, views: views } }
+  }
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">app.get(&#x27;/db-template&#x27;, async (req, res) =&gt; {
+  const rows = await PostModel.findAll(ORM_PROJECTION);
+  res.type(&#x27;html&#x27;).send(layout({ title: &#x27;Posts&#x27;, body: list({ items: rows }) }));
+});</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">public function dbTemplate()
+{
+    return view(&#x27;posts.list&#x27;, [&#x27;title&#x27; =&gt; &#x27;Posts&#x27;, &#x27;items&#x27; =&gt; $this-&gt;dbRows()]);
+}</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">def db_template(request):
+    return render(request, &quot;posts/list.html&quot;, {&quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: _db_rows()})</code></pre></div>
+</div>
+
 <p class="text-gray-400 leading-relaxed mb-4">Soli takes this row &mdash; <strong class="text-white">4.9&times; Rails' throughput and 1.6&times; Express's</strong> &mdash; and it is the row whose shape matters most, because it is the only one where every stack does the two things a page does, each through its own ORM. Express on the raw driver reaches 32,416 here, still short of Soli with an ORM in the way.</p>
 <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5 mb-8"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-emerald-400">The result worth pausing on is Soli's own:</strong> this row and the JSON row above are within 8% of each other (39,285 and 36,323) on the same query and the same 50 rows. Once a database round trip is in the request it dominates &mdash; whether the result leaves as JSON or as a rendered page is close to noise. The large render-path gap the JSON and Template rows show on in-memory data does not survive contact with a real query, which is worth knowing before optimising a template for a page that is really waiting on the database.</p></div>
 
@@ -63,49 +181,161 @@
 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-6"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-400">Durability is matched, and that matters more than anything else here.</strong> SoliDB's writes go through RocksDB's default write path &mdash; the WAL reaches the operating system but is not <code class="text-cyan-400">fsync</code>ed before the write returns. PostgreSQL's default (<code class="text-cyan-400">synchronous_commit=on</code>) <em>does</em> flush before commit returns, which is a stronger guarantee and a much slower one. Compared head to head that way, Soli would be winning an argument the other stacks were not having. So PostgreSQL runs with <code class="text-cyan-400">synchronous_commit=off</code> for these rows, the setting that matches what SoliDB actually promises: survive a process crash, not a power cut. Neither column is "durable writes" &mdash; read them as buffered writes on both sides.</p></div>
 
 <h3 class="text-xl font-semibold text-white mb-3">Create &mdash; one INSERT per request</h3>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">33,232</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">8.59 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">130 &micro;s&nbsp;<span class="text-gray-500">(336 incl. SoliDB)</span></td><td class="py-3 px-4 text-right text-emerald-400 font-bold">3.6&times;</td></tr>
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">24,042</td><td class="py-3 px-4 text-right">18.15 ms</td><td class="py-3 px-4 text-right">460 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">2.6&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">10,423</td><td class="py-3 px-4 text-right">23.66 ms</td><td class="py-3 px-4 text-right">1,128 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.1&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">9,246</td><td class="py-3 px-4 text-right">41.34 ms</td><td class="py-3 px-4 text-right">1,352 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">4,199</td><td class="py-3 px-4 text-right">55.06 ms</td><td class="py-3 px-4 text-right">3,237 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.5&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def w_create(req: Any) -&gt; Any {
+  Wpost.create({ &quot;title&quot;: &quot;Post title 0&quot;, &quot;views&quot;: 7 })
+  return { &quot;status&quot;: 201, &quot;body&quot;: &quot;ok&quot; }
+}</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def w_create
+  Wpost.create!(title: &quot;Post title 0&quot;, views: 7)
+  head :created
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">app.post(&#x27;/w&#x27;, async (req, res) =&gt; {
+  await WPost.create({ title: &#x27;Post title 0&#x27;, views: 7 });
+  res.sendStatus(201);
+});</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">public function wCreate()
+{
+    Wpost::create([&#x27;title&#x27; =&gt; &#x27;Post title 0&#x27;, &#x27;views&#x27; =&gt; 7]);
+    return response(&#x27;&#x27;, 201);
+}</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">if request.method == &quot;POST&quot;:
+    Wpost.objects.create(title=&quot;Post title 0&quot;, views=7)
+    return HttpResponse(status=201)</code></pre></div>
+</div>
+
 
 <h3 class="text-xl font-semibold text-white mb-3">Update &mdash; one row by primary key</h3>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">32,335</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">8.81 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">128 &micro;s&nbsp;<span class="text-gray-500">(350 incl. SoliDB)</span></td><td class="py-3 px-4 text-right text-emerald-400 font-bold">2.8&times;</td></tr>
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">22,622</td><td class="py-3 px-4 text-right">17.32 ms</td><td class="py-3 px-4 text-right">481 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">2.0&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">11,355</td><td class="py-3 px-4 text-right">36.96 ms</td><td class="py-3 px-4 text-right">1,089 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">9,609</td><td class="py-3 px-4 text-right">25.63 ms</td><td class="py-3 px-4 text-right">1,221 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.8&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">4,258</td><td class="py-3 px-4 text-right">53.65 ms</td><td class="py-3 px-4 text-right">3,165 &micro;s</td><td class="py-3 px-4 text-right text-gray-400">0.4&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># Random key in 1..800000 — the same range in every stack.
+def w_update(req: Any) -&gt; Any {
+  Wpost.update(this.w_key(), { &quot;views&quot;: 42 })
+  return { &quot;status&quot;: 200, &quot;body&quot;: &quot;ok&quot; }
+}</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># update_all is the ORM&#x27;s single-statement form, like Soli&#x27;s Model.update.
+def w_update
+  Wpost.where(id: rand(1..WPOOL)).update_all(views: 42)
+  head :ok
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">app.patch(&#x27;/w&#x27;, async (req, res) =&gt; {
+  await WPost.update({ views: 42 }, { where: { id: wkey() } });
+  res.sendStatus(200);
+});</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">public function wUpdate()
+{
+    Wpost::where(&#x27;id&#x27;, random_int(1, self::WPOOL))-&gt;update([&#x27;views&#x27; =&gt; 42]);
+    return response(&#x27;&#x27;, 200);
+}</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">if request.method == &quot;PATCH&quot;:
+    Wpost.objects.filter(id=random.randint(1, WPOOL)).update(views=42)
+    return HttpResponse(status=200)</code></pre></div>
+</div>
+
 
 <h3 class="text-xl font-semibold text-white mb-3">Delete &mdash; one row by primary key</h3>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">rows removed</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="rails" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Rails</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button><button type="button" data-tab="laravel" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Laravel</button><button type="button" data-tab="django" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Django</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">req/s</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">CPU/req</th><th class="py-3 px-4 text-right">rows removed</th><th class="py-3 px-4 text-right">vs Rails</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr><td class="py-3 px-4">Express + EJS + Sequelize</td><td class="py-3 px-4 text-right">32,732</td><td class="py-3 px-4 text-right">13.11 ms</td><td class="py-3 px-4 text-right">311 &micro;s</td><td class="py-3 px-4 text-right">58% of requests</td><td class="py-3 px-4 text-right text-gray-400">2.8&times;</td></tr>
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white font-bold">30,194</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">8.85 ms</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">147 &micro;s&nbsp;<span class="text-gray-500">(393 incl. SoliDB)</span></td><td class="py-3 px-4 text-right">60% of requests</td><td class="py-3 px-4 text-right text-emerald-400 font-bold">2.6&times;</td></tr>
 <tr><td class="py-3 px-4">Rails + Puma</td><td class="py-3 px-4 text-right">11,742</td><td class="py-3 px-4 text-right">33.26 ms</td><td class="py-3 px-4 text-right">1,070 &micro;s</td><td class="py-3 px-4 text-right">81% of requests</td><td class="py-3 px-4 text-right text-gray-400">1.0&times;</td></tr>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">8,436</td><td class="py-3 px-4 text-right">29.18 ms</td><td class="py-3 px-4 text-right">1,372 &micro;s</td><td class="py-3 px-4 text-right">86% of requests</td><td class="py-3 px-4 text-right text-gray-400">0.7&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">4,193</td><td class="py-3 px-4 text-right">56.21 ms</td><td class="py-3 px-4 text-right">3,161 &micro;s</td><td class="py-3 px-4 text-right">93% of requests</td><td class="py-3 px-4 text-right text-gray-400">0.4&times;</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># A key already deleted is a miss; the hit rate is measured by counting
+# the collection before and after the cell, not assumed.
+def w_delete(req: Any) -&gt; Any {
+  Wpost.delete(this.w_key()) rescue null
+  return { &quot;status&quot;: 200, &quot;body&quot;: &quot;ok&quot; }
+}</code></pre></div>
+<div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def w_delete
+  Wpost.where(id: rand(1..WPOOL)).delete_all
+  head :ok
+end</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">app.delete(&#x27;/w&#x27;, async (req, res) =&gt; {
+  await WPost.destroy({ where: { id: wkey() } });
+  res.sendStatus(200);
+});</code></pre></div>
+<div data-panel="laravel" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-php">public function wDelete()
+{
+    Wpost::where(&#x27;id&#x27;, random_int(1, self::WPOOL))-&gt;delete();
+    return response(&#x27;&#x27;, 200);
+}</code></pre></div>
+<div data-panel="django" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-python">Wpost.objects.filter(id=random.randint(1, WPOOL)).delete()
+return HttpResponse(status=200)</code></pre></div>
+</div>
+
 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-6"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-400">Read the delete row with its caveat.</strong> Delete is the one operation that consumes its own workload: a key already deleted is a miss, and a miss is cheaper than a delete. The "rows removed" column is measured, not assumed &mdash; the table is counted before and after each cell &mdash; and it shows the effect plainly: the faster a stack runs, the more of the 800,000-row pool it exhausts and the higher its miss rate climbs. Rails, at a third of the throughput, does the largest share of real deletes. So this row understates the gap to Rails and should be read as a rough ordering, not a precise multiple. The create and update rows have no such problem: every create inserts, and every update targets a key that still exists.</p></div>
 <p class="text-gray-400 leading-relaxed mb-8">Two things stand out across all three. Soli's own CPU per write is <strong class="text-white">8 to 10&times; lower than Rails'</strong> and roughly a third of Express's, but the system-wide figure &mdash; the number in parentheses, which counts SoliDB's process too &mdash; is where the honest comparison sits, and even there Soli leads. And every stack writes far more slowly than it reads: Soli's create row is 33,232 against 128,075 on the in-memory template row, because a write has to reach another process and a log, whichever framework issued it.</p>
 
 <h2 class="text-2xl font-bold text-white mb-4">WebSockets &mdash; echo and fan-out</h2>
 <p class="text-gray-400 leading-relaxed mb-4"><code class="text-cyan-400">oha</code> speaks HTTP only, so these use a purpose-built client. Two stacks appear here rather than five: Rails' ActionCable needs Redis, Django needs Channels on ASGI and Laravel needs Reverb &mdash; each is a <strong class="text-white">different server process</strong> from the one serving the rows above, so measuring them would not be measuring the same thing. Soli and Express serve sockets from the same process as their HTTP.</p>
 <h3 class="text-xl font-semibold text-white mb-3">Echo &mdash; round trip, one message in flight per connection</h3>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">msg/s</th><th class="py-3 px-4 text-right">p50</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">connections</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">msg/s</th><th class="py-3 px-4 text-right">p50</th><th class="py-3 px-4 text-right">p99</th><th class="py-3 px-4 text-right">connections</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr><td class="py-3 px-4">Express + ws</td><td class="py-3 px-4 text-right">411,340</td><td class="py-3 px-4 text-right">2.01 ms</td><td class="py-3 px-4 text-right">6.83 ms</td><td class="py-3 px-4 text-right">1,000</td></tr>
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli</td><td class="py-3 px-4 text-right text-white">241,790</td><td class="py-3 px-4 text-right text-white">4.02 ms</td><td class="py-3 px-4 text-right text-white">6.20 ms</td><td class="py-3 px-4 text-right">1,000</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># config/routes.sl
+websocket(&quot;/ws/echo&quot;, &quot;ws#echo&quot;)
+
+# app/controllers/ws_controller.sl
+def echo(event: Any) -&gt; Any {
+  return { &quot;send&quot;: event[&quot;message&quot;] } if event[&quot;type&quot;] == &quot;message&quot;
+  return {}
+}</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">const wssEcho = new WebSocketServer({ noServer: true });
+wssEcho.on(&#x27;connection&#x27;, (ws) =&gt; ws.on(&#x27;message&#x27;, (m) =&gt; ws.send(m.toString())));</code></pre></div>
+</div>
+
 <p class="text-gray-400 leading-relaxed mb-6">Express takes this one &mdash; printed as measured &mdash; at roughly 1.7&times; Soli's message rate and half the median latency.</p>
 <h3 class="text-xl font-semibold text-white mb-3">Fan-out &mdash; one publisher, every connection in the room receives</h3>
-<div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">reached per publish</th><th class="py-3 px-4 text-right">share of the room</th><th class="py-3 px-4 text-right">deliveries/s</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<div class="mb-6" data-tabs>
+<div class="flex flex-wrap gap-1 mb-3" role="tablist"><button type="button" data-tab="result" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition" aria-selected="true">Result</button><button type="button" data-tab="soli" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Soli</button><button type="button" data-tab="express" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition" aria-selected="false">Express</button></div>
+<div data-panel="result"><div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4"><table class="w-full text-left text-sm"><thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Stack</th><th class="py-3 px-4 text-right">reached per publish</th><th class="py-3 px-4 text-right">share of the room</th><th class="py-3 px-4 text-right">deliveries/s</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
 <tr class="bg-white/5"><td class="py-3 px-4 text-white font-bold">Soli, 16 workers</td><td class="py-3 px-4 text-right text-white font-bold">1,000 of 1,000</td><td class="py-3 px-4 text-right text-emerald-400 font-bold">100%</td><td class="py-3 px-4 text-right text-emerald-400 font-semibold">45,264</td></tr>
 <tr><td class="py-3 px-4">Express + ws, 16 workers <strong class="text-white">+ Redis</strong></td><td class="py-3 px-4 text-right">1,000 of 1,000</td><td class="py-3 px-4 text-right">100%</td><td class="py-3 px-4 text-right">44,217</td></tr>
 <tr><td class="py-3 px-4">Express + ws, 1 worker</td><td class="py-3 px-4 text-right">1,000 of 1,000</td><td class="py-3 px-4 text-right">100%</td><td class="py-3 px-4 text-right">44,106</td></tr>
 <tr><td class="py-3 px-4">Express + ws, 16 workers, no bus</td><td class="py-3 px-4 text-right">63 of 1,000</td><td class="py-3 px-4 text-right text-amber-400 font-bold">6%</td><td class="py-3 px-4 text-right">2,846</td></tr>
-</tbody></table></div>
+</tbody></table></div></div>
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># One process, so &quot;broadcast&quot; means every connection the server holds.
+def room(event: Any) -&gt; Any {
+  return { &quot;broadcast&quot;: event[&quot;message&quot;] } if event[&quot;type&quot;] == &quot;message&quot;
+  return {}
+}</code></pre></div>
+<div data-panel="express" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-javascript">// Each cluster worker holds only its own sockets, so a local broadcast reaches
+// ~1/N of the room. REDIS_URL routes every publish through a shared channel so
+// all workers deliver — what a clustered Node app has to do.
+const localBroadcast = (text) =&gt; {
+  for (const client of wssRoom.clients) if (client.readyState === 1) client.send(text);
+};
+
+if (REDIS_URL) {
+  sub.subscribe(&#x27;room&#x27;);
+  sub.on(&#x27;message&#x27;, (_channel, text) =&gt; localBroadcast(text));
+  wssRoom.on(&#x27;connection&#x27;, (ws) =&gt; ws.on(&#x27;message&#x27;, (m) =&gt; pub.publish(&#x27;room&#x27;, m.toString())));
+} else {
+  wssRoom.on(&#x27;connection&#x27;, (ws) =&gt; ws.on(&#x27;message&#x27;, (m) =&gt; localBroadcast(m.toString())));
+}</code></pre></div>
+</div>
+
 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-4"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-400">Read this as an architecture row, not a speed row.</strong> Once the broadcast is actually complete the three are the same &mdash; 45,264, 44,217 and 44,106 deliveries/s are one number. <strong class="text-white">Express is not slow at fan-out.</strong> The difference is what it takes to get there. Soli's 16 workers are threads in one process, so a broadcast reaches every connection the server holds, with nothing to configure. Node's <code class="text-cyan-400">cluster</code> gives each worker its own sockets, so the obvious implementation reaches only the ~1/16th that worker accepted &mdash; the last row, and note that it does not error, it just silently delivers to 6% of the room. Fixing it means either dropping to one worker (correct, and one sixteenth of the HTTP capacity) or adding Redis and a hop per publish (correct, same throughput, one more thing to run and to fail). The honest shape of it: <strong class="text-white">equal throughput, unequal defaults</strong> &mdash; the naive Soli implementation is right, the naive clustered-Node one is quietly wrong.</p></div>
 <p class="text-gray-400 leading-relaxed mb-4">Connection cost is close: both accept about <strong class="text-white">6,000 connections/sec</strong> once warm, and 1,000 idle sockets cost Soli ~19&nbsp;KB each against Express's ~28&nbsp;KB. Soli's <em>first</em> few hundred connections are slower while handlers warm &mdash; a cold-start effect, not a steady-state one.</p>
 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-8"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-400">Two things this measurement had to get right</strong>, because both produced confident wrong answers first. A single Node client saturates long before either server: it reported 74k msg/s against Soli where eight client processes reported 238k, and throughput <em>fell</em> as connections rose while latency scaled linearly &mdash; the signature of a bottlenecked generator, not a server limit. And an unthrottled publisher outruns the server, because a publish costs the client nothing and the server N sends; flat out, fan-out read 9.4 of 2,000 and was measuring the client's send loop. The published numbers use eight sharded clients and a rate-limited publisher.</p></div>
@@ -165,3 +395,27 @@ end</code></pre></div>
 <pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto mb-4"><code class="language-bash">oha -z 8s  -c 100 --no-tui --output-format quiet http://localhost:PORT/route   # warm-up
 oha -z 30s -c 200 --no-tui --output-format json  http://localhost:PORT/route</code></pre>
 <p class="text-gray-400 leading-relaxed mb-6">Three checks before believing any result, including this one. Verify the <strong class="text-white">status codes and payload bytes</strong> &mdash; load generators report a wall of 301s or 500s as 100% "success", and two stacks returning different payloads aren't running the same benchmark. Run <strong class="text-white">30 seconds or more</strong> &mdash; a fixed-count run against a fast server finishes before reaching steady state. And watch the <strong class="text-white">load generator's own CPU</strong> &mdash; co-located, it takes cores from the server, so every absolute number on this page is a floor. When in doubt, trust the CPU/req column: it survives all three mistakes.</p>
+
+<script>
+// Result / per-stack code tabs. Each strip is independent; the code panels hold
+// the handler that produced the table beside them.
+document.querySelectorAll('[data-tabs]').forEach(function (root) {
+  var buttons = root.querySelectorAll('[data-tab]');
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-tab');
+      buttons.forEach(function (b) {
+        var on = b === btn;
+        b.className = on
+          ? 'px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition'
+          : 'px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition';
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      root.querySelectorAll('[data-panel]').forEach(function (p) {
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== name);
+      });
+      if (window.hljs) root.querySelectorAll('pre code:not(.hljs)').forEach(function (el) { hljs.highlightElement(el); });
+    });
+  });
+});
+</script>
