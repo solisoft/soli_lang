@@ -1,6 +1,6 @@
 # Benchmarks
 
-Seven matched workloads — a JSON API response, a rendered HTML page, a database read, a
+Seven HTTP workloads, plus WebSockets — a JSON API response, a rendered HTML page, a database read, a
 database-backed HTML page, and one create, update and delete per request — through five
 full stacks on one machine, one load generator, one protocol. Every server returns a
 **byte-identical payload** for the JSON and DB rows, and every stack runs **16 workers**.
@@ -185,6 +185,54 @@ parentheses, which counts SoliDB's process too — is where the honest compariso
 even there Soli leads. And every stack writes far more slowly than it reads: Soli's create
 row is 33,232 against 128,075 on the in-memory template row, because a write has to reach
 another process and a log, whichever framework issued it.
+
+## WebSockets — echo and fan-out
+
+`oha` speaks HTTP only, so these use a purpose-built client. Two stacks appear
+here rather than five: Rails' ActionCable needs Redis, Django needs Channels on
+ASGI and Laravel needs Reverb — each is a **different server process** from the
+one serving the rows above, so measuring them would not be measuring the same
+thing. Soli and Express serve sockets from the same process as their HTTP.
+
+### Echo — round trip, one message in flight per connection
+
+| Stack | msg/s | p50 | p99 | connections |
+|---|---:|---:|---:|---:|
+| Express + ws | **411,340** | 2.01 ms | 6.83 ms | 1,000 |
+| **Soli** | 241,790 | 4.02 ms | 6.20 ms | 1,000 |
+
+Express takes this one — printed as measured — at roughly 1.7x Soli's message
+rate and half the median latency.
+
+### Fan-out — one publisher, every connection in the room receives
+
+| Stack | reached per publish | share of the room | deliveries/s |
+|---|---:|---:|---:|
+| **Soli** | **1,000 of 1,000** | **100%** | 45,264 |
+| Express + ws | 63 of 1,000 | 6% | 2,846 |
+
+This is the row where the architectures separate, and it is not a tuning
+difference. Soli's 16 workers are threads in one process, so a broadcast reaches
+every connection the server holds. Node's `cluster` gives each of its 16 workers
+its own sockets, so a broadcast reaches only the ~1/16th that worker happened to
+accept — which is what the obvious implementation does, and what you get unless
+you add a shared bus (Redis) and pay a network hop per publish. **6% of a chat
+room is not a slower broadcast, it is a broken one**, and the failure is silent.
+
+Connection cost is close: both accept about **6,000 connections/sec** once warm,
+and 1,000 idle sockets cost Soli ~19 KB each against Express's ~28 KB. Soli's
+*first* few hundred connections are slower while handlers warm — a cold-start
+effect, not a steady-state one.
+
+> **Two things this measurement had to get right**, because both produced
+> confident wrong answers first. A single Node client saturates long before
+> either server: it reported 74k msg/s against Soli where eight client processes
+> reported 238k, and throughput *fell* as connections rose while latency scaled
+> linearly — the signature of a bottlenecked generator, not a server limit. And
+> an unthrottled publisher outruns the server, because a publish costs the
+> client nothing and the server N sends; flat out, fan-out read 9.4 of 2,000 and
+> was measuring the client's send loop. The published numbers use eight sharded
+> clients and a rate-limited publisher.
 
 ## Memory
 
