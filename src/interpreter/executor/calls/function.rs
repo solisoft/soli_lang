@@ -1990,40 +1990,54 @@ impl Interpreter {
         if arguments.is_empty() {
             return Ok(None);
         }
-        // Only positional first arg — named/spread args fall through.
-        let first_expr = match &arguments[0] {
-            Argument::Positional(e) => e,
-            _ => return Ok(None),
-        };
-        let data = self.evaluate(first_expr)?;
-        let instance = match &data {
-            Value::Instance(inst) => inst.clone(),
-            _ => return Ok(None),
-        };
-        let inst_ref = instance.borrow();
-        let as_json_method = match inst_ref.class.find_method("as_json") {
-            Some(m) => m,
-            None => return Ok(None),
-        };
-        drop(inst_ref);
+        // Bail out *before* evaluating anything if this isn't a shape we
+        // handle. Named/spread/block arguments fall through to normal
+        // dispatch, which will evaluate them itself.
+        if !arguments
+            .iter()
+            .all(|a| matches!(a, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
 
-        // Bind `this` to the instance and execute the user method.
-        let mut bound_env = Environment::with_enclosing(as_json_method.closure.clone());
-        bound_env.define("this".to_string(), Value::Instance(instance.clone()));
-        let bound = crate::interpreter::value::Function {
-            name: as_json_method.name.clone(),
-            params: as_json_method.params.clone(),
-            body: as_json_method.body.clone(),
-            closure: Rc::new(RefCell::new(bound_env)),
-            is_method: true,
-            span: as_json_method.span,
-            ..Default::default()
-        };
-        let serialised = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+        // From here on the arguments are evaluated exactly once and this
+        // function MUST return `Some(..)`. Returning `None` after evaluating
+        // would send `evaluate_call` down the normal dispatch path, which
+        // evaluates the same expressions a second time — and when the first
+        // argument is a query builder (`render_json(Post.pluck(...).all)`)
+        // that means the database query is issued twice per request. That is
+        // exactly what this used to do: it evaluated the first argument to
+        // test whether it was an instance, then discarded the value and
+        // returned None for everything that wasn't.
+        let mut args = Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            if let Argument::Positional(e) = arg {
+                args.push(self.evaluate(e)?);
+            }
+        }
 
-        // Forward to the original `render_json` builtin with the override
-        // result substituted for the first argument. Any further arguments
-        // (status code, options) are evaluated and passed through unchanged.
+        // SEC-013b: `render_json(instance)` dispatches through a user-defined
+        // `def as_json` on the instance's class when there is one.
+        let as_json_method = match &args[0] {
+            Value::Instance(instance) => instance.borrow().class.find_method("as_json"),
+            _ => None,
+        };
+        if let (Some(as_json_method), Value::Instance(instance)) = (as_json_method, args[0].clone())
+        {
+            let mut bound_env = Environment::with_enclosing(as_json_method.closure.clone());
+            bound_env.define("this".to_string(), Value::Instance(instance));
+            let bound = crate::interpreter::value::Function {
+                name: as_json_method.name.clone(),
+                params: as_json_method.params.clone(),
+                body: as_json_method.body.clone(),
+                closure: Rc::new(RefCell::new(bound_env)),
+                is_method: true,
+                span: as_json_method.span,
+                ..Default::default()
+            };
+            args[0] = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+        }
+
         let render_json_val = self
             .environment
             .borrow()
@@ -2032,14 +2046,7 @@ impl Interpreter {
                 message: "render_json builtin missing from environment".to_string(),
                 span,
             })?;
-        let mut new_args = Vec::with_capacity(arguments.len());
-        new_args.push(serialised);
-        for arg in arguments.iter().skip(1) {
-            if let Argument::Positional(e) = arg {
-                new_args.push(self.evaluate(e)?);
-            }
-        }
-        let result = self.call_value(render_json_val, new_args, span)?;
+        let result = self.call_value(render_json_val, args, span)?;
         Ok(Some(result))
     }
 

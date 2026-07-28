@@ -157,6 +157,30 @@ fn ping_returns_json() {
 }
 
 #[test]
+fn render_json_evaluates_its_argument_once() {
+    // `render_json(expr)` once evaluated `expr` twice: the interceptor for the
+    // `as_json` override evaluated the first argument to test whether it was an
+    // instance, then threw the value away and returned None for everything
+    // else, so normal dispatch evaluated it again. Harmless for a literal;
+    // for `render_json(Post.pluck(...).all)` it issued the database query
+    // twice on every request and cost ~42% of the throughput on a 50-row JSON
+    // route. The handler counts evaluations of its own argument.
+    let server = shared_server();
+    let resp = ureq::get(&server.url("/render_json_arg_evals"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("render_json_arg_evals request");
+    assert_eq!(resp.status(), 200);
+    // The handler's argument increments a counter and returns it, so the body
+    // reports how many times it was evaluated: {"n":1} once, {"n":2} twice.
+    assert_eq!(
+        body_string(resp),
+        r#"{"n":1}"#,
+        "render_json evaluated its argument more than once"
+    );
+}
+
+#[test]
 fn add_handles_query_params() {
     let server = shared_server();
     let resp = ureq::get(&server.url("/add?a=12&b=30"))

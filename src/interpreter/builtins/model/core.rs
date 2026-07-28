@@ -2699,7 +2699,9 @@ impl Model {
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
                     Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                    _ => return Err("find_by() expects a field name (string or symbol)".to_string()),
+                    _ => {
+                        return Err("find_by() expects a field name (string or symbol)".to_string())
+                    }
                 };
                 validate_field_name(&field, "find_by")?;
                 let value = match args.get(2) {
@@ -2745,7 +2747,9 @@ impl Model {
                 let collection = class_name_to_collection(&class_name);
                 let field = match args.get(1) {
                     Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                    _ => return Err("first_by() expects a field name (string or symbol)".to_string()),
+                    _ => {
+                        return Err("first_by() expects a field name (string or symbol)".to_string())
+                    }
                 };
                 validate_field_name(&field, "first_by")?;
                 let value = match args.get(2) {
@@ -2795,7 +2799,10 @@ impl Model {
                     let field = match args.get(1) {
                         Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                         _ => {
-                            return Err("find_or_create_by() expects a field name (string or symbol)".to_string())
+                            return Err(
+                                "find_or_create_by() expects a field name (string or symbol)"
+                                    .to_string(),
+                            )
                         }
                     };
                     validate_field_name(&field, "find_or_create_by")?;
@@ -3121,7 +3128,11 @@ impl Model {
                             validate_field_name(s, "pluck")?;
                             fields.push(s.to_string());
                         }
-                        _ => return Err("pluck() expects a field name (string or symbol)s".to_string()),
+                        _ => {
+                            return Err(
+                                "pluck() expects a field name (string or symbol)s".to_string()
+                            )
+                        }
                     }
                 }
                 if fields.is_empty() {
@@ -3162,7 +3173,10 @@ impl Model {
                         let field = match args.get(1) {
                             Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
                             _ => {
-                                return Err(format!("{}() expects a field name (string or symbol)", method_name))
+                                return Err(format!(
+                                    "{}() expects a field name (string or symbol)",
+                                    method_name
+                                ))
                             }
                         };
                         validate_field_name(&field, &method_name)?;
@@ -5117,7 +5131,12 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
     }
     let field = match args.get(1) {
         Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-        _ => return Err(format!("{}() expects a field name (string or symbol)", op_name)),
+        _ => {
+            return Err(format!(
+                "{}() expects a field name (string or symbol)",
+                op_name
+            ))
+        }
     };
     let amount = match args.get(2) {
         Some(Value::Int(n)) => *n,
@@ -5782,12 +5801,10 @@ pub fn register_model_builtins(env: &mut Environment) {
                         match v {
                             Value::String(s) => out.push(s.to_string()),
                             Value::Symbol(s) => out.push(s.to_string()),
-                            other => {
-                                return Err(format!(
-                                    "index expects a field name (string or symbol)s, got {} in array",
-                                    other.type_name()
-                                ))
-                            }
+                            other => return Err(format!(
+                                "index expects a field name (string or symbol)s, got {} in array",
+                                other.type_name()
+                            )),
                         }
                     }
                     out

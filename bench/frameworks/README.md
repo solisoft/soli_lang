@@ -126,7 +126,7 @@ Django and Laravel have no WebSocket rows: Channels needs ASGI and Reverb is a
 separate process, so neither would be the same server that produced their HTTP
 rows.
 
-## A trap worth knowing
+## A trap worth knowing (fixed)
 
 Soli's `db_json` binds the query builder to a local before rendering:
 
@@ -135,6 +135,10 @@ let rows = Post.pluck(:id, :title, :views).all
 return render_json(rows)
 ```
 
-Passing the builder inline — `render_json(Post.pluck(...).all)` — evaluates it
-twice and sends the query twice. It cost this benchmark 42% of its database
-throughput and was silently measuring a bug rather than the framework.
+That was a **workaround**, not a style preference: passing the builder inline —
+`render_json(Post.pluck(...).all)` — used to evaluate it twice and send the
+query twice, costing 42% of this benchmark's database throughput while
+appearing to measure the framework. It is fixed in the interpreter now
+(`render_json` evaluates its argument once), and the inline form is equally
+fast. The local is kept here only so the published numbers match the code that
+produced them.

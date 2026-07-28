@@ -18,8 +18,9 @@ class PostsController < Controller
 
   def db_json
     # Projection cote base : seuls les champs demandes traversent le reseau.
-    # Le builder est lie a une locale AVANT render_json : passe en ligne comme
-    # argument d'appel, il est evalue deux fois et la requete part en double.
+    # La forme en ligne est correcte depuis le correctif de render_json (le
+    # builder n'est plus evalue deux fois) ; la locale reste pour que les
+    # chiffres publies correspondent exactement au code mesure.
     let rows = Post.pluck(:id, :title, :views).all
     return render_json(rows)
   end

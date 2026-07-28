@@ -26,3 +26,4 @@ get("/set_cookie", "api#set_cookie_demo");
 get("/jar/write", "api#jar_write");
 get("/jar/read", "api#jar_read");
 router_websocket("/ws/echo", "ws#handle");
+get("/render_json_arg_evals", "evals#render_json_arg_evals");
