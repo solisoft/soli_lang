@@ -208,16 +208,27 @@ rate and half the median latency.
 
 | Stack | reached per publish | share of the room | deliveries/s |
 |---|---:|---:|---:|
-| **Soli** | **1,000 of 1,000** | **100%** | 45,264 |
-| Express + ws | 63 of 1,000 | 6% | 2,846 |
+| **Soli**, 16 workers | **1,000 of 1,000** | 100% | 45,264 |
+| Express + ws, 16 workers **+ Redis** | 1,000 of 1,000 | 100% | 44,217 |
+| Express + ws, 1 worker | 1,000 of 1,000 | 100% | 44,106 |
+| Express + ws, 16 workers, no bus | 63 of 1,000 | **6%** | 2,846 |
 
-This is the row where the architectures separate, and it is not a tuning
-difference. Soli's 16 workers are threads in one process, so a broadcast reaches
-every connection the server holds. Node's `cluster` gives each of its 16 workers
-its own sockets, so a broadcast reaches only the ~1/16th that worker happened to
-accept — which is what the obvious implementation does, and what you get unless
-you add a shared bus (Redis) and pay a network hop per publish. **6% of a chat
-room is not a slower broadcast, it is a broken one**, and the failure is silent.
+**Read this as an architecture row, not a speed row.** Once the broadcast is
+actually complete, the three are the same: 45,264, 44,217 and 44,106
+deliveries/s are one number. Express is not slow at fan-out.
+
+The difference is what it takes to get there. Soli's 16 workers are threads in
+one process, so a broadcast reaches every connection the server holds, with
+nothing to configure. Node's `cluster` gives each worker its own sockets, so the
+obvious implementation reaches only the ~1/16th that worker accepted — the last
+row, and note that it does not error, it just silently delivers to 6% of the
+room. Fixing it means either dropping to one worker (correct, and one sixteenth
+of the HTTP capacity) or adding Redis and a hop per publish (correct, same
+throughput, one more thing to run and to fail).
+
+That is the honest shape of it: **equal throughput, unequal defaults.** The
+naive Soli implementation is right; the naive clustered-Node one is quietly
+wrong.
 
 Connection cost is close: both accept about **6,000 connections/sec** once warm,
 and 1,000 idle sockets cost Soli ~19 KB each against Express's ~28 KB. Soli's

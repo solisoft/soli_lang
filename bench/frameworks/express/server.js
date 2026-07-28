@@ -4,7 +4,7 @@
 //
 // Pool de 5 par worker x 16 workers = 80 connexions, identique au 16x5 de Puma.
 const cluster = require('node:cluster');
-const N = 16;
+const N = Number(process.env.WORKERS || 16);
 
 if (cluster.isPrimary) {
   for (let i = 0; i < N; i++) cluster.fork();
@@ -123,10 +123,24 @@ if (cluster.isPrimary) {
   const wssRoom = new WebSocketServer({ noServer: true });
 
   wssEcho.on('connection', (ws) => ws.on('message', (m) => ws.send(m.toString())));
-  wssRoom.on('connection', (ws) => ws.on('message', (m) => {
-    const text = m.toString();
+  // Fan-out. With WORKERS>1 each worker only holds its own sockets, so a local
+  // broadcast reaches ~1/N of the room. REDIS_URL routes every publish through a
+  // shared channel so all workers deliver — what a clustered Node app actually
+  // has to do, at the cost of a hop per publish.
+  const REDIS_URL = process.env.REDIS_URL;
+  const localBroadcast = (text) => {
     for (const client of wssRoom.clients) if (client.readyState === 1) client.send(text);
-  }));
+  };
+  if (REDIS_URL) {
+    const Redis = require('ioredis');
+    const sub = new Redis(REDIS_URL);
+    const pub = new Redis(REDIS_URL);
+    sub.subscribe('room');
+    sub.on('message', (_channel, text) => localBroadcast(text));
+    wssRoom.on('connection', (ws) => ws.on('message', (m) => pub.publish('room', m.toString())));
+  } else {
+    wssRoom.on('connection', (ws) => ws.on('message', (m) => localBroadcast(m.toString())));
+  }
 
   server.on('upgrade', (req, socket, head) => {
     const wss = req.url === '/ws/echo' ? wssEcho : req.url === '/ws/room' ? wssRoom : null;
