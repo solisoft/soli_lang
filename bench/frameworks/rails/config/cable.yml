@@ -1,0 +1,10 @@
+# The redis adapter, not async: with 16 Puma workers the async adapter keeps its
+# pubsub in-process, so a broadcast would reach only the worker that received the
+# message — the same trap clustered Node falls into.
+development: &default
+  adapter: redis
+  url: redis://127.0.0.1:6399/1
+  channel_prefix: bench
+test:
+  adapter: test
+production: *default

@@ -188,11 +188,15 @@ another process and a log, whichever framework issued it.
 
 ## WebSockets — echo and fan-out
 
-`oha` speaks HTTP only, so these use a purpose-built client. Two stacks appear
-here rather than five: Rails' ActionCable needs Redis, Django needs Channels on
-ASGI and Laravel needs Reverb — each is a **different server process** from the
-one serving the rows above, so measuring them would not be measuring the same
-thing. Soli and Express serve sockets from the same process as their HTTP.
+`oha` speaks HTTP only, so these use a purpose-built client. Three stacks appear
+here: Soli, Express and Rails. Rails' ActionCable mounts inside the same Puma
+process serving the HTTP rows, on the **redis** adapter — the `async` adapter
+keeps its pubsub in-process, so with 16 workers a broadcast would reach only the
+worker that received it. It also speaks a JSON subprotocol rather than raw
+WebSocket, so the client performs the full welcome → subscribe → confirm
+handshake before any message is timed. Django (Channels on ASGI) and Laravel
+(Reverb) would each need a *different server process* from the one serving their
+HTTP rows, so they are absent rather than misrepresented.
 
 ### Echo — round trip, one message in flight per connection
 
@@ -200,22 +204,35 @@ thing. Soli and Express serve sockets from the same process as their HTTP.
 |---|---:|---:|---:|---:|
 | Express + ws | **411,340** | 2.01 ms | 6.83 ms | 1,000 |
 | **Soli** | 241,790 | 4.02 ms | 6.20 ms | 1,000 |
+| Rails + ActionCable | 98,529 | 0.58 ms | **63.83 ms** | 1,000 |
 
 Express takes this one — printed as measured — at roughly 1.7x Soli's message
 rate and half the median latency.
+
+**Do not read Rails' p50 as a win.** At 1,000 connections and 98,529 msg/s the
+*mean* latency must be 10.15 ms, seventeen times its median: the distribution is
+bimodal, not fast. ActionCable dispatches through a bounded worker pool (four
+threads per Puma worker by default), so a subset of sockets is served almost
+immediately while the rest queue — which is exactly what a p50 of 0.58 ms
+against a p99 of 63.83 ms describes. Soli and Express keep p99 within ~3x of
+their medians; Rails' spread is 110x. When a median and a mean disagree by that
+much, the median is the misleading one.
 
 ### Fan-out — one publisher, every connection in the room receives
 
 | Stack | reached per publish | share of the room | deliveries/s |
 |---|---:|---:|---:|
 | **Soli**, 16 workers | **1,000 of 1,000** | 100% | 45,264 |
+| Rails + ActionCable, 16 workers **+ Redis** | 1,000 of 1,000 | 100% | 45,545 |
 | Express + ws, 16 workers **+ Redis** | 1,000 of 1,000 | 100% | 44,217 |
 | Express + ws, 1 worker | 1,000 of 1,000 | 100% | 44,106 |
 | Express + ws, 16 workers, no bus | 63 of 1,000 | **6%** | 2,846 |
 
 **Read this as an architecture row, not a speed row.** Once the broadcast is
-actually complete, the three are the same: 45,264, 44,217 and 44,106
-deliveries/s are one number. Express is not slow at fan-out.
+actually complete, all four are the same: 45,264, 45,545, 44,217 and 44,106
+deliveries/s are one number. Neither Express nor Rails is slow at fan-out —
+and Rails, whose echo throughput is a third of Soli's, matches it exactly here,
+because delivering to a room is dominated by the sockets, not the framework.
 
 The difference is what it takes to get there. Soli's 16 workers are threads in
 one process, so a broadcast reaches every connection the server holds, with

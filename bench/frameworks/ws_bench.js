@@ -20,20 +20,60 @@ if (!mode || !url) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ActionCable is not raw WebSocket: it speaks a JSON subprotocol over /cable.
+// A client must wait for {"type":"welcome"}, subscribe to a channel, wait for
+// {"type":"confirm_subscription"}, and only then exchange messages — and the
+// server's own pings and acks arrive on the same socket. PROTOCOL=actioncable
+// makes the harness do all of that, so Rails is measured on the same workload
+// as the raw-socket stacks rather than on a handshake it does not have.
+const PROTOCOL = process.env.PROTOCOL || 'raw';
+const CHANNEL = process.env.CHANNEL || 'EchoChannel';
+const ACTION = process.env.ACTION || 'echo';
+const AC_ID = JSON.stringify({ channel: CHANNEL });
+
+function isCable() { return PROTOCOL === 'actioncable'; }
+
+/** Open one socket, resolved when it is ready to carry benchmark messages. */
+function openSocket(onPayload) {
+  return new Promise((resolve, reject) => {
+    const ws = isCable()
+      ? new WebSocket(url, ['actioncable-v1-json'], { perMessageDeflate: false })
+      : new WebSocket(url, { perMessageDeflate: false });
+    let ready = false;
+    ws.on('error', () => { if (!ready) reject(new Error('connect failed')); });
+    if (!isCable()) {
+      ws.on('open', () => { ready = true; resolve(ws); });
+      if (onPayload) ws.on('message', onPayload);
+      return;
+    }
+    ws.on('message', (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (msg.type === 'welcome') {
+        ws.send(JSON.stringify({ command: 'subscribe', identifier: AC_ID }));
+      } else if (msg.type === 'confirm_subscription') {
+        ready = true; resolve(ws);
+      } else if (msg.message !== undefined && onPayload) {
+        // Only real channel payloads count — pings and acks are not deliveries.
+        onPayload(msg.message);
+      }
+    });
+  });
+}
+
+/** Send one benchmark message on an already-ready socket. */
+function sendPayload(ws) {
+  if (!isCable()) return ws.send('x');
+  ws.send(JSON.stringify({ command: 'message', identifier: AC_ID, data: JSON.stringify({ action: ACTION, body: 'x' }) }));
+}
+
 /** Open `n` sockets, resolving once they are all open (or one fails). */
 async function connectAll(n, onMessage) {
-  const sockets = [];
-  let opened = 0, failed = 0;
-  await new Promise((resolve) => {
-    for (let i = 0; i < n; i++) {
-      const ws = new WebSocket(url, { perMessageDeflate: false });
-      ws.on('open', () => { if (++opened + failed === n) resolve(); });
-      ws.on('error', () => { if (opened + ++failed === n) resolve(); });
-      if (onMessage) ws.on('message', onMessage);
-      sockets.push(ws);
-    }
-  });
-  return { sockets, opened, failed };
+  const results = await Promise.allSettled(
+    Array.from({ length: n }, () => openSocket(onMessage))
+  );
+  const sockets = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+  return { sockets, opened: sockets.length, failed: n - sockets.length };
 }
 
 function percentile(sorted, p) {
@@ -63,20 +103,28 @@ async function echo() {
   let sent = 0, received = 0, running = true;
   const pending = new Map();
 
+  const onReply = (ws, i) => {
+    received++;
+    const t = pending.get(i);
+    if (t !== undefined) { latencies.push(Number(process.hrtime.bigint() - t) / 1e6); pending.delete(i); }
+    if (running) { pending.set(i, process.hrtime.bigint()); sendPayload(ws); sent++; }
+  };
   sockets.forEach((ws, i) => {
     if (ws.readyState !== WebSocket.OPEN) return;
-    ws.on('message', () => {
-      received++;
-      const t = pending.get(i);
-      if (t !== undefined) { latencies.push(Number(process.hrtime.bigint() - t) / 1e6); pending.delete(i); }
-      if (running) { pending.set(i, process.hrtime.bigint()); ws.send('x'); sent++; }
-    });
+    if (isCable()) {
+      ws.on('message', (raw) => {
+        let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
+        if (msg.message !== undefined) onReply(ws, i);
+      });
+    } else {
+      ws.on('message', () => onReply(ws, i));
+    }
   });
   // Prime one in-flight message per socket, so each connection keeps exactly
   // one request outstanding — the socket equivalent of concurrency = conns.
   sockets.forEach((ws, i) => {
     if (ws.readyState !== WebSocket.OPEN) return;
-    pending.set(i, process.hrtime.bigint()); ws.send('x'); sent++;
+    pending.set(i, process.hrtime.bigint()); sendPayload(ws); sent++;
   });
 
   const t0 = Date.now();
@@ -115,7 +163,7 @@ async function room() {
   const t0 = Date.now();
   const timer = setInterval(() => {
     if (!running) return;
-    pub.send('x'); publishes++;
+    sendPayload(pub); publishes++;
   }, Math.max(1, Math.round(1000 / RATE)));
   await sleep(SECS * 1000);
   running = false;
