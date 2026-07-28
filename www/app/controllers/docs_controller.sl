@@ -37,7 +37,7 @@ def getting_started_comparison
 end
 
 def getting_started_benchmarks
-    render_docs("docs/getting-started/benchmarks", "Benchmarks vs Ruby", "getting_started", "benchmarks")
+    render_docs("docs/getting-started/benchmarks", "Benchmarks", "getting_started", "benchmarks")
 end
 
 def getting_started_changelog

@@ -71,16 +71,20 @@ print(f\"  {os.environ['S']:<8} {d['summary']['requestsPerSec']:>9,.0f} req/s  p
 "
 }
 
-declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102)
+# Octane is a reference configuration, not a stack in its own right, so it is
+# off by default: STACKS="soli rails express laravel django adonis octane" adds it.
+STACKS="${STACKS:-soli rails express laravel django adonis}"
+
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100)
 # Express serves the ORM form of the DB routes; the others use their only form.
 url_for() { case "$1:$2" in express:/db) echo /db-orm;; express:/db-template) echo /db-template-orm;; *) echo "$2";; esac; }
 
 for wl in /json /template /db /db-template; do
   echo "### $wl"
-  for s in soli rails express laravel django adonis; do cell "$s" "${PORT[$s]}" GET "$(url_for $s $wl)"; done
+  for s in $STACKS; do cell "$s" "${PORT[$s]}" GET "$(url_for $s $wl)"; done
 done
 for m in POST PATCH DELETE; do
   echo "### $m /w"
-  for s in soli rails express laravel django adonis; do cell "$s" "${PORT[$s]}" "$m" /w w; done
+  for s in $STACKS; do cell "$s" "${PORT[$s]}" "$m" /w w; done
 done
 echo SWEEP_DONE

@@ -11,6 +11,7 @@ workloads over the same data, and every one runs **16 workers**.
 | [Express](express/) | 5097 | Node cluster, 16 workers | Sequelize / EJS |
 | [AdonisJS](adonis/) | 5102 | Node cluster, 16 workers | Lucid / Edge |
 | [Laravel](laravel/) | 5098 | php-fpm 16 workers + nginx (Docker) | Eloquent / Blade |
+| [Laravel Octane](laravel/) | 5100 | FrankenPHP, 16 resident workers (Docker) | Eloquent / Blade |
 | [Django](django/) | 5099 | gunicorn, 16 workers | Django ORM / Django templates |
 
 ## The workloads

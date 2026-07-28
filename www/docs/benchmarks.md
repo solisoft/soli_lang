@@ -290,8 +290,8 @@ effect, not a steady-state one.
 | Stack | Processes | Idle | Under load |
 |---|---:|---:|---:|
 | **Soli** | 1 x 16 threads | 50 MB | 70 MB |
-| Laravel + php-fpm | 17 (fpm + nginx) | 84 MB | 84 MB |
-| Laravel + Octane *(reference)* | 16 resident workers | 43 MB | 43 MB |
+| Laravel + php-fpm | 17 (fpm + nginx) | 104 MB | 131 MB |
+| Laravel + Octane *(reference)* | 16 resident workers | 200 MB | 214 MB |
 | Rails + Puma | 17 (fork + CoW) | 255 MB | 924 MB |
 | Express + EJS + Sequelize | 17 (fork + CoW) | 442 MB | 1,055 MB |
 | Django + gunicorn | 17 (fork + CoW) | 648 MB | 921 MB |
@@ -303,14 +303,23 @@ page 17 times. "Under load" is read at the end of a 30s run on the DB + HTML rou
 architectural cause is simple: Soli is one process whose 16 workers are threads; the others
 fork 16 processes with a heap apiece.
 
-**At idle Soli runs in a fifth of Rails' memory and a thirteenth of Django's.** Two results
-cut against the throughput order and are worth reading together. Laravel is nearly as lean
-as Soli (84 MB, flat under load) *because* it is slowest — php-fpm keeps no application
-resident, so there is nothing to hold; and Octane, which keeps the app resident and doubles
-Laravel's throughput, uses **less** still at 43 MB, because 16 warm workers cost less than
-rebuilding the framework on every request. AdonisJS is the other end: **2,815 MB idle**,
-roughly 197 MB per worker against Express's 65 MB, which is what a full TypeScript
-framework, ORM and template engine cost when each of 16 workers carries its own copy.
+**At idle Soli runs in a fifth of Rails' memory and a thirteenth of Django's.** Two
+results are worth reading together. Laravel on php-fpm is the second-leanest at 104 MB — *because* it is slowest: the framework is not resident between
+requests, so there is little to hold. Octane makes the opposite trade, keeping the
+application in memory: it roughly doubles Laravel's throughput and roughly doubles its
+memory, 200 MB against 104. AdonisJS is the far end at **2,815 MB idle**, about 197 MB per
+worker against Express's 65 MB — what a full TypeScript framework, ORM and template engine
+cost when each of 16 workers carries its own copy.
+
+> **Two measurement methods, and the difference matters.** The five native stacks are
+> measured as **PSS** summed over their process group. The two Laravel stacks run in
+> containers whose process trees are partly root-owned, so `smaps_rollup` is unreadable and
+> a PSS sum silently skips those processes — they are measured from their **cgroup**
+> (`docker stats`) instead. An earlier revision of this page reported Octane at 43 MB, which
+> was the `php artisan octane:start` supervisor alone while the FrankenPHP process
+> contributing 230 MB of RSS was skipped for being unreadable. cgroup usage and PSS are not
+> the same metric, so treat the Laravel rows as comparable to each other and only
+> indicative against the rest.
 
 ## The code being measured
 
