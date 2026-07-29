@@ -18,7 +18,7 @@ use super::{dev_bar, full, html_ok, Bytes, ResponseBody};
 /// Messages per page before the `per` query parameter overrides it.
 const DEFAULT_PER_PAGE: usize = 25;
 
-/// Dark, dev-bar-styled page chrome, matching the DB browser and catalogs.
+/// Dark, dev-bar-styled page chrome, matching the preview catalogs.
 fn inbox_page(body: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} Inbox</title>\
@@ -38,7 +38,9 @@ iframe{{width:100%;height:60vh;border:1px solid #30363d;border-radius:6px;backgr
 .bar{{display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin:0 0 0.75rem;}}\
 .grow{{flex:1 1 auto;}}.sent{{color:#b8e986;}}.captured{{color:#f0c674;}}.failed{{color:#ff6b6b;}}\
 .subj{{color:#e6e6e6;}}.tag{{border:1px solid #30363d;border-radius:999px;padding:0.05rem 0.5rem;font-size:10px;}}\
-</style></head><body><h1><a href=\"/__soli/inbox\">SOLI \u{b7} INBOX</a></h1>{body}</body></html>"
+</style></head><body>{back}<h1><a href=\"/__soli/inbox\">SOLI \u{b7} INBOX</a></h1>{body}</body></html>",
+        back = super::dev_catalog::BACK_TO_APP,
+        body = body,
     )
 }
 

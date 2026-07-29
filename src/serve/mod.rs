@@ -3322,7 +3322,7 @@ async fn handle_hyper_request(
         }
         if method == "GET" {
             if let Some(name) = path.strip_prefix("/__soli/components/") {
-                return Ok(handle_component_preview(name));
+                return Ok(handle_component_preview(name, req.uri().query()));
             }
         }
         // Mailer preview gallery, dev-only.
@@ -3331,7 +3331,7 @@ async fn handle_hyper_request(
         }
         if method == "GET" {
             if let Some(rel) = path.strip_prefix("/__soli/mailers/") {
-                return Ok(handle_mailer_preview(rel));
+                return Ok(handle_mailer_preview(rel, req.uri().query()));
             }
         }
         // Sent-mail inbox (MailCatcher-style), dev-only: what the app actually
@@ -7270,7 +7270,7 @@ pub(crate) fn html_ok(html: String) -> Response<ResponseBody> {
 /// Dev-only single mailer preview (`GET /__soli/mailers/<mailer>/<action>`),
 /// used by the gallery iframes and directly linkable. Renders the HTML body
 /// only (no layout), with example data from a `<%# preview: {json} %>` header.
-fn handle_mailer_preview(rel: &str) -> Response<ResponseBody> {
+fn handle_mailer_preview(rel: &str, query: Option<&str>) -> Response<ResponseBody> {
     if !crate::template::is_safe_template_name(rel) {
         return html_ok("<!doctype html><p>invalid mailer template</p>".to_string());
     }
@@ -7289,11 +7289,13 @@ fn handle_mailer_preview(rel: &str) -> Response<ResponseBody> {
         Err(e) => format!("template cache unavailable: {}", dev_bar::html_escape(&e)),
     };
     // Mailer bodies bring their own markup; render them on a plain white page.
+    // The back link is suppressed when the gallery frames this page (?framed=1).
     html_ok(format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
 <style>body{{margin:0;padding:1rem;font-family:system-ui,sans-serif;background:#fff;color:#111;}}</style>\
-</head><body>{}</body></html>",
-        inner
+</head><body>{back}{inner}</body></html>",
+        back = dev_catalog::preview_back_link(query),
+        inner = inner
     ))
 }
 
@@ -7931,6 +7933,20 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn preview_back_link_only_when_standalone() {
+        // Framed by a gallery card — no chrome, or every card would carry it.
+        assert!(dev_catalog::preview_back_link(Some("framed=1")).is_empty());
+        // Opened directly (the catalog's title link, or a pasted URL).
+        assert!(dev_catalog::preview_back_link(None).contains("href=\"/\""));
+        assert!(dev_catalog::preview_back_link(Some("")).contains("href=\"/\""));
+        // A `framed` that isn't the flag doesn't suppress it.
+        assert!(dev_catalog::preview_back_link(Some("framed=0")).contains("href=\"/\""));
+        assert!(dev_catalog::preview_back_link(Some("x=framed=1")).contains("href=\"/\""));
+        // The flag is still found beside other params.
+        assert!(dev_catalog::preview_back_link(Some("a=1&framed=1")).is_empty());
+    }
 
     #[test]
     fn mailer_view_names_selects_mailer_html_views() {

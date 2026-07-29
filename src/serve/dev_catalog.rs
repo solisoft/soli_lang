@@ -9,6 +9,25 @@ use hyper::Response;
 
 use super::{dev_bar, html_ok, vfs_read_to_string, vfs_walk_dir, ResponseBody};
 
+/// A preview page is rendered two ways: standalone (it's directly linkable) and
+/// inside the gallery's iframe cards. The catalogs append `?framed=1` to their
+/// iframe srcs so only the standalone view carries navigation chrome — a back
+/// link repeated inside every card would be noise, not navigation.
+fn preview_is_framed(query: Option<&str>) -> bool {
+    query.is_some_and(|q| q.split('&').any(|pair| pair == "framed=1"))
+}
+
+/// The back link for a preview page, empty when the page is framed. Previews
+/// render on white, so this doesn't reuse the dark-theme [`BACK_TO_APP`].
+/// Shared with the mailer preview, which lives in the serve module.
+pub(crate) fn preview_back_link(query: Option<&str>) -> &'static str {
+    if preview_is_framed(query) {
+        return "";
+    }
+    "<p style=\"margin:0 0 1rem;font:12px ui-monospace,monospace;\">\
+<a href=\"/\" style=\"color:#0969da;text-decoration:none;\">&larr; back to the app</a></p>"
+}
+
 /// Read a view template's raw `.html.slv` source by views-relative path (VFS-aware).
 pub(crate) fn view_raw_source(views_dir: &std::path::Path, rel: &str) -> Option<String> {
     let path = views_dir.join(format!("{}.html.slv", rel));
@@ -81,13 +100,19 @@ fn component_declared_props(raw: &str) -> Vec<String> {
     out
 }
 
+/// Link out of a dev tool and back into the app being developed. These pages
+/// are opened from the dev bar or by URL, so without it the only way back is
+/// the browser's back button.
+pub(crate) const BACK_TO_APP: &str = "<p style=\"font-size:11px;margin:0 0 0.5rem;\">\
+<a href=\"/\" style=\"color:#8be9fd;text-decoration:none;\">&larr; back to the app</a></p>";
+
 fn catalog_shell(heading: &str, body: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} {heading}</title>\
 <style>body{{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;background:#08090b;color:#c9d1d9;padding:1.5rem;}}\
 h1{{font-size:14px;letter-spacing:0.08em;color:#8b949e;font-weight:600;margin:0 0 0.25rem;}}\
 a:hover{{text-decoration:underline;}}</style></head>\
-<body><h1>SOLI \u{b7} {heading}</h1>\
+<body>{BACK_TO_APP}<h1>SOLI \u{b7} {heading}</h1>\
 <p style=\"font-size:11px;color:#8b949e;margin:0 0 1.25rem;\">Dev-only. Previews render with built-in helpers plus any \
 <code>&lt;%# preview: {{...}} %&gt;</code> data; app-defined view helpers and request context aren't available here.</p>\
 {body}</body></html>",
@@ -154,7 +179,7 @@ pub(crate) fn handle_component_catalog() -> Response<ResponseBody> {
 <div style=\"padding:0.5rem 0.75rem;border-bottom:1px solid #30363d;background:#0b0d0f;\">\
 <a href=\"/__soli/components/{esc}\" style=\"color:#8be9fd;text-decoration:none;font-weight:600;\">{esc}</a>{declared_html}\
 </div>\
-<iframe src=\"/__soli/components/{esc}\" style=\"width:100%;height:190px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
+<iframe src=\"/__soli/components/{esc}?framed=1\" style=\"width:100%;height:190px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
 </div>",
         ));
     }
@@ -169,7 +194,7 @@ pub(crate) fn handle_component_catalog() -> Response<ResponseBody> {
 
 /// Dev-only single-component preview (`GET /__soli/components/<name>`), used by
 /// the catalog iframes and directly linkable.
-pub(crate) fn handle_component_preview(name: &str) -> Response<ResponseBody> {
+pub(crate) fn handle_component_preview(name: &str, query: Option<&str>) -> Response<ResponseBody> {
     if !crate::template::is_safe_template_name(name) {
         return html_ok("<!doctype html><p>invalid component name</p>".to_string());
     }
@@ -192,8 +217,9 @@ pub(crate) fn handle_component_preview(name: &str) -> Response<ResponseBody> {
         "<!doctype html><html><head><meta charset=\"utf-8\">\
 <link rel=\"stylesheet\" href=\"/css/application.css\">\
 <style>body{{margin:0;padding:1rem;font-family:system-ui,sans-serif;}}</style>\
-</head><body>{}</body></html>",
-        inner
+</head><body>{back}{inner}</body></html>",
+        back = preview_back_link(query),
+        inner = inner
     ))
 }
 
@@ -269,7 +295,7 @@ Looking for mail the app really sent? <a href=\"/__soli/inbox\" style=\"color:#8
 <div style=\"padding:0.5rem 0.75rem;border-bottom:1px solid #30363d;background:#0b0d0f;\">\
 <a href=\"/__soli/mailers/{esc}\" style=\"color:#8be9fd;text-decoration:none;font-weight:600;\">{esc}</a>\
 </div>\
-<iframe src=\"/__soli/mailers/{esc}\" style=\"width:100%;height:320px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
+<iframe src=\"/__soli/mailers/{esc}?framed=1\" style=\"width:100%;height:320px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
 </div>",
         ));
     }
