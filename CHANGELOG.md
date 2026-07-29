@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [1.25.2] - 2026-07-29
+
 ### Added
 
 * **feat(dev): a mail inbox at `/__soli/inbox` — every email the app sends, viewable with no local SMTP server.** `/__soli/mailers` previews mailer templates with fake data; this shows what the app *actually sent*, with the real data that was rendered into it. Each message opens on a detail page with its headers, its attachment metadata, and three tabs: the HTML body (served into a sandboxed iframe, so a mail's own scripts never run against the dev origin), the text part, and the raw RFC 5322 source — downloadable as `.eml` to open in a real mail client. The listing is **searchable and paginated**: `?q=` matches the subject, any address (`to`/`cc`/`bcc`/`from`/`reply-to`), both bodies and attachment filenames; `?per=` and `?page=` page through it; a filtered view is a plain link. New arrivals show a badge rather than reloading the page under the reader, and **Clear inbox** empties it. Captured in a process-wide ring buffer (last 100, cleared on restart) written by every worker thread — Soli's workers are threads in one process, so the inbox is complete regardless of which one delivered. Dev-only: nothing is captured and the routes do not exist without `--dev`. Rails needs the `letter_opener` gem or a separate MailCatcher process for the same thing.
@@ -17,6 +20,8 @@
 * **remove(dev): the database browser at `/__soli/db`.** The collection index, the paginated row tables (`/__soli/db/<collection>`), the JSON document view (`/__soli/db/<collection>/<_key>`) and the read-only SDBQL query box are gone, along with `src/serve/db_browser.rs` and the routes that mounted them. Use the app-aware TUI REPL (`soli` in an app directory loads your models and DB connection) or SolidB's own tooling instead. Dev-only to begin with — the routes never existed in production, so nothing there changes.
 
 ### Fixed
+
+* **fix(bench): the published Laravel Octane memory row measured the supervisor, not the server — wrong by ~5x, in the flattering direction.** `pgrep -f frankenphp` matched `php artisan octane:start --server=frankenphp`, the supervising PHP CLI, while the actual `/usr/local/bin/frankenphp run` process was skipped because its `smaps_rollup` is root-owned and unreadable, contributing a silent zero. Both containerised rows are corrected from cgroup usage: Laravel php-fpm 84 → 104 MB idle (111 → 131 loaded), Laravel Octane 43 → 200 MB idle (43 → 214 loaded). That inverts the claim the page made — it said Octane used *less* memory than php-fpm; the truth is the intuitive one, Octane roughly doubles both throughput and memory. The five native stacks were audited and have zero unreadable processes, so their PSS figures stand. `memory.sh` now measures containers from their cgroup, labels which method each row used, and warns loudly when a PSS sum would skip a process rather than undercounting in silence.
 
 * **fix(mailer): email sent from a `--dev` server carried the dev bar's instrumentation into recipients' inboxes.** The hover overlay wraps each rendered template in `<!--solidev:view:start id=… name=…-->` / `<!--solidev:view:end-->` comments, and mailer bodies go through the same renderer — so every HTML *and text* part sent from a development server shipped with those markers embedded, invisible in an HTML client but plain stray text in any client showing the plain-text alternative. Mailer renders now suppress marker emission (`template::without_dev_markers`, restored via a drop guard so an error can't leave it stuck on); `view_log` still records the render, so the dev bar's per-template timings are unchanged.
 

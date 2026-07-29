@@ -20,9 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 mb-10">Nothing yet &mdash; changes land here as they reach <code class="text-cyan-400">main</code>.</p>
+    </section>
+
+    <section id="v1-25-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.25.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-07-29</span></h2>
 
         <!-- Dev tools -->
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v1-25-2-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A mail inbox at <code class="text-cyan-400">/__soli/inbox</code> &mdash; every email the app sends, with no local SMTP server.</strong> <code class="text-cyan-400">/__soli/mailers</code> previews templates with fake data; the inbox shows what was actually sent, with the real data that was rendered into it. Each message opens with its headers, its attachments, and tabs for the HTML body (in a sandboxed iframe, so a mail's own scripts never run), the text part, and the raw RFC&nbsp;5322 source &mdash; downloadable as <code class="text-cyan-400">.eml</code> to open in a real mail client. The listing is <strong class="text-white">searchable and paginated</strong>: <code class="text-cyan-400">?q=</code> matches subjects, any address, both bodies and attachment filenames, <code class="text-cyan-400">?per=</code> and <code class="text-cyan-400">?page=</code> page through it, and a filtered view is a plain link. New arrivals announce themselves with a badge rather than reloading the page under you. Rails needs the <code class="text-cyan-400">letter_opener</code> gem or a separate MailCatcher process for this. See <a href="/docs/builtins/mailer#inbox" class="text-amber-400 hover:text-amber-300">Mailer</a>.</li>
             <li><strong class="text-white">The dev bar has a <code class="text-orange-400">tools</code> menu, so the dev-only galleries are no longer URLs you had to know.</strong> <code class="text-cyan-400">/__soli/inbox</code>, <code class="text-cyan-400">/__soli/mailers</code> and <code class="text-cyan-400">/__soli/components</code> have been reachable only by typing them; they are now one click from every page, each opening in a new tab so the page under inspection stays put. The button carries the inbox's message count, so mail sent while you were clicking around announces itself.</li>
@@ -31,13 +36,19 @@
         </ul>
 
         <!-- Removed -->
-        <h3 id="unreleased-removed" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Removed</h3>
+        <h3 id="v1-25-2-removed" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Removed</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">The dev database browser at <code class="text-cyan-400">/__soli/db</code> is gone.</strong> The collection list, the paginated row tables (<code class="text-cyan-400">/__soli/db/&lt;collection&gt;</code>), the JSON document view and the read-only SDBQL query box have all been removed, along with their routes. Use the app-aware TUI REPL (<code class="text-cyan-400">soli</code> in an app directory loads your models and DB connection) or SolidB's own tooling to inspect data. Dev-only to begin with, so nothing changes in production.</li>
         </ul>
 
+        <!-- Benchmarks -->
+        <h3 id="v1-25-2-benchmarks" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Benchmarks</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The published Laravel Octane memory row measured the supervisor, not the server &mdash; wrong by ~5&times;, in the flattering direction.</strong> The probe matched the supervising PHP CLI, while the actual server process was skipped because its <code class="text-cyan-400">smaps_rollup</code> is root-owned and unreadable, contributing a silent zero. Both containerised rows are corrected from cgroup usage: Laravel php-fpm <strong class="text-white">84 &rarr; 104&nbsp;MB</strong> idle, Laravel Octane <strong class="text-white">43 &rarr; 200&nbsp;MB</strong> idle. That inverts what the page claimed &mdash; it said Octane used <em>less</em> memory than php-fpm; the truth is the intuitive one, Octane roughly doubles both throughput and memory. The five native stacks were audited and have zero unreadable processes, so their figures stand, and the harness now warns loudly when a sum would skip a process rather than undercounting in silence. See <a href="/docs/getting-started/benchmarks" class="text-amber-400 hover:text-amber-300">Benchmarks</a>.</li>
+        </ul>
+
         <!-- Fixes -->
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v1-25-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Email sent from a <code class="text-cyan-400">--dev</code> server carried the dev bar's instrumentation into recipients' inboxes.</strong> The hover overlay wraps each rendered template in <code class="text-cyan-400">&lt;!--solidev:view:start …--&gt;</code> comments, and mailer bodies go through the same renderer &mdash; so every HTML and text part sent from a development server shipped with those markers embedded, visible as stray text in any client showing the plain-text alternative. Mailer renders now suppress the markers; the dev bar's per-template timings are unaffected.</li>
         </ul>
