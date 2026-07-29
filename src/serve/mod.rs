@@ -10,7 +10,6 @@ mod asset_cache;
 pub mod camera;
 pub mod cors;
 mod csrf;
-mod db_browser;
 pub mod dev_bar;
 mod dev_catalog;
 mod dev_inbox;
@@ -238,7 +237,6 @@ use self::origin::{first_forwarded_token, normalize_request_authority, origin_au
 use self::csrf::clear_csrf_skip_patterns;
 pub use self::csrf::register_csrf_skip_pattern;
 use self::csrf::{apply_form_method_override, check_csrf_origin, verify_csrf_token};
-use self::db_browser::{handle_db_collection, handle_db_document, handle_db_index};
 #[cfg(test)]
 use self::dev_catalog::mailer_view_names;
 use self::dev_catalog::{
@@ -3347,20 +3345,6 @@ async fn handle_hyper_request(
         if method == "GET" {
             if let Some(rest) = path.strip_prefix("/__soli/inbox/") {
                 return Ok(dev_inbox::handle_message(rest));
-            }
-        }
-        // Database browser, dev-only: list collections, page rows, view a
-        // document, run a read-only query. Sync DB calls are wrapped in
-        // block_in_place inside the handlers (this is an async hyper task).
-        if method == "GET" && path == "/__soli/db" {
-            return Ok(handle_db_index(req.uri().query()));
-        }
-        if method == "GET" {
-            if let Some(rest) = path.strip_prefix("/__soli/db/") {
-                return Ok(match rest.split_once('/') {
-                    Some((coll, key)) => handle_db_document(coll, key),
-                    None => handle_db_collection(rest, req.uri().query()),
-                });
             }
         }
     }
@@ -7420,10 +7404,6 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
         .body(full(body))
         .unwrap_or_else(|_| Response::new(full(Bytes::from("replay response error"))))
 }
-
-// ---------------------------------------------------------------------------
-// Dev-only database browser (`/__soli/db`)
-// ---------------------------------------------------------------------------
 
 /// Handle source code fetching for dev mode.
 ///

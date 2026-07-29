@@ -686,7 +686,6 @@ fn render_bar(ctx: &DevBarContext) -> String {
                 "preview view components",
                 ""
             ),
-            ("/__soli/db", "db", "browse SolidB collections", ""),
         ]
         .iter()
         .map(|(href, name, note, badge)| format!(
@@ -1427,12 +1426,7 @@ mod tests {
     fn tools_panel_links_every_dev_gallery() {
         let out = inject_dev_bar("<html><body></body></html>", &ctx("GET", "/"));
         assert!(out.contains("__solidev_tb"), "tools button present");
-        for href in [
-            "/__soli/inbox",
-            "/__soli/mailers",
-            "/__soli/components",
-            "/__soli/db",
-        ] {
+        for href in ["/__soli/inbox", "/__soli/mailers", "/__soli/components"] {
             assert!(
                 out.contains(&format!("href=\"{href}\" target=\"_blank\"")),
                 "tools panel should link {href} in a new tab"

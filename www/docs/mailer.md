@@ -115,8 +115,7 @@ soli serve . --dev     # then open http://localhost:3000/__soli/inbox
 ```
 
 The `tools` button in the dev bar links to it (with a count of what's waiting),
-alongside the other dev galleries — `/__soli/mailers`, `/__soli/components` and
-`/__soli/db`.
+alongside the other dev galleries — `/__soli/mailers` and `/__soli/components`.
 
 Each message opens on a detail page with its headers, its attachments, and three
 tabs: the **HTML** body (in a sandboxed iframe, so a mail's own scripts never
