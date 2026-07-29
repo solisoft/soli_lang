@@ -114,6 +114,10 @@ started, with the real data that was rendered into it:
 soli serve . --dev     # then open http://localhost:3000/__soli/inbox
 ```
 
+The `tools` button in the dev bar links to it (with a count of what's waiting),
+alongside the other dev galleries — `/__soli/mailers`, `/__soli/components` and
+`/__soli/db`.
+
 Each message opens on a detail page with its headers, its attachments, and three
 tabs: the **HTML** body (in a sandboxed iframe, so a mail's own scripts never
 run), the **text** part, and the **raw** RFC 5322 source — downloadable as
