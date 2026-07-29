@@ -15,16 +15,33 @@ You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirk
 
 If a step fails, fix the root cause. Don't weaken assertions, lower the coverage bar, or `--no-verify` past hooks. The `/soli-verify` slash command bundles steps 1-3.
 
-### Reach for generators first
+### Generators: what actually exists
 
-| Task                                     | Command                                       |
-|------------------------------------------|-----------------------------------------------|
-| New controller (+ views + spec)          | `soli generate controller posts`              |
-| New model                                | `soli generate model post`                    |
-| New migration                            | `soli generate migration create_posts`        |
-| Full RESTful resource end-to-end         | `/soli-resource posts` (slash command)        |
+**`soli generate controller|model|migration` do not exist.** Run `soli generate`
+with no argument to see the real list; as of 1.25 it is `scaffold`, `auth`,
+`oidc_provider`, `mailer`, `component`, `devices`, `client`, `app_links`,
+`offline`. Reaching for the three above is the most common way an agent wastes
+its first five minutes in a new app.
 
-Generators encode the naming, location, and boilerplate the framework expects. Hand-writing diverges and triggers lint failures.
+| Task                          | Command                                  |
+|-------------------------------|------------------------------------------|
+| New migration                 | `soli db:migrate generate create_posts`  |
+| New seed                      | `soli db:seed generate demo_posts`       |
+| New view component            | `soli generate component post_card`      |
+| Model, controller, spec       | write by hand, next to the existing ones |
+
+`soli generate scaffold` exists and writes a full resource, but its specs land
+in `tests/models/*_test.sl` — rename them to `tests/*_spec.sl` to match the
+convention below.
+
+Two more things about generators, both learned the hard way:
+
+- `soli generate` writes into the **nearest project, not the cwd**. Run from a
+  sandbox inside another app's tree, `generate auth` dropped a whole User stack
+  — model, policies, controllers, public `/login` + `/signup` routes, a `users`
+  migration — into that app. Never probe generators from inside another tree.
+- Two migrations generated in the same second **share a timestamp**. The runner
+  treats them as one, plays one, and reports the other as applied. Rename one.
 
 ## Footgun cheatsheet (Soli ≠ Ruby ≠ JS)
 
@@ -46,6 +63,37 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 | `user == nil ? nil : user._key`            | `user&._key`                               | Safe navigation short-circuits to `nil` if the receiver is `nil`.            |
 | `if s != "a" && s != "b" && s != "c"`      | `unless ["a", "b", "c"].includes?(s)`      | Intent is membership check, not a pile of `&&`.                              |
 | `x = x \|\| default`                       | `x \|\|= default`                          | `\|\|=` is a single operator for "set if nil/false".                         |
+| `for key, value in a_hash`                 | `for key in a_hash.keys()`                 | There is no two-variable hash iteration; the pair form silently fails.       |
+| `redirect(req["headers"]["referer"])`      | extract the path, then `redirect(path)`    | `redirect()` takes **local absolute paths only** and raises on a full URL.   |
+
+## Framework behaviours found the hard way
+
+Each of these cost a debugging session somewhere. None of them is visible from
+the code you are writing — they are properties of the runtime.
+
+| Behaviour | Consequence | What to do |
+|---|---|---|
+| A `before_*` callback returning `false` **aborts persistence** | `this.flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
+| `validates(..., { "custom": "method" })` **never fires** | A business rule declared that way is dead code that reads as protection | Put the rule in a method the controller calls, and render the 422 yourself |
+| `update(attrs)` / `save(attrs)` **skip callbacks** | Normalisation is lost on every update | Assign fields explicitly, then `save()` |
+| `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length() > 0` |
+| `Model.delete_all` **without a scope** does not empty the collection | A spec that relies on it tests the wrong state and still passes | Loop and `delete()`, or scope it: `Model.where(...).delete_all` |
+| Free functions of the **same name in two files shadow each other** | Four copies of one helper, only one ever runs, chosen by load order | Put shared helpers on a base controller or a model, not in free functions |
+| Model classes are **not resolvable from `.slv` templates** | `Cart.total_of(...)` in a view raises and the page 500s | Compute in the controller, hand the view a plain value |
+| `setenv` was removed (SEC-033) | A spec cannot flip a mode read from the environment | Split the env read from the work — a named method the spec can call directly |
+| `.pluck(field)` returns a QueryBuilder, not an array | It lands in a bind variable and the query fails | `.all.map(fn(row) row.field)` |
+| An invalid SDBQL query **returns an error string instead of raising** | A typo silently yields garbage | Prefer proven forms: `CONTAINS(LOWER(doc.x), @needle)` |
+| No scoped uniqueness | `"uniqueness": true` is global and best-effort | Composite unique index in the migration + a lookup for a readable message |
+| `permit` drops containers declared with `true` | Nested hashes and arrays vanish from the body | Describe the shape fully: `{"days": [{"hour": true}]}` |
+| Multiple checkboxes need `name="field[]"` | Without brackets only **one** value arrives — a multi-select never persists | Always bracket a repeated field name |
+| `<%= attr(url) %>` **escapes twice** — `<%=` already applies `h()` | `&` becomes `&amp;amp;` and the URL breaks | `<%= url %>` for framework-built URLs; keep `attr()` for `<%- %>` |
+| A `<form>` directly inside a `<tr>` is invalid HTML | The browser hoists it out; the form **never submits** — yet specs pass, because they POST to URLs | Lay editable lists out as rows of cards |
+| `find_uploaded_file` wants `req`, not `params` | Returns nil with `params`, despite the bundled docs' example | `find_uploaded_file(req, "field")` |
+| `String.index_of` takes **no start offset** | `index_of("/", 1)` raises `Wrong number of arguments` | Slice first, then search |
+| `before_action` hooks are wired by a **startup scan** | `--dev` reloads the action but keeps the old guard — a changed auth rule silently doesn't apply | Restart the process, not just the file |
+| `HTTP.post_json` / `patch_json` **silently drop** `options.headers` | The request goes out unauthenticated; the cause is invisible | `HTTP.request(method, url, headers, body)` — headers are the 3rd positional arg |
+| `HTTP.*_json` **raise** on a non-2xx status | `try/catch` gets the whole error page as a string; the status branch is dead | `HTTP.request` returns the response — read `response["status"]` |
+| A `.md` view runs through the **template engine first** | Writing a template tag in prose *executes* it; `<%%` does not escape it | Name the tags instead of quoting them |
 
 ## Recipes
 
@@ -169,6 +217,27 @@ let single_raw = r"C:\Users\name"   # raw, single-line only
 # Collection iteration — Ruby-style block, no parens before `do`
 [1, 2, 3].map do |x| x * 2 end
 [1, 2, 3].filter do |x| x > 2 end
+
+# `&:name` — the shorthand that replaces an accumulator loop. It reads a hash
+# key, reads a model field, OR calls a method; `.sum` terminates and returns 0
+# on an empty array, so no guard is needed.
+[{ "total": 2 }, { "total": 3 }].map(&:total).sum   # 5   — hash key
+lines.map(&:qty).sum                                #     — model field
+lines.map(&:total).sum                              #     — method, it is called
+
+# So this is not written any more:
+#   sum = 0
+#   for line in lines
+#     sum = sum + line.total()
+#   end
+
+# Hashes have no two-variable iteration — go through the keys.
+for key in totals.keys()
+    print(totals[key])
+end
+
+# Array concatenation: `+` and `.concat` both work.
+first + rest
 
 # Pipelines (when chaining multiple stages)
 [1, 2, 3] |> map(fn(x) x * 2) |> filter(fn(x) x > 2)
@@ -453,60 +522,121 @@ soli test --coverage --coverage-min 90.0  # fail if under 90%
 
 This applies to controllers, models, middleware, helpers, and any new library code. Don't merge a feature whose coverage report is missing or below the threshold — write the tests first if it helps you design the API.
 
-## SOLID Principles
+## SOLID, as it actually applies here
 
-Apply these for maintainable code.
+The textbook version (interfaces, injected repositories) does not survive
+contact with a dynamically-typed MVC framework. What follows is the version
+that holds, plus the three traps this framework sets for it.
+
+### Where a rule belongs
+
+**The model owns rules; the controller owns HTTP.** A controller reads params,
+asks a model, and returns a response. If you can describe a method without
+mentioning a request, it belongs on a model or a service.
+
+Signals that a controller has taken on a second job — check them, they are
+cheap:
+
+```bash
+# How many models does one controller touch? Past ~6, it is doing two things.
+grep -oE "\b[A-Z][A-Za-z]+\b" app/controllers/x_controller.sl | sort -u
+
+# Actions over ~25 lines are usually an action plus a helper that never left.
+```
+
+**When two interfaces need the same rule with different wording, the model
+returns the fact and each interface writes the sentence.** A back-office in
+French and a JSON API in English do not share a message; they share a rule.
 
 ```soli
-# Single Responsibility — one reason to change per class
-class UserValidator
-    def validate(user) end
-end
+# Model — the rule, and nothing about how it will be said
+static def conflicting(opening, point_of_sale_id)   # -> the clashing record, or null
 
-class UserRepository
-    def save(user) end
-end
+# Back-office                            # API
+return "cette plage en heurte une autre" # return "conflicts with an existing opening"
+  unless Opening.conflicting(o, p).nil?  #   unless Opening.conflicting(o, p).nil?
+```
 
-# Open/Closed — extend via subclasses, don't edit the base
-class Shape
-    def area -> Float
-        0.0
-    end
-end
+Returning a *message* from the model is the version that rots: the second
+caller copies the method instead of calling it, and a later fix reaches one
+of them.
 
-class Circle < Shape
-    radius: Float
+### Trap 1 — free functions share ONE global namespace
 
-    def area -> Float
-        3.14159 * this.radius * this.radius
-    end
-end
+A top-level `def` is not file-scoped. Two files declaring `_first_error` do not
+get one each: **one silently wins**, chosen by load order, and the other file's
+copy is dead code that reads like protection. Worse, a file can call a free
+function defined in a *different* file and work — until that file moves.
 
-# Liskov — subclasses must honor the parent's contract.
-#   Don't override a method to throw where the parent returns.
+```bash
+# Must print nothing. If it prints a name, one of the copies is already dead.
+grep -rn "^def [a-z_]" app/ --include=*.sl \
+  | sed 's/:def /|/' | awk -F'|' '{split($2,a,"("); print a[1]}' | sort | uniq -d
+```
 
-# Interface Segregation — many small interfaces beat one fat one
-interface Printable
-    def print()
-end
+So **shared logic lives on a class** — a base controller, a model, or a
+service — never in a free function. Keep free functions for what is genuinely
+private to one file, and give them names no one else would pick.
 
-interface Exportable
-    def export()
-end
+### Trap 2 — three loading scopes that do not overlap
 
-# Dependency Inversion — depend on abstractions
-interface UserRepository
-    def find(id: Int) -> User
-end
+| Defined in        | Visible from                       | NOT visible from |
+|-------------------|------------------------------------|------------------|
+| `app/services/`   | models, controllers, other services | **views**       |
+| `app/helpers/`    | views                              | **models, controllers** |
+| `app/models/`     | models, controllers, services       | **views** (a class name in a `.slv` raises) |
 
-class UserService
-    repo: UserRepository
+This decides *where* shared code can live, and sometimes makes one
+implementation impossible: logic needed by both a model and a view has to
+exist twice. That is a constraint, not a failure — write it down in both
+copies, pointing at each other, so the next person fixes both.
 
-    def get(id)
-        this.repo.find(id)
-    end
+Corollary: a template must not compute. Hand the view a plain value from the
+controller; `Model.helper(...)` inside a `.slv` raises and 500s the page.
+
+### Trap 3 — no DI, so isolate what reads the environment
+
+There is no container to inject a double into, and `setenv` was removed
+(SEC-033), so a spec cannot flip a mode read from `getenv`. **Split the
+decision from the work**: the branch that reads the environment stays a
+one-liner, and everything below it becomes a named method a spec can call.
+
+```soli
+static def open_session(cart, email, phone)
+  return PaymentGateway.stub_session(cart) unless PaymentGateway.remote?()
+
+  return PaymentGateway.remote_session(cart, email, phone)   # <- testable directly
 end
 ```
+
+Same shape for anything reading an HTTP response: keep the call in one
+function, the interpretation in another. `_call_remote` does the request;
+`_remote_answer(response, cart)` decides — and that one is provable without a
+network.
+
+### Two responsibilities that share machinery → a base with no actions
+
+When a second, distinct job needs the same setup (same layout, same lookup,
+same guard), do not grow the first controller. Extract a base that holds only
+the shared parts and carries **no actions**, then have both extend it.
+
+```
+XBaseController      the layout, the lookup, the guard — no actions
+├── XController      the first job
+└── XOtherController the second
+```
+
+The test is not file length, it is whether the two jobs change for different
+reasons — one writing to the session, the other only reading, for instance.
+
+### The two that still read like the textbook
+
+- **Liskov** — a subclass must honour the parent's contract. Do not override an
+  inherited `Model` method to raise where the parent returns; the framework
+  calls it.
+- **Interface segregation** — a base controller that every screen inherits
+  should hold what every screen needs. When only two of nine screens use a
+  helper, it belongs on those two, not on the base.
 
 ## Linting
 
@@ -557,7 +687,10 @@ soli routes --json                    # machine-readable (for scripts/agents)
 1. **Prefer Ruby-style** for classes and control flow — `class Demo < Test ... end`, `def name(args) ... end`, `if cond ... end`. Reserve `fn { }` for free-standing functions and lambdas.
 2. **Use type annotations** on public function signatures — they catch errors and document intent.
 3. **Prefer immutability** — `const` for values that never change.
-4. **Chain collection methods** instead of writing manual loops.
+4. **Chain collection methods** instead of writing manual loops. For a sum,
+   `lines.map(&:total).sum` replaces the accumulator loop — `&:name` reads a
+   field as readily as it calls a method. Keep the loop when the body has a
+   side effect (`save`, `delete`): a `filter` that writes reads badly.
 5. **Use named parameters** when a function has multiple optional args.
 6. **Use named route helpers** (`posts_path`, `root_path`) — never hand-built URL strings.
 7. **Validate at the model**, not in the controller — keep controllers thin.

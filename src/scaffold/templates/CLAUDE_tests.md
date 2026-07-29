@@ -112,10 +112,24 @@ test("posts index does not N+1", fn() {
 })
 ```
 
-To guard the *whole* suite without per-test calls, run `soli test --fail-on-n1`:
-every request that triggers an N+1 fails its test automatically, with the same
-message as `assert_no_n_plus_one`. Wire it into CI to catch regressions in specs
-that predate the check.
+**The check is opt-in, and that is the trap.** `assert_no_n_plus_one(response)`
+only looks at the response you hand it. An endpoint nobody asserts on is an
+endpoint nobody is watching — which is exactly how a screen ends up reading the
+same row three times per request for months. Put one on **every screen that
+renders a list**, as you write it.
+
+To guard the *whole* suite at once, run `soli test --fail-on-n1`: every request
+that trips the detector fails its test. Useful, but expect to triage before it
+goes green — it fires at **two** occurrences of the same AQL template in one
+request, which also catches two things that are not per-row loops:
+
+- a `before_delete` callback's bulk `REMOVE` (deleting one product reports
+  `2x FOR doc IN product_prices … REMOVE`);
+- an action that legitimately reads the same record twice for two purposes —
+  a guard, then a service — once per request, not once per row.
+
+So treat `--fail-on-n1` as an audit you run deliberately, and per-endpoint
+assertions as the thing that actually holds the line in CI.
 
 ### `expect(...)` DSL
 
@@ -154,6 +168,38 @@ head(path)
 options(path)
 request(method, path, body, options)        # generic — when the named helpers don't fit
 ```
+
+### Testing a file upload
+
+There is no multipart helper, so build the body by hand and declare the
+boundary. It is worth the trouble: this is the only route that goes through
+`find_uploaded_file` and the model's uploader, and therefore the only one that
+exercises an upload the way it actually runs.
+
+```soli
+def upload(path, field, filename, content_type, body)
+  boundary = "----soli-test"
+  payload = "--#{boundary}\r\n" +
+    "Content-Disposition: form-data; name=\"#{field}\"; filename=\"#{filename}\"\r\n" +
+    "Content-Type: #{content_type}\r\n\r\n" +
+    body + "\r\n--#{boundary}--\r\n"
+
+  set_header("Content-Type", "multipart/form-data; boundary=#{boundary}")
+  response = post(path, payload)
+  clear_headers()
+
+  return response
+end
+```
+
+Two things that save an hour:
+
+- The content is a plain string. `File.read` rejects non-UTF-8, so a real image
+  **cannot** be loaded from disk. Declaring `image/png` over arbitrary text is
+  enough — the uploader validates the declared type and the size, and an
+  accepted upload is stored. Send `application/pdf` to exercise the refusal.
+- Calling `record.attach_<field>(...)` **directly from a spec fails**: the
+  `attach_upload` helper only exists in the server process. Upload over HTTP.
 
 ### Inspecting the response
 
@@ -277,6 +323,28 @@ soli test --coverage=json,xml             # multiple report formats
   is `80.0`.
 - The **project policy** is 90% (see top-level scaffold `CLAUDE.md`).
 - Don't lower `--coverage-min` to ship — write the missing test.
+- `soli test --coverage --show-uncovered` lists the exact lines. Read it before
+  writing tests: it is faster than guessing which branch is missing.
+
+### The last few percent, and why 100% is not a goal
+
+Some lines can never be marked, whatever you write. Know them so you stop
+chasing them:
+
+- A bare `try` line is **never** counted, even when its body runs. Same for the
+  line after a `try` whose call always throws (a test pointed at an unreachable
+  host, say), and for some closing brackets of multi-line calls.
+- Anything gated on a value read from the environment. `setenv` was removed
+  (SEC-033), so one `soli test` run has one configuration, and the other branch
+  is unreachable. The fix is a design one: split the env read from the work, so
+  the work is a named method a spec can call directly.
+- Genuinely defensive branches — a unique-index race after an application-level
+  check, a fallback for state a guard normally sets.
+
+`coverage_exclude("**/glob/**")` works per **file**, not per line. Using it to
+reach a round number means hiding whole files from the report — the opposite of
+what the measure is for. A known 99% with a named reason for each remaining
+line beats a 100% obtained by looking away.
 
 ## Selecting which specs to run
 
