@@ -101,6 +101,47 @@ available. Views with no `preview` header still list, but show a render error
 where they reference missing locals. The gallery is dev-only — the routes don't
 exist in production.
 
+For mail the app actually sent — real data, real recipients — see
+[the dev inbox](#the-dev-inbox).
+
+## The dev inbox
+
+`/__soli/mailers` previews templates with fake data. **`/__soli/inbox`** shows
+what the app actually sent — every message delivered since the dev server
+started, with the real data that was rendered into it:
+
+```
+soli serve . --dev     # then open http://localhost:3000/__soli/inbox
+```
+
+Each message opens on a detail page with its headers, its attachments, and three
+tabs: the **HTML** body (in a sandboxed iframe, so a mail's own scripts never
+run), the **text** part, and the **raw** RFC 5322 source — downloadable as
+`.eml` to open in a real mail client.
+
+The listing is searchable and paginated. The search box matches the subject, any
+address (`to`, `cc`, `bcc`, `from`, `reply-to`), both bodies, and attachment
+filenames — `?q=` and `?per=` are plain query parameters, so a filtered view is
+linkable. **Clear inbox** empties it.
+
+**No SMTP server needed.** A dev box rarely runs one, so under `--dev` a mailer
+with no configured host doesn't fail: the message lands in the inbox and the
+request carries on, the way `letter_opener` works in Rails. Each message is
+tagged with what happened to it:
+
+| Status | Meaning |
+|--------|---------|
+| `sent` | An SMTP server accepted it. |
+| `captured` | Never left the process — no `host` configured, or a `test` / `logger` delivery method. |
+| `failed` | Delivery was attempted and failed; the error is on the detail page. |
+
+A failed message is captured too, which is the point: a rejected recipient or a
+refused connection is exactly what you opened the inbox to look at.
+
+The inbox is dev-only and in-memory — it holds the last 100 messages and empties
+on restart. Outside `--dev` nothing is captured, the routes don't exist, and an
+unconfigured SMTP host is still a hard error.
+
 ## Attachments
 
 Pass an `attachments` array to `mail`, or chain `attach` / `attach_base64` on the
@@ -170,7 +211,7 @@ Authentication (`AUTH LOGIN`) is used when `user`/`pass` are set.
 
 | Method   | Behavior |
 |----------|----------|
-| `smtp`   | Send over SMTP (default). |
+| `smtp`   | Send over SMTP (default). Under `--dev` with no `host`, the mail is captured in the [dev inbox](#the-dev-inbox) instead of failing. |
 | `test`   | Capture mail in memory for assertions — never sends. |
 | `logger` | Print a one-line summary instead of sending. |
 

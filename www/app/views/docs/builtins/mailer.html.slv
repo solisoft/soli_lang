@@ -86,6 +86,31 @@ OrderMailer.receipt(order, invoice).deliver_later</code></pre>
             <pre data-filename="app/views/user_mailer/welcome.html.slv"><code class="language-erb text-sm">&lt;%# preview: { "user": { "name": "Ada Lovelace" } } %&gt;
 &lt;h1&gt;Welcome, &lt;%= h(user.name) %&gt;!&lt;/h1&gt;</code></pre>
             <p class="text-gray-400 mt-3">Previews render the HTML part only (no layout) with built-in helpers plus the <code class="text-cyan-400">preview</code> data; the action's real instance variables and request context aren't available. The gallery is dev-only &mdash; the routes don't exist in production.</p>
+            <p class="text-gray-400 mt-3">For mail the app actually sent &mdash; real data, real recipients &mdash; see <a href="#inbox" class="text-cyan-400 hover:text-white transition-colors">the dev inbox</a>.</p>
+        </div>
+    </section>
+
+    <!-- Dev inbox -->
+    <section id="inbox" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">The dev inbox <span class="text-sm font-normal text-gray-500">(dev)</span></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-amber-400">/__soli/mailers</code> previews templates with fake data. <code class="text-amber-400">/__soli/inbox</code> shows what the app <em>actually sent</em> &mdash; every message delivered since the dev server started, with the real data that was rendered into it.</p>
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve . --dev     # then open http://localhost:3000/__soli/inbox</code></pre>
+            <p class="text-gray-400 mt-3">Each message opens on a detail page with its headers, its attachments, and three tabs: the <b class="text-gray-300">HTML</b> body (in a sandboxed iframe, so a mail's own scripts never run), the <b class="text-gray-300">text</b> part, and the <b class="text-gray-300">raw</b> RFC 5322 source &mdash; downloadable as <code class="text-cyan-400">.eml</code> to open in a real mail client.</p>
+            <p class="text-gray-400 mt-3">The listing is searchable and paginated. The search box matches the subject, any address (<code class="text-cyan-400">to</code>, <code class="text-cyan-400">cc</code>, <code class="text-cyan-400">bcc</code>, <code class="text-cyan-400">from</code>, <code class="text-cyan-400">reply-to</code>), both bodies, and attachment filenames &mdash; <code class="text-cyan-400">?q=</code> and <code class="text-cyan-400">?per=</code> are plain query parameters, so a filtered view is linkable. <b class="text-gray-300">Clear inbox</b> empties it.</p>
+
+            <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 mt-4">
+                <p class="text-sm text-amber-200"><b>No SMTP server needed.</b> A dev box rarely runs one, so under <code>--dev</code> a mailer with no configured host doesn't fail: the message lands in the inbox and the request carries on, the way <code>letter_opener</code> works in Rails.</p>
+            </div>
+
+            <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Status of a captured message</h4>
+            <div class="text-sm text-gray-400 space-y-1">
+                <div><code class="text-green-400">sent</code> &mdash; an SMTP server accepted it</div>
+                <div><code class="text-amber-400">captured</code> &mdash; never left the process: no <code class="text-cyan-400">host</code> configured, or a <code class="text-cyan-400">test</code> / <code class="text-cyan-400">logger</code> delivery method</div>
+                <div><code class="text-red-400">failed</code> &mdash; delivery was attempted and failed; the error is on the detail page</div>
+            </div>
+            <p class="text-gray-400 mt-3">A failed message is captured too, which is the point: a rejected recipient or a refused connection is exactly what you opened the inbox to look at.</p>
+            <p class="text-gray-400 mt-3">The inbox is dev-only and in-memory &mdash; it holds the last 100 messages and empties on restart. Outside <code class="text-cyan-400">--dev</code> nothing is captured, the routes don't exist, and an unconfigured SMTP host is still a hard error.</p>
         </div>
     </section>
 
@@ -153,7 +178,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
 
             <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Delivery methods</h4>
             <div class="text-sm text-gray-400 space-y-1">
-                <div><code class="text-amber-400">smtp</code> &mdash; send over SMTP (default)</div>
+                <div><code class="text-amber-400">smtp</code> &mdash; send over SMTP (default); under <code class="text-cyan-400">--dev</code> with no <code class="text-cyan-400">host</code>, the mail is captured in the <a href="#inbox" class="text-cyan-400 hover:text-white transition-colors">dev inbox</a> instead of failing</div>
                 <div><code class="text-amber-400">test</code> &mdash; capture mail in memory for assertions; never sends</div>
                 <div><code class="text-amber-400">logger</code> &mdash; print a one-line summary instead of sending</div>
             </div>

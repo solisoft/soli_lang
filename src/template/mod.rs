@@ -798,6 +798,31 @@ fn is_markdown_template(path: &Path) -> bool {
     s.ends_with(".md")
 }
 
+thread_local! {
+    /// Whether dev-bar marker comments are suppressed for the current render.
+    /// See [`without_dev_markers`].
+    static SUPPRESS_DEV_MARKERS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Restores the flag on the way out, so a `?` or a panic can't leave marker
+/// suppression stuck on for the rest of the worker's life.
+struct SuppressMarkersGuard(bool);
+
+impl Drop for SuppressMarkersGuard {
+    fn drop(&mut self) {
+        SUPPRESS_DEV_MARKERS.with(|s| s.set(self.0));
+    }
+}
+
+/// Render inside `f` without the dev bar's `<!--solidev:…-->` marker comments.
+/// For output that leaves the process — mailer bodies — where the markers would
+/// ride along into a real email. Nesting is safe; production is unaffected
+/// (markers are dev-only to begin with).
+pub fn without_dev_markers<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = SuppressMarkersGuard(SUPPRESS_DEV_MARKERS.with(|s| s.replace(true)));
+    f()
+}
+
 /// Wrap rendered template output in HTML comment markers used by the dev
 /// bar's hover overlay. Only emitted when `view_log` is enabled (i.e.
 /// dev mode); production HTML is unchanged.
@@ -806,6 +831,12 @@ fn is_markdown_template(path: &Path) -> bool {
 /// id stored alongside the entry in `view_log`, which the dev bar emits
 /// as `data-solidev-view-idx` on the matching sub-row.
 fn wrap_dev_marker(kind: &str, id: u32, name: &str, body: &str) -> String {
+    // Some rendered output leaves the process — mailer bodies above all. Dev
+    // instrumentation has no business in an email, so a suppressed render emits
+    // the body verbatim (view_log still records the timing either way).
+    if SUPPRESS_DEV_MARKERS.with(std::cell::Cell::get) {
+        return body.to_string();
+    }
     // Sanitize the template name for inclusion inside an HTML comment:
     // strip `--` (which would terminate the comment early) and any
     // angle brackets (defensive, names shouldn't contain them).

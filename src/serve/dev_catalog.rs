@@ -246,11 +246,18 @@ pub(crate) fn handle_mailer_catalog() -> Response<ResponseBody> {
     let prefix = format!("{}/", dir_str.trim_end_matches('/'));
     let names = mailer_view_names(&vfs_walk_dir(&dir_str).unwrap_or_default(), &prefix);
 
+    // Templates with fake data live here; what the app actually sent lives in
+    // the dev inbox, so cross-link the two.
+    let inbox_link = "<p style=\"font-size:11px;margin:0 0 1.25rem;\">\
+Looking for mail the app really sent? <a href=\"/__soli/inbox\" style=\"color:#8be9fd;\">/__soli/inbox</a></p>";
+
     if names.is_empty() {
         return html_ok(catalog_shell(
             "MAILER PREVIEWS",
-            "<p style=\"color:#8b949e\">No mailer views found. Generate one with \
-<code>soli generate mailer user welcome</code>.</p>",
+            &format!(
+                "{inbox_link}<p style=\"color:#8b949e\">No mailer views found. Generate one with \
+<code>soli generate mailer user welcome</code>.</p>"
+            ),
         ));
     }
 
@@ -269,7 +276,7 @@ pub(crate) fn handle_mailer_catalog() -> Response<ResponseBody> {
     html_ok(catalog_shell(
         "MAILER PREVIEWS",
         &format!(
-            "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1rem;\">{}</div>",
+            "{inbox_link}<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1rem;\">{}</div>",
             cards
         ),
     ))

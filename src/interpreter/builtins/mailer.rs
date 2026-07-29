@@ -22,6 +22,10 @@
 //! fallback in `executor/access/member.rs` instantiates the subclass, stamps
 //! the action name, and runs the matching instance method.
 //!
+//! Under `--dev` every delivery is also copied into the dev inbox
+//! (`/__soli/inbox`, see [`mail_outbox`]) — including mail that never leaves the
+//! box because no SMTP host is configured, which is the normal local setup.
+//!
 //! SMTP is hand-rolled over the same synchronous `rustls`/`TcpStream` stack as
 //! the POP3 client (see `pop3.rs`), adding STARTTLS (port 587) on top of
 //! implicit TLS (port 465). MIME construction uses the `mail-builder` crate.
@@ -41,6 +45,7 @@ use mail_builder::MessageBuilder;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
+use crate::interpreter::builtins::mail_outbox;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -286,6 +291,73 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
     builder
         .write_to_string()
         .map_err(|e| format!("failed to build MIME message: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Dev inbox capture
+// ---------------------------------------------------------------------------
+
+/// Attachment metadata for the dev inbox (sizes are of the decoded payload).
+fn captured_attachments(mail: &HashPairs) -> Vec<mail_outbox::Attachment> {
+    let Some(Value::Array(atts)) = mail.get(&HashKey::String("attachments".into())) else {
+        return Vec::new();
+    };
+    atts.borrow()
+        .iter()
+        .filter_map(|att| {
+            let Value::Hash(att) = att else { return None };
+            let att = att.borrow();
+            let size = match hash_get(&att, "base64").and_then(|v| as_string(&v)) {
+                Some(b64) => base64::engine::general_purpose::STANDARD
+                    .decode(b64.trim().as_bytes())
+                    .map(|bytes| bytes.len())
+                    .unwrap_or(0),
+                None => hash_get(&att, "content")
+                    .and_then(|v| as_string(&v))
+                    .map(|c| c.len())
+                    .unwrap_or(0),
+            };
+            Some(mail_outbox::Attachment {
+                filename: hash_get(&att, "filename")
+                    .and_then(|v| as_string(&v))
+                    .unwrap_or_else(|| "attachment".to_string()),
+                content_type: hash_get(&att, "content_type")
+                    .and_then(|v| as_string(&v))
+                    .unwrap_or_else(|| "application/octet-stream".to_string()),
+                size,
+            })
+        })
+        .collect()
+}
+
+/// Record a delivery in the dev inbox (`/__soli/inbox`). A no-op unless the
+/// server runs with `--dev`, so production and `soli test` pay nothing.
+fn capture_for_inbox(mail: &HashPairs, status: mail_outbox::Status) {
+    if !crate::interpreter::builtins::template::is_dev_mode() {
+        return;
+    }
+    // Best-effort: a message that fails validation (no recipient, say) still
+    // belongs in the inbox — that failure is exactly what you came to look at.
+    let mime = mail_outbox::retainable_mime(build_mime(mail).ok());
+    mail_outbox::record(mail_outbox::CapturedMail {
+        id: mail_outbox::next_id(),
+        at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        from: hash_get(mail, "from")
+            .and_then(|v| as_string(&v))
+            .unwrap_or_default(),
+        to: as_address_list(mail.get(&HashKey::String("to".into()))),
+        cc: as_address_list(mail.get(&HashKey::String("cc".into()))),
+        bcc: as_address_list(mail.get(&HashKey::String("bcc".into()))),
+        reply_to: hash_get(mail, "reply_to").and_then(|v| as_string(&v)),
+        subject: hash_get(mail, "subject")
+            .and_then(|v| as_string(&v))
+            .unwrap_or_default(),
+        html: hash_get(mail, "html").and_then(|v| as_string(&v)),
+        text: hash_get(mail, "text").and_then(|v| as_string(&v)),
+        attachments: captured_attachments(mail),
+        status,
+        mime,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -575,6 +647,7 @@ fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
         DeliveryMethod::Test => {
             // Capture the rendered mail hash for assertions.
             let captured = args[0].clone();
+            capture_for_inbox(&mail.borrow(), mail_outbox::Status::Captured);
             DELIVERIES.with(|d| d.borrow_mut().push(captured));
             Ok(Value::Bool(true))
         }
@@ -584,18 +657,44 @@ fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
             let subject = hash_get(&mail, "subject")
                 .and_then(|v| as_string(&v))
                 .unwrap_or_default();
+            capture_for_inbox(&mail, mail_outbox::Status::Captured);
             eprintln!("[mailer] (logger) to={to} subject={subject:?}");
             Ok(Value::Bool(true))
         }
         DeliveryMethod::Smtp => {
             let mail = mail.borrow();
+            // No SMTP server on the dev box is the normal case, not a bug: park
+            // the mail in the dev inbox (`/__soli/inbox`) and let the request
+            // carry on, the way letter_opener does. Outside `--dev` an
+            // unconfigured host is still a hard error.
+            if cfg.host.is_empty() && crate::interpreter::builtins::template::is_dev_mode() {
+                capture_for_inbox(&mail, mail_outbox::Status::Captured);
+                eprintln!(
+                    "[mailer] no SMTP host configured; captured in the dev inbox at /__soli/inbox"
+                );
+                return Ok(Value::Bool(true));
+            }
             let mut rcpts = as_address_list(mail.get(&HashKey::String("to".into())));
             rcpts.extend(as_address_list(mail.get(&HashKey::String("cc".into()))));
             rcpts.extend(as_address_list(mail.get(&HashKey::String("bcc".into()))));
             let rcpts: Vec<String> = rcpts.iter().map(|a| envelope_address(a)).collect();
-            let data = build_mime(&mail)?;
-            deliver_smtp(&cfg, &rcpts, &data)?;
-            Ok(Value::Bool(true))
+            let data = match build_mime(&mail) {
+                Ok(data) => data,
+                Err(e) => {
+                    capture_for_inbox(&mail, mail_outbox::Status::Failed(e.clone()));
+                    return Err(e);
+                }
+            };
+            match deliver_smtp(&cfg, &rcpts, &data) {
+                Ok(()) => {
+                    capture_for_inbox(&mail, mail_outbox::Status::Sent);
+                    Ok(Value::Bool(true))
+                }
+                Err(e) => {
+                    capture_for_inbox(&mail, mail_outbox::Status::Failed(e.clone()));
+                    Err(e)
+                }
+            }
         }
     }
 }
@@ -650,15 +749,18 @@ fn mail_render(args: &[Value]) -> Result<Value, String> {
 
     let data_value = Value::Hash(Rc::new(RefCell::new(data.clone())));
 
-    // HTML body: explicit `html:` wins, else render the convention view.
+    // HTML body: explicit `html:` wins, else render the convention view. Mail
+    // leaves the process, so the dev bar's marker comments are suppressed —
+    // otherwise a `--dev` server ships `<!--solidev:view:…-->` to recipients.
     let html = match hash_get(&opts, "html").and_then(|v| as_string(&v)) {
         Some(html) => Some(html),
         None => {
             let cache = crate::interpreter::builtins::template::get_template_cache()?;
             Some(
-                cache
-                    .render(&template, &data_value, Some(None))
-                    .map_err(|e| format!("failed to render mailer view `{template}`: {e}"))?,
+                crate::template::without_dev_markers(|| {
+                    cache.render(&template, &data_value, Some(None))
+                })
+                .map_err(|e| format!("failed to render mailer view `{template}`: {e}"))?,
             )
         }
     };
@@ -674,11 +776,12 @@ fn mail_render(args: &[Value]) -> Result<Value, String> {
                 if text_view.exists() {
                     let text_template = format!("{template}.text");
                     Some(
-                        cache
-                            .render(&text_template, &data_value, Some(None))
-                            .map_err(|e| {
-                                format!("failed to render mailer text view `{text_template}`: {e}")
-                            })?,
+                        crate::template::without_dev_markers(|| {
+                            cache.render(&text_template, &data_value, Some(None))
+                        })
+                        .map_err(|e| {
+                            format!("failed to render mailer text view `{text_template}`: {e}")
+                        })?,
                     )
                 } else {
                     None

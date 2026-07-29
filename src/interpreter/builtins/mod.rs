@@ -72,6 +72,7 @@ pub mod json;
 pub mod jwt;
 pub mod kv;
 pub mod kv_log;
+pub mod mail_outbox;
 pub mod mail_parse;
 pub mod mailer;
 pub mod markdown;

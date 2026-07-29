@@ -13,6 +13,7 @@ mod csrf;
 mod db_browser;
 pub mod dev_bar;
 mod dev_catalog;
+mod dev_inbox;
 pub mod dev_store;
 mod hot_reload;
 pub mod live_reload;
@@ -3333,6 +3334,19 @@ async fn handle_hyper_request(
         if method == "GET" {
             if let Some(rel) = path.strip_prefix("/__soli/mailers/") {
                 return Ok(handle_mailer_preview(rel));
+            }
+        }
+        // Sent-mail inbox (MailCatcher-style), dev-only: what the app actually
+        // delivered, including mail captured because no SMTP host is set.
+        if method == "GET" && path == "/__soli/inbox" {
+            return Ok(dev_inbox::handle_index(req.uri().query()));
+        }
+        if method == "POST" && path == "/__soli/inbox/clear" {
+            return Ok(dev_inbox::handle_clear());
+        }
+        if method == "GET" {
+            if let Some(rest) = path.strip_prefix("/__soli/inbox/") {
+                return Ok(dev_inbox::handle_message(rest));
             }
         }
         // Database browser, dev-only: list collections, page rows, view a

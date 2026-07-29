@@ -500,6 +500,29 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- Mail inbox -->
+    <section id="mail-inbox" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Mail inbox
+        </h2>
+        <p class="text-gray-400 mb-6">
+            With <code class="text-cyan-400">soli serve --dev</code>, open <code class="text-amber-400">/__soli/inbox</code> to read every email the app has sent since the server started &mdash; a built-in MailCatcher, with no second process to run. Each message opens with its headers, its attachments, and tabs for the <strong class="text-white">HTML</strong> body (sandboxed iframe), the <strong class="text-white">text</strong> part, and the <strong class="text-white">raw</strong> RFC 5322 source, downloadable as <code class="text-cyan-400">.eml</code>. The listing is searchable (<code>?q=</code> matches subjects, addresses, bodies and attachment names) and paginated (<code>?per=</code> / <code>?page=</code>).
+        </p>
+        <p class="text-gray-400 mb-6">
+            <strong class="text-white">No local SMTP server required</strong> &mdash; under <code>--dev</code> a mailer with no configured host captures into the inbox instead of failing, so a signup flow works on a laptop with no mail infrastructure. Messages are tagged <code class="text-green-400">sent</code>, <code class="text-amber-400">captured</code>, or <code class="text-red-400">failed</code> (with the error), and failures are captured too. See the <a href="/docs/builtins/mailer#inbox" class="text-amber-400 hover:text-amber-300">Mailer docs</a> for the full tour, and <code class="text-amber-400">/__soli/mailers</code> to preview templates with fake data instead.
+        </p>
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p class="text-amber-300 text-sm">
+                <strong>Dev-only.</strong> The inbox is in-memory (last 100 messages, cleared on restart) and the routes exist solely under <code>--dev</code>. Nothing is captured in production.
+            </p>
+        </div>
+    </section>
+
     <!-- Section 5: Development Mode -->
     <section id="development-mode" class="mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">

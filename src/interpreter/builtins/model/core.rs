@@ -5801,10 +5801,12 @@ pub fn register_model_builtins(env: &mut Environment) {
                         match v {
                             Value::String(s) => out.push(s.to_string()),
                             Value::Symbol(s) => out.push(s.to_string()),
-                            other => return Err(format!(
+                            other => {
+                                return Err(format!(
                                 "index expects a field name (string or symbol)s, got {} in array",
                                 other.type_name()
-                            )),
+                            ))
+                            }
                         }
                     }
                     out

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(dev): a mail inbox at `/__soli/inbox` — every email the app sends, viewable with no local SMTP server.** `/__soli/mailers` previews mailer templates with fake data; this shows what the app *actually sent*, with the real data that was rendered into it. Each message opens on a detail page with its headers, its attachment metadata, and three tabs: the HTML body (served into a sandboxed iframe, so a mail's own scripts never run against the dev origin), the text part, and the raw RFC 5322 source — downloadable as `.eml` to open in a real mail client. The listing is **searchable and paginated**: `?q=` matches the subject, any address (`to`/`cc`/`bcc`/`from`/`reply-to`), both bodies and attachment filenames; `?per=` and `?page=` page through it; a filtered view is a plain link. New arrivals show a badge rather than reloading the page under the reader, and **Clear inbox** empties it. Captured in a process-wide ring buffer (last 100, cleared on restart) written by every worker thread — Soli's workers are threads in one process, so the inbox is complete regardless of which one delivered. Dev-only: nothing is captured and the routes do not exist without `--dev`. Rails needs the `letter_opener` gem or a separate MailCatcher process for the same thing.
+
+* **feat(mailer): under `--dev`, a mailer with no configured SMTP host captures instead of failing.** A dev box rarely runs a mail server, and a signup flow that dies on `deliver_now` is a poor way to discover that. An unconfigured host now parks the message in the dev inbox and lets the request carry on, the way `letter_opener` does. Every delivery is tagged with what happened to it — `sent` (an SMTP server accepted it), `captured` (never left the process: no host, or a `test`/`logger` delivery method), or `failed` — and **a failure is captured too, carrying its error**, including one that fails MIME validation before any connection is attempted: a rejected recipient or a refused connection is exactly what you opened the inbox to look at. Outside `--dev` an unconfigured host is still a hard error and nothing is captured.
+
+### Fixed
+
+* **fix(mailer): email sent from a `--dev` server carried the dev bar's instrumentation into recipients' inboxes.** The hover overlay wraps each rendered template in `<!--solidev:view:start id=… name=…-->` / `<!--solidev:view:end-->` comments, and mailer bodies go through the same renderer — so every HTML *and text* part sent from a development server shipped with those markers embedded, invisible in an HTML client but plain stray text in any client showing the plain-text alternative. Mailer renders now suppress marker emission (`template::without_dev_markers`, restored via a drop guard so an error can't leave it stuck on); `view_log` still records the render, so the dev bar's per-template timings are unchanged.
+
 
 ## [1.25.1] - 2026-07-28
 
