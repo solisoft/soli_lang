@@ -160,6 +160,18 @@ pub(crate) fn render_walker(
                     let iterable_value = interpreter
                         .evaluate(iterable)
                         .map_err(|e| format!("Evaluation error: {}", e))?;
+                    // An `@ivar` assigned inside `grouped(fn() { ... })` reaches
+                    // the view as a Deferred placeholder. Resolve it so
+                    // `<% for post in posts %>` iterates the rows instead of
+                    // falling through to the error arm, whose `type_name()`
+                    // forces the deferred and reports the resolved type — the
+                    // contradictory "Cannot iterate over array".
+                    // Guarded so the common (non-deferred) case does no extra work.
+                    let iterable_value = if matches!(iterable_value, Value::Deferred(_)) {
+                        iterable_value.force_deferred()
+                    } else {
+                        iterable_value
+                    };
                     match &iterable_value {
                         Value::Array(arr) => {
                             core_eval::push_scope(interpreter);
@@ -630,6 +642,39 @@ mod tests {
             .map(|(k, v)| (HashKey::String(k.to_string().into()), v))
             .collect();
         Value::Hash(Rc::new(RefCell::new(hash)))
+    }
+
+    /// A `Value::Deferred` holding an already-resolved array, as an `@ivar`
+    /// assigned inside `grouped(fn() { ... })` reaches a view.
+    fn resolved_deferred(items: Vec<Value>) -> Value {
+        Value::Deferred(Rc::new(RefCell::new(
+            crate::interpreter::value::DeferredCell {
+                resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
+            },
+        )))
+    }
+
+    #[test]
+    fn for_loop_iterates_a_grouped_deferred() {
+        let deferred =
+            resolved_deferred(vec![Value::String("a".into()), Value::String("b".into())]);
+        // The trap behind the old error text: `type_name()` forces the deferred
+        // and reports the *resolved* type, so the error arm rendered the
+        // self-contradictory "Cannot iterate over array".
+        assert_eq!(deferred.type_name(), "array");
+
+        let nodes = parse_template("<% for post in posts %><%= post %><% end %>").unwrap();
+        let data = make_hash(vec![("posts", deferred)]);
+        assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "ab");
+    }
+
+    #[test]
+    fn for_loop_still_rejects_a_genuinely_uniterable_value() {
+        // The deferred normalization must not soften the real error.
+        let nodes = parse_template("<% for x in n %>y<% end %>").unwrap();
+        let data = make_hash(vec![("n", Value::Int(3))]);
+        let err = render_nodes(&nodes, &data, None).unwrap_err();
+        assert!(err.contains("Cannot iterate over"), "was: {err}");
     }
 
     #[test]

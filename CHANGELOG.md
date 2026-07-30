@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 
+## [1.26.1] - 2026-07-30
+
+### Fixed
+
+* **`for x in …` over a value read inside `grouped(fn() { ... })` raised `cannot iterate over array`.** A grouped read returns a `Value::Deferred` placeholder, and `batch::end()` resolves the cell it points at without replacing the binding — so every consumer has to unwrap it, and `for`-in was not one of the sites that did. The error text was self-contradictory because `Value::Deferred::type_name()` *forces* the deferred and reports the resolved type, so an unresolved placeholder holding an array printed "cannot iterate over array". Fixed in both for-in implementations, which are separate code paths: `executor/statements.rs` for Soli code (normalized alongside the existing `QueryBuilder` case) and `template/renderer.rs` for `<% for post in posts %>` in a view, guarded there so the non-deferred case does no extra work. Covered end to end through `parse_template` + `render_nodes`, including a test that a genuine non-iterable still errors.
+
+  Also corrected the docs, which claimed values are "ordinary values" after the block. They behave that way, but the binding remains a placeholder that resolves on use — which is precisely why a new way of consuming one can need teaching to unwrap it. Note a `Deferred` used as a *method receiver* (`@posts.map(...)`) is still not covered by any resolution site.
+
+
 ## [1.26.0] - 2026-07-30
 
 ### Added

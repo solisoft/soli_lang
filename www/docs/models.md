@@ -1992,9 +1992,17 @@ grouped(fn() {
 ```
 
 Inside the block each read returns a placeholder instead of hitting the
-database; the queries fire as one combined statement when the block ends. The
-results are then materialised, so **after** the block `@posts`, `@accounts`, and
-`@tags` are ordinary values you use exactly as before.
+database; the queries fire as one combined statement when the block ends, and the
+results are then materialised. **After** the block you use `@posts`,
+`@accounts`, and `@tags` exactly as before — iterate them, index them, read
+fields, serialise them to JSON.
+
+Strictly speaking the binding stays a thin placeholder that resolves to its value
+on use, rather than being replaced by one. That is invisible in normal code, but
+it is why a *new* way of consuming a value can occasionally need teaching to
+unwrap it — if you ever see an error naming a type that the value plainly is
+(`cannot iterate over array`), that is the shape of the bug, and it is worth
+reporting.
 
 ### What gets coalesced
 

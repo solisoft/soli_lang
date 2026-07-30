@@ -294,7 +294,8 @@ grouped(fn() {
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">Inside the block each read returns a placeholder instead of hitting the database; the queries fire as one combined statement when the block ends. <strong>After</strong> the block, <code>@posts</code>, <code>@accounts</code>, and <code>@tags</code> are ordinary values you use exactly as before.</p>
+    <p class="text-gray-400 mb-6">Inside the block each read returns a placeholder instead of hitting the database; the queries fire as one combined statement when the block ends, and the results are then materialised. <strong>After</strong> the block you use <code>@posts</code>, <code>@accounts</code>, and <code>@tags</code> exactly as before &mdash; iterate them, index them, read fields, serialise them to JSON.</p>
+    <p class="text-gray-400 mb-6">Strictly speaking the binding stays a thin placeholder that resolves to its value on use, rather than being replaced by one. That is invisible in normal code, but it is why a <em>new</em> way of consuming a value can occasionally need teaching to unwrap it &mdash; if you ever see an error naming a type that the value plainly is (<code>cannot iterate over array</code>), that is the shape of the bug, and it is worth reporting.</p>
 
     <h3 class="text-xl font-bold text-white mb-4">What gets coalesced</h3>
     <p class="text-gray-400 mb-6">Read queries are batched: <code>all</code>, <code>where(...).all</code> / <code>.first</code> / <code>.count</code> / <code>.exists</code>, the aggregates (<code>sum</code> / <code>avg</code> / <code>min</code> / <code>max</code>), <code>find</code>, <code>find_by</code>, and <code>first_by</code>. <strong>Writes are not</strong> — <code>create</code>, <code>save</code>, <code>update</code>, <code>delete</code> run immediately even inside the block (use <code>transaction</code> for atomic writes).</p>

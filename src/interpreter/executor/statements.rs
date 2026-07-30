@@ -426,6 +426,13 @@ impl Interpreter {
             Value::QueryBuilder(qb) => {
                 crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
             }
+            // A read inside `grouped(fn() { ... })` hands back a Deferred
+            // placeholder. Resolve it here (flushing the batch if it is still
+            // pending) so `for x in @posts` iterates the rows. Without this the
+            // Deferred falls through to the error arm below, where `type_name()`
+            // forces it and reports the *resolved* type — producing the
+            // self-contradictory "cannot iterate over array".
+            deferred @ Value::Deferred(_) => deferred.force_deferred(),
             other => other,
         };
         match iter_value {
