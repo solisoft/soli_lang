@@ -184,8 +184,7 @@ delete("/{resource}/:id", "{resource}#delete")
         let mut content = fs::read_to_string(&routes_file)
             .map_err(|e| format!("Failed to read routes file: {}", e))?;
         content.push_str(&new_routes);
-        fs::write(&routes_file, content)
-            .map_err(|e| format!("Failed to write routes file: {}", e))?;
+        write_file(&routes_file, &content)?;
         println!("  Updated: {}/config/routes.sl", app_path.display());
     } else {
         write_file(&routes_file, &new_routes)?;

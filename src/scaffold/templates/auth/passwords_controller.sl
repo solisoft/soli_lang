@@ -12,7 +12,14 @@ class PasswordsController < Controller
 
   # GET /password/reset — request a reset link
   def new
-    render("passwords/new", { "title": "Reset password", "notice": "", "error": "" })
+    render(
+      "passwords/new",
+      {
+        "title": "Reset password",
+        "notice": "",
+        "error": ""
+      }
+    )
   end
 
   # POST /password/reset — send the link
@@ -24,56 +31,75 @@ class PasswordsController < Controller
       AuthMailer.reset_password(user, token).deliver_now() rescue null
     end
 
-    return render("passwords/new", {
-      "title": "Reset password",
-      "notice": "If that email exists, a reset link is on its way.",
-      "error": ""
-    })
+    return render(
+      "passwords/new",
+      {
+        "title": "Reset password",
+        "notice": "If that email exists, a reset link is on its way.",
+        "error": ""
+      }
+    )
   end
 
   # GET /password/edit?token=... — the form behind the emailed link
   def edit
     user = this.user_for_token(params["token"])
     if user.nil?
-      return render("passwords/new", {
-        "title": "Reset password",
-        "notice": "",
-        "error": "That reset link is invalid or has expired. Request a new one."
-      })
+      return render(
+        "passwords/new",
+        {
+          "title": "Reset password",
+          "notice": "",
+          "error": "That reset link is invalid or has expired. Request a new one."
+        }
+      )
     end
 
-    return render("passwords/edit", {
-      "title": "Choose a new password",
-      "token": params["token"].to_s,
-      "error": ""
-    })
+    return render(
+      "passwords/edit",
+      {
+        "title": "Choose a new password",
+        "token": params["token"].to_s,
+        "error": ""
+      }
+    )
   end
 
   # POST /password/update
   def update
     user = this.user_for_token(params["token"])
     if user.nil?
-      return render("passwords/new", {
-        "title": "Reset password",
-        "notice": "",
-        "error": "That reset link is invalid or has expired. Request a new one."
-      })
+      return render(
+        "passwords/new",
+        {
+          "title": "Reset password",
+          "notice": "",
+          "error": "That reset link is invalid or has expired. Request a new one."
+        }
+      )
     end
 
     password = params["password"].to_s
     if password.length() < 8
-      return render("passwords/edit", {
-        "title": "Choose a new password",
-        "token": params["token"].to_s,
-        "error": "Password must be at least 8 characters."
-      })
+      return render(
+        "passwords/edit",
+        {
+          "title": "Choose a new password",
+          "token": params["token"].to_s,
+          "error": "Password must be at least 8 characters."
+        }
+      )
     end
+
     if password != params["password_confirmation"].to_s
-      return render("passwords/edit", {
-        "title": "Choose a new password",
-        "token": params["token"].to_s,
-        "error": "Passwords don't match."
-      })
+      return render(
+        "passwords/edit",
+        {
+          "title": "Choose a new password",
+          "token": params["token"].to_s,
+          "error": "Passwords don't match."
+        }
+      )
     end
 
     user.finish_password_reset(password)

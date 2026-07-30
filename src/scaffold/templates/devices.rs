@@ -149,19 +149,19 @@ def up(db)
   begin
     db.create_collection("devices")
   rescue
-    # already exists
+    print("  skip devices collection (already exists)")
   end
 
   begin
     db.create_index("devices", "idx_devices_token", ["token"], { "unique": true })
   rescue
-    # index already exists
+    print("  skip idx_devices_token (already exists)")
   end
 
   begin
     db.create_index("devices", "idx_devices_user_id", ["user_id"], {})
   rescue
-    # index already exists
+    print("  skip idx_devices_user_id (already exists)")
   end
 end
 
@@ -171,12 +171,13 @@ def down(db)
       db.drop_index("devices", idx["name"])
     end
   rescue
+    print("  skip dropping devices indexes (collection is gone)")
   end
 
   begin
     db.drop_collection("devices")
   rescue
-    # already gone
+    print("  skip dropping devices collection (already gone)")
   end
 end
 "#

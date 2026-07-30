@@ -27,21 +27,30 @@ class OidcDiscoveryController < Controller
       "subject_types_supported": ["public"],
       "id_token_signing_alg_values_supported": ["RS256"],
       "token_endpoint_auth_methods_supported": [
-        "client_secret_basic", "client_secret_post", "none"
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
       ],
       "code_challenge_methods_supported": ["S256"],
       "claims_supported": [
-        "sub", "iss", "aud", "exp", "iat", "nonce", "auth_time", "at_hash",
-        "name", "preferred_username", "email", "email_verified"
+        "sub",
+        "iss",
+        "aud",
+        "exp",
+        "iat",
+        "nonce",
+        "auth_time",
+        "at_hash",
+        "name",
+        "preferred_username",
+        "email",
+        "email_verified"
       ]
     }
 
     return {
       "status": 200,
-      "headers": {
-        "Content-Type": "application/json;charset=UTF-8",
-        "Cache-Control": "public, max-age=3600"
-      },
+      "headers": {"Content-Type": "application/json;charset=UTF-8", "Cache-Control": "public, max-age=3600"},
       "body": document.to_json()
     }
   end
@@ -56,11 +65,8 @@ class OidcDiscoveryController < Controller
 
     return {
       "status": 200,
-      "headers": {
-        "Content-Type": "application/jwk-set+json",
-        "Cache-Control": "public, max-age=3600"
-      },
-      "body": { "keys": keys.filter(fn(key) !key.nil?) }.to_json()
+      "headers": {"Content-Type": "application/jwk-set+json", "Cache-Control": "public, max-age=3600"},
+      "body": {"keys": keys.filter(fn(key) { !key.nil? })}.to_json()
     }
   end
 end

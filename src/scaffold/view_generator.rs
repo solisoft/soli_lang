@@ -199,7 +199,8 @@ pub fn create_form_partial(
                     r#"            <div>
                 <%- f.label("{field_name}", "{label}", {{"class": "block text-sm font-medium text-slate-300 mb-2"}}) %>
                 <%- f.{builder_method}("{field_name}", {{
-                    "class": "w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent",
+                    "class": "w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg " +
+                        "text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent",
                     "placeholder": "{placeholder}"
                 }}) %>
                 <%- f.errors_for("{field_name}") %>

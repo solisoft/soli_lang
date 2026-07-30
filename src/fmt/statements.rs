@@ -470,7 +470,18 @@ impl Printer<'_> {
 
     fn print_block_or_stmt(&mut self, stmt: &Stmt) {
         if let StmtKind::Block(stmts) = &stmt.kind {
-            self.print_block_body(stmts);
+            // Pass the block's own closing line so a comment sitting after the
+            // last statement — or a comment that is the *whole* body, as in
+            // `rescue` / `# already exists` / `end` — is emitted inside the
+            // block instead of escaping past the `end` on the next flush.
+            // Record the block's opening line first. The keyword that opens it
+            // (`catch e`, `else`) is written by the caller and never recorded,
+            // so without this a body-leading comment measures its gap from the
+            // statement *above* the keyword and looks like a new paragraph —
+            // gaining a blank line on the second pass, i.e. not idempotent.
+            self.record_emitted_line(stmt.span.line_usize());
+            let close_line = super::printer::source_end_line(self.source, stmt.span);
+            self.print_block_body_through(stmts, Some(close_line));
         } else {
             // Single statement: still indent it as a block body.
             self.with_indent(|p| {

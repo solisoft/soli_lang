@@ -9,8 +9,7 @@
 class OauthRefreshToken < Model
   # Fields: token_digest, chain_id, client_id, user_key, scope, issued_at,
   # expires_at, rotated_at, revoked_at, revoked_reason, access_jti.
-
-  def self.issue(chain_id, client_id, user_key, scopes, access_jti)
+  static def issue(chain_id, client_id, user_key, scopes, access_jti)
     token = Crypto.random_token()
     now = DateTime.utc().to_unix()
 
@@ -31,7 +30,7 @@ class OauthRefreshToken < Model
     return token
   end
 
-  def self.find_by_token(token)
+  static def find_by_token(token)
     return null if token.to_s.blank?
 
     return OauthRefreshToken.find_by("token_digest", Crypto.sha256(token.to_s))
@@ -39,11 +38,11 @@ class OauthRefreshToken < Model
 
   # Revoke every token in a family and denylist the access tokens they were
   # issued alongside, so a detected leak does not leave a live credential.
-  def self.revoke_chain(chain_id, reason)
+  static def revoke_chain(chain_id, reason)
     return 0 if chain_id.to_s.blank?
 
     now = DateTime.utc().to_unix()
-    tokens = OauthRefreshToken.where({ "chain_id": chain_id.to_s })
+    tokens = OauthRefreshToken.where({"chain_id": chain_id.to_s})
     tokens.each do |token|
       OauthRevocation.revoke(token["access_jti"], reason)
       next unless token["revoked_at"].nil?

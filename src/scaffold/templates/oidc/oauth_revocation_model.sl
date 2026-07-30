@@ -9,23 +9,22 @@
 
 class OauthRevocation < Model
   # Fields: jti, expires_at, reason.
-
-  def self.revoke(jti, reason)
+  static def revoke(jti, reason)
     return false if jti.to_s.blank?
     return true if OauthRevocation.revoked?(jti)
 
     OauthRevocation.create({
       "jti": jti.to_s,
       "reason": reason,
-      # Past this point the token has expired on its own and the row is
-      # redundant — prune on whatever schedule suits you.
       "expires_at": DateTime.utc().to_unix() + OIDC_ACCESS_TOKEN_TTL
     })
+    # Past this point the token has expired on its own and the row is
+    # redundant — prune on whatever schedule suits you.
 
     return true
   end
 
-  def self.revoked?(jti)
+  static def revoked?(jti)
     return false if jti.to_s.blank?
 
     return !OauthRevocation.find_by("jti", jti.to_s).nil?

@@ -5,10 +5,10 @@
 # (e.g. `<% if signed_in? %>`). Controllers and policies use the matching
 # globals in app/policies/application_policy.sl.
 
-fn current_user {
+def current_user
   return req["current_user"] rescue null
-}
+end
 
-fn signed_in? {
+def signed_in?
   return !current_user().nil?
-}
+end

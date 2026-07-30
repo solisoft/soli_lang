@@ -7,6 +7,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::app_generator::write_file;
+
 /// Generate a new seed file at `db/seeds/<timestamp>_<name>.sl`.
 pub fn generate_seed(app_path: &Path, name: &str) -> Result<PathBuf, String> {
     let seeds_path = app_path.join("db/seeds");
@@ -29,7 +31,7 @@ pub fn generate_seed(app_path: &Path, name: &str) -> Result<PathBuf, String> {
 
     let template = seed_template(name);
 
-    fs::write(&filepath, template).map_err(|e| format!("Failed to write seed file: {}", e))?;
+    write_file(&filepath, &template)?;
 
     Ok(filepath)
 }

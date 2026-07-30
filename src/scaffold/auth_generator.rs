@@ -217,7 +217,7 @@ fn add_routes(app_path: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    fs::write(&routes_file, content).map_err(|e| format!("Failed to write routes file: {}", e))?;
+    write_file(&routes_file, &content)?;
     if existed {
         println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
     } else {

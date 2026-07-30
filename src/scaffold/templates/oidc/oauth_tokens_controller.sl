@@ -40,27 +40,21 @@ class OauthTokensController < Controller
   end
 
   # --- grants ----------------------------------------------------------------
-
   def _authorization_code_grant(client)
     code = params["code"].to_s
     redirect_uri = params["redirect_uri"].to_s
 
     row = OauthAuthorizationCode.burn(code)
-    if row.nil?
-      return this._handle_replay(code)
-    end
+    return this._handle_replay(code) if row.nil?
 
     mismatch = this._code_mismatch(row, client, redirect_uri)
     return mismatch unless mismatch.nil?
 
     scopes = oidc_scope_list(row["scope"])
     user = User.find_by("_key", row["user_key"])
-    if user.nil?
-      return oidc_token_error("invalid_grant", "The user no longer exists", 400)
-    end
+    return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
 
-    return this._issue_tokens(client, user, scopes, row["refresh_chain_id"], row["nonce"],
-                              row["auth_time"])
+    return this._issue_tokens(client, user, scopes, row["refresh_chain_id"], row["nonce"], row["auth_time"])
   end
 
   # A code that did not burn was either never valid, or already used. The
@@ -68,9 +62,7 @@ class OauthTokensController < Controller
   # exchange produced has to go (RFC 6749 §4.1.2).
   def _handle_replay(code)
     used = OauthAuthorizationCode.find_used(code)
-    if !used.nil?
-      OauthRefreshToken.revoke_chain(used["refresh_chain_id"], "code_replayed")
-    end
+    OauthRefreshToken.revoke_chain(used["refresh_chain_id"], "code_replayed") if !used.nil?
 
     return oidc_token_error("invalid_grant", "Authorization code is invalid, expired or used", 400)
   end
@@ -81,6 +73,7 @@ class OauthTokensController < Controller
     if row["client_id"] != client.client_id
       return oidc_token_error("invalid_grant", "Code was issued to a different client", 400)
     end
+
     if row["redirect_uri"] != redirect_uri
       return oidc_token_error("invalid_grant", "redirect_uri does not match the authorization", 400)
     end
@@ -88,12 +81,14 @@ class OauthTokensController < Controller
     challenge = row["code_challenge"].to_s
     if challenge.blank?
       return null unless client.require_pkce == true
-
       return oidc_token_error("invalid_grant", "PKCE is required for this client", 400)
     end
 
-    verified = OauthAuthorizationCode.verify_pkce(challenge, row["code_challenge_method"],
-                                                  params["code_verifier"].to_s)
+    verified = OauthAuthorizationCode.verify_pkce(
+      challenge,
+      row["code_challenge_method"],
+      params["code_verifier"].to_s
+    )
     return null if verified
 
     return oidc_token_error("invalid_grant", "code_verifier does not match code_challenge", 400)
@@ -102,20 +97,15 @@ class OauthTokensController < Controller
   def _refresh_token_grant(client)
     presented = params["refresh_token"].to_s
     token = OauthRefreshToken.find_by_token(presented)
-    if token.nil?
-      return oidc_token_error("invalid_grant", "Unknown refresh token", 400)
-    end
+    return oidc_token_error("invalid_grant", "Unknown refresh token", 400) if token.nil?
 
     # A rotated token being presented again means it leaked. We cannot tell the
     # legitimate holder from the attacker, so the whole family is revoked.
     if token.reused?()
       OauthRefreshToken.revoke_chain(token["chain_id"], "refresh_token_reused")
-
       return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
     end
-    if !(token.active?())
-      return oidc_token_error("invalid_grant", "Refresh token is expired or revoked", 400)
-    end
+    return oidc_token_error("invalid_grant", "Refresh token is expired or revoked", 400) if !(token.active?())
     if token["client_id"] != client.client_id
       return oidc_token_error("invalid_grant", "Refresh token belongs to a different client", 400)
     end
@@ -124,9 +114,7 @@ class OauthTokensController < Controller
     return scopes["response"] unless scopes["response"].nil?
 
     user = User.find_by("_key", token["user_key"])
-    if user.nil?
-      return oidc_token_error("invalid_grant", "The user no longer exists", 400)
-    end
+    return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
 
     token.mark_rotated()
 
@@ -137,19 +125,21 @@ class OauthTokensController < Controller
   def _refresh_scopes(token)
     granted = token.scopes()
     requested = oidc_scope_list(params["scope"])
-    return { "response": null, "scopes": granted } if requested.length() == 0
+    return {"response": null, "scopes": granted} if requested.length() == 0
 
-    escalated = requested.filter(fn(scope) !granted.includes?(scope))
+    escalated = requested.filter(fn(scope) { !granted.includes?(scope) })
     if escalated.length() != 0
-      return { "response": oidc_token_error("invalid_scope",
-        "Requested scope exceeds the original grant: #{escalated.join(", ")}", 400) }
+      return {"response": oidc_token_error(
+        "invalid_scope",
+        "Requested scope exceeds the original grant: #{escalated.join(", ")}",
+        400
+      )}
     end
 
-    return { "response": null, "scopes": requested }
+    return {"response": null, "scopes": requested}
   end
 
   # --- issuing ---------------------------------------------------------------
-
   def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time)
     jti = uuid_v4()
     access_token = oidc_access_token(user["_key"], client.client_id, scopes, jti)
@@ -162,15 +152,13 @@ class OauthTokensController < Controller
     }
 
     if scopes.includes?("openid")
-      body["id_token"] = oidc_id_token(user, client.client_id, scopes, nonce, auth_time,
-                                       access_token)
+      body["id_token"] = oidc_id_token(user, client.client_id, scopes, nonce, auth_time, access_token)
     end
 
     # Only hand out a refresh token when the client asked for offline access —
     # a long-lived credential nobody requested is pure liability.
     if scopes.includes?("offline_access") && client.supports_grant?("refresh_token")
-      body["refresh_token"] = OauthRefreshToken.issue(chain_id, client.client_id, user["_key"],
-                                                      scopes, jti)
+      body["refresh_token"] = OauthRefreshToken.issue(chain_id, client.client_id, user["_key"], scopes, jti)
     end
 
     return oidc_json(body, 200)
@@ -187,17 +175,14 @@ class OauthTokensController < Controller
     post_secret = params["client_secret"].to_s
 
     if !basic.nil? && post_secret.present?
-      return { "response": oidc_token_error("invalid_client",
-        "Use only one client authentication method", 400) }
+      return {"response": oidc_token_error("invalid_client", "Use only one client authentication method", 400)}
     end
 
     client_id = basic.nil? ? post_id : basic["client_id"]
     secret = basic.nil? ? post_secret : basic["client_secret"]
 
     client = OauthClient.find_active(client_id)
-    if client.nil?
-      return { "response": this._client_auth_failure(!basic.nil?, "Unknown client") }
-    end
+    return {"response": this._client_auth_failure(!basic.nil?, "Unknown client")} if client.nil?
 
     return this._verify_secret(client, secret, !basic.nil?)
   end
@@ -207,18 +192,17 @@ class OauthTokensController < Controller
       # A public client has no secret; one turning up means the caller is
       # confused about which client it is, and that is worth rejecting.
       if secret.present?
-        return { "response": oidc_token_error("invalid_client",
-          "Public clients must not send a client_secret", 400) }
+        return {"response": oidc_token_error("invalid_client", "Public clients must not send a client_secret", 400)}
       end
 
-      return { "response": null, "client": client }
+      return {"response": null, "client": client}
     end
 
     if !(client.authenticate_secret(secret))
-      return { "response": this._client_auth_failure(used_basic, "Invalid client credentials") }
+      return {"response": this._client_auth_failure(used_basic, "Invalid client credentials")}
     end
 
-    return { "response": null, "client": client }
+    return {"response": null, "client": client}
   end
 
   # RFC 6749 §5.2: a failed *Basic* authentication is a 401 carrying
@@ -234,7 +218,7 @@ class OauthTokensController < Controller
         "Pragma": "no-cache",
         "WWW-Authenticate": "Basic realm=\"oauth\""
       },
-      "body": { "error": "invalid_client", "error_description": description }.to_json()
+      "body": {"error": "invalid_client", "error_description": description}.to_json()
     }
   end
 
@@ -249,9 +233,6 @@ class OauthTokensController < Controller
 
     parts = decoded.split(":")
 
-    return {
-      "client_id": url_decode(parts[0]),
-      "client_secret": url_decode(parts.slice(1, parts.length()).join(":"))
-    }
+    return {"client_id": url_decode(parts[0]), "client_secret": url_decode(parts.slice(1, parts.length()).join(":"))}
   end
 end

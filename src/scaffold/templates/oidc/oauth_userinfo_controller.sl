@@ -9,14 +9,10 @@ class OauthUserinfoController < Controller
   def show
     token = oidc_bearer_token(req)
     claims = oidc_verify_access_token(token)
-    if claims.nil?
-      return this._unauthorized("The access token is invalid, expired or revoked")
-    end
+    return this._unauthorized("The access token is invalid, expired or revoked") if claims.nil?
 
     user = User.find_by("_key", claims["sub"].to_s)
-    if user.nil?
-      return this._unauthorized("The user no longer exists")
-    end
+    return this._unauthorized("The user no longer exists") if user.nil?
 
     scopes = oidc_scope_list(claims["scope"])
     body = oidc_user_claims(user, scopes)
@@ -36,7 +32,7 @@ class OauthUserinfoController < Controller
         "Pragma": "no-cache",
         "WWW-Authenticate": "Bearer error=\"invalid_token\", error_description=\"#{description}\""
       },
-      "body": { "error": "invalid_token", "error_description": description }.to_json()
+      "body": {"error": "invalid_token", "error_description": description}.to_json()
     }
   end
 end

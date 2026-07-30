@@ -72,6 +72,7 @@ soli fmt --stdin &lt; in.sl &gt; out.sl</code></pre>
                 <tr><td class="px-4 py-3 text-white">Guard clauses</td><td class="px-4 py-3"><code>if cond return … end</code> with no <code>else</code> gets a trailing blank line</td></tr>
                 <tr><td class="px-4 py-3 text-white">Early returns</td><td class="px-4 py-3">A <code>return</code> is followed by a blank line, unless the next statement is another <code>return</code> or the block's <code>end</code> follows</td></tr>
                 <tr><td class="px-4 py-3 text-white">Raw strings</td><td class="px-4 py-3"><code>[[ … ]]</code> and <code>r"…"</code> are copied from source verbatim — never re-escaped</td></tr>
+                <tr><td class="px-4 py-3 text-white"><code>begin</code>/<code>rescue</code></td><td class="px-4 py-3">Canonicalized to the <code>try</code>/<code>catch</code> synonym</td></tr>
             </tbody>
         </table>
     </div>
@@ -101,6 +102,11 @@ end</code></pre>
     RETURN post
 ]])</code></pre>
     </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Generated code is already formatted</h2>
+    <p class="text-gray-400 mb-12">
+        <code class="text-amber-300">soli new</code> and every <code class="text-amber-300">soli generate</code> run their <code class="text-amber-300">.sl</code> output through the formatter, so a freshly generated app passes <code class="text-amber-300">soli fmt --check</code> from its first commit &mdash; your first <code class="text-amber-300">fmt</code> run won't produce a diff of files you never touched.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Editor Integration</h2>
     <p class="text-gray-400 mb-6">

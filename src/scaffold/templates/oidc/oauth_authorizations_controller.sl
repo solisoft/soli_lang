@@ -33,15 +33,18 @@ class OauthAuthorizationsController < Controller
       return this._issue_code(context, user, scopes)
     end
 
-    return render("oauth_authorizations/new", {
-      "title": "Authorize #{client.name}",
-      "client": client,
-      "scopes": scopes.map(fn(scope) {
-        "name": scope,
-        "description": scope_description(scope)
-      }),
-      "params": context["params"]
-    })
+    return render(
+      "oauth_authorizations/new",
+      {
+        "title": "Authorize #{client.name}",
+        "client": client,
+        "scopes": scopes.map(fn(scope) { {
+          "name": scope,
+          "description": scope_description(scope)
+        } }),
+        "params": context["params"]
+      }
+    )
   end
 
   # POST /oauth/authorize — the consent decision.
@@ -59,8 +62,12 @@ class OauthAuthorizationsController < Controller
     scopes = context["scopes"]
 
     if params["approve"].to_s != "1"
-      return oidc_authorize_error(context["redirect_uri"], "access_denied",
-                                  "The user declined the request", context["state"])
+      return oidc_authorize_error(
+        context["redirect_uri"],
+        "access_denied",
+        "The user declined the request",
+        context["state"]
+      )
     end
 
     OauthConsent.grant(user["_key"], client.client_id, scopes)
@@ -79,27 +86,21 @@ class OauthAuthorizationsController < Controller
     state = params["state"].to_s
 
     client = OauthClient.find_active(client_id)
-    if client.nil?
-      return { "response": oidc_authorize_fatal("Unknown or disabled client application.") }
-    end
+    return {"response": oidc_authorize_fatal("Unknown or disabled client application.")} if client.nil?
 
     if !(client.redirect_uri_allowed?(redirect_uri))
-      return { "response": oidc_authorize_fatal(
-        "The redirect_uri is not registered for this client application."
-      ) }
+      return {"response": oidc_authorize_fatal("The redirect_uri is not registered for this client application.")}
     end
 
     # Past this point the redirect_uri is trusted, so errors may go back to it.
     invalid = this._parameter_error(client)
     if !invalid.nil?
-      return { "response": oidc_authorize_error(redirect_uri, invalid["code"],
-                                                invalid["description"], state) }
+      return {"response": oidc_authorize_error(redirect_uri, invalid["code"], invalid["description"], state)}
     end
 
     scopes = client.allowed_scopes(oidc_scope_list(params["scope"]))
     if !(scopes.includes?("openid"))
-      return { "response": oidc_authorize_error(redirect_uri, "invalid_scope",
-                                                "The openid scope is required", state) }
+      return {"response": oidc_authorize_error(redirect_uri, "invalid_scope", "The openid scope is required", state)}
     end
 
     return {
@@ -123,16 +124,11 @@ class OauthAuthorizationsController < Controller
   # Returns nil when the request is well-formed, or {code, description}.
   def _parameter_error(client)
     if params["response_type"].to_s != "code"
-      return {
-        "code": "unsupported_response_type",
-        "description": "Only the authorization code flow is supported"
-      }
+      return {"code": "unsupported_response_type", "description": "Only the authorization code flow is supported"}
     end
+
     if !(client.supports_grant?("authorization_code"))
-      return {
-        "code": "unauthorized_client",
-        "description": "This client may not use the authorization code grant"
-      }
+      return {"code": "unauthorized_client", "description": "This client may not use the authorization code grant"}
     end
 
     return this._pkce_error(client)
@@ -144,18 +140,14 @@ class OauthAuthorizationsController < Controller
 
     if challenge.blank?
       return null unless client.require_pkce == true
-
-      return { "code": "invalid_request", "description": "code_challenge is required" }
+      return {"code": "invalid_request", "description": "code_challenge is required"}
     end
 
     # `plain` offers no protection against an attacker who intercepted the
     # authorization request, and OAuth 2.1 drops it. Rejecting it outright
     # keeps a downgrade off the table.
     if method != "S256"
-      return {
-        "code": "invalid_request",
-        "description": "code_challenge_method must be S256"
-      }
+      return {"code": "invalid_request", "description": "code_challenge_method must be S256"}
     end
 
     return null

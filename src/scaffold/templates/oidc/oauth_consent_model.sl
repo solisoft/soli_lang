@@ -6,29 +6,28 @@
 
 class OauthConsent < Model
   # Fields: user_key, client_id, scopes, granted_at, revoked_at.
-
-  def self.for_pair(user_key, client_id)
+  static def for_pair(user_key, client_id)
     return null if user_key.to_s.blank? || client_id.to_s.blank?
 
-    rows = OauthConsent.where({ "user_key": user_key.to_s, "client_id": client_id.to_s })
+    rows = OauthConsent.where({"user_key": user_key.to_s, "client_id": client_id.to_s})
 
     return rows.first()
   end
 
   # True when this user has already granted *every* scope now being asked for.
   # A request that widens the scope must be consented to again.
-  def self.covers?(user_key, client_id, scopes)
+  static def covers?(user_key, client_id, scopes)
     consent = OauthConsent.for_pair(user_key, client_id)
     return false if consent.nil?
     return false unless consent["revoked_at"].nil?
 
     granted = consent["scopes"] ?? []
 
-    return scopes.filter(fn(scope) !granted.includes?(scope)).length() == 0
+    return scopes.filter(fn(scope) { !granted.includes?(scope) }).length() == 0
   end
 
   # Record a grant, merging with anything previously granted.
-  def self.grant(user_key, client_id, scopes)
+  static def grant(user_key, client_id, scopes)
     consent = OauthConsent.for_pair(user_key, client_id)
     now = DateTime.utc().to_unix()
 
@@ -55,16 +54,15 @@ class OauthConsent < Model
 
   # Withdraw consent and kill the live tokens. Without the second half the user
   # would keep seeing an app they just disconnected.
-  def self.revoke(user_key, client_id)
+  static def revoke(user_key, client_id)
     consent = OauthConsent.for_pair(user_key, client_id)
     return false if consent.nil?
 
     consent.revoked_at = DateTime.utc().to_unix()
     consent.update()
-    OauthRefreshToken.where({ "user_key": user_key.to_s, "client_id": client_id.to_s })
-      .each do |token|
-        OauthRefreshToken.revoke_chain(token["chain_id"], "consent_revoked")
-      end
+    OauthRefreshToken.where({"user_key": user_key.to_s, "client_id": client_id.to_s}).each do |token|
+      OauthRefreshToken.revoke_chain(token["chain_id"], "consent_revoked")
+    end
 
     return true
   end

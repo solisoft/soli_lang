@@ -665,6 +665,10 @@ point — running it twice changes nothing.
 
 It only walks `.sl` files. Templates (`.html.slv`) are formatted by hand.
 
+Generated code arrives formatted: `soli new` and every `soli generate` run their
+`.sl` output through the formatter, so `soli fmt` on a fresh app is a no-op. A
+diff from `fmt` means it is *your* code it reformatted.
+
 ## Linting
 
 ```bash

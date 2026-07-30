@@ -175,7 +175,14 @@ fn create_offline_writes_sync_and_outbox() {
         ),
     )
     .unwrap();
-    assert!(mig.contains("begin"), "migration should use begin/rescue");
+    // The migration must tolerate a collection that already exists. It is
+    // written with `begin`/`rescue`, which the formatter canonicalises to the
+    // `try`/`catch` synonym on the way out — assert the guard, not the spelling.
+    assert!(
+        mig.contains("try") && mig.contains("catch"),
+        "migration should guard each step with try/rescue, got:\n{}",
+        mig
+    );
 }
 
 #[test]

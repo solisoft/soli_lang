@@ -11,7 +11,14 @@ class RegistrationsController < Controller
 
   # GET /signup
   def new
-    render("registrations/new", { "title": "Create account", "error": "", "user": User.new() })
+    render(
+      "registrations/new",
+      {
+        "title": "Create account",
+        "error": "",
+        "user": User.new()
+      }
+    )
   end
 
   # POST /signup
@@ -21,11 +28,14 @@ class RegistrationsController < Controller
     user.set_password(params["password"].to_s)
     user.save()
     if user._errors
-      return render("registrations/new", {
-        "title": "Create account",
-        "user": user,
-        "error": "Could not create your account"
-      })
+      return render(
+        "registrations/new",
+        {
+          "title": "Create account",
+          "user": user,
+          "error": "Could not create your account"
+        }
+      )
     end
 
     # Send the confirmation link. `rescue null` keeps signup working before
@@ -35,11 +45,14 @@ class RegistrationsController < Controller
     AuthMailer.confirm_email(user, token).deliver_now() rescue null
 
     if auth_require_confirmed_email()
-      return render("sessions/new", {
-        "title": "Sign in",
-        "error": "Account created — confirm your email to sign in.",
-        "email": user.email
-      })
+      return render(
+        "sessions/new",
+        {
+          "title": "Sign in",
+          "error": "Account created — confirm your email to sign in.",
+          "email": user.email
+        }
+      )
     end
 
     session_regenerate()

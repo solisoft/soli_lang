@@ -38,7 +38,7 @@
 export class FeatureFlags
   # Flags persist far beyond the cache default TTL (1h). Override with
   # SOLI_FEATURE_TTL (seconds). Default: ~10 years (effectively permanent).
-  def self.ttl() -> Int
+  static def ttl -> Int
     raw = getenv("SOLI_FEATURE_TTL")
     return 315360000 if raw.blank?
     return int(raw)
@@ -47,7 +47,7 @@ export class FeatureFlags
   # ---- read API ------------------------------------------------------------
 
   # Is `name` on for this user/groups? Returns false for an unknown flag.
-  def self.enabled?(name: String, user = null, groups = []) -> Bool
+  static def enabled?(name: String, user = null, groups = []) -> Bool
     return false if name.blank?
 
     # 1. Env override wins outright (kill-switch / CI).
@@ -84,19 +84,18 @@ export class FeatureFlags
   # Raw stored config hash for a flag, or null if it was never set.
   # Fail-safe: a cache outage reads as "no config" (flag off) rather than
   # throwing on the request hot path.
-  def self.get(name: String) -> Any
+  static def get(name: String) -> Any
     return Cache.get(FeatureFlags.key(name)) rescue null
   end
 
   # ---- write / admin API ---------------------------------------------------
-
-  def self.enable(name: String)
+  static def enable(name: String)
     config = FeatureFlags.load_or_blank(name)
     config["on"] = true
     FeatureFlags.put(name, config)
   end
 
-  def self.disable(name: String)
+  static def disable(name: String)
     config = FeatureFlags.load_or_blank(name)
     config["on"] = false
     FeatureFlags.put(name, config)
@@ -104,14 +103,14 @@ export class FeatureFlags
 
   # Roll out to `percent`% of users (0-100). Stable: the same user keeps the
   # same verdict as you ramp the percentage up.
-  def self.set_rollout(name: String, percent: Int)
+  static def set_rollout(name: String, percent: Int)
     config = FeatureFlags.load_or_blank(name)
     config["on"] = true
     config["rollout"] = FeatureFlags.clamp(percent)
     FeatureFlags.put(name, config)
   end
 
-  def self.enable_for(name: String, user)
+  static def enable_for(name: String, user)
     config = FeatureFlags.load_or_blank(name)
     config["on"] = true
     users = config["users"] || []
@@ -120,7 +119,7 @@ export class FeatureFlags
     FeatureFlags.put(name, config)
   end
 
-  def self.enable_group(name: String, group: String)
+  static def enable_group(name: String, group: String)
     config = FeatureFlags.load_or_blank(name)
     config["on"] = true
     groups = config["groups"] || []
@@ -130,29 +129,33 @@ export class FeatureFlags
   end
 
   # Forget a flag entirely (env overrides still apply).
-  def self.clear(name: String)
+  static def clear(name: String)
     Cache.delete(FeatureFlags.key(name))
   end
 
   # ---- internals -----------------------------------------------------------
-
-  def self.key(name: String) -> String
+  static def key(name: String) -> String
     return "feature:" + name
   end
 
-  def self.blank_config() -> Hash
-    return {"on": false, "rollout": 100, "users": [], "groups": []}
+  static def blank_config -> Hash
+    return {
+      "on": false,
+      "rollout": 100,
+      "users": [],
+      "groups": []
+    }
   end
 
-  def self.load_or_blank(name: String) -> Hash
+  static def load_or_blank(name: String) -> Hash
     return FeatureFlags.get(name) || FeatureFlags.blank_config()
   end
 
-  def self.put(name: String, config: Hash)
+  static def put(name: String, config: Hash)
     Cache.set(FeatureFlags.key(name), config, FeatureFlags.ttl())
   end
 
-  def self.clamp(percent: Int) -> Int
+  static def clamp(percent: Int) -> Int
     return 0 if percent < 0
     return 100 if percent > 100
     return percent
@@ -160,7 +163,7 @@ export class FeatureFlags
 
   # Reads SOLI_FEATURE_<NAME>. Returns true/false for an override, or null
   # when no override is set (so callers can tell "unset" from "false").
-  def self.env_override(name: String) -> Any
+  static def env_override(name: String) -> Any
     raw = getenv("SOLI_FEATURE_" + name.upcase())
     return null if raw.nil?
     return ["1", "true", "on", "yes"].includes?(raw.trim().downcase())
@@ -168,7 +171,7 @@ export class FeatureFlags
 
   # Stable 0-99 bucket for a key. Same key -> same bucket on every worker,
   # every request, so rollout membership never flickers.
-  def self.bucket(key: String) -> Int
+  static def bucket(key: String) -> Int
     acc = 0
     for byte in key.bytes()
       acc = (acc * 31 + int(byte)) % 2147483647

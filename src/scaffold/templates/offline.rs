@@ -51,13 +51,14 @@ def pull(req)
 
   let since = (req["query"] || {})["since"]
   # App-specific: return documents the client should merge.
-  let events = if since.present?
-    SyncEvent.where("doc.user_id == @uid AND doc.created_at > @since", {
+  let events = []
+  if since.present?
+    events = SyncEvent.where("doc.user_id == @uid AND doc.created_at > @since", {
       "uid": user_id,
       "since": since
     }).order("created_at", "asc").limit(200).all()
   else
-    SyncEvent.where("doc.user_id == @uid", { "uid": user_id })
+    events = SyncEvent.where("doc.user_id == @uid", { "uid": user_id })
       .order("created_at", "asc").limit(200).all()
   end
 
@@ -154,17 +155,19 @@ def up(db)
   begin
     db.create_collection("sync_events")
   rescue
-    # already exists
+    print("  skip sync_events collection (already exists)")
   end
 
   begin
     db.create_index("sync_events", "idx_sync_events_user", ["user_id"], {})
   rescue
+    print("  skip idx_sync_events_user (already exists)")
   end
 
   begin
     db.create_index("sync_events", "idx_sync_events_created", ["created_at"], {})
   rescue
+    print("  skip idx_sync_events_created (already exists)")
   end
 end
 
@@ -172,6 +175,7 @@ def down(db)
   begin
     db.drop_collection("sync_events")
   rescue
+    print("  skip dropping sync_events collection (already gone)")
   end
 end
 "#

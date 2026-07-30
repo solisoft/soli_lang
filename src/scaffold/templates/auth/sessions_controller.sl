@@ -12,7 +12,14 @@ class SessionsController < Controller
 
   # GET /login
   def new
-    render("sessions/new", { "title": "Sign in", "error": "", "email": "" })
+    render(
+      "sessions/new",
+      {
+        "title": "Sign in",
+        "error": "",
+        "email": ""
+      }
+    )
   end
 
   # POST /login
@@ -22,20 +29,26 @@ class SessionsController < Controller
     user = User.find_by("email", email)
 
     if !user.nil? && user.locked?()
-      return render("sessions/new", {
-        "title": "Sign in",
-        "error": "Account locked after too many failed attempts. Try again later or reset your password.",
-        "email": email
-      })
+      return render(
+        "sessions/new",
+        {
+          "title": "Sign in",
+          "error": "Account locked after too many failed attempts. Try again later or reset your password.",
+          "email": email
+        }
+      )
     end
 
     if !user.nil? && user.authenticate(password)
       if auth_require_confirmed_email() && !user.confirmed?()
-        return render("sessions/new", {
-          "title": "Sign in",
-          "error": "Please confirm your email address first — check your inbox.",
-          "email": email
-        })
+        return render(
+          "sessions/new",
+          {
+            "title": "Sign in",
+            "error": "Please confirm your email address first — check your inbox.",
+            "email": email
+          }
+        )
       end
 
       user.clear_failed_attempts()
@@ -56,11 +69,14 @@ class SessionsController < Controller
     end
 
     user.register_failed_attempt() unless user.nil?
-    return render("sessions/new", {
-      "title": "Sign in",
-      "error": "Invalid email or password",
-      "email": email
-    })
+    return render(
+      "sessions/new",
+      {
+        "title": "Sign in",
+        "error": "Invalid email or password",
+        "email": email
+      }
+    )
   end
 
   # DELETE /logout
@@ -71,7 +87,10 @@ class SessionsController < Controller
       user&.forget_me()
     end
     # Expire the remember-me cookie immediately.
-    set_cookie("remember_token", "", { "max_age": 0, "http_only": true })
+    set_cookie("remember_token", "", {
+      "max_age": 0,
+      "http_only": true
+    })
     session_destroy()
     return redirect("/login")
   end

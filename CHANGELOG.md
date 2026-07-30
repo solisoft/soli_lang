@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **`soli new` and every `soli generate` now emit formatted Soli.** A freshly generated app was 6 files away from `soli fmt --check` clean, so the first thing an agent did — run `fmt`, as the generated `CLAUDE.md` instructs — produced a diff of files the user never touched. The scaffold's 30 `.sl` templates are formatted at rest, and `write_file` (the single choke point all generators share, including ones added later) runs `.sl` content through the formatter on the way out; content the parser rejects is written through unchanged rather than failing the generator. Appended `config/routes.sl` blocks and the seed generator, which used `fs::write` directly, go through it too. Verified across `new` + `auth` + `oidc_provider` + `offline` + `devices` + `app_links` + `scaffold` + `mailer` + `component` + `db:seed generate`: `soli fmt --check` reports 0 files and `soli lint` reports no issues, and the generated app serves `/`, `/posts/new`, `/login` and `/signup` with 200.
+
+### Fixed
+
+* **fix(fmt): a blank line under a file header comment was deleted.** The paragraph-preservation check measures the gap from the previous statement, so with no previous statement it never ran — `# Migration: create_users` + blank + `def up(db)` lost its blank, while an identical gap two statements down kept it. Same for a comment leading a block body. The blank is now preserved when a comment block was just emitted and the source had a gap, which also leaves `# soli-lint-disable-next-line` attached to its target.
+
+* **fix(fmt): a comment that was the whole body of a `catch` escaped the block.** With no statement to flush before, `rescue` / `# already exists` / `end` printed the comment *after* the `end`, where it read as documenting whatever followed. Block bodies now flush through their closing line. The `catch` keyword's own line is recorded too — without that, a body-leading comment measured its gap from the statement above the keyword and gained a blank line on the second pass, breaking idempotency.
+
+* **fix(scaffold): `soli generate offline` produced a controller that could not be parsed.** `sync_controller.sl` assigned an `if`/`else` as an expression (`let events = if since.present?`), which the parser rejects with `Unexpected token 'if', expected expression` — so the sync routes were dead on arrival. Hoisted to a declaration assigned in each branch, per the `let` guidance in `CLAUDE.md`.
+
+* **fix(scaffold): the `offline` and `devices` migrations tripped 18 lint warnings in the app that generated them.** Their deliberately-idempotent `begin`/`rescue` steps had empty (or comment-only) rescue bodies, which `smell/empty-catch` and `style/empty-block` both flag — leaving a user who ran the documented `soli lint` step with 18 warnings they hadn't written. Each rescue now prints which step it skipped, which is what an operator running a migration wants to see anyway.
+
+* **fix(scaffold): the generated form partial had a 186-char line.** The Tailwind class string in `f.text_field(…)` broke `style/line-length` inside a `<%- %>` block. Split across two concatenated lines; the rendered `class` attribute is byte-identical (verified through the template engine, not just the linter — `soli lint` does not parse the Soli inside `.slv`).
+
 
 ## [1.25.3] - 2026-07-30
 

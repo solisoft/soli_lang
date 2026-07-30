@@ -18,10 +18,10 @@ class ApplicationPolicy
   user: Any
   record: Any
 
-  new(context) {
+  new(context)
     this.user = context["user"]
     this.record = context["record"]
-  }
+  end
 
   def index?
     false
@@ -60,33 +60,29 @@ end
 
 # Build the policy object for `record`. Denies (403) when no policy class
 # exists, so a forgotten policy fails closed rather than open.
-fn policy_for(record) {
+def policy_for(record)
   policy_class = const_get(record.class + "Policy")
-  if policy_class.nil?
-    forbidden("No policy class '" + record.class + "Policy'. Add app/policies/<model>_policy.sl")
-  end
-  return policy_class.new({ "user": current_user(), "record": record })
-}
+  forbidden("No policy class '" + record.class + "Policy'. Add app/policies/<model>_policy.sl") if policy_class.nil?
+  return policy_class.new({"user": current_user(), "record": record})
+end
 
 # Authorize `record` for the current action (or an explicit one). Returns the
 # record when allowed; raises a 403 otherwise.
-fn authorize(record, action = null) {
+def authorize(record, action = null)
   act = action ?? current_action()
   act = "show" if act.blank?
   policy = policy_for(record)
-  if !policy.send(act + "?")
-    forbidden("Not authorized to " + act + " this " + record.class)
-  end
+  forbidden("Not authorized to " + act + " this " + record.class) if !policy.send(act + "?")
   return record
-}
+end
 
 # The signed-in user for the current request, or nil. Populated by the
 # `load_current_user` middleware. Defined here (global scope) so controllers
 # and policies can call it; views use the copy in app/helpers/auth_helper.sl.
-fn current_user {
+def current_user
   return req["current_user"] rescue null
-}
+end
 
-fn signed_in? {
+def signed_in?
   return !current_user().nil?
-}
+end

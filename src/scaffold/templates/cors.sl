@@ -14,11 +14,8 @@
 # order: 5
 # global_only: true
 
-def add_cors_headers(req: Any) -> Any
-    # Add CORS headers to the request context
-    # These will be included in the response
-    return {
-        "continue": true,
-        "request": req
-    }
+def add_cors_headers(req) -> Any
+  # Add CORS headers to the request context
+  # These will be included in the response
+  return {"continue": true, "request": req}
 end

@@ -18,10 +18,10 @@
 # written into config/ ends up committed. Both halves are configured because
 # signing needs the private PEM and JWKS publication needs the public one.
 
-const OIDC_ACCESS_TOKEN_TTL = 600       # 10 minutes — see the note below
+const OIDC_ACCESS_TOKEN_TTL = 600  # 10 minutes — see the note below
 const OIDC_ID_TOKEN_TTL = 600
 const OIDC_REFRESH_TOKEN_TTL = 2592000  # 30 days
-const OIDC_CODE_TTL = 60                # authorization codes are short-lived
+const OIDC_CODE_TTL = 60  # authorization codes are short-lived
 
 # Access tokens are signed JWTs so resource servers can verify them offline,
 # with no call back to this provider. The cost is that a token stays valid
@@ -31,9 +31,14 @@ const OIDC_CODE_TTL = 60                # authorization codes are short-lived
 # (oauth_revocations) closes the window for this provider's own endpoints.
 
 # Scopes this provider will grant, and the claims each one releases.
-const OIDC_SUPPORTED_SCOPES = ["openid", "profile", "email", "offline_access"]
+const OIDC_SUPPORTED_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access"
+]
 
-fn oidc_issuer
+def oidc_issuer
   # MUST match the public origin exactly, with no trailing slash — relying
   # parties compare the `iss` claim against this string byte for byte.
   return getenv("SOLI_OIDC_ISSUER").to_s if getenv("SOLI_OIDC_ISSUER").present?
@@ -41,11 +46,11 @@ fn oidc_issuer
   return "http://localhost:5011"  # TODO: set your production issuer
 end
 
-fn oidc_private_key
+def oidc_private_key
   return getenv("SOLI_OIDC_PRIVATE_KEY").to_s
 end
 
-fn oidc_public_key
+def oidc_public_key
   return getenv("SOLI_OIDC_PUBLIC_KEY").to_s
 end
 
@@ -56,26 +61,26 @@ end
 #   1. SOLI_OIDC_PREVIOUS_PUBLIC_KEY = the outgoing public PEM
 #   2. SOLI_OIDC_PRIVATE_KEY / SOLI_OIDC_PUBLIC_KEY = the new pair; deploy
 #   3. once OIDC_ID_TOKEN_TTL has elapsed, unset the previous key
-fn oidc_previous_public_key
+def oidc_previous_public_key
   return getenv("SOLI_OIDC_PREVIOUS_PUBLIC_KEY").to_s
 end
 
 # Key id, derived from the public key so it is stable across restarts and
 # identical in every worker process without anything being stored.
-fn oidc_kid(public_pem)
+def oidc_kid(public_pem)
   return "" if public_pem.blank?
 
   return Crypto.sha256(public_pem).substring(0, 16)
 end
 
-fn oidc_active_kid
+def oidc_active_kid
   return oidc_kid(oidc_public_key())
 end
 
 # Claims released to the userinfo endpoint and the id_token, gated by the
 # scopes the user actually consented to. Add your own fields here — this is
 # the one place that needs to know what a User looks like.
-fn oidc_user_claims(user, scopes)
+def oidc_user_claims(user, scopes)
   claims = {}
   return claims if user.nil?
 

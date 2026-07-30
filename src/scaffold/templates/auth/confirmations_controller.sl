@@ -15,11 +15,14 @@ class ConfirmationsController < Controller
     let user = null
     user = User.find_by("confirmation_token_digest", Crypto.sha256(token)) unless token.blank?
     if user.nil?
-      return render("confirmations/new", {
-        "title": "Confirm your email",
-        "notice": "",
-        "error": "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
-      })
+      return render(
+        "confirmations/new",
+        {
+          "title": "Confirm your email",
+          "notice": "",
+          "error": "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
+        }
+      )
     end
 
     user.confirm_email()
@@ -31,7 +34,14 @@ class ConfirmationsController < Controller
 
   # GET /confirmation/resend
   def new
-    render("confirmations/new", { "title": "Confirm your email", "notice": "", "error": "" })
+    render(
+      "confirmations/new",
+      {
+        "title": "Confirm your email",
+        "notice": "",
+        "error": ""
+      }
+    )
   end
 
   # POST /confirmation/resend
@@ -43,10 +53,13 @@ class ConfirmationsController < Controller
       AuthMailer.confirm_email(user, token).deliver_now() rescue null
     end
 
-    return render("confirmations/new", {
-      "title": "Confirm your email",
-      "notice": "If that email needs confirming, a fresh link is on its way.",
-      "error": ""
-    })
+    return render(
+      "confirmations/new",
+      {
+        "title": "Confirm your email",
+        "notice": "If that email needs confirming, a fresh link is on its way.",
+        "error": ""
+      }
+    )
   end
 end

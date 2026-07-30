@@ -11,7 +11,7 @@ class OauthAuthorizationCode < Model
   # refresh_chain_id.
 
   # Issue a code and return the plaintext (which goes in the redirect).
-  def self.issue(attributes)
+  static def issue(attributes)
     code = Crypto.random_token()
     now = DateTime.utc().to_unix()
 
@@ -27,11 +27,11 @@ class OauthAuthorizationCode < Model
       "auth_time": attributes["auth_time"],
       "expires_at": now + OIDC_CODE_TTL,
       "used_at": null,
-      # Minted here rather than at first exchange: if this code is later
-      # replayed, we need to know which token family the *first* exchange
-      # created in order to revoke it.
       "refresh_chain_id": uuid_v4()
     })
+    # Minted here rather than at first exchange: if this code is later
+    # replayed, we need to know which token family the *first* exchange
+    # created in order to revoke it.
 
     return code
   end
@@ -47,7 +47,7 @@ class OauthAuthorizationCode < Model
   # `RETURN NEW` rather than `RETURN OLD` because SolidB does not support the
   # latter. It makes no difference here: the update only touches `used_at`, and
   # every field the caller needs is carried unchanged.
-  def self.burn(code)
+  static def burn(code)
     return null if code.to_s.blank?
 
     digest = Crypto.sha256(code.to_s)
@@ -68,7 +68,7 @@ class OauthAuthorizationCode < Model
   # A code presented after it was already burned. That is either a replay
   # attack or a leaked code, and RFC 6749 §4.1.2 says to revoke everything the
   # original exchange produced.
-  def self.find_used(code)
+  static def find_used(code)
     return null if code.to_s.blank?
 
     row = OauthAuthorizationCode.find_by("code_digest", Crypto.sha256(code.to_s))
@@ -80,7 +80,7 @@ class OauthAuthorizationCode < Model
 
   # PKCE (RFC 7636 §4.6). Only S256 is accepted — `plain` is deprecated by
   # OAuth 2.1 and accepting it only adds a downgrade path.
-  def self.verify_pkce(challenge, method, verifier)
+  static def verify_pkce(challenge, method, verifier)
     return false unless method.to_s == "S256"
     return false if challenge.to_s.blank?
     return false if verifier.to_s.blank?

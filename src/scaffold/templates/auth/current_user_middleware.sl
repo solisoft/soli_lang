@@ -14,7 +14,7 @@ def load_current_user(req)
   user_id = session_get("user_id")
   if !user_id.blank?
     req["current_user"] = User.find_by("_key", user_id) rescue null
-    return { "continue": true, "request": req }
+    return {"continue": true, "request": req}
   end
 
   # Remember-me: the cookie carries "<user key>:<token>"; only the token's
@@ -29,5 +29,5 @@ def load_current_user(req)
       req["current_user"] = user
     end
   end
-  return { "continue": true, "request": req }
+  return {"continue": true, "request": req}
 end

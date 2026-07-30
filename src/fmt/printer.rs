@@ -182,14 +182,31 @@ impl<'a> Printer<'a> {
 
     /// Emit any comments whose source line is strictly before `line`. Inserts
     /// blank lines between the previous emission and the comment block to
-    /// preserve the user's intentional spacing.
-    pub(super) fn flush_comments_before(&mut self, line: usize) {
+    /// preserve the user's intentional spacing. Returns true if at least one
+    /// comment was emitted, so a caller with no preceding statement to measure
+    /// from can still tell that `last_emitted_line` now refers to a comment.
+    pub(super) fn flush_comments_before(&mut self, line: usize) -> bool {
+        let mut emitted = false;
         while self.comment_cursor < self.comments.len()
             && self.comments[self.comment_cursor].line < line
         {
             let c = self.comments[self.comment_cursor].clone();
             self.emit_comment(&c);
             self.comment_cursor += 1;
+            emitted = !c.text.is_empty() || emitted;
+        }
+        emitted
+    }
+
+    /// Preserve a blank line the author left between a leading comment block
+    /// and the *first* statement of a scope. The paragraph check in the two
+    /// body loops measures the gap from the previous statement, so with no
+    /// previous statement it never runs — which silently deleted the blank
+    /// under a file header (`# Migration: …` + blank + `def up(db)`) while
+    /// keeping it for every comment further down the file.
+    fn blank_line_after_leading_comment(&mut self, flushed_comment: bool, stmt_line: usize) {
+        if flushed_comment && stmt_line > self.last_emitted_line + 1 {
+            self.blank_line();
         }
     }
 
@@ -305,7 +322,10 @@ impl<'a> Printer<'a> {
         // spuriously insert blank lines on second-pass formatting.
         let mut prev_source_end: usize = 0;
         for (idx, stmt) in program.statements.iter().enumerate() {
-            self.flush_comments_before(stmt.span.line_usize());
+            let flushed = self.flush_comments_before(stmt.span.line_usize());
+            if idx == 0 {
+                self.blank_line_after_leading_comment(flushed, stmt.span.line_usize());
+            }
             if idx > 0
                 && stmt.span.line_usize() > prev_source_end + 1
                 && !comment_fills_gap(
@@ -377,7 +397,10 @@ impl<'a> Printer<'a> {
             // there for why this matters for idempotency.
             let mut prev_source_end: usize = 0;
             for (idx, stmt) in stmts.iter().enumerate() {
-                p.flush_comments_before(stmt.span.line_usize());
+                let flushed = p.flush_comments_before(stmt.span.line_usize());
+                if idx == 0 {
+                    p.blank_line_after_leading_comment(flushed, stmt.span.line_usize());
+                }
                 if idx > 0
                     && stmt.span.line_usize() > prev_source_end + 1
                     && !comment_fills_gap(

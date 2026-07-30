@@ -7,22 +7,22 @@
 # SHA-256 digest is stored — a database leak can't be replayed as a live link.
 
 # --- Auth flow tuning --------------------------------------------------------
-const AUTH_RESET_TOKEN_TTL = 7200      # password-reset links live 2 hours
-const AUTH_MAX_FAILED_ATTEMPTS = 10    # failed logins before lockout
-const AUTH_LOCKOUT_SECONDS = 1800      # auto-unlock after 30 minutes
-const AUTH_REMEMBER_DAYS = 30          # remember-me cookie lifetime
+const AUTH_RESET_TOKEN_TTL = 7200  # password-reset links live 2 hours
+const AUTH_MAX_FAILED_ATTEMPTS = 10  # failed logins before lockout
+const AUTH_LOCKOUT_SECONDS = 1800  # auto-unlock after 30 minutes
+const AUTH_REMEMBER_DAYS = 30  # remember-me cookie lifetime
 
 # Base URL used in password-reset / confirmation emails.
-fn auth_base_url {
+def auth_base_url
   return "http://localhost:5011"  # TODO: set your production URL
-}
+end
 
 # Require a confirmed email before sign-in. Flip to true once SMTP is
 # configured (SOLI_SMTP_* env vars — see the mailer docs) so users can
 # actually receive the confirmation link.
-fn auth_require_confirmed_email {
+def auth_require_confirmed_email
   return false
-}
+end
 
 class User < Model
   # Fields: email, password_digest, role, plus the auth-flow fields:
@@ -30,9 +30,14 @@ class User < Model
   # confirmation_sent_at, confirmed_at, remember_token_digest,
   # failed_attempts, locked_at.
   # (Model stores fields dynamically — no need to declare them.)
-
-  validates("email", { "presence": true, "uniqueness": true, "format": "email" })
-
+  validates(
+    "email",
+    {
+      "presence": true,
+      "uniqueness": true,
+      "format": "email"
+    }
+  )
   before_save("normalize")
 
   def normalize
@@ -88,7 +93,6 @@ class User < Model
   end
 
   # --- Email confirmation -----------------------------------------------------
-
   def start_email_confirmation
     token = uuid_v4()
     this.confirmation_token_digest = Crypto.sha256(token)
@@ -108,7 +112,6 @@ class User < Model
   end
 
   # --- Remember me ------------------------------------------------------------
-
   def start_remember_me
     token = uuid_v4()
     this.remember_token_digest = Crypto.sha256(token)
@@ -130,7 +133,6 @@ class User < Model
   end
 
   # --- Account lockout --------------------------------------------------------
-
   def locked?
     return false if this.locked_at.nil?
 

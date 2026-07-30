@@ -42,6 +42,7 @@ A few details worth knowing:
 | Guard clauses | `if cond return … end` with no `else` gets a trailing blank line |
 | Early returns | A `return` is followed by a blank line, unless the next statement is another `return` or the block's `end` follows |
 | Raw strings | `[[ … ]]` and `r"…"` are copied from source verbatim — never re-escaped |
+| `begin`/`rescue` | Canonicalized to the `try`/`catch` synonym |
 
 An early return gets breathing room from the body below it, while a run of
 guards stays grouped as one paragraph:
@@ -74,6 +75,12 @@ single-line string. Use `[[ … ]]` for multi-line queries.
 
 The formatter never changes program semantics. If you spot output that breaks
 your code, that's a bug — please report it.
+
+## Generated code is already formatted
+
+`soli new` and every `soli generate` run their `.sl` output through the
+formatter, so a freshly generated app passes `soli fmt --check` from its first
+commit and your first `fmt` run produces no diff of files you never touched.
 
 ## Editor integration
 

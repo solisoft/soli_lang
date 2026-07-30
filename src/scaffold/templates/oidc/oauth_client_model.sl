@@ -14,12 +14,12 @@ class OauthClient < Model
 
   # Create a client and return the credentials. The secret is returned in the
   # clear exactly once, because only its Argon2 digest is persisted.
-  def self.register(name, redirect_uris, options)
+  static def register(name, redirect_uris, options)
     options = options ?? {}
     client_type = options["client_type"] ?? "confidential"
-    invalid = redirect_uris.filter(fn(uri) !OauthClient.valid_redirect_uri?(uri))
+    invalid = redirect_uris.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
     if invalid.length() != 0
-      throw("redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
+      throw ("redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
     end
 
     attributes = {
@@ -27,15 +27,20 @@ class OauthClient < Model
       "name": name,
       "client_type": client_type,
       "redirect_uris": redirect_uris,
-      "scopes": options["scopes"] ?? ["openid", "profile", "email", "offline_access"],
+      "scopes": options["scopes"] ?? [
+        "openid",
+        "profile",
+        "email",
+        "offline_access"
+      ],
       "grant_types": options["grant_types"] ?? ["authorization_code", "refresh_token"],
-      # A public client cannot keep a secret, so PKCE is the only thing binding
-      # the code to the requester. Never let it be switched off for one.
       "require_pkce": client_type == "public" ? true : (options["require_pkce"] ?? true),
       "skip_consent": options["skip_consent"] ?? false,
       "client_secret_digest": null,
       "disabled_at": null
     }
+    # A public client cannot keep a secret, so PKCE is the only thing binding
+    # the code to the requester. Never let it be switched off for one.
 
     secret = ""
     if client_type == "confidential"
@@ -45,20 +50,24 @@ class OauthClient < Model
 
     client = OauthClient.create(attributes)
 
-    return { "client": client, "client_id": attributes["client_id"], "client_secret": secret }
+    return {
+      "client": client,
+      "client_id": attributes["client_id"],
+      "client_secret": secret
+    }
   end
 
   # `redirect_external` (and the spec) only accept absolute http(s) URLs, and
   # RFC 6749 §3.1.2 forbids a fragment. Rejecting at registration means the
   # failure surfaces here rather than mid-flow with a half-built authorization.
-  def self.valid_redirect_uri?(uri)
+  static def valid_redirect_uri?(uri)
     return false if uri.to_s.blank?
     return false if uri.to_s.contains("#")
 
     return uri.to_s.starts_with("http://") || uri.to_s.starts_with("https://")
   end
 
-  def self.find_active(client_id)
+  static def find_active(client_id)
     return null if client_id.to_s.blank?
 
     client = OauthClient.find_by("client_id", client_id.to_s)
@@ -93,7 +102,7 @@ class OauthClient < Model
   def allowed_scopes(requested)
     granted = this.scopes ?? []
 
-    return requested.filter(fn(scope) granted.includes?(scope) && OIDC_SUPPORTED_SCOPES.includes?(scope))
+    return requested.filter(fn(scope) { granted.includes?(scope) && OIDC_SUPPORTED_SCOPES.includes?(scope) })
   end
 
   def supports_grant?(grant_type)

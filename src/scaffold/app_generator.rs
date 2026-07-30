@@ -45,13 +45,30 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Write content to a file
+/// Write content to a file. Soli sources go through the formatter on the way
+/// out, so a generated app is `soli fmt --check` clean from its first commit
+/// and the code an agent reads back matches the style the generated
+/// `CLAUDE.md` prescribes. Doing it here rather than in each generator's string
+/// literals means every generator — including ones added later — inherits it.
 pub fn write_file(path: &Path, content: &str) -> Result<(), String> {
+    let owned = format_soli_source(path, content);
+    let bytes = owned.as_deref().unwrap_or(content).as_bytes();
     let mut file =
         File::create(path).map_err(|e| format!("Failed to create '{}': {}", path.display(), e))?;
-    file.write_all(content.as_bytes())
+    file.write_all(bytes)
         .map_err(|e| format!("Failed to write to '{}': {}", path.display(), e))?;
     Ok(())
+}
+
+/// The canonical formatting of `content` when `path` is a `.sl` file and the
+/// content parses, else `None` — the caller then writes the original bytes.
+/// A generator emitting something the parser rejects is a bug worth seeing as
+/// a broken generated app, not one worth hiding behind a failed write.
+pub(crate) fn format_soli_source(path: &Path, content: &str) -> Option<String> {
+    if path.extension().and_then(|e| e.to_str()) != Some("sl") {
+        return None;
+    }
+    crate::fmt::format_source(content).ok()
 }
 
 /// Create the routes configuration file
