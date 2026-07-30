@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [1.26.0] - 2026-07-30
+
 ### Added
 
 * **`soli test` now exercises the production coalescing path, and a new `assert_no_ungrouped_reads`.** The test server runs with `--dev` so the AQL query log is populated — but `--dev` also *disables* `grouped(fn() { ... })` coalescing, so no spec ever ran the combined `LET … RETURN […]` path, and `assert_query_count` measured dev's un-coalesced number instead of the round-trips production makes. The decision now lives in `batch::should_coalesce(dev_mode, test_runner)`: interactive `--dev` still keeps reads separate for a readable query log, while test-runner children (which already carry the runner's token via `SOLI_INTERNAL_TEST_RUNNER`) coalesce like production. A grouped action reports one query in a spec, not one per read.
