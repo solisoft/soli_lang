@@ -544,9 +544,23 @@ assert_eq(res_status(response), 200)</code></pre>
                 <p class="text-sm text-gray-400 mt-1">Asserts the request ran at most <code>n</code> queries</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">res["query_count"]</code> / <code class="text-emerald-300 font-bold">res["n_plus_one"]</code>
-                <p class="text-sm text-gray-400 mt-1">Raw count and the <code>{query, count}</code> groups behind the assertions</p>
+                <code class="text-emerald-300 font-bold">assert_no_ungrouped_reads(res)</code>
+                <p class="text-sm text-gray-400 mt-1">Fails if 3+ <em>distinct</em> reads each cost a round-trip outside a <code>grouped</code> block</p>
             </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res["query_count"]</code> / <code class="text-emerald-300 font-bold">res["n_plus_one"]</code> / <code class="text-emerald-300 font-bold">res["ungrouped_reads"]</code>
+                <p class="text-sm text-gray-400 mt-1">Raw count, the <code>{query, count}</code> N+1 groups, and the <code>{query}</code> coalescing candidates behind the assertions</p>
+            </div>
+        </div>
+
+        <div class="mb-8 p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">Two different problems</h3>
+            <p class="text-gray-400 text-sm mb-3">N+1 detection fingerprints by query <em>template</em>, so it only ever fires on a <strong>repeated</strong> one. Three unrelated reads are three distinct templates with a count of one each &mdash; invisible to <code>assert_no_n_plus_one</code>, yet exactly the shape <code>grouped</code> exists for. The two assertions cover opposite halves:</p>
+            <ul class="text-gray-400 text-sm space-y-1 list-disc pl-6">
+                <li><strong>Same read, N times</strong> &rarr; <code>assert_no_n_plus_one</code>; fix with <a href="/docs/database/relationships" class="text-amber-400 hover:underline"><code>includes(...)</code></a>.</li>
+                <li><strong>N different reads, once each</strong> &rarr; <code>assert_no_ungrouped_reads</code>; fix with <a href="/docs/database/query-builder#grouped" class="text-amber-400 hover:underline"><code>grouped(fn() { ... })</code></a>.</li>
+            </ul>
+            <p class="text-gray-400 text-sm mt-3">Neither can prove reads are independent: <code>User.find(id)</code> then a query on <code>user._key</code> is genuinely two round-trips, and <code>assert_no_ungrouped_reads</code> will flag it. Use it on actions whose reads really are unrelated.</p>
         </div>
 
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
@@ -563,7 +577,10 @@ assert_eq(res_status(response), 200)</code></pre>
 
         <div class="mb-8 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
             <p class="text-yellow-300 text-sm">
-                <strong>Threshold.</strong> A template counts as N+1 at <strong>2</strong> repetitions, matching the dev bar &mdash; HABTM/<code>through</code> lookups start at two. If an endpoint legitimately repeats a query, bound it with <code>assert_max_queries</code> instead of <code>assert_no_n_plus_one</code>. These keys are populated by the <code>--dev</code> test server <code>soli test</code> runs, so they're always present in request specs.
+                <strong>Threshold.</strong> A template counts as N+1 at <strong>2</strong> repetitions, matching the dev bar &mdash; HABTM/<code>through</code> lookups start at two. <code>assert_no_ungrouped_reads</code> trips at <strong>3</strong> distinct one-off reads. If an endpoint legitimately repeats a query, bound it with <code>assert_max_queries</code> instead of <code>assert_no_n_plus_one</code>. These keys are populated by the <code>--dev</code> test server <code>soli test</code> runs, so they're always present in request specs.
+            </p>
+            <p class="text-yellow-300 text-sm mt-2">
+                <strong>Counts are production counts.</strong> The test server runs with <code>--dev</code> so the query log is populated, but <code>grouped(fn() { ... })</code> <em>does</em> coalesce there &mdash; unlike interactive <code>--dev</code>, which keeps the reads separate for a readable query log. Specs therefore exercise the production path, and a grouped action reports <strong>one</strong> query, not one per read. Without this, the coalescing path would never run during a suite and a query budget would be measured against a shape production never uses.
             </p>
         </div>
 

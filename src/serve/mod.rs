@@ -6730,6 +6730,25 @@ fn handle_request(
                     );
                     resp.headers.push(("x-soli-test-n1".to_string(), b64));
                 }
+                // Coalescing opportunities: reads that each paid their own
+                // round-trip outside any `grouped` block. The runner's server
+                // coalesces (see `batch::should_coalesce`), so what a spec sees
+                // here is what production would do — a grouped action reports
+                // one query, not one per read.
+                let ungrouped =
+                    dev_bar::detect_ungrouped_reads(&queries, dev_bar::UNGROUPED_READ_THRESHOLD);
+                if !ungrouped.is_empty() {
+                    let arr: Vec<serde_json::Value> = ungrouped
+                        .iter()
+                        .map(|template| serde_json::json!({ "query": template }))
+                        .collect();
+                    let b64 = base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        serde_json::Value::Array(arr).to_string().as_bytes(),
+                    );
+                    resp.headers
+                        .push(("x-soli-test-ungrouped".to_string(), b64));
+                }
             }
         }
         // Inject the dev bar into HTML responses when running --dev. The bar

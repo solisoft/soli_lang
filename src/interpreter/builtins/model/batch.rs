@@ -22,7 +22,7 @@
 //! inside the block — the "auto-flush" behaviour. Auto-flush is driven by the
 //! read sites calling [`force`] / [`flush_current`].
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -46,12 +46,60 @@ struct BatchState {
 
 thread_local! {
     static BATCH: RefCell<Option<BatchState>> = const { RefCell::new(None) };
+
+    /// Nesting depth of `grouped(fn() { ... })` blocks executing on this thread.
+    ///
+    /// Tracked separately from [`BATCH`] because interactive `--dev` runs the
+    /// block *without* a batch (see [`should_coalesce`]), so `is_active()` is
+    /// false there even though the reads are inside a `grouped` block. The dev
+    /// bar needs the distinction: reads the author already grouped must not be
+    /// reported as coalescing opportunities.
+    static GROUPED_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Whether a `grouped {}` batch is currently collecting queries.
 #[inline]
 pub fn is_active() -> bool {
     BATCH.with(|b| b.borrow().is_some())
+}
+
+/// Whether `grouped(fn() { ... })` should actually coalesce, given the two
+/// process-level flags.
+///
+/// Interactive `--dev` deliberately does *not* coalesce: each read fires (and
+/// logs) as its own natural statement instead of one combined
+/// `LET … RETURN […]` that is hard to read in the dev query log.
+///
+/// The test runner is the exception. It serves the app with `--dev` (so the
+/// query log is populated for `assert_query_count` and friends), but a spec has
+/// to exercise the **production** shape — otherwise the whole coalescing path
+/// goes untested and a query-count assertion measures dev's un-coalesced number
+/// rather than the round-trips production will make. `soli test` children carry
+/// the runner's token, which `main.rs` translates into the in-process flag
+/// behind `is_test_runner_process`, so they coalesce despite `--dev`.
+pub fn should_coalesce(dev_mode: bool, test_runner: bool) -> bool {
+    !dev_mode || test_runner
+}
+
+/// Enter a `grouped` block for bookkeeping purposes. Paired with [`exit_block`],
+/// and incremented in **both** modes — coalescing or not — so the query log can
+/// tell a deliberately-grouped read from a stray one.
+#[inline]
+pub fn enter_block() {
+    GROUPED_DEPTH.with(|d| d.set(d.get().saturating_add(1)));
+}
+
+/// Leave a `grouped` block. Saturating so an unbalanced call can never wrap.
+#[inline]
+pub fn exit_block() {
+    GROUPED_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+}
+
+/// Whether execution is currently inside a `grouped(fn() { ... })` block,
+/// regardless of whether that block is coalescing.
+#[inline]
+pub fn in_block() -> bool {
+    GROUPED_DEPTH.with(|d| d.get() > 0)
 }
 
 /// Begin a batch. Returns `true` if this call started a *new* batch (the caller
@@ -266,6 +314,36 @@ mod tests {
         keys.iter()
             .map(|k| (k.to_string(), serde_json::Value::Bool(true)))
             .collect()
+    }
+
+    #[test]
+    fn coalescing_policy_covers_all_four_modes() {
+        // Production: always coalesce.
+        assert!(should_coalesce(false, false));
+        // Interactive `--dev`: skip, so the query log stays one row per read.
+        assert!(!should_coalesce(true, false));
+        // Test runner: coalesce *despite* `--dev`, so a spec exercises the
+        // production path and query counts reflect real round-trips.
+        assert!(should_coalesce(true, true));
+        // Runner without dev mode is still production-shaped.
+        assert!(should_coalesce(false, true));
+    }
+
+    #[test]
+    fn grouped_depth_tracks_nesting_and_never_underflows() {
+        assert!(!in_block());
+        enter_block();
+        assert!(in_block());
+        enter_block();
+        assert!(in_block(), "still inside after a nested enter");
+        exit_block();
+        assert!(in_block(), "outer block is still open");
+        exit_block();
+        assert!(!in_block());
+        // An unbalanced exit must saturate rather than wrap to usize::MAX,
+        // which would mark every later read in the request as grouped.
+        exit_block();
+        assert!(!in_block());
     }
 
     #[test]

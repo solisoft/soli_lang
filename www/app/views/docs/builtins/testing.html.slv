@@ -643,6 +643,13 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     <p class="text-gray-400 text-sm mt-1">Fails if any AQL template fired 2+ times (a loop that should be batched)</p>
                 </section>
 
+                <section id="def-assert-no-ungrouped-reads" class="scroll-mt-20">
+                    <a href="#def-assert-no-ungrouped-reads" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert_no_ungrouped_reads(res)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Fails if 3+ <em>distinct</em> reads each cost a round-trip outside a <code>grouped</code> block &mdash; the case an N+1 scan cannot see, since each template ran only once</p>
+                </section>
+
                 <section id="def-assert-query-count" class="scroll-mt-20">
                     <a href="#def-assert-query-count" class="group flex items-center gap-2">
                         <code class="font-mono text-amber-400">assert_query_count(res, n)</code>

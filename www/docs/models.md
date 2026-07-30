@@ -2027,11 +2027,43 @@ results after the block.
   surfaces when the result is read or the block ends.
 - A combined query is all-or-nothing: if it fails, every read in the batch
   fails together.
-- In **`--dev`** the reads are *not* coalesced — each runs as its own query so
-  the dev query log stays readable (you see the natural statements instead of
-  one combined `LET … RETURN […]`). Coalescing is active in production, where
-  the single round-trip is what matters. To confirm the production shape, check
-  the combined query in a non-dev run.
+- In interactive **`--dev`** the reads are *not* coalesced — each runs as its own
+  query so the dev query log stays readable (you see the natural statements
+  instead of one combined `LET … RETURN […]`). Coalescing is active in
+  production, where the single round-trip is what matters.
+- **`soli test` coalesces.** The test server runs with `--dev` so the query log
+  is populated, but specs exercise the *production* shape deliberately —
+  otherwise the whole coalescing path would go untested and `assert_query_count`
+  would measure dev's un-coalesced number instead of the round-trips production
+  makes. A grouped action reports **one** query in a spec, not one per read.
+
+### Finding reads that should be grouped
+
+Because `grouped` is for reads that each run *once*, an N+1 scan can never point
+you at them: it fingerprints by query template and only fires on a *repeated*
+one. Three unrelated reads are three distinct templates with a count of one
+each — invisible to `assert_no_n_plus_one` and to the dev bar's N+1 badge.
+
+Two tools cover that blind spot:
+
+- The **dev bar** query panel shows a `N READS · N ROUND-TRIPS` advisory when a
+  request issues three or more distinct one-off reads outside any `grouped`
+  block. It is amber, not red: it is a suggestion, because reads that feed each
+  other cannot share a round-trip.
+- **`assert_no_ungrouped_reads(response)`** fails a spec on the same condition:
+
+  ```soli
+  test("the dashboard loads in one round-trip", fn() {
+    let response = get("/dashboard")
+    assert_no_ungrouped_reads(response)
+    assert_query_count(response, 1)
+  })
+  ```
+
+Neither can prove the reads are independent — `User.find(id)` followed by a query
+on `user._key` is genuinely two round-trips. When the reads must be sequential,
+that advisory is a false positive and the assertion is the wrong tool for that
+action.
 
 ## Transactions
 

@@ -368,6 +368,11 @@ fn render_bar(ctx: &DevBarContext) -> String {
     let n1_groups = detect_n_plus_one(&ctx.queries, 2);
     let has_n1 = !n1_groups.is_empty();
 
+    // The other half of the round-trip story: distinct one-off reads that no
+    // N+1 scan can see, because each template appears exactly once. Advisory
+    // only — the log cannot prove they are independent of each other.
+    let ungrouped = detect_ungrouped_reads(&ctx.queries, UNGROUPED_READ_THRESHOLD);
+
     let queries_panel = if q_count == 0 {
         String::new()
     } else {
@@ -387,10 +392,12 @@ fn render_bar(ctx: &DevBarContext) -> String {
         }
 
         // N+1 alert block, rendered above the per-query list when at least one
-        // template fired ≥3 times. Template is shown verbatim (with @binds) so
-        // the user can grep for it; the suggestion names Soli's own remedies —
-        // `includes(...)` for association preloading, `grouped(fn() { ... })`
-        // for unrelated reads — rather than hand-written AQL.
+        // template fired ≥2 times. Template is shown verbatim (with @binds) so
+        // the user can grep for it. The hint names `includes(...)` first — the
+        // framework fix for a repeated association read — then the raw AQL
+        // batch. `grouped` is deliberately NOT mentioned here: it addresses
+        // distinct one-off reads, which by construction never trip this alert.
+        // That case has its own block below (see `detect_ungrouped_reads`).
         let n1_block = if has_n1 {
             let mut alerts = String::new();
             for (template, count, total_us) in &n1_groups {
@@ -399,7 +406,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
 <span style=\"flex:0 0 auto;color:#ff6b6b;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">×{count}</span>\
 <div style=\"flex:1;\">\
 <pre style=\"white-space:pre-wrap;word-break:break-all;margin:0 0 0.25rem 0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{tmpl}</pre>\
-<span style=\"font-size:10px;color:#8b949e;\">total {total} · likely fired in a loop — preload with <span style=\"color:#f0c674;\">includes(...)</span>, or coalesce unrelated reads in <span style=\"color:#f0c674;\">grouped(fn() {{ ... }})</span></span>\
+<span style=\"font-size:10px;color:#8b949e;\">total {total} · likely fired in a loop — preload with <span style=\"color:#f0c674;\">includes(...)</span>, or batch with <span style=\"color:#f0c674;\">FILTER doc.field IN @ids</span></span>\
 </div>\
 </li>",
                     count = count,
@@ -420,11 +427,51 @@ fn render_bar(ctx: &DevBarContext) -> String {
             String::new()
         };
 
+        // Coalescing advisory. Amber, not red: unlike an N+1 this is a
+        // suggestion the author may correctly decline, because dependent reads
+        // (find a record, then query by its key) cannot share a round-trip and
+        // the query log cannot tell them apart from independent ones. Wording
+        // therefore states the precondition instead of asserting a defect.
+        let ungrouped_block = if ungrouped.is_empty() {
+            String::new()
+        } else {
+            const SHOWN: usize = 5;
+            let mut items = String::new();
+            for template in ungrouped.iter().take(SHOWN) {
+                items.push_str(&format!(
+                    "<li><pre style=\"white-space:pre-wrap;word-break:break-all;margin:0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{}</pre></li>",
+                    html_escape(template),
+                ));
+            }
+            // Never let a cap read as "that was all of them".
+            let more = if ungrouped.len() > SHOWN {
+                format!(
+                    "<div style=\"font-size:10px;color:#8b949e;margin-top:0.375rem;\">+{} more not shown</div>",
+                    ungrouped.len() - SHOWN
+                )
+            } else {
+                String::new()
+            };
+            format!(
+                "<div style=\"margin-bottom:0.5rem;padding:0.5rem 0.625rem;border-left:3px solid #f0c674;background:#2a230d;border-radius:0 0.25rem 0.25rem 0;\">\
+<div style=\"color:#f0c674;font-size:10px;letter-spacing:0.08em;margin-bottom:0.375rem;\">◆ {} READS · {} ROUND-TRIPS</div>\
+<div style=\"font-size:10px;color:#8b949e;margin-bottom:0.375rem;\">Each ran once, outside any <span style=\"color:#f0c674;\">grouped</span> block. If they don't depend on each other, wrap them in <span style=\"color:#f0c674;\">grouped(fn() {{ ... }})</span> to ship all {} in one request.</div>\
+<ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.375rem;font-size:11px;\">{}</ol>{}\
+</div>",
+                ungrouped.len(),
+                ungrouped.len(),
+                ungrouped.len(),
+                items,
+                more,
+            )
+        };
+
         let plural = if q_count == 1 { "Y" } else { "IES" };
         format!(
             "<div id=\"__solidev_queries\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">SOLIDB · {} QUER{} · {}</div>\
 {n1_block}\
+{ungrouped_block}\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.375rem;font-size:11px;\">{}</ol>\
 </div>",
             q_count,
@@ -432,6 +479,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
             html_escape(&q_total_str),
             rows,
             n1_block = n1_block,
+            ungrouped_block = ungrouped_block,
         )
     };
 
@@ -1144,6 +1192,92 @@ fn view_sub_row(id: u32, depth: u32, name: &str, us: u64, total_us: u64, color: 
     )
 }
 
+/// Minimum number of distinct one-off reads before the dev bar suggests
+/// `grouped`. Three is the shape the docs use as the motivating example (a
+/// dashboard loading three unrelated things); below that the advice is noise.
+pub(crate) const UNGROUPED_READ_THRESHOLD: usize = 3;
+
+/// AQL keywords that make a statement a write. Matched as whole uppercase words
+/// so a read over a collection called `updates` is not mistaken for an `UPDATE`.
+const WRITE_KEYWORDS: [&str; 5] = ["INSERT", "UPDATE", "REPLACE", "REMOVE", "UPSERT"];
+
+/// Whether `needle` occurs in `haystack` as a whole word (neither neighbour is
+/// alphanumeric or `_`). Case-sensitive: the ORM emits AQL keywords uppercase
+/// and collection/field names lowercase, so exact case is the discriminator.
+fn contains_word(haystack: &str, needle: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let nlen = needle.len();
+    let mut from = 0;
+    while let Some(rel) = haystack[from..].find(needle) {
+        let start = from + rel;
+        let end = start + nlen;
+        let before_ok = start == 0 || !is_word_byte(bytes[start - 1]);
+        let after_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
+#[inline]
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Whether this AQL statement mutates data.
+fn is_write_query(aql: &str) -> bool {
+    WRITE_KEYWORDS.iter().any(|kw| contains_word(aql, kw))
+}
+
+/// Distinct read templates that each ran exactly **once** and were **not**
+/// inside a `grouped(fn() { ... })` block — i.e. reads that each paid their own
+/// round-trip when one combined request might have served them all.
+///
+/// This is the complement of [`detect_n_plus_one`], which fingerprints by
+/// template and therefore only ever fires on a *repeated* one. N distinct
+/// one-off reads each have count 1, so an N+1 scan can never see them — yet
+/// that is exactly the shape `grouped` exists for.
+///
+/// Deliberately conservative, because the log cannot prove the reads are
+/// independent:
+/// - Writes are excluded (`grouped` never batches them).
+/// - Repeated templates are excluded — those belong to the N+1 alert, whose
+///   fix is `includes(...)`, not `grouped`.
+/// - Reads already inside a `grouped` block are excluded via `LoggedQuery.grouped`,
+///   which matters because interactive `--dev` does not coalesce: without the
+///   flag, correctly-grouped code would be reported as if it were unfixed.
+///
+/// Returns the templates in first-seen order, or empty when fewer than
+/// `threshold` qualify. The caller must still present it as conditional advice:
+/// reads that feed each other (`find` a user, then query by its key) cannot be
+/// coalesced, and nothing in the log distinguishes those from independent ones.
+pub(crate) fn detect_ungrouped_reads(queries: &[LoggedQuery], threshold: usize) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for q in queries {
+        *counts.entry(q.query.as_str()).or_insert(0) += 1;
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    for q in queries {
+        let template = q.query.as_str();
+        if q.grouped || is_write_query(template) {
+            continue;
+        }
+        if counts.get(template).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        if !seen.contains(&template) {
+            seen.push(template);
+        }
+    }
+    if seen.len() < threshold {
+        return Vec::new();
+    }
+    seen.into_iter().map(str::to_string).collect()
+}
+
 /// Group queries by their raw template (the AQL string before bind-substitution).
 /// Returns groups with count >= `threshold`, sorted by count desc.
 ///
@@ -1327,7 +1461,106 @@ mod tests {
             query: template.into(),
             bind_vars: None,
             duration_ms: dur_ms,
+            grouped: false,
         }
+    }
+
+    /// Same as [`q`] but flagged as issued inside a `grouped` block.
+    fn q_grouped(template: &str, dur_ms: f64) -> LoggedQuery {
+        LoggedQuery {
+            grouped: true,
+            ..q(template, dur_ms)
+        }
+    }
+
+    fn read(collection: &str) -> String {
+        format!("FOR doc IN {} RETURN doc", collection)
+    }
+
+    #[test]
+    fn ungrouped_reads_flags_distinct_one_off_reads() {
+        // Three different collections, one read each — invisible to the N+1
+        // scan (every template has count 1) but the canonical `grouped` case.
+        let queries = vec![
+            q(&read("posts"), 1.0),
+            q(&read("accounts"), 1.0),
+            q(&read("tags"), 1.0),
+        ];
+        assert!(detect_n_plus_one(&queries, 2).is_empty());
+        let found = detect_ungrouped_reads(&queries, UNGROUPED_READ_THRESHOLD);
+        assert_eq!(found.len(), 3, "expected all three reads: {found:?}");
+        // First-seen order is preserved so the list matches the query panel.
+        assert_eq!(found[0], read("posts"));
+        assert_eq!(found[2], read("tags"));
+    }
+
+    #[test]
+    fn ungrouped_reads_ignores_already_grouped_reads() {
+        // The regression that makes the flag necessary: interactive `--dev`
+        // does not coalesce, so correctly-grouped reads still log one row each.
+        // Without `LoggedQuery.grouped` this would nag on correct code.
+        let queries = vec![
+            q_grouped(&read("posts"), 1.0),
+            q_grouped(&read("accounts"), 1.0),
+            q_grouped(&read("tags"), 1.0),
+        ];
+        assert!(detect_ungrouped_reads(&queries, UNGROUPED_READ_THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn ungrouped_reads_excludes_writes_and_repeats() {
+        let queries = vec![
+            // A write is never batched by `grouped`.
+            q("INSERT { a: 1 } INTO posts RETURN NEW", 1.0),
+            // A repeated template is the N+1 alert's business, not ours.
+            q(&read("comments"), 1.0),
+            q(&read("comments"), 1.0),
+            // Only one genuine one-off read remains → under the threshold.
+            q(&read("tags"), 1.0),
+        ];
+        assert!(detect_ungrouped_reads(&queries, UNGROUPED_READ_THRESHOLD).is_empty());
+    }
+
+    #[test]
+    fn ungrouped_reads_respects_threshold() {
+        let queries = vec![q(&read("posts"), 1.0), q(&read("tags"), 1.0)];
+        // Two reads: under the default threshold of three, over an explicit 2.
+        assert!(detect_ungrouped_reads(&queries, 3).is_empty());
+        assert_eq!(detect_ungrouped_reads(&queries, 2).len(), 2);
+    }
+
+    #[test]
+    fn write_detection_is_whole_word_and_case_sensitive() {
+        // A collection literally named `updates` must not read as an UPDATE,
+        // and neither must a lowercase `update` in a string value.
+        assert!(!is_write_query("FOR doc IN updates RETURN doc"));
+        assert!(!is_write_query(
+            "FOR d IN log FILTER d.kind == \"update\" RETURN d"
+        ));
+        assert!(is_write_query(
+            "FOR d IN posts UPDATE d WITH { x: 1 } IN posts"
+        ));
+        assert!(is_write_query("REMOVE @key IN posts"));
+        assert!(is_write_query(
+            "UPSERT { a: 1 } INSERT { a: 1 } UPDATE {} IN t"
+        ));
+    }
+
+    #[test]
+    fn renders_ungrouped_advisory_block() {
+        let html = "<html><body></body></html>";
+        let mut c = ctx("GET", "/dashboard");
+        for coll in ["posts", "accounts", "tags"] {
+            c.queries.push(q(&read(coll), 0.4));
+        }
+        let out = inject_dev_bar(html, &c);
+        assert!(out.contains("3 READS · 3 ROUND-TRIPS"), "advisory missing");
+        assert!(out.contains("grouped(fn() { ... })"));
+        // Advisory is amber, and must NOT masquerade as an N+1 alert.
+        assert!(out.contains("#f0c674"));
+        assert!(!out.contains("N+1 DETECTED"));
+        // Conditional wording: the tool cannot prove independence.
+        assert!(out.contains("If they don't depend on each other"));
     }
 
     #[test]
@@ -1375,10 +1608,16 @@ mod tests {
         let out = inject_dev_bar(html, &c);
         assert!(out.contains("N+1 DETECTED"));
         assert!(out.contains("×14"));
-        // the remediation hint must name Soli's own fixes, not raw AQL
+        // The hint leads with the framework fix for a *repeated* read. It must
+        // not mention `grouped`, which addresses distinct one-off reads and so
+        // can never be the fix for what tripped this alert.
         assert!(
-            out.contains("includes(...)") && out.contains("grouped(fn() { ... })"),
-            "N+1 hint should point at includes()/grouped(): {out}"
+            out.contains("includes(...)"),
+            "N+1 hint should point at includes(): {out}"
+        );
+        assert!(
+            !out.contains("grouped(fn()"),
+            "N+1 hint must not suggest grouped() — wrong remedy for a repeated template"
         );
         // db badge should switch to red
         assert!(out.contains("color:#ff6b6b") && out.contains("N+1 detected"));

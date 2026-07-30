@@ -1832,35 +1832,53 @@ impl Interpreter {
         }
 
         // Nested grouped → join the outer batch; the outer scope flushes it.
+        // The depth counter is still bumped so the nested block's own reads read
+        // as grouped even if the outer batch is later torn down.
         if batch::is_active() {
-            return self.call_value(block, Vec::new(), span).map(Some);
+            batch::enter_block();
+            let result = self.call_value(block, Vec::new(), span).map(Some);
+            batch::exit_block();
+            return result;
         }
 
-        // In `--dev`, don't coalesce: run the block without a batch so each
-        // read fires (and logs) as its own natural statement instead of one
-        // combined `LET … RETURN […]` that's hard to read in the dev query
-        // log. Coalescing stays on in production for the single-round-trip win.
-        if crate::interpreter::builtins::template::is_dev_mode() {
-            return self.call_value(block, Vec::new(), span).map(Some);
+        // Interactive `--dev` runs the block without a batch so each read logs
+        // as its own natural statement; the test runner coalesces despite
+        // `--dev` so specs exercise the production shape. See
+        // `batch::should_coalesce`.
+        let coalesce = batch::should_coalesce(
+            crate::interpreter::builtins::template::is_dev_mode(),
+            crate::interpreter::builtins::test_server::is_test_runner_process(),
+        );
+
+        batch::enter_block();
+        if !coalesce {
+            let result = self.call_value(block, Vec::new(), span).map(Some);
+            batch::exit_block();
+            return result;
         }
 
         batch::begin();
-        match self.call_value(block, Vec::new(), span) {
+        let outcome = match self.call_value(block, Vec::new(), span) {
             Ok(value) => {
                 // Flush whatever is still queued. Surface a flush error on the
                 // success path so a failed combined query isn't swallowed.
-                batch::end().map_err(|e| RuntimeError::General {
-                    message: format!("grouped: failed to flush queries: {}", e),
-                    span,
-                })?;
-                Ok(Some(value))
+                batch::end()
+                    .map_err(|e| RuntimeError::General {
+                        message: format!("grouped: failed to flush queries: {}", e),
+                        span,
+                    })
+                    .map(|()| Some(value))
             }
             Err(err) => {
                 // Block threw: tear the batch down and surface the block's error.
                 let _ = batch::end();
                 Err(err)
             }
-        }
+        };
+        // Leave the block on every path, including the error ones — a leaked
+        // depth would mark every later read in the request as grouped.
+        batch::exit_block();
+        outcome
     }
 
     /// Implement `respond_to(req, block_or_hash)` — Ruby-style content negotiation.

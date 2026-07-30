@@ -307,9 +307,34 @@ grouped(fn() {
         <ul class="text-blue-200/80 text-sm space-y-2">
             <li><code>find</code> on a missing id still raises <code>RecordNotFound</code> (&rarr; 404) — the error surfaces when the result is read or the block ends.</li>
             <li>A combined query is all-or-nothing: if it fails, every read in the batch fails together.</li>
-            <li>In <code>--dev</code> the reads are <em>not</em> coalesced — each runs as its own query so the dev query log stays readable instead of showing one combined <code>LET … RETURN […]</code>. Coalescing is active in production, where the single round-trip matters.</li>
+            <li>In interactive <code>--dev</code> the reads are <em>not</em> coalesced — each runs as its own query so the dev query log stays readable instead of showing one combined <code>LET … RETURN […]</code>. Coalescing is active in production, where the single round-trip matters.</li>
+            <li><strong><code>soli test</code> coalesces.</strong> The test server runs with <code>--dev</code> so the query log is populated, but specs deliberately exercise the <em>production</em> shape — otherwise the coalescing path would go untested and <code>assert_query_count</code> would measure dev's un-coalesced number. A grouped action reports <strong>one</strong> query in a spec, not one per read.</li>
         </ul>
     </div>
+
+    <h3 class="text-xl font-bold text-white mb-4">Finding reads that should be grouped</h3>
+    <p class="text-gray-400 mb-6">
+        Because <code>grouped</code> is for reads that each run <em>once</em>, an N+1 scan can never point you at them: it fingerprints by query template and only fires on a <em>repeated</em> one. Three unrelated reads are three distinct templates with a count of one each — invisible to <code>assert_no_n_plus_one</code> and to the dev bar's N+1 badge. Two tools cover that blind spot:
+    </p>
+    <ul class="text-gray-400 text-sm space-y-2 mb-6 list-disc pl-6">
+        <li>The <strong>dev bar</strong> query panel shows an amber <code>N READS · N ROUND-TRIPS</code> advisory when a request issues three or more distinct one-off reads outside any <code>grouped</code> block. Amber, not red: it is a suggestion, because reads that feed each other cannot share a round-trip.</li>
+        <li><code>assert_no_ungrouped_reads(response)</code> fails a spec on the same condition.</li>
+    </ul>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="px-4 py-2 bg-[#1f1b18] text-xs text-gray-500 font-mono">tests/dashboard_spec.sl</div>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">test("the dashboard loads in one round-trip", fn() {
+  let response = get("/dashboard")
+  assert_no_ungrouped_reads(response)
+  assert_query_count(response, 1)
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        Neither can prove the reads are independent — <code>User.find(id)</code> followed by a query on <code>user._key</code> is genuinely two round-trips. When the reads must be sequential, that advisory is a false positive and the assertion is the wrong tool for that action.
+    </p>
 
     <h2 id="traverse" class="text-2xl font-bold text-white mb-6">Graph Traversal (<code>traverse</code>)</h2>
     <p class="text-gray-400 mb-6">

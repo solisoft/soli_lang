@@ -350,6 +350,7 @@ fn http_request(
     // into res_headers().
     let mut test_query_count: Option<i64> = None;
     let mut test_n1: Option<Value> = None;
+    let mut test_ungrouped: Option<Value> = None;
 
     let mut header_pairs: HashPairs = HashPairs::default();
     for (name, value) in response_headers {
@@ -377,6 +378,16 @@ fn http_request(
         }
         if name.eq_ignore_ascii_case("x-soli-test-n1") {
             test_n1 = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                value.as_bytes(),
+            )
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|json| crate::interpreter::value::json_to_value(json).ok());
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-soli-test-ungrouped") {
+            test_ungrouped = base64::Engine::decode(
                 &base64::engine::general_purpose::STANDARD,
                 value.as_bytes(),
             )
@@ -417,6 +428,13 @@ fn http_request(
         response_hash.insert(
             HashKey::String("n_plus_one".into()),
             test_n1.unwrap_or_else(|| Value::Array(Rc::new(RefCell::new(Vec::new())))),
+        );
+        // `ungrouped_reads` is the coalescing counterpart: reads that each cost
+        // a round-trip outside any `grouped` block (empty when clean). Read by
+        // assert_no_ungrouped_reads.
+        response_hash.insert(
+            HashKey::String("ungrouped_reads".into()),
+            test_ungrouped.unwrap_or_else(|| Value::Array(Rc::new(RefCell::new(Vec::new())))),
         );
     }
 

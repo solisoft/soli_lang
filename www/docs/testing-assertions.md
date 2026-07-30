@@ -86,6 +86,31 @@ To enforce this across every request spec without per-test calls, run
 `soli test --fail-on-n1` — any response that triggers an N+1 fails its test
 with the same message.
 
+### assert_no_ungrouped_reads(response)
+
+Asserts the request did not leave reads uncoalesced: three or more **distinct**
+read templates, each run **once**, none inside a `grouped(fn() { ... })` block.
+
+This is the complement of `assert_no_n_plus_one`, which fingerprints by template
+and so only ever fires on a *repeated* one. Three unrelated reads are three
+distinct templates with a count of one each, which no N+1 scan can see — yet that
+is exactly the shape `grouped` exists for.
+
+```soli
+response = get("/dashboard");
+assert_no_ungrouped_reads(response);
+assert_query_count(response, 1);
+```
+
+The test server coalesces (unlike interactive `--dev`), so a grouped action
+reports **one** query here — the same number production makes.
+
+**Caveat worth knowing:** the runtime cannot prove the reads are independent.
+`User.find(id)` followed by a query on `user._key` is genuinely two round-trips,
+and this assertion will flag it. Use it on actions whose reads really are
+unrelated; the failure message states the precondition so a false positive is
+recognisable.
+
 ### assert_query_count(response, n) / assert_max_queries(response, n)
 
 Assert the request ran exactly `n` (or at most `n`) AQL queries — a query

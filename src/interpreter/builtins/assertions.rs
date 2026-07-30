@@ -267,6 +267,28 @@ pub fn register_assertions(env: &mut Environment) {
         )),
     );
 
+    // Fails when the request left reads uncoalesced: >= 3 distinct read
+    // templates, each run once, none inside a `grouped(fn() { ... })` block.
+    // Complements assert_no_n_plus_one, which only sees *repeated* templates.
+    env.define(
+        "assert_no_ungrouped_reads".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "assert_no_ungrouped_reads",
+            Some(1),
+            |args| {
+                let reads = ungrouped_reads_of(&args[0])?;
+                if reads.is_empty() {
+                    ASSERTION_COUNT.with(|count| {
+                        *count.borrow_mut() += 1;
+                    });
+                    Ok(Value::Int(1))
+                } else {
+                    Err(ungrouped_reads_failure_message(&reads))
+                }
+            },
+        )),
+    );
+
     // Asserts the exact number of AQL queries the request executed.
     env.define(
         "assert_query_count".to_string(),
@@ -387,6 +409,53 @@ pub(crate) fn n_plus_one_failure_message(groups: &[(String, i64)]) -> String {
     )
 }
 
+/// Read the coalescing candidates off a response hash's `ungrouped_reads` array.
+///
+/// Each entry is `{query: <template>}` — no count, because every one of these
+/// ran exactly once (that is what makes them invisible to the N+1 scan).
+fn ungrouped_reads_of(value: &Value) -> Result<Vec<String>, String> {
+    let hash = match value {
+        Value::Hash(h) => h,
+        _ => {
+            return Err(
+                "assert_no_ungrouped_reads expects a response hash (from get()/post())".to_string(),
+            )
+        }
+    };
+    let borrowed = hash.borrow();
+    let entries = match borrowed.get(&HashKey::String("ungrouped_reads".into())) {
+        Some(Value::Array(arr)) => arr,
+        _ => return Err(NO_INSTRUMENTATION.to_string()),
+    };
+    let mut reads = Vec::new();
+    for entry in entries.borrow().iter() {
+        if let Value::Hash(g) = entry {
+            if let Some(Value::String(s)) = g.borrow().get(&HashKey::String("query".into())) {
+                reads.push(s.to_string());
+            }
+        }
+    }
+    Ok(reads)
+}
+
+/// Failure message for `assert_no_ungrouped_reads`. States the precondition the
+/// runtime cannot verify — dependent reads genuinely cannot share a round-trip —
+/// so a spec author can tell a real finding from an unavoidable one.
+fn ungrouped_reads_failure_message(reads: &[String]) -> String {
+    let detail = reads
+        .iter()
+        .map(|template| format!("  {}", template))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "{} reads each cost a round-trip outside any `grouped` block. If they do not \
+depend on each other, wrap them in `grouped(fn() {{ ... }})` to ship them as one \
+request:\n{}",
+        reads.len(),
+        detail
+    )
+}
+
 const NO_INSTRUMENTATION: &str =
     "response has no query instrumentation — run request specs via `soli test` \
 (the test server runs in --dev, which records the AQL query log)";
@@ -445,6 +514,67 @@ mod tests {
             Some(Value::NativeFunction(nf)) => nf.func.clone(),
             _ => panic!("{name} not registered"),
         }
+    }
+
+    /// Attach an `ungrouped_reads` array to a response hash built by [`response`].
+    fn with_ungrouped(response: Value, reads: &[&str]) -> Value {
+        let entries: Vec<Value> = reads
+            .iter()
+            .map(|template| {
+                let mut g = HashPairs::default();
+                g.insert(
+                    HashKey::String("query".into()),
+                    Value::String((*template).into()),
+                );
+                Value::Hash(Rc::new(RefCell::new(g)))
+            })
+            .collect();
+        if let Value::Hash(h) = &response {
+            h.borrow_mut().insert(
+                HashKey::String("ungrouped_reads".into()),
+                Value::Array(Rc::new(RefCell::new(entries))),
+            );
+        }
+        response
+    }
+
+    #[test]
+    fn no_ungrouped_reads_passes_when_clean() {
+        let f = builtin("assert_no_ungrouped_reads");
+        assert!(f(&[with_ungrouped(response(3, &[]), &[])]).is_ok());
+    }
+
+    #[test]
+    fn no_ungrouped_reads_fails_and_states_the_precondition() {
+        let f = builtin("assert_no_ungrouped_reads");
+        let err = f(&[with_ungrouped(
+            response(3, &[]),
+            &[
+                "FOR doc IN posts RETURN doc",
+                "FOR doc IN accounts RETURN doc",
+                "FOR doc IN tags RETURN doc",
+            ],
+        )])
+        .unwrap_err();
+        assert!(err.contains("3 reads"), "message was: {err}");
+        assert!(err.contains("grouped(fn() { ... })"), "message was: {err}");
+        // The runtime cannot prove independence, so the message must not claim
+        // a defect outright — a dependent chain is a legitimate false positive.
+        assert!(
+            err.contains("do not depend on each other"),
+            "message should state the precondition: {err}"
+        );
+        assert!(err.contains("FOR doc IN accounts RETURN doc"));
+    }
+
+    #[test]
+    fn no_ungrouped_reads_rejects_an_uninstrumented_response() {
+        let f = builtin("assert_no_ungrouped_reads");
+        // `response()` alone has no `ungrouped_reads` key — same contract as
+        // assert_no_n_plus_one: say the response was never instrumented rather
+        // than silently passing.
+        let err = f(&[response(3, &[])]).unwrap_err();
+        assert!(err.contains("no query instrumentation"), "message: {err}");
     }
 
     #[test]

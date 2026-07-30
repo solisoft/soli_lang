@@ -14,6 +14,12 @@ pub struct LoggedQuery {
     pub query: String,
     pub bind_vars: Option<HashMap<String, serde_json::Value>>,
     pub duration_ms: f64,
+    /// Whether this query was issued inside a `grouped(fn() { ... })` block.
+    ///
+    /// Stamped even when the block is not coalescing (interactive `--dev`), so
+    /// the dev bar can tell reads the author already grouped from ones that are
+    /// still paying a round-trip each. See `batch::in_block`.
+    pub grouped: bool,
 }
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -45,11 +51,13 @@ pub fn record(
     // the original `Instant` is in scope. Recording it here too would
     // produce two db spans per query (one accurate, one back-dated).
 
+    let grouped = super::batch::in_block();
     LOG.with(|l| {
         l.borrow_mut().push(LoggedQuery {
             query,
             bind_vars,
             duration_ms,
+            grouped,
         })
     });
 }
