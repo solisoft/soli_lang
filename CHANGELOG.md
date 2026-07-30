@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 
+## [1.26.2] - 2026-07-30
+
+### Fixed
+
+* **`soli fmt` deleted blank lines inside an `if` body.** Reported as "fmt removes the blank line before a `return`", but the `return` was incidental — any blank line between two statements in an `if` body was dropped (`a()` / blank / `b()` came back with the blank gone), while the identical body under `for` / `while` / a method kept it. `print_block_or_stmt` records the block's opening line so a body-leading comment measures its gap from the opener rather than from the statement above the keyword (the v1.25.4 `catch`-comment fix). It took that line from the block's span — but the parser gives an `if` body a span whose line is its *last* statement, where `for` / `while` use the first. Recording that pushed `last_emitted_line` past the whole body, so the paragraph check saw a phantom comment above every statement and suppressed the blank. The opening line is now clamped to the first statement's line, which a block's opener can never follow. Idempotency and the `catch`-comment behaviour both verified; three regression tests cover `if`, `else`, and the reported blank-before-`return` shape.
+
+
 ## [1.26.1] - 2026-07-30
 
 ### Fixed

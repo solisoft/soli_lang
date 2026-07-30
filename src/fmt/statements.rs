@@ -479,7 +479,19 @@ impl Printer<'_> {
             // so without this a body-leading comment measures its gap from the
             // statement *above* the keyword and looks like a new paragraph —
             // gaining a blank line on the second pass, i.e. not idempotent.
-            self.record_emitted_line(stmt.span.line_usize());
+            //
+            // Clamp to the first statement's line: a block's opening can never
+            // come *after* its first statement, but the parser does not give
+            // every block a span starting at its opening — an `if` body's span
+            // line is its *last* statement, where `for` / `while` use the first.
+            // Recording the raw value there set `last_emitted_line` past the
+            // body, so `comment_fills_gap` saw a phantom comment above every
+            // statement and swallowed the author's blank lines inside `if`
+            // bodies (`a()` / blank / `b()` came back with the blank deleted).
+            let opening_line = stmts.first().map_or(stmt.span.line_usize(), |first| {
+                stmt.span.line_usize().min(first.span.line_usize())
+            });
+            self.record_emitted_line(opening_line);
             let close_line = super::printer::source_end_line(self.source, stmt.span);
             self.print_block_body_through(stmts, Some(close_line));
         } else {

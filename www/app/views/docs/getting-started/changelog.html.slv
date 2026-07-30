@@ -23,6 +23,16 @@
         <p class="text-gray-400 mb-10">Nothing yet &mdash; changes land here as they reach <code class="text-cyan-400">main</code>.</p>
     </section>
 
+    <section id="v1-26-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.26.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-07-30</span></h2>
+
+        <!-- Fixes -->
+        <h3 id="v1-26-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> deleted blank lines inside an <code class="text-cyan-400">if</code> body.</strong> Reported as &ldquo;fmt removes the blank line before a <code class="text-cyan-400">return</code>&rdquo;, but the <code class="text-cyan-400">return</code> was incidental &mdash; <em>any</em> blank line between two statements in an <code class="text-cyan-400">if</code> body was dropped, while the identical body under <code class="text-cyan-400">for</code> / <code class="text-cyan-400">while</code> or directly in a method kept it. The formatter records a block's opening line so a body-leading comment measures its gap from the opener, but it read that line off the block's span &mdash; and an <code class="text-cyan-400">if</code> body's span line is its <em>last</em> statement, where <code class="text-cyan-400">for</code> / <code class="text-cyan-400">while</code> use the first. That pushed the bookkeeping past the whole body, so the paragraph check saw a phantom comment above every statement and swallowed the blank. Now clamped to the first statement's line, which a block's opener can never follow.</li>
+        </ul>
+    </section>
+
     <section id="v1-26-1" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v1.26.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-07-30</span></h2>
 

@@ -110,6 +110,31 @@ fn blank_line_between_top_level_statements_preserved() {
 }
 
 #[test]
+fn blank_line_inside_an_if_body_preserved() {
+    // Regression: the parser gives an `if` body's block a span whose line is
+    // its *last* statement, so recording that as the block's "opening line"
+    // pushed `last_emitted_line` past the body. `comment_fills_gap` then saw a
+    // phantom comment above every statement and deleted the author's blank
+    // lines — only inside `if`, since `for` / `while` spans start at the first
+    // statement. Reported as "fmt removes the blank line before a return".
+    let src = "def go(x)\n  if x\n    a()\n\n    b()\n  end\nend\n";
+    assert_fmt(src, src);
+}
+
+#[test]
+fn blank_line_before_return_inside_an_if_body_preserved() {
+    // The shape it was reported from: a guard, a blank, then the return.
+    let src = "def go(x)\n  if x\n    cleanup() unless x.nil?\n\n    return null\n  end\nend\n";
+    assert_fmt(src, src);
+}
+
+#[test]
+fn blank_line_inside_an_else_body_preserved() {
+    let src = "def go(x)\n  if x\n    a()\n  else\n    b()\n\n    c()\n  end\nend\n";
+    assert_fmt(src, src);
+}
+
+#[test]
 fn three_or_more_blank_lines_collapse_to_one() {
     let src = "let x = 1\n\n\n\nlet y = 2\n";
     let expected = "let x = 1\n\nlet y = 2\n";
