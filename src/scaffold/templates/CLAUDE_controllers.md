@@ -229,6 +229,29 @@ Because of this, you usually don't pass a data hash to `render` at all — set
 only when you need to render a *different* view than the default, or when you
 want to override a field's name for the template.
 
+### Group the reads: one round-trip, not one per `@`-var
+
+An action that sets several `@`-vars from unrelated collections pays a database
+round-trip per read. Wrap them in `grouped(fn() { ... })` and the framework
+defers each read, then fires them as a single combined query:
+
+```soli
+def index
+  @title = "Home"
+  grouped(fn() {
+    @programmes = Programme.visible.limit(6).all
+    @articles   = Article.published.limit(3).all
+    @regions    = Region.all
+  })
+end
+```
+
+Don't read a deferred `@`-var inside the block — that forces an auto-flush and
+costs the extra round-trip you were avoiding. Keep `if @programmes.length() == 0`
+fallbacks *after* the block (and wrap several of them in a second `grouped`).
+Full contract, including what is and isn't batched: `app/models/CLAUDE.md` →
+**Coalescing reads (`grouped`)**.
+
 ## Full CRUD sample
 
 ```soli
@@ -497,6 +520,7 @@ E2E helpers: `get` / `post` / `put` / `delete` to make requests; `res_status`,
 | Whitelist via `_permit_params` before `Model.create`     | Pass `params` (or `req["json"]`) straight to `Model.create`      |
 | Keep actions thin; push rules to the model               | Stuff validation / business logic into controller actions        |
 | Set `@fields` and let the framework auto-render          | Repeat `@field` in `render(...)`'s data hash                     |
+| Wrap an action's unrelated reads in `grouped(fn() {...})`| Pay a round-trip per `@`-var when one query would do            |
 | Use `_`-prefixed methods for non-routable helpers        | Expose helper methods as public actions                          |
 | Use `find_by` / `first_by` when you want nil-on-miss     | Add `if record.nil?` guards after `find` — they're unreachable   |
 |                                                          | `import "../models/*.sl"` — models are auto-loaded               |

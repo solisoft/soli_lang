@@ -70,6 +70,8 @@ Two more things about generators, both learned the hard way:
 | `x = x \|\| default`                       | `x \|\|= default`                          | `\|\|=` is a single operator for "set if nil/false".                         |
 | `for key, value in a_hash`                 | `for key in a_hash.keys()`                 | There is no two-variable hash iteration; the pair form silently fails.       |
 | `redirect(req["headers"]["referer"])`      | extract the path, then `redirect(path)`    | `redirect()` takes **local absolute paths only** and raises on a full URL.   |
+| several unrelated reads, one per line      | `grouped(fn() { … })` around them          | Each read is a round-trip; `grouped` combines them into one query. Don't read a result inside the block (auto-flush). |
+| `Model.all.slice(0, n)`                    | `Model.limit(n).all`                       | `slice` loads the whole collection into memory just to keep `n` rows.        |
 
 ## Framework behaviours found the hard way
 

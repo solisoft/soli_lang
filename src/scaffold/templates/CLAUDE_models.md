@@ -175,6 +175,69 @@ post.comments.where({ "spam": true }).delete_all
 Note the difference from the unscoped `Model.delete_all`, which wipes the whole
 collection. There is no unscoped `update_all` — always go through `.where(...)`.
 
+### Coalescing reads (`grouped`)
+
+Every read is one network round-trip. An action that loads three unrelated
+things pays for three. Wrap them in `grouped(fn() { ... })` and they are
+deferred and combined into a **single** request — one `LET … RETURN […]` that
+computes each subquery server-side and returns them together:
+
+```soli
+# Three round-trips
+@programmes = Programme.visible.limit(6).all
+@articles   = Article.published.limit(3).all
+@regions    = Region.all
+
+# One round-trip
+grouped(fn() {
+  @programmes = Programme.visible.limit(6).all
+  @articles   = Article.published.limit(3).all
+  @regions    = Region.all
+})
+```
+
+Inside the block each read returns a placeholder; the queries fire together
+when the block ends. After the block the variables are ordinary values.
+
+Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`,
+`find_by`, `first_by`. **Writes are not** — `create` / `save` / `update` /
+`delete` run immediately even inside the block (use `transaction` for atomic
+writes).
+
+One rule for the block body: **don't read a deferred result inside the block.**
+Doing so forces an auto-flush — correct data, but the extra round-trip you were
+trying to avoid. Keep every `if list.length() == 0` / `.present?` test *after*
+the block, and if the follow-up reads are themselves independent, wrap them in
+a second `grouped`:
+
+```soli
+grouped(fn() {
+  @programmes = Programme.visible.new_builds.limit(6).all
+  @articles   = Article.published.limit(3).all
+})
+# The fallbacks test the results, so they can't live in the block above —
+# but they still coalesce with each other.
+grouped(fn() {
+  @programmes = Programme.visible.limit(6).all if @programmes.length() == 0
+  @articles   = Article.limit(3).all if @articles.length() == 0
+})
+```
+
+Under interactive `--dev` the reads are deliberately **not** coalesced, so the
+dev query log stays readable — a `grouped` block still shows one line per query
+there. **`soli test` is the exception**: specs coalesce like production, so a
+grouped action reports *one* query, and `assert_query_count` measures the
+round-trips production will actually make.
+
+Two tools find reads you should have grouped, because an N+1 check cannot:
+`assert_no_n_plus_one` fingerprints by query template, so it only fires on a
+*repeated* one, while these reads each run once. The dev bar shows an amber
+`N READS · N ROUND-TRIPS` advisory for three or more distinct one-off reads
+outside a `grouped` block, and `assert_no_ungrouped_reads(response)` asserts the
+same in a spec. Neither can prove the reads are independent — a `find` followed
+by a query on its key genuinely needs two round-trips — so treat both as advice,
+not a verdict.
+
 ## Validations
 
 Pass an options hash to `validates`. All keys are optional; combine freely.
@@ -469,6 +532,8 @@ collapses to nothing) with zero overhead.
 | Use `find_by` / `first_by` when nil-on-miss is correct        | Wrap `find` in try/catch to convert raise → nil                     |
 | Chain `.where.order.limit.all` for readability                | Build SDBQL strings in the controller                               |
 | Use `includes(...)` to dodge N+1                               | Call `post.user` inside a `for post in posts` loop without eager load |
+| Wrap an action's unrelated reads in `grouped(fn() { ... })`    | Pay one round-trip per read when they could ship as one query       |
+| Bound the result in the query — `.limit(n).all`                | `Model.all.slice(0, n)` — that loads the whole collection to keep n  |
 | Use callbacks for cross-cutting concerns (timestamps, slugs)  | Use callbacks for anything you'd want to disable in a test          |
 | Declare `attr_accessible` on the model                        | Trust the controller to filter every caller                         |
 
