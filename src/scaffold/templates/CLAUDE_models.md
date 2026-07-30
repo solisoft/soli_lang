@@ -494,3 +494,15 @@ end
 
 Hit the real DB in model specs — that's where the validation and constraint
 behavior actually lives. Don't mock the database.
+
+## Before you're done
+
+```bash
+soli fmt app/models/post.sl
+soli lint app/models/post.sl
+soli test tests/post_spec.sl
+```
+
+`soli fmt` first: it fixes layout in place, so lint's remaining output is the
+part that needs a decision from you. It also inserts the blank line after an
+early `return` — validation methods are full of them.

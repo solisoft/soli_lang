@@ -61,7 +61,8 @@ end
 
 # Generate an HTML link with CSS class
 def link_to_class(text: String, url: String, css_class: String) -> String
-    return "<a href=\"" + html_escape(_safe_link_url(url)) + "\" class=\"" + html_escape(css_class) + "\">" + html_escape(text) + "</a>"
+    let href = html_escape(_safe_link_url(url))
+    return "<a href=\"" + href + "\" class=\"" + html_escape(css_class) + "\">" + html_escape(text) + "</a>"
 end
 
 # Pluralize a word based on count

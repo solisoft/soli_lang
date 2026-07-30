@@ -257,3 +257,15 @@ designed to run in the request pipeline. Test them via E2E.
 | Add `_helper` private functions in the same file             | Pull single-file helpers into a separate module                   |
 | Pass forward data via `req["custom_key"]`                   | Use global variables to communicate between middleware and handler|
 | Test via E2E specs                                           | Try to unit-test by calling the function directly                 |
+
+## Before you're done
+
+```bash
+soli fmt app/middleware/auth.sl
+soli lint app/middleware/auth.sl
+```
+
+`soli fmt` first: it fixes layout in place, so lint's remaining output is the
+part that needs a decision from you. It preserves the `# order:` /
+`# scope_only:` header comments — they're read from the source, and the
+formatter keeps comments at their original position.

@@ -384,10 +384,14 @@ comment out a whole `describe` block.
 Before reporting a feature done:
 
 ```bash
-soli lint <files-you-changed>             # 1. style/smell rules
-soli test tests/<relevant_spec>.sl        # 2. narrow, fast feedback
-soli test --coverage --coverage-min 90.0  # 3. full sweep + gate
+soli fmt <files-you-changed>              # 1. canonical layout — specs included
+soli lint <files-you-changed>             # 2. style/smell rules
+soli test tests/<relevant_spec>.sl        # 3. narrow, fast feedback
+soli test --coverage --coverage-min 90.0  # 4. full sweep + gate
 ```
+
+Specs are `.sl` files, so `soli fmt` formats them like any other code — run it
+on the spec you just wrote, not only on the app code it exercises.
 
 If a UI changed, also start the app and exercise the page in a browser.
 

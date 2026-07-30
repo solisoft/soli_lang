@@ -198,7 +198,7 @@ impl Printer<'_> {
             }
             StmtKind::While { condition, body } => {
                 self.write("while ");
-                self.print_expr(condition);
+                self.without_do_blocks(|p| p.print_expr(condition));
                 self.newline();
                 self.print_block_or_stmt(body);
                 self.write("end");
@@ -217,7 +217,7 @@ impl Printer<'_> {
                     self.write(idx);
                 }
                 self.write(" in ");
-                self.print_expr(iterable);
+                self.without_do_blocks(|p| p.print_expr(iterable));
                 self.newline();
                 self.print_block_or_stmt(body);
                 self.write("end");
@@ -365,7 +365,7 @@ impl Printer<'_> {
         match kind {
             PostfixIfKind::If => {
                 self.write(" if ");
-                self.print_expr(condition);
+                self.without_do_blocks(|p| p.print_expr(condition));
             }
             PostfixIfKind::Unless => {
                 self.write(" unless ");
@@ -375,9 +375,9 @@ impl Printer<'_> {
                     operand,
                 } = &condition.kind
                 {
-                    self.print_expr(operand);
+                    self.without_do_blocks(|p| p.print_expr(operand));
                 } else {
-                    self.print_expr(condition);
+                    self.without_do_blocks(|p| p.print_expr(condition));
                 }
             }
         }
@@ -393,7 +393,7 @@ impl Printer<'_> {
         // was the reason `fmt` was not idempotent: the added parens parsed back as
         // a grouping node, which printed as parens, which got wrapped again.
         self.write("if ");
-        self.print_expr(condition);
+        self.without_do_blocks(|p| p.print_expr(condition));
         self.newline();
         self.print_block_or_stmt(then_branch);
         match else_branch {
@@ -497,16 +497,20 @@ impl Printer<'_> {
     }
 
     pub(super) fn print_function_decl(&mut self, decl: &FunctionDecl, is_method: bool) {
-        let keyword = if is_method { "def" } else { "fn" };
-        self.write(keyword);
-        self.write(" ");
+        // `def` for every *named* function, free-standing or not. `fn` is the
+        // lambda keyword; using it for declarations fought the convention the
+        // language docs set out (controllers are `def index(req)`) and rewrote
+        // hundreds of `def`s in real apps. Interface members are the one
+        // exception and the parser insists on `fn` there — see
+        // `print_interface_decl`.
+        self.write("def ");
         self.write(&decl.name);
-        // Free-standing `fn` may omit empty parens (Soli convention:
+        // Free-standing declarations may omit empty parens (Soli convention:
         // "Optional parentheses for no-param functions"). Methods keep
         // their parens to match the project's `def name() ... end` style.
         // Also keep empty parens when the body's first statement starts
         // with `(` — otherwise the parser would consume that `(` as the
-        // parameter list (e.g. `fn f` followed by `(x ?? "") == "y"`).
+        // parameter list (e.g. `def f` followed by `(x ?? "") == "y"`).
         if !decl.params.is_empty() || is_method || body_starts_with_paren(&decl.body) {
             self.print_param_list(&decl.params);
         }

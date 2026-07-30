@@ -39,6 +39,12 @@ pub struct Printer<'a> {
     /// printed line ends with the condition expression and needs `;`
     /// disambiguation against a `(`/`[`/`.`-led next statement.
     pub(super) last_stmt_rewrote_to_postfix: bool,
+    /// Mirrors the parser's own `no_trailing_do`. Set while printing anything
+    /// whose grammar would swallow a trailing `do` — an `if`/`while` condition,
+    /// a `for` iterable, the value of a named argument. A block argument
+    /// emitted there falls back to the `&{ ... }` form, which is unambiguous
+    /// in every position.
+    pub(super) suppress_do_block: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -53,7 +59,17 @@ impl<'a> Printer<'a> {
             comments,
             last_emitted_line: 0,
             last_stmt_rewrote_to_postfix: false,
+            suppress_do_block: false,
         }
+    }
+
+    /// Run `f` with trailing `do … end` blocks suppressed, restoring the
+    /// previous setting afterwards (the contexts nest).
+    pub(super) fn without_do_blocks(&mut self, f: impl FnOnce(&mut Self)) {
+        let prev = self.suppress_do_block;
+        self.suppress_do_block = true;
+        f(self);
+        self.suppress_do_block = prev;
     }
 
     pub fn current_column(&self) -> usize {
@@ -317,8 +333,25 @@ impl<'a> Printer<'a> {
             if !self.at_line_start {
                 self.newline();
             }
+            self.maybe_blank_line_after_return(stmt, program.statements.get(idx + 1));
             prev_source_end = source_end_line(self.source, stmt.span);
         }
+    }
+
+    /// Ruby-style breathing room after a `return`: an early return — almost
+    /// always a postfix `return … if cond` guard, since a plain `return`
+    /// followed by more code is unreachable — is separated from the body that
+    /// follows by a blank line. Two exceptions, both cases where the blank
+    /// would only add noise: consecutive returns (a run of guards reads as one
+    /// paragraph) and a return that closes the block, where the next line is
+    /// the `end`.
+    fn maybe_blank_line_after_return(&mut self, current: &Stmt, next: Option<&Stmt>) {
+        // No next statement in this block ⇒ an `end` follows.
+        let Some(next) = next else { return };
+        if !is_return_stmt(current) || is_return_stmt(next) {
+            return;
+        }
+        self.blank_line();
     }
 
     pub(super) fn record_emitted_line(&mut self, line: usize) {
@@ -372,6 +405,7 @@ impl<'a> Printer<'a> {
                 if !p.at_line_start {
                     p.newline();
                 }
+                p.maybe_blank_line_after_return(stmt, stmts.get(idx + 1));
                 prev_source_end = source_end_line(p.source, stmt.span);
             }
             if let Some(line) = close_line {
@@ -388,6 +422,29 @@ impl<'a> Printer<'a> {
 /// `# soli-lint-disable-next-line` from their target on subsequent fmt passes.
 fn comment_fills_gap(last_emitted_line: usize, prev_source_end: usize, stmt_line: usize) -> bool {
     last_emitted_line > prev_source_end && last_emitted_line + 1 >= stmt_line
+}
+
+/// True for a statement the formatter prints as a `return` line: a bare
+/// `return`, or a conditional whose only branch returns — postfix
+/// `return x if cond` and the block `if cond … end` that
+/// `guard_clause_to_rewrite` collapses into it both lower to that shape.
+fn is_return_stmt(stmt: &Stmt) -> bool {
+    use crate::ast::stmt::StmtKind;
+    match &stmt.kind {
+        StmtKind::Return(_) => true,
+        StmtKind::If {
+            then_branch,
+            else_branch: None,
+            ..
+        } => match &then_branch.kind {
+            StmtKind::Return(_) => true,
+            StmtKind::Block(stmts) => {
+                stmts.len() == 1 && matches!(stmts[0].kind, StmtKind::Return(_))
+            }
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// Return the source line number that contains the last byte of `span`.

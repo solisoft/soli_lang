@@ -70,8 +70,36 @@ soli fmt --stdin &lt; in.sl &gt; out.sl</code></pre>
                 <tr><td class="px-4 py-3 text-white">Comment marker</td><td class="px-4 py-3"><code>//</code> line comments are normalized to <code>#</code></td></tr>
                 <tr><td class="px-4 py-3 text-white">Blank lines</td><td class="px-4 py-3">Multiple consecutive blank lines collapse to one</td></tr>
                 <tr><td class="px-4 py-3 text-white">Guard clauses</td><td class="px-4 py-3"><code>if cond return … end</code> with no <code>else</code> gets a trailing blank line</td></tr>
+                <tr><td class="px-4 py-3 text-white">Early returns</td><td class="px-4 py-3">A <code>return</code> is followed by a blank line, unless the next statement is another <code>return</code> or the block's <code>end</code> follows</td></tr>
+                <tr><td class="px-4 py-3 text-white">Raw strings</td><td class="px-4 py-3"><code>[[ … ]]</code> and <code>r"…"</code> are copied from source verbatim — never re-escaped</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        An early return gets breathing room from the body below it, while a run of guards stays grouped as one paragraph:
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">def publish(post)
+  return error("missing") if post.nil?
+  return error("draft") unless post.published?
+
+  post.notify_subscribers()
+  redirect("/posts/#{post._key}")
+end</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        A raw literal keeps the form you wrote it in. Re-escaping one is semantics-preserving but defeats its purpose &mdash; a multi-line <code class="text-amber-300">[[ &hellip; ]]</code> SDBQL query would collapse into a single line of <code>\n</code> escapes long enough to trip <code class="text-amber-300">style/line-length</code>. The <code class="text-amber-300">""" &hellip; """</code> form is <em>not</em> preserved &mdash; it is rewritten into an escaped single-line string, so use brackets for multi-line queries.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="db/migrations/20260101120000_publish_posts.sl"><code class="language-soli text-sm">db.query([[
+  FOR post IN posts
+    FILTER post.published == true
+    RETURN post
+]])</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Editor Integration</h2>

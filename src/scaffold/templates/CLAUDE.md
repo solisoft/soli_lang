@@ -8,12 +8,17 @@ You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirk
 
 ### Verification loop (mandatory before reporting done)
 
-1. `soli lint <files-you-changed>` — naming, smells, undefined-locals.
-2. `soli test tests/<the-relevant-spec>.sl` — narrow, fast feedback.
-3. `soli test --coverage --coverage-min 90.0` — full sweep before handing off.
-4. `soli serve . --dev`, then hit the route in a browser if you changed a UI/route — confirm 200 and that the page renders.
+1. `soli fmt <files-you-changed>` — canonical layout, before you read your own diff.
+2. `soli lint <files-you-changed>` — naming, smells, undefined-locals.
+3. `soli test tests/<the-relevant-spec>.sl` — narrow, fast feedback.
+4. `soli test --coverage --coverage-min 90.0` — full sweep before handing off.
+5. `soli serve . --dev`, then hit the route in a browser if you changed a UI/route — confirm 200 and that the page renders.
 
-If a step fails, fix the root cause. Don't weaken assertions, lower the coverage bar, or `--no-verify` past hooks. The `/soli-verify` slash command bundles steps 1-3.
+Run `fmt` before `lint`: the formatter fixes indentation, spacing and line
+breaks on its own, so several `style/*` rules stop firing once it has run —
+lint's remaining output is then the part that needs your judgement.
+
+If a step fails, fix the root cause. Don't weaken assertions, lower the coverage bar, or `--no-verify` past hooks. The `/soli-verify` slash command bundles steps 1-4.
 
 ### Generators: what actually exists
 
@@ -638,6 +643,28 @@ reasons — one writing to the session, the other only reading, for instance.
   should hold what every screen needs. When only two of nine screens use a
   helper, it belongs on those two, not on the base.
 
+## Formatting
+
+`soli fmt` is the canonical layout — run it on every file you touch, before
+lint and before you review your own diff. There are no options to argue with.
+
+```bash
+soli fmt                        # format the whole project in place
+soli fmt app/controllers/       # format a directory
+soli fmt path/to/file.sl        # format a single file
+soli fmt --check                # exit 1 and list files that would change (CI)
+```
+
+What it decides for you: 2-space indent, Ruby-style `class X < Y … end` /
+`if cond … end`, `//` comments rewritten to `#`, operator spacing, `#{…}`
+interpolation, lines kept under 120 chars, a single-statement `if cond return …
+end` collapsed to postfix `return … if cond`, and a blank line after an early
+`return` (see convention 15) unless the next line is another `return` or an
+`end`. Already-formatted files are left untouched, and the output is a fixed
+point — running it twice changes nothing.
+
+It only walks `.sl` files. Templates (`.html.slv`) are formatted by hand.
+
 ## Linting
 
 ```bash
@@ -665,17 +692,20 @@ Key rules:
 soli serve . --dev                    # dev server, hot reload, dev bar enabled
 soli serve . --port 5011              # run without --dev (still single-process)
 
-soli generate controller posts        # scaffold controller + spec + views
-soli generate model post              # scaffold model
-soli generate migration create_posts  # scaffold migration
+soli generate                         # list the generators that exist
+soli generate scaffold post           # full resource (see the caveat above)
+soli db:migrate generate create_posts  # scaffold migration
+soli db:seed generate demo_posts      # scaffold seed
 
 soli db:migrate up                    # run pending migrations
 soli db:migrate down                  # roll back last migration
 soli db:migrate status                # show migration state
 
+soli fmt                              # canonical layout, in place
+soli fmt --check                      # CI gate: exit 1 on any unformatted file
+soli lint                             # static analysis
 soli test                             # run all tests in tests/
 soli test --coverage --coverage-min 90.0
-soli lint                             # static analysis
 
 soli routes                           # print the expanded route table
 soli routes -g posts                  # only routes matching "posts"
@@ -701,21 +731,21 @@ soli routes --json                    # machine-readable (for scripts/agents)
 12. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
 13. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
 14. **Test new features to >90% coverage** — non-negotiable, see above.
-15. **Put a blank line after a `return`** — unless the next line is another `return` or an `end`. This makes guard clauses (early returns) stand out from the code that follows.
+15. **Put a blank line after a `return`** — unless the next line is another `return` or an `end`. This makes guard clauses (early returns) stand out from the code that follows. `soli fmt` inserts it for you, so you never have to hand-place it.
 
     ```soli
     def update(req)
-        let post = Post.find(req.params["id"])
-        return forbidden() unless can_edit?(post)   # guard clause
+      let post = Post.find(req.params["id"])
+      return forbidden() unless can_edit?(post)  # guard clause
 
-        post.update(this._permit_params(req.params))
-        return redirect(post_path(post))
+      post.update(this._permit_params(req.params))
+      return redirect(post_path(post))
     end
 
     # Back-to-back returns and a return right before `end` need no blank line:
     def status_label(code)
-        return "ok"    if code == 200
-        return "moved" if code == 301
-        return "error"
+      return "ok" if code == 200
+      return "moved" if code == 301
+      return "error"
     end
     ```

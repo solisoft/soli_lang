@@ -33,7 +33,7 @@ def authenticate(req: Any) -> Any
 
     # TODO: Replace with your authentication logic
     # For example, verify JWT token, check session, etc.
-    if api_key == ""
+    if api_key.blank?
         return {
             "continue": false,
             "response": {

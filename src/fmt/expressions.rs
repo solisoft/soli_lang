@@ -70,9 +70,93 @@ pub(super) fn ast_inline_width(source: &str, e: &Expr) -> usize {
         ExprKind::Index { object, index } => {
             ast_inline_width(source, object) + 2 + ast_inline_width(source, index)
         }
+        // Literals are computed exactly rather than measured off their span.
+        // A string literal's span excludes its closing quote, so every
+        // span-derived estimate was one byte short *per string* — enough,
+        // once a few accumulated, to inline a call or array that then
+        // printed past MAX_LINE_LENGTH and tripped `style/line-length`.
+        ExprKind::StringLiteral(s) => 2 + escaped_literal_width(s),
+        ExprKind::InterpolatedString(parts) => {
+            2 + parts
+                .iter()
+                .map(|p| match p {
+                    InterpolatedPart::Literal(s) => escaped_literal_width(s),
+                    // `#{` + expr + `}`
+                    InterpolatedPart::Expression(x) => 3 + ast_inline_width(source, x),
+                })
+                .sum::<usize>()
+        }
+        ExprKind::Array(elements) => {
+            2 + elements
+                .iter()
+                .map(|x| ast_inline_width(source, x))
+                .sum::<usize>()
+                + elements.len().saturating_sub(1) * 2
+        }
+        ExprKind::Hash(pairs) => {
+            // `{k: v, k: v}` — `: ` per pair, `, ` between.
+            2 + pairs
+                .iter()
+                .map(|(k, v)| ast_inline_width(source, k) + 2 + ast_inline_width(source, v))
+                .sum::<usize>()
+                + pairs.len().saturating_sub(1) * 2
+        }
+        ExprKind::Grouping(inner) => 2 + ast_inline_width(source, inner),
+        ExprKind::Variable(n) => n.len(),
+        ExprKind::Symbol(n) => 1 + n.len(),
+        ExprKind::BoolLiteral(true) => 4,
+        ExprKind::BoolLiteral(false) => 5,
+        ExprKind::Null => 4,
+        ExprKind::This => 4,
+        ExprKind::Super => 5,
+        ExprKind::IntLiteral(n) => n.to_string().len(),
         // For everything else, fall back to the source-based estimate.
         _ => span_inline_width(source, e.span),
     }
+}
+
+/// Byte width of `s` once the printer's string escaping is applied, matching
+/// `print_expr`'s `StringLiteral` arm. Bytes, not chars: the printer tracks
+/// its column in bytes and `style/line-length` measures in bytes too, so an
+/// accented line must be counted the way both of those count it.
+/// The original source text of a *raw* string literal, when `expr` is one and
+/// those bytes provably denote `value`. Raw forms carry their content
+/// uninterpreted, so the source slice can be re-emitted as-is — which is the
+/// point: `[[ … ]]` is how a multi-line SDBQL query is written, and `r"…"` is
+/// how a Windows path or a regex is written. Returns `None` for anything not
+/// recognised, leaving the caller on the escaping path.
+///
+/// The two forms differ in what their span covers, hence the two branches:
+/// `scan_multiline_string` starts at the `[[`, while `scan_raw_string` starts
+/// at the first body byte, past the `r"` prefix. Rather than trust either end
+/// offset, the closing delimiter is located here and the enclosed bytes are
+/// compared against the lexed value — so a mismatch falls back instead of
+/// emitting a literal that means something else.
+fn raw_string_source<'s>(source: &'s str, expr: &Expr, value: &str) -> Option<&'s str> {
+    let start = expr.span.start_usize();
+    if source.get(start..)?.starts_with("[[") {
+        let body = start + 2;
+        let close = source.get(body..)?.find("]]")? + body;
+        if source.get(body..close)? == value {
+            return source.get(start..close + 2);
+        }
+    }
+    if source.get(start.checked_sub(2)?..start) == Some("r\"") {
+        let close = source.get(start..)?.find('"')? + start;
+        if source.get(start..close)? == value {
+            return source.get(start - 2..close + 1);
+        }
+    }
+    None
+}
+
+fn escaped_literal_width(s: &str) -> usize {
+    s.bytes()
+        .map(|b| match b {
+            b'\\' | b'"' | b'\n' | b'\r' | b'\t' => 2,
+            _ => 1,
+        })
+        .sum()
 }
 
 fn stmt_inline_width(source: &str, s: &crate::ast::Stmt) -> usize {
@@ -83,6 +167,32 @@ fn stmt_inline_width(source: &str, s: &crate::ast::Stmt) -> usize {
         StmtKind::Return(None) => 6, // `return`
         StmtKind::Expression(e) => ast_inline_width(source, e),
         _ => span_inline_width(source, s.span),
+    }
+}
+
+/// Recognise the parser's `&:name` lowering — a lambda of exactly one
+/// parameter named `__it` whose whole body is `__it.name`. Without this the
+/// formatter printed the lowered form back out (`&{ |__it| __it.total }`),
+/// losing a shorthand the source had. `__it` is synthetic, and re-emitting
+/// `&:name` for a hand-written `|__it| __it.name` is the same expression
+/// anyway, so the match needs no further guard.
+fn symbol_to_proc_name(e: &Expr) -> Option<&str> {
+    use crate::ast::stmt::StmtKind;
+    let ExprKind::Lambda { params, body, .. } = &e.kind else {
+        return None;
+    };
+    if params.len() != 1 || params[0].name != "__it" || body.len() != 1 {
+        return None;
+    }
+    let StmtKind::Expression(inner) = &body[0].kind else {
+        return None;
+    };
+    let ExprKind::Member { object, name } = &inner.kind else {
+        return None;
+    };
+    match &object.kind {
+        ExprKind::Variable(v) if v == "__it" => Some(name.as_str()),
+        _ => None,
     }
 }
 
@@ -182,6 +292,14 @@ impl Printer<'_> {
                 }
             }
             ExprKind::StringLiteral(s) => {
+                // A raw literal is re-emitted from its source bytes. Escaping it
+                // is semantics-preserving but destroys what it was for: a
+                // multi-line `[[ … ]]` SDBQL query collapses to one 200-plus
+                // char line of `\n`s, which `style/line-length` then rejects.
+                if let Some(raw) = raw_string_source(self.source, expr, s) {
+                    self.write(raw);
+                    return;
+                }
                 self.write("\"");
                 for c in s.chars() {
                     match c {
@@ -275,11 +393,25 @@ impl Printer<'_> {
                 // parens carries a `Grouping` node and prints correctly either
                 // way; an AST built without one — a desugared `unless`, say —
                 // did not.
+                //
+                // This must list *every* operator looser than unary. Omitting
+                // `&&`/`||` silently changed behaviour: block `unless a || b`
+                // desugars to `Not(Or(a, b))` and printed as `!a || b`, i.e.
+                // `(!a) || b` — a different program.
                 let needs_parens = matches!(
                     operand.kind,
                     ExprKind::Binary { .. }
+                        | ExprKind::LogicalAnd { .. }
+                        | ExprKind::LogicalOr { .. }
+                        | ExprKind::NullishCoalescing { .. }
                         | ExprKind::Assign { .. }
                         | ExprKind::CompoundAssign { .. }
+                        | ExprKind::Pipeline { .. }
+                        | ExprKind::Rescue { .. }
+                        | ExprKind::If { .. }
+                        | ExprKind::Match { .. }
+                        | ExprKind::Spread(_)
+                        | ExprKind::Throw(_)
                 );
                 if needs_parens {
                     self.write("(");
@@ -296,6 +428,11 @@ impl Printer<'_> {
             }
             ExprKind::Call { callee, arguments } => {
                 self.print_expr(callee);
+                // `obj.method do … end` needs no empty parens — the parser
+                // takes a trailing `do` straight off a member access. Only for
+                // a `Member` callee: a bare-identifier callee followed by `do`
+                // is DSL-only grammar, so those keep their `()`.
+                let bare_do_ok = matches!(callee.kind, ExprKind::Member { .. });
                 // Preserve () for zero-arg calls so the linter can distinguish
                 // function calls (.all(), .keys()) from variable reads (.all).
                 // But don't ADD parens to bare DSL forms like `soft_delete`
@@ -305,7 +442,7 @@ impl Printer<'_> {
                 {
                     // bare call, no source parens — skip "()"
                 } else {
-                    self.print_arg_list(arguments);
+                    self.print_arg_list_with_callee(arguments, bare_do_ok);
                 }
             }
             ExprKind::Pipeline { left, right } => {
@@ -355,16 +492,28 @@ impl Printer<'_> {
             }
             ExprKind::Array(elements) => {
                 // Estimate inline width and break long arrays across lines.
-                let est: usize = elements.iter().map(|e| {
-                    span_inline_width(self.source, e.span).min(40)
-                }).sum::<usize>()
+                // No `.min(40)` clamp per element: it under-estimated arrays
+                // of long strings badly enough that they printed past the
+                // limit and `soli lint` flagged style/line-length.
+                let est: usize = elements
+                    .iter()
+                    .map(|e| ast_inline_width(self.source, e))
+                    .sum::<usize>()
                     + 2 // "[]"
                     + (elements.len().saturating_sub(1)) * 2; // ", "
-                                                              // Break long arrays across lines if:
-                                                              // - More than 3 elements at any column, or
-                                                              // - 3+ elements when already past 20 chars
-                if (elements.len() > 3 || (elements.len() > 2 && self.current_column() > 20))
-                    && (self.current_column() + est > MAX_LINE_LENGTH || self.current_column() > 20)
+                let overflows = self.current_column() + est > MAX_LINE_LENGTH;
+                // Break long arrays across lines if:
+                // - The line would overflow and there is somewhere to break, or
+                // - More than 3 elements at any column, or
+                // - 3+ elements when already past 20 chars
+                //
+                // The overflow clause is first and independent of the element
+                // count: the count-based rules alone let a 2- or 3-element
+                // array of long strings sitting at a low column print past
+                // MAX_LINE_LENGTH, because neither count rule fired.
+                if (elements.len() > 1 && overflows)
+                    || ((elements.len() > 3 || (elements.len() > 2 && self.current_column() > 20))
+                        && (overflows || self.current_column() > 20))
                 {
                     self.write("[");
                     self.newline();
@@ -476,10 +625,7 @@ impl Printer<'_> {
             }
             ExprKind::LogicalAnd { left, right } => {
                 if should_logical_break(self, left, right, " && ") {
-                    self.print_expr(left);
-                    self.newline();
-                    self.write("&& ");
-                    self.print_expr(right);
+                    self.print_wrapped_logical(left, right, "&&");
                 } else {
                     self.print_expr(left);
                     self.write(" && ");
@@ -488,10 +634,7 @@ impl Printer<'_> {
             }
             ExprKind::LogicalOr { left, right } => {
                 if should_logical_break(self, left, right, " || ") {
-                    self.print_expr(left);
-                    self.newline();
-                    self.write("|| ");
-                    self.print_expr(right);
+                    self.print_wrapped_logical(left, right, "||");
                 } else {
                     self.print_expr(left);
                     self.write(" || ");
@@ -641,7 +784,93 @@ impl Printer<'_> {
         }
     }
 
+    /// Wrap a long `&&`/`||` chain across two lines.
+    ///
+    /// The operator MUST stay at the end of the first line. A Soli statement
+    /// ends at its line break, so a continuation line opening with `&&`/`||`
+    /// is a parse error ("Unexpected token '&&', expected expression") — the
+    /// formatter used to emit exactly that and break the files it touched.
+    /// A trailing operator makes the lexer continue onto the next line.
+    ///
+    /// The continuation gets two indent levels so it stays visually distinct
+    /// from the block body one level in:
+    ///
+    /// ```text
+    /// if attrs.keys().includes?("title") &&
+    ///     ProductList.title_taken?(pos, title, key)
+    ///   return unprocessable()
+    /// end
+    /// ```
+    fn print_wrapped_logical(&mut self, left: &Expr, right: &Expr, op: &str) {
+        self.print_expr(left);
+        self.write(" ");
+        self.write(op);
+        self.newline();
+        self.with_indent(|p| {
+            p.with_indent(|p| {
+                p.print_expr(right);
+            })
+        });
+    }
+
     fn print_arg_list(&mut self, args: &[Argument]) {
+        self.print_arg_list_with_callee(args, false);
+    }
+
+    /// `bare_do_ok` says the callee can carry a trailing `do` with no parens
+    /// in front of it (a member access — `items.each do |x| … end`).
+    fn print_arg_list_with_callee(&mut self, args: &[Argument], bare_do_ok: bool) {
+        // A block argument in final position prints as Ruby-style
+        // `f(a, b) do |x| … end` rather than `f(a, b, &{ … })`. `do … end` and
+        // `&{ … }` parse to the same `Lambda`, so the formatter has to pick a
+        // canonical spelling, and `do … end` is the one the language docs use.
+        // Only the *last* argument can be spelled this way — `do` binds to the
+        // end of the call — and not while a surrounding condition or argument
+        // value would swallow the `do`.
+        if !self.suppress_do_block {
+            if let Some((Argument::Block(block), rest)) = args.split_last() {
+                // `&:name` stays shorthand — expanding it to `do |__it| … end`
+                // would be a step backwards.
+                if matches!(block.kind, ExprKind::Lambda { .. })
+                    && symbol_to_proc_name(block).is_none()
+                    && !rest.iter().any(|a| matches!(a, Argument::Block(_)))
+                {
+                    if !(rest.is_empty() && bare_do_ok) {
+                        self.print_arg_list_inner(rest);
+                    }
+                    self.print_do_block(block);
+                    return;
+                }
+            }
+        }
+        self.print_arg_list_inner(args);
+    }
+
+    /// Emit ` do |params| … end` for a trailing block argument.
+    fn print_do_block(&mut self, block: &Expr) {
+        let ExprKind::Lambda { params, body, .. } = &block.kind else {
+            return;
+        };
+        self.write(" do");
+        if !params.is_empty() {
+            self.write(" |");
+            for (i, p) in params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                if p.is_block_param {
+                    self.write("&");
+                }
+                self.write(&p.name);
+            }
+            self.write("|");
+        }
+        self.newline();
+        self.print_block_body(body);
+        self.write("end");
+    }
+
+    fn print_arg_list_inner(&mut self, args: &[Argument]) {
         let arg_count = args.len();
         // If the estimated inline width exceeds MAX_LINE_LENGTH, break
         // arguments across multiple lines so the formatter doesn't produce
@@ -687,7 +916,13 @@ impl Printer<'_> {
                     + if super::statements::expr_likely_breaks(expr) {
                         arg_opening_width(expr)
                     } else {
-                        span_inline_width(self.source, expr.span).min(60)
+                        // No clamp here. A `.min(60)` used to cap each arg's
+                        // contribution, so a call with one wide argument (a
+                        // long string literal, say) was estimated 30+ chars
+                        // narrower than it prints and got inlined past the
+                        // limit — `soli fmt` then emitted lines `soli lint`
+                        // rejected with style/line-length.
+                        ast_inline_width(self.source, expr)
                     }
             }).sum::<usize>()
                 + 2 // "()"
@@ -725,16 +960,26 @@ impl Printer<'_> {
     }
 
     fn print_arg(&mut self, a: &Argument) {
+        // Anything printed *inside* the parens is an argument value, and a
+        // `do` there would bind to the enclosing call rather than the nested
+        // one (the parser guards the same case with `no_trailing_do`). Nested
+        // block arguments therefore keep the unambiguous `&{ … }` spelling;
+        // only the call's own trailing block becomes `do … end`.
         match a {
-            Argument::Positional(e) => self.print_expr(e),
+            Argument::Positional(e) => self.without_do_blocks(|p| p.print_expr(e)),
             Argument::Named(na) => {
                 self.write(&na.name);
                 self.write(": ");
-                self.print_expr(&na.value);
+                self.without_do_blocks(|p| p.print_expr(&na.value));
             }
             Argument::Block(e) => {
-                self.write("&");
-                self.print_block_arg_expr(e);
+                if let Some(name) = symbol_to_proc_name(e) {
+                    self.write("&:");
+                    self.write(name);
+                } else {
+                    self.write("&");
+                    self.without_do_blocks(|p| p.print_block_arg_expr(e));
+                }
             }
         }
     }

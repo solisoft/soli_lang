@@ -40,6 +40,37 @@ A few details worth knowing:
 | Comment marker | `//` line comments are normalized to `#` |
 | Blank lines | Multiple consecutive blank lines collapse to one |
 | Guard clauses | `if cond return … end` with no `else` gets a trailing blank line |
+| Early returns | A `return` is followed by a blank line, unless the next statement is another `return` or the block's `end` follows |
+| Raw strings | `[[ … ]]` and `r"…"` are copied from source verbatim — never re-escaped |
+
+An early return gets breathing room from the body below it, while a run of
+guards stays grouped as one paragraph:
+
+```soli
+def publish(post)
+  return error("missing") if post.nil?
+  return error("draft") unless post.published?
+
+  post.notify_subscribers()
+  redirect("/posts/#{post._key}")
+end
+```
+
+A raw literal keeps the form you wrote it in. Re-escaping one is
+semantics-preserving but defeats its purpose — a multi-line `[[ … ]]` SDBQL
+query would collapse into a single line of `\n` escapes long enough to trip
+`style/line-length`:
+
+```soli
+db.query([[
+  FOR post IN posts
+    FILTER post.published == true
+    RETURN post
+]])
+```
+
+The `""" … """` form is *not* preserved — it is rewritten into an escaped
+single-line string. Use `[[ … ]]` for multi-line queries.
 
 The formatter never changes program semantics. If you spot output that breaks
 your code, that's a bug — please report it.

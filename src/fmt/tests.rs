@@ -44,9 +44,11 @@ fn if_block_uses_ruby_style() {
 
 #[test]
 fn nested_function_uses_two_space_indent() {
+    // Named declarations canonicalise to `def`, whichever keyword the source
+    // used — `fn` is the lambda keyword.
     assert_fmt(
         "fn outer { fn inner { 1 } }\n",
-        "fn outer\n  fn inner\n    1\n  end\nend\n",
+        "def outer\n  def inner\n    1\n  end\nend\n",
     );
 }
 
@@ -65,7 +67,7 @@ fn single_stmt_block_if_collapses_to_postfix() {
     // (per the language docs). The formatter rewrites block-form `if cond
     // <single-stmt> end` to postfix when it fits on one line.
     let src = "fn f(x)\n  if x == 0\n    return 0\n  end\n  return x * 2\nend\n";
-    let expected = "fn f(x)\n  return 0 if x == 0\n  return x * 2\nend\n";
+    let expected = "def f(x)\n  return 0 if x == 0\n  return x * 2\nend\n";
     assert_fmt(src, expected);
 }
 
@@ -318,6 +320,93 @@ fn postfix_if_round_trips() {
 }
 
 #[test]
+fn blank_line_after_return_guard() {
+    // An early return is separated from the body that follows.
+    let src = "def f(x)\n  return nil if x.blank?\n  work(x)\nend\n";
+    let expected = "def f(x)\n  return nil if x.blank?\n\n  work(x)\nend\n";
+    assert_fmt(src, expected);
+    assert_idempotent(src);
+}
+
+#[test]
+fn no_blank_line_between_consecutive_returns() {
+    // A run of guards reads as one paragraph — the blank goes after the last
+    // of them, not between each pair.
+    let src = "def f(x)\n  return 0 if x.nil?\n  return 1 if x == 0\n  compute(x)\nend\n";
+    let expected = "def f(x)\n  return 0 if x.nil?\n  return 1 if x == 0\n\n  compute(x)\nend\n";
+    assert_fmt(src, expected);
+    assert_idempotent(src);
+}
+
+#[test]
+fn multiline_raw_string_keeps_its_brackets() {
+    // Regression: a `[[ … ]]` SDBQL query was re-emitted as an escaped
+    // double-quoted string — semantics preserved, but the query collapsed onto
+    // one line whose length then tripped `style/line-length`. Raw literals are
+    // copied from source instead.
+    let src = "def up(db)\n  db.query([[\n    FOR p IN posts\n      RETURN p\n  ]])\nend\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
+    let out = format_source(src).unwrap();
+    assert!(
+        !out.contains("\\n"),
+        "raw string must not be escaped:\n{}",
+        out
+    );
+}
+
+#[test]
+fn single_line_raw_string_keeps_its_r_prefix() {
+    let src = "let win = r\"C:\\Users\\name\"\nlet re = r\"\\d+\\.\\d+\"\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn raw_string_holding_a_single_bracket_round_trips() {
+    // `]` alone is content inside `[[ … ]]`; only `]]` closes. The value check
+    // in `raw_string_source` is what keeps this from mis-slicing.
+    assert_fmt("let odd = [[a]b]]\n", "let odd = [[a]b]]\n");
+    assert_round_trip("let odd = [[a]b]]\n");
+}
+
+#[test]
+fn escaped_string_with_newline_stays_escaped() {
+    // Only *raw* literals are copied from source — a `"a\nb"` keeps the form
+    // the author chose rather than being rewritten into brackets.
+    assert_fmt(
+        "let esc = \"line\\nbreak\"\n",
+        "let esc = \"line\\nbreak\"\n",
+    );
+}
+
+#[test]
+fn no_blank_line_between_return_and_end() {
+    // Nothing to separate the return from — the next line is the `end`.
+    let src = "def f(x)\n  log(x)\n  return x * 2\nend\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn existing_blank_line_after_return_not_doubled() {
+    let src = "def f(x)\n  return nil if x.blank?\n\n  work(x)\nend\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn blank_line_after_return_guard_precedes_next_statements_comment() {
+    // The blank separates the guard from the paragraph below it, so it lands
+    // above the comment that leads that paragraph — not between the comment
+    // and the statement it documents.
+    let src = "def f(x)\n  return nil if x.blank?\n  # then do the work\n  work(x)\nend\n";
+    let expected = "def f(x)\n  return nil if x.blank?\n\n  # then do the work\n  work(x)\nend\n";
+    assert_fmt(src, expected);
+    assert_idempotent(src);
+}
+
+#[test]
 fn no_blank_line_before_comment_starting_block_body() {
     // Regression: a comment as the first line of an `if` body must not gain a
     // spurious blank line above it. The block opener line is now recorded so
@@ -469,4 +558,229 @@ xs.each(|x| print(x))
 "#;
     assert_round_trip(src);
     assert_idempotent(src);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions: `soli fmt` output must survive `soli lint`.
+//
+// All four of these shipped together and were caught by running `soli fmt`
+// followed by `soli lint` on a real app: the formatter emitted code that
+// either failed to parse, exceeded the line limit, or quietly meant something
+// different from what went in.
+// ---------------------------------------------------------------------------
+
+/// Asserts no line of the formatted output exceeds the limit `style/line-length`
+/// enforces. The lint rule measures bytes (`str::len`), so this does too.
+fn assert_within_line_limit(input: &str) {
+    let out = format_source(input).expect("format failed");
+    let long: Vec<_> = out
+        .lines()
+        .filter(|l| l.len() > super::printer::MAX_LINE_LENGTH)
+        .collect();
+    assert!(
+        long.is_empty(),
+        "formatter emitted lines over {} bytes (style/line-length would reject):\n{}\n--- full output ---\n{}",
+        super::printer::MAX_LINE_LENGTH,
+        long.join("\n"),
+        out
+    );
+}
+
+#[test]
+fn block_unless_over_or_keeps_its_parens() {
+    // `unless a || b` desugars to `Not(Or(a, b))`. Printing the operand bare
+    // gives `!a || b` — that is `(!a) || b`, a different program. This was a
+    // silent behaviour change, not just a formatting nit.
+    let src =
+        "fn f(a, b)\n  unless a || b\n    return \"neither\"\n  end\n  return \"some\"\nend\n";
+    let expected = "def f(a, b)\n  return \"neither\" if !(a || b)\n  return \"some\"\nend\n";
+    assert_fmt(src, expected);
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn block_unless_over_and_keeps_its_parens() {
+    let src = "fn f(a, b)\n  unless a && b\n    return 1\n  end\n  return 2\nend\n";
+    let expected = "def f(a, b)\n  return 1 if !(a && b)\n  return 2\nend\n";
+    assert_fmt(src, expected);
+    assert_idempotent(src);
+}
+
+#[test]
+fn wrapped_logical_keeps_the_operator_on_the_first_line() {
+    // A Soli statement ends at its line break, so a continuation opening with
+    // `&&` is a parse error. The operator has to trail.
+    let src = "fn f(attrs, list)\n  if attrs.keys().includes?(\"title\") && ProductList.title_taken?(list.point_of_sale_id, attrs[\"title\"], list._key)\n    return unprocessable()\n  end\n  return ok()\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        !out.lines()
+            .any(|l| l.trim_start().starts_with("&&") || l.trim_start().starts_with("||")),
+        "a continuation line must not open with a logical operator:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+    assert_within_line_limit(src);
+}
+
+#[test]
+fn wrapped_logical_in_postfix_guard_reparses() {
+    let src = "fn f(point_of_sale)\n  unless point_of_sale.nil? || point_of_sale.delivery_enabled == true || point_of_sale.pickup_enabled == true\n    return \"no delivery here at all\"\n  end\n  return null\nend\n";
+    assert_round_trip(src);
+    assert_idempotent(src);
+    assert_within_line_limit(src);
+}
+
+#[test]
+fn wide_string_arg_does_not_overflow_the_line() {
+    // The per-arg width estimate used to be clamped at 60, so a call with one
+    // long string argument was judged to fit and printed past the limit.
+    let src = "fn f(point_of_sale_id)\n  builder = Cart.where(\"doc.point_of_sale_id == @pos && doc.paid_at != null && doc.delivered_at == null\", {\"pos\": point_of_sale_id})\n  return builder\nend\n";
+    assert_within_line_limit(src);
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn many_arg_call_of_long_strings_wraps() {
+    let src = "fn f(produit)\n  response = deposer_json(\"/admin/products/#{produit._key}/picture\", \"picture\", \"point.png\", \"image/png\", \"des-octets\")\n  return response\nend\n";
+    assert_within_line_limit(src);
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn short_array_of_long_strings_wraps_on_width() {
+    // Three elements starting below column 20 hit neither count-based break
+    // rule, so the array printed on one 121-char line.
+    let src = "fn f\n  for chemin in [\"/admin/products/inconnu\", \"/admin/products/inconnu/delete\", \"/admin/products/inconnu/picture/delete\"]\n    print(chemin)\n  end\nend\n";
+    assert_within_line_limit(src);
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn string_literal_width_counts_both_quotes() {
+    // A string literal's span excludes its closing quote; the estimator has to
+    // compute the width itself or every call containing strings reads narrow.
+    let e = crate::ast::expr::Expr {
+        kind: crate::ast::expr::ExprKind::StringLiteral("abc".to_string()),
+        span: crate::span::Span::default(),
+    };
+    assert_eq!(super::expressions::ast_inline_width("", &e), 5); // `"abc"`
+}
+
+// ---------------------------------------------------------------------------
+// Canonical spellings for named declarations and block arguments.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn top_level_declaration_uses_def_not_fn() {
+    // `fn` is the lambda keyword. Named declarations are `def` at every level,
+    // matching the controllers the language docs show.
+    assert_fmt(
+        "def index(req)\n  return render(\"home\")\nend\n",
+        "def index(req)\n  return render(\"home\")\nend\n",
+    );
+    assert_idempotent("def index(req)\n  return render(\"home\")\nend\n");
+}
+
+#[test]
+fn lambdas_keep_the_fn_keyword() {
+    // Only *declarations* move to `def` — a lambda expression stays `fn`.
+    assert_fmt(
+        "let add = fn(a, b) { a + b }\n",
+        "let add = fn(a, b) { a + b }\n",
+    );
+}
+
+#[test]
+fn interface_members_stay_fn() {
+    // The parser only accepts `fn` inside an interface body.
+    assert_round_trip("interface Named { fn name() -> String }\n");
+}
+
+#[test]
+fn class_body_dsl_keeps_do_end() {
+    // `do … end` and `&{ … }` parse to the same Lambda, so the formatter picks
+    // one. It must be `do … end` — rewriting a declarative DSL into `&{ … }`
+    // was unreadable and fought the documented idiom.
+    let src = "class Cart < Model\n  state_machine :state do\n    event :pay do\n      transition from: A, to: B\n    end\n  end\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("state_machine(:state) do") && out.contains("event(:pay) do"),
+        "declarative DSL blocks must keep `do … end`:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("&{"),
+        "no `&{{ … }}` rewrite expected:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn method_call_block_needs_no_empty_parens() {
+    let src = "def run\n  items.each do |item|\n    print(item)\n  end\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("items.each do |item|"),
+        "expected bare `items.each do |item|`, got:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn form_builder_block_round_trips() {
+    let src = "def show(post)\n  form_with(post) do |f|\n    f.submit(\"Save\")\n  end\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("form_with(post) do |f|"),
+        "expected `form_with(post) do |f|`, got:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn block_in_a_condition_falls_back_to_brace_form() {
+    // A `do` in an `if` condition would be swallowed by the surrounding
+    // grammar, so a block argument there keeps the unambiguous `&{ … }` form
+    // and the output still has to reparse.
+    let src = "def run(items)\n  if items.any(&{ |x| x.active })\n    print(1)\n  end\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        !out.lines().any(|l| l.contains("if ") && l.contains(" do")),
+        "a condition must not sprout a trailing `do`:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn symbol_to_proc_shorthand_round_trips() {
+    // `&:total` lowers to `|__it| __it.total`; printing the lowered form back
+    // out lost the shorthand the source was written with.
+    assert_fmt(
+        "def f(lines)\n  return int(lines.map(&:total).sum)\nend\n",
+        "def f(lines)\n  return int(lines.map(&:total).sum)\nend\n",
+    );
+    assert_round_trip("def f(lines)\n  return lines.map(&:total)\nend\n");
+    assert_idempotent("def f(lines)\n  return int(lines.map(&:total).sum)\nend\n");
+}
+
+#[test]
+fn symbol_to_proc_with_predicate_suffix_round_trips() {
+    assert_fmt(
+        "def f(rows)\n  return rows.filter(&:active?)\nend\n",
+        "def f(rows)\n  return rows.filter(&:active?)\nend\n",
+    );
+    assert_idempotent("def f(rows)\n  return rows.filter(&:active?)\nend\n");
 }

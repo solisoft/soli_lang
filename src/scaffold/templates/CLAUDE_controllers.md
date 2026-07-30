@@ -518,9 +518,13 @@ E2E helpers: `get` / `post` / `put` / `delete` to make requests; `res_status`,
 - `naming/pascal-case` — class name must be `PascalCase`.
 - `naming/snake-case` — action and helper names must be `snake_case`.
 
-Run on the directory:
+Run `soli fmt` first — it settles indentation, spacing and line length on its
+own, so what lint reports afterwards is the part that needs a decision:
 
 ```bash
-soli lint app/controllers/
+soli fmt app/controllers/posts_controller.sl
 soli lint app/controllers/posts_controller.sl
+
+soli fmt app/controllers/     # or the whole directory
+soli lint app/controllers/
 ```

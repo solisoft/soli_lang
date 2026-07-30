@@ -261,7 +261,7 @@ from each spec — whatever your project convention is.)
 
 | Do                                                          | Don't                                                              |
 |-------------------------------------------------------------|--------------------------------------------------------------------|
-| Use `soli generate migration` for naming                    | Hand-pick a timestamp prefix                                        |
+| Use `soli db:migrate generate <name>` for naming            | Hand-pick a timestamp prefix, or reach for `soli generate migration` — that command doesn't exist |
 | Write a real `down(db)` for every migration                 | Leave `# TODO` or `pass` in `down`                                  |
 | Use `db.query("...")` with a plain SDBQL string             | Use `@sdbql{...}` blocks here — that's the model-side DSL, not migrations |
 | Use `[[ ... ]]` or `""" ... """` for multi-line SDBQL       | Hand-escape `\"` across long queries — or invent `@"..."` (not a thing) |
@@ -269,3 +269,17 @@ from each spec — whatever your project convention is.)
 | Split unrelated schema changes into separate migrations     | Bundle "create posts" + "seed demo data" into one file              |
 | Treat applied migrations as immutable                       | Edit a migration after it's been run anywhere                       |
 | Roll forward with a new migration to fix a mistake          | Force a re-run by tweaking the tracking collection by hand          |
+
+## Before you're done
+
+```bash
+soli fmt db/migrations/20260101120000_create_posts.sl
+soli lint db/migrations/20260101120000_create_posts.sl
+soli db:migrate up && soli db:migrate down && soli db:migrate up
+```
+
+`soli fmt` first: it fixes layout in place, so lint's remaining output is the
+part that needs a decision from you. SDBQL inside `[[ … ]]` is left
+byte-for-byte alone — write multi-line queries in brackets, not in `""" … """`,
+which the formatter rewrites into one escaped line. The up/down/up round-trip
+is how you find out `down` actually works before someone else does.

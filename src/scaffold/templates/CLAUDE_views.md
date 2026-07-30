@@ -417,3 +417,15 @@ app/views/
 | Use `#{expr}` for interpolation in strings inside `.sl` blocks | Use `\(expr)` — the lexer rejects that                       |
 | Keep templates thin; push logic into helpers              | Embed business rules in `<% %>` blocks                              |
 | Put cross-cutting markup in `_partials.html.slv`         | Copy-paste header/nav across every action's view                    |
+
+## Before you're done
+
+```bash
+soli fmt app/helpers/application_helper.sl   # .sl only — see below
+soli lint app/views/
+```
+
+`soli fmt` walks `.sl` files, so it formats your helpers and components but
+**not** the templates: `.html.slv` files are left alone and stay hand-indented.
+Don't read "fmt reported nothing" as "the template is fine" — run it on the
+helper you changed, and keep the template tidy yourself.
