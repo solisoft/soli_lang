@@ -20,7 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 mb-10">Nothing yet &mdash; changes land here as they reach <code class="text-cyan-400">main</code>.</p>
+
+        <!-- Dev tools -->
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The dev bar's N+1 warning now names Soli's own fix instead of raw AQL.</strong> When it detected a query template firing in a loop, the remediation hint read &ldquo;batch with <code class="text-cyan-400">FILTER doc.field IN @ids</code>&rdquo; &mdash; pointing at hand-written AQL, while the two features that actually solve it went unmentioned. The hint now reads &ldquo;preload with <code class="text-cyan-400">includes(...)</code>, or coalesce unrelated reads in <code class="text-cyan-400">grouped(fn() { ... })</code>&rdquo;, so the panel that detects the problem names the framework's remedy for it.</li>
+        </ul>
     </section>
 
     <section id="v1-25-4" class="mb-16 scroll-mt-24">

@@ -327,6 +327,19 @@ end
 
 `Model.find(id)` raises `RecordNotFound` when the id doesn't exist, and the request handler turns that into a `404` automatically. **Don't add a manual `if record.nil? { return 404 }` guard after `.find` — it's dead code.** When you want the "or nil" shape, use `find_by(field, value)` or `first_by(...)`, both of which return `nil` on miss.
 
+**Coalescing reads (`grouped`)** — every read is one network round-trip, so an action that loads three unrelated things pays for three. Wrap them in `grouped(fn() { ... })` and they are deferred and shipped as a **single** `LET … RETURN […]` request:
+
+```soli
+grouped(fn() {
+  @posts    = Post.all
+  @accounts = Account.where({ active: true }).count
+  @tags     = Tag.all
+})
+# one round-trip; after the block the variables are ordinary values
+```
+
+Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`, `find_by`, `first_by`. **Writes are not** — `create`/`save`/`update`/`delete` run immediately even inside the block (use `transaction` for atomic writes). Don't read a deferred result *inside* the block: that forces an auto-flush, which is still correct but costs the round-trip you were avoiding — keep `.present?` / `.length()` tests after the block. Under `--dev` the reads are deliberately not coalesced so the dev query log stays readable. Full reference: `www/docs/models.md` → "Coalescing Reads".
+
 **View** (ERB templates):
 ```erb
 <h1><%= title %></h1>

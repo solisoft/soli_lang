@@ -388,7 +388,9 @@ fn render_bar(ctx: &DevBarContext) -> String {
 
         // N+1 alert block, rendered above the per-query list when at least one
         // template fired ≥3 times. Template is shown verbatim (with @binds) so
-        // the user can grep for it; suggestion is to batch with `IN [...]`.
+        // the user can grep for it; the suggestion names Soli's own remedies —
+        // `includes(...)` for association preloading, `grouped(fn() { ... })`
+        // for unrelated reads — rather than hand-written AQL.
         let n1_block = if has_n1 {
             let mut alerts = String::new();
             for (template, count, total_us) in &n1_groups {
@@ -397,7 +399,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
 <span style=\"flex:0 0 auto;color:#ff6b6b;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">×{count}</span>\
 <div style=\"flex:1;\">\
 <pre style=\"white-space:pre-wrap;word-break:break-all;margin:0 0 0.25rem 0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{tmpl}</pre>\
-<span style=\"font-size:10px;color:#8b949e;\">total {total} · likely fired in a loop — batch with <span style=\"color:#f0c674;\">FILTER doc.field IN @ids</span></span>\
+<span style=\"font-size:10px;color:#8b949e;\">total {total} · likely fired in a loop — preload with <span style=\"color:#f0c674;\">includes(...)</span>, or coalesce unrelated reads in <span style=\"color:#f0c674;\">grouped(fn() {{ ... }})</span></span>\
 </div>\
 </li>",
                     count = count,
@@ -1373,6 +1375,11 @@ mod tests {
         let out = inject_dev_bar(html, &c);
         assert!(out.contains("N+1 DETECTED"));
         assert!(out.contains("×14"));
+        // the remediation hint must name Soli's own fixes, not raw AQL
+        assert!(
+            out.contains("includes(...)") && out.contains("grouped(fn() { ... })"),
+            "N+1 hint should point at includes()/grouped(): {out}"
+        );
         // db badge should switch to red
         assert!(out.contains("color:#ff6b6b") && out.contains("N+1 detected"));
         // minimized "DEV" pill should carry an N+1 red badge

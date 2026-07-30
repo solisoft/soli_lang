@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **The dev bar's N+1 warning now names Soli's own remedies instead of raw AQL.** On detecting a query template fired in a loop, the hint read "batch with `FILTER doc.field IN @ids`" — sending the user to hand-written AQL while `includes(...)` (association preloading) and `grouped(fn() { ... })` (read coalescing) went unmentioned. A codebase audit found `grouped()` had zero uses outside its own spec, and this was the likely reason: the one place a developer notices an N+1 never pointed at the fix. The hint now reads "preload with `includes(...)`, or coalesce unrelated reads in `grouped(fn() { ... })`". `assert_no_n_plus_one` shares the same detector, so spec failures benefit too. Also documented `grouped()` in the repo-root `CLAUDE.md`, which had never mentioned it.
+
 
 ## [1.25.4] - 2026-07-30
 
