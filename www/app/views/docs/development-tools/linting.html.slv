@@ -44,6 +44,31 @@ soli lint app/main.sl</code></pre>
                 <code>0</code> &mdash; no issues found. <code>1</code> &mdash; one or more issues found.
             </p>
         </div>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Locale files are skipped</h3>
+        <p class="text-gray-400 mb-4">
+            Translation tables are data that happens to be written in Soli &mdash; long sentences in a hash
+            literal, one key per line. Style rules over them produce hundreds of <code>style/line-length</code>
+            hits nobody will act on, drowning out the real findings. Walking a directory skips them:
+        </p>
+        <ul class="text-gray-400 space-y-2 mb-4 list-disc list-inside">
+            <li>anything under a directory named <code>locales/</code> (the <code>config/locales/</code> convention);</li>
+            <li>a file whose stem is <code>locale_&lt;tag&gt;</code> or <code>&lt;tag&gt;_locale</code>, where the tag
+                looks like a locale code &mdash; <code>locale_fr.sl</code>, <code>locale_zh-Hans.sl</code>,
+                <code>pt_BR_locale.sl</code>.</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            The tag check is narrow on purpose, so helpers <em>about</em> locales keep being linted:
+            <code>locale_helper.sl</code> and <code>locale_switcher.sl</code> are code, not data. Skipped files
+            are counted in the summary line, and naming one explicitly always lints it:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli lint app/helpers/
+# No issues found. (9 locale files skipped)
+
+# An explicit path is always linted — the escape hatch
+soli lint app/helpers/locale_fr.sl</code></pre>
+        </div>
     </section>
 
     <!-- Output Format -->

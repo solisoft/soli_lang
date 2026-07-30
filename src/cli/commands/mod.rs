@@ -925,6 +925,10 @@ pub fn run_lint(paths: &[String]) {
     };
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
+    // Translation tables are data, not code — walking into them yields
+    // hundreds of unactionable style hits. A file named explicitly on the
+    // command line is always linted, so the skip stays overridable.
+    let mut skipped_locale_files = 0usize;
     for t in &targets {
         if !t.exists() {
             eprintln!("Error: Path '{}' does not exist", t.display());
@@ -933,12 +937,21 @@ pub fn run_lint(paths: &[String]) {
         if t.is_file() {
             files.push(t.clone());
         } else {
-            files.extend(test_runner::collect_lint_files(t));
+            for path in test_runner::collect_lint_files(t) {
+                if solilang::lint::ignore::is_locale_file(&path) {
+                    skipped_locale_files += 1;
+                } else {
+                    files.push(path);
+                }
+            }
         }
     }
 
     if files.is_empty() {
-        println!("No .sl or .slv files found.");
+        println!(
+            "No .sl or .slv files found.{}",
+            locale_skip_note(skipped_locale_files)
+        );
         return;
     }
 
@@ -981,13 +994,24 @@ pub fn run_lint(paths: &[String]) {
     if total_issues > 0 {
         println!();
         println!(
-            "{} issue(s) found in {} file(s)",
-            total_issues, files_with_issues
+            "{} issue(s) found in {} file(s){}",
+            total_issues,
+            files_with_issues,
+            locale_skip_note(skipped_locale_files)
         );
         process::exit(1);
     }
 
-    println!("No issues found.");
+    println!("No issues found.{}", locale_skip_note(skipped_locale_files));
+}
+
+/// Report skipped locale files so the omission is visible rather than silent.
+fn locale_skip_note(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => " (1 locale file skipped)".to_string(),
+        n => format!(" ({} locale files skipped)", n),
+    }
 }
 
 pub fn run_check(paths: &[String]) {

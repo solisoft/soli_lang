@@ -841,3 +841,110 @@ fn symbol_to_proc_with_predicate_suffix_round_trips() {
     );
     assert_idempotent("def f(rows)\n  return rows.filter(&:active?)\nend\n");
 }
+
+// ---------------------------------------------------------------------------
+// Semantics-preserving regressions.
+//
+// Both cases below were found after a whole-project `soli fmt` run silently
+// broke a working app: the formatter is only allowed to change layout, and
+// these are the two places it changed meaning instead.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn controller_hook_assignment_form_survives_formatting() {
+    // `this.before_action(:index) = fn(req) {…}` is desugared by the parser
+    // into `this.before_action(:index, fn(req) {…})`, so both spellings reach
+    // the printer as one AST node. They are NOT interchangeable: the hook
+    // registry (`registry.rs::extract_all_action_specific_function_sources`)
+    // scans raw source for `") = "` followed by `fn`. Printing the call form
+    // still parses and still runs — it just registers no hook, so the handler
+    // silently never fires. Reformatting must therefore round-trip the
+    // assignment spelling verbatim.
+    let src = "class BoardController\n  static {\n    this.before_action(:index) = fn(req) { @project = Project.find(1) }\n  }\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains(") = fn"),
+        "the registry's `\") = \"` marker must survive formatting:\n{}",
+        out
+    );
+    assert_idempotent(src);
+}
+
+#[test]
+fn controller_hook_assignment_with_several_action_filters() {
+    let src = "class C\n  static {\n    this.before_action(:show, :edit, :update) = fn(req) { require_login(req) }\n  }\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("this.before_action(:show, :edit, :update) = fn"),
+        "{}",
+        out
+    );
+    assert_idempotent(src);
+}
+
+#[test]
+fn zero_argument_call_assignment_keeps_its_parens() {
+    // `foo() = value` desugars to `foo(value)`; the gap that identifies the
+    // assignment form sits between the callee and the only argument.
+    assert_fmt("hook() = handler\n", "hook() = handler\n");
+    assert_idempotent("hook() = handler\n");
+}
+
+#[test]
+fn ordinary_calls_are_not_rewritten_as_assignments() {
+    // The inverse guard: comparison operators inside an argument list must not
+    // be mistaken for the assignment form's `=`.
+    assert_fmt("plain_call(a, b)\n", "plain_call(a, b)\n");
+    assert_fmt("eq_check(a == b, c)\n", "eq_check(a == b, c)\n");
+    assert_fmt("cmp(a, b >= c)\n", "cmp(a, b >= c)\n");
+    assert_fmt(
+        "named_call(host: \"x\", port: 1)\n",
+        "named_call(host: \"x\", port: 1)\n",
+    );
+}
+
+#[test]
+fn multiline_sdbql_block_blocks_the_postfix_rewrite() {
+    // Collapsing `if cond { rows = @sdbql{…} }` to postfix strands the `if`
+    // on the line after the block's closing `}`, which does not parse — the
+    // formatter produced a file that would not boot.
+    let src = "def f(keys)\n  rows = []\n  if keys.length() > 0 {\n    rows = @sdbql{\n      FOR d IN docs FILTER d._key IN #{keys} RETURN d\n    }\n  }\n  return rows\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("if keys.length() > 0\n"),
+        "the block form must be kept:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn multiline_raw_string_blocks_the_postfix_rewrite() {
+    // Same failure through the other verbatim-printed construct: `[[ … ]]` is
+    // re-emitted from source bytes, newlines included.
+    let src = "def f(c)\n  b = 1\n  if c {\n    b = [[\nraw1\nraw2\n]]\n  }\n  return b\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("if c\n"),
+        "the block form must be kept:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn single_line_sdbql_still_collapses_to_postfix() {
+    // The guard is about embedded newlines, not about SDBQL — a one-line
+    // query parses fine in postfix position and should keep collapsing.
+    let src = "def f(c)\n  one = 1\n  if c {\n    one = @sdbql{ FOR x IN y RETURN x }\n  }\n  return one\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains("@sdbql{ FOR x IN y RETURN x } if c"),
+        "a single-line query should still collapse:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}

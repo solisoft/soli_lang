@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 
+## [1.26.3] - 2026-07-30
+
+### Fixed
+
+* **`soli fmt` rewrote controller hook assignments into calls, silently deregistering every filtered hook.** `this.before_action(:index) = fn(req) { … }` came back as `this.before_action(:index, fn(req) { … })`. That still parses and still runs — it just registers nothing, because the hook registry (`extract_all_action_specific_function_sources`) scans raw source for the literal `") = "` followed by `fn`. The failure is invisible at the point of damage and surfaces later as a missing instance variable (`Cannot access property 'project'`). A whole-project `soli fmt` run on a real app killed **54 filtered hooks across 16 controllers** — auth, plan and guest gates on todos, docs, messages, schedule, hill, campfire, drawings, pings, archives, invitations, search, project, widgets, gather and checkins.
+
+  Root cause: the parser desugars `foo(args) = value` into `foo(args…, value)` (`parser/expressions.rs`), so both spellings arrive at the printer as one indistinguishable `Call` node. The source still distinguishes them — the text between the last written argument (or the callee, when the parens are empty) and the trailing value reads `") = "` where a plain call has `", "` — so the printer now recovers the original spelling from that gap and prints the assignment form back. The check requires a closing paren and a trailing `=` that is not part of `==`, `!=`, `<=`, `>=` or `=>`, so comparisons inside an argument list (`eq_check(a == b, c)`, `cmp(a, b >= c)`) are not mistaken for it. Verified across every controller in the affected app: 54 hooks in, 54 hooks out, where the previous build produced 0.
+
+* **`soli fmt` emitted a postfix `if` after a multi-line `@sdbql{ … }` block or `[[ … ]]` raw string, producing a file that would not parse.** The guard-clause rewrite collapses `if cond { stmt }` to `stmt if cond`, which puts the keyword *after* the value — fine for a one-line value, fatal for one printed across lines, since the `if` lands on the line following the closing delimiter. This broke `soli serve` boot and made `soli test` report "Test server failed to start", with the parse error pointing at a token well past the real cause.
+
+  `@sdbql{ … }` blocks and raw string literals are copied verbatim out of the source (that is the point — escaping a multi-line query would collapse it to one 200-plus character line), so their newlines survive any layout choice. The rewrite now refuses when the inner statement or the condition carries one. The predicate is deliberately separate from `expr_likely_breaks` so call-argument width estimation is unaffected, and it reads the AST rather than counting source lines — a raw line count would answer differently on the second pass and break idempotency. A single-line `@sdbql{ … }` still collapses to postfix, which parses fine. Verified by reformatting all 423 `.sl` files of the affected app: 0 parse failures, against 1 before.
+
+### Changed
+
+* **`soli lint` no longer walks into locale files.** Apps that keep their translations in Soli rather than YAML (`app/helpers/locale_fr.sl` returning a hash of full sentences, one key per line) got hundreds of `style/line-length` hits per language — in one real project, 9 locale files buried every genuine finding under noise nobody would ever act on. A directory walk now skips a file when it sits under a directory named `locales/` (the `config/locales/` convention) or when its stem is `locale_<tag>` / `<tag>_locale` and the tag has the shape of a locale code: a 2–3 letter language subtag plus at most one 2–4 alphanumeric script/region subtag (`fr`, `fil`, `pt_BR`, `zh-Hans`, `es-419`). The shape check is what keeps the skip honest — `locale_helper.sl`, `locale_switcher.sl` and `locale_en_us_backup.sl` are code, not data, and stay linted. Double extensions are stripped first so `locale_fr.html.slv` matches on `locale_fr`. Skips are never silent: the summary line reports `(N locale files skipped)`, and naming a file explicitly (`soli lint app/helpers/locale_fr.sl`) lints it regardless, which doubles as the escape hatch. `soli check` is unaffected — type-checking a translation table is cheap and produces no noise.
+
+
 ## [1.26.2] - 2026-07-30
 
 ### Fixed

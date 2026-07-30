@@ -1,4 +1,5 @@
 pub mod expressions;
+pub mod ignore;
 pub mod rules;
 pub mod statements;
 pub mod suppress;

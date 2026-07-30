@@ -3946,6 +3946,22 @@ soli lint app/main.sl  # lint a single file
 
 Exit code: `0` = clean, `1` = issues found.
 
+### Locale Files Are Skipped
+
+Translation tables are data that happens to be written in Soli — long sentences in a hash literal, one key per line. Style rules over them produce hundreds of `style/line-length` hits nobody will act on, drowning out the real findings. Walking a directory skips them:
+
+- anything under a directory named `locales/` (the `config/locales/` convention), and
+- a file whose stem is `locale_<tag>` or `<tag>_locale`, where the tag looks like a locale code — `locale_fr.sl`, `locale_zh-Hans.sl`, `pt_BR_locale.sl`.
+
+The tag check is narrow on purpose, so helpers *about* locales keep being linted: `locale_helper.sl` and `locale_switcher.sl` are code, not data. Skipped files are counted in the summary line, and naming one explicitly always lints it:
+
+```bash
+soli lint app/helpers/
+# No issues found. (9 locale files skipped)
+
+soli lint app/helpers/locale_fr.sl   # explicit path — always linted
+```
+
 ### Output Format
 
 ```

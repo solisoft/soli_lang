@@ -427,6 +427,24 @@ impl Printer<'_> {
                 self.write(")");
             }
             ExprKind::Call { callee, arguments } => {
+                // `foo(args) = value` is desugared by the parser into
+                // `foo(args…, value)` (parser/expressions.rs). Both spellings
+                // reach us as the same node, but they are NOT interchangeable
+                // downstream: the controller hook registry scans raw source
+                // for `") = "` followed by `fn`, so printing the call form for
+                // source that was written as an assignment silently
+                // deregisters the hook. Recover the original spelling from the
+                // source and print it back.
+                if let Some(rest) = self.call_written_as_assignment(callee, arguments) {
+                    self.print_expr(callee);
+                    self.print_arg_list_inner(rest);
+                    self.write(" = ");
+                    let Some(Argument::Positional(value)) = arguments.last() else {
+                        unreachable!("call_written_as_assignment checked the last argument")
+                    };
+                    self.print_expr(value);
+                    return;
+                }
                 self.print_expr(callee);
                 // `obj.method do … end` needs no empty parens — the parser
                 // takes a trailing `do` straight off a member access. Only for
@@ -819,6 +837,35 @@ impl Printer<'_> {
 
     /// `bare_do_ok` says the callee can carry a trailing `do` with no parens
     /// in front of it (a member access — `items.each do |x| … end`).
+    /// Detect a call the user actually wrote as `callee(args) = value`.
+    ///
+    /// The parser desugars that form by appending `value` as a trailing
+    /// positional argument, so the AST is indistinguishable from a plain
+    /// call. The source is not: in the assignment form the text between the
+    /// last written argument (or the callee, when none were written) and the
+    /// value reads `") = "`, where a plain call has `", "`.
+    ///
+    /// Returns the leading arguments — those inside the parentheses — leaving
+    /// the last one to be printed as the assigned value.
+    fn call_written_as_assignment<'a>(
+        &self,
+        callee: &Expr,
+        arguments: &'a [Argument],
+    ) -> Option<&'a [Argument]> {
+        // The desugar always appends a *positional* argument.
+        let (Argument::Positional(value), rest) = arguments.split_last()? else {
+            return None;
+        };
+        // With no leading argument the gap starts after the callee, which is
+        // where `foo() = value` puts its empty parens.
+        let gap_start = match rest.last() {
+            Some(prev) => argument_end(prev),
+            None => callee.span.end_usize(),
+        };
+        let gap = self.source.get(gap_start..value.span.start_usize())?;
+        gap_is_assignment(gap).then_some(rest)
+    }
+
     fn print_arg_list_with_callee(&mut self, args: &[Argument], bare_do_ok: bool) {
         // A block argument in final position prints as Ruby-style
         // `f(a, b) do |x| … end` rather than `f(a, b, &{ … })`. `do … end` and
@@ -1203,6 +1250,31 @@ fn source_has_parens_after(source: &str, at: usize) -> bool {
         i += 1;
     }
     bytes.get(i) == Some(&b'(')
+}
+
+/// Byte offset just past an argument in the source.
+fn argument_end(arg: &Argument) -> usize {
+    match arg {
+        Argument::Positional(e) | Argument::Block(e) => e.span.end_usize(),
+        Argument::Named(na) => na.value.span.end_usize(),
+    }
+}
+
+/// True when the text separating a call's last written argument from its
+/// trailing one spells the `) = ` of an assignment rather than the `, ` of
+/// another argument.
+///
+/// Requires a closing paren so a bare `foo = value` can't reach here, and a
+/// trailing `=` that is not part of `==`, `!=`, `<=`, `>=` or `=>`.
+fn gap_is_assignment(gap: &str) -> bool {
+    if !gap.contains(')') {
+        return false;
+    }
+    let trimmed = gap.trim_end();
+    let Some(before_eq) = trimmed.strip_suffix('=') else {
+        return false;
+    };
+    !before_eq.ends_with(['=', '!', '<', '>'])
 }
 
 /// True when the source byte at `at` is `@` — used to distinguish the

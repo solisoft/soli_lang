@@ -1,6 +1,6 @@
 //! Statement printer.
 
-use crate::ast::expr::{Argument, Expr, ExprKind};
+use crate::ast::expr::{Argument, Expr, ExprKind, InterpolatedPart};
 
 use super::printer::MAX_LINE_LENGTH;
 
@@ -321,6 +321,11 @@ impl Printer<'_> {
             return None;
         }
         if expr_likely_breaks(condition) {
+            return None;
+        }
+        // A value printed verbatim across lines strands the postfix keyword
+        // after its closing delimiter, producing source that does not parse.
+        if stmt_prints_verbatim_newline(inner) || expr_prints_verbatim_newline(condition) {
             return None;
         }
         // Layout-independent width: the inner stmt's span may contain
@@ -945,6 +950,95 @@ pub(super) fn expr_likely_breaks(e: &Expr) -> bool {
         }
         ExprKind::Rescue { expr, fallback } => {
             expr_likely_breaks(expr) || expr_likely_breaks(fallback)
+        }
+        _ => false,
+    }
+}
+
+/// True when printing `e` necessarily emits an embedded newline, whatever
+/// layout the formatter picks, because it carries a construct copied verbatim
+/// out of the source: an `@sdbql{ … }` block (`print_expr`'s `SdqlBlock`
+/// branch) or a raw string literal `[[ … ]]` / `r"…"` (`raw_string_source`).
+///
+/// A guard-clause rewrite must refuse these. Postfix `expr if cond` puts the
+/// keyword *after* the value, so a multi-line value strands the `if` on the
+/// line following the closing delimiter — where it no longer parses:
+///
+/// ```text
+/// rows = @sdbql{
+///     FOR d IN docs RETURN d
+///   } if keys.length() > 0        # Parser error
+/// ```
+///
+/// Unlike a raw source-line count this is layout-independent, so it answers
+/// the same on every pass and keeps `fmt` idempotent: verbatim content is by
+/// definition unchanged by formatting.
+///
+/// `StringLiteral` deliberately over-approximates — whether a literal was
+/// written raw needs the source, and a non-raw value holding a real newline
+/// (`"a\nb"` escapes to one line) is rare. The only cost of a false positive
+/// is keeping the block form, which is always valid.
+fn expr_prints_verbatim_newline(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::SdqlBlock { query, .. } => query.contains('\n'),
+        ExprKind::StringLiteral(s) => s.contains('\n'),
+        ExprKind::Hash(pairs) => pairs
+            .iter()
+            .any(|(k, v)| expr_prints_verbatim_newline(k) || expr_prints_verbatim_newline(v)),
+        ExprKind::Array(elements) => elements.iter().any(expr_prints_verbatim_newline),
+        ExprKind::Binary { left, right, .. }
+        | ExprKind::Pipeline { left, right }
+        | ExprKind::LogicalAnd { left, right }
+        | ExprKind::LogicalOr { left, right } => {
+            expr_prints_verbatim_newline(left) || expr_prints_verbatim_newline(right)
+        }
+        ExprKind::Assign { target, value } | ExprKind::CompoundAssign { target, value, .. } => {
+            expr_prints_verbatim_newline(target) || expr_prints_verbatim_newline(value)
+        }
+        ExprKind::Unary { operand, .. }
+        | ExprKind::Grouping(operand)
+        | ExprKind::Spread(operand)
+        | ExprKind::Throw(operand)
+        | ExprKind::Member {
+            object: operand, ..
+        }
+        | ExprKind::SafeMember {
+            object: operand, ..
+        }
+        | ExprKind::QualifiedName {
+            qualifier: operand, ..
+        } => expr_prints_verbatim_newline(operand),
+        ExprKind::Index { object, index } => {
+            expr_prints_verbatim_newline(object) || expr_prints_verbatim_newline(index)
+        }
+        ExprKind::Call { callee, arguments }
+        | ExprKind::New {
+            class_expr: callee,
+            arguments,
+        } => {
+            expr_prints_verbatim_newline(callee)
+                || arguments.iter().any(|a| match a {
+                    Argument::Positional(x) | Argument::Block(x) => expr_prints_verbatim_newline(x),
+                    Argument::Named(na) => expr_prints_verbatim_newline(&na.value),
+                })
+        }
+        ExprKind::Rescue { expr, fallback } => {
+            expr_prints_verbatim_newline(expr) || expr_prints_verbatim_newline(fallback)
+        }
+        ExprKind::InterpolatedString(parts) => parts.iter().any(|p| match p {
+            InterpolatedPart::Literal(s) => s.contains('\n'),
+            InterpolatedPart::Expression(x) => expr_prints_verbatim_newline(x),
+        }),
+        _ => false,
+    }
+}
+
+/// Same predicate, applied to the expression(s) carried by a guard-clause
+/// inner statement.
+fn stmt_prints_verbatim_newline(s: &Stmt) -> bool {
+    match &s.kind {
+        StmtKind::Return(Some(e)) | StmtKind::Throw(e) | StmtKind::Expression(e) => {
+            expr_prints_verbatim_newline(e)
         }
         _ => false,
     }
