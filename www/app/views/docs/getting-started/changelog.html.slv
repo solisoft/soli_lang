@@ -20,15 +20,20 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
+        <p class="text-gray-400 mb-10">Nothing yet &mdash; changes land here as they reach <code class="text-cyan-400">main</code>.</p>
+    </section>
+
+    <section id="v1-25-4" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.25.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-07-30</span></h2>
 
         <!-- Dev tools -->
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v1-25-4-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli new</code> and every <code class="text-cyan-400">soli generate</code> emit formatted Soli.</strong> A freshly generated app was six files away from <code class="text-cyan-400">soli fmt --check</code> clean &mdash; so the first thing an agent did, run <code class="text-cyan-400">fmt</code> as the generated <code class="text-cyan-400">CLAUDE.md</code> instructs, produced a diff of files nobody had touched. The scaffold's 30 <code class="text-cyan-400">.sl</code> templates are formatted at rest, and the single write helper every generator shares now runs <code class="text-cyan-400">.sl</code> content through the formatter on the way out, so generators added later inherit it; content the parser rejects is written through unchanged rather than failing the generator. Verified across <code class="text-cyan-400">new</code> + <code class="text-cyan-400">auth</code> + <code class="text-cyan-400">oidc_provider</code> + <code class="text-cyan-400">offline</code> + <code class="text-cyan-400">devices</code> + <code class="text-cyan-400">app_links</code> + <code class="text-cyan-400">scaffold</code> + <code class="text-cyan-400">mailer</code> + <code class="text-cyan-400">component</code>: zero unformatted files, no lint issues, and the app serves <code class="text-cyan-400">/</code>, <code class="text-cyan-400">/posts/new</code>, <code class="text-cyan-400">/login</code> and <code class="text-cyan-400">/signup</code>.</li>
         </ul>
 
         <!-- Fixes -->
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v1-25-4-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A blank line under a file header comment was deleted.</strong> The paragraph check measures the gap from the previous statement, so with no previous statement it never ran: <code class="text-cyan-400"># Migration: create_users</code> + blank + <code class="text-cyan-400">def up(db)</code> lost its blank, while the identical gap two statements down kept it. Same for a comment leading a block body. The blank now survives, and <code class="text-cyan-400"># soli-lint-disable-next-line</code> still stays attached to its target.</li>
             <li><strong class="text-white">A comment that was the entire body of a <code class="text-cyan-400">catch</code> escaped the block.</strong> With no statement to flush before it, <code class="text-cyan-400">rescue</code> / <code class="text-cyan-400"># already exists</code> / <code class="text-cyan-400">end</code> printed the comment <em>after</em> the <code class="text-cyan-400">end</code>, where it read as documenting whatever came next. Block bodies flush through their closing line now, and the <code class="text-cyan-400">catch</code> keyword's line is recorded &mdash; without that, a body-leading comment gained a blank line on the second pass.</li>

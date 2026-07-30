@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [1.25.4] - 2026-07-30
+
 ### Changed
 
 * **`soli new` and every `soli generate` now emit formatted Soli.** A freshly generated app was 6 files away from `soli fmt --check` clean, so the first thing an agent did — run `fmt`, as the generated `CLAUDE.md` instructs — produced a diff of files the user never touched. The scaffold's 30 `.sl` templates are formatted at rest, and `write_file` (the single choke point all generators share, including ones added later) runs `.sl` content through the formatter on the way out; content the parser rejects is written through unchanged rather than failing the generator. Appended `config/routes.sl` blocks and the seed generator, which used `fs::write` directly, go through it too. Verified across `new` + `auth` + `oidc_provider` + `offline` + `devices` + `app_links` + `scaffold` + `mailer` + `component` + `db:seed generate`: `soli fmt --check` reports 0 files and `soli lint` reports no issues, and the generated app serves `/`, `/posts/new`, `/login` and `/signup` with 200.
