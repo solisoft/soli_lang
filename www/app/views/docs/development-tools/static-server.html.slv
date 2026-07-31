@@ -1,0 +1,388 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs" class="text-gray-400 hover:text-white transition-colors">Development Tools</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Static &amp; Markdown Server</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-yellow-400 to-amber-400 bg-clip-text text-transparent">Static &amp; Markdown Server</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            <code>soli serve</code> works on any folder, not just Soli apps. Point it at a plain
+            directory and it becomes a website: files off disk, Markdown rendered as pages,
+            templates executed, and a navigable index for every folder.
+        </p>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve ./notes --dev
+# Serving files from /home/you/notes
+# Server listening on http://127.0.0.1:5011</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        No config file, no scaffolding, no build step &mdash; the same binary you already have.
+    </p>
+
+    <!-- Mode detection -->
+    <section id="section-detection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            How the mode is chosen
+        </h2>
+
+        <p class="text-gray-400 mb-4">Two markers decide it:</p>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Marker</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Result</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>app/controllers/</code> exists</td><td class="py-2">MVC app</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>config/routes.sl</code> exists</td><td class="py-2">MVC app</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">neither</td><td class="py-2">file mode</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-4">A <code>.soli</code> bundle is always an app. Override the detection when you need to:</p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve .              # detect
+soli serve . --static     # force file mode, even inside a Soli app
+soli serve . --app        # require an app; fail if the folder is not one</code></pre>
+        </div>
+
+        <p class="text-gray-400">
+            <code>--app</code> keeps the original behaviour, error included.
+            <code>--static</code> is useful for reading a project's own <code>docs/</code> folder,
+            or for checking what a build output directory actually contains.
+        </p>
+    </section>
+
+    <!-- Resolution order -->
+    <section id="section-resolution" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+            </span>
+            What gets served
+        </h2>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Request</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Response</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a path segment starting with <code>.</code></td><td class="py-2"><code>404</code> &mdash; dotfiles are invisible</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a path escaping the folder</td><td class="py-2"><code>403</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a folder containing an index document</td><td class="py-2">that document, by its own rule</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a folder</td><td class="py-2">generated index, with <code>README.md</code> rendered above it</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>*.md</code>, <code>*.markdown</code></td><td class="py-2">rendered Markdown page</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>*.slv</code>, <code>*.erb</code></td><td class="py-2">executed by the template engine</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/about</code> (no extension)</td><td class="py-2">first of <code>about.md</code>, <code>.html</code>, <code>.html.slv</code>, <code>.slv</code>, <code>.html.erb</code>, <code>.erb</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">any other file</td><td class="py-2">served as-is, with MIME type, <code>ETag</code> and <code>Range</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">nothing matches</td><td class="py-2"><code>404</code> page naming the nearest folder</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            <code>GET</code> and <code>HEAD</code> are answered; anything else gets a <code>405</code>.
+            Requesting a folder without a trailing slash redirects to the slash-terminated URL, so
+            relative links inside a <code>README.md</code> resolve against the right base.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Index documents</h3>
+        <p class="text-gray-400 mb-4">
+            <code>index.*</code> means &ldquo;this <em>is</em> the page for this folder&rdquo;, so
+            it replaces the generated listing entirely. Looked up in order &mdash;
+            <code>index.html</code>, <code>index.htm</code>, <code>index.md</code>,
+            <code>index.html.slv</code>, <code>index.slv</code>, <code>index.html.erb</code>,
+            <code>index.erb</code> &mdash; and each is then served by its own rule: HTML as-is,
+            Markdown rendered, templates executed.
+        </p>
+        <p class="text-gray-400 mb-4">
+            A <code>README.md</code> is the opposite: it <em>describes</em> a folder rather than
+            replacing it, so it renders above the listing. Same split as GitHub and every static
+            host.
+        </p>
+        <p class="text-gray-400 mb-4">
+            A folder can hold both, but an index wins outright: with <code>index.md</code>
+            <em>and</em> <code>README.md</code>, only the index renders &mdash; the README is still
+            reachable at its own URL, but nothing links to it any more.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Folder pages</h3>
+        <p class="text-gray-400 mb-4">
+            A folder with no index document gets a listing of its contents &mdash; folders first,
+            then files, with size and last edit for each. Folder listings read their directory
+            directly and always show everything.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Markdown pages</h3>
+        <p class="text-gray-400 mb-4">
+            Tables, strikethrough and task lists are enabled &mdash; the same converter and the same
+            URL safety policy as <code>.md</code> views inside an app, so a
+            <code>[link](javascript:&hellip;)</code> is neutralized to <code>#</code>.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Fenced <code>soli</code> and <code>sl</code> blocks are highlighted server-side by
+            re-lexing them with Soli's own lexer. Other languages render as plain monospace with the
+            fence's info string shown as a label &mdash; no guessing, and nothing fetched from a CDN.
+            The page title comes from the document's first <code>#</code> heading.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Every <code>##</code> and <code>###</code> gets a slug anchor and appears in an
+            <strong class="text-white">On this page</strong> rail on the right, which marks the
+            section you are reading as you scroll. The rail is hidden below 1180px, and a document
+            with fewer than two headings gets none &mdash; a one-line table of contents is
+            furniture, not navigation.
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Media and other files</h3>
+        <p class="text-gray-400 mb-4">
+            Clicking a picture in a listing keeps you in the site: images, video, audio and PDFs
+            open inside the shell, with the breadcrumb, the sidebar and the file's size and type.
+            Text and source files are shown in the page too &mdash; <code>.sl</code> and
+            <code>.slv</code> with the same lexer highlighting as a fenced block &mdash; up to
+            512&nbsp;KB, past which they stay a download. Anything the browser cannot show offers a
+            download link rather than dumping bytes at you.
+        </p>
+        <p class="text-gray-400 mb-4">
+            The raw file stays reachable, which matters: an <code>&lt;img&gt;</code> embedded in a
+            Markdown page needs the picture, not a page about the picture. The two are told apart
+            by what the browser asks for &mdash; a click is a navigation
+            (<code>Sec-Fetch-Dest: document</code>), an <code>&lt;img&gt;</code> is a subresource.
+            Tools that send neither header, like <code>curl</code>, get the bytes. Append
+            <code>?raw</code> to force the file for anything; that is what the viewer's own tag and
+            its download link point at, so it can never recurse into itself.
+        </p>
+    </section>
+
+    <!-- Templates -->
+    <section id="section-templates" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            Templates
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            <code>.slv</code> and <code>.erb</code> files are executed with the served folder as the
+            views root, so <code>about.html.slv</code> is <code>/about</code> and
+            <code>guides/setup.slv</code> is <code>/guides/setup</code>. Two locals are available:
+            <code>path</code> (the request path) and <code>params</code> (query-string parameters).
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="about.html.slv"><code class="language-erb text-sm">&lt;h1&gt;About&lt;/h1&gt;
+&lt;p&gt;You asked for &lt;%= h(params["name"]) %&gt;.&lt;/p&gt;</code></pre>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            Rendered without a layout &mdash; a plain directory has no
+            <code>layouts/application</code>, and wrapping a standalone page in one nobody wrote
+            would be a surprise. Pull one in with <code>partial()</code> if you want it. Partials,
+            helpers and every other template feature work normally. A template that fails to render
+            returns a <code>500</code> page naming the file and the error.
+        </p>
+        <p class="text-gray-400 mb-4">
+            The generated shell is not applied either: a template's output is your HTML, so it has
+            no sidebar, breadcrumb or outline rail. Worth knowing for <code>index.slv</code>, which
+            replaces a folder's page &mdash; where <code>index.md</code> arrives wrapped in the
+            shell, <code>index.slv</code> does not.
+        </p>
+
+        <div class="my-6 p-5 rounded-xl bg-red-500/10 border border-red-500/20">
+            <h4 class="text-base font-semibold text-red-400 mb-2">Templates are code</h4>
+            <p class="text-red-200/80 text-sm">
+                File mode does not load <code>.env</code>, does not open a database connection and
+                does not run controllers &mdash; but a <code>.slv</code> file in the folder
+                <em>is</em> executed. Do not point <code>soli serve</code> at a directory whose
+                contents you do not control.
+            </p>
+        </div>
+    </section>
+
+    <!-- The pages -->
+    <section id="section-pages" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+            </span>
+            The generated pages
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Pages are styled in Soli's solar theme, in two states of the same sun: a night palette
+            and a day palette, following <code>prefers-color-scheme</code> with a toggle in the top
+            bar that overrides it. The sidebar is a <code>tree(1)</code> listing drawn with real
+            box-drawing glyphs, and its vertical rail lights up along the chain of folders leading
+            to the page you are on.
+        </p>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Key</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/</code></td><td class="py-2">focus the filter</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>&uarr;</code> <code>&darr;</code></td><td class="py-2">move through matches</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>Enter</code></td><td class="py-2">open the highlighted entry</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>Esc</code></td><td class="py-2">clear the filter, then leave the field</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            The sidebar scrolls to centre the file you are reading, so on a deep tree the lit
+            rail is actually in view. It is rendered server-side and every row is a real link, so
+            it works with JavaScript disabled; the script only narrows what is already there. The stylesheet and
+            script are compiled into the binary and served from <code>/__soli/files.css</code> and
+            <code>/__soli/files.js</code> &mdash; generated pages make no network request at all, so
+            the mode works offline.
+        </p>
+
+        <p class="text-gray-400">
+            Very large trees are capped at 1000 sidebar entries, and the sidebar says so when it
+            truncates. Folder pages are never truncated.
+        </p>
+    </section>
+
+    <!-- Live reload -->
+    <section id="section-live-reload" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            Live reload &amp; binding
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            With <code>--dev</code>, editing any file in the folder refreshes the browser &mdash; the
+            same live-reload channel Soli apps use. Edit a <code>README.md</code>, save, and the page
+            updates.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve ./docs --dev</code></pre>
+        </div>
+
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">File mode binds loopback</h4>
+            <p class="text-amber-200/80 text-sm">
+                Serving a directory you happened to <code>cd</code> into should not publish it to
+                your network without you saying so, so file mode binds <code>127.0.0.1</code>.
+                Expose it deliberately with <code>SOLI_HOST=0.0.0.0</code>. MVC apps still default
+                to <code>0.0.0.0</code>, unchanged.
+            </p>
+        </div>
+    </section>
+
+    <!-- Security -->
+    <section id="section-security" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </span>
+            Security
+        </h2>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Behaviour</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Detail</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">Dotfiles hidden</td><td class="py-2"><code>.env</code>, <code>.git/</code>, <code>.ssh/</code> return <code>404</code> and never appear in a listing</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">Path jail</td><td class="py-2">every request is canonicalized against the root; symlinks that escape return <code>403</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">No <code>.env</code> loading</td><td class="py-2">file mode never reads environment files from the folder</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">No database</td><td class="py-2">no SoliDB connection is configured or opened</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">No controllers</td><td class="py-2">no <code>.sl</code> file is executed; only <code>.slv</code>/<code>.erb</code> templates render</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">File builtins jailed</td><td class="py-2"><code>File.*</code> and <code>Image.*</code> cannot reach outside the served folder</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400">
+            The dotfile rule returns <code>404</code> rather than <code>403</code> on purpose:
+            a <code>403</code> would confirm the file exists.
+        </p>
+    </section>
+
+    <!-- Examples -->
+    <section id="section-examples" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Examples
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># Read a project's docs folder as a site
+soli serve ./docs --dev
+
+# Browse a build output directory
+soli serve ./dist
+
+# Read your own notes, with live reload while you write
+soli serve ~/notes --dev
+
+# Read a Soli app's docs without booting the app
+soli serve ./my_app/docs --static
+
+# Share on the LAN, deliberately
+SOLI_HOST=0.0.0.0 soli serve ./handbook --port 8080</code></pre>
+        </div>
+    </section>
+
+    <!-- Next -->
+    <div class="mt-16 pt-8 border-t border-white/10 flex flex-col sm:flex-row gap-4">
+        <a href="/docs/development-tools/live-reload" class="flex-1 group p-5 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/40 transition-all">
+            <div class="text-xs text-gray-500 mb-1">Related</div>
+            <div class="text-white font-semibold group-hover:text-amber-400 transition-colors">Live Reload &rarr;</div>
+        </a>
+        <a href="/docs/core-concepts/views" class="flex-1 group p-5 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/40 transition-all">
+            <div class="text-xs text-gray-500 mb-1">Related</div>
+            <div class="text-white font-semibold group-hover:text-amber-400 transition-colors">Views &amp; Templates &rarr;</div>
+        </a>
+    </div>
+</div>

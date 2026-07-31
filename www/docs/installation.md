@@ -222,3 +222,14 @@ soli test.sl
 ```
 
 You should see: `Hello, SoliLang!`
+
+## Serving a Folder
+
+`soli serve` does not need a project. Point it at any directory and it serves that directory as a
+website — files off disk, `.md` rendered as pages, and a generated index for every folder:
+
+```bash
+soli serve ./notes --dev
+```
+
+See [Static & Markdown Server](static-server.md) for the full behaviour.

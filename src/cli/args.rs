@@ -3,6 +3,17 @@ use std::process;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
 
+/// How `soli serve` was told to treat the folder. Without either flag the
+/// server detects it: an MVC app if there is `app/controllers/` or
+/// `config/routes.sl`, otherwise a plain directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServeModeArg {
+    /// `--app` — MVC app, and fail if the folder isn't one.
+    App,
+    /// `--static` — plain directory: files, Markdown, templates.
+    Files,
+}
+
 pub enum Command {
     Run {
         file: String,
@@ -76,6 +87,9 @@ pub enum Command {
         dev_mode: bool,
         workers: usize,
         daemonize: bool,
+        /// `--static` / `--app`. `None` lets the server detect which one the
+        /// folder is; an explicit choice overrides detection.
+        mode: Option<ServeModeArg>,
     },
     Test {
         paths: Vec<String>,
@@ -320,7 +334,9 @@ pub fn print_usage() {
     eprintln!("       soli generate client <android|ios|linux|windows> [--url URL] [--package ID] [--scheme S] [--fcm] [folder]");
     eprintln!("       soli generate app_links [--android-package P] [--sha256 H] [--apple-app-id ID] [folder]");
     eprintln!("       soli generate offline [folder]");
-    eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
+    eprintln!(
+        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app]"
+    );
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
@@ -384,6 +400,8 @@ pub fn print_usage() {
     eprintln!("  sign-update <file> --key <pem>  Sign an update manifest in place");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
+    eprintln!("                       A folder that is not a Soli app is served as files:");
+    eprintln!("                       static assets, rendered Markdown, .slv/.erb templates");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
     eprintln!("  check [paths...]     Static type-check .sl files without running them");
@@ -406,6 +424,8 @@ pub fn print_usage() {
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
+    eprintln!("  --static        Serve the folder as plain files, even if it is a Soli app");
+    eprintln!("  --app           Require a Soli app; fail if the folder is not one");
     eprintln!("  --jobs N        Number of parallel test workers (default: 3 for apps with app/controllers/, 1 otherwise)");
     eprintln!("  --coverage           Generate coverage report (console)");
     eprintln!("  --coverage=FORMAT    Also generate FORMAT reports: html, json, xml (comma-sep)");
@@ -445,6 +465,7 @@ pub fn print_usage() {
     eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
     eprintln!("  soli serve my_app --port 8080 Start on custom port");
     eprintln!("  soli serve my_app --workers 16 Start server with 16 workers");
+    eprintln!("  soli serve ./notes --dev      Serve a plain folder: Markdown, files, index pages");
     eprintln!("  soli test                     Run all tests in tests/");
     eprintln!("  soli test spec.sl             Run specific test file");
     eprintln!("  soli test --coverage          Run tests with coverage");
@@ -1138,6 +1159,7 @@ pub fn parse_args() -> Options {
                 let mut port = 5011u16;
                 let mut dev_mode = false;
                 let mut daemonize = false;
+                let mut mode: Option<ServeModeArg> = None;
                 // Worker count: `SOLI_WORKERS` env (the documented baseline-RSS
                 // lever) if set, else the CPU core count. An explicit
                 // `--workers N` below overrides either.
@@ -1178,6 +1200,17 @@ pub fn parse_args() -> Options {
                         daemonize = true;
                     } else if args[i] == "--dev" {
                         dev_mode = true;
+                    } else if args[i] == "--static" || args[i] == "--app" {
+                        let requested = if args[i] == "--static" {
+                            ServeModeArg::Files
+                        } else {
+                            ServeModeArg::App
+                        };
+                        if mode.is_some_and(|existing| existing != requested) {
+                            eprintln!("--static and --app cannot be combined");
+                            process::exit(64);
+                        }
+                        mode = Some(requested);
                     } else if args[i].starts_with('-') {
                         eprintln!("Unknown option for serve: {}", args[i]);
                         print_usage();
@@ -1191,6 +1224,7 @@ pub fn parse_args() -> Options {
                     dev_mode,
                     workers,
                     daemonize,
+                    mode,
                 };
                 return options;
             }

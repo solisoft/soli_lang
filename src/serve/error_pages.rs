@@ -1401,6 +1401,7 @@ mod tests {
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
             replay: false,
+            file_template: None,
             response_tx: tx,
         }
     }
@@ -1502,6 +1503,7 @@ mod tests {
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
             replay: false,
+            file_template: None,
             response_tx: tx,
         };
         let json = build_redacted_request_data_json(&req, false);

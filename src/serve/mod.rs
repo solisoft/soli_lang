@@ -14,6 +14,7 @@ pub mod dev_bar;
 mod dev_catalog;
 mod dev_inbox;
 pub mod dev_store;
+pub mod files;
 mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
@@ -336,6 +337,11 @@ pub(crate) struct RequestData {
     /// CSRF token check for replays — a rotated session token would otherwise
     /// 403 a faithful re-dispatch. Always false for real client traffic.
     pub(crate) replay: bool,
+    /// Set only in file mode (`soli serve` on a plain directory), to the path
+    /// of a `.slv`/`.erb` template relative to the served root with its
+    /// extension stripped. The worker renders it through the template engine
+    /// instead of matching a route — there is no route table to match against.
+    pub(crate) file_template: Option<String>,
     pub(crate) response_tx: oneshot::Sender<WorkerResponse>,
 }
 
@@ -563,6 +569,15 @@ pub fn serve_folder_with_options_and_hooks(
         .canonicalize()
         .unwrap_or_else(|_| folder.to_path_buf());
     let folder = folder_owned.as_path();
+
+    // A folder with no `app/controllers/` and no `config/routes.sl` is not an
+    // app. Rather than refusing to start, serve it as a plain directory:
+    // files, rendered Markdown, generated indexes. A bundle is always an app.
+    // `--app` pins the MVC path (and keeps its error); `--static` pins this
+    // one.
+    if GLOBAL_VFS.get().is_none() && files::resolve_mode(folder) == files::ServeMode::Files {
+        return serve_folder_as_files(folder, port, dev_mode, workers, on_bound_port);
+    }
 
     // Load `.env` (and `.env.{APP_ENV}` if set) before any builtin reads
     // SOLIDB_* / SOLI_* env vars. Was dropped as collateral damage in
@@ -928,6 +943,56 @@ pub fn serve_folder_with_options_and_hooks(
     )
 }
 
+/// Serve a plain directory: static files, Markdown pages, `.slv`/`.erb`
+/// templates and a generated index per folder.
+///
+/// Deliberately skips everything the MVC boot does before this point —
+/// `.env` loading, SoliDB configuration, controllers, models, routes. Serving
+/// a directory the operator happened to `cd` into must not read their secrets
+/// or open a database connection. `worker_loop` makes the same cut on its side
+/// by checking [`files::files_root`].
+fn serve_folder_as_files(
+    folder: &Path,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+    on_bound_port: Option<BoundPortHook>,
+) -> Result<(), RuntimeError> {
+    println!("Serving files from {}", folder.display());
+
+    files::set_files_root(folder.to_path_buf());
+
+    // Templates in the folder are code. Jail the File/Image builtins to the
+    // served directory so one cannot read or write outside it.
+    crate::interpreter::builtins::file::set_file_jail(folder.to_path_buf());
+    crate::interpreter::builtins::image::set_image_jail(folder.to_path_buf());
+
+    // The folder itself is the views root, so `about.html.slv` is `/about`.
+    let views_dir = folder.to_path_buf();
+
+    // The app directories are passed only to satisfy the shared signature;
+    // none of them exist in a plain directory and `worker_loop` skips the
+    // loading pass entirely in file mode.
+    let app_dir = folder.join("app");
+
+    run_hyper_server_worker_pool(
+        folder,
+        port,
+        app_dir.join("controllers"),
+        app_dir.join("models"),
+        app_dir.join("middleware"),
+        app_dir.join("helpers"),
+        folder.join("public"),
+        FileTracker::new(),
+        dev_mode,
+        workers,
+        views_dir,
+        folder.join("config").join("routes.sl"),
+        app_dir.join("jobs"),
+        on_bound_port,
+    )
+}
+
 // Import app_loader functions
 use app_loader::{
     define_routes_dsl, execute_file, load_controller, load_controllers_in_worker, load_middleware,
@@ -992,7 +1057,15 @@ fn run_hyper_server_worker_pool(
     let public_dir_arc = Arc::new(public_dir.clone());
     // Build prod-mode in-memory snapshot of CSS/JS assets so a mid-deploy file
     // swap on disk doesn't desync against still-cached HTML in browsers.
-    let asset_cache = asset_cache::build(&public_dir, dev_mode);
+    // File mode never reads from `public/` — the whole served folder is the
+    // static root and `files::handle` owns it — so skip the snapshot rather
+    // than slurping a `public/` that happens to sit in the served directory
+    // and announcing a cache nothing will ever hit.
+    let asset_cache = if files::files_root().is_some() {
+        asset_cache::empty()
+    } else {
+        asset_cache::build(&public_dir, dev_mode)
+    };
     let asset_cache_for_tokio = asset_cache.clone();
     let ws_registry_for_tokio = ws_registry.clone();
     let dev_mode_for_tokio = dev_mode;
@@ -1031,6 +1104,10 @@ fn run_hyper_server_worker_pool(
             );
             std::process::exit(1);
         }),
+        // File mode defaults to loopback: `soli serve` on a directory the
+        // operator happened to `cd` into should not publish it to the LAN
+        // without them saying so. `SOLI_HOST=0.0.0.0` still opts in.
+        _ if files::files_root().is_some() => std::net::IpAddr::from([127, 0, 0, 1]),
         _ => std::net::IpAddr::from([0, 0, 0, 0]),
     };
 
@@ -2075,82 +2152,90 @@ fn worker_loop(
     // `X-Soli-Route` response header the client patch reads.
     route_log::set_enabled(dev_mode || log_channels.collect_timing());
 
-    // Load middleware in this worker (needed for scoped middleware resolution by name)
-    {
-        let mut file_tracker = FileTracker::new();
-        if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
-            eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
-        }
-    }
+    // File mode has no app to load — no models, middleware, controllers, jobs
+    // or routes. The worker exists purely to render the `.slv`/`.erb`
+    // templates found in the served folder, which the template engine
+    // initialized above already points at.
+    let app_mode = files::files_root().is_none();
 
-    // Load models in this worker so classes are defined in environment
-    if let Err(e) = load_models(interpreter, &_models_dir) {
-        eprintln!("Worker {}: Error loading models: {}", worker_id, e);
-    }
-
-    // Load services (sibling of models) so integration classes — Stripe,
-    // etc. — are visible to controllers loaded later in this worker.
-    if let Some(parent) = _models_dir.parent() {
-        let services_dir = parent.join("services");
-        if services_dir.exists() {
-            if let Err(e) = load_models(interpreter, &services_dir) {
-                eprintln!("Worker {}: Error loading services: {}", worker_id, e);
+    if app_mode {
+        // Load middleware in this worker (needed for scoped middleware resolution by name)
+        {
+            let mut file_tracker = FileTracker::new();
+            if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
+                eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
             }
         }
-        // Load authorization policies (sibling of models) so `authorize(...)`
-        // and the `<Model>Policy` classes are visible to controllers.
-        let policies_dir = parent.join("policies");
-        if policies_dir.exists() {
-            if let Err(e) = load_models(interpreter, &policies_dir) {
-                eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
+
+        // Load models in this worker so classes are defined in environment
+        if let Err(e) = load_models(interpreter, &_models_dir) {
+            eprintln!("Worker {}: Error loading models: {}", worker_id, e);
+        }
+
+        // Load services (sibling of models) so integration classes — Stripe,
+        // etc. — are visible to controllers loaded later in this worker.
+        if let Some(parent) = _models_dir.parent() {
+            let services_dir = parent.join("services");
+            if services_dir.exists() {
+                if let Err(e) = load_models(interpreter, &services_dir) {
+                    eprintln!("Worker {}: Error loading services: {}", worker_id, e);
+                }
+            }
+            // Load authorization policies (sibling of models) so `authorize(...)`
+            // and the `<Model>Policy` classes are visible to controllers.
+            let policies_dir = parent.join("policies");
+            if policies_dir.exists() {
+                if let Err(e) = load_models(interpreter, &policies_dir) {
+                    eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
+                }
+            }
+            // Load mailers (sibling of models). The Mailer base class is defined by
+            // ensure_prelude when the worker interpreter is built.
+            let mailers_dir = parent.join("mailers");
+            if mailers_dir.exists() {
+                if let Err(e) = load_models(interpreter, &mailers_dir) {
+                    eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
+                }
             }
         }
-        // Load mailers (sibling of models). The Mailer base class is defined by
-        // ensure_prelude when the worker interpreter is built.
-        let mailers_dir = parent.join("mailers");
-        if mailers_dir.exists() {
-            if let Err(e) = load_models(interpreter, &mailers_dir) {
-                eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
-            }
+
+        // Define DSL helpers for routes (needed for hot reload)
+        if let Err(e) = define_routes_dsl(interpreter) {
+            eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
         }
-    }
 
-    // Define DSL helpers for routes (needed for hot reload)
-    if let Err(e) = define_routes_dsl(interpreter) {
-        eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
-    }
+        // Ship the framework upload helpers + `AttachmentsController` class
+        // BEFORE user controllers load, so a user-defined `AttachmentsController`
+        // (or a user `attach_upload`/`detach_upload`/etc.) cleanly overrides the
+        // default by being defined later in the same env.
+        if let Err(e) = uploads_prelude::define_uploads_prelude(interpreter) {
+            eprintln!("Worker {}: Error loading uploads prelude: {}", worker_id, e);
+        }
 
-    // Ship the framework upload helpers + `AttachmentsController` class
-    // BEFORE user controllers load, so a user-defined `AttachmentsController`
-    // (or a user `attach_upload`/`detach_upload`/etc.) cleanly overrides the
-    // default by being defined later in the same env.
-    if let Err(e) = uploads_prelude::define_uploads_prelude(interpreter) {
-        eprintln!("Worker {}: Error loading uploads prelude: {}", worker_id, e);
-    }
+        // Load controllers in this worker so functions are defined in environment.
+        // Anything user-defined here shadows the framework prelude above.
+        load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
 
-    // Load controllers in this worker so functions are defined in environment.
-    // Anything user-defined here shadows the framework prelude above.
-    load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
+        // Load app/jobs/*_job.sl in this worker so XJob classes are available
+        // to the callback dispatcher and to controller code that calls
+        // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
+        // declarations to SolidB.
+        if jobs_dir.exists() {
+            let mut tracker = FileTracker::new();
+            app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker, true);
+        }
 
-    // Load app/jobs/*_job.sl in this worker so XJob classes are available
-    // to the callback dispatcher and to controller code that calls
-    // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
-    // declarations to SolidB.
-    if jobs_dir.exists() {
-        let mut tracker = FileTracker::new();
-        app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker, true);
-    }
+        let _worker_routes = get_routes();
 
-    let _worker_routes = get_routes();
-
-    // Define `<name>_path` / `<name>_url` helpers in this worker's env from
-    // the route table we just received. Must run BEFORE the VM globals copy
-    // below so prod mode picks them up. Re-runs on hot reload via the same
-    // call inside `reload_routes_in_worker`.
-    {
-        let mut env = interpreter.environment.borrow_mut();
-        crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
-    }
+        // Define `<name>_path` / `<name>_url` helpers in this worker's env from
+        // the route table we just received. Must run BEFORE the VM globals copy
+        // below so prod mode picks them up. Re-runs on hot reload via the same
+        // call inside `reload_routes_in_worker`.
+        {
+            let mut env = interpreter.environment.borrow_mut();
+            crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+        }
+    } // end app_mode
 
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {
@@ -2959,8 +3044,10 @@ async fn handle_hyper_request(
         }
     }
 
-    // Check for static file in public directory
-    if method == "GET" && public_dir.exists() {
+    // Check for static file in public directory. Skipped in file mode, where
+    // the whole served folder — not a `public/` subdirectory — is the static
+    // root and `files::handle` below owns the resolution.
+    if method == "GET" && files::files_root().is_none() && public_dir.exists() {
         match resolve_static_file(&path, &public_dir) {
             Err(()) => {
                 return Ok(Response::builder()
@@ -3212,6 +3299,21 @@ async fn handle_hyper_request(
         return Ok(box_full(nav::handle_nav_js()));
     }
 
+    // Stylesheet and script behind the pages `soli serve` generates for a
+    // plain directory. Served from the binary so those pages make no network
+    // request at all.
+    if method == "GET" && (path == "/__soli/files.css" || path == "/__soli/files.js") {
+        let if_none_match = req
+            .headers()
+            .get("if-none-match")
+            .and_then(|v| v.to_str().ok());
+        return Ok(if path == "/__soli/files.css" {
+            files::handle_files_css(if_none_match)
+        } else {
+            files::handle_files_js(if_none_match)
+        });
+    }
+
     // Framework-bundled native bridge: the client shim, and the SSE stream it
     // subscribes to. The stream is the only place a channel is trusted, so the
     // signed token is verified before subscribing; every rejection is a flat
@@ -3394,6 +3496,29 @@ async fn handle_hyper_request(
     // arrays like tags[]=a&tags[]=b — the worker nests them Rack-style).
     let query = parse_query_pairs(query_str);
 
+    // File mode: the served folder is a plain directory, not an MVC app.
+    // Directory indexes, Markdown pages and static files are answered right
+    // here; only a `.slv`/`.erb` template needs an interpreter, and that falls
+    // through to the worker queue below with `file_template` set.
+    //
+    // Placed after the framework endpoints (`/__livereload`, `/__soli/*`) so
+    // live reload and the generated pages' own assets keep working — the file
+    // resolver would otherwise answer those paths with a 404 page.
+    let mut file_template: Option<String> = None;
+    if let Some(root) = files::files_root() {
+        match files::handle(
+            &path,
+            &method,
+            root,
+            req.headers(),
+            raw_query.as_deref(),
+            dev_mode,
+        ) {
+            files::Outcome::Response(response) => return Ok(response),
+            files::Outcome::Template(relative) => file_template = Some(relative),
+        }
+    }
+
     // Split the request: take ownership of the wire headers (moved into
     // RequestData as-is — `HeaderMap` is Send) and the body stream. No
     // per-header String copies happen here; the worker converts the map to
@@ -3516,6 +3641,7 @@ async fn handle_hyper_request(
         peer_ip: peer_addr.ip().to_string(),
         enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
         replay: false,
+        file_template,
         response_tx,
     };
 
@@ -6232,6 +6358,13 @@ fn handle_request(
         crate::interpreter::builtins::test_server::clear_captured_render();
     }
 
+    // File mode: this request resolved to a `.slv`/`.erb` file in the served
+    // folder. There is no route table, no session and no CSRF gate to run —
+    // render the template and return.
+    if let Some(relative) = data.file_template.clone() {
+        return files::render_template(data, &relative);
+    }
+
     let method = &data.method;
     let path = &data.path;
 
@@ -7346,6 +7479,7 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
         peer_ip: raw.peer_ip.clone(),
         enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
         replay: true,
+        file_template: None,
         response_tx,
     };
 
@@ -8873,6 +9007,7 @@ mod tests {
             peer_ip: "127.0.0.1".to_string(),
             enqueued_at: None,
             replay: false,
+            file_template: None,
             response_tx: tx,
         }
     }

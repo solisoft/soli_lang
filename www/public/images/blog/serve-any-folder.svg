@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="One request URL, /images/logo.png, splits into two answers. A browser navigation sends Sec-Fetch-Dest: document and receives a viewer page with the file tree sidebar and metadata. An img tag inside a rendered Markdown page sends Sec-Fetch-Dest: image and receives the raw bytes, 182 kilobytes of image/jpeg. A question mark raw query string forces the bytes for anyone.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0.32" y1="0.28" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#c2620c"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <!-- title -->
+  <text x="56" y="62" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" fill="#e5e7eb" font-weight="600">one URL, two answers</text>
+  <text x="56" y="88" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8b929e">soli serve decides by what the browser asked for</text>
+
+  <!-- the request -->
+  <rect x="56" y="240" width="290" height="96" rx="14" fill="#101319" stroke="#2b3038"/>
+  <circle cx="82" cy="268" r="8" fill="url(#sun)"/>
+  <text x="100" y="273" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">GET</text>
+  <text x="76" y="308" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#f59e0b">/images/logo.jpg</text>
+
+  <!-- split -->
+  <path d="M 346 288 L 400 288 L 400 160 L 452 160" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 346 288 L 400 288 L 400 424 L 452 424" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- branch labels -->
+  <rect x="404" y="112" width="232" height="26" rx="7" fill="#1a1206" stroke="#5a3d0c"/>
+  <text x="416" y="130" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#f0b429">Sec-Fetch-Dest: document</text>
+  <rect x="404" y="376" width="212" height="26" rx="7" fill="#1a1206" stroke="#5a3d0c"/>
+  <text x="416" y="394" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#f0b429">Sec-Fetch-Dest: image</text>
+
+  <!-- top branch: the viewer page -->
+  <rect x="452" y="150" width="512" height="180" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="476" y="178" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">a click in the listing</text>
+
+  <!-- miniature of the page: sidebar + content -->
+  <rect x="476" y="192" width="120" height="118" rx="8" fill="#16130f" stroke="#2b3038"/>
+  <text x="488" y="212" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#f59e0b">notes/</text>
+  <text x="488" y="230" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#f59e0b">├─ images/</text>
+  <text x="488" y="248" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#f59e0b">│  └─ logo.jpg</text>
+  <text x="488" y="266" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#565d66">└─ README.md</text>
+
+  <rect x="610" y="192" width="330" height="118" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+  <text x="626" y="214" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#e5e7eb">notes / images / logo.jpg</text>
+  <rect x="626" y="228" width="298" height="60" rx="6" fill="#16130f" stroke="#2b3038"/>
+  <path d="M 700 276 L 736 246 L 764 268 L 786 252 L 850 276 Z" fill="#2b3038"/>
+  <circle cx="812" cy="244" r="9" fill="#f59e0b" opacity="0.55"/>
+  <text x="626" y="303" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#8b929e">182 KB · image/jpeg · edited 3d ago</text>
+
+  <text x="476" y="352" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">→ a page, inside the site</text>
+
+  <!-- bottom branch: the bytes -->
+  <rect x="452" y="414" width="512" height="112" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="476" y="442" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">an &lt;img&gt; in a rendered Markdown page</text>
+  <rect x="476" y="456" width="464" height="50" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+  <text x="492" y="478" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#22c55e">200 OK</text>
+  <text x="562" y="478" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#e5e7eb">Content-Type: image/jpeg</text>
+  <text x="492" y="496" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">→ the file itself, 182 KB of it</text>
+
+  <!-- escape hatch -->
+  <rect x="56" y="414" width="290" height="112" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="76" y="442" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">the escape hatch</text>
+  <text x="76" y="474" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#f59e0b">?raw</text>
+  <text x="76" y="500" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">always the bytes, for anyone</text>
+
+  <!-- curl note -->
+  <text x="56" y="196" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#565d66">curl sends neither header</text>
+  <text x="56" y="214" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#565d66">and gets the file — what a</text>
+  <text x="56" y="232" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#565d66">tool asking for a URL wants</text>
+</svg>

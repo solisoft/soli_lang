@@ -179,6 +179,11 @@ def development_tools_live_reload
     render_docs("docs/development-tools/live-reload", "Live Reload", "development_tools", "live_reload")
 end
 
+def development_tools_static_server
+    render_docs("docs/development-tools/static-server", "Static & Markdown Server",
+        "development_tools", "static_server")
+end
+
 def development_tools_debugging
     render_docs("docs/development-tools/debugging", "Debugging", "development_tools", "debugging")
 end

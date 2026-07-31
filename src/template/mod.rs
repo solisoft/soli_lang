@@ -1053,7 +1053,11 @@ pub fn markdown_to_html_safe_urls(markdown: &str) -> String {
     html_output
 }
 
-fn safe_markdown_url(url: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
+/// Neutralize a Markdown link/image URL that a browser would treat as a
+/// script or off-origin sink. `pub(crate)` so the file-mode Markdown renderer
+/// (`serve::files::markdown`), which builds its own event stream to highlight
+/// fenced Soli code, applies the same SEC-022 policy as the view pipeline.
+pub(crate) fn safe_markdown_url(url: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
     let trimmed = url.trim();
     if is_safe_markdown_url(trimmed) {
         url

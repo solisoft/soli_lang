@@ -103,6 +103,18 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("m4a", "audio/mp4"),
     ("oga", "audio/ogg"),
     ("vtt", "text/vtt"),
+    // File mode renders `.md` as HTML, but a Markdown file reached any other
+    // way (a direct link into `public/`, a `?raw` fetch) should read as text
+    // in the browser rather than download as an unnamed binary.
+    ("md", "text/markdown; charset=utf-8"),
+    ("markdown", "text/markdown; charset=utf-8"),
+    // Needed by the file-mode viewer, which classifies by MIME type:
+    // without these a PDF or a CSV reads as an unnamed binary blob.
+    ("pdf", "application/pdf"),
+    ("csv", "text/csv; charset=utf-8"),
+    ("yaml", "text/yaml; charset=utf-8"),
+    ("yml", "text/yaml; charset=utf-8"),
+    ("toml", "text/plain; charset=utf-8"),
 ];
 
 /// Extensions that are considered static files for hot reload
@@ -172,10 +184,15 @@ pub const LV_MESSAGE_CHANNEL_CAPACITY: usize = 32;
 pub const LIVE_RELOAD_BROADCAST_CAPACITY: usize = 16;
 
 /// Get the MIME type for a file based on its extension.
+///
+/// Matched case-insensitively: `LOGO.PNG` is a PNG. Serving it as
+/// `application/octet-stream` made the browser download the file instead of
+/// showing it, which reads as a broken image rather than as a naming rule.
 pub fn get_mime_type(file_path: &Path) -> &'static str {
     file_path
         .extension()
         .and_then(|e| e.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
         .and_then(|ext| MIME_TYPES.iter().find(|(k, _)| *k == ext).map(|(_, v)| *v))
         .unwrap_or("application/octet-stream")
 }
@@ -398,12 +415,18 @@ mod tests {
     }
 
     #[test]
-    fn mime_extension_match_is_case_sensitive() {
-        // Pin the current behavior: "PNG" (uppercase) is NOT recognised.
-        // Path::extension preserves case; the table is lowercase-only.
+    fn mime_extension_match_is_case_insensitive() {
+        // `Path::extension` preserves case and the table is lowercase-only,
+        // so the lookup lowercases first: a file named `logo.PNG` is a PNG.
+        assert_eq!(get_mime_type(&PathBuf::from("logo.PNG")), "image/png");
+        assert_eq!(get_mime_type(&PathBuf::from("Style.CSS")), "text/css");
+    }
+
+    #[test]
+    fn mime_knows_markdown() {
         assert_eq!(
-            get_mime_type(&PathBuf::from("logo.PNG")),
-            "application/octet-stream"
+            get_mime_type(&PathBuf::from("notes.md")),
+            "text/markdown; charset=utf-8"
         );
     }
 

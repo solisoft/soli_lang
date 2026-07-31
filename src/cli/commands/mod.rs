@@ -368,12 +368,27 @@ fn fetch_bundle_key(url: &str, api_key: Option<&str>) -> Result<String, String> 
     Ok(key)
 }
 
-pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize: bool) {
+pub fn run_serve(
+    folder: &str,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+    daemonize: bool,
+    mode: Option<crate::cli::args::ServeModeArg>,
+) {
     let path = Path::new(folder);
 
     if !path.exists() {
         eprintln!("Error: Folder '{}' does not exist", folder);
         process::exit(1);
+    }
+
+    // Pin the mode before the server boots so its detection is bypassed.
+    if let Some(mode) = mode {
+        solilang::serve::files::request_mode(match mode {
+            crate::cli::args::ServeModeArg::App => solilang::serve::files::ServeMode::App,
+            crate::cli::args::ServeModeArg::Files => solilang::serve::files::ServeMode::Files,
+        });
     }
 
     if !path.is_dir() {

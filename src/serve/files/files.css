@@ -1,0 +1,741 @@
+/* Solar, in two states of the same sun.
+ *
+ * Night is the default; day is the same palette at noon. `prefers-color-scheme`
+ * picks one, and the `data-theme` attribute the toggle writes overrides it in
+ * both directions (attribute selectors outrank the bare `:root` in the media
+ * query, and the explicit blocks come last).
+ *
+ * Two accents only, both lifted from the sun mark on the docs site: --solar
+ * and --ember. No third hue anywhere, including in the code highlighting.
+ */
+
+:root {
+  --ground: #0c0a09;
+  --raised: #16130f;
+  --ink: #e7e1d8;
+  --muted: #7a736b;
+  --faint: rgba(231, 225, 216, 0.22);
+  --line: rgba(231, 225, 216, 0.1);
+  --solar: #f59e0b;
+  --ember: #c2620c;
+  --bar: rgba(12, 10, 9, 0.86);
+  --glow: rgba(245, 158, 11, 0.08);
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --ground: #faf7f2;
+    --raised: #f1ebe1;
+    --ink: #1c1917;
+    --muted: #8a8178;
+    --faint: rgba(28, 25, 23, 0.26);
+    --line: rgba(28, 25, 23, 0.12);
+    --solar: #b45309;
+    --ember: #9a3412;
+    --bar: rgba(250, 247, 242, 0.86);
+    --glow: rgba(180, 83, 9, 0.07);
+  }
+}
+
+:root[data-theme="light"] {
+  --ground: #faf7f2;
+  --raised: #f1ebe1;
+  --ink: #1c1917;
+  --muted: #8a8178;
+  --faint: rgba(28, 25, 23, 0.26);
+  --line: rgba(28, 25, 23, 0.12);
+  --solar: #b45309;
+  --ember: #9a3412;
+  --bar: rgba(250, 247, 242, 0.86);
+  --glow: rgba(180, 83, 9, 0.07);
+}
+
+:root[data-theme="dark"] {
+  --ground: #0c0a09;
+  --raised: #16130f;
+  --ink: #e7e1d8;
+  --muted: #7a736b;
+  --faint: rgba(231, 225, 216, 0.22);
+  --line: rgba(231, 225, 216, 0.1);
+  --solar: #f59e0b;
+  --ember: #c2620c;
+  --bar: rgba(12, 10, 9, 0.86);
+  --glow: rgba(245, 158, 11, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--solar);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---- top bar ---------------------------------------------------------- */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 14px;
+  background: var(--bar);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.sun {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #fde68a 0%, #f59e0b 55%, #c2620c 100%);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 320px;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.filter::placeholder {
+  color: var(--faint);
+}
+
+.filter:focus {
+  border-color: var(--solar);
+  outline: none;
+}
+
+.ghost {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  color: var(--solar);
+  border-color: var(--solar);
+}
+
+.menu {
+  display: none;
+}
+
+/* ---- layout ----------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(230px, 288px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.shell.has-toc {
+  grid-template-columns: minmax(230px, 288px) minmax(0, 1fr) 208px;
+}
+
+.side {
+  position: sticky;
+  top: 46px;
+  height: calc(100vh - 46px);
+  overflow-y: auto;
+  background: var(--raised);
+  border-right: 1px solid var(--line);
+}
+
+.main {
+  padding: 40px clamp(20px, 4vw, 56px) 96px;
+  min-width: 0;
+}
+
+/* ---- the tree --------------------------------------------------------- */
+
+/* Real box-drawing glyphs, not chevrons: the sidebar is a `tree(1)` listing.
+ * The vertical rail lights along the ancestors of the current page, so the
+ * glyphs carry your position in the filesystem rather than decorate it. */
+
+.tree {
+  padding: 14px 0 48px;
+  font-size: 12.5px;
+  line-height: 1.78;
+}
+
+.tree .root,
+.tree .row {
+  display: block;
+  white-space: pre;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 0 14px;
+}
+
+.tree .root {
+  color: var(--ink);
+  padding-bottom: 6px;
+}
+
+.tree .row:hover {
+  color: var(--ink);
+  background: var(--glow);
+}
+
+.tree .g {
+  color: var(--faint);
+}
+
+.tree .row.on .g {
+  color: var(--solar);
+  animation: trace 0.28s ease both;
+  animation-delay: calc(var(--d, 0) * 70ms);
+}
+
+.tree .row.cur {
+  background: var(--glow);
+}
+
+.tree .row.cur .n {
+  color: var(--solar);
+  font-weight: 600;
+}
+
+.tree .x {
+  color: var(--faint);
+}
+
+.tree .row.hide {
+  display: none;
+}
+
+.tree .row.k {
+  background: var(--glow);
+  color: var(--ink);
+}
+
+.tree .note {
+  margin: 14px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+@keyframes trace {
+  from {
+    color: var(--faint);
+  }
+  to {
+    color: var(--solar);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree .row.on .g {
+    animation: none;
+  }
+}
+
+/* ---- outline: the page's own structure --------------------------------- */
+
+/* Deliberately quiet. The left rail is the page's one loud idea; this column
+ * is a reading aid, so it borrows the same lit-amber language at a whisper —
+ * a hairline that colours in on the section you are actually in. */
+
+.toc {
+  position: sticky;
+  top: 46px;
+  max-height: calc(100vh - 46px);
+  overflow-y: auto;
+  padding: 44px 20px 60px 0;
+  font-size: 12px;
+}
+
+.toc .lbl {
+  margin: 0 0 10px 12px;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.toc a {
+  display: block;
+  padding: 4px 0 4px 12px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.45;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.toc a.sub {
+  padding-left: 24px;
+}
+
+.toc a:hover {
+  color: var(--ink);
+  border-left-color: var(--muted);
+}
+
+.toc a.on {
+  color: var(--solar);
+  border-left-color: var(--solar);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toc a {
+    transition: none;
+  }
+}
+
+/* ---- masthead: the path is the headline -------------------------------- */
+
+.masthead {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.crumbs {
+  margin: 0;
+  font-size: clamp(20px, 3.4vw, 30px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.crumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--solar);
+}
+
+.crumbs .sep {
+  color: var(--faint);
+  margin: 0 0.16em;
+}
+
+.crumbs .here {
+  color: var(--ink);
+}
+
+.meta {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ---- the index, set like the index of a book --------------------------- */
+
+.index {
+  margin-top: 30px;
+  border-top: 1px solid var(--line);
+}
+
+.e {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.e .nm {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.e .x {
+  color: var(--faint);
+}
+
+.e .fill {
+  flex: 1 1 auto;
+  min-width: 20px;
+  border-bottom: 1px dotted var(--muted);
+  opacity: 0.38;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease;
+}
+
+.e .size,
+.e .age {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.e .age {
+  width: 3.6em;
+  text-align: right;
+}
+
+.e:hover {
+  color: var(--solar);
+}
+
+.e:hover .fill {
+  opacity: 0.85;
+}
+
+/* ---- prose: serif, because a person wrote it --------------------------- */
+
+/* The reading column fills the space between the two rails rather than
+ * capping at a typographic measure. Long lines cost some readability on a wide
+ * monitor, but a Markdown page here is as often a table, a wide code block or
+ * a screenshot as it is prose — and those were the things a 68ch cap squeezed. */
+.prose {
+  font-family: var(--serif);
+  margin-top: 34px;
+  font-size: 17.5px;
+  line-height: 1.72;
+}
+
+.prose.readme {
+  margin-top: 30px;
+  padding-bottom: 12px;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  letter-spacing: -0.017em;
+  line-height: 1.22;
+  font-weight: 700;
+  /* Clear the sticky bar when arriving from an outline link. */
+  scroll-margin-top: 64px;
+}
+
+.prose h1 {
+  font-size: 2em;
+  margin: 0 0 0.5em;
+}
+
+.prose h2 {
+  font-size: 1.42em;
+  margin: 1.9em 0 0.5em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--line);
+}
+
+.prose h3 {
+  font-size: 1.16em;
+  margin: 1.6em 0 0.4em;
+}
+
+.prose a {
+  color: var(--solar);
+  text-underline-offset: 3px;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2.4em 0;
+}
+
+.prose blockquote {
+  margin: 1.4em 0;
+  padding-left: 1.1em;
+  border-left: 2px solid var(--ember);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.prose :not(pre) > code {
+  font-family: var(--mono);
+  font-size: 0.84em;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  padding: 0.1em 0.36em;
+  border-radius: 3px;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+  margin: 1.5em 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 7px 12px 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.prose th {
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.prose li {
+  margin: 0.3em 0;
+}
+
+/* ---- code ------------------------------------------------------------- */
+
+.code {
+  position: relative;
+  margin: 1.5em 0;
+  padding: 15px 16px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.code[data-lang]::after {
+  content: attr(data-lang);
+  position: absolute;
+  top: 7px;
+  right: 11px;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* Soli is the only language coloured here, by the language's own lexer.
+ * Two hues, matching the rest of the page. */
+.tok-kw {
+  color: var(--solar);
+  font-weight: 600;
+}
+.tok-type {
+  color: var(--ink);
+  font-weight: 600;
+}
+.tok-str,
+.tok-num,
+.tok-bool,
+.tok-null {
+  color: var(--ember);
+}
+.tok-op,
+.tok-punct {
+  color: var(--muted);
+}
+.tok-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---- media viewer ------------------------------------------------------ */
+
+/* A file that is not a document still gets the shell: breadcrumb, sidebar,
+ * metadata. Clicking a picture in a listing should not drop you onto a blank
+ * page with the back button as the only way home. */
+
+.media {
+  margin-top: 30px;
+}
+
+.media .frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.media img,
+.media video {
+  max-width: 100%;
+  max-height: 72vh;
+  height: auto;
+  display: block;
+}
+
+.media audio {
+  width: 100%;
+  max-width: 480px;
+}
+
+.media iframe {
+  width: 100%;
+  height: 78vh;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.media .actions {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.media .actions a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.media .actions a:hover {
+  color: var(--solar);
+  border-bottom-color: var(--solar);
+}
+
+.media .code {
+  margin-top: 0;
+  max-height: 78vh;
+}
+
+/* ---- states ----------------------------------------------------------- */
+
+.state {
+  margin-top: 52px;
+}
+
+.state .lead {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.state .dir {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.state code {
+  color: var(--solar);
+}
+
+.state a {
+  color: var(--solar);
+}
+
+/* ---- narrow ----------------------------------------------------------- */
+
+/* The outline is the first thing to go: it is an aid, not the content. */
+@media (max-width: 1180px) {
+  .shell.has-toc {
+    grid-template-columns: minmax(230px, 288px) minmax(0, 1fr);
+  }
+
+  .toc {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .shell,
+  .shell.has-toc {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menu {
+    display: inline-block;
+  }
+
+  .side {
+    position: fixed;
+    top: 46px;
+    left: 0;
+    width: min(84vw, 300px);
+    z-index: 15;
+    transform: translateX(-102%);
+    transition: transform 0.18s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+
+  .side.open {
+    transform: translateX(0);
+  }
+
+  .main {
+    padding: 28px 20px 80px;
+  }
+
+  .brand span:not(.sun) {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side {
+    transition: none;
+  }
+}

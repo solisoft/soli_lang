@@ -26,6 +26,11 @@ pub struct CachedAsset {
 
 pub type AssetCache = Arc<HashMap<PathBuf, CachedAsset>>;
 
+/// A cache that holds nothing, for servers that never consult it.
+pub fn empty() -> AssetCache {
+    Arc::new(HashMap::new())
+}
+
 pub fn build(public_dir: &Path, dev_mode: bool) -> AssetCache {
     if dev_mode || !public_dir.exists() {
         return Arc::new(HashMap::new());

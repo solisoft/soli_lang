@@ -3,6 +3,38 @@
 ## [Unreleased]
 
 
+## [1.27.0] - 2026-07-31
+
+### Added
+
+* **`soli serve` works on any folder, not just Soli apps.** Pointed at a directory with no `app/controllers/` and no `config/routes.sl`, it used to exit 70 with `Invalid MVC structure: …/app/controllers does not exist`. It now serves that directory as a website. Resolution order: a dotfile segment → `404`; a path escaping the root → `403`; a folder with an index document → that document, by its own rule; a folder → generated index with its `README.md` rendered above the listing; `*.md`/`*.markdown` → rendered page; `*.html.slv`/`*.slv`/`*.html.erb`/`*.erb` → executed by the template engine; an extension-less path → `.md`, `.html`, `.html.slv`, `.slv`, `.html.erb`, `.erb` in that order; anything else → raw bytes with MIME, `ETag` and `Range`. `GET` and `HEAD` are answered, everything else `405`. A folder requested without a trailing slash `301`s to the slash form so relative links in a README resolve correctly.
+
+  Detection is automatic (`app/controllers/` or `config/routes.sl` ⇒ app; a `.soli` bundle is always an app), with `--static` and `--app` to pin it. `--app` keeps the previous behaviour and its error verbatim, so nothing that worked before changes.
+
+  Markdown renders through the same converter and the same SEC-022 URL policy as `.md` views (`markdown_to_html_safe_urls`), with tables/strikethrough/task lists on. Fenced `soli` and `sl` blocks are highlighted server-side by re-lexing with the language's own lexer (`coverage::reporter::html_highlight_soli`); other languages render as plain monospace with the fence's info string as a label, rather than being guessed at by a heuristic or a CDN highlighter that would break the offline promise. Templates render with the served folder as the views root, locals `path` and `params`, and no layout; a render failure returns a `500` naming the file and the error. `--dev` live-reloads on edit through the existing SSE channel.
+
+  Generated pages use a `tree(1)` sidebar drawn with real box-drawing glyphs whose vertical rail lights along the ancestor chain of the current page, a book-style folder index (name → leader dots → size · age), night/day solar palettes driven by `prefers-color-scheme` with a `data-theme` toggle that overrides it in both directions, and a `/`-focused filter with arrow-key navigation. The sidebar is server-rendered and every row is a real link, so it works with JavaScript off; the script only narrows what is there. CSS and JS are `include_str!`'d into the binary and served from `/__soli/files.css` and `/__soli/files.js`, so a page makes no network request at all. The sidebar tree is capped at 1000 entries and says so when it truncates; folder index pages read their directory directly and are never truncated.
+
+* **Media, source and text files open inside the site.** Clicking a `.jpg` in a listing handed the browser raw bytes: you left the site and lost the tree. Images, video, audio and PDFs now render in the shell with breadcrumb, sidebar, size and type; text and source files render in the page (`.sl`/`.slv` highlighted by the Soli lexer) up to 512 KB, past which they stay a download; anything unshowable offers a download link instead of dumping bytes. Raw bytes remain reachable — an `<img>` embedded in a Markdown page needs the picture, not a page about it — via `Sec-Fetch-Dest` (`document` = viewer, subresource = bytes), with `Accept: text/html` as the fallback for older browsers. Tools sending neither header (`curl`, `wget`) get the file, and `?raw` forces it for anything; the viewer's own tags point at `?raw`, so it cannot recurse.
+
+* **Markdown pages gained an "On this page" rail.** Every `##`/`###` gets a unique slug anchor and a right-hand entry, scroll-spied via `IntersectionObserver`. Hidden below 1180px; omitted for documents with fewer than two headings.
+
+* **Index documents replace a folder's listing.** `index.html`, `index.htm`, `index.md`, `index.html.slv`, `index.slv`, `index.html.erb`, `index.erb`, in that order, each served by its own rule. Previously only `index.html` was honoured, and `index.md` was mis-classified as a README. `README.md`/`readme.md` still render *above* the listing — a README describes a folder, an index replaces it.
+
+* **The sidebar scrolls the current file into view** on load, so a deep tree no longer lights its rail below the fold.
+
+* MIME table gained `pdf`, `csv`, `yaml`/`yml` and `toml` — the file-mode viewer classifies by MIME type, so without them a PDF read as an unnamed binary blob.
+
+### Security
+
+* **File mode binds `127.0.0.1` by default** — serving a directory the operator happened to `cd` into must not publish it to the LAN without an explicit choice. `SOLI_HOST=0.0.0.0` still opts in; MVC apps keep their `0.0.0.0` default.
+* **Dotfiles are invisible in file mode.** Any path segment starting with `.` returns `404` rather than `403` (a `403` would confirm the file exists), checked on the *canonicalized* path so a symlink named `notes` pointing at `.env` is hidden too, and they never appear in a listing or the sidebar. The mode never loads `.env`, never calls `init_db_config`, and never executes a `.sl` file; `File.*` and `Image.*` are jailed to the served folder.
+
+### Fixed
+
+* **Static file extensions are matched case-insensitively.** `get_mime_type` compared `Path::extension` against a lowercase-only table, so `logo.PNG` was served as `application/octet-stream` and the browser downloaded it instead of rendering it — which presents as a broken image rather than as a naming rule. `.md` and `.markdown` were also added to the table as `text/markdown; charset=utf-8`.
+
+
 ## [1.26.3] - 2026-07-30
 
 ### Fixed

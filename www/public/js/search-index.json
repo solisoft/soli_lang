@@ -15619,6 +15619,30 @@
    "path": "/docs/native/motion-sensors#enabling",
    "signature": "motion_sensors() -> String",
    "description": "View helper emitting the soli-sensors meta tag that turns the motion-sensor client on for a page (needed only when the sensor code is in an external .js file)."
+  },
+  {
+   "title": "soli serve (file mode)",
+   "type": "page",
+   "category": "Development Tools",
+   "path": "/docs/development-tools/static-server",
+   "signature": "soli serve <folder> [--static|--app] [--dev]",
+   "description": "Serve any directory as a website: files off disk with MIME/ETag/Range, .md rendered as styled pages, .slv/.erb templates executed, media and source files opened in a viewer, and a generated index for every folder with a tree(1) sidebar. Detected automatically when the folder has no app/controllers/ and no config/routes.sl; --static and --app pin the choice. Binds 127.0.0.1 and hides dotfiles."
+  },
+  {
+   "title": "--static",
+   "type": "flag",
+   "category": "Development Tools",
+   "path": "/docs/development-tools/static-server",
+   "signature": "soli serve . --static",
+   "description": "Force soli serve into file mode even inside a Soli app — useful for reading a project's own docs/ folder or checking a build output directory."
+  },
+  {
+   "title": "--app",
+   "type": "flag",
+   "category": "Development Tools",
+   "path": "/docs/development-tools/static-server",
+   "signature": "soli serve . --app",
+   "description": "Require soli serve to boot an MVC app; fail with the Invalid MVC structure error if the folder is not one."
   }
  ]
 }
