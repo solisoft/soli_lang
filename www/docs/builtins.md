@@ -843,6 +843,17 @@ this class-based API.
 > with a custom policy that re-runs the SSRF check on every hop. Apps that need
 > to follow a 3xx from `HTTP.get` should inspect `response["status"]` and
 > `response["headers"]["location"]` and re-issue the request manually.
+>
+> **Reaching a trusted sidecar.** An app that must call something on loopback —
+> a control plane talking to a proxy admin API, for instance — should name it in
+> `SOLI_HTTP_ALLOW_HOSTS`, a comma-separated list of `host` or `host:port`
+> entries. Only those are exempted; everything else stays blocked. Prefer this
+> over `SOLI_DEV_ALLOW_SSRF=1`, which disables the guard for **every** request
+> the app makes, including ones built from user-supplied URLs — that is how an
+> app that also handles webhooks turns into an SSRF pivot. Naming the port
+> matters: `127.0.0.1:9090` reaches the admin API without also exposing the
+> database on `127.0.0.1:6745`. Matching is on the literal host in the URL, never
+> on a resolved address, so a DNS answer cannot decide what is reachable.
 
 ### HTTP.get(url, options?)
 

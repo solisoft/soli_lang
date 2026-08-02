@@ -151,6 +151,25 @@ pub fn vfs_is_dir(path: &str) -> bool {
 /// `[boot+Xms] <phase>` to stderr at each major startup step. The first
 /// `boot_trace` call captures the baseline; subsequent calls show ms
 /// since that baseline, plus the delta from the previous call.
+/// Set by `soli serve --strict-port`: bind the requested port or fail, instead
+/// of scanning upward for a free one.
+///
+/// Scanning is right for a human running `soli serve` twice; it is wrong under
+/// a supervisor. soli-proxy allocates a specific port, passes it as `$PORT`,
+/// and health-checks that port — so an app that quietly moved to `port + 1`
+/// looks unhealthy, and after three such "crashes" the proxy quarantines it and
+/// stops retrying. A port race then presents as a broken deployment.
+static STRICT_PORT: OnceLock<bool> = OnceLock::new();
+
+/// Require the exact requested port. See [`STRICT_PORT`].
+pub fn request_strict_port() {
+    let _ = STRICT_PORT.set(true);
+}
+
+fn strict_port_requested() -> bool {
+    STRICT_PORT.get().copied().unwrap_or(false)
+}
+
 static BOOT_START: OnceLock<Instant> = OnceLock::new();
 static BOOT_LAST: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 static DEV_REPL_AUTH_TOKEN: OnceLock<String> = OnceLock::new();
@@ -1131,6 +1150,14 @@ fn run_hyper_server_worker_pool(
                 match TcpListener::bind(addr).await {
                     Ok(l) => break l,
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        if strict_port_requested() {
+                            eprintln!(
+                                "Port {} is already in use and --strict-port was given, so no \
+                                 other port will be tried.",
+                                port
+                            );
+                            std::process::exit(1);
+                        }
                         if try_port == port {
                             eprintln!(
                                 "Port {} is already in use, looking for a free port...",

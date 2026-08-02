@@ -2451,6 +2451,12 @@
   .bg-red-500 {
     background-color: var(--color-red-500);
   }
+  .bg-red-500\/5 {
+    background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 5%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-red-500) 5%, transparent);
+    }
+  }
   .bg-red-500\/10 {
     background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3890,6 +3896,12 @@
     --tw-ring-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-ring-color: color-mix(in oklab, var(--color-green-500) 40%, transparent);
+    }
+  }
+  .ring-red-500\/20 {
+    --tw-ring-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-ring-color: color-mix(in oklab, var(--color-red-500) 20%, transparent);
     }
   }
   .ring-slate-950 {

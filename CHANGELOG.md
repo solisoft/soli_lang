@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+### Added
+
+- `soli cloud` — immutable releases with a mutable alias. `deploy` builds an
+  artifact, lands it in `releases/<app>/<id>/`, repoints `sites/<app>`, asks the
+  proxy to deploy, gates on the health check and only then moves the alias;
+  `rollback` repoints the symlink; `releases` lists what is on the host;
+  `--dry-run` prints the same plan a real deploy executes. Servers come from the
+  existing `deploy.toml`, the proxy key from `SOLI_PROXY_API_KEY`.
+
+
+### Added
+
+* **`soli env` — a running environment per branch.** `soli env up --branch feat/cart` creates a git worktree, writes it an `.env`, creates and migrates its own SoliDB database, seeds it, and links it into Soli Proxy's sites directory so it comes up on its own subdomain. `down` reverses all four; `list` and `url` round it out. Configured by a `[preview]` section in `deploy.toml` (`domain_base`, `local_domain_base`, `sites_dir`, `worktrees_dir`, `env_template`, `build_command`, `seed`); `--server <name>` targets a `[[servers]]` entry's proxy instead of the local one.
+
+  Nothing new runs the app: the proxy already treats any site directory as a supervised app, so an environment is a symlink plus a database. Migrations run with `SOLI_PROTECT_ENV=SOLIDB_DATABASE`, the same guard the parallel test runner uses, so the child's own `.env` reload cannot redirect them.
+
+  Teardown order is load-bearing. The proxy is asked to stop the app *before* the symlink is removed, because `discover_apps_inner` only drops vanished apps from its map — unlinking first leaves an orphan process holding its allocated ports. The database name and host are read back from the worktree's generated `.env` rather than re-derived, so a teardown long after creation still targets the right database. Failures are collected and all reported, since a partial teardown is exactly when you need to know what survived.
+
+* **Preview domains are flat: `<branch>--<app>.<base>`.** DNS wildcards and the proxy's SNI resolver both match exactly one label deep, so a flat name lets a single `*.<base>` record and a single wildcard certificate cover every app and every branch; a nested `<branch>.<app>.<base>` would need a record and a certificate per app. Branch names are sanitised into a DNS label — lowercased, `[^a-z0-9-]` replaced, runs collapsed — and anything over 30 characters keeps a 24-character prefix plus 6 hex of the full name's SHA-256, so two long `task/…` branches sharing a prefix cannot collapse onto one domain. If `<slug>--<app>` would exceed a 63-character label the slug is shortened, never the app name, so the domain still says what it belongs to.
+
+* **Build pipeline (`module::builder`).** Source → artifact in one call: clone a git ref (branch, tag or raw SHA), detect the project kind, `npm ci` + `npm run build` when there is a `package.json`, then `soli build` into a `.soli` bundle. Reports a per-stage log and a cache key derived from the manifest, lockfiles and compiler version, so an identical build can be skipped. This is the stage a PaaS runs on every push; `soli build` alone only does the bundling.
+
+  Builds execute untrusted code — `npm ci` runs arbitrary `postinstall` scripts — so the environment handed to every stage is an **allowlist** (`PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`, plus `CI=true`), never the caller's. A database password or proxy admin key exported in the operator's shell is not visible to a build script, and a newly-invented secret is excluded without anyone updating a denylist. Each stage has a deadline and a hung one is killed rather than occupying a worker.
+
+  The bundle stage shells out to a configurable `soli` (`with_soli_binary`) rather than assuming `current_exe()`, which is only correct when the builder runs inside the soli binary — a build service using this as a library would otherwise invoke itself. The artifact's existence is asserted after the stage rather than inferred from the exit code, since the path is handed straight to an artifact store.
+
+* **`soli serve --strict-port`.** A taken port normally makes the server scan upward for a free one. That is right interactively and wrong under a supervisor: Soli Proxy health-checks the port it assigned, so an app that quietly moved to `port + 1` reads as unhealthy and is quarantined after three such failures — a port race presenting as a broken deployment. `--strict-port` exits instead.
+
+### Security
+
+* **`SOLI_HTTP_ALLOW_HOSTS` — reach a trusted sidecar without disabling SSRF protection.** `HTTP.*` blocks loopback and private addresses, so an app that legitimately needs to call something local had only `SOLI_DEV_ALLOW_SSRF=1`, which switches the guard off for *every* request the app makes — including ones built from user-supplied URLs. An app that also handles webhooks becomes an SSRF pivot. The new variable takes a comma-separated list of `host` or `host:port` entries and exempts only those; naming the port means allowlisting a proxy admin API on `127.0.0.1:9090` does not also expose a database on `127.0.0.1:6745`. Matching is on the literal host in the URL, never a resolved address, so a DNS answer cannot decide what is reachable.
+
+* **A preview cannot inherit production database credentials.** `env_template` is copied into the worktree and then overlaid with the generated `APP_ENV`, `SOLIDB_DATABASE`, `SOLI_SESSION_DRIVER` and URL values, so a `SOLIDB_DATABASE` in the template can never survive into a preview — each overridden key is bound exactly once. A missing template is a hard error naming the file; it never falls back to the app's own `.env`, since a preview that migrates and seeds into production is the one failure here that cannot be undone.
+
+  The default template is `.env.preview.example`, not `.env.preview`, because the generated file sets `APP_ENV=preview` and `load_env_files` layers `.env.{APP_ENV}` *over* `.env` with override — a template with that name would be checked out by git into every worktree and silently win. `soli env up` refuses to start when it finds a `.env.preview` in the worktree, and explains why.
+
+  Preview sessions are pointed at the SoliDB driver so they land in the branch's own database. SoliKV has no namespaces and its session keys carry a fixed global prefix, so previews sharing one SoliKV would share sessions. Cache keys needed no change: they are already scoped by `SOLIDB_DATABASE`.
 
 ## [1.27.0] - 2026-07-31
 

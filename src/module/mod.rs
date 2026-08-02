@@ -6,6 +6,7 @@
 //! - Module dependency graph building
 //! - Circular dependency detection
 
+pub mod builder;
 pub mod credentials;
 // `soli deploy` is built on ssh2, which is a Unix-only dependency (see the
 // note in Cargo.toml). Deploying to a remote server is a server-ops feature; a
@@ -15,6 +16,7 @@ pub mod deploy;
 pub mod installer;
 pub mod lockfile;
 mod package;
+pub mod preview;
 pub mod registry;
 mod resolver;
 mod tar_extract;

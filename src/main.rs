@@ -1,6 +1,7 @@
 //! Soli CLI: Execute files or run the REPL.
 
 mod cli;
+mod cloud;
 
 use mimalloc::MiMalloc;
 

@@ -14,6 +14,17 @@ pub enum ServeModeArg {
     Files,
 }
 
+/// What `soli cloud` should do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudAction {
+    Deploy,
+    /// `--to` names a release; without it, the one before the live release.
+    Rollback {
+        to: Option<String>,
+    },
+    Releases,
+}
+
 pub enum Command {
     Run {
         file: String,
@@ -90,6 +101,10 @@ pub enum Command {
         /// `--static` / `--app`. `None` lets the server detect which one the
         /// folder is; an explicit choice overrides detection.
         mode: Option<ServeModeArg>,
+        /// `--strict-port` — bind the requested port or exit, rather than
+        /// scanning upward. Use under a supervisor that health-checks the port
+        /// it assigned.
+        strict_port: bool,
     },
     Test {
         paths: Vec<String>,
@@ -234,8 +249,33 @@ pub enum Command {
     Publish {
         registry: Option<String>,
     },
+    /// `soli cloud <deploy|rollback|releases>` — immutable releases with a
+    /// mutable alias. Distinct from `deploy` (which rsyncs a working tree) and
+    /// from `env` (per-branch previews): a deployment here is a built artifact
+    /// that is never modified, and rollback is repointing a symlink.
+    Cloud {
+        action: CloudAction,
+        folder: String,
+        /// App name as the proxy knows it. Defaults to the folder name.
+        app: Option<String>,
+        /// Server from `deploy.toml`. Defaults to the only one, or errors.
+        server: Option<String>,
+        domains: Vec<String>,
+        /// Print the plan and change nothing.
+        dry_run: bool,
+    },
     Deploy {
         folder: Option<String>,
+    },
+    /// `soli env <up|down|list|url>` — per-branch preview environments.
+    Env {
+        action: EnvAction,
+        folder: String,
+        /// `--server <name>` targets a `[[servers]]` entry from deploy.toml and
+        /// uses the public `domain_base`; absent means a local environment.
+        server: Option<String>,
+        /// Overrides the proxy admin URL that `down` calls to stop the app.
+        proxy_url: Option<String>,
     },
     Engine {
         action: EngineAction,
@@ -297,6 +337,26 @@ pub enum DbMigrateAction {
     Generate { name: String },
 }
 
+/// Subcommands of `soli env`. `branch` defaults to the folder's current git
+/// branch everywhere it is optional.
+pub enum EnvAction {
+    Up {
+        branch: Option<String>,
+        /// `--no-seed` runs migrations but skips `db:seed`.
+        no_seed: bool,
+    },
+    Down {
+        branch: Option<String>,
+        /// `--keep-data` leaves the preview database in place.
+        keep_data: bool,
+    },
+    List,
+    /// Print the environment's URL without creating anything.
+    Url {
+        branch: Option<String>,
+    },
+}
+
 pub enum DbSeedAction {
     /// Run the project's seed scripts. When `file` is `Some`, run only that
     /// single seed file (resolved relative to the project folder) instead of
@@ -343,6 +403,10 @@ pub fn print_usage() {
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone] [--target PLATFORM]");
     eprintln!("  soli deploy [--folder <path>]");
+    eprintln!("  soli serve <folder> [--strict-port]   (fail instead of scanning for a free port)");
+    eprintln!("  soli env up [branch] [--server <name>] [--no-seed]");
+    eprintln!("  soli env down [branch] [--server <name>] [--keep-data]");
+    eprintln!("  soli env <list|url> [branch] [--server <name>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
@@ -410,6 +474,9 @@ pub fn print_usage() {
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
     );
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
+    eprintln!(
+        "  env <up|down|list|url>    Per-branch preview environments (own subdomain + database)"
+    );
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
@@ -1160,6 +1227,7 @@ pub fn parse_args() -> Options {
                 let mut dev_mode = false;
                 let mut daemonize = false;
                 let mut mode: Option<ServeModeArg> = None;
+                let mut strict_port = false;
                 // Worker count: `SOLI_WORKERS` env (the documented baseline-RSS
                 // lever) if set, else the CPU core count. An explicit
                 // `--workers N` below overrides either.
@@ -1200,6 +1268,8 @@ pub fn parse_args() -> Options {
                         daemonize = true;
                     } else if args[i] == "--dev" {
                         dev_mode = true;
+                    } else if args[i] == "--strict-port" {
+                        strict_port = true;
                     } else if args[i] == "--static" || args[i] == "--app" {
                         let requested = if args[i] == "--static" {
                             ServeModeArg::Files
@@ -1225,6 +1295,7 @@ pub fn parse_args() -> Options {
                     workers,
                     daemonize,
                     mode,
+                    strict_port,
                 };
                 return options;
             }
@@ -1497,6 +1568,87 @@ pub fn parse_args() -> Options {
                 };
                 return options;
             }
+            "cloud" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("cloud requires a subcommand: deploy, rollback, or releases");
+                    print_usage();
+                    process::exit(64);
+                }
+                let action = match args[i].as_str() {
+                    "deploy" => CloudAction::Deploy,
+                    "rollback" => CloudAction::Rollback { to: None },
+                    "releases" | "list" => CloudAction::Releases,
+                    other => {
+                        eprintln!("Unknown cloud subcommand: {other}");
+                        print_usage();
+                        process::exit(64);
+                    }
+                };
+                i += 1;
+
+                let mut folder = ".".to_string();
+                let mut app: Option<String> = None;
+                let mut server: Option<String> = None;
+                let mut domains: Vec<String> = Vec::new();
+                let mut dry_run = false;
+                let mut to: Option<String> = None;
+
+                while i < args.len() {
+                    let need = |i: usize, flag: &str| -> String {
+                        if i >= args.len() {
+                            eprintln!("{flag} requires a value");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        args[i].clone()
+                    };
+                    match args[i].as_str() {
+                        "--app" => {
+                            i += 1;
+                            app = Some(need(i, "--app"));
+                        }
+                        "--server" | "-s" => {
+                            i += 1;
+                            server = Some(need(i, "--server"));
+                        }
+                        "--domain" | "-d" => {
+                            i += 1;
+                            domains.push(need(i, "--domain"));
+                        }
+                        "--to" => {
+                            i += 1;
+                            to = Some(need(i, "--to"));
+                        }
+                        "--dry-run" | "-n" => dry_run = true,
+                        "--folder" | "-f" => {
+                            i += 1;
+                            folder = need(i, "--folder");
+                        }
+                        other if !other.starts_with('-') => folder = other.to_string(),
+                        other => {
+                            eprintln!("Unknown option for cloud: {other}");
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+
+                let action = match action {
+                    CloudAction::Rollback { .. } => CloudAction::Rollback { to },
+                    other => other,
+                };
+                options.command = Command::Cloud {
+                    action,
+                    folder,
+                    app,
+                    server,
+                    domains,
+                    dry_run,
+                };
+                return options;
+            }
             "deploy" => {
                 i += 1;
                 let mut folder: Option<String> = None;
@@ -1517,6 +1669,97 @@ pub fn parse_args() -> Options {
                     i += 1;
                 }
                 options.command = Command::Deploy { folder };
+                return options;
+            }
+            "env" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("env requires a subcommand: up, down, list, or url");
+                    print_usage();
+                    process::exit(64);
+                }
+                let subcommand = args[i].clone();
+                i += 1;
+
+                let mut folder = ".".to_string();
+                let mut branch: Option<String> = None;
+                let mut server: Option<String> = None;
+                let mut proxy_url: Option<String> = None;
+                let mut no_seed = false;
+                let mut keep_data = false;
+
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--branch" | "-b" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--branch requires a branch name");
+                                process::exit(64);
+                            }
+                            branch = Some(args[i].clone());
+                        }
+                        "--folder" | "-f" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--folder requires a path");
+                                process::exit(64);
+                            }
+                            folder = args[i].clone();
+                        }
+                        "--server" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--server requires a server name");
+                                process::exit(64);
+                            }
+                            server = Some(args[i].clone());
+                        }
+                        "--proxy-url" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--proxy-url requires a URL");
+                                process::exit(64);
+                            }
+                            proxy_url = Some(args[i].clone());
+                        }
+                        "--no-seed" => no_seed = true,
+                        "--keep-data" => keep_data = true,
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option for env: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
+                        // A bare word is the branch for up/down/url, since
+                        // `soli env down feat/cart` is the natural phrasing.
+                        other => {
+                            if branch.is_none() && subcommand != "list" {
+                                branch = Some(other.to_string());
+                            } else {
+                                folder = other.to_string();
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+
+                let action = match subcommand.as_str() {
+                    "up" => EnvAction::Up { branch, no_seed },
+                    "down" | "rm" => EnvAction::Down { branch, keep_data },
+                    "list" | "ls" => EnvAction::List,
+                    "url" => EnvAction::Url { branch },
+                    other => {
+                        eprintln!("Unknown env subcommand: {}", other);
+                        eprintln!("Expected one of: up, down, list, url");
+                        process::exit(64);
+                    }
+                };
+
+                options.command = Command::Env {
+                    action,
+                    folder,
+                    server,
+                    proxy_url,
+                };
                 return options;
             }
             "engine" => {

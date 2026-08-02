@@ -28,6 +28,50 @@ ip = "192.168.1.101"
 folder = "/var/www/myapp"
 proxy_url = "https://proxy.example.com"
 
+# --- Preview environments (`soli env`) ---
+# Each branch gets its own subdomain, git worktree and SoliDB database.
+#
+#   soli env up --branch feat/cart      # create (local, uses local_domain_base)
+#   soli env up --branch feat/cart --server prod-1   # create on prod-1's proxy
+#   soli env list
+#   soli env down feat/cart             # stop, unlink, remove worktree, drop DB
+#
+# [preview]
+# # Public suffix for `--server` environments. Needs one wildcard DNS record:
+# #   *.dev.example.com -> the preview host
+# domain_base = "dev.example.com"
+#
+# # Suffix for local environments. `.test` is never publicly resolvable, so the
+# # proxy skips ACME for it and serves the `_wildcard.<base>` cert instead.
+# local_domain_base = "dev.example.test"
+#
+# # Domains are FLAT — <branch>--<app>.<base>, not <branch>.<app>.<base>.
+# # DNS wildcards and the proxy's SNI resolver both match exactly one label
+# # deep, so a flat scheme needs one DNS record and one wildcard cert for every
+# # app and branch; a nested one would need a pair per app.
+#
+# # Where the proxy watches for sites, and where worktrees are checked out.
+# sites_dir     = "~/workspace/soli/proxy/sites"
+# worktrees_dir = "~/.soli/previews"
+#
+# # Template copied into each preview worktree, then overlaid with the
+# # generated APP_ENV / SOLIDB_DATABASE / APP_BASE_URL values.
+# #
+# # This must NOT be a copy of your production .env. A preview that inherits
+# # production database credentials will migrate and seed straight into
+# # production. Commit a credential-free template instead.
+# #
+# # The `.example` suffix matters: the preview .env sets APP_ENV=preview, and
+# # the runtime layers `.env.preview` OVER `.env`, so a template named
+# # `.env.preview` would be checked out into the worktree and silently win.
+# env_template = ".env.preview.example"
+#
+# # Run in the worktree after checkout, before migrations.
+# build_command = "npm ci && npm run build:css"
+#
+# # Run `soli db:seed` after migrations. `--no-seed` overrides per-invocation.
+# seed = true
+
 # --- Bundle mode example ---
 # Deploy a pre-built .soli bundle instead of syncing source code.
 # The bundle is SCP'd to each server's folder. On the proxy side,

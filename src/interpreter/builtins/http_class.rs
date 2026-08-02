@@ -189,12 +189,61 @@ fn validate_url_for_ssrf_impl(url: &str, test_mode: bool) -> Result<(), String> 
             .and_then(|v| v.parse::<i32>().ok())
             .map(|n| n != 0)
             .unwrap_or(false);
-        if !test_mode && !dev_allowed {
+        // A narrow allowance for a known sidecar, e.g. a control plane that
+        // has to reach a proxy admin API on loopback. `SOLI_DEV_ALLOW_SSRF`
+        // is the wrong tool for that: it disables the guard for *every*
+        // request the app makes, including ones built from user-supplied URLs,
+        // which is precisely how an app that also handles webhooks becomes an
+        // SSRF pivot. This permits specific hosts and nothing else.
+        let explicitly_allowed = host_is_allowlisted(&parsed);
+        if !test_mode && !dev_allowed && !explicitly_allowed {
             return Err("Access to private/localhost addresses is not allowed".to_string());
         }
     }
 
     Ok(())
+}
+
+/// Whether this exact host (and port, when given) is named in
+/// `SOLI_HTTP_ALLOW_HOSTS`.
+///
+/// Comma-separated `host` or `host:port` entries. An entry without a port
+/// matches any port on that host; with one, the port must match too — so
+/// `127.0.0.1:9090` reaches a proxy admin API without also opening every other
+/// service listening on loopback.
+///
+/// The comparison is on the URL's literal host, never on a resolved address:
+/// allowlisting by name and then resolving would let a DNS answer decide what
+/// is reachable, which is the rebinding attack the blocklist exists to stop.
+fn host_is_allowlisted(url: &reqwest::Url) -> bool {
+    let Ok(raw) = std::env::var("SOLI_HTTP_ALLOW_HOSTS") else {
+        return false;
+    };
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    let port = url.port_or_known_default();
+
+    raw.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .any(|entry| {
+            let entry = entry.to_ascii_lowercase();
+            match entry.rsplit_once(':') {
+                // `[::1]:9090` and bare IPv6 both contain ':'; only treat the
+                // tail as a port when it actually parses as one.
+                Some((entry_host, entry_port)) if entry_port.parse::<u16>().is_ok() => {
+                    let entry_host = entry_host.trim_matches(|c| c == '[' || c == ']');
+                    entry_host == host.trim_matches(|c| c == '[' || c == ']')
+                        && entry_port.parse::<u16>().ok() == port
+                }
+                _ => {
+                    entry.trim_matches(|c| c == '[' || c == ']')
+                        == host.trim_matches(|c| c == '[' || c == ']')
+                }
+            }
+        })
 }
 
 fn is_blocked_host(host: &str) -> bool {
@@ -3099,5 +3148,76 @@ mod per_call_timeout_tests {
             "expected the request to abort near the 300ms per-call timeout, took {:?}",
             elapsed
         );
+    }
+}
+
+#[cfg(test)]
+mod ssrf_allowlist_tests {
+    use super::validate_url_for_ssrf_impl;
+
+    /// Tests share one process environment, so they must not run concurrently.
+    fn with_allowlist<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        match value {
+            Some(v) => std::env::set_var("SOLI_HTTP_ALLOW_HOSTS", v),
+            None => std::env::remove_var("SOLI_HTTP_ALLOW_HOSTS"),
+        }
+        let out = body();
+        std::env::remove_var("SOLI_HTTP_ALLOW_HOSTS");
+        out
+    }
+
+    #[test]
+    fn loopback_is_blocked_without_an_allowlist() {
+        with_allowlist(None, || {
+            assert!(validate_url_for_ssrf_impl("http://127.0.0.1:9090/x", false).is_err());
+        });
+    }
+
+    #[test]
+    fn an_allowlisted_host_and_port_is_permitted() {
+        with_allowlist(Some("127.0.0.1:9090"), || {
+            assert!(validate_url_for_ssrf_impl("http://127.0.0.1:9090/api", false).is_ok());
+        });
+    }
+
+    /// The point of naming a port: allowlisting the proxy admin API must not
+    /// also expose the database and cache listening on the same interface.
+    #[test]
+    fn an_allowlisted_port_does_not_open_other_ports_on_that_host() {
+        with_allowlist(Some("127.0.0.1:9090"), || {
+            assert!(
+                validate_url_for_ssrf_impl("http://127.0.0.1:6745/_api/database", false).is_err(),
+                "allowlisting one port exposed another"
+            );
+        });
+    }
+
+    #[test]
+    fn an_allowlist_entry_does_not_open_other_hosts() {
+        with_allowlist(Some("127.0.0.1:9090"), || {
+            assert!(validate_url_for_ssrf_impl("http://10.0.0.5:9090/", false).is_err());
+            assert!(
+                validate_url_for_ssrf_impl("http://169.254.169.254/latest/meta-data", false)
+                    .is_err()
+            );
+        });
+    }
+
+    #[test]
+    fn a_portless_entry_matches_any_port_on_that_host_only() {
+        with_allowlist(Some("127.0.0.1"), || {
+            assert!(validate_url_for_ssrf_impl("http://127.0.0.1:9090/", false).is_ok());
+            assert!(validate_url_for_ssrf_impl("http://127.0.0.1:6745/", false).is_ok());
+            assert!(validate_url_for_ssrf_impl("http://127.0.0.2:9090/", false).is_err());
+        });
+    }
+
+    #[test]
+    fn public_addresses_are_unaffected_by_the_allowlist() {
+        with_allowlist(Some("127.0.0.1:9090"), || {
+            assert!(validate_url_for_ssrf_impl("https://example.com/", false).is_ok());
+        });
     }
 }

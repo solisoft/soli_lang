@@ -11,7 +11,8 @@ use std::path::Path;
 use std::process;
 
 use crate::cli::args::{
-    print_usage, DbMigrateAction, DbSeedAction, EngineAction, Options, VERSION,
+    print_usage, CloudAction, DbMigrateAction, DbSeedAction, EngineAction, EnvAction, Options,
+    VERSION,
 };
 
 #[cfg(unix)]
@@ -375,12 +376,18 @@ pub fn run_serve(
     workers: usize,
     daemonize: bool,
     mode: Option<crate::cli::args::ServeModeArg>,
+    strict_port: bool,
 ) {
     let path = Path::new(folder);
 
     if !path.exists() {
         eprintln!("Error: Folder '{}' does not exist", folder);
         process::exit(1);
+    }
+
+    // Pin before boot: the bind loop reads this when the port is taken.
+    if strict_port {
+        solilang::serve::request_strict_port();
     }
 
     // Pin the mode before the server boots so its detection is bypassed.
@@ -1269,6 +1276,138 @@ fn print_unified_diff(a: &str, b: &str) {
 pub fn run_deploy(_folder: Option<&str>) {
     eprintln!("`soli deploy` is only available on Unix systems.");
     std::process::exit(1);
+}
+
+/// `soli env <up|down|list|url>` — per-branch preview environments.
+pub fn run_env(action: &EnvAction, folder: &str, server: Option<&str>, proxy_url: Option<&str>) {
+    use solilang::module::preview;
+
+    let app_path = Path::new(folder);
+    if !app_path.exists() {
+        eprintln!("Error: folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    let config = match preview::PreviewConfig::load(app_path) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    // `--server` means a remote environment on the public domain base.
+    let remote = server.is_some();
+
+    if let EnvAction::List = action {
+        match preview::list(app_path, &config, remote) {
+            Ok(domains) if domains.is_empty() => println!("No preview environments."),
+            Ok(domains) => {
+                for domain in domains {
+                    println!("{}", domain);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
+    let requested_branch = match action {
+        EnvAction::Up { branch, .. }
+        | EnvAction::Down { branch, .. }
+        | EnvAction::Url { branch } => branch.clone(),
+        EnvAction::List => None,
+    };
+
+    let branch = match requested_branch.or_else(|| current_git_branch(app_path)) {
+        Some(branch) => branch,
+        None => {
+            eprintln!(
+                "Error: could not determine the branch — pass one explicitly, e.g. `soli env up --branch feat/x`"
+            );
+            process::exit(1);
+        }
+    };
+
+    let env = match preview::resolve(app_path, &branch, &config, remote) {
+        Ok(env) => env,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let result = match action {
+        // `--no-seed` and `seed = false` are both vetoes, so seeding needs both
+        // to allow it.
+        EnvAction::Up { no_seed, .. } => {
+            preview::up(app_path, &config, &env, config.seed && !*no_seed)
+        }
+        EnvAction::Down { keep_data, .. } => {
+            let url = proxy_url
+                .map(str::to_string)
+                .or_else(|| resolve_proxy_url(app_path, server));
+            preview::down(&config, &env, url.as_deref(), *keep_data)
+        }
+        EnvAction::Url { .. } => {
+            println!("{}", env.url());
+            Ok(())
+        }
+        EnvAction::List => Ok(()),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    }
+}
+
+/// Current branch of the repo containing `folder`, if it is on one.
+fn current_git_branch(folder: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .current_dir(folder)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // Detached HEAD has no branch to name an environment after.
+    if branch.is_empty() || branch == "HEAD" {
+        return None;
+    }
+    Some(branch)
+}
+
+/// Proxy admin URL used by teardown to stop the app.
+///
+/// A local environment always targets the local proxy. It deliberately never
+/// falls back to a `deploy.toml` server: that would send a stop for a local
+/// preview to a production proxy, where an app of the same name may be serving
+/// real traffic.
+fn resolve_proxy_url(folder: &Path, server: Option<&str>) -> Option<String> {
+    const DEFAULT_LOCAL_PROXY_ADMIN: &str = "http://127.0.0.1:9090";
+
+    let Some(name) = server else {
+        return Some(
+            std::env::var("SOLI_PROXY_ADMIN_URL")
+                .ok()
+                .filter(|url| !url.is_empty())
+                .unwrap_or_else(|| DEFAULT_LOCAL_PROXY_ADMIN.to_string()),
+        );
+    };
+
+    let config = solilang::module::deploy::load_deploy_config(folder).ok()?;
+    config
+        .servers
+        .iter()
+        .find(|entry| entry.name == name)
+        .map(|entry| entry.proxy_url.clone())
+        .filter(|url| !url.is_empty())
 }
 
 #[cfg(unix)]
@@ -2648,6 +2787,241 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
             println!();
         }
     }
+}
+
+/// `soli cloud <deploy|rollback|releases>`.
+///
+/// The chain the SaaS rests on: build → immutable release → alias. Everything
+/// it decides is in `cloud::plan`, and `--dry-run` prints that same plan rather
+/// than a description of it.
+pub fn run_cloud(
+    action: &CloudAction,
+    folder: &str,
+    app: Option<&str>,
+    server: Option<&str>,
+    domains: &[String],
+    dry_run: bool,
+) {
+    use crate::cloud::{plan, proxy, release, run};
+    use solilang::module::builder::{BuildSource, Builder};
+    use solilang::module::deploy::load_deploy_config;
+
+    let app_path = Path::new(folder);
+    if !app_path.exists() {
+        eprintln!("Error: folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    // The target comes from `deploy.toml`, which every deployable app in this
+    // workspace already has. A second config file describing the same servers
+    // is a second thing to keep in sync.
+    let config = match load_deploy_config(app_path) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            eprintln!("`soli cloud` reads the servers from deploy.toml.");
+            process::exit(1);
+        }
+    };
+    let target_server = match (server, config.servers.len()) {
+        (Some(name), _) => config.servers.iter().find(|s| s.name == name),
+        (None, 1) => config.servers.first(),
+        (None, 0) => None,
+        (None, _) => {
+            eprintln!("Error: deploy.toml has several servers — pass --server <name>");
+            process::exit(1);
+        }
+    };
+    let Some(target_server) = target_server else {
+        eprintln!("Error: no matching server in deploy.toml");
+        process::exit(1);
+    };
+
+    let app_name = app
+        .map(str::to_string)
+        .or_else(|| {
+            app_path
+                .canonicalize()
+                .ok()?
+                .file_name()?
+                .to_str()
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    if app_name.is_empty() {
+        eprintln!("Error: could not determine the app name — pass --app <name>");
+        process::exit(1);
+    }
+
+    let layout = release::Layout::new(target_server.folder.clone(), app_name.clone());
+    let api_key = std::env::var("SOLI_PROXY_API_KEY").unwrap_or_default();
+    if api_key.is_empty() && !dry_run {
+        eprintln!("Error: SOLI_PROXY_API_KEY is not set — the proxy admin API needs it");
+        process::exit(1);
+    }
+    let target = run::Target {
+        ssh: format!("{}@{}", target_server.username, target_server.ip),
+        admin: proxy::Admin::new(target_server.proxy_url.clone(), api_key),
+    };
+
+    // Read-only, and done even for a dry run: a plan computed from an invented
+    // view of the host is not a dry run, it is a guess. Rollback in particular
+    // is *entirely* a question about what is already there.
+    //
+    // A dry run that cannot reach the host still prints something useful, but
+    // says plainly that it is working blind — the alternative is a confident
+    // plan built on nothing.
+    let (existing, live) = match (target.releases(&layout), target.live(&layout)) {
+        (Ok(releases), Ok(live)) => (releases, live),
+        (Err(e), _) | (_, Err(e)) => {
+            if dry_run {
+                eprintln!("warning: could not read {} ({e})", target.ssh);
+                eprintln!("warning: the plan below assumes the host has no releases yet");
+                (Vec::new(), None)
+            } else {
+                eprintln!("Error: could not read the releases on {}: {e}", target.ssh);
+                process::exit(1);
+            }
+        }
+    };
+
+    let health_url = domains
+        .first()
+        .map(|d| format!("https://{d}/up"))
+        .unwrap_or_default();
+
+    let steps = match action {
+        CloudAction::Releases => {
+            if existing.is_empty() {
+                println!("no releases in {}", layout.releases_dir());
+            }
+            for id in &existing {
+                let marker = if Some(id) == live.as_ref() { "*" } else { " " };
+                println!("{marker} {id}");
+            }
+            println!();
+            println!("* = live ({})", layout.live_link());
+            return;
+        }
+        CloudAction::Rollback { to } => {
+            let chosen = match to {
+                Some(name) => release::ReleaseId::parse(name),
+                None => release::previous(existing.clone(), live.as_ref()),
+            };
+            let Some(chosen) = chosen else {
+                eprintln!("Error: nothing to roll back to.");
+                eprintln!("`soli cloud releases` lists what is on the host.");
+                process::exit(1);
+            };
+            if Some(&chosen) == live.as_ref() {
+                eprintln!("Error: {chosen} is already live — this would be a no-op.");
+                process::exit(1);
+            }
+            println!("rolling back {app_name} to {chosen}");
+            plan::rollback_plan(&layout, &chosen, &health_url, 90)
+        }
+        CloudAction::Deploy => {
+            let commit = git_head(app_path).unwrap_or_default();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let id = release::ReleaseId::new(now, &commit);
+
+            let artifact = if dry_run {
+                println!("(dry run: skipping the build)");
+                format!("{}/.soli", folder)
+            } else {
+                let builder = Builder::new(app_path);
+                match builder.build(&BuildSource::Local(app_path.to_path_buf())) {
+                    Ok(outcome) => {
+                        println!(
+                            "built {} ({})",
+                            outcome.artifact.display(),
+                            outcome.cache_key
+                        );
+                        outcome.artifact.display().to_string()
+                    }
+                    Err(e) => {
+                        eprintln!("Error: build failed: {e}");
+                        process::exit(1);
+                    }
+                }
+            };
+
+            plan::plan(&plan::Deployment {
+                layout: layout.clone(),
+                release: id,
+                artifact,
+                domains: domains.to_vec(),
+                health_url,
+                health_timeout_secs: 90,
+                existing,
+                keep: release::KEEP_RELEASES,
+            })
+        }
+    };
+
+    if dry_run {
+        println!("plan for {app_name} on {}:", target.ssh);
+        for step in &steps {
+            println!("  {}", step.describe());
+        }
+        println!();
+        println!("nothing was changed: --dry-run");
+        return;
+    }
+
+    // From the first user-visible step, a failure is reported with what is
+    // live rather than silently retried — and never rolled back automatically,
+    // which would be a second uncontrolled change on top of the first.
+    let mut passed_point_of_no_return = false;
+    for step in &steps {
+        passed_point_of_no_return |= step.is_user_visible();
+        print!("  {} … ", step.describe());
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+
+        match run::execute(step, &target) {
+            run::Outcome::Done(note) if note.is_empty() => println!("ok"),
+            run::Outcome::Done(note) => println!("{note}"),
+            run::Outcome::Failed(why) => {
+                println!("FAILED");
+                eprintln!();
+                eprintln!("Error: {why}");
+                if passed_point_of_no_return {
+                    eprintln!();
+                    eprintln!("This deployment is partly applied. Nothing was rolled back —");
+                    eprintln!("an automatic rollback here is a second uncontrolled change.");
+                    match live {
+                        Some(previous) => eprintln!(
+                            "To go back:  soli cloud rollback --app {app_name} --to {previous}"
+                        ),
+                        None => eprintln!("`soli cloud releases` lists what is on the host."),
+                    }
+                }
+                process::exit(1);
+            }
+        }
+    }
+
+    println!();
+    for domain in domains {
+        println!("  https://{domain}");
+    }
+}
+
+/// The current commit, for the release id. Absent is fine — a dirty tree or a
+/// non-git directory still deploys.
+fn git_head(dir: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 #[cfg(test)]

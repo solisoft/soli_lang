@@ -66,6 +66,47 @@ fn csrf_skipped_by_app(path: &str) -> bool {
         .any(|pattern| path_matches_csrf_skip(path, pattern))
 }
 
+/// Public hostnames this app is served under, from `SOLI_APP_HOSTS`.
+///
+/// The safe way to run behind a reverse proxy, and the reason
+/// `enable_trust_proxy()` should not be reached for to solve a CSRF rejection.
+///
+/// The proxy forwards to `localhost:9002`, so the browser's `Origin`
+/// (`app.example.com`) can never equal the request authority the app sees. The
+/// tempting fix is to trust `X-Forwarded-Host` — but apps bind `0.0.0.0`, so
+/// anyone who can reach the port directly then sends
+/// `X-Forwarded-Host: evil.test` alongside `Origin: https://evil.test` and the
+/// same-origin check passes for every state-changing request. That is a
+/// complete CSRF bypass, gated on nothing the attacker does not control.
+///
+/// An allowlist has no such property: the value comes from the deployment, not
+/// from the request. Same idea as Django's `ALLOWED_HOSTS` and Rails'
+/// `config.hosts`.
+///
+/// Comma-separated, host or host:port, compared case-insensitively:
+///
+/// ```text
+/// SOLI_APP_HOSTS=app.example.com,www.app.example.com
+/// ```
+fn origin_matches_declared_host(origin_auth: &str) -> bool {
+    let Ok(raw) = std::env::var("SOLI_APP_HOSTS") else {
+        return false;
+    };
+    raw.split(',')
+        .map(|host| host.trim())
+        .filter(|host| !host.is_empty())
+        .any(|host| {
+            // The declared value may carry a port or not; an Origin always
+            // omits the default port for its scheme. Accept both so
+            // `app.example.com` matches an Origin of `app.example.com:443`
+            // without the operator having to think about it.
+            host.eq_ignore_ascii_case(origin_auth)
+                || origin_auth
+                    .split_once(':')
+                    .is_some_and(|(bare, _)| host.eq_ignore_ascii_case(bare))
+        })
+}
+
 /// `SOLI_DISABLE_CSRF` operator kill switch — turns off both the
 /// Origin/Referer gate and per-form token verification.
 fn csrf_disabled_by_env() -> bool {
@@ -264,11 +305,12 @@ pub(crate) fn check_csrf_origin(
         let Some(origin_auth) = origin_authority(origin) else {
             return Err(format!("malformed Origin header: {}", origin));
         };
-        if origin_auth == request_authority {
+        if origin_auth == request_authority || origin_matches_declared_host(&origin_auth) {
             return Ok(());
         }
         return Err(format!(
-            "Origin {} does not match request authority {}",
+            "Origin {} does not match request authority {} \
+             (behind a proxy? set SOLI_APP_HOSTS to the public hostname)",
             origin_auth, request_authority
         ));
     }
@@ -277,11 +319,12 @@ pub(crate) fn check_csrf_origin(
         let Some(referer_auth) = origin_authority(referer) else {
             return Err(format!("malformed Referer header: {}", referer));
         };
-        if referer_auth == request_authority {
+        if referer_auth == request_authority || origin_matches_declared_host(&referer_auth) {
             return Ok(());
         }
         return Err(format!(
-            "Referer {} does not match request authority {}",
+            "Referer {} does not match request authority {} \
+             (behind a proxy? set SOLI_APP_HOSTS to the public hostname)",
             referer_auth, request_authority
         ));
     }
@@ -330,5 +373,90 @@ mod skip_pattern_tests {
         ));
         assert!(path_matches_csrf_skip("/apix", "/api*"));
         assert!(!path_matches_csrf_skip("/xapi", "/api*"));
+    }
+}
+
+#[cfg(test)]
+mod declared_host_tests {
+    use super::*;
+
+    /// `SOLI_APP_HOSTS` is process-global and Rust runs tests in parallel, so
+    /// without a lock one test's teardown clears another's setup mid-assertion
+    /// — which is exactly how this helper failed the first time it was written.
+    static HOSTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_hosts<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
+        let _guard = HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("SOLI_APP_HOSTS").ok();
+        match value {
+            Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
+            None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
+        }
+        let out = body();
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
+            None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
+        }
+        out
+    }
+
+    #[test]
+    fn a_declared_host_is_accepted() {
+        with_hosts(Some("app.example.com"), || {
+            assert!(origin_matches_declared_host("app.example.com"));
+        });
+    }
+
+    #[test]
+    fn an_undeclared_host_is_not() {
+        // The whole point: the allowlist comes from the deployment, so an
+        // attacker cannot widen it with a header.
+        with_hosts(Some("app.example.com"), || {
+            assert!(!origin_matches_declared_host("evil.example"));
+            assert!(!origin_matches_declared_host("app.example.com.evil.test"));
+            assert!(!origin_matches_declared_host("notapp.example.com"));
+        });
+    }
+
+    #[test]
+    fn an_unset_allowlist_accepts_nothing() {
+        // Absent must never mean permissive — that would silently disable the
+        // same-origin gate for every app that has not configured it.
+        with_hosts(None, || {
+            assert!(!origin_matches_declared_host("app.example.com"));
+            assert!(!origin_matches_declared_host(""));
+        });
+    }
+
+    #[test]
+    fn several_hosts_and_stray_whitespace_are_handled() {
+        with_hosts(Some(" app.example.com , www.app.example.com ,, "), || {
+            assert!(origin_matches_declared_host("app.example.com"));
+            assert!(origin_matches_declared_host("www.app.example.com"));
+            // An empty entry from a trailing comma must not match everything.
+            assert!(!origin_matches_declared_host(""));
+            assert!(!origin_matches_declared_host("other.example.com"));
+        });
+    }
+
+    #[test]
+    fn the_comparison_is_case_insensitive() {
+        // Hostnames are case-insensitive, and a browser may send either.
+        with_hosts(Some("App.Example.COM"), || {
+            assert!(origin_matches_declared_host("app.example.com"));
+        });
+    }
+
+    #[test]
+    fn an_explicit_port_on_the_origin_still_matches_a_bare_host() {
+        // An Origin omits the default port for its scheme but not a custom
+        // one. Making the operator declare both forms would be a footgun with
+        // a rejection as its only symptom.
+        with_hosts(Some("app.example.com"), || {
+            assert!(origin_matches_declared_host("app.example.com:8443"));
+        });
+        with_hosts(Some("app.example.com:8443"), || {
+            assert!(origin_matches_declared_host("app.example.com:8443"));
+        });
     }
 }

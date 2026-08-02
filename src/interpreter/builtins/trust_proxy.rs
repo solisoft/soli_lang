@@ -20,6 +20,20 @@ static ENV_INIT: Once = Once::new();
 /// Whether the server should honor `X-Forwarded-Proto` / `X-Forwarded-Host`
 /// from incoming requests.
 pub fn is_trust_proxy_enabled() -> bool {
+    // Seeded here, not only from `register_trust_proxy_builtins`.
+    //
+    // The CSRF and WebSocket origin checks run in the HTTP server path, which
+    // may ask this question before any interpreter `Environment` has been
+    // constructed in that thread — so seeding only at builtin-registration
+    // time made `SOLI_TRUST_PROXY=1` silently ineffective for exactly the two
+    // checks it exists to configure. Behind a reverse proxy that meant every
+    // form post was rejected with "Origin <public host> does not match request
+    // authority <backend>", with no way to fix it from the environment.
+    //
+    // `Once` makes this free after the first call, and `enable_trust_proxy()`
+    // / `disable_trust_proxy()` still override at runtime.
+    init_from_env();
+
     TRUST_PROXY_ENABLED.load(Ordering::Relaxed)
 }
 

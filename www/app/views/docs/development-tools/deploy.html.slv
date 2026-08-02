@@ -171,6 +171,120 @@ Phase 2: Triggering blue-green deploy on all servers...
 ✓ 2/2 servers deployed successfully</code></pre>
     </div>
 
+    <h2 id="immutable-releases" class="text-2xl font-bold text-white mb-6">Immutable Releases &mdash; <code class="text-amber-400">soli cloud</code></h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli deploy</code> updates a working tree in place. <code class="text-amber-400">soli cloud</code> does the opposite: it builds an artifact, lands it in a directory that is never modified again, and moves a symlink. Rolling back is repointing that symlink &mdash; no rebuild, and the bytes it returns to are provably the bytes that were serving before.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli cloud deploy --domain crm.example.com     # build, ship, health-gate, alias
+soli cloud releases                            # what is on the host; * marks live
+soli cloud rollback                            # back one release
+soli cloud rollback --to 20260801T200000Z-a3f21c9
+soli cloud deploy --dry-run                    # print the plan, change nothing</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Servers come from the same <code>deploy.toml</code> the other commands read &mdash; a second file describing the same hosts is a second thing to keep in sync. The proxy admin key comes from <code class="text-cyan-400">SOLI_PROXY_API_KEY</code>.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">The layout</h3>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="On the host"><code class="language-bash text-sm">releases/&lt;app&gt;/20260801T200000Z-a3f21c9/   a build, never modified after it lands
+releases/&lt;app&gt;/20260801T211909Z-b7e0d31/
+sites/&lt;app&gt;  ->  releases/&lt;app&gt;/20260801T211909Z-b7e0d31</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        The release id is a UTC timestamp then a short commit, in that order, so lexical sort <em>is</em> chronological sort. That is what answers &ldquo;the previous release&rdquo;, and it has to stay right on the day two deploys land in the same minute &mdash; a timestamp alone collides, a SHA alone does not sort and repeats when the same commit is redeployed.
+    </p>
+    <p class="text-gray-400 mb-6">
+        Releases live <em>beside</em> <code>sites/</code>, never inside it: inside, the proxy would discover every past release as an app and try to run all of them.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">The order is the product</h3>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Plan"><code class="language-bash text-sm">mkdir     releases/&lt;app&gt;/&lt;id&gt;
+upload    .soli -> releases/&lt;app&gt;/&lt;id&gt;      nothing points at it yet
+repoint   sites/&lt;app&gt; -> releases/&lt;app&gt;/&lt;id&gt;   ln -sfn, atomic
+deploy    &lt;app&gt; (blue/green, health-gated)
+health    https://&lt;domain&gt;/up within 90s       old slot still serving
+alias     &lt;domain&gt; -> &lt;app&gt;                    traffic moves here
+prune     oldest releases, never the live one</code></pre>
+    </div>
+    <ul class="space-y-2 text-gray-400 mb-6 list-disc list-inside">
+        <li><strong class="text-white">Upload before repoint</strong> &mdash; a transfer that dies half way leaves an unused directory, not a live symlink pointing at half an app.</li>
+        <li><strong class="text-white">Repoint before deploy</strong> &mdash; the proxy reads the app from <code>sites/&lt;app&gt;</code>. Deploying first would start the release that is already live, and report success.</li>
+        <li><strong class="text-white">Health before alias</strong> &mdash; blue/green keeps the old slot serving until the new one answers. Moving the alias first sends real traffic at a release that may still be starting.</li>
+        <li><strong class="text-white">Prune last, never the live one</strong> &mdash; a deploy that pruned first would have thrown away what it needs to roll back to. Pruning also skips the live release explicitly, because after a few rollbacks it can fall outside the newest five.</li>
+    </ul>
+
+    <div class="rounded-xl bg-amber-500/5 ring-1 ring-amber-500/20 p-6 mb-6">
+        <h3 class="text-lg font-semibold text-amber-300 mb-2">A failed deploy is not rolled back for you</h3>
+        <p class="text-gray-400 mb-3">
+            Up to and including the upload, a failure is invisible &mdash; retry it. From the repoint onward the deployment is live, and the error names the release that is currently serving plus the exact command to go back.
+        </p>
+        <p class="text-gray-400">
+            It stops there on purpose. An automatic rollback in the middle of a half-applied change is a second uncontrolled change on top of the first, at the moment when least is known about what is wrong.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">--dry-run</code> prints the plan and changes nothing &mdash; and it is the <em>same</em> plan a real deploy executes, not a second description of it. It still reads the host, because a plan computed from an invented view is a guess rather than a dry run; if it cannot reach the host it says so before printing.
+    </p>
+
+    <h2 id="preview-environments" class="text-2xl font-bold text-white mb-6">Preview Environments</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli env</code> gives every branch its own running environment: a git worktree, its own subdomain, and its own SoliDB database created from your migrations and seeds. Soli Proxy supplies the runtime — port allocation, blue/green slots, health gating on <code>/up</code>, TLS — so an environment is just a site directory it discovers.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli env up --branch feat/cart      # create it
+soli env list                      # what is running
+soli env url feat/cart             # print the URL
+soli env down feat/cart            # stop, unlink, remove worktree, drop the database
+
+soli env up --branch feat/cart --server prod-1   # same, on a remote proxy</code></pre>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Configuration</h3>
+    <p class="text-gray-400 mb-4">
+        Add a <code class="text-amber-400">[preview]</code> section to <code>deploy.toml</code>. Every key is optional.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="deploy.toml"><code class="language-toml text-sm">[preview]
+domain_base       = "dev.example.com"    # for --server environments
+local_domain_base = "dev.example.test"   # for local ones
+sites_dir         = "~/workspace/proxy/sites"
+worktrees_dir     = "~/.soli/previews"
+env_template      = ".env.preview.example"
+build_command     = "npm ci &amp;&amp; npm run build:css"
+seed              = true</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-red-500/5 ring-1 ring-red-500/20 p-6 mb-6">
+        <h3 class="text-lg font-semibold text-red-300 mb-2">The env template must not be your production .env</h3>
+        <p class="text-gray-400 mb-3">
+            <code>env_template</code> is copied into each worktree and then overlaid with the generated <code>APP_ENV</code>, <code>SOLIDB_DATABASE</code> and <code>APP_BASE_URL</code>. A template carrying production database credentials would let a preview migrate and seed straight into production — the one mistake here you cannot undo. Commit a credential-free template.
+        </p>
+        <p class="text-gray-400">
+            The <code>.example</code> suffix is also load-bearing. The generated <code>.env</code> sets <code>APP_ENV=preview</code>, and Soli layers <code>.env.preview</code> <em>over</em> <code>.env</code>; a template named <code>.env.preview</code> would be checked out into the worktree and silently win. <code>soli env up</code> refuses to start if it finds one.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Domains are flat</h3>
+    <p class="text-gray-400 mb-4">
+        A preview is reachable at <code class="text-amber-400">&lt;branch&gt;--&lt;app&gt;.&lt;base&gt;</code> — for example <code>feat-cart--demo.dev.example.com</code>. The double dash is deliberate: DNS wildcards and the proxy's SNI resolver both match exactly one label deep, so a flat name means a single <code>*.dev.example.com</code> record and a single wildcard certificate cover every app and every branch. A nested <code>&lt;branch&gt;.&lt;app&gt;.&lt;base&gt;</code> scheme would need a record and a certificate per app.
+    </p>
+    <p class="text-gray-400 mb-6">
+        Branch names are sanitised into a DNS label: lowercased, illegal characters replaced, and anything over 30 characters truncated with a hash of the full name so long <code>task/…</code> branches stay distinct.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Running under the proxy</h3>
+    <p class="text-gray-400 mb-6">
+        Pass <code class="text-amber-400">--strict-port</code> in the app's <code>start_script</code>. By default <code>soli serve</code> scans upward for a free port when the one it was given is taken, which is helpful interactively but wrong under a supervisor: the proxy health-checks the port it assigned, so an app that quietly moved looks unhealthy and is quarantined after three such failures. <code>--strict-port</code> fails immediately instead.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Bundle Deployment</h2>
     <p class="text-gray-400 mb-6">
         For simpler, dependency-free deployment, bundle your application into a single <code class="text-amber-400">.soli</code> file. No source files needed on the server — only the <code>soli</code> binary and the bundle.
