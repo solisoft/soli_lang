@@ -13,11 +13,13 @@
 //! Every socket read is bounded by a timeout: a hung browser must fail a test,
 //! not wedge the worker that was driving it.
 
-use std::io::Read;
+use std::collections::VecDeque;
+use std::io::{BufRead, BufReader, Read};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value as Json};
@@ -30,8 +32,20 @@ const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 /// Grace period for a polite shutdown before the hard kill.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
-/// Spawn attempts. The reserved port can be taken between probe and bind.
+/// Spawn attempts per binary. The reserved port can be taken between probe and
+/// bind, and that race is the whole reason for retrying at all.
 const SPAWN_ATTEMPTS: usize = 5;
+/// How long one binary may soak up before the next candidate gets a turn.
+///
+/// Sized just above `READY_TIMEOUT` so the two failure shapes get what they
+/// deserve: a browser that exits at once is cheap and gets every attempt, while
+/// one that never publishes an endpoint gets a single 20-second shot instead of
+/// five of them.
+const PER_BINARY_BUDGET: Duration = Duration::from_secs(25);
+/// Lines of browser stderr kept to explain a launch that failed.
+const STDERR_TAIL_LINES: usize = 12;
+/// Cap on one kept stderr line, since a browser can log a whole stack trace.
+const STDERR_LINE_LIMIT: usize = 300;
 
 /// Distinguishes concurrent profile directories within one process.
 static PROFILE_SEQ: AtomicU32 = AtomicU32::new(0);
@@ -48,35 +62,81 @@ pub struct Browser {
     page_errors: Vec<String>,
 }
 
+/// Why one launch attempt failed, and whether trying the same binary again could
+/// plausibly do better.
+struct LaunchError {
+    message: String,
+    /// The port race is real, so most failures are worth another attempt. A
+    /// binary that cannot be executed at all is not: retrying it just delays the
+    /// candidate that would have worked.
+    retryable: bool,
+}
+
+impl LaunchError {
+    fn retryable(message: String) -> LaunchError {
+        LaunchError {
+            message,
+            retryable: true,
+        }
+    }
+
+    fn permanent(message: String) -> LaunchError {
+        LaunchError {
+            message,
+            retryable: false,
+        }
+    }
+}
+
 impl Browser {
     /// Launch a browser and attach to its first real page.
     ///
-    /// Retries the whole spawn: the port is reserved by binding and releasing,
-    /// so another process can take it before the browser binds.
+    /// Tries every browser on the machine, retrying each: the port is reserved by
+    /// binding and releasing, so another process can take it before the browser
+    /// binds. Moving on to the next candidate matters as much as the retry —
+    /// a browser can be installed and still be unable to run here (a snap whose
+    /// launcher refuses a session without D-Bus exits before Chromium starts),
+    /// and retrying that five times only buries the browser that would have
+    /// worked.
     pub fn launch(headed: bool) -> Result<Browser, String> {
-        let binary = crate::platform::browser::find_chrome().ok_or_else(no_browser_message)?;
+        let candidates = crate::platform::browser::find_chromes();
+        if candidates.is_empty() {
+            return Err(no_browser_message());
+        }
 
-        let mut last_error = String::new();
-        for attempt in 1..=SPAWN_ATTEMPTS {
-            match Self::try_launch_once(&binary, headed) {
-                Ok(browser) => return Ok(browser),
-                Err(e) => {
-                    last_error = e;
-                    if attempt < SPAWN_ATTEMPTS {
+        let mut failures: Vec<String> = Vec::new();
+        for binary in &candidates {
+            let deadline = Instant::now() + PER_BINARY_BUDGET;
+            let mut failure = None;
+            for attempt in 1..=SPAWN_ATTEMPTS {
+                match Self::try_launch_once(binary, headed) {
+                    Ok(browser) => return Ok(browser),
+                    Err(e) => {
+                        let give_up =
+                            !e.retryable || attempt == SPAWN_ATTEMPTS || Instant::now() >= deadline;
+                        failure = Some(e);
+                        if give_up {
+                            break;
+                        }
                         std::thread::sleep(Duration::from_millis(150));
                     }
                 }
             }
+            if let Some(e) = failure {
+                failures.push(format!("  {}: {}", binary.display(), e.message));
+            }
         }
+
         Err(format!(
-            "the browser failed to start after {} attempts: {}",
-            SPAWN_ATTEMPTS, last_error
+            "the browser failed to start.\n{}\n{}",
+            failures.join("\n"),
+            launch_hint()
         ))
     }
 
-    fn try_launch_once(binary: &PathBuf, headed: bool) -> Result<Browser, String> {
-        let port = pick_loopback_port()?;
-        let profile_dir = new_profile_dir()?;
+    fn try_launch_once(binary: &Path, headed: bool) -> Result<Browser, LaunchError> {
+        let port = pick_loopback_port().map_err(LaunchError::retryable)?;
+        let profile_dir = new_profile_dir().map_err(LaunchError::permanent)?;
 
         let mut command = Command::new(binary);
         if !headed {
@@ -102,29 +162,30 @@ impl Browser {
             .arg("about:blank")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            // Piped rather than discarded: when a launch fails, the browser has
+            // usually already said why on stderr, and throwing that away leaves
+            // nothing but an exit status to report.
+            .stderr(Stdio::piped());
         arm_parent_death(&mut command);
 
-        let mut child = command
-            .spawn()
-            .map_err(|e| format!("cannot start {}: {}", binary.display(), e))?;
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&profile_dir);
+                // A binary that will not exec will not exec on the second try.
+                return Err(LaunchError::permanent(format!("cannot start it: {}", e)));
+            }
+        };
+        let stderr = child.stderr.take().map(drain_stderr);
 
         let target = match wait_for_page_target(&mut child, port) {
             Ok(target) => target,
-            Err(e) => {
-                kill_child(&mut child);
-                let _ = std::fs::remove_dir_all(&profile_dir);
-                return Err(e);
-            }
+            Err(e) => return Err(abandon(&mut child, &profile_dir, stderr.as_ref(), e)),
         };
 
         let socket = match connect(&target) {
             Ok(socket) => socket,
-            Err(e) => {
-                kill_child(&mut child);
-                let _ = std::fs::remove_dir_all(&profile_dir);
-                return Err(e);
-            }
+            Err(e) => return Err(abandon(&mut child, &profile_dir, stderr.as_ref(), e)),
         };
 
         let mut browser = Browser {
@@ -137,9 +198,15 @@ impl Browser {
 
         // Page events drive navigation waits; Runtime events are what make
         // `assert_no_page_errors` possible at all.
-        browser.send("Page.enable", json!({}))?;
-        browser.send("Runtime.enable", json!({}))?;
-        browser.send("Network.enable", json!({}))?;
+        browser
+            .send("Page.enable", json!({}))
+            .map_err(LaunchError::retryable)?;
+        browser
+            .send("Runtime.enable", json!({}))
+            .map_err(LaunchError::retryable)?;
+        browser
+            .send("Network.enable", json!({}))
+            .map_err(LaunchError::retryable)?;
         Ok(browser)
     }
 
@@ -510,6 +577,92 @@ fn no_browser_message() -> String {
     )
 }
 
+/// What to try next when every browser on the machine refused to start.
+fn launch_hint() -> String {
+    match crate::platform::browser::chrome_path_override() {
+        Some(path) => format!(
+            "{} pins the browser to '{}' — unset it to try the others on this machine.",
+            crate::platform::browser::CHROME_PATH_ENV,
+            path
+        ),
+        None => format!(
+            "Set {} to a browser that can run here.",
+            crate::platform::browser::CHROME_PATH_ENV
+        ),
+    }
+}
+
+/// Tear down a half-started browser and turn its failure into a report.
+///
+/// Whatever the browser managed to say before dying goes into the message: on a
+/// snap-confined Chromium in a session without D-Bus, that one line is the whole
+/// diagnosis, and the exit status on its own says nothing at all.
+fn abandon(
+    child: &mut Child,
+    profile_dir: &Path,
+    stderr: Option<&Arc<Mutex<VecDeque<String>>>>,
+    message: String,
+) -> LaunchError {
+    kill_child(child);
+    let _ = std::fs::remove_dir_all(profile_dir);
+
+    let said = stderr.map(recent_stderr).unwrap_or_default();
+    if said.is_empty() {
+        return LaunchError::retryable(message);
+    }
+    let quoted = said
+        .iter()
+        .map(|line| format!("    {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    LaunchError::retryable(format!("{}\n{}", message, quoted))
+}
+
+/// Drain a child's stderr into a bounded tail, on a thread.
+///
+/// Both halves of that matter. The pipe has to be read or it fills and stops the
+/// browser dead — Edge logs a D-Bus error every few frames on a host without a
+/// session bus — and the last lines have to be kept somewhere a failing launch
+/// can reach them.
+///
+/// Detached rather than joined: Chromium's forked children inherit the pipe, so
+/// EOF can lag well behind the process we killed, and a test reporting a failure
+/// must not wait on that.
+fn drain_stderr(stderr: ChildStderr) -> Arc<Mutex<VecDeque<String>>> {
+    let tail = Arc::new(Mutex::new(VecDeque::new()));
+    let sink = Arc::clone(&tail);
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let mut sink = sink.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            if sink.len() == STDERR_TAIL_LINES {
+                sink.pop_front();
+            }
+            sink.push_back(shorten(line));
+        }
+    });
+    tail
+}
+
+/// The stderr lines kept so far, oldest first.
+fn recent_stderr(tail: &Arc<Mutex<VecDeque<String>>>) -> Vec<String> {
+    let lines = tail.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    lines.iter().cloned().collect()
+}
+
+/// Clip one log line, on a character boundary.
+fn shorten(line: &str) -> String {
+    if line.chars().count() <= STDERR_LINE_LIMIT {
+        return line.to_string();
+    }
+    let kept: String = line.chars().take(STDERR_LINE_LIMIT).collect();
+    format!("{}…", kept)
+}
+
 /// Reserve a free loopback port by binding and immediately releasing it.
 fn pick_loopback_port() -> Result<u16, String> {
     let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
@@ -750,5 +903,114 @@ mod tests {
     fn a_reserved_port_is_usable() {
         let port = pick_loopback_port().expect("loopback must be bindable");
         assert!(port > 0);
+    }
+
+    /// A stand-in for a browser that dies on startup with something to say —
+    /// which is what a snap launcher refusing the session actually looks like.
+    #[cfg(unix)]
+    fn dying_process(said: &str) -> Child {
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("echo '{}' >&2; exit 1", said))
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("sh must be spawnable")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn what_the_browser_said_before_dying_reaches_the_failure() {
+        let mut child = dying_process("not a snap cgroup for tag snap.chromium.chromium");
+        let stderr = child.stderr.take().map(drain_stderr);
+        let _ = child.wait();
+
+        // The drain runs on its own thread, so the line can land just after the
+        // child is reaped.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while stderr
+            .as_ref()
+            .map(recent_stderr)
+            .unwrap_or_default()
+            .is_empty()
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let profile = new_profile_dir().expect("temp dir must be writable");
+        let failure = abandon(
+            &mut child,
+            &profile,
+            stderr.as_ref(),
+            "the browser exited during startup (exit status: 1)".to_string(),
+        );
+
+        assert!(failure.message.contains("exited during startup"));
+        // The point of the whole exercise: the reason, not just the status.
+        assert!(
+            failure.message.contains("not a snap cgroup"),
+            "stderr was dropped: {}",
+            failure.message
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_kept_stderr_is_bounded() {
+        let lines = STDERR_TAIL_LINES * 3;
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "for i in $(seq {}); do echo line$i >&2; done",
+                lines
+            ))
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("sh must be spawnable");
+        let tail = drain_stderr(child.stderr.take().expect("stderr was piped"));
+        let _ = child.wait();
+
+        // The drain runs on its own thread, so wait for the last line to land.
+        // Waiting for the ring to merely be *full* would race it: under a loaded
+        // machine the first twelve lines fill it before the rest are consumed.
+        let last = format!("line{}", lines);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while recent_stderr(&tail).last().map(String::as_str) != Some(last.as_str()) {
+            assert!(
+                Instant::now() < deadline,
+                "the drain never reached {}: {:?}",
+                last,
+                recent_stderr(&tail)
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let kept = recent_stderr(&tail);
+        assert_eq!(kept.len(), STDERR_TAIL_LINES);
+        // The oldest lines are the ones dropped: a failure is explained by what
+        // the browser said last, not by the first thing it logged.
+        assert_eq!(
+            kept.first().map(String::as_str),
+            Some(&format!("line{}", lines - STDERR_TAIL_LINES + 1)[..])
+        );
+    }
+
+    #[test]
+    fn a_long_log_line_is_clipped_on_a_character_boundary() {
+        let long = "é".repeat(STDERR_LINE_LIMIT * 2);
+        let clipped = shorten(&long);
+        assert_eq!(clipped.chars().count(), STDERR_LINE_LIMIT + 1);
+        assert!(clipped.ends_with('…'));
+        assert_eq!(shorten("short"), "short");
+    }
+
+    #[test]
+    fn one_binary_cannot_soak_up_every_attempt() {
+        // Otherwise a browser that hangs to the ready timeout costs
+        // SPAWN_ATTEMPTS × READY_TIMEOUT before the next candidate is tried.
+        assert!(PER_BINARY_BUDGET < READY_TIMEOUT * SPAWN_ATTEMPTS as u32);
+        assert!(PER_BINARY_BUDGET > READY_TIMEOUT);
     }
 }

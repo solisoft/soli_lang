@@ -50,6 +50,20 @@ pub const CHROME_PATH_ENV: &str = "SOLI_CHROME_PATH";
 /// still exists when spawned, which is why the caller still has to handle a
 /// spawn failure.
 pub fn find_chrome() -> Option<PathBuf> {
+    find_chromes().into_iter().next()
+}
+
+/// Every browser on this machine, most preferred first.
+///
+/// Being installed is not the same as being launchable: a snap-packaged Chromium
+/// on a host whose user session has no D-Bus refuses to start at all, and a
+/// caller that only ever saw the first candidate would fail the whole run with a
+/// working browser sitting next in the list. So the driver gets the list and
+/// tries them in turn.
+///
+/// The override still resolves to at most one entry — falling through from a
+/// pinned browser to a different one would defeat the point of pinning it.
+pub fn find_chromes() -> Vec<PathBuf> {
     if let Ok(explicit) = std::env::var(CHROME_PATH_ENV) {
         let explicit = explicit.trim();
         if !explicit.is_empty() {
@@ -57,13 +71,37 @@ pub fn find_chrome() -> Option<PathBuf> {
             // An override that doesn't resolve is a configuration error worth
             // surfacing, not a reason to quietly fall through to a different
             // browser than the one that was asked for.
-            return if path.is_file() { Some(path) } else { None };
+            return if path.is_file() {
+                vec![path]
+            } else {
+                Vec::new()
+            };
         }
     }
 
-    CHROMIUM_BINARIES
-        .iter()
-        .find_map(|candidate| resolve(candidate))
+    walk_candidates(CHROMIUM_BINARIES, resolve)
+}
+
+/// The candidate walk, with resolution injected so it can be tested without
+/// installing browsers.
+fn walk_candidates(candidates: &[&str], resolve: impl Fn(&str) -> Option<PathBuf>) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for candidate in candidates {
+        let Some(path) = resolve(candidate) else {
+            continue;
+        };
+        // `google-chrome` and `google-chrome-stable` are usually the same file
+        // through a symlink; trying it twice would only double the wait on a
+        // machine where it does not work.
+        let identity = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if seen.contains(&identity) {
+            continue;
+        }
+        seen.push(identity);
+        found.push(path);
+    }
+    found
 }
 
 /// Whether `$SOLI_CHROME_PATH` is set to something non-empty.
@@ -115,6 +153,32 @@ mod tests {
     #[test]
     fn a_bare_name_that_is_not_on_path_resolves_to_nothing() {
         assert_eq!(resolve("soli-definitely-not-a-real-browser-binary"), None);
+    }
+
+    #[test]
+    fn every_installed_browser_is_offered_in_preference_order() {
+        // The driver needs the whole list: the first browser can be installed and
+        // still refuse to run (a snap launcher in a session without D-Bus), and
+        // the run should continue with the next one.
+        let found = walk_candidates(&["first", "missing", "second"], |name| match name {
+            "first" => Some(PathBuf::from("/bin/first")),
+            "second" => Some(PathBuf::from("/bin/second")),
+            _ => None,
+        });
+        assert_eq!(
+            found,
+            vec![PathBuf::from("/bin/first"), PathBuf::from("/bin/second")]
+        );
+    }
+
+    #[test]
+    fn one_browser_under_two_names_is_offered_once() {
+        // `google-chrome` and `google-chrome-stable` are the same binary on most
+        // Debian machines.
+        let found = walk_candidates(&["chrome", "chrome-stable"], |_| {
+            Some(PathBuf::from("/bin/sh"))
+        });
+        assert_eq!(found, vec![PathBuf::from("/bin/sh")]);
     }
 
     #[test]

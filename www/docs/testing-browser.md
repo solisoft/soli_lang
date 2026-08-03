@@ -63,6 +63,27 @@ SOLI_CHROME_PATH=/opt/chrome/chrome soli test --browser
 If nothing is found, `--browser` fails immediately with what it looked for —
 rather than thirty seconds later on the first `visit()`.
 
+Being installed is not the same as being launchable, so the first browser found
+is not the last word: if it refuses to start, Soli moves on to the next one it
+found. A snap-packaged Chromium on a host whose user session has no D-Bus is the
+usual case — `snap run` exits before Chromium starts, and the run continues with
+Chrome or Edge instead.
+
+When every browser fails, the error names each one and quotes what it printed
+before dying:
+
+```
+the browser failed to start.
+  /snap/bin/chromium: the browser exited during startup (exit status: 1)
+    /user.slice/…/session-5337.scope is not a snap cgroup for tag snap.chromium.chromium
+Set SOLI_CHROME_PATH to a browser that can run here.
+```
+
+Note that `SOLI_CHROME_PATH` pins the browser rather than merely preferring it:
+a pinned browser that cannot start fails the run instead of falling through to
+another, since silently driving a different browser than the one you asked for
+would be worse.
+
 ## Navigating
 
 ```soli

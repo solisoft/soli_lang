@@ -855,6 +855,16 @@ this class-based API.
 > database on `127.0.0.1:6745`. Matching is on the literal host in the URL, never
 > on a resolved address, so a DNS answer cannot decide what is reachable.
 
+**Connections are pooled and reused** across calls, per host, for 15 seconds of
+idle time — a second request to an API you just called skips the TCP and TLS
+handshake. Pooling works the same for HTTP/1.1 and HTTP/2 hosts.
+
+**Failures name their cause.** A transport error reports the whole chain, not
+just the top line, so `Request failed: error sending request for url (…)` is
+followed by what actually went wrong (`dns error: …`, `connection closed before
+message completed`, `invalid peer certificate`). Worth surfacing when you handle
+the `{"error": ...}` shape the parallel helpers return.
+
 ### HTTP.get(url, options?)
 
 Performs an HTTP GET request.

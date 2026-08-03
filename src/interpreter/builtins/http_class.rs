@@ -94,24 +94,120 @@ pub(crate) fn parallel_max_concurrency() -> usize {
     })
 }
 
-/// Run an async future safely, avoiding blocking the I/O driver if already in async context.
-/// If called from within an async runtime, spawns a dedicated single-thread runtime to avoid
-/// blocking the worker thread. Otherwise uses the runtime handle directly.
-fn http_block_on<F>(rt: &tokio::runtime::Handle, future: F) -> F::Output
-where
-    F: std::future::Future + 'static,
-{
-    if tokio::runtime::Handle::try_current().is_ok() {
-        // Already inside async runtime — create a dedicated single-thread runtime
-        // so we don't block the caller's I/O driver thread
-        let rt = tokio::runtime::Builder::new_current_thread()
+/// The runtime that owns every connection in [`get_user_http_client`]'s pool.
+///
+/// This has to outlive the pool, and that is the whole point of it existing.
+/// Requests used to be driven by a fresh `new_current_thread` runtime built per
+/// call and dropped on return — which is invisible over HTTP/1.1, because the
+/// socket dies with its runtime and the pool just opens a new one. Over **HTTP/2**
+/// the pool keeps one multiplexed connection per host and hands it to concurrent
+/// requests, so a connection created by a since-dropped runtime is still handed
+/// out, and sending on it fails immediately with
+/// `dispatch task is gone -> runtime dropped the dispatch task`. That presented
+/// as an app whose parallel `HTTP.get_all_json` failed on roughly every other
+/// page load against an h2 API, with the first URL succeeding and the rest not.
+///
+/// Two worker threads: these only drive I/O — the futures themselves run on the
+/// calling thread via `block_on` — so this is about having *a* live reactor, not
+/// about throughput.
+fn user_http_runtime() -> &'static tokio::runtime::Runtime {
+    static USER_HTTP_RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    USER_HTTP_RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("soli-http")
             .enable_all()
             .build()
-            .unwrap();
-        rt.block_on(future)
-    } else {
-        rt.block_on(future)
+            .expect("Failed to create the user HTTP runtime")
+    })
+}
+
+/// Drive a user HTTP future on the shared runtime that owns the pool.
+///
+/// The normal caller is a Soli worker thread, which is not a runtime thread: the
+/// future then runs on *this* thread, so anything it reads from thread-locals
+/// (the dev query log, the current request) is still there. The other two arms
+/// exist only so that a call made from inside an async context cannot panic.
+fn block_on_user_http<Fut, T>(future: Fut) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
+    T: Send + 'static,
+{
+    let rt = user_http_runtime();
+    let Ok(current) = tokio::runtime::Handle::try_current() else {
+        return rt.block_on(future);
+    };
+
+    match current.runtime_flavor() {
+        // Hand this thread back to its runtime for the duration; the future
+        // still runs here, which keeps thread-locals visible to it.
+        tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| rt.handle().block_on(future))
+        }
+        // A current-thread runtime cannot lend its thread out (`block_in_place`
+        // panics there), so the future has to go to the HTTP runtime's own
+        // workers and the result comes back over a channel. Reached only from
+        // inside the thread-local DB/S3 runtimes, never from a request handler.
+        _ => {
+            let (tx, rx) = mpsc::channel();
+            rt.spawn(async move {
+                let _ = tx.send(future.await);
+            });
+            rx.recv()
+                .unwrap_or_else(|_| Err("HTTP request was dropped".to_string()))
+        }
     }
+}
+
+/// [`block_on_user_http`] for a future that produces a Soli `Value`.
+///
+/// `Value` holds `Rc`s, so these futures are `!Send` and can never be handed to
+/// another thread — they only ever run on the calling thread. Same two normal
+/// arms as the sendable version; the difference is the last resort.
+fn block_on_user_http_local<Fut, T>(future: Fut) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let rt = user_http_runtime();
+    let Ok(current) = tokio::runtime::Handle::try_current() else {
+        return rt.block_on(future);
+    };
+
+    match current.runtime_flavor() {
+        tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| rt.handle().block_on(future))
+        }
+        // Inside a current-thread runtime with a future that cannot leave this
+        // thread, there is no legal way to reach the shared runtime, so this
+        // keeps the old throwaway — and with it the h2 pool hazard described on
+        // `user_http_runtime`. Not reachable from a request handler: the only
+        // current-thread runtimes in the process are the thread-local DB and S3
+        // ones, which wrap a single internal call and never run Soli code.
+        _ => match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(throwaway) => throwaway.block_on(future),
+            Err(e) => Err(format!("Failed to build tokio runtime: {}", e)),
+        },
+    }
+}
+
+/// Explain a `reqwest` error, cause chain included.
+///
+/// `Display` for `reqwest::Error` stops at the top level, so a transport failure
+/// reads `error sending request for url (…)` and says nothing about *why* —
+/// the actual sentence ("dispatch task is gone", "dns error", "connection closed
+/// before message completed") is one or more `source()` hops down.
+fn describe_request_error(e: &reqwest::Error) -> String {
+    let mut message = e.to_string();
+    let mut cursor = std::error::Error::source(e);
+    while let Some(cause) = cursor {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        cursor = cause.source();
+    }
+    message
 }
 
 pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
@@ -793,14 +889,11 @@ where
 fn run_user_http_request<F, Fut, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(reqwest::Client) -> Fut,
-    Fut: std::future::Future<Output = Result<T, String>>,
+    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
+    T: Send + 'static,
 {
     let client = get_user_http_client().clone();
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| format!("Failed to build tokio runtime: {}", e))?;
-    rt.block_on(f(client))
+    block_on_user_http(f(client))
 }
 
 fn value_to_json(value: &Value) -> Result<String, String> {
@@ -892,7 +985,10 @@ async fn send_logged(
             Ok(resp)
         }
         Err(e) => {
-            let msg = e.to_string();
+            // Cause chain included: "error sending request for url (…)" alone
+            // never says whether it was DNS, TLS, a closed connection or a dead
+            // reactor.
+            let msg = describe_request_error(&e);
             if let Some(s) = start {
                 let dur = s.elapsed().as_secs_f64() * 1000.0;
                 let span_name = format!("{} {}", method, url);
@@ -944,9 +1040,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(1))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let resp =
                             send_logged("GET", &url, apply_timeout(client.get(&*url), timeout))
                                 .await?;
@@ -969,7 +1065,9 @@ pub fn register_http_class(env: &mut Environment) {
                             let resp = apply_timeout(client.get(&*url), timeout)
                                 .send()
                                 .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1022,9 +1120,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let req = apply_timeout(
                             client
                                 .post(&*url)
@@ -1058,7 +1156,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1111,9 +1211,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let req = apply_timeout(
                             client
                                 .put(&*url)
@@ -1147,7 +1247,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1200,9 +1302,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let req = apply_timeout(
                             client
                                 .patch(&*url)
@@ -1236,7 +1338,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1272,9 +1376,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(1))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let resp = send_logged(
                             "DELETE",
                             &url,
@@ -1300,7 +1404,9 @@ pub fn register_http_class(env: &mut Environment) {
                             let resp = apply_timeout(client.delete(&*url), timeout)
                                 .send()
                                 .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1336,9 +1442,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(1))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http(async move {
                         let resp =
                             send_logged("HEAD", &url, apply_timeout(client.head(&*url), timeout))
                                 .await?;
@@ -1359,7 +1465,9 @@ pub fn register_http_class(env: &mut Environment) {
                             let resp = apply_timeout(client.head(&*url), timeout)
                                 .send()
                                 .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             Ok(format!(
                                 "{} {}",
@@ -1395,9 +1503,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(1))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let req = apply_timeout(
                             client.get(&*url).header("Accept", "application/json"),
                             timeout,
@@ -1429,7 +1537,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1468,9 +1578,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(1))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let req = apply_timeout(client.get(&*url), timeout);
                         let resp = send_logged("GET", &url, req).await?;
 
@@ -1497,7 +1607,9 @@ pub fn register_http_class(env: &mut Environment) {
                             let resp = apply_timeout(client.get(&*url), timeout)
                                 .send()
                                 .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1535,9 +1647,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let req = apply_timeout(
                             client
                                 .post(&*url)
@@ -1575,7 +1687,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1613,9 +1727,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let req = apply_timeout(
                             client
                                 .put(&*url)
@@ -1653,7 +1767,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1691,9 +1807,9 @@ pub fn register_http_class(env: &mut Environment) {
             let timeout = extract_timeout(args.get(2))?;
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let req = apply_timeout(
                             client
                                 .patch(&*url)
@@ -1731,7 +1847,9 @@ pub fn register_http_class(env: &mut Environment) {
                             )
                             .send()
                             .await
-                            .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            .map_err(|e| {
+                                format!("HTTP request failed: {}", describe_request_error(&e))
+                            })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1811,12 +1929,12 @@ pub fn register_http_class(env: &mut Environment) {
             };
 
             match get_tokio_handle() {
-                Some(rt) => {
+                Some(_) => {
                     let client = get_user_http_client().clone();
                     let method_clone = method.clone();
                     let body_opt_clone = body_opt.clone();
                     let headers_vec_clone = headers_vec.clone();
-                    match http_block_on(&rt, async move {
+                    match block_on_user_http_local(async move {
                         let mut request = match method_clone.as_str() {
                             "GET" => client.get(&*url),
                             "POST" => client.post(&*url),
@@ -1891,10 +2009,9 @@ pub fn register_http_class(env: &mut Environment) {
                                 }
 
                                 let request = apply_timeout(request, timeout);
-                                let resp = request
-                                    .send()
-                                    .await
-                                    .map_err(|e| format!("HTTP request failed: {}", e))?;
+                                let resp = request.send().await.map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
 
                                 let status = resp.status().as_u16();
                                 let status_text =
@@ -2322,7 +2439,12 @@ fn run_parallel_gets(
                                     let resp = apply_timeout(client.get(&url_for_call), timeout)
                                         .send()
                                         .await
-                                        .map_err(|e| format!("Request failed: {}", e))?;
+                                        .map_err(|e| {
+                                            format!(
+                                                "Request failed: {}",
+                                                describe_request_error(&e)
+                                            )
+                                        })?;
                                     let code = resp.status().as_u16();
                                     if !resp.status().is_success() {
                                         let body =
@@ -2413,7 +2535,9 @@ fn run_parallel_gets_json(
                                     )
                                     .send()
                                     .await
-                                    .map_err(|e| format!("Request failed: {}", e))?;
+                                    .map_err(|e| {
+                                        format!("Request failed: {}", describe_request_error(&e))
+                                    })?;
                                     let code = resp.status().as_u16();
                                     if !resp.status().is_success() {
                                         let body =
@@ -2561,7 +2685,7 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
         let resp = request
             .send()
             .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .map_err(|e| format!("Request failed: {}", describe_request_error(&e)))?;
 
         let status = resp.status().as_u16();
         let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
@@ -2610,6 +2734,114 @@ fn response_to_value(response: HttpResponse) -> Value {
     );
 
     Value::Hash(Rc::new(RefCell::new(result)))
+}
+
+#[cfg(test)]
+mod user_http_runtime_tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::sync::atomic::AtomicUsize;
+
+    /// A keep-alive HTTP/1.1 server that counts accepted connections.
+    fn counting_server() -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback must be bindable");
+        let addr = listener.local_addr().unwrap();
+        let connections = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&connections);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                counter.fetch_add(1, Ordering::SeqCst);
+                thread::spawn(move || {
+                    let mut buf = [0u8; 2048];
+                    loop {
+                        match std::io::Read::read(&mut stream, &mut buf) {
+                            Ok(0) | Err(_) => return,
+                            Ok(_) => {}
+                        }
+                        let body = "{\"ok\":true}";
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        if stream.write_all(response.as_bytes()).is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (format!("http://{}/", addr), connections)
+    }
+
+    /// The pool is only worth having if a connection outlives the call that
+    /// opened it. It used to not: every request built its own runtime and dropped
+    /// it on return, killing the connection with it — invisible over HTTP/1.1
+    /// beyond the wasted handshake, fatal over h2, where the pool hands a
+    /// multiplexed connection whose driver is gone to the next request
+    /// ("runtime dropped the dispatch task").
+    #[test]
+    fn a_connection_outlives_the_call_that_opened_it() {
+        let (url, connections) = counting_server();
+
+        for attempt in 1..=3 {
+            let target = url.clone();
+            let body = run_user_http_request(move |client| async move {
+                let resp = client
+                    .get(&target)
+                    .send()
+                    .await
+                    .map_err(|e| describe_request_error(&e))?;
+                resp.text().await.map_err(|e| describe_request_error(&e))
+            })
+            .unwrap_or_else(|e| panic!("attempt {} failed: {}", attempt, e));
+            assert!(body.contains("\"ok\""));
+        }
+
+        assert_eq!(
+            connections.load(Ordering::SeqCst),
+            1,
+            "three sequential requests must share one pooled connection"
+        );
+    }
+
+    #[test]
+    fn the_http_runtime_is_one_long_lived_multi_thread_runtime() {
+        let first = user_http_runtime();
+        let second = user_http_runtime();
+        assert!(std::ptr::eq(first, second), "the runtime must be shared");
+        assert_eq!(
+            first.handle().runtime_flavor(),
+            tokio::runtime::RuntimeFlavor::MultiThread,
+            "block_in_place and spawn both need the multi-thread flavor"
+        );
+    }
+
+    /// The chain is the diagnosis; `Display` alone is "error sending request".
+    #[test]
+    fn a_request_error_carries_its_cause_chain() {
+        let (url, _connections) = counting_server();
+        // A port nobody listens on, so the failure is a connect error with a
+        // nested cause rather than a protocol-level one.
+        let dead = url.replace("http://127.0.0.1:", "http://127.0.0.1:1");
+        let err = run_user_http_request(move |client| async move {
+            client
+                .get(&dead)
+                .timeout(std::time::Duration::from_secs(2))
+                .send()
+                .await
+                .map_err(|e| describe_request_error(&e))
+                .map(|_| ())
+        })
+        .expect_err("a connection to a dead port must fail");
+        assert!(
+            err.matches(": ").count() >= 1,
+            "the message should carry at least one cause: {}",
+            err
+        );
+    }
 }
 
 #[cfg(test)]

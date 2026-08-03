@@ -56,6 +56,19 @@ Skipping 1 browser spec(s) — add --browser to run them.</code></pre>
     <h3 class="text-xl font-semibold text-white mb-4">Choosing a browser</h3>
     <p class="text-gray-400 mb-4">Soli looks for <code class="text-cyan-400">google-chrome</code>, <code class="text-cyan-400">chromium</code>, <code class="text-cyan-400">microsoft-edge</code> and <code class="text-cyan-400">brave-browser</code> on <code class="text-cyan-400">PATH</code> (plus the usual <code class="text-cyan-400">/Applications</code> paths on macOS). Point it elsewhere with <code class="text-cyan-400">SOLI_CHROME_PATH</code>. If nothing is found, <code class="text-cyan-400">--browser</code> fails immediately with what it looked for, rather than thirty seconds later on the first <code class="text-cyan-400">visit()</code>.</p>
 
+    <p class="text-gray-400 mb-4">Being installed is not the same as being launchable, so the first browser found is not the last word: if it refuses to start, Soli moves on to the next one it found. A snap-packaged Chromium on a host whose user session has no D-Bus is the usual case &mdash; <code class="text-cyan-400">snap run</code> exits before Chromium starts, and the run continues with Chrome or Edge instead. When every browser fails, the error names each one and quotes what it printed before dying:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">the browser failed to start.
+  /snap/bin/chromium: the browser exited during startup (exit status: 1)
+    /user.slice/&hellip;/session-5337.scope is not a snap cgroup for tag snap.chromium.chromium
+Set SOLI_CHROME_PATH to a browser that can run here.</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">SOLI_CHROME_PATH</code> pins the browser rather than merely preferring it: a pinned browser that cannot start fails the run instead of falling through to another, since silently driving a different browser than the one you asked for would be worse.</p>
+
     <h2 id="section-navigating" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Navigating</h2>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
