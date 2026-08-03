@@ -13,6 +13,9 @@ pub mod credentials;
 // Windows desktop build has no use for it and must not fail to compile over it.
 #[cfg(unix)]
 pub mod deploy;
+// Reading deploy.toml is not: `soli cloud` and `soli env` take their target
+// server from it and build everywhere.
+pub mod deploy_config;
 pub mod installer;
 pub mod lockfile;
 mod package;

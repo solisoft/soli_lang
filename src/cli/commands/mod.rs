@@ -1429,7 +1429,7 @@ fn resolve_proxy_url(folder: &Path, server: Option<&str>) -> Option<String> {
         );
     };
 
-    let config = solilang::module::deploy::load_deploy_config(folder).ok()?;
+    let config = solilang::module::deploy_config::load_deploy_config(folder).ok()?;
     config
         .servers
         .iter()
@@ -1448,7 +1448,7 @@ pub fn run_deploy(folder: Option<&str>) {
 
     println!("Deploying from {}...", path.display());
 
-    let config = match solilang::module::deploy::load_deploy_config(&path) {
+    let config = match solilang::module::deploy_config::load_deploy_config(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -2832,7 +2832,7 @@ pub fn run_cloud(
 ) {
     use crate::cloud::{plan, proxy, release, run};
     use solilang::module::builder::{BuildSource, Builder};
-    use solilang::module::deploy::load_deploy_config;
+    use solilang::module::deploy_config::load_deploy_config;
 
     let app_path = Path::new(folder);
     if !app_path.exists() {

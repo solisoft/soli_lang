@@ -95,7 +95,7 @@ impl PreviewConfig {
     }
 
     /// Parse just the `[preview]` table. Deliberately independent of
-    /// `deploy::parse_deploy_toml`, whose top-level `else` arm matches keys in
+    /// `deploy_config::parse_deploy_toml`, whose top-level `else` arm matches keys in
     /// any non-`[[servers]]` section — adding keys there would make `[preview]`
     /// entries leak into the deploy config.
     pub fn parse(content: &str) -> Self {
@@ -613,13 +613,14 @@ fn link_site(env: &PreviewEnv) -> Result<(), String> {
     }
 
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&env.worktree, &env.site_link)
-        .map_err(|e| format!("Failed to link {}: {}", env.site_link.display(), e))?;
+    {
+        std::os::unix::fs::symlink(&env.worktree, &env.site_link)
+            .map_err(|e| format!("Failed to link {}: {}", env.site_link.display(), e))?;
+        println!("  site      {}", env.site_link.display());
+        Ok(())
+    }
     #[cfg(not(unix))]
-    return Err("preview environments require symlink support (unix)".to_string());
-
-    println!("  site      {}", env.site_link.display());
-    Ok(())
+    Err("preview environments require symlink support (unix)".to_string())
 }
 
 /// Tear an environment down.
