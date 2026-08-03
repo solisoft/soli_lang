@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [1.27.2] - 2026-08-03
+
+### Fixed
+
+- The Windows build failed to compile, which stopped the whole v1.27.1 release:
+  the binary matrix is fail-fast, so `soli-windows-amd64` failing cancelled the
+  arm64 builds and skipped both the release publish and the Docker image.
+
+  `soli cloud` and `soli env down` read their target server from `deploy.toml`,
+  but `module::deploy` is `#[cfg(unix)]` because it is built on ssh2 — so
+  `load_deploy_config` did not resolve on Windows (E0432/E0433) even though
+  neither command needs SSH to parse a file. The config half — `DeployMode`,
+  `ServerConfig`, `DeployConfig`, `load_deploy_config`, `parse_deploy_toml` — is
+  now an ungated `module::deploy_config`; the SSH machinery and `DeployResult`
+  stay behind the unix gate and import the types from their neighbour. Behavior
+  on Unix is unchanged, and `soli deploy` is still Unix-only.
+
 ## [1.27.1] - 2026-08-03
 
 ### Added

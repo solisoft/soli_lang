@@ -21,7 +21,17 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
-        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.27.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.27.2.</p>
+    </section>
+
+    <section id="v1-27-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.27.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-08-03</span></h2>
+
+        <!-- Fixes -->
+        <h3 id="v1-27-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The Windows build stopped compiling, and took the whole v1.27.1 release with it.</strong> The binary matrix is fail-fast, so the Windows job failing cancelled the arm64 builds and skipped both the release publish and the Docker image &mdash; v1.27.1 never shipped. The cause: <code class="text-cyan-400">soli cloud</code> and <code class="text-cyan-400">soli env down</code> read their target server from <code class="text-cyan-400">deploy.toml</code>, but the module holding that parser is Unix-only because the rest of it is built on ssh2, so reading a config file failed to resolve on Windows. Parsing <code class="text-cyan-400">deploy.toml</code> now lives on its own, apart from the SSH machinery that still needs a Unix host. Nothing changes on Unix, and <code class="text-cyan-400">soli deploy</code> remains Unix-only.</li>
+        </ul>
     </section>
 
     <section id="v1-27-1" class="mb-16 scroll-mt-24">
