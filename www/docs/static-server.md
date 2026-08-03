@@ -58,7 +58,8 @@ A request is resolved in this order:
 | 6 | `*.html.slv`, `*.slv`, `*.html.erb`, `*.erb` | template executed by the engine |
 | 7 | `/about` (no extension) | first of `about.md`, `.html`, `.html.slv`, `.slv`, `.html.erb`, `.erb` |
 | 8 | any other file | served as-is, with MIME type, `ETag` and `Range` support |
-| 9 | nothing matches | `404` page naming the nearest folder |
+| 9 | a file in an `--assets` root | served as-is (see [Extra asset roots](#extra-asset-roots)) |
+| 10 | nothing matches | `404` page naming the nearest folder |
 
 `GET` and `HEAD` are answered; anything else gets a `405`.
 
@@ -160,6 +161,73 @@ A template that fails to render returns a `500` page naming the file and the err
 > does not run controllers — but a `.slv` file in the folder *is* executed. Do not point
 > `soli serve` at a directory whose contents you do not control.
 
+## Extra asset roots
+
+In file mode the served folder is the *whole* static root — there is no `public/` sub-root the way
+an MVC app has one. So a documentation folder whose pages point at images living next to it, rather
+than inside it, renders every page and 404s every picture:
+
+```
+www/
+├── docs/                        # soli serve www/docs
+│   └── blog/scaffolds.md        # <img src="/images/blog/scaffolds.jpg">
+└── public/
+    └── images/blog/scaffolds.jpg   # …but this is outside the served folder
+```
+
+`--assets DIR` mounts an extra read-only static root for exactly those paths:
+
+```bash
+soli serve www/docs --assets www/public
+# Serving files from /home/you/www/docs
+# Extra assets root: /home/you/www/public
+```
+
+`/images/blog/scaffolds.jpg` misses in `www/docs`, so it is looked up in `www/public` and served
+from there — with the same MIME type, `ETag`, `304` and `Range` handling as any other file.
+
+The flag is repeatable, and roots are consulted in the order given:
+
+```bash
+soli serve ./docs --assets ./shared/images --assets ./brand
+```
+
+**The served folder always wins.** An assets root is only consulted after the folder itself has
+failed to match, including its nice-URL extension probe, so nothing you add can shadow a real page.
+
+An assets root holds **data, not a second site**. Only an existing file answers:
+
+| In an assets root | Result |
+|-------------------|--------|
+| a file | served as-is, with MIME type, `ETag` and `Range` |
+| a folder | `404` — no generated index, and it is not in the sidebar tree |
+| `*.md` | `404` — Markdown is not rendered from an assets root |
+| `*.slv`, `*.erb` | `404` — never executed, and never dumped as source |
+| `/notes` for a `notes.md` | `404` — no extension probe; only exact paths match |
+| a dotfile, or a symlink escaping that root | `404` — each root is jailed like the served one |
+
+That is what makes the flag safe to point at a folder you did not audit line by line: it widens
+what is *readable* by one directory tree, and never what is *executable*.
+
+Paths are resolved to absolute at startup, before the server daemonizes, and a typo fails fast:
+
+```
+Error: --assets './pubic' is not a directory
+```
+
+An MVC app already serves `public/`, so the flag does nothing there and says so:
+
+```
+Warning: --assets applies to static file mode; ignored for this Soli app
+```
+
+Under `--dev` each assets root is watched like the served folder, so editing a picture there
+reloads the page that embeds it. The startup line counts them:
+
+```
+Hot reload: Watching 2 directories (event-driven)
+```
+
 ## The generated pages
 
 Pages are styled in Soli's solar theme, in two states of the same sun: a night palette and a day
@@ -213,6 +281,7 @@ MVC apps still default to `0.0.0.0`, unchanged.
 |-----------|--------|
 | Dotfiles hidden | `.env`, `.git/`, `.ssh/` return `404`, and never appear in a listing |
 | Path jail | every request is canonicalized and checked against the root; symlinks that escape return `403` |
+| `--assets` jailed too | each extra root is canonicalized and checked separately, serves files only, and never executes a template |
 | No `.env` loading | file mode never reads environment files from the folder |
 | No database | no SoliDB connection is configured or opened |
 | No controllers | no `.sl` file is executed; only `.slv`/`.erb` templates render |
@@ -227,6 +296,7 @@ exists.
 |------|---------|
 | `--static` | force file mode |
 | `--app` | require an MVC app |
+| `--assets DIR` | extra static root, used only when the served folder has no match (repeatable) |
 | `--dev` | live reload |
 | `--port PORT` | port (default `5011`) |
 | `--workers N` | worker threads |
@@ -246,6 +316,9 @@ soli serve ~/notes --dev
 
 # Read a Soli app's docs without booting the app
 soli serve ./my_app/docs --static
+
+# …with the images those pages embed, which live in the app's public folder
+soli serve ./my_app/docs --static --assets ./my_app/public
 
 # Share on the LAN, deliberately
 SOLI_HOST=0.0.0.0 soli serve ./handbook --port 8080

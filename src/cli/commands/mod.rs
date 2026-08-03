@@ -369,15 +369,16 @@ fn fetch_bundle_key(url: &str, api_key: Option<&str>) -> Result<String, String> 
     Ok(key)
 }
 
-pub fn run_serve(
-    folder: &str,
-    port: u16,
-    dev_mode: bool,
-    workers: usize,
-    daemonize: bool,
-    mode: Option<crate::cli::args::ServeModeArg>,
-    strict_port: bool,
-) {
+pub fn run_serve(options: &crate::cli::args::ServeOptions) {
+    let folder = options.folder.as_str();
+    let port = options.port;
+    let dev_mode = options.dev_mode;
+    let workers = options.workers;
+    let daemonize = options.daemonize;
+    let mode = options.mode;
+    let strict_port = options.strict_port;
+    let assets = options.assets.as_slice();
+
     let path = Path::new(folder);
 
     if !path.exists() {
@@ -415,6 +416,33 @@ pub fn run_serve(
     if let Err(msg) = solilang::module::enforce_min_soli_version(path) {
         eprintln!("{}", msg);
         process::exit(1);
+    }
+
+    // Extra static roots. Resolved to absolute paths here, before the server
+    // may daemonize and change directory, and before the mode check below so a
+    // typo is reported whichever mode the folder turns out to be.
+    if !assets.is_empty() {
+        let mut roots = Vec::with_capacity(assets.len());
+        for dir in assets {
+            let candidate = Path::new(dir);
+            if !candidate.is_dir() {
+                eprintln!("Error: --assets '{}' is not a directory", dir);
+                process::exit(1);
+            }
+            match candidate.canonicalize() {
+                Ok(absolute) => roots.push(absolute),
+                Err(e) => {
+                    eprintln!("Error: cannot resolve --assets '{}': {}", dir, e);
+                    process::exit(1);
+                }
+            }
+        }
+        if solilang::serve::files::resolve_mode(path) == solilang::serve::files::ServeMode::App {
+            // An MVC app already has `public/` as its static root; the flag
+            // would silently do nothing, which is worth a word.
+            eprintln!("Warning: --assets applies to static file mode; ignored for this Soli app");
+        }
+        solilang::serve::files::set_assets_roots(roots);
     }
 
     #[cfg(unix)]

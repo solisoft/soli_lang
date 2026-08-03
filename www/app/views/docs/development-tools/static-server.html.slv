@@ -100,6 +100,7 @@ soli serve . --app        # require an app; fail if the folder is not one</code>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>*.slv</code>, <code>*.erb</code></td><td class="py-2">executed by the template engine</td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/about</code> (no extension)</td><td class="py-2">first of <code>about.md</code>, <code>.html</code>, <code>.html.slv</code>, <code>.slv</code>, <code>.html.erb</code>, <code>.erb</code></td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">any other file</td><td class="py-2">served as-is, with MIME type, <code>ETag</code> and <code>Range</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a file in an <code>--assets</code> root</td><td class="py-2">served as-is &mdash; see <a href="#section-assets" class="text-amber-400 hover:text-amber-300">Extra asset roots</a></td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">nothing matches</td><td class="py-2"><code>404</code> page naming the nearest folder</td></tr>
                 </tbody>
             </table>
@@ -226,6 +227,103 @@ soli serve . --app        # require an app; fail if the folder is not one</code>
         </div>
     </section>
 
+    <!-- Extra asset roots -->
+    <section id="section-assets" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Extra asset roots
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            In file mode the served folder is the <em>whole</em> static root &mdash; there is no
+            <code>public/</code> sub-root the way an MVC app has one. So a documentation folder whose
+            pages point at images living next to it, rather than inside it, renders every page and
+            404s every picture:
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Project"><code class="language-bash text-sm">www/
+├── docs/                           # soli serve www/docs
+│   └── blog/scaffolds.md           # &lt;img src="/images/blog/scaffolds.jpg"&gt;
+└── public/
+    └── images/blog/scaffolds.jpg   # …but this is outside the served folder</code></pre>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            <code>--assets DIR</code> mounts an extra read-only static root for exactly those paths:
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve www/docs --assets www/public
+# Serving files from /home/you/www/docs
+# Extra assets root: /home/you/www/public</code></pre>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            <code>/images/blog/scaffolds.jpg</code> misses in <code>www/docs</code>, so it is looked
+            up in <code>www/public</code> and served from there &mdash; with the same MIME type,
+            <code>ETag</code>, <code>304</code> and <code>Range</code> handling as any other file.
+            The flag is repeatable, and roots are consulted in the order given:
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve ./docs --assets ./shared/images --assets ./brand</code></pre>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">The served folder always wins.</strong> An assets root is
+            only consulted after the folder itself has failed to match, including its nice-URL
+            extension probe, so nothing you add can shadow a real page.
+        </p>
+
+        <p class="text-gray-400 mb-4">
+            An assets root holds <strong class="text-white">data, not a second site</strong>. Only an
+            existing file answers:
+        </p>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">In an assets root</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Result</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a file</td><td class="py-2">served as-is, with MIME type, <code>ETag</code> and <code>Range</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a folder</td><td class="py-2"><code>404</code> &mdash; no generated index, and it is not in the sidebar tree</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>*.md</code></td><td class="py-2"><code>404</code> &mdash; Markdown is not rendered from an assets root</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>*.slv</code>, <code>*.erb</code></td><td class="py-2"><code>404</code> &mdash; never executed, and never dumped as source</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/notes</code> for a <code>notes.md</code></td><td class="py-2"><code>404</code> &mdash; no extension probe; only exact paths match</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">a dotfile, or a symlink escaping that root</td><td class="py-2"><code>404</code> &mdash; each root is jailed like the served one</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            That is what makes the flag safe to point at a folder you did not audit line by line: it
+            widens what is <em>readable</em> by one directory tree, and never what is
+            <em>executable</em>.
+        </p>
+
+        <p class="text-gray-400 mb-4">
+            Paths are resolved to absolute at startup, before the server daemonizes, and a typo fails
+            fast with <code>Error: --assets './pubic' is not a directory</code>. An MVC app already
+            serves <code>public/</code>, so the flag does nothing there and says so:
+            <code>Warning: --assets applies to static file mode; ignored for this Soli app</code>.
+        </p>
+
+        <p class="text-gray-400">
+            Under <code>--dev</code> each assets root is watched like the served folder, so editing a
+            picture there reloads the page that embeds it &mdash; the startup line
+            (<code>Hot reload: Watching 2 directories</code>) counts them.
+        </p>
+    </section>
+
     <!-- The pages -->
     <section id="section-pages" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
@@ -331,6 +429,7 @@ soli serve . --app        # require an app; fail if the folder is not one</code>
                 <tbody class="text-gray-300">
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">Dotfiles hidden</td><td class="py-2"><code>.env</code>, <code>.git/</code>, <code>.ssh/</code> return <code>404</code> and never appear in a listing</td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">Path jail</td><td class="py-2">every request is canonicalized against the root; symlinks that escape return <code>403</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>--assets</code> jailed too</td><td class="py-2">each extra root is canonicalized separately, serves files only, and never executes a template</td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">No <code>.env</code> loading</td><td class="py-2">file mode never reads environment files from the folder</td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">No database</td><td class="py-2">no SoliDB connection is configured or opened</td></tr>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4">No controllers</td><td class="py-2">no <code>.sl</code> file is executed; only <code>.slv</code>/<code>.erb</code> templates render</td></tr>
@@ -368,6 +467,9 @@ soli serve ~/notes --dev
 
 # Read a Soli app's docs without booting the app
 soli serve ./my_app/docs --static
+
+# …with the images those pages embed, which live in the app's public folder
+soli serve ./my_app/docs --static --assets ./my_app/public
 
 # Share on the LAN, deliberately
 SOLI_HOST=0.0.0.0 soli serve ./handbook --port 8080</code></pre>

@@ -2,7 +2,32 @@
 
 ## [Unreleased]
 
+## [1.27.1] - 2026-08-03
+
 ### Added
+
+- `soli serve --assets DIR` — an extra read-only static root for file mode,
+  repeatable and consulted in order, used only when the served folder has no
+  match (including its nice-URL extension probe), so a mounted root can never
+  shadow a real page. Fixes the case that motivated it: `soli serve www/docs`
+  rendered every page and 404'd every picture, because the pages embed
+  `/images/…` while those files live in `www/public/images/` — in file mode the
+  served folder is the whole static root, with no `public/` sub-root.
+
+  An assets root is data, not a second site. Only an exact file answers, with
+  the same MIME type, `ETag`, `304` and `Range` handling as any other file: a
+  folder gets no generated index and is absent from the sidebar tree, Markdown
+  is not rendered, there is no extension probe, and a `.slv`/`.erb` is neither
+  executed nor dumped as source. Pointing the flag at a folder you did not
+  audit therefore widens what is *readable* by one directory tree and never
+  what is *executable*. Each root is canonicalized and jailed separately, so
+  dotfiles and symlinks escaping it stay `404`.
+
+  Paths resolve to absolute at startup — before the server may daemonize and
+  change directory — and a non-directory fails fast. An MVC app already serves
+  `public/`, so the flag warns that it is ignored there rather than doing
+  nothing silently. Under `--dev` each root is watched like the served folder,
+  so editing a picture there reloads the page embedding it.
 
 - `soli cloud` — immutable releases with a mutable alias. `deploy` builds an
   artifact, lands it in `releases/<app>/<id>/`, repoints `sites/<app>`, asks the
@@ -39,6 +64,22 @@
   The default template is `.env.preview.example`, not `.env.preview`, because the generated file sets `APP_ENV=preview` and `load_env_files` layers `.env.{APP_ENV}` *over* `.env` with override — a template with that name would be checked out by git into every worktree and silently win. `soli env up` refuses to start when it finds a `.env.preview` in the worktree, and explains why.
 
   Preview sessions are pointed at the SoliDB driver so they land in the branch's own database. SoliKV has no namespaces and its session keys carry a fixed global prefix, so previews sharing one SoliKV would share sessions. Cache keys needed no change: they are already scoped by `SOLIDB_DATABASE`.
+
+### Fixed
+
+* **`HTTP.*` failed intermittently against HTTP/2 APIs — every other page load, for the same URL.** A parallel `HTTP.get_all_json` to an h2 host returned `{"error": "Request failed: error sending request for url (…)"}` for some of its URLs while the others succeeded, so a controller that read `responses[1]` 500'd about half the time. The user-facing `reqwest::Client` is process-wide with an 8-connection-per-host pool, but every request was driven by a `new_current_thread` runtime built for that call and dropped on return. Over HTTP/1.1 that is invisible — the socket dies with its runtime, so the pool just opens a new one — but over **HTTP/2** the pool keeps one multiplexed connection per host and hands it to concurrent requests, so a connection whose runtime is gone is still handed out and sending on it fails at once with `dispatch task is gone -> runtime dropped the dispatch task`.
+
+  User HTTP now runs on a single long-lived two-worker runtime that owns the pool. The future itself still runs on the calling thread via `block_on`, so anything it reads from thread-locals (the dev query log, the current request) is unchanged; the runtime only supplies a reactor that outlives the connections. A call made from inside an async context uses `block_in_place` on a multi-thread runtime, or hands the future to the shared runtime's workers on a current-thread one, rather than building a runtime of its own. Guarded by a test that counts accepted TCP connections: three sequential requests must share one, which is exactly what the old code could not do (it opened three).
+
+  Connection reuse across calls is the side benefit — a second request to an API you just called now skips the TCP and TLS handshake.
+
+* **A failed HTTP request said what went wrong instead of only that it went wrong.** `Display` for `reqwest::Error` stops at the top level, so a transport failure read `error sending request for url (…)` and nothing more — the sentence that names the cause (`dns error`, `connection closed before message completed`, `runtime dropped the dispatch task`) is one or more `source()` hops down and was being discarded. Every `HTTP.*` error, and the dev HTTP log, now carry the full chain.
+
+* **A browser that cannot run no longer fails the whole browser suite, and says why it could not.** Discovery stopped at the first browser on `PATH` and the driver then retried that one binary five times — so a machine with a snap-packaged Chromium *and* a working Chrome or Edge failed every browser spec, because `snap run` refuses a session whose user cgroup it does not recognise (no `systemd --user`, no D-Bus) and exits before Chromium starts. `Browser::launch` now walks every candidate it found, in preference order, and moves on when one will not start; `google-chrome` and `google-chrome-stable` resolving to the same file through a symlink count once. `SOLI_CHROME_PATH` still pins one browser rather than merely preferring it — falling through from the browser you asked for to a different one would be worse than failing.
+
+  The browser's stderr was `Stdio::null()`, so the failure read `the browser exited during startup (exit status: 1)` and nothing else, discarding the one line that named the cause. It is piped and drained now, and the last lines are quoted under each candidate in the error. Drained on a thread, because the pipe has to be read or it fills and stops the browser dead — Edge logs a D-Bus error every few frames on a host without a session bus — and detached rather than joined, since Chromium's forked children inherit the pipe and EOF can lag well behind the process we killed.
+
+  Retries are also bounded per binary now (25s, just over the 20s readiness timeout): a browser that exits immediately is cheap and still gets all five attempts, while one that never publishes a DevTools endpoint gets a single 20-second shot instead of five, which used to mean 100 seconds before the next candidate would have been tried.
 
 ## [1.27.0] - 2026-07-31
 

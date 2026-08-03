@@ -978,6 +978,9 @@ fn serve_folder_as_files(
     on_bound_port: Option<BoundPortHook>,
 ) -> Result<(), RuntimeError> {
     println!("Serving files from {}", folder.display());
+    for root in files::assets_roots() {
+        println!("Extra assets root: {}", root.display());
+    }
 
     files::set_files_root(folder.to_path_buf());
 
@@ -1466,6 +1469,15 @@ fn run_hyper_server_worker_pool(
                     .is_ok()
             {
                 watch_count += 1;
+            }
+            // File mode's extra `--assets` roots. The served folder is already
+            // covered — in file mode it *is* the views dir — but an assets root
+            // lives outside it, so a picture edited there would otherwise not
+            // reload the page that embeds it. `'static` roots, no clone needed.
+            for assets_root in files::assets_roots() {
+                if watcher.watch(assets_root, RecursiveMode::Recursive).is_ok() {
+                    watch_count += 1;
+                }
             }
 
             println!(

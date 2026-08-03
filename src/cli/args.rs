@@ -14,6 +14,30 @@ pub enum ServeModeArg {
     Files,
 }
 
+/// Everything `soli serve` was asked for.
+///
+/// A struct rather than eight positional parameters threaded from the parser
+/// through the dispatch into `run_serve`: the flag list keeps growing, and at
+/// eight `bool`/`usize` arguments in a row a swapped pair type-checks.
+#[derive(Debug, Clone)]
+pub struct ServeOptions {
+    pub folder: String,
+    pub port: u16,
+    pub dev_mode: bool,
+    pub workers: usize,
+    pub daemonize: bool,
+    /// `--static` / `--app`. `None` lets the server detect which one the
+    /// folder is; an explicit choice overrides detection.
+    pub mode: Option<ServeModeArg>,
+    /// `--strict-port` — bind the requested port or exit, rather than scanning
+    /// upward. Use under a supervisor that health-checks the port it assigned.
+    pub strict_port: bool,
+    /// `--assets DIR` (repeatable) — extra read-only static roots for file
+    /// mode, consulted in order when the served folder has no match. Lets a
+    /// docs folder reach images that live beside it rather than in it.
+    pub assets: Vec<String>,
+}
+
 /// What `soli cloud` should do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloudAction {
@@ -92,20 +116,7 @@ pub enum Command {
     GenerateOffline {
         folder: String,
     },
-    Serve {
-        folder: String,
-        port: u16,
-        dev_mode: bool,
-        workers: usize,
-        daemonize: bool,
-        /// `--static` / `--app`. `None` lets the server detect which one the
-        /// folder is; an explicit choice overrides detection.
-        mode: Option<ServeModeArg>,
-        /// `--strict-port` — bind the requested port or exit, rather than
-        /// scanning upward. Use under a supervisor that health-checks the port
-        /// it assigned.
-        strict_port: bool,
-    },
+    Serve(ServeOptions),
     Test {
         paths: Vec<String>,
         /// `None` = user didn't pass `--jobs`; the runner picks a default
@@ -395,7 +406,7 @@ pub fn print_usage() {
     eprintln!("       soli generate app_links [--android-package P] [--sha256 H] [--apple-app-id ID] [folder]");
     eprintln!("       soli generate offline [folder]");
     eprintln!(
-        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app]"
+        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]"
     );
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
@@ -493,6 +504,9 @@ pub fn print_usage() {
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
     eprintln!("  --static        Serve the folder as plain files, even if it is a Soli app");
     eprintln!("  --app           Require a Soli app; fail if the folder is not one");
+    eprintln!(
+        "  --assets DIR    Extra static root for file mode, used when the served folder has no match (repeatable)"
+    );
     eprintln!("  --jobs N        Number of parallel test workers (default: 3 for apps with app/controllers/, 1 otherwise)");
     eprintln!("  --coverage           Generate coverage report (console)");
     eprintln!("  --coverage=FORMAT    Also generate FORMAT reports: html, json, xml (comma-sep)");
@@ -1228,6 +1242,7 @@ pub fn parse_args() -> Options {
                 let mut daemonize = false;
                 let mut mode: Option<ServeModeArg> = None;
                 let mut strict_port = false;
+                let mut assets: Vec<String> = Vec::new();
                 // Worker count: `SOLI_WORKERS` env (the documented baseline-RSS
                 // lever) if set, else the CPU core count. An explicit
                 // `--workers N` below overrides either.
@@ -1281,6 +1296,15 @@ pub fn parse_args() -> Options {
                             process::exit(64);
                         }
                         mode = Some(requested);
+                    } else if args[i] == "--assets" {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("--assets requires a directory");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        // Repeatable: roots are consulted in the order given.
+                        assets.push(args[i].clone());
                     } else if args[i].starts_with('-') {
                         eprintln!("Unknown option for serve: {}", args[i]);
                         print_usage();
@@ -1288,7 +1312,7 @@ pub fn parse_args() -> Options {
                     }
                     i += 1;
                 }
-                options.command = Command::Serve {
+                options.command = Command::Serve(ServeOptions {
                     folder,
                     port,
                     dev_mode,
@@ -1296,7 +1320,8 @@ pub fn parse_args() -> Options {
                     daemonize,
                     mode,
                     strict_port,
-                };
+                    assets,
+                });
                 return options;
             }
             "init" => {

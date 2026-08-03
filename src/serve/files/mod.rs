@@ -61,6 +61,29 @@ pub(crate) fn files_root() -> Option<&'static Path> {
     FILES_ROOT.get().map(PathBuf::as_path)
 }
 
+/// Extra read-only static roots — `soli serve <dir> --assets <dir>`.
+///
+/// A folder of documents often points at assets that live outside it: the
+/// pages under `www/docs/` embed `/images/blog/x.svg`, and those files sit in
+/// `www/public/images/`. Serving `www/docs` on its own answers every page and
+/// 404s every picture, because in file mode the served folder is the whole
+/// static root — there is no `public/` sub-root to fall back to.
+///
+/// Each root is consulted in the order given, and only after the served root
+/// has failed, so the primary root always wins.
+static ASSETS_ROOTS: OnceLock<Vec<PathBuf>> = OnceLock::new();
+
+/// Pin the extra static roots at boot. Paths must already be absolute — the
+/// server may daemonize (and change directory) after this point.
+pub fn set_assets_roots(roots: Vec<PathBuf>) {
+    let _ = ASSETS_ROOTS.set(roots);
+}
+
+/// The extra static roots, empty when none were requested.
+pub(crate) fn assets_roots() -> &'static [PathBuf] {
+    ASSETS_ROOTS.get().map(Vec::as_slice).unwrap_or(&[])
+}
+
 /// Mode pinned on the command line, if any.
 static REQUESTED_MODE: OnceLock<ServeMode> = OnceLock::new();
 
@@ -287,6 +310,11 @@ fn route(
                     }
                 }
             }
+            // Only once the served root has had every chance: the extra
+            // `--assets` roots, which exist for exactly the paths it misses.
+            if let Some(response) = asset_bytes(rel, assets_roots(), headers, dev_mode) {
+                return Outcome::Response(response);
+            }
             Outcome::Response(shell::not_found(root, rel, dev_mode))
         }
     }
@@ -327,6 +355,45 @@ fn serve_file(
     }
 
     Outcome::Response(serve_static(target, headers, dev_mode))
+}
+
+/// Look `rel` up in the extra `--assets` roots and return its bytes.
+///
+/// Deliberately narrower than [`serve_file`]: an assets root holds data, not a
+/// second site. Only an existing file answers — a directory gets no generated
+/// listing (it is not part of the sidebar tree either), Markdown is not wrapped
+/// in the shell, and a `.slv`/`.erb` is neither executed nor dumped as source,
+/// so pointing `--assets` at a folder that happens to contain templates can
+/// leak neither their output nor their text.
+///
+/// [`locate`] jails each lookup to its own root, so an assets root widens what
+/// is reachable by exactly one directory tree and no more.
+fn asset_bytes(
+    rel: &str,
+    roots: &[PathBuf],
+    headers: &HeaderMap,
+    dev_mode: bool,
+) -> Option<Response<ResponseBody>> {
+    if rel.is_empty() {
+        return None;
+    }
+    for root in roots {
+        let Located::Found(target) = locate(rel, root) else {
+            continue;
+        };
+        if !target.is_file() {
+            continue;
+        }
+        let name = target
+            .file_name()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if TEMPLATE_SUFFIXES.iter().any(|s| name.ends_with(*s)) {
+            continue;
+        }
+        return Some(serve_static(&target, headers, dev_mode));
+    }
+    None
 }
 
 /// Serve raw file bytes with MIME, ETag/304 and Range support.
@@ -803,6 +870,105 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert!(readme_in(&dir).is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---------- extra `--assets` roots ----------
+    //
+    // Driven through `asset_bytes` rather than `handle`, because the roots
+    // reach the resolver through a process-global `OnceLock` that a test suite
+    // sharing one process can only set once. Precedence is structural: the
+    // single call site is the `Located::Missing` arm of `route`, after the
+    // implicit-extension probe, so the served root always answers first.
+
+    /// A `public/`-shaped folder living outside the served root.
+    fn assets_dir(name: &str) -> PathBuf {
+        let dir = tmpdir(name);
+        std::fs::create_dir_all(dir.join("images/blog")).unwrap();
+        std::fs::write(dir.join("images/blog/post.svg"), "<svg/>").unwrap();
+        std::fs::write(dir.join(".env"), "SECRET=1").unwrap();
+        dir
+    }
+
+    #[test]
+    fn an_assets_root_answers_what_the_served_root_misses() {
+        let assets = assets_dir("assets_hit");
+        let roots = vec![assets.clone()];
+        let response = asset_bytes("images/blog/post.svg", &roots, &HeaderMap::new(), false)
+            .expect("the assets root should have answered");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "image/svg+xml"
+        );
+        // Same conditional-GET treatment as the served root's own files.
+        assert!(response.headers().get("ETag").is_some());
+        let _ = std::fs::remove_dir_all(&assets);
+    }
+
+    #[test]
+    fn assets_roots_are_tried_in_order() {
+        let first = tmpdir("assets_order_first");
+        let second = tmpdir("assets_order_second");
+        std::fs::write(first.join("logo.txt"), "first").unwrap();
+        std::fs::write(second.join("logo.txt"), "second").unwrap();
+        std::fs::write(second.join("only.txt"), "second only").unwrap();
+        let roots = vec![first.clone(), second.clone()];
+
+        let response = asset_bytes("logo.txt", &roots, &HeaderMap::new(), false).unwrap();
+        assert_eq!(response.headers().get("Content-Length").unwrap(), "5");
+        // A path only the second root has is still reachable.
+        assert!(asset_bytes("only.txt", &roots, &HeaderMap::new(), false).is_some());
+
+        let _ = std::fs::remove_dir_all(&first);
+        let _ = std::fs::remove_dir_all(&second);
+    }
+
+    #[test]
+    fn an_assets_root_is_data_not_a_second_site() {
+        let assets = assets_dir("assets_narrow");
+        std::fs::write(assets.join("page.html.slv"), "<h1>Templated</h1>").unwrap();
+        std::fs::write(assets.join("notes.md"), "# Notes").unwrap();
+        let roots = vec![assets.clone()];
+        let headers = HeaderMap::new();
+
+        // A directory gets no generated listing — it is not in the tree.
+        assert!(asset_bytes("images", &roots, &headers, false).is_none());
+        // A template is neither executed nor dumped as source.
+        assert!(asset_bytes("page.html.slv", &roots, &headers, false).is_none());
+        // No implicit-extension probe either: only exact files answer.
+        assert!(asset_bytes("notes", &roots, &headers, false).is_none());
+        assert!(asset_bytes("notes.md", &roots, &headers, false).is_some());
+
+        let _ = std::fs::remove_dir_all(&assets);
+    }
+
+    #[test]
+    fn each_assets_root_is_jailed_like_the_served_root() {
+        let assets = assets_dir("assets_jail");
+        let outside = tmpdir("assets_jail_outside");
+        std::fs::write(outside.join("secret.txt"), "nope").unwrap();
+        let roots = vec![assets.clone()];
+        let headers = HeaderMap::new();
+
+        assert!(asset_bytes(".env", &roots, &headers, false).is_none());
+        assert!(asset_bytes("images/../../etc/passwd", &roots, &headers, false).is_none());
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside.join("secret.txt"), assets.join("leak.txt"))
+                .unwrap();
+            assert!(asset_bytes("leak.txt", &roots, &headers, false).is_none());
+        }
+
+        let _ = std::fs::remove_dir_all(&assets);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn no_assets_roots_means_no_extra_lookup() {
+        let headers = HeaderMap::new();
+        assert!(asset_bytes("images/blog/post.svg", &[], &headers, false).is_none());
+        assert!(assets_roots().is_empty());
     }
 
     #[test]
