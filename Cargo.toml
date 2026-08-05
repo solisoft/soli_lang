@@ -45,6 +45,11 @@ llm = []
 # normal install works out of the box; drop it (`--no-default-features` set) for
 # a lean standalone runtime that never indexes foreign codebases.
 codegraph = ["dep:soli-codegraph"]
+# Native SoliDB driver transport for the model layer (src/solidb_driver.rs),
+# switched on at runtime with SOLI_DB_DRIVER=1. Off by default because it needs
+# the SoliDB checkout beside this one: `solidb-client` is not published, so a
+# path dependency would break `cargo install --path .` for anyone without it.
+solidb-driver = ["dep:solidb-client"]
 
 [dependencies]
 thiserror = "1.0"
@@ -129,6 +134,11 @@ pkcs8 = "0.10"
 # Data encoding
 base64 = "0.22"
 rmp-serde = "1"
+
+# Optional: native SoliDB driver transport (feature "solidb-driver"). Path dep on
+# the sibling SoliDB checkout — see the feature comment above for why it is not
+# on by default.
+solidb-client = { path = "../db/clients/rust-client", optional = true }
 encoding_rs = "0.8"
 
 # Validation

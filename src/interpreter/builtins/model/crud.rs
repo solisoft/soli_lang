@@ -449,8 +449,33 @@ pub fn exec_async_query_with_binds(
         None
     };
 
+    // Native driver: one MessagePack round trip on a pooled connection instead of
+    // an HTTP cursor POST. Returns None unless the flag is on, in which case
+    // control falls through to the reqwest path below unchanged.
+    if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
+        if log_enabled {
+            super::query_log::record(
+                log_query.unwrap_or_default(),
+                log_binds,
+                started
+                    .map(|s| s.elapsed().as_secs_f64() * 1000.0)
+                    .unwrap_or(0.0),
+            );
+        }
+        return result;
+    }
+
     let future = async move {
         let mut payload = serde_json::json!({ "query": sdbql });
+        // Diagnostic: SoliDB memoizes read-only cursor results per (db, query,
+        // binds) and serves repeats with executionTimeMs 0. Measured worth 2.26x
+        // on the benchmark's 50-row read (97,856 vs 43,356 req/s at the cursor
+        // endpoint), and no other stack in that comparison has an equivalent —
+        // PostgreSQL re-plans and re-executes every request. Set
+        // SOLI_DB_NO_QUERY_CACHE=1 to opt out and see the uncached cost.
+        if no_query_cache() {
+            payload["cache"] = serde_json::Value::Bool(false);
+        }
         if let Some(bv) = bind_vars {
             payload["bindVars"] = serde_json::json!(bv);
         }
@@ -980,6 +1005,71 @@ pub fn exec_auto_collection_with_binds(
     }
 }
 
+/// Native-driver dispatch.
+///
+/// Each `driver_*` helper returns `Some(result)` when the native SoliDB driver
+/// transport handled the operation and `None` when the caller should fall
+/// through to HTTP — which is always the case unless the crate was built with
+/// `--features solidb-driver` *and* `SOLI_DB_DRIVER=1` is set. Keeping the
+/// fallback in the type means enabling the flag can only change the transport,
+/// never the semantics.
+mod driver {
+    use serde_json::Value;
+
+    #[cfg(feature = "solidb-driver")]
+    use crate::solidb_driver as imp;
+
+    pub fn insert(c: &str, doc: &Value, key: Option<&str>) -> Option<Result<Value, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_insert(c, doc, key);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (c, doc, key);
+            None
+        }
+    }
+
+    pub fn update(c: &str, key: &str, doc: &Value) -> Option<Result<Value, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_update(c, key, doc);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (c, key, doc);
+            None
+        }
+    }
+
+    pub fn delete(c: &str, key: &str) -> Option<Result<Value, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_delete(c, key);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (c, key);
+            None
+        }
+    }
+
+    pub fn query(
+        sdbql: &str,
+        binds: Option<std::collections::HashMap<String, Value>>,
+    ) -> Option<Result<Vec<Value>, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_query(sdbql, binds);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (sdbql, binds);
+            None
+        }
+    }
+}
+
+/// Opt out of SoliDB's read-result memoization (see the call site in
+/// `exec_async_query_with_binds`). Read once — this sits in the query hot path.
+fn no_query_cache() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
+}
+
 /// Build the base URL for document operations: {scheme}{host}/_api/database/{db}/document/{collection}.
 /// SEC-027: use the configured scheme; was forcing http:// regardless.
 fn document_base_url(collection: &str) -> String {
@@ -1089,12 +1179,18 @@ pub fn exec_insert(
         }
     }
     let url = document_base_url(collection);
-    let result = exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone()));
+    let result = match driver::insert(collection, &document, key) {
+        Some(r) => r,
+        None => exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone())),
+    };
 
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            exec_document_request(reqwest::Method::POST, url, Some(document.clone()))
+            match driver::insert(collection, &document, key) {
+                Some(r) => r,
+                None => exec_document_request(reqwest::Method::POST, url, Some(document.clone())),
+            }
         }
         _ => result,
     };
@@ -1147,12 +1243,18 @@ pub fn exec_update(
         document_base_url(collection),
         encode_key_for_url(key)
     );
-    let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
+    let result = match driver::update(collection, key, &document) {
+        Some(r) => r,
+        None => exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone())),
+    };
 
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            exec_document_request(reqwest::Method::PUT, url, Some(document.clone()))
+            match driver::update(collection, key, &document) {
+                Some(r) => r,
+                None => exec_document_request(reqwest::Method::PUT, url, Some(document.clone())),
+            }
         }
         _ => result,
     };
@@ -1248,12 +1350,18 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
         document_base_url(collection),
         encode_key_for_url(key)
     );
-    let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
+    let result = match driver::delete(collection, key) {
+        Some(r) => r,
+        None => exec_document_request(reqwest::Method::DELETE, url.clone(), None),
+    };
 
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            exec_document_request(reqwest::Method::DELETE, url, None)
+            match driver::delete(collection, key) {
+                Some(r) => r,
+                None => exec_document_request(reqwest::Method::DELETE, url, None),
+            }
         }
         _ => result,
     };

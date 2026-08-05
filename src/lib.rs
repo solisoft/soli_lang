@@ -37,6 +37,8 @@ pub mod repl_simple;
 pub mod repl_tui;
 pub mod scaffold;
 pub mod serve;
+#[cfg(feature = "solidb-driver")]
+pub mod solidb_driver;
 pub mod solidb_http;
 pub mod span;
 pub mod template;
