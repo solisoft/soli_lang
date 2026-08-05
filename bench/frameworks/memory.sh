@@ -67,7 +67,10 @@ mem() {
 }
 
 printf '%-10s %10s %12s   %s\n' stack idle 'under load' method
-for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102; do
+# fastapi goes through pss_port, not pss_pat: uvicorn's spawn children have no
+# app name in their cmdline (see sweep.sh's srv_cpu note) but do share the
+# supervisor's pgid.
+for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102 fastapi:5103 phoenix:5104; do
   n=${e%%:*}; p=${e##*:}
   case "$n" in laravel | octane) method="cgroup" ;; *) method="PSS" ;; esac
   idle=$(mem "$n" "$p")

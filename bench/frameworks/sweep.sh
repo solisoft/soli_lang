@@ -1,5 +1,5 @@
 #!/bin/bash
-# Every cell of the comparison, all five stacks, one sweep, back to back.
+# Every cell of the comparison, all seven stacks, one sweep, back to back.
 #
 # No load-average gate between cells: a 30s run at c=200 inflates the 1-minute
 # average itself, so gating on it just makes every cell wait out its own
@@ -26,7 +26,24 @@ cpu_pat() {  # sum over every process matching a pattern (Laravel: fpm + nginx)
 cpu_one() { local u s; read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$1/stat 2>/dev/null || { echo 0; return; }; echo $((u+s)); }
 DBPID=$(listener 6745)
 
-srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; adonis) cpu_pat 'bin/cluster.js';; *) cpu_grp "$(listener "$2")";; esac; }
+# phoenix also stays on the default branch, for the opposite reason to fastapi:
+# the BEAM is a single OS process (16 scheduler threads inside it), and
+# /proc/<pid>/stat already aggregates every thread's CPU — same shape as Soli.
+#
+# fastapi deliberately has no cpu_pat branch. uvicorn's 16 workers are
+# multiprocessing-spawn children whose cmdline is `python3 -c from
+# multiprocessing.spawn import spawn_main...` — nothing about the app — so
+# `cpu_pat 'benchapp.main'` matches the supervisor alone and reported 8 ticks
+# where the real process group had 88. They do share the supervisor's pgid, so
+# the default cpu_grp branch counts all 17. Leave it there.
+# octane needs a pattern for the opposite reason to fastapi: its processes live in
+# a container, so `ss -ltnp` cannot see the listener's pid as a normal user and
+# cpu_grp silently summed nothing — the column read 0us for every Octane cell.
+# /proc/<pid>/stat is world-readable even for root-owned processes (unlike
+# smaps_rollup, which is why memory.sh has to use cgroups here instead), so a
+# pattern works. Both processes count: the octane:start supervisor and the
+# frankenphp worker host.
+srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; adonis) cpu_pat 'bin/cluster.js';; octane) cpu_pat 'octane:start|frankenphp run';; *) cpu_grp "$(listener "$2")";; esac; }
 
 pg_count()  { psql "$PGURL" -tAc "SELECT count(*) FROM wposts;"; }
 sdb_count() { curl -s -u admin:admin -X POST $SDB/cursor -H 'Content-Type: application/json' \
@@ -73,9 +90,9 @@ print(f\"  {os.environ['S']:<8} {d['summary']['requestsPerSec']:>9,.0f} req/s  p
 
 # Octane is a reference configuration, not a stack in its own right, so it is
 # off by default: STACKS="soli rails express laravel django adonis octane" adds it.
-STACKS="${STACKS:-soli rails express laravel django adonis}"
+STACKS="${STACKS:-soli rails express laravel django adonis fastapi phoenix}"
 
-declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100)
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100 [fastapi]=5103 [phoenix]=5104)
 # Express serves the ORM form of the DB routes; the others use their only form.
 url_for() { case "$1:$2" in express:/db) echo /db-orm;; express:/db-template) echo /db-template-orm;; *) echo "$2";; esac; }
 
