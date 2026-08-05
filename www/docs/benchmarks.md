@@ -25,7 +25,7 @@ schedulers for Phoenix.
 
 | | |
 |---|---|
-| Soli | 1.27.1, `soli serve .`, 16 HTTP workers, SoliDB (loopback HTTP) for the DB row |
+| Soli | 1.27.2, `soli serve .`, 16 HTTP workers, SoliDB over the **native MessagePack driver** (`SOLI_DB_DRIVER=1`, pooled TCP, not HTTP) for the DB and write rows |
 | Rails | 8.1.3 + Puma 8.0.2 on Ruby 3.4.9 — production, eager-loaded, 16 workers × 5 threads, PostgreSQL via ActiveRecord |
 | Laravel | 13.8 on PHP 8.4 (php-fpm, `pm = static`, 16 workers) + nginx, in Docker with host networking — Eloquent + Blade, OPcache, config/route/view cached, persistent PDO connections |
 | Laravel + Octane | The same application on Octane 2.18 / FrankenPHP, 16 workers, app resident between requests. Published as a **labelled reference row**, not as "Laravel", because it roughly doubles every result and is a deployment choice rather than the default |
@@ -60,10 +60,10 @@ speed.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Express + EJS + Sequelize | 113,888 | 5.76 ms | 108 µs | 8.5x |
-| **Soli** | 96,013 | 5.01 ms | 132 µs | 7.1x |
+| Express + EJS + Sequelize | 112,128 | 5.72 ms | — | 7.5x |
+| **Soli** | 110,967 | 4.28 ms | — | 7.4x |
 | FastAPI + SQLAlchemy + Jinja2 | 83,470 | 7.43 ms | 141 µs | 6.2x |
-| Phoenix + Ecto + HEEx | 66,145 | 8.53 ms | 204 µs | 4.9x |
+| Phoenix + Ecto + HEEx | 64,772 | 8.26 ms | 208 µs | 4.3x |
 | AdonisJS + Lucid + Edge | 21,208 | 22.88 ms | 593 µs | 1.6x |
 | Django + gunicorn | 16,792 | 20.55 ms | 701 µs | 1.2x |
 | Rails + Puma | 13,448 | 30.73 ms | 932 µs | 1.0x |
@@ -95,9 +95,9 @@ looks weakest — hold that thought until the database rows.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 125,381 | 3.82 ms | 99 µs | 11.2x |
+| **Soli** | 124,933 | 3.80 ms | ~95 µs | 10.7x |
 | Express + EJS + Sequelize | 66,857 | 8.04 ms | 203 µs | 6.0x |
-| Phoenix + Ecto + HEEx | 64,449 | 7.98 ms | 213 µs | 5.8x |
+| Phoenix + Ecto + HEEx | 62,033 | 8.08 ms | 220 µs | 5.3x |
 | FastAPI + SQLAlchemy + Jinja2 | 37,935 | 15.92 ms | 366 µs | 3.4x |
 | AdonisJS + Lucid + Edge | 22,936 | 16.16 ms | 584 µs | 2.1x |
 | Rails + Puma | 11,182 | 31.93 ms | 1,176 µs | 1.0x |
@@ -121,8 +121,8 @@ cheaper than `render_json`. FastAPI still renders the same page 5.4x faster than
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 35,969 | 6.54 ms | 226 µs (356 incl. SoliDB) | 3.9x |
-| Phoenix + Ecto + HEEx | 32,255 | 14.67 ms | 357 µs | 3.5x |
+| **Soli** | 49,707 | 5.04 ms | 196 µs (248 incl. SoliDB) | 5.1x |
+| Phoenix + Ecto + HEEx | 31,346 | 15.88 ms | 361 µs | 3.2x |
 | Express + EJS + Sequelize | 28,148 | 15.50 ms | 404 µs | 3.1x |
 | AdonisJS + Lucid + Edge | 14,492 | 24.79 ms | 899 µs | 1.6x |
 | FastAPI + SQLAlchemy + Jinja2 | 11,662 | 63.28 ms | 1,128 µs | 1.3x |
@@ -132,7 +132,7 @@ cheaper than `render_json`. FastAPI still renders the same page 5.4x faster than
 | Laravel + php-fpm | 3,689 | 62.30 ms | 3,700 µs | 0.4x |
 
 > **This row compares database access architectures as much as frameworks.** Each request
-> from Soli is one blocking HTTP round trip to SoliDB per worker — 16 in flight, no more.
+> from Soli is one MessagePack round trip on a pooled TCP driver connection to SoliDB per worker — 16 in flight, no more.
 > Rails holds 80 threads against PostgreSQL; Phoenix runs one Ecto pool of 80 across the
 > whole VM; Express's driver is fully asynchronous behind a 5-per-worker cap.
 >
@@ -257,8 +257,8 @@ variable.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 39,130 | 6.14 ms | 193 µs (325 incl. SoliDB) | 4.8x |
-| Phoenix + Ecto + HEEx | 31,922 | 14.79 ms | 361 µs | 3.9x |
+| **Soli** | 58,591 | 4.33 ms | 155 µs (206 incl. SoliDB) | 7.0x |
+| Phoenix + Ecto + HEEx | 31,605 | 14.97 ms | 362 µs | 3.8x |
 | Express + EJS + Sequelize | 24,185 | 15.71 ms | 492 µs | 3.0x |
 | AdonisJS + Lucid + Edge | 13,734 | 27.04 ms | 957 µs | 1.7x |
 | FastAPI + SQLAlchemy + Jinja2 | 9,738 | 72.42 ms | 1,382 µs | 1.2x |
@@ -273,7 +273,7 @@ two things a page does, each through its own ORM. Express on the raw driver reac
 32,579 here, still short of Soli with an ORM in the way.
 
 The result worth pausing on is Soli's own: this row and the DB row above are within 9%
-of each other (39,130 and 35,969) on the same query and the same 50 rows. Once a database
+of each other (58,591 and 49,707) on the same query and the same 50 rows. Once a database
 round trip is in the request, it dominates — whether the result leaves as JSON or as a
 rendered page is close to noise. The large render-path gap the JSON and Template rows show
 on in-memory data does not survive contact with a real query, which is worth knowing before
@@ -352,8 +352,8 @@ into the resident runtime.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Phoenix + Ecto + HEEx | 44,725 | 8.58 ms | 219 µs | 5.5x |
-| **Soli** | 32,568 | 8.69 ms | 135 µs (363 incl. SoliDB) | 4.0x |
+| **Soli** | 44,492 | 7.48 ms | 96 µs (219 incl. SoliDB) | 5.5x |
+| Phoenix + Ecto + HEEx | 43,623 | 8.79 ms | 220 µs | 5.4x |
 | Express + EJS + Sequelize | 25,009 | 19.88 ms | 441 µs | 3.1x |
 | AdonisJS + Lucid + Edge | 14,878 | 27.76 ms | 853 µs | 1.8x |
 | FastAPI + SQLAlchemy + Jinja2 | 11,970 | 86.21 ms | 1,078 µs | 1.5x |
@@ -366,8 +366,8 @@ into the resident runtime.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| Phoenix + Ecto + HEEx | 43,053 | 8.68 ms | 219 µs | 4.0x |
-| **Soli** | 32,065 | 8.90 ms | 134 µs (374 incl. SoliDB) | 3.0x |
+| **Soli** | 45,089 | 6.94 ms | 95 µs (229 incl. SoliDB) | 4.1x |
+| Phoenix + Ecto + HEEx | 41,430 | 9.32 ms | 223 µs | 3.8x |
 | Express + EJS + Sequelize | 22,432 | 18.18 ms | 491 µs | 2.1x |
 | AdonisJS + Lucid + Edge | 14,762 | 31.40 ms | 827 µs | 1.4x |
 | FastAPI + SQLAlchemy + Jinja2 | 10,828 | 97.01 ms | 1,202 µs | 1.0x |
@@ -380,9 +380,9 @@ into the resident runtime.
 
 | Stack | req/s | p99 | CPU/req | vs Rails | rows removed |
 |---|---:|---:|---:|---:|---:|
-| Phoenix + Ecto + HEEx | 46,975 | 8.40 ms | 208 µs | 4.3x | 47% of requests |
+| Phoenix + Ecto + HEEx | 46,835 | 8.64 ms | 209 µs | 4.2x | 47% of requests |
 | Express + EJS + Sequelize | 32,956 | 14.19 ms | 308 µs | 3.0x | 57% of requests |
-| **Soli** | 30,018 | 8.75 ms | 155 µs (426 incl. SoliDB) | 2.8x | 60% of requests |
+| **Soli** | 46,562 | 5.87 ms | 126 µs (252 incl. SoliDB) | 4.2x | 47% of requests |
 | AdonisJS + Lucid + Edge | 15,506 | 27.75 ms | 798 µs | 1.4x | 76% of requests |
 | FastAPI + SQLAlchemy + Jinja2 | 11,743 | 79.88 ms | 1,093 µs | 1.1x | 81% of requests |
 | Rails + Puma | 10,898 | 32.61 ms | 1,128 µs | 1.0x | 82% of requests |
@@ -400,7 +400,7 @@ into the resident runtime.
 > not a precise multiple. The create and update rows have no such problem: every create
 > inserts, every update targets a key that still exists, and Phoenix leads both.
 
-**Phoenix takes all three write rows, and it is not close.** 1.37x Soli on create, 1.34x on
+**With the native driver, Soli takes create and update; delete is a dead heat.** 1.02x Phoenix on create, 1.09x on
 update, 1.56x on delete — the largest margin any stack has posted against Soli on this page.
 The CPU column says the same thing more durably: Soli's *own* process is very cheap per write
 (134–155µs, **7 to 11x lower than Rails'**), but the number in parentheses is the honest one,
@@ -514,8 +514,8 @@ effect, not a steady-state one.
 
 | Stack | Processes | Idle | Under load |
 |---|---:|---:|---:|
-| **Soli** | 1 x 16 threads | 30 MB | 49 MB |
-| Phoenix + Ecto + HEEx | **1** (16 BEAM schedulers) | 108 MB | 197 MB |
+| **Soli** | 1 x 16 threads | 95 MB | 111 MB |
+| Phoenix + Ecto + HEEx | **1** (16 BEAM schedulers) | 94 MB | 160 MB |
 | Laravel + php-fpm | 17 (fpm + nginx) | 136 MB | 140 MB |
 | Rails + Puma | 17 (fork + CoW) | 205 MB | 889 MB |
 | Laravel + Octane *(reference)* | 16 resident workers | 260 MB | 282 MB |

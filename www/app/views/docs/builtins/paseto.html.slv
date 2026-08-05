@@ -1,0 +1,409 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">PASETO</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">PASETO Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Platform-Agnostic Security Tokens &mdash; the same job as a JWT, without the negotiable algorithm.
+        </p>
+    </div>
+
+    <!-- Why -->
+    <section id="section-why" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Why PASETO instead of JWT</h2>
+        <p class="text-gray-400 mb-4">
+            A JWT announces its own algorithm in a header the bearer controls. That is where
+            <code class="text-amber-300">alg: none</code> and the RS256&rarr;HS256 confusion attack come from &mdash;
+            <a href="/docs/builtins/jwt" class="text-amber-400 hover:text-amber-300"><code>jwt_verify</code></a>
+            has to defend against it explicitly, by refusing to let the token pick the algorithm.
+        </p>
+        <p class="text-gray-400 mb-4">
+            A PASETO carries its version and purpose as the first two segments of the token:
+            <code class="text-amber-300">v4.public.eyJz…</code>. <code class="text-amber-300">Paseto.verify</code> can only ever
+            Ed25519-verify a <code class="text-amber-300">v4.public</code> token. There is nothing to negotiate, so there is
+            nothing to attack.
+        </p>
+
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr>
+                        <th class="py-3 px-4 font-semibold">Purpose</th>
+                        <th class="py-3 px-4 font-semibold">Functions</th>
+                        <th class="py-3 px-4 font-semibold">Crypto</th>
+                        <th class="py-3 px-4 font-semibold">Payload</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/10">
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-400">v4.local</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>Paseto.encrypt</code> / <code>Paseto.decrypt</code></td>
+                        <td class="py-3 px-4 text-gray-400">XChaCha20 + BLAKE2b, one 32-byte key</td>
+                        <td class="py-3 px-4 text-gray-400"><strong class="text-white">Encrypted</strong> &mdash; the bearer cannot read it</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4"><code class="text-amber-400">v4.public</code></td>
+                        <td class="py-3 px-4 text-gray-400"><code>Paseto.sign</code> / <code>Paseto.verify</code></td>
+                        <td class="py-3 px-4 text-gray-400">Ed25519 key pair</td>
+                        <td class="py-3 px-4 text-gray-400">Signed, readable by anyone</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-4">
+            Reach for <code class="text-amber-300">local</code> for your own sessions and API tokens, where one service both
+            mints and reads them. Reach for <code class="text-amber-300">public</code> when somebody else must validate a token
+            without holding a secret that would let them mint one.
+        </p>
+        <p class="text-gray-400">
+            Only v4 is exposed. v1/v2 are deprecated by the spec, and v3 exists for NIST-algorithm shops &mdash; offering a
+            version <em>choice</em> would reintroduce the very agility PASETO set out to remove.
+        </p>
+    </section>
+
+    <!-- Failure contract -->
+    <section id="section-failures" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Failures raise, they don't return a hash</h2>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
+            <p class="text-gray-300 mb-3">
+                <code class="text-amber-300">Paseto.decrypt</code> and <code class="text-amber-300">Paseto.verify</code> return the
+                claims on success and <strong class="text-white">throw</strong> on anything else &mdash; wrong key, tampering,
+                expiry, a claim that doesn't match what you expected.
+            </p>
+            <p class="text-gray-300 mb-3">
+                This is deliberately unlike <code>jwt_verify</code>, which returns <code>{ "error": true, ... }</code>. That hash is
+                <em>truthy</em>, so <code>if jwt_verify(...)</code> treats a <strong class="text-white">rejected</strong> token as
+                authenticated. Raising makes the failure path fail closed, and postfix <code>rescue</code> keeps it to one line:
+            </p>
+            <pre data-filename="Fail closed"><code class="language-soli text-sm">claims = Paseto.verify(token, getenv("PASETO_PUBLIC_KEY")) rescue nil
+return render_json({ "error": "unauthorized" }, 401) if claims.nil?</code></pre>
+        </div>
+    </section>
+
+    <!-- Keys -->
+    <section id="section-keys" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+            </span>
+            Keys
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Keys are <a href="https://github.com/paseto-standard/paserk" class="text-amber-400 hover:text-amber-300">PASERK</a>
+            strings. The prefix names the key's version <em>and</em> purpose, so a local key can never be silently handed to the
+            signing path. Generate once, store in <code>.env</code>.
+        </p>
+
+        <section id="def-paseto-generate-local-key" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-generate-local-key" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.generate_local_key()</code>
+                </a>
+                <p class="text-gray-400 mb-3">A symmetric key for <code>v4.local</code>, as <code>k4.local.&lt;base64url&gt;</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Paseto.generate_local_key()
+# "k4.local.uJq0T2s1…"</code></pre>
+            </div>
+        </section>
+
+        <section id="def-paseto-generate-key-pair" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-generate-key-pair" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.generate_key_pair()</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    An Ed25519 key pair for <code>v4.public</code>. Keep <code class="text-amber-300">secret</code> on the issuer;
+                    hand <code class="text-amber-300">public</code> to whoever verifies.
+                </p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "secret": "k4.secret.…", "public": "k4.public.…" }</code></div>
+            </div>
+        </section>
+
+        <section id="def-paseto-public-key" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-public-key" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.public_key(secret_key)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Derives the <code>k4.public.</code> half from a <code>k4.secret.</code> key, so a deployment can store only
+                    the secret. Passing a secret key to <code>Paseto.verify</code> is refused &mdash; the signing key has no
+                    business on the verifying side.
+                </p>
+            </div>
+        </section>
+
+        <section id="def-paseto-key-id" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-key-id" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.key_id(key)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    The <a href="https://github.com/paseto-standard/paserk/blob/master/operations/ID.md" class="text-amber-400 hover:text-amber-300">PASERK key ID</a>
+                    of a key &mdash; <code>k4.lid.…</code> for a local key, <code>k4.pid.…</code> for a public one. It is a hash of
+                    the key: safe to publish, and exactly what belongs in a token footer as <code>kid</code> when rotating keys.
+                    Requires a PASERK key string; a raw hex key carries no purpose to derive an id from.
+                </p>
+            </div>
+        </section>
+    </section>
+
+    <!-- Minting -->
+    <section id="section-minting" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </span>
+            Minting tokens
+        </h2>
+
+        <section id="def-paseto-encrypt" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-encrypt" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.encrypt(payload, key, options?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Mints an encrypted <code>v4.local.…</code> token. Takes the same payload and options as <a href="#def-paseto-sign" class="text-amber-400 hover:text-amber-300"><code>Paseto.sign</code></a>, documented below.</p>
+
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">payload</code> : <code class="text-orange-400">Hash</code> - Claims. Registered names (<code>iss</code>, <code>sub</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>, <code>iat</code>, <code>jti</code>) go through the spec's typed setters; everything else becomes a custom claim.</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - A PASERK key string, or raw hex (64 chars for a local key, 128 for a secret key), so <code>openssl rand -hex 32</code> works.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> - Optional settings</div>
+                </div>
+
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">expires_in</code> : <code class="text-orange-400">Int</code> - Seconds from now. <strong class="text-white">Default: 3600</strong> &mdash; every token expires unless you say otherwise.</div>
+                    <div><code class="text-amber-400">exp</code>, <code class="text-amber-400">nbf</code>, <code class="text-amber-400">iat</code> : <code class="text-orange-400">Int | String</code> - An instant, as a Unix timestamp or an RFC 3339 string. <code>exp</code> and <code>expires_in</code> are mutually exclusive; passing both raises rather than silently picking a unit.</div>
+                    <div><code class="text-amber-400">non_expiring</code> : <code class="text-orange-400">Bool</code> - Drop <code>exp</code> entirely. The reader must opt in too (see <code>allow_non_expiring</code>).</div>
+                    <div><code class="text-amber-400">sub</code>, <code class="text-amber-400">aud</code>, <code class="text-amber-400">iss</code>, <code class="text-amber-400">jti</code> : <code class="text-orange-400">String</code> - Registered claims. PASETO's <code>aud</code> is a single string; there is no array form.</div>
+                    <div><code class="text-amber-400">footer</code> : <code class="text-orange-400">Hash</code> - String values that travel <strong class="text-white">unencrypted</strong> (even on a local token) but are covered by the authentication tag, so they can be trusted after a successful read and tampering invalidates the token. Values that look like a serialized key are refused.</div>
+                    <div><code class="text-amber-400">kid</code> : <code class="text-orange-400">String</code> - Shorthand for <code>{ "footer": { "kid": ... } }</code>. Must be a <code>Paseto.key_id(...)</code> value.</div>
+                    <div><code class="text-amber-400">implicit</code> : <code class="text-orange-400">String</code> - An implicit assertion: bound into the authentication tag but <strong class="text-white">not</strong> carried in the token. The reader must supply the same string or the token fails.</div>
+                </div>
+                <p class="text-gray-400 text-sm mt-3">Options win over a same-named key in the payload.</p>
+
+                <pre data-filename="Local token"><code class="language-soli text-sm">key   = getenv("PASETO_LOCAL_KEY")
+token = Paseto.encrypt({ "user_id": user["_key"], "role": "admin" }, key, { "expires_in": 900 })
+# "v4.local.rElw-WywOuwAqKCwObeM…"</code></pre>
+
+            </div>
+        </section>
+
+        <section id="def-paseto-sign" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-sign" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.sign(payload, secret_key, options?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Mints a signed <code>v4.public.…</code> token with a <code>k4.secret.</code> key. Payload and options are
+                    identical to <a href="#def-paseto-encrypt" class="text-amber-400 hover:text-amber-300"><code>Paseto.encrypt</code></a>;
+                    only the key and the resulting header differ.
+                </p>
+                <pre data-filename="Signed token"><code class="language-soli text-sm">pair  = Paseto.generate_key_pair()
+token = Paseto.sign({ "sub": user["_key"] }, pair["secret"], {
+  "expires_in": 600,
+  "aud": "api.example.com",
+  "iss": "https://issuer.example",
+  "kid": Paseto.key_id(pair["public"])
+})
+# "v4.public.eyJhdWQiOiJhcGkuZXhhbXBsZS5jb20i…"</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Reading -->
+    <section id="section-reading" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Reading tokens
+        </h2>
+
+        <section id="def-paseto-decrypt" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-decrypt" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.decrypt(token, key, options?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Reads a <code>v4.local</code> token, returning its claims as a Hash.
+                    <strong class="text-white">Raises</strong> on a token that isn't authentic, has expired, isn't valid yet,
+                    or fails an expectation you set. Handing it a <code>v4.public</code> token is rejected on the header alone,
+                    before any key is used. <a href="#def-paseto-verify" class="text-amber-400 hover:text-amber-300"><code>Paseto.verify</code></a>
+                    is the signed-token twin and takes the same options.
+                </p>
+                <p class="text-gray-400 mb-3">
+                    Defaults are strict: <code>exp</code> must be present and unexpired, and <code>nbf</code>/<code>iat</code>
+                    must be present and reached. Every relaxation is an explicit opt-in.
+                </p>
+
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">audience</code>, <code class="text-amber-400">issuer</code>, <code class="text-amber-400">subject</code>, <code class="text-amber-400">jti</code> : <code class="text-orange-400">String</code> - Expected values. Setting one makes that claim <strong class="text-white">required</strong>, so a token without it cannot slip through a check you believed was enforced.</div>
+                    <div><code class="text-amber-400">allow_non_expiring</code> : <code class="text-orange-400">Bool</code> - Accept a token with no <code>exp</code>.</div>
+                    <div><code class="text-amber-400">skip_valid_at</code> : <code class="text-orange-400">Bool</code> - Don't check <code>iat</code>/<code>nbf</code> at all. For tokens minted elsewhere that omit them.</div>
+                    <div><code class="text-amber-400">footer</code> : <code class="text-orange-400">Hash</code> - Require an exact footer match.</div>
+                    <div><code class="text-amber-400">implicit</code> : <code class="text-orange-400">String</code> - The implicit assertion the token was minted with.</div>
+                </div>
+
+                <p class="text-gray-400 text-sm mt-3">
+                    <code>exp</code>/<code>nbf</code>/<code>iat</code> come back as the RFC 3339 strings the token carries &mdash;
+                    PASETO defines them that way, unlike JWT's numeric dates, and rewriting them here would mean the hash no
+                    longer matches what was signed. They have already been validated by the time you see them.
+                </p>
+
+                <pre data-filename="Local token"><code class="language-soli text-sm">claims = Paseto.decrypt(token, getenv("PASETO_LOCAL_KEY")) rescue nil
+return render_json({ "error": "unauthorized" }, 401) if claims.nil?
+user = User.find(claims["user_id"])</code></pre>
+
+            </div>
+        </section>
+
+        <section id="def-paseto-verify" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-verify" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.verify(token, public_key, options?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Ed25519-verifies a <code>v4.public</code> token with a <code>k4.public.</code> key and returns its claims.
+                    Same options and same raise-on-failure contract as
+                    <a href="#def-paseto-decrypt" class="text-amber-400 hover:text-amber-300"><code>Paseto.decrypt</code></a>.
+                    Passing a <em>secret</em> key is refused: the signing key has no business on the verifying side.
+                </p>
+                <pre data-filename="Signed token"><code class="language-soli text-sm"># Say who you expect the issuer and the audience to be — otherwise a token
+# minted for another service verifies here just fine.
+claims = Paseto.verify(token, getenv("PASETO_PUBLIC_KEY"), {
+  "audience": "api.example.com",
+  "issuer": "https://issuer.example"
+}) rescue nil
+return render_json({ "error": "unauthorized" }, 401) if claims.nil?</code></pre>
+            </div>
+        </section>
+
+        <section id="def-paseto-decode-unsafe" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-paseto-decode-unsafe" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Paseto.decode_unsafe(token)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Inspects a token <strong class="text-white">without</strong> verifying it. Returns
+                    <code>{ "unverified": true, "version": "v4", "purpose": "local" | "public", "claims": Hash | nil, "footer": Hash | String | nil }</code>.
+                </p>
+                <p class="text-gray-400 mb-3">
+                    The claims sit behind <code class="text-amber-300">["claims"]</code> so code reaching for
+                    <code>result["sub"]</code> gets <code>nil</code> rather than an unauthenticated value. For a
+                    <code>v4.local</code> token <code>claims</code> is always <code>nil</code> &mdash; the payload is
+                    ciphertext, which is the point.
+                </p>
+                <p class="text-gray-400 mb-3">
+                    This is the intended way to read a footer's <code>kid</code> <em>before</em> choosing a key, which is how
+                    rotation works. The footer is covered by the signature, so the verify that follows still catches a tampered one.
+                </p>
+                <pre data-filename="Key rotation"><code class="language-soli text-sm">peek = Paseto.decode_unsafe(token)
+kid  = peek["footer"]["kid"]
+
+# Match the kid against every key still accepted — Paseto.key_id is a hash of
+# the key, so this reveals nothing and needs no lookup table.
+key = nil
+for candidate in [getenv("PASETO_PUBLIC_KEY"), getenv("PASETO_PUBLIC_KEY_PREVIOUS")]
+  key = candidate if Paseto.key_id(candidate) == kid
+end
+return render_json({ "error": "unauthorized" }, 401) if key.nil?
+
+claims = Paseto.verify(token, key) rescue nil
+return render_json({ "error": "unauthorized" }, 401) if claims.nil?</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Common Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">API authentication</h3>
+            <p class="text-gray-400 mb-3">
+                One service mints and reads the token, so <code>local</code> is the right purpose: the client gets an opaque
+                string it cannot read, let alone edit.
+            </p>
+            <pre data-filename="app/controllers/sessions_controller.sl"><code class="language-soli text-sm">def create
+  user = User.find_by("email", params["email"])
+  return render_json({ "error": "Invalid credentials" }, 401) if user.nil?
+  return render_json({ "error": "Invalid credentials" }, 401) unless argon2_verify(params["password"], user.password_hash)
+
+  token = Paseto.encrypt({ "user_id": user._key, "role": user.role },
+                         getenv("PASETO_LOCAL_KEY"),
+                         { "expires_in": 86400 })
+  render_json({ "token": token })
+end</code></pre>
+            <pre data-filename="app/controllers/concerns — current_user"><code class="language-soli text-sm">def paseto_claims(req)
+  header = req["headers"]["authorization"] ?? ""
+  return nil unless header.starts_with("Bearer ")
+
+  token = header.substring(7, header.length())
+  Paseto.decrypt(token, getenv("PASETO_LOCAL_KEY")) rescue nil
+end
+
+def current_user(req)
+  claims = paseto_claims(req)
+  return nil if claims.nil?
+  User.find_by("_key", claims["user_id"])
+end</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Tokens another service verifies</h3>
+            <p class="text-gray-400 mb-3">
+                Publish the <code>k4.public.</code> key and the partner can validate tokens forever without ever holding
+                anything that could mint one. The <code>implicit</code> assertion below pins each token to one tenant without
+                that tenant id appearing in the token at all.
+            </p>
+            <pre data-filename="Issuer"><code class="language-soli text-sm">token = Paseto.sign({ "sub": user._key, "scope": "reports:read" },
+                    getenv("PASETO_SECRET_KEY"),
+                    {
+                      "expires_in": 300,
+                      "iss": "https://issuer.example",
+                      "aud": "reports.partner.example",
+                      "implicit": tenant._key
+                    })</code></pre>
+            <pre data-filename="Verifier"><code class="language-soli text-sm">claims = Paseto.verify(token, getenv("ISSUER_PUBLIC_KEY"), {
+  "issuer": "https://issuer.example",
+  "audience": "reports.partner.example",
+  "implicit": tenant._key
+}) rescue nil
+return forbidden() if claims.nil?</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            JWT Functions
+        </a>
+        <a href="/docs/builtins/regex" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+            Regex Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

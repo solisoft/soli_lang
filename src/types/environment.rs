@@ -1925,6 +1925,40 @@ impl TypeEnvironment {
         }
         self.classes.insert("Crypto".to_string(), crypto_class);
 
+        // Paseto class — PASETO v4 tokens. Keys and tokens are PASERK strings
+        // (`k4.local.…`, `k4.secret.…`, `k4.public.…`), so the key helpers and
+        // the two producers return String; the three consumers return the claims
+        // as a Hash. Params are `Any` for the same reason as Crypto's: the
+        // methods take (claims, key) or (token, key) plus an optional options
+        // hash, and spelling that out here would only add arity false-positives.
+        let mut paseto_class = ClassType::new("Paseto".to_string());
+        let paseto_string_methods = [
+            "generate_local_key",
+            "public_key",
+            "key_id",
+            "encrypt",
+            "sign",
+        ];
+        let paseto_hash_methods = ["generate_key_pair", "decrypt", "verify", "decode_unsafe"];
+        for (names, ret) in [
+            (&paseto_string_methods[..], Type::String),
+            (&paseto_hash_methods[..], Type::Any),
+        ] {
+            for name in names {
+                paseto_class.methods.insert(
+                    name.to_string(),
+                    MethodInfo {
+                        name: name.to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: ret.clone(),
+                        is_private: false,
+                        is_static: true,
+                    },
+                );
+            }
+        }
+        self.classes.insert("Paseto".to_string(), paseto_class);
+
         // Base64 class — `encode` returns a String; `decode` returns a String when
         // the bytes are valid UTF-8 and an Array of byte ints otherwise, so it is
         // typed `Any`. Both accept a String or a byte array, hence the `Any` param.

@@ -14,6 +14,7 @@
 # and PSS are not the same metric, so the Laravel rows are comparable to each
 # other and only indicative against the rest.
 set -u
+unset NO_COLOR 2>/dev/null || true
 
 pss_pat() {
   local t=0 s

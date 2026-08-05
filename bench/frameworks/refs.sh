@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+unset NO_COLOR 2>/dev/null || true
 # The labelled reference cells — the "what if you wrote it the other way" rows
 # the results page quotes in prose. Same protocol as sweep.sh (8s warm at
 # c=100, 30s measured at c=200), so a reference figure is comparable to the

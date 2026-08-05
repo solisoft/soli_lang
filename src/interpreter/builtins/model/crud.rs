@@ -1049,6 +1049,16 @@ mod driver {
         }
     }
 
+    pub fn get(c: &str, key: &str) -> Option<Result<Value, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_get(c, key);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (c, key);
+            None
+        }
+    }
+
     pub fn query(
         sdbql: &str,
         binds: Option<std::collections::HashMap<String, Value>>,
@@ -1215,15 +1225,21 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
         document_base_url(collection),
         encode_key_for_url(key)
     );
-    let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
+    let result = match driver::get(collection, key) {
+        Some(r) => r,
+        None => exec_document_request(reqwest::Method::GET, url.clone(), None),
+    };
 
-    if let Err(ref e) = result {
-        if is_missing_collection_or_database_error(e) {
+    match &result {
+        Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            return exec_document_request(reqwest::Method::GET, url, None);
+            match driver::get(collection, key) {
+                Some(r) => r,
+                None => exec_document_request(reqwest::Method::GET, url, None),
+            }
         }
+        _ => result,
     }
-    result
 }
 
 /// Execute an update (PUT) with automatic collection creation.

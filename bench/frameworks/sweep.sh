@@ -1,4 +1,5 @@
 #!/bin/bash
+unset NO_COLOR 2>/dev/null || true
 # Every cell of the comparison, all seven stacks, one sweep, back to back.
 #
 # No load-average gate between cells: a 30s run at c=200 inflates the 1-minute

@@ -12,10 +12,13 @@
 # against 16,116 (-25%), because other tenants on the box had woken up. Nothing
 # in the harness noticed; the numbers just looked like a regression.
 set -u
+unset NO_COLOR 2>/dev/null || true
 TOLERANCE="${TOLERANCE:-8}"
 
 # stack:port:path:expected
-CONTROLS="${CONTROLS:-express:5097:/json:129725 soli:5080:/template:127287}"
+# Baselines from the last published session on this page (2026-08). Override with
+# CONTROLS=... when re-baselining after a stack or protocol change.
+CONTROLS="${CONTROLS:-express:5097:/json:109263 soli:5080:/template:124933}"
 
 fail=0
 printf '%-10s %-14s %10s %10s %8s\n' stack route measured published drift

@@ -90,6 +90,13 @@ fn query_enabled() -> bool {
     *ON.get_or_init(|| std::env::var("SOLI_DB_DRIVER_QUERY").as_deref() != Ok("0"))
 }
 
+/// Opt out of SoliDB's read-result memoization on the driver path too.
+/// Mirrors the HTTP `payload["cache"] = false` in `crud.rs`.
+fn no_query_cache() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
+}
+
 /// `host:port` for the driver, taken from the same `SOLIDB_HOST` the HTTP path
 /// uses. The driver speaks raw TCP, so the scheme is dropped — and a TLS host is
 /// refused rather than silently downgraded to plaintext.
@@ -100,12 +107,29 @@ fn driver_addr() -> Result<String, String> {
     Ok(DB_CONFIG.host.clone())
 }
 
-fn credentials() -> (String, String, String) {
-    (
-        get_database_name(),
-        std::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into()),
-        std::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into()),
-    )
+/// Authenticate every pooled socket, matching the credentials the HTTP model
+/// path would use.
+///
+/// Preference order:
+/// 1. `SOLIDB_API_KEY` — the common production path
+/// 2. `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` when either is set
+/// 3. `admin` / `admin` for the local-dev default (same as SoliDB's bootstrap)
+async fn authenticate(client: &mut SoliDBClient, database: &str) -> Result<(), String> {
+    if let Ok(api_key) = std::env::var("SOLIDB_API_KEY") {
+        if !api_key.is_empty() {
+            return client
+                .auth_with_api_key(database, &api_key)
+                .await
+                .map_err(|e| format!("driver auth (api key) failed: {e}"));
+        }
+    }
+
+    let username = std::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
+    let password = std::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
+    client
+        .auth(database, &username, &password)
+        .await
+        .map_err(|e| format!("driver auth failed: {e}"))
 }
 
 /// Run `f` against this worker's driver client, connecting on first use.
@@ -126,11 +150,8 @@ fn with_client<T>(
                 let mut client = SoliDBClient::connect_with_pool(&addr, POOL_SIZE)
                     .await
                     .map_err(|e| format!("driver connect failed: {e}"))?;
-                let (db, user, pass) = credentials();
-                client
-                    .auth(&db, &user, &pass)
-                    .await
-                    .map_err(|e| format!("driver auth failed: {e}"))?;
+                let db = get_database_name();
+                authenticate(&mut client, &db).await?;
                 Ok::<_, String>(client)
             });
             if let Err(e) = &connected {
@@ -233,10 +254,13 @@ pub fn try_query(
     }
     let q = sdbql.to_string();
     let db = get_database_name();
+    // Honour SOLI_DB_NO_QUERY_CACHE on the driver path the same way the HTTP
+    // cursor payload does — otherwise the diagnostic only uncached one arm.
+    let cache = !no_query_cache();
     with_client(move |client| {
         block_on_db(async move {
             client
-                .query(&db, &q, bind_vars)
+                .query_with_cache(&db, &q, bind_vars, cache)
                 .await
                 .map_err(|e| format!("driver query failed: {e}"))
         })

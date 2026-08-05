@@ -84,6 +84,7 @@ pub mod nanoid;
 pub mod native;
 pub mod pades;
 pub mod pades_tsa;
+pub mod paseto;
 pub mod pdf;
 pub mod pdf_markdown;
 pub mod permit;
@@ -629,6 +630,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Signed/encrypted cookie jar reader (read_cookie); the write side rides
     // set_cookie's options ("signed"/"encrypted") above.
     cookie_jar::register_cookie_jar_builtins(env);
+
+    // PASETO v4 tokens (the `Paseto` class: local encrypt/decrypt and public
+    // sign/verify, with PASERK-serialized keys).
+    paseto::register_paseto_builtins(env);
 }
 
 /// Register the Error class and built-in error types.

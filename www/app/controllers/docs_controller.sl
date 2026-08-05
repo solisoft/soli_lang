@@ -430,6 +430,10 @@ def builtins_jwt
     render_docs("docs/builtins/jwt", "JWT Functions", "builtins", "jwt")
 end
 
+def builtins_paseto
+    render_docs("docs/builtins/paseto", "PASETO Tokens", "builtins", "paseto")
+end
+
 def builtins_xml_signatures
     render_docs("docs/builtins/xml-signatures", "XML Signatures & Keys", "builtins", "xml-signatures")
 end

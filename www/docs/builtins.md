@@ -2341,6 +2341,100 @@ println(result["claims"]["sub"])  # Inspection only — DO NOT use for auth
 
 ---
 
+## PASETO Functions
+
+PASETO v4 tokens, as an alternative to JWT that removes the choices JWT gets wrong.
+There is no `alg` header to confuse, no `none` algorithm, and no way to hand a
+verifier the wrong key type: a v4 token is either **local** (encrypted, symmetric)
+or **public** (signed, asymmetric), and the key tells you which.
+
+Keys and tokens are **PASERK** strings, so they are self-describing:
+`k4.local.…` (symmetric), `k4.secret.…` / `k4.public.…` (key pair),
+`k4.lid.…` / `k4.pid.…` (key identifiers).
+
+Every function **raises** on failure rather than returning an error hash — a
+tampered token, a wrong key or an expired token is an exception, so it cannot be
+mistaken for a valid result. Use postfix `rescue` for the "or nil" shape.
+
+### Paseto.generate_local_key() / Paseto.generate_key_pair()
+
+```soli
+let key  = Paseto.generate_local_key()   # "k4.local.…"  — encrypt/decrypt
+let pair = Paseto.generate_key_pair()    # {"secret": "k4.secret.…", "public": "k4.public.…"}
+```
+
+### Paseto.public_key(secret) / Paseto.key_id(key)
+
+`public_key` derives the verifying half from a secret, so a deployment can store
+only the secret. `key_id` returns a PASERK id (`k4.lid.…` / `k4.pid.…`) safe to
+log or put in a token footer.
+
+```soli
+Paseto.public_key(pair["secret"]) == pair["public"]   # true
+Paseto.key_id(key).starts_with("k4.lid.")             # true
+```
+
+### Paseto.encrypt(claims, key, options?) / Paseto.decrypt(token, key, options?)
+
+Symmetric — the holder of the key can both mint and read. `decrypt` returns the
+claims hash and raises if the token was tampered with, signed with another key, or
+has expired.
+
+```soli
+let token  = Paseto.encrypt({ "user_id": 42, "role": "admin" }, key, { "expires_in": 900 })
+let claims = Paseto.decrypt(token, key)
+print(claims["user_id"])
+```
+
+### Paseto.sign(claims, secret, options?) / Paseto.verify(token, public, options?)
+
+Asymmetric — the secret mints, the public key only verifies. Use this when the
+verifier should not be able to issue tokens.
+
+```soli
+let token  = Paseto.sign({ "sub": "bob" }, pair["secret"], { "expires_in": 600 })
+let claims = Paseto.verify(token, pair["public"])
+```
+
+### Paseto.decode_unsafe(token)
+
+Inspect a token **without** verifying it. The claims are nested under `claims` and
+the result carries `unverified: true`, so `peek["sub"]` is `nil` rather than a
+trusted-looking value — the same shape (and the same reasoning) as
+`jwt_decode_unsafe`.
+
+```soli
+let peek = Paseto.decode_unsafe(token)
+peek["unverified"]   # true
+peek["purpose"]      # "local" or "public"
+peek["version"]      # "v4"
+peek["claims"]["sub"]
+peek["footer"]       # the footer hash, if the token carries one
+```
+
+**Never authenticate on these claims** — use `decrypt` or `verify`.
+
+### Options
+
+Passed as the optional third argument.
+
+| Option | Side | Meaning |
+|---|---|---|
+| `expires_in` | mint | seconds until expiry |
+| `exp`, `nbf`, `iat` | mint | explicit timestamps |
+| `iss`, `sub`, `aud`, `jti` | mint | registered claims |
+| `non_expiring` | mint | mint a token with no `exp` (opt-in; expiry is the default) |
+| `footer` | both | unencrypted but authenticated data, e.g. `{ "kid": … }` |
+| `implicit` | both | implicit assertion — must match on the reading side |
+| `issuer`, `subject`, `audience`, `jti` | read | required claim values; a mismatch raises |
+| `allow_non_expiring` | read | accept a token with no `exp` |
+| `skip_valid_at` | read | skip the time-based checks |
+
+A footer is authenticated, not secret: it is readable by anyone holding the token,
+which is exactly why a key id belongs there.
+
+---
+
 ## VAPID / Web Push Functions
 
 Soli has native Web Push support — see [VAPID / Web Push Functions](/docs/builtins/vapid) for the full

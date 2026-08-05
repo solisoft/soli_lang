@@ -30,7 +30,10 @@ sleep 3
 
 # SOLI_WS_WORKERS=0 keeps all 16 workers on HTTP; the realtime split would
 # otherwise reserve one and the stacks would no longer be matched.
-( cd "$HERE/soli"    && SOLI_WS_WORKERS=0 setsid nohup soli serve . --port 5080 --workers 16 \
+# SOLI_DB_DRIVER=1 routes the model layer over SoliDB's native MessagePack
+# driver (needs a soli built with --features solidb-driver).
+SOLI_BIN="${SOLI_BIN:-soli}"
+( cd "$HERE/soli"    && SOLI_WS_WORKERS=0 SOLI_DB_DRIVER=1 setsid nohup "$SOLI_BIN" serve . --port 5080 --workers 16 \
                           > /tmp/bench-soli.log 2>&1 </dev/null & )
 ( cd "$HERE/rails"   && RAILS_ENV=production WEB_CONCURRENCY=16 \
                         SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(head -c 64 /dev/urandom | base64 | tr -d '\n')}" \

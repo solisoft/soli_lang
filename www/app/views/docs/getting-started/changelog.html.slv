@@ -21,7 +21,31 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
-        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.27.2.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.28.0.</p>
+    </section>
+
+    <section id="v1-28-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.28.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-08-05</span></h2>
+
+        <h3 id="v1-28-0-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth / security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">PASETO v4 tokens.</strong> A <code class="text-cyan-400">Paseto</code> class for local encrypt/decrypt and public sign/verify, with PASERK keys. No negotiable algorithm. Failures raise. See <a href="/docs/builtins/paseto" class="text-amber-400 hover:underline">PASETO Tokens</a>.</li>
+        </ul>
+
+        <h3 id="v1-28-0-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM / database</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Optional native SoliDB driver</strong> (<code class="text-cyan-400">--features solidb-driver</code>, <code class="text-cyan-400">SOLI_DB_DRIVER=1</code>) &mdash; MessagePack over pooled TCP for model CRUD and queries. Auth prefers <code class="text-cyan-400">SOLIDB_API_KEY</code>. Document get and <code class="text-cyan-400">SOLI_DB_NO_QUERY_CACHE</code> work on the driver path.</li>
+        </ul>
+
+        <h3 id="v1-28-0-perf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">render_json</code> uses sonic-rs</strong> (same path as <code class="text-cyan-400">JSON.stringify</code>). Future resolution no longer rebuilds arrays of row hashes without futures. Pure-JSON bench ~+16%.</li>
+        </ul>
+
+        <h3 id="v1-28-0-docs" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Docs</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Benchmarks</strong> re-measured with the native driver and the JSON path fix; prose tightened. Soli leads or ties every HTTP row vs the previous session that lost the three writes to Phoenix over HTTP.</li>
+        </ul>
     </section>
 
     <section id="v1-27-2" class="mb-16 scroll-mt-24">

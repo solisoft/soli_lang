@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-08-05
+
+### Added
+
+- **PASETO v4 tokens** — a `Paseto` class covering both purposes: `encrypt` /
+  `decrypt` for local (symmetric) tokens and `sign` / `verify` for public
+  (asymmetric) ones, plus `generate_local_key`, `generate_key_pair`,
+  `public_key`, `key_id` and `decode_unsafe`. Keys and tokens are PASERK strings
+  (`k4.local.`, `k4.secret.`, `k4.public.`, `k4.lid.`, `k4.pid.`) so they are
+  self-describing and cannot be handed to the wrong purpose. Unlike JWT there is
+  no `alg` header to confuse and no `none` algorithm.
+
+  Every function raises on failure rather than returning an error hash, so a
+  tampered, wrong-key or expired token cannot be mistaken for a valid result —
+  use postfix `rescue` for the "or nil" shape. `decode_unsafe` nests the claims
+  under `claims` and sets `unverified: true`, so reaching for `peek["sub"]`
+  yields nil rather than a trusted-looking value (same reasoning as
+  `jwt_decode_unsafe`).
+
+- **Optional native SoliDB driver transport** (`--features solidb-driver`,
+  `SOLI_DB_DRIVER=1`) — MessagePack on a pooled TCP socket instead of HTTP for
+  model CRUD and queries. Auth prefers `SOLIDB_API_KEY`, then username/password.
+  `Model.find` / document get go over the driver too. `SOLI_DB_NO_QUERY_CACHE=1`
+  is honoured on the driver path as well as the cursor path.
+
+### Changed
+
+- **`render_json` serializes with sonic-rs** (same path as `JSON.stringify`),
+  and future-resolution no longer rebuilds arrays of row hashes when no Future
+  is present. Pure JSON throughput rises ~16% on the framework bench.
+
+- **Benchmarks page** updated for the native driver session and the JSON
+  optimization (synthetic prose). Harness unsets `NO_COLOR` so `oha` 1.12
+  works; `start.sh` enables `SOLI_DB_DRIVER=1` when measuring Soli.
+
+
 ## [1.27.2] - 2026-08-03
 
 ### Fixed

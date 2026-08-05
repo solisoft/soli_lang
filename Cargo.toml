@@ -113,6 +113,13 @@ md-5 = "0.10"
 hmac = "0.12"
 sha1 = "0.10"
 
+# PASETO v4 tokens (the `Paseto` builtin). Only `v4` is enabled: v1/v2 are
+# deprecated and v3 exists for NIST-algorithm shops, which would pull p384 for
+# a profile we don't expose. `paserk` gives us the `k4.local.` / `k4.public.`
+# key serialization format, so keys are self-describing strings rather than
+# bare bytes a caller could feed to the wrong purpose.
+pasetors = { version = "0.8", default-features = false, features = ["std", "v4", "paserk"] }
+
 # Arbitrary-precision integers for RSA-style modular exponentiation
 # (Crypto.modexp). Pairs with the PKCS#1 v1.5 padding helpers and
 # exclusive XML C14N to build XML-DSig / WS-Security signing in Soli.

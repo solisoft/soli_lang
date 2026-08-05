@@ -18,7 +18,7 @@ use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{
-    value_to_json, Function, HashKey, HashPairs, NativeFunction, StrKey, Value,
+    stringify_to_string, value_to_json, Function, HashKey, HashPairs, NativeFunction, StrKey, Value,
 };
 use crate::template::{html_response, TemplateCache};
 
@@ -385,10 +385,21 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
         .ok()
 }
 
-/// Check if a value could potentially contain futures (quick discriminant check).
+/// True if `v` (or anything nested in it) is a Future that still needs resolving.
+///
+/// Must walk nested arrays/hashes: a shallow `matches!(Hash|Array)` check is
+/// wrong for the "rebuild?" decision — an array of hashes of primitives has no
+/// futures, but the old discriminant treated every Hash as "needs rebuild" and
+/// re-allocated the outer array on every `render_json` of a list of rows (the
+/// pure-JSON bench path).
 #[inline]
-fn could_contain_futures(v: &Value) -> bool {
-    matches!(v, Value::Future(_) | Value::Hash(_) | Value::Array(_))
+fn contains_futures(v: &Value) -> bool {
+    match v {
+        Value::Future(_) => true,
+        Value::Array(a) => a.borrow().iter().any(contains_futures),
+        Value::Hash(h) => h.borrow().values().any(contains_futures),
+        _ => false,
+    }
 }
 
 /// Recursively resolve all Future values in a Value.
@@ -408,9 +419,9 @@ fn resolve_futures_in_value(value: Value) -> Value {
             Err(e) => Value::String(format!("<future error: {}>", e).into()),
         },
         Value::Hash(hash) => {
-            // Quick scan: if no values could contain futures, return as-is
-            let needs = hash.borrow().values().any(could_contain_futures);
-            if !needs {
+            // Deep scan: only rebuild when a Future actually lives somewhere
+            // under this hash. Nested hashes of primitives return as-is.
+            if !hash.borrow().values().any(contains_futures) {
                 return Value::Hash(hash);
             }
             let resolved_pairs: HashPairs = hash
@@ -421,9 +432,10 @@ fn resolve_futures_in_value(value: Value) -> Value {
             Value::Hash(Rc::new(RefCell::new(resolved_pairs)))
         }
         Value::Array(arr) => {
-            // Quick scan: if no items could contain futures, return as-is
-            let needs = arr.borrow().iter().any(could_contain_futures);
-            if !needs {
+            // Same deep scan for arrays of row-hashes (the common JSON list
+            // shape). Shallow Hash discrimination used to force a full rebuild
+            // here on every request even when no Future was present.
+            if !arr.borrow().iter().any(contains_futures) {
                 return Value::Array(arr);
             }
             let resolved_items: Vec<Value> = arr
@@ -2499,9 +2511,16 @@ pub fn register_template_builtins(env: &mut Environment) {
                 200
             };
 
-            let json_body = match &data {
-                Value::String(s) => s.clone(),
-                _ => value_to_json(&data)?.to_string().into(),
+            // Serialize with sonic-rs directly from Value (same path as
+            // JSON.stringify / json_stringify). The old path was
+            // value_to_json → intermediate serde_json::Value tree →
+            // serde_json::to_string, which allocates every key/string twice
+            // and uses the slower writer — measurable on the pure-JSON bench
+            // row where Express's V8 path was ~20% ahead.
+            let body = match &data {
+                Value::String(s) => s.to_string(),
+                _ => stringify_to_string(&data)
+                    .map_err(|e| format!("JSON serialization error: {}", e))?,
             };
 
             // Set fast-path response to bypass Value::Hash round-trip in extract_response
@@ -2512,7 +2531,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                         "Content-Type".to_string(),
                         "application/json; charset=utf-8".to_string(),
                     )],
-                    body: json_body.to_string(),
+                    body,
                 },
             );
 
@@ -2585,7 +2604,8 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let json_body = match &data {
                 Value::String(s) => s.to_string(),
-                _ => value_to_json(&data)?.to_string(),
+                _ => stringify_to_string(&data)
+                    .map_err(|e| format!("JSON serialization error: {}", e))?,
             };
 
             // Resolve the callback from `?callback`; wrap when valid, fall back

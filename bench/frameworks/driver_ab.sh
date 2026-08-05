@@ -8,6 +8,7 @@
 # Cells are interleaved A,B per workload rather than run as two blocks, so a
 # slow drift in machine load hits both arms instead of only the second.
 set -u
+unset NO_COLOR 2>/dev/null || true
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="${BIN:-$HERE/../../target/release/soli}"
 PORT=5080

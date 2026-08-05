@@ -13,6 +13,7 @@
 # Waits for a quiet box first, and retries the opening control rather than
 # giving up, so this can be left running (or cron'd) on a shared machine.
 set -u
+unset NO_COLOR 2>/dev/null || true
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
