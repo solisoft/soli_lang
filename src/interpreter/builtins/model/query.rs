@@ -1024,8 +1024,14 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
             bind_vars,
             Box::new(move |rows| {
                 let values: Vec<Value> = match &class {
-                    Some(c) => rows.iter().map(|j| json_doc_to_instance(c, j)).collect(),
-                    None => rows.iter().map(super::crud::json_to_value).collect(),
+                    Some(c) => rows
+                        .into_iter()
+                        .map(|j| super::crud::json_doc_to_instance_owned(c, j))
+                        .collect(),
+                    None => rows
+                        .into_iter()
+                        .map(super::crud::json_to_value_owned)
+                        .collect(),
                 };
                 Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     values,
@@ -2220,7 +2226,10 @@ pub fn execute_query_builder_grouped(qb: &QueryBuilder) -> Result<Value, String>
             query,
             bind_vars_str,
             Box::new(move |rows| {
-                let values: Vec<Value> = rows.iter().map(super::crud::json_to_value).collect();
+                let values: Vec<Value> = rows
+                    .into_iter()
+                    .map(super::crud::json_to_value_owned)
+                    .collect();
                 Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     values,
                 ))))
@@ -2248,7 +2257,10 @@ pub fn execute_query_builder_time_bucket(qb: &QueryBuilder) -> Value {
             query,
             bind_vars_str,
             Box::new(move |rows| {
-                let values: Vec<Value> = rows.iter().map(super::crud::json_to_value).collect();
+                let values: Vec<Value> = rows
+                    .into_iter()
+                    .map(super::crud::json_to_value_owned)
+                    .collect();
                 Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     values,
                 ))))

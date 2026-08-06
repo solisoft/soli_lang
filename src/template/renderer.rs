@@ -468,17 +468,29 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
                 output.push_str(s);
             }
         }
-        // Int/Float/Bool never contain HTML special chars — skip html_escape entirely
+        // Int/Float/Bool never contain HTML special chars — skip html_escape entirely.
+        // itoa writes digits into a stack buffer (no heap String).
         Value::Int(n) => {
-            let _ = write!(output, "{}", n);
+            output.push_str(itoa::Buffer::new().format(*n));
         }
         Value::Float(n) => {
             let _ = write!(output, "{}", n);
         }
         Value::Bool(b) => {
-            let _ = write!(output, "{}", b);
+            output.push_str(if *b { "true" } else { "false" });
         }
         Value::Null => {}
+        // Decimal / DateTime / Symbol: same writer as join/JSON, no intermediate
+        // Display String when escape is off (or escape only when needed).
+        Value::Decimal(_) | Value::DateTime(_) | Value::Symbol(_) => {
+            if escaped {
+                let mut tmp = String::new();
+                value.write_to_string(&mut tmp);
+                output.push_str(&html_escape(&tmp));
+            } else {
+                value.write_to_string(output);
+            }
+        }
         Value::Array(arr) => {
             let arr = arr.borrow();
             for (i, item) in arr.iter().enumerate() {
@@ -490,11 +502,9 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
         }
         Value::Hash(_) => output.push_str("[Hash]"),
         _ => {
-            // Any other value type (Decimal, DateTime, Instance, ...) renders via
-            // Display. Honor the escape flag here too: an Instance's Display can
-            // embed user-controlled field data, so emitting it raw in an escaped
-            // (`<%= %>`) context would be an XSS hole. html_escape is a no-op
-            // (borrowed, zero-copy) for the common HTML-free cases (numbers/dates).
+            // Instance / Function / … — Display can embed user data, so honor
+            // the escape flag. html_escape is borrowed (zero-copy) when free of
+            // HTML specials.
             if escaped {
                 output.push_str(&html_escape(&value.to_string()));
             } else {

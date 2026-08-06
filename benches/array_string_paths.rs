@@ -162,5 +162,53 @@ fn bench_hash(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_join, bench_string_identity, bench_hash);
+fn sample_json_docs(n: usize) -> Vec<serde_json::Value> {
+    (0..n)
+        .map(|i| {
+            serde_json::json!({
+                "_key": format!("key{i}"),
+                "name": format!("User {i}"),
+                "email": format!("user{i}@example.com"),
+                "active": true,
+                "score": 42,
+                "note": "hello world string payload"
+            })
+        })
+        .collect()
+}
+
+fn bench_json_doc_convert(c: &mut Criterion) {
+    use solilang::interpreter::builtins::model::crud::{json_to_value, json_to_value_owned};
+
+    let docs = sample_json_docs(100);
+    let mut group = c.benchmark_group("model_json_convert");
+    group.sample_size(80);
+
+    group.bench_function("ref_clone_100_docs", |b| {
+        b.iter(|| {
+            let values: Vec<_> = black_box(&docs).iter().map(json_to_value).collect();
+            values
+        })
+    });
+    group.bench_function("owned_move_100_docs", |b| {
+        b.iter_batched(
+            || docs.clone(),
+            |owned| {
+                let values: Vec<_> = owned.into_iter().map(json_to_value_owned).collect();
+                values
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_join,
+    bench_string_identity,
+    bench_hash,
+    bench_json_doc_convert
+);
 criterion_main!(benches);

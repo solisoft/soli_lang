@@ -251,9 +251,16 @@ pub fn attach_score(value: Value, score: f64) -> Value {
     value
 }
 
-/// json_to_value re-export point for callers materializing raw rows.
+/// Convert raw JSON rows into Soli Values (borrowing — clones strings).
 pub fn raw_rows_to_values(rows: &[serde_json::Value]) -> Vec<Value> {
     rows.iter().map(json_to_value).collect()
+}
+
+/// Consuming conversion for owned row vectors (batch / query results).
+pub fn raw_rows_to_values_owned(rows: Vec<serde_json::Value>) -> Vec<Value> {
+    rows.into_iter()
+        .map(super::crud::json_to_value_owned)
+        .collect()
 }
 
 /// Options for `Model.rag`.

@@ -382,8 +382,10 @@ fn http_request(
                 value.as_bytes(),
             )
             .ok()
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .and_then(|json| crate::interpreter::value::json_to_value(json).ok());
+            .and_then(|bytes| {
+                let s = std::str::from_utf8(&bytes).ok()?;
+                crate::interpreter::value::parse_json(s).ok()
+            });
             continue;
         }
         if name.eq_ignore_ascii_case("x-soli-test-ungrouped") {
@@ -392,8 +394,10 @@ fn http_request(
                 value.as_bytes(),
             )
             .ok()
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .and_then(|json| crate::interpreter::value::json_to_value(json).ok());
+            .and_then(|bytes| {
+                let s = std::str::from_utf8(&bytes).ok()?;
+                crate::interpreter::value::parse_json(s).ok()
+            });
             continue;
         }
         header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));

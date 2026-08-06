@@ -304,7 +304,8 @@ pub use core::{
 };
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,
-    exec_auto_collection_with_binds, exec_db_json, json_to_value,
+    exec_auto_collection_with_binds, exec_db_json, json_doc_to_instance_owned, json_to_value,
+    json_to_value_owned,
 };
 pub use query::{
     build_aggregation_query, execute_query_builder, execute_query_builder_aggregate,
