@@ -137,6 +137,30 @@ fn resolve_deferred(items: &[Value]) -> Option<Vec<Value>> {
     }
 }
 
+/// Join `items` with `delim` into a single string.
+///
+/// Prefills capacity from [`Value::display_len`] and writes with
+/// [`Value::write_to_string`] — no intermediate `Vec<String>` and no per-element
+/// `format!`. Shared by the VM, interpreter, and Array class so they cannot
+/// diverge on either speed or formatting.
+pub fn join_values(items: &[Value], delim: &str) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let mut total_len = delim.len().saturating_mul(items.len().saturating_sub(1));
+    for value in items {
+        total_len = total_len.saturating_add(value.display_len());
+    }
+    let mut result = String::with_capacity(total_len);
+    for (i, value) in items.iter().enumerate() {
+        if i > 0 {
+            result.push_str(delim);
+        }
+        value.write_to_string(&mut result);
+    }
+    result
+}
+
 /// Flatten `items` up to `max_depth` levels deep (`None` = fully recursive).
 pub(crate) fn flatten_values(items: &[Value], max_depth: Option<usize>) -> Vec<Value> {
     fn recur(arr: &[Value], depth: usize, max: Option<usize>) -> Vec<Value> {

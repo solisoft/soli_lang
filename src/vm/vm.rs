@@ -809,8 +809,8 @@ impl Vm {
                             } else {
                                 // General path: borrow string and args from stack
                                 let result = {
-                                    let s: &str = match &self.stack[receiver_idx] {
-                                        Value::String(s) => s.as_ref(),
+                                    let s = match &self.stack[receiver_idx] {
+                                        Value::String(s) => s,
                                         _ => unreachable!(),
                                     };
                                     let args =
@@ -1009,8 +1009,8 @@ impl Vm {
                     match &self.stack[receiver_idx] {
                         Value::String(_) => {
                             let result = {
-                                let s: &str = match &self.stack[receiver_idx] {
-                                    Value::String(s) => s.as_ref(),
+                                let s = match &self.stack[receiver_idx] {
+                                    Value::String(s) => s,
                                     _ => unreachable!(),
                                 };
                                 let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];

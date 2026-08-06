@@ -535,18 +535,9 @@ impl Interpreter {
                         )))
                     }
                 };
-                let mut total_len = delim.len().saturating_mul(items.len().saturating_sub(1));
-                for value in items {
-                    total_len += value.display_len();
-                }
-                let mut result = String::with_capacity(total_len);
-                for (i, value) in items.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(delim);
-                    }
-                    value.write_to_string(&mut result);
-                }
-                Some(Ok(Value::String(result.into())))
+                Some(Ok(Value::String(
+                    super::array_ops::join_values(items, delim).into(),
+                )))
             }
             _ => None,
         }
@@ -1206,7 +1197,7 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(items.len());
         for item in items {
             call_env_rc
                 .borrow_mut()
@@ -2379,7 +2370,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let delim = match &arguments[0] {
-            Value::String(d) => d.clone(),
+            Value::String(d) => d.as_ref(),
             _ => {
                 return Err(RuntimeError::type_error(
                     "join expects a string delimiter",
@@ -2387,8 +2378,9 @@ impl Interpreter {
                 ))
             }
         };
-        let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-        Ok(Value::String(parts.join(&delim).into()))
+        Ok(Value::String(
+            super::array_ops::join_values(items, delim).into(),
+        ))
     }
 
     fn array_delete(

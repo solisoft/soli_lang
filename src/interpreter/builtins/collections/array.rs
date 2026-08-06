@@ -36,9 +36,25 @@ pub fn register_array_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Array(arr)) => {
-                    let arr = arr.borrow();
-                    let parts: Vec<String> = arr.iter().map(|v| format!("{}", v)).collect();
-                    Ok(Value::String(format!("[{}]", parts.join(", ")).into()))
+                    let items = arr.borrow();
+                    // Same write path as `[].to_string()` on the VM/interpreter.
+                    let mut total_len = 2;
+                    for (i, value) in items.iter().enumerate() {
+                        total_len += value.display_len();
+                        if i > 0 {
+                            total_len += 2;
+                        }
+                    }
+                    let mut result = String::with_capacity(total_len);
+                    result.push('[');
+                    for (i, value) in items.iter().enumerate() {
+                        if i > 0 {
+                            result.push_str(", ");
+                        }
+                        value.write_to_string(&mut result);
+                    }
+                    result.push(']');
+                    Ok(Value::String(result.into()))
                 }
                 _ => Err("Array missing internal value".to_string()),
             }
@@ -732,11 +748,13 @@ pub fn register_array_class(env: &mut Environment) {
                 _ => return Err("Array.join() requires string delimiter".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Array(arr)) => {
-                    let parts: Vec<String> =
-                        arr.borrow().iter().map(|v| format!("{}", v)).collect();
-                    Ok(Value::String(parts.join(&delim).into()))
-                }
+                Some(Value::Array(arr)) => Ok(Value::String(
+                    crate::interpreter::executor::calls::array_ops::join_values(
+                        &arr.borrow(),
+                        &delim,
+                    )
+                    .into(),
+                )),
                 _ => Err("Array missing internal value".to_string()),
             }
         })),

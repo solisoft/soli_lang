@@ -334,6 +334,10 @@ harness = false
 name = "json_paths"
 harness = false
 
+[[bench]]
+name = "array_string_paths"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

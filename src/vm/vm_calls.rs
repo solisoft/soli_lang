@@ -676,7 +676,7 @@ impl Vm {
 
         let result = match &receiver {
             Value::Array(arr) => self.vm_call_array_method(arr, method_name, &args, span)?,
-            Value::String(s) => self.vm_call_string_method(s.as_ref(), method_name, &args, span)?,
+            Value::String(s) => self.vm_call_string_method(s, method_name, &args, span)?,
             Value::Hash(hash) => self.vm_call_hash_method(hash, method_name, &args, span)?,
             Value::Int(_)
             | Value::Float(_)

@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{SoliStr, Value};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -12,14 +12,21 @@ use super::vm::Vm;
 impl Vm {
     /// Dispatch a string method call. The string and args are already available.
     /// Returns the result value.
+    ///
+    /// Takes [`SoliStr`] so identity methods (`to_s`, no-op `trim`, already-cased
+    /// `upcase`) can clone the EcoString instead of reallocating the bytes.
     #[inline]
     pub fn vm_call_string_method(
         &self,
-        s: &str,
+        s: &SoliStr,
         name: &str,
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        use crate::interpreter::executor::calls::string_methods::{
+            downcase_string, identity_string, reuse_or_slice, upcase_string,
+        };
+        let text: &str = s.as_ref();
         // Universal zero-argument methods, guarded in one place. The
         // tree-walking interpreter already rejects `x.nil?("junk")`; the VM
         // accepted the argument and threw it away, so the same call errored
@@ -46,43 +53,47 @@ impl Vm {
             // --- Zero-arg methods ---
             "upcase" | "uppercase" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.to_uppercase().into()))
+                Ok(upcase_string(s))
             }
             "downcase" | "lowercase" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.to_lowercase().into()))
+                Ok(downcase_string(s))
             }
             "html_entities" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(
-                    crate::interpreter::builtins::html::html_numeric_entities(s).into(),
+                    crate::interpreter::builtins::html::html_numeric_entities(text).into(),
                 ))
             }
             "len" | "length" | "size" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::Int(s.len() as i64))
+                Ok(Value::Int(text.len() as i64))
             }
             "trim" | "strip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim().to_string().into()))
+                Ok(reuse_or_slice(s, text.trim()))
             }
             "lstrip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim_start().to_string().into()))
+                Ok(reuse_or_slice(s, text.trim_start()))
             }
             "rstrip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim_end().to_string().into()))
+                Ok(reuse_or_slice(s, text.trim_end()))
             }
             // First character, not first byte — must not split a multi-byte one.
             "chr" => {
                 check_arity(0, args.len(), span)?;
-                let first: String = s.chars().next().map(String::from).unwrap_or_default();
-                Ok(Value::String(first.into()))
+                Ok(match text.chars().next() {
+                    Some(c) => {
+                        crate::interpreter::executor::calls::string_methods::char_to_value(c)
+                    }
+                    None => Value::String(String::new().into()),
+                })
             }
             "capitalize" => {
                 check_arity(0, args.len(), span)?;
-                let mut chars = s.chars();
+                let mut chars = text.chars();
                 let result: String = match chars.next() {
                     None => String::new(),
                     Some(first) => {
@@ -94,17 +105,18 @@ impl Vm {
             "swapcase" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(
-                    crate::interpreter::executor::calls::string_methods::swapcase_string(s).into(),
+                    crate::interpreter::executor::calls::string_methods::swapcase_string(text)
+                        .into(),
                 ))
             }
             "chomp" => {
                 check_arity(0, args.len(), span)?;
-                let result = s
+                let result = text
                     .strip_suffix('\n')
-                    .or_else(|| s.strip_suffix("\r\n"))
-                    .or_else(|| s.strip_suffix('\r'))
-                    .unwrap_or(s);
-                Ok(Value::String(result.to_string().into()))
+                    .or_else(|| text.strip_suffix("\r\n"))
+                    .or_else(|| text.strip_suffix('\r'))
+                    .unwrap_or(text);
+                Ok(reuse_or_slice(s, result))
             }
             "squeeze" => {
                 if args.len() > 1 {
@@ -177,7 +189,7 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(format!("invalid octal: {}", e), span))?;
                 Ok(Value::Int(result))
             }
-            "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
+            "to_s" | "to_string" => Ok(identity_string(s)),
             "to_i" | "to_int" => {
                 let base = match args.first() {
                     None => None,
@@ -289,21 +301,17 @@ impl Vm {
             "delete" => {
                 check_arity(1, args.len(), span)?;
                 let to_delete = expect_string(&args[0], "delete", span)?;
-                Ok(Value::String(s.replace(to_delete, "").into()))
+                Ok(Value::String(s.replace(to_delete, "")))
             }
             "delete_prefix" => {
                 check_arity(1, args.len(), span)?;
                 let prefix = expect_string(&args[0], "delete_prefix", span)?;
-                Ok(Value::String(
-                    s.strip_prefix(prefix).unwrap_or(s).to_string().into(),
-                ))
+                Ok(reuse_or_slice(s, text.strip_prefix(prefix).unwrap_or(text)))
             }
             "delete_suffix" => {
                 check_arity(1, args.len(), span)?;
                 let suffix = expect_string(&args[0], "delete_suffix", span)?;
-                Ok(Value::String(
-                    s.strip_suffix(suffix).unwrap_or(s).to_string().into(),
-                ))
+                Ok(reuse_or_slice(s, text.strip_suffix(suffix).unwrap_or(text)))
             }
             "partition" => {
                 check_arity(1, args.len(), span)?;
@@ -349,7 +357,7 @@ impl Vm {
                 check_arity(2, args.len(), span)?;
                 let from = expect_string(&args[0], "replace from", span)?;
                 let to = expect_string(&args[1], "replace to", span)?;
-                Ok(Value::String(s.replace(from, to).into()))
+                Ok(Value::String(s.replace(from, to)))
             }
             "gsub" | "replace_all" => {
                 if args.len() < 2 || args.len() > 3 {
@@ -373,7 +381,7 @@ impl Vm {
                             replacen_str(s, pattern, replacement, limit).into(),
                         ))
                     } else {
-                        Ok(Value::String(s.replace(pattern, replacement).into()))
+                        Ok(Value::String(s.replace(pattern, replacement)))
                     }
                 } else {
                     let re = crate::regex_cache::get_regex(pattern)
@@ -704,8 +712,8 @@ impl Vm {
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(matches))))
             }
-            "join" => Ok(Value::String(s.to_string().into())),
-            "to_sym" => Ok(Value::Symbol(s.to_string().into())),
+            "join" => Ok(identity_string(s)),
+            "to_sym" => Ok(Value::Symbol(s.clone())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(
@@ -741,7 +749,11 @@ impl Vm {
                 let other = expect_string(&args[0], "casecmp", span)?;
                 use std::cmp::Ordering;
                 Ok(Value::Int(
-                    match s.to_lowercase().cmp(&other.to_lowercase()) {
+                    match text
+                        .to_lowercase()
+                        .as_str()
+                        .cmp(other.to_lowercase().as_str())
+                    {
                         Ordering::Less => -1,
                         Ordering::Equal => 0,
                         Ordering::Greater => 1,
@@ -751,13 +763,13 @@ impl Vm {
             "casecmp?" => {
                 check_arity(1, args.len(), span)?;
                 let other = expect_string(&args[0], "casecmp?", span)?;
-                Ok(Value::Bool(s.to_lowercase() == other.to_lowercase()))
+                Ok(Value::Bool(text.to_lowercase() == other.to_lowercase()))
             }
             "prepend" => {
                 check_arity(1, args.len(), span)?;
                 let other = expect_string(&args[0], "prepend", span)?;
                 let mut result = other.to_string();
-                result.push_str(s);
+                result.push_str(text);
                 Ok(Value::String(result.into()))
             }
             "chop" => {

@@ -724,6 +724,9 @@ impl Value {
                     .map_or(1, |l| l as usize + 1);
                 digits + usize::from(*n < 0)
             }
+            // Match `write_to_string` / Display (`n.to_string()`). ryu's
+            // shortest form can differ (e.g. `1.0` → `"1.0"` vs Display `"1"`),
+            // so we deliberately stay on Display for float identity.
             Value::Float(n) => n.to_string().len(),
             Value::Decimal(d) => d.to_string().len(),
             Value::String(s) => s.len(),
