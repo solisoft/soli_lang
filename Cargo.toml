@@ -82,6 +82,8 @@ serde_json = "1.0"
 sonic-rs = "0.3"
 itoa = "1"
 ryu = "1"
+# SIMD/memchr string scanning for the hand-rolled JSON parser.
+memchr = "2"
 
 # High-performance async HTTP server. `server-auto` on hyper-util pulls in
 # http2 so the same accept loop can auto-detect h1 vs h2c from the first

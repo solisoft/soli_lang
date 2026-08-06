@@ -76,13 +76,33 @@ fn legacy_json_to_value(json: serde_json::Value) -> Result<Value, String> {
     }
 }
 
+fn sample_json_compact_api() -> String {
+    // Compact (no whitespace) API-shaped payload: 200 objects × 6 fields.
+    let mut out = String::from("{\"items\":[");
+    for i in 0..200 {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            r#"{{"id":{i},"name":"User{i}","email":"u{i}@ex.com","status":"active","score":{i},"sku":"S{i:04}"}}"#
+        ));
+    }
+    out.push_str("],\"count\":200}");
+    out
+}
+
 fn bench_parse_paths(c: &mut Criterion) {
     let json = sample_json();
+    let compact = sample_json_compact_api();
     let mut group = c.benchmark_group("json_parse");
     group.sample_size(80);
 
     group.bench_function("parse_json_direct", |b| {
         b.iter(|| parse_json(black_box(&json)).unwrap())
+    });
+
+    group.bench_function("parse_json_compact_200", |b| {
+        b.iter(|| parse_json(black_box(&compact)).unwrap())
     });
 
     group.bench_function("serde_then_json_to_value_current", |b| {
@@ -96,6 +116,31 @@ fn bench_parse_paths(c: &mut Criterion) {
         b.iter(|| {
             let v: serde_json::Value = serde_json::from_str(black_box(&json)).unwrap();
             legacy_json_to_value(v).unwrap()
+        })
+    });
+
+    group.bench_function("serde_only_compact_200", |b| {
+        b.iter(|| {
+            let _: serde_json::Value = serde_json::from_str(black_box(&compact)).unwrap();
+        })
+    });
+
+    group.bench_function("sonic_then_json_to_value", |b| {
+        b.iter(|| {
+            let v: serde_json::Value = sonic_rs::from_str(black_box(&json)).unwrap();
+            json_to_value(v).unwrap()
+        })
+    });
+
+    group.bench_function("sonic_direct_value", |b| {
+        b.iter(|| {
+            let _: Value = sonic_rs::from_str(black_box(&json)).unwrap();
+        })
+    });
+
+    group.bench_function("sonic_direct_value_compact_200", |b| {
+        b.iter(|| {
+            let _: Value = sonic_rs::from_str(black_box(&compact)).unwrap();
         })
     });
 

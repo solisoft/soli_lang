@@ -1837,38 +1837,73 @@ pub fn stringify_hash_entries_to_string(entries: &[(HashKey, Value)]) -> Result<
     crate::interpreter::value_stringify::stringify_hash_entries_to_string(entries)
 }
 
-/// Fast i64 parsing — avoids the overhead of str::parse for the common case.
+/// Fixed-seed hasher for JSON object maps.
+///
+/// `RandomState::default()` draws entropy (or a thread-local random counter)
+/// on every construction. A JSON payload with N objects used to pay that cost
+/// N times. Fixed seeds are fine here: the keys are untrusted data, not a
+/// HashDoS target with a long-lived global map — these maps are per-document
+/// and short-lived.
 #[inline(always)]
-fn fast_parse_i64(b: &[u8]) -> Value {
-    let (neg, start) = if b[0] == b'-' { (true, 1) } else { (false, 0) };
+fn json_hasher() -> AHasher {
+    AHasher::with_seeds(
+        0x0123_4567_89AB_CDEF,
+        0xFEDC_BA98_7654_3210,
+        0x0F1E_2D3C_4B5A_6978,
+        0x8877_6655_4433_2211,
+    )
+}
+
+/// Fast i64 parse of a digit slice (optional leading `-` already stripped from
+/// `digits`). `neg` applies the sign. Digit counts ≤ 18 always fit in i64
+/// (10^18 − 1 < 2^63), so we skip checked arithmetic on the common path.
+#[inline(always)]
+fn fast_parse_i64_digits(digits: &[u8], neg: bool) -> Value {
+    if digits.len() <= 18 {
+        let mut n: i64 = 0;
+        for &d in digits {
+            n = n * 10 + (d - b'0') as i64;
+        }
+        return Value::Int(if neg { -n } else { n });
+    }
+    // 19+ digits: checked path (and overflow → f64).
     let mut n: i64 = 0;
-    let mut i = start;
-    while i < b.len() {
-        let d = (b[i] - b'0') as i64;
+    for &d in digits {
+        let d = (d - b'0') as i64;
         match n.checked_mul(10).and_then(|n| n.checked_add(d)) {
             Some(v) => n = v,
             None => {
-                // Overflow — fall back to f64
-                let s = unsafe { std::str::from_utf8_unchecked(b) };
-                return Value::Float(s.parse::<f64>().unwrap_or(0.0));
+                let s = unsafe { std::str::from_utf8_unchecked(digits) };
+                let signed = if neg {
+                    format!("-{}", s)
+                } else {
+                    s.to_string()
+                };
+                return Value::Float(signed.parse::<f64>().unwrap_or(0.0));
             }
         }
-        i += 1;
     }
-    Value::Int(if neg { -n } else { n })
+    // i64::MIN is the only negative that needs the positive magnitude to
+    // overflow; handle via checked_neg.
+    if neg {
+        match n.checked_neg() {
+            Some(v) => Value::Int(v),
+            None => Value::Float(-(n as f64)),
+        }
+    } else {
+        Value::Int(n)
+    }
 }
 
-/// Hand-rolled JSON parser — builds Value directly in one pass.
-/// No serde, no intermediate tree, no trait dispatch overhead.
+/// Parse a JSON string into a Soli [`Value`].
+///
+/// One-pass hand-rolled parser (no intermediate serde tree). sonic-rs direct
+/// `Deserialize` was measured and does not beat this path once Values are
+/// materialised (IndexMap + Rc/RefCell dominate either way); keep sonic for
+/// stringify only.
+#[inline]
 pub fn parse_json(s: &str) -> Result<Value, String> {
-    let bytes = s.as_bytes();
-    let mut pos = 0;
-    let value = parse_value(bytes, &mut pos)?;
-    skip_ws(bytes, &mut pos);
-    if pos < bytes.len() {
-        return Err(format!("Trailing content at position {}", pos));
-    }
-    Ok(value)
+    parse_json_bytes(s.as_bytes())
 }
 
 /// Parse JSON from bytes.
@@ -1884,14 +1919,26 @@ pub fn parse_json_bytes(bytes: &[u8]) -> Result<Value, String> {
 
 #[inline(always)]
 fn skip_ws(b: &[u8], pos: &mut usize) {
-    while *pos < b.len() {
-        match b[*pos] {
-            b' ' | b'\t' | b'\n' | b'\r' => *pos += 1,
-            _ => break,
+    // Unrolled first-byte check: compact JSON (no whitespace) is the hot case.
+    let p = *pos;
+    if p >= b.len() {
+        return;
+    }
+    match b[p] {
+        b' ' | b'\t' | b'\n' | b'\r' => {
+            *pos = p + 1;
+            while *pos < b.len() {
+                match b[*pos] {
+                    b' ' | b'\t' | b'\n' | b'\r' => *pos += 1,
+                    _ => break,
+                }
+            }
         }
+        _ => {}
     }
 }
 
+/// Skip whitespace and return the next byte, or an unexpected-EOF error.
 #[inline(always)]
 fn peek(b: &[u8], pos: &mut usize) -> Result<u8, String> {
     skip_ws(b, pos);
@@ -1902,6 +1949,7 @@ fn peek(b: &[u8], pos: &mut usize) -> Result<u8, String> {
     }
 }
 
+#[inline(always)]
 fn parse_value(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     match peek(b, pos)? {
         b'"' => parse_string(b, pos).map(Value::String),
@@ -1925,8 +1973,9 @@ fn parse_literal(
     expected: &[u8],
     value: Value,
 ) -> Result<Value, String> {
-    if b[*pos..].starts_with(expected) {
-        *pos += expected.len();
+    let end = *pos + expected.len();
+    if end <= b.len() && &b[*pos..end] == expected {
+        *pos = end;
         Ok(value)
     } else {
         Err(format!("Invalid literal at position {}", *pos))
@@ -1935,23 +1984,55 @@ fn parse_literal(
 
 fn parse_number(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     let start = *pos;
-    let mut is_float = false;
-
-    if *pos < b.len() && b[*pos] == b'-' {
+    let neg = *pos < b.len() && b[*pos] == b'-';
+    if neg {
         *pos += 1;
     }
     if *pos >= b.len() || !b[*pos].is_ascii_digit() {
         return Err(format!("Invalid number at position {}", start));
     }
+
+    // Single-pass integer accumulation for the common non-float path.
+    // 10^18-1 fits in i64, so we accumulate unchecked until we know the
+    // digit count, then only fall back if the number was huge.
+    let mut n: u64 = 0;
+    let mut digits: u32 = 0;
     if b[*pos] == b'0' {
         *pos += 1;
+        digits = 1;
+        // Leading zero may only stand alone (or start a float/exponent).
+        if *pos < b.len() && b[*pos].is_ascii_digit() {
+            return Err(format!("Invalid number at position {}", start));
+        }
     } else {
-        while *pos < b.len() && b[*pos].is_ascii_digit() {
-            *pos += 1;
+        while *pos < b.len() {
+            let c = b[*pos];
+            if c.is_ascii_digit() {
+                n = n.wrapping_mul(10).wrapping_add((c - b'0') as u64);
+                digits += 1;
+                *pos += 1;
+            } else {
+                break;
+            }
         }
     }
+
+    let is_float = *pos < b.len() && matches!(b[*pos], b'.' | b'e' | b'E');
+    if !is_float {
+        // Pure integer.
+        if digits <= 18 {
+            let signed = n as i64;
+            return Ok(Value::Int(if neg { -signed } else { signed }));
+        }
+        // 19+ digits: re-parse carefully.
+        return Ok(fast_parse_i64_digits(
+            &b[start + usize::from(neg)..*pos],
+            neg,
+        ));
+    }
+
+    // Float / scientific — extend the span then use the std parser.
     if *pos < b.len() && b[*pos] == b'.' {
-        is_float = true;
         *pos += 1;
         if *pos >= b.len() || !b[*pos].is_ascii_digit() {
             return Err(format!("Invalid number at position {}", start));
@@ -1961,7 +2042,6 @@ fn parse_number(b: &[u8], pos: &mut usize) -> Result<Value, String> {
         }
     }
     if *pos < b.len() && (b[*pos] == b'e' || b[*pos] == b'E') {
-        is_float = true;
         *pos += 1;
         if *pos < b.len() && (b[*pos] == b'+' || b[*pos] == b'-') {
             *pos += 1;
@@ -1974,38 +2054,32 @@ fn parse_number(b: &[u8], pos: &mut usize) -> Result<Value, String> {
         }
     }
 
-    // SAFETY: We only advanced past ASCII digits, '.', 'e', 'E', '+', '-'
     let num_str = unsafe { std::str::from_utf8_unchecked(&b[start..*pos]) };
-
-    if is_float {
-        num_str
-            .parse::<f64>()
-            .map(Value::Float)
-            .map_err(|e| format!("Invalid float: {}", e))
-    } else {
-        // Fast path: hand-rolled i64 parse for common case
-        Ok(fast_parse_i64(num_str.as_bytes()))
-    }
+    num_str
+        .parse::<f64>()
+        .map(Value::Float)
+        .map_err(|e| format!("Invalid float: {}", e))
 }
 
+#[inline(always)]
 fn parse_string(b: &[u8], pos: &mut usize) -> Result<SoliStr, String> {
     *pos += 1; // skip opening '"'
     let start = *pos;
+    let rest = &b[start..];
 
-    // Fast path: scan for end quote with no escapes using memchr-style scan
-    while *pos < b.len() {
-        let c = b[*pos];
-        if c == b'"' {
-            // No escapes found — build the SoliStr straight from the slice
-            // (short keys/values stay inline: zero heap allocation).
-            let s = SoliStr::from(unsafe { std::str::from_utf8_unchecked(&b[start..*pos]) });
-            *pos += 1;
+    // SIMD-accelerated scan for the first `"` or `\`.
+    match memchr::memchr2(b'"', b'\\', rest) {
+        Some(rel) if rest[rel] == b'"' => {
+            // No escapes — SoliStr from the slice (short keys stay inline).
+            let s = SoliStr::from(unsafe { std::str::from_utf8_unchecked(&rest[..rel]) });
+            *pos = start + rel + 1;
             return Ok(s);
         }
-        if c == b'\\' {
-            break; // has escapes, use slow path
+        Some(rel) => {
+            // Escape at `rel`; fall into the slow path from there.
+            *pos = start + rel;
         }
-        *pos += 1;
+        None => return Err("Unterminated string".to_string()),
     }
 
     // Slow path: build string with escape handling
@@ -2059,19 +2133,11 @@ fn parse_string(b: &[u8], pos: &mut usize) -> Result<SoliStr, String> {
                 *pos += 1;
             }
             _ => {
-                // Consume the whole run of raw bytes up to the next quote or
-                // escape and append it as UTF-8. The previous per-byte
-                // `result.push(b[*pos] as char)` promoted each byte to the
-                // same-valued code point — i.e. Latin-1-decoded multi-byte
-                // UTF-8 into mojibake ("café" → "cafÃ©") for any string that
-                // reached this slow path (one containing an escape). Same
-                // `from_utf8_unchecked` safety assumption as the fast path
-                // above: the buffer came from a &str (parse_json) or trusted
-                // UTF-8 bytes (parse_json_bytes callers).
+                // SIMD scan for the next quote or escape; append as UTF-8.
                 let run_start = *pos;
-                while *pos < b.len() && b[*pos] != b'"' && b[*pos] != b'\\' {
-                    *pos += 1;
-                }
+                let run = &b[run_start..];
+                let rel = memchr::memchr2(b'"', b'\\', run).unwrap_or(run.len());
+                *pos = run_start + rel;
                 result.push_str(unsafe { std::str::from_utf8_unchecked(&b[run_start..*pos]) });
             }
         }
@@ -2084,8 +2150,18 @@ fn parse_hex4(b: &[u8], pos: &mut usize) -> Result<u16, String> {
     if *pos + 4 > b.len() {
         return Err("Invalid \\u escape".to_string());
     }
-    let hex = unsafe { std::str::from_utf8_unchecked(&b[*pos..*pos + 4]) };
-    let val = u16::from_str_radix(hex, 16).map_err(|_| "Invalid hex in \\u escape".to_string())?;
+    // Hand-rolled hex nibble decode — faster than `from_str_radix` for 4 chars.
+    let mut val: u16 = 0;
+    for i in 0..4 {
+        let c = b[*pos + i];
+        let nibble = match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => return Err("Invalid hex in \\u escape".to_string()),
+        };
+        val = (val << 4) | nibble as u16;
+    }
     *pos += 4;
     Ok(val)
 }
@@ -2096,8 +2172,8 @@ fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
         *pos += 1;
         return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
     }
-    // 16 covers common API lists better than 8; still cheap for empty-ish arrays.
-    let mut items = Vec::with_capacity(16);
+    // 32 covers typical API page sizes better than 16 with one fewer realloc.
+    let mut items = Vec::with_capacity(32);
     loop {
         items.push(parse_value(b, pos)?);
         match peek(b, pos)? {
@@ -2116,11 +2192,11 @@ fn parse_object(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     if peek(b, pos)? == b'}' {
         *pos += 1;
         return Ok(Value::Hash(Rc::new(RefCell::new(HashPairs::with_hasher(
-            AHasher::default(),
+            json_hasher(),
         )))));
     }
     // Pre-allocate for typical API objects (id + a handful of fields).
-    let mut pairs = HashPairs::with_capacity_and_hasher(8, AHasher::default());
+    let mut pairs = HashPairs::with_capacity_and_hasher(8, json_hasher());
     loop {
         if peek(b, pos)? != b'"' {
             return Err(format!("Expected string key at position {}", *pos));
@@ -2846,6 +2922,26 @@ mod value_misc_tests {
         assert!(parse_json("not json").is_err());
         assert!(parse_json(r#"{"unclosed""#).is_err());
         assert!(parse_json(r#"[1, 2,"#).is_err());
+        // Leading zeros are invalid JSON integers.
+        assert!(parse_json("01").is_err());
+        assert!(parse_json("-01").is_err());
+    }
+
+    #[test]
+    fn parse_json_integers_including_boundaries() {
+        assert_eq!(parse_json("0").unwrap(), Value::Int(0));
+        assert_eq!(parse_json("-0").unwrap(), Value::Int(0));
+        assert_eq!(parse_json("42").unwrap(), Value::Int(42));
+        assert_eq!(parse_json("-42").unwrap(), Value::Int(-42));
+        assert_eq!(
+            parse_json("9223372036854775807").unwrap(),
+            Value::Int(i64::MAX)
+        );
+        // One past i64::MAX becomes a float (hand-rolled overflow path).
+        match parse_json("9223372036854775808").unwrap() {
+            Value::Float(f) => assert!(f > 9.0e18),
+            other => panic!("expected Float, got {}", other.type_name()),
+        }
     }
 
     #[test]

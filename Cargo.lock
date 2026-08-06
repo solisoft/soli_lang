@@ -5649,6 +5649,7 @@ dependencies = [
  "mail-builder",
  "mail-parser",
  "md-5 0.10.6",
+ "memchr",
  "mimalloc",
  "multer",
  "nanoid",
