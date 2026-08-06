@@ -200,7 +200,8 @@ impl HashKey {
         match self {
             HashKey::Int(n) => itoa::Buffer::new().format(*n).len(),
             HashKey::Decimal(d) => d.to_string().len(),
-            HashKey::String(s) => s.len() + 2,
+            // Matches `write_key_to_string` (no surrounding quotes on string keys).
+            HashKey::String(s) => s.len(),
             HashKey::Bool(b) => {
                 if *b {
                     4
@@ -2499,6 +2500,7 @@ mod decimal_tests {
 
     #[test]
     fn test_decimal_in_hash_json() {
+        // Numeric-looking strings stay strings (no silent Decimal promote).
         let mut map = serde_json::Map::new();
         map.insert(
             "price".to_string(),
@@ -2522,8 +2524,8 @@ mod decimal_tests {
 
                 if let Some(price_value) = hash.get(&price_key) {
                     match price_value {
-                        Value::Decimal(dv) => assert_eq!(dv.to_string(), "19.99"),
-                        _ => panic!("Expected Decimal value for price"),
+                        Value::String(s) => assert_eq!(&**s, "19.99"),
+                        other => panic!("Expected String price, got {}", other.type_name()),
                     }
                 } else {
                     panic!("Price key not found in hash");

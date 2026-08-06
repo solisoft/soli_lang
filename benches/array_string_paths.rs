@@ -100,5 +100,67 @@ fn bench_string_identity(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_join, bench_string_identity);
+fn sample_hash_pairs(n: usize) -> Vec<(solilang::interpreter::value::HashKey, Value)> {
+    use solilang::interpreter::value::HashKey;
+    (0..n)
+        .map(|i| {
+            (
+                HashKey::String(format!("key-{i}").into()),
+                Value::String(format!("value-{i}").into()),
+            )
+        })
+        .collect()
+}
+
+fn legacy_hash_to_string(entries: &[(solilang::interpreter::value::HashKey, Value)]) -> String {
+    let parts: Vec<String> = entries
+        .iter()
+        .map(|(k, v)| format!("{} => {}", k.to_value(), v))
+        .collect();
+    format!("{{{}}}", parts.join(", "))
+}
+
+fn bench_hash(c: &mut Criterion) {
+    use solilang::interpreter::executor::calls::array_ops::{
+        find_in_entries, hash_pairs_to_string,
+    };
+    use solilang::interpreter::value::HashKey;
+
+    let entries = sample_hash_pairs(200);
+    let needle = HashKey::String("key-150".into());
+    let missing = HashKey::String("missing-key".into());
+
+    let mut group = c.benchmark_group("hash_methods");
+    group.sample_size(80);
+
+    group.bench_function("to_string_200", |b| {
+        b.iter(|| {
+            hash_pairs_to_string(
+                black_box(&entries).iter().map(|(k, v)| (k, v)),
+                entries.len(),
+            )
+        })
+    });
+    group.bench_function("to_string_legacy_format_200", |b| {
+        b.iter(|| legacy_hash_to_string(black_box(&entries)))
+    });
+
+    group.bench_function("find_in_entries_hit", |b| {
+        b.iter(|| find_in_entries(black_box(&entries), black_box(&needle)))
+    });
+    group.bench_function("find_in_entries_miss", |b| {
+        b.iter(|| find_in_entries(black_box(&entries), black_box(&missing)))
+    });
+    group.bench_function("legacy_rebuild_map_get", |b| {
+        b.iter(|| {
+            let map: solilang::interpreter::value::HashPairs =
+                black_box(&entries).iter().cloned().collect();
+            map.get(black_box(&needle)).cloned()
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_join, bench_string_identity, bench_hash);
 criterion_main!(benches);
