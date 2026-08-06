@@ -15,8 +15,8 @@ pub fn register_json_class(env: &mut Environment) {
     json_static_methods.insert(
         "parse".to_string(),
         Rc::new(NativeFunction::new("JSON.parse", Some(1), |args| {
-            let json_str = match args[0].clone() {
-                Value::String(s) => s,
+            let json_str = match &args[0] {
+                Value::String(s) => s.as_str(),
                 other => {
                     return Err(format!(
                         "JSON.parse() expects string, got {}",
@@ -24,7 +24,7 @@ pub fn register_json_class(env: &mut Environment) {
                     ))
                 }
             };
-            parse_json(&json_str)
+            parse_json(json_str)
         })),
     );
 
@@ -43,8 +43,8 @@ pub fn register_json_class(env: &mut Environment) {
     json_static_methods.insert(
         "parse_jsonp".to_string(),
         Rc::new(NativeFunction::new("JSON.parse_jsonp", Some(1), |args| {
-            let jsonp_str = match args[0].clone() {
-                Value::String(s) => s,
+            let jsonp_str = match &args[0] {
+                Value::String(s) => s.as_str(),
                 other => {
                     return Err(format!(
                         "JSON.parse_jsonp() expects string, got {}",
@@ -52,7 +52,7 @@ pub fn register_json_class(env: &mut Environment) {
                     ))
                 }
             };
-            let inner = crate::interpreter::jsonp::strip_jsonp_padding(&jsonp_str)?;
+            let inner = crate::interpreter::jsonp::strip_jsonp_padding(jsonp_str)?;
             parse_json(inner)
         })),
     );
@@ -87,8 +87,8 @@ pub fn register_json_class(env: &mut Environment) {
     env.define(
         "json_parse".to_string(),
         Value::NativeFunction(NativeFunction::new("json_parse", Some(1), |args| {
-            let json_str = match args[0].clone() {
-                Value::String(s) => s,
+            let json_str = match &args[0] {
+                Value::String(s) => s.as_str(),
                 other => {
                     return Err(format!(
                         "json_parse() expects string, got {}",
@@ -96,7 +96,7 @@ pub fn register_json_class(env: &mut Environment) {
                     ))
                 }
             };
-            parse_json(&json_str)
+            parse_json(json_str)
         })),
     );
 }

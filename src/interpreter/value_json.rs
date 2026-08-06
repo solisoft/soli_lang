@@ -2,11 +2,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use ahash::RandomState as AHasher;
-use rust_decimal::Decimal;
 
-use crate::interpreter::value::{DecimalValue, HashKey, HashPairs, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 /// Convert a serde_json::Value to a Soli Value (consuming — moves strings instead of cloning).
+///
+/// Strings stay strings. Numeric-looking text is **not** promoted to `Decimal`
+/// (that used to run `parse::<Decimal>()` on every field and disagreed with
+/// the hand-rolled `parse_json` path used by `JSON.parse`). Use an explicit
+/// Decimal constructor or a model field type when money values are needed.
 pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
     match json {
         serde_json::Value::Null => Ok(Value::Null),
@@ -20,14 +24,7 @@ pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
                 Err("Invalid JSON number".to_string())
             }
         }
-        serde_json::Value::String(s) => {
-            if let Ok(d) = s.parse::<Decimal>() {
-                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                Ok(Value::Decimal(DecimalValue(d, precision)))
-            } else {
-                Ok(Value::String(s.into()))
-            }
-        }
+        serde_json::Value::String(s) => Ok(Value::String(s.into())),
         serde_json::Value::Array(arr) => {
             let mut items = Vec::with_capacity(arr.len());
             for v in arr {
@@ -59,14 +56,7 @@ pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
                 Err("Invalid JSON number".to_string())
             }
         }
-        serde_json::Value::String(s) => {
-            if let Ok(d) = s.parse::<Decimal>() {
-                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                Ok(Value::Decimal(DecimalValue(d, precision)))
-            } else {
-                Ok(Value::String(s.clone().into()))
-            }
-        }
+        serde_json::Value::String(s) => Ok(Value::String(s.clone().into())),
         serde_json::Value::Array(arr) => {
             let mut items = Vec::with_capacity(arr.len());
             for v in arr {
@@ -96,7 +86,8 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
         )),
         Value::Decimal(d) => Ok(serde_json::Value::String(d.to_string())),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone().to_string())),
+        // EcoString → owned String once (no clone-then-to_string).
+        Value::String(s) => Ok(serde_json::Value::String(s.to_string())),
         Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Null => Ok(serde_json::Value::Null),
         Value::Array(arr) => {
@@ -112,7 +103,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             let mut map = serde_json::Map::with_capacity(borrow.len());
             for (k, v) in borrow.iter() {
                 if let HashKey::String(key) = k {
-                    map.insert(key.clone().to_string(), value_to_json(v)?);
+                    map.insert(key.to_string(), value_to_json(v)?);
                 }
             }
             Ok(serde_json::Value::Object(map))

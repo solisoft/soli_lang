@@ -11,7 +11,7 @@
 use std::cell::RefCell;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{empty_hash, json_to_value, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{empty_hash, HashKey, NativeFunction, Value};
 
 thread_local! {
     static LAST_ASSIGNS_JSON: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -84,10 +84,7 @@ fn was_rendered() -> bool {
 /// nothing was captured or the JSON is unparseable.
 fn parsed_assigns() -> Value {
     LAST_ASSIGNS_JSON.with(|cell| match &*cell.borrow() {
-        Some(json) => match serde_json::from_str::<serde_json::Value>(json) {
-            Ok(parsed) => json_to_value(parsed).unwrap_or_else(|_| empty_hash()),
-            Err(_) => empty_hash(),
-        },
+        Some(json) => crate::interpreter::value::parse_json(json).unwrap_or_else(|_| empty_hash()),
         None => empty_hash(),
     })
 }

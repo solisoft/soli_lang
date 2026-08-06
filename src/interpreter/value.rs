@@ -1607,26 +1607,17 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
     match kind {
         HttpFutureKind::String => Ok(Value::String(raw_data.to_string().into())),
         HttpFutureKind::Json => {
-            // Parse JSON string into Value
-            match serde_json::from_str::<serde_json::Value>(raw_data) {
-                Ok(json) => json_to_value(json),
-                Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-            }
+            // One-pass parse into Value — no intermediate serde_json tree.
+            parse_json(raw_data).map_err(|e| format!("Failed to parse JSON: {}", e))
         }
         HttpFutureKind::Jsonp => {
             // Strip the callback padding, then parse the inner JSON.
             let inner = crate::interpreter::jsonp::strip_jsonp_padding(raw_data)?;
-            match serde_json::from_str::<serde_json::Value>(inner) {
-                Ok(json) => json_to_value(json),
-                Err(e) => Err(format!("Failed to parse JSONP: {}", e)),
-            }
+            parse_json(inner).map_err(|e| format!("Failed to parse JSONP: {}", e))
         }
         HttpFutureKind::FullResponse => {
             // Parse the JSON-encoded full response
-            match serde_json::from_str::<serde_json::Value>(raw_data) {
-                Ok(json) => json_to_value(json),
-                Err(e) => Err(format!("Failed to parse response: {}", e)),
-            }
+            parse_json(raw_data).map_err(|e| format!("Failed to parse response: {}", e))
         }
         HttpFutureKind::SystemResult => {
             // Parse JSON: {"stdout": "...", "stderr": "...", "exit_code": N}
@@ -1808,6 +1799,13 @@ impl serde::Serialize for Value {
                     map.serialize_entry(k, v)?;
                 }
                 map.end()
+            }
+            // Resolve a `grouped {}` deferred before writing so JSON.stringify
+            // of response assigns that still hold deferred reads does not fail.
+            Value::Deferred(cell) => {
+                let resolved = crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(serde::ser::Error::custom)?;
+                resolved.serialize(serializer)
             }
             _ => Err(serde::ser::Error::custom(format!(
                 "Cannot convert {} to JSON",
@@ -2094,7 +2092,8 @@ fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
         *pos += 1;
         return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
     }
-    let mut items = Vec::with_capacity(8);
+    // 16 covers common API lists better than 8; still cheap for empty-ish arrays.
+    let mut items = Vec::with_capacity(16);
     loop {
         items.push(parse_value(b, pos)?);
         match peek(b, pos)? {
@@ -2116,8 +2115,8 @@ fn parse_object(b: &[u8], pos: &mut usize) -> Result<Value, String> {
             AHasher::default(),
         )))));
     }
-    // Pre-allocate for typical JSON objects (6 fields)
-    let mut pairs = HashPairs::with_capacity_and_hasher(6, AHasher::default());
+    // Pre-allocate for typical API objects (id + a handful of fields).
+    let mut pairs = HashPairs::with_capacity_and_hasher(8, AHasher::default());
     loop {
         if peek(b, pos)? != b'"' {
             return Err(format!("Expected string key at position {}", *pos));
@@ -2295,52 +2294,17 @@ mod decimal_tests {
     }
 
     #[test]
-    fn test_json_to_value_decimal_string() {
-        let json = serde_json::Value::String("19.99".to_string());
-        let result = json_to_value(json);
-
-        assert!(result.is_ok());
-        let value = result.unwrap();
-
-        match value {
-            Value::Decimal(dv) => {
-                assert_eq!(dv.to_string(), "19.99");
+    fn test_json_to_value_numeric_looking_string_stays_string() {
+        // Must agree with `parse_json` / `JSON.parse`: no silent Decimal promote.
+        for s in ["19.99", "0.0675", "100"] {
+            let json = serde_json::Value::String(s.to_string());
+            let value = json_to_value(json).unwrap();
+            match value {
+                Value::String(got) => assert_eq!(&*got, s),
+                other => panic!("expected String for {:?}, got {}", s, other.type_name()),
             }
-            _ => panic!("Expected Decimal value, got {:?}", value.type_name()),
-        }
-    }
-
-    #[test]
-    fn test_json_to_value_decimal_string_precision() {
-        let json = serde_json::Value::String("0.0675".to_string());
-        let result = json_to_value(json);
-
-        assert!(result.is_ok());
-        let value = result.unwrap();
-
-        match value {
-            Value::Decimal(dv) => {
-                assert_eq!(dv.precision(), 4);
-                assert_eq!(dv.to_string(), "0.0675");
-            }
-            _ => panic!("Expected Decimal value"),
-        }
-    }
-
-    #[test]
-    fn test_json_to_value_decimal_integer_string() {
-        let json = serde_json::Value::String("100".to_string());
-        let result = json_to_value(json);
-
-        assert!(result.is_ok());
-        let value = result.unwrap();
-
-        match value {
-            Value::Decimal(dv) => {
-                assert_eq!(dv.precision(), 0);
-                assert_eq!(dv.to_string(), "100");
-            }
-            _ => panic!("Expected Decimal value"),
+            let direct = parse_json(&format!("\"{}\"", s)).unwrap();
+            assert_eq!(direct, Value::String(s.into()));
         }
     }
 

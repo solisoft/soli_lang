@@ -39,7 +39,7 @@ use std::sync::OnceLock;
 use glob::Pattern;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{json_to_value, Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, NativeFunction, Value};
 
 /// Process-wide filesystem jail. `None` means jail is disabled (CLI /
 /// REPL / test runner). When `Some(path)`, every path that flows
@@ -400,9 +400,8 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
             let resolved = resolve(&path, "slurp_json")?;
             let content = read_to_string_policy(&resolved, follow)
                 .map_err(|e| format!("slurp_json failed to read {}: {}", path, e))?;
-            let json: serde_json::Value = serde_json::from_str(&content)
-                .map_err(|e| format!("slurp_json failed to parse {}: {}", path, e))?;
-            json_to_value(json)
+            crate::interpreter::value::parse_json(&content)
+                .map_err(|e| format!("slurp_json failed to parse {}: {}", path, e))
         })),
     );
 

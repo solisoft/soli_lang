@@ -2,9 +2,7 @@ use super::solikv::{
     get_solikv_config, solikv_cmd, solikv_configure, solikv_del, solikv_get, solikv_set,
 };
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{
-    json_to_value, stringify_to_string, Class, Instance, NativeFunction, Value,
-};
+use crate::interpreter::value::{stringify_to_string, Class, Instance, NativeFunction, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -55,11 +53,8 @@ pub(crate) fn cache_get_impl(key: &str) -> Result<Value, String> {
     let pkey = prefixed_key(key);
     match solikv_get(&pkey)? {
         None => Ok(Value::Null),
-        Some(s) => {
-            let parsed: serde_json::Value = serde_json::from_str(&s)
-                .map_err(|e| format!("Cache deserialization error: {}", e))?;
-            json_to_value(parsed)
-        }
+        Some(s) => crate::interpreter::value::parse_json(&s)
+            .map_err(|e| format!("Cache deserialization error: {}", e)),
     }
 }
 

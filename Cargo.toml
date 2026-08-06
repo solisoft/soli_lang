@@ -330,6 +330,10 @@ harness = false
 name = "collections_perf"
 harness = false
 
+[[bench]]
+name = "json_paths"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

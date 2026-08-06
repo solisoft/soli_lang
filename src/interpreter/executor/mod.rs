@@ -303,66 +303,12 @@ impl Interpreter {
         }
     }
 
-    /// Convert a Value to a JSON string representation.
-    #[allow(clippy::only_used_in_recursion)]
+    /// Convert a Value to a JSON string for debug / error-env dumps.
+    ///
+    /// Uses the sonic path for normal values; non-JSON-serialisable runtime
+    /// types become short placeholder strings so the dump never fails mid-way.
     fn value_to_json(&self, value: &Value) -> String {
         match value {
-            // RFC 3339, matching `to_iso()`. As an `Instance` carrying only a
-            // private `_ts` field this serialised as `{}`, so every DateTime in
-            // a JSON response was an empty object.
-            Value::DateTime(ts) => format!("\"{}\"", Value::datetime_to_rfc3339(*ts)),
-            Value::Null => "null".to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Int(n) => n.to_string(),
-            Value::Float(n) => n.to_string(),
-            Value::Decimal(d) => d.to_string(),
-            Value::String(s) => {
-                // Escape string for JSON
-                let escaped = s
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\n", "\\n")
-                    .replace("\r", "\\r")
-                    .replace("\t", "\\t");
-                format!("\"{}\"", escaped)
-            }
-            Value::Array(arr) => {
-                let items: Vec<String> =
-                    arr.borrow().iter().map(|v| self.value_to_json(v)).collect();
-                format!("[{}]", items.join(", "))
-            }
-            Value::Hash(hash) => {
-                let pairs: Vec<String> = hash
-                    .borrow()
-                    .iter()
-                    .map(|(k, v)| {
-                        let key = match k {
-                            HashKey::String(s) => s.clone(),
-                            other => format!("{}", other).into(),
-                        };
-                        let escaped_key = key.replace("\\", "\\\\").replace("\"", "\\\"");
-                        format!(r#""{}": {}"#, escaped_key, self.value_to_json(v))
-                    })
-                    .collect();
-                format!("{{{}}}", pairs.join(", "))
-            }
-            Value::Instance(inst) => {
-                let inst = inst.borrow();
-                let fields: Vec<String> = inst
-                    .fields
-                    .iter()
-                    .map(|(k, v)| format!(r#""{}": {}"#, k, self.value_to_json(v)))
-                    .collect();
-                if fields.is_empty() {
-                    format!(r#"{{"__class__": "{}"}}"#, inst.class.name)
-                } else {
-                    format!(
-                        r#"{{"__class__": "{}", {}}}"#,
-                        inst.class.name,
-                        fields.join(", ")
-                    )
-                }
-            }
             Value::Function(_) => "\"<function>\"".to_string(),
             Value::NativeFunction(_) => "\"<native function>\"".to_string(),
             Value::Class(c) => format!("\"<class {}>\"", c.name),
@@ -373,12 +319,11 @@ impl Interpreter {
             Value::QueryBuilder(_) => "\"<query builder>\"".to_string(),
             Value::Super(c) => format!("\"<super of {}>\"", c.name),
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
-            Value::Symbol(s) => format!("\"{}\"", s),
             Value::Image(_) => "\"<Image>\"".to_string(),
             Value::ImagePlan(_) => "\"<ImagePlan>\"".to_string(),
-            // Resolve a `grouped {}` deferred to its query result before
-            // serialising.
             Value::Deferred(_) => self.value_to_json(&value.force_deferred()),
+            other => crate::interpreter::value::stringify_to_string(other)
+                .unwrap_or_else(|_| format!("\"<{}>\"", other.type_name())),
         }
     }
 

@@ -3,10 +3,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use serde_json;
-
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{json_to_value, HashKey, HashPairs, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 pub fn register_response_helpers(env: &mut Environment) {
     env.define(
@@ -214,10 +212,9 @@ fn extract_body(response: &Value) -> Result<Value, String> {
 fn extract_json(response: &Value) -> Result<Value, String> {
     let body = extract_body(response)?;
     match body {
-        Value::String(s) => match serde_json::from_str(&s) {
-            Ok(json) => json_to_value(json),
-            Err(e) => Err(format!("Invalid JSON: {}", e)),
-        },
+        Value::String(s) => {
+            crate::interpreter::value::parse_json(&s).map_err(|e| format!("Invalid JSON: {}", e))
+        }
         _ => Err("Body is not a string".to_string()),
     }
 }

@@ -140,33 +140,8 @@ pub(crate) fn run_sdql_block(query: &str, binds: &[(String, Value)]) -> Value {
     }
 }
 
-/// Convert a Value to serde_json::Value for bind vars
+/// Convert a Value to serde_json::Value for bind vars.
 fn value_to_json(value: &Value) -> serde_json::Value {
-    match value {
-        Value::Null => serde_json::Value::Null,
-        Value::Bool(b) => serde_json::Value::Bool(*b),
-        Value::Int(n) => serde_json::json!(*n),
-        Value::Float(f) => serde_json::json!(*f),
-        Value::String(s) => serde_json::Value::String(s.clone().to_string()),
-        Value::Array(arr) => {
-            let items: Vec<serde_json::Value> = arr.borrow().iter().map(value_to_json).collect();
-            serde_json::Value::Array(items)
-        }
-        Value::Hash(hash) => {
-            let mut obj = serde_json::Map::new();
-            for (key, val) in hash.borrow().iter() {
-                let key_str = match key {
-                    crate::interpreter::value::HashKey::String(s) => s.clone(),
-                    crate::interpreter::value::HashKey::Symbol(s) => format!(":{}", s).into(),
-                    crate::interpreter::value::HashKey::Int(i) => i.to_string().into(),
-                    crate::interpreter::value::HashKey::Decimal(d) => d.0.to_string().into(),
-                    crate::interpreter::value::HashKey::Bool(b) => b.to_string().into(),
-                    crate::interpreter::value::HashKey::Null => "null".into(),
-                };
-                obj.insert(key_str.to_string(), value_to_json(val));
-            }
-            serde_json::Value::Object(obj)
-        }
-        _ => serde_json::Value::String(value.to_string()),
-    }
+    crate::interpreter::value::value_to_json(value)
+        .unwrap_or_else(|_| serde_json::Value::String(value.to_string()))
 }

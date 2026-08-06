@@ -475,37 +475,8 @@ fn value_to_string(value: Value) -> Result<String, String> {
 }
 
 fn value_to_json(value: &Value) -> String {
-    match value {
-        Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
-        Value::Int(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        Value::Hash(h) => {
-            let hash = h.borrow();
-            let pairs: Vec<String> = hash
-                .iter()
-                .map(|(k, v)| {
-                    let key = match k {
-                        HashKey::String(s) => s.clone(),
-                        HashKey::Symbol(s) => s.clone(),
-                        HashKey::Int(i) => i.to_string().into(),
-                        HashKey::Bool(b) => b.to_string().into(),
-                        HashKey::Decimal(d) => d.to_string().into(),
-                        HashKey::Null => "null".into(),
-                    };
-                    format!("\"{}\":{}", key, value_to_json(v))
-                })
-                .collect();
-            format!("{{{}}}", pairs.join(","))
-        }
-        Value::Array(arr) => {
-            let arr = arr.borrow();
-            let items: Vec<String> = arr.iter().map(value_to_json).collect();
-            format!("[{}]", items.join(","))
-        }
-        _ => format!("\"{}\"", value),
-    }
+    crate::interpreter::value::stringify_to_string(value)
+        .unwrap_or_else(|_| format!("\"{}\"", value))
 }
 
 #[allow(clippy::type_complexity)]
