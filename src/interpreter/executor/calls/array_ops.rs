@@ -137,6 +137,64 @@ fn resolve_deferred(items: &[Value]) -> Option<Vec<Value>> {
     }
 }
 
+/// Join `items` with `delim` into a single string.
+///
+/// Prefills capacity from [`Value::display_len`] and writes with
+/// [`Value::write_to_string`] — no intermediate `Vec<String>` and no per-element
+/// `format!`. Shared by the VM, interpreter, and Array class so they cannot
+/// diverge on either speed or formatting.
+pub fn join_values(items: &[Value], delim: &str) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let mut total_len = delim.len().saturating_mul(items.len().saturating_sub(1));
+    for value in items {
+        total_len = total_len.saturating_add(value.display_len());
+    }
+    let mut result = String::with_capacity(total_len);
+    for (i, value) in items.iter().enumerate() {
+        if i > 0 {
+            result.push_str(delim);
+        }
+        value.write_to_string(&mut result);
+    }
+    result
+}
+
+/// Render a hash as `{k => v, ...}` without intermediate `format!`/`join`.
+pub fn hash_pairs_to_string<'a, I>(entries: I, len_hint: usize) -> String
+where
+    I: IntoIterator<Item = (&'a crate::interpreter::value::HashKey, &'a Value)>,
+{
+    if len_hint == 0 {
+        return "{}".to_string();
+    }
+    // Rough pre-size: braces + " => " + ", " per entry.
+    let mut result = String::with_capacity(2 + len_hint.saturating_mul(16));
+    result.push('{');
+    for (i, (k, v)) in entries.into_iter().enumerate() {
+        if i > 0 {
+            result.push_str(", ");
+        }
+        k.write_key_to_string(&mut result);
+        result.push_str(" => ");
+        v.write_to_string(&mut result);
+    }
+    result.push('}');
+    result
+}
+
+/// Linear lookup in a flat entry slice — used by the interpreter fallback that
+/// receives `&[(HashKey, Value)]` instead of a live `HashPairs`. Avoids
+/// rebuilding an `IndexMap` just to do one get/has_key.
+#[inline]
+pub fn find_in_entries<'a>(
+    entries: &'a [(crate::interpreter::value::HashKey, Value)],
+    key: &crate::interpreter::value::HashKey,
+) -> Option<&'a Value> {
+    entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+}
+
 /// Flatten `items` up to `max_depth` levels deep (`None` = fully recursive).
 pub(crate) fn flatten_values(items: &[Value], max_depth: Option<usize>) -> Vec<Value> {
     fn recur(arr: &[Value], depth: usize, max: Option<usize>) -> Vec<Value> {

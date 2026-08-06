@@ -279,8 +279,16 @@ where
 }
 
 /// Convert a serde_json::Value reference to a Soli Value (infallible wrapper).
+/// Prefer [`json_to_value_owned`] when you hold an owned tree — it moves strings
+/// instead of cloning them.
 pub fn json_to_value(json: &serde_json::Value) -> Value {
     crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
+}
+
+/// Consuming conversion: moves string bytes into Soli rather than cloning.
+#[inline]
+pub fn json_to_value_owned(json: serde_json::Value) -> Value {
+    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
 }
 
 /// Normalize a document key: "default:users/UUID" → "UUID" (strip everything up to last '/').
@@ -326,9 +334,31 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
     let mut instance = Instance::new(target_class.clone());
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
-            instance.set(k.clone(), json_to_value(v));
+            // `as_str()` avoids cloning the key into an intermediate String
+            // before `Into<SoliStr>` (short keys stay inline in EcoString).
+            instance.set(k.as_str(), json_to_value(v));
         }
     }
+    apply_instance_post_load(&target_class, &mut instance);
+    Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+/// Like [`json_doc_to_instance`] but consumes the JSON tree so string fields
+/// and keys move into Soli without cloning. Prefer this when the document is
+/// owned (query result rows, batch transforms).
+pub fn json_doc_to_instance_owned(class: &Rc<Class>, json: serde_json::Value) -> Value {
+    let target_class = resolve_instance_class(class, &json);
+    let mut instance = Instance::new(target_class.clone());
+    if let serde_json::Value::Object(map) = json {
+        for (k, v) in map {
+            instance.set(k, json_to_value_owned(v));
+        }
+    }
+    apply_instance_post_load(&target_class, &mut instance);
+    Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+fn apply_instance_post_load(target_class: &Rc<Class>, instance: &mut Instance) {
     // Decrypt declared `encrypts` fields. Best-effort: a value that isn't valid
     // ciphertext (e.g. legacy plaintext written before `encrypts` was added) is
     // left untouched rather than erroring the whole read.
@@ -350,9 +380,8 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
     }
     // Dirty-tracking baseline: what this record looked like in the database.
     if target_class.is_model_subclass() {
-        super::dirty::seed_snapshot(&mut instance);
+        super::dirty::seed_snapshot(instance);
     }
-    Value::Instance(Rc::new(RefCell::new(instance)))
 }
 
 /// Resolve the correct class for a JSON document based on its `type`
@@ -396,8 +425,8 @@ pub fn exec_auto_collection_as_instances(
     match exec_with_auto_collection(sdbql, None, collection_name) {
         Ok(results) => {
             let values: Vec<Value> = results
-                .iter()
-                .map(|json| json_doc_to_instance(class, json))
+                .into_iter()
+                .map(|json| json_doc_to_instance_owned(class, json))
                 .collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
@@ -415,8 +444,8 @@ pub fn exec_auto_collection_as_instances_with_binds(
     match exec_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
         Ok(results) => {
             let values: Vec<Value> = results
-                .iter()
-                .map(|json| json_doc_to_instance(class, json))
+                .into_iter()
+                .map(|json| json_doc_to_instance_owned(class, json))
                 .collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
@@ -502,11 +531,16 @@ pub fn exec_async_query_with_binds(
             .json()
             .await
             .map_err(|e| format!("JSON error: {}", e))?;
-        Ok(json
-            .get("result")
-            .and_then(|r| r.as_array())
-            .cloned()
-            .unwrap_or_default())
+        // Move the `result` array out of the response object instead of
+        // cloning every row (each document would otherwise be deep-cloned
+        // before we convert it to Soli Values).
+        Ok(match json {
+            serde_json::Value::Object(mut map) => match map.remove("result") {
+                Some(serde_json::Value::Array(rows)) => rows,
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        })
     };
 
     let result = run_db_future(future);
@@ -539,8 +573,8 @@ pub fn exec_async_query_with_binds(
 pub fn exec_async_query(sdbql: String) -> Value {
     match exec_async_query_with_binds(sdbql, None) {
         Ok(results) => {
-            // Direct conversion without intermediate Array wrapper
-            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            // Consuming conversion: moves string bytes into Soli Values.
+            let values: Vec<Value> = results.into_iter().map(json_to_value_owned).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
         Err(e) => Value::String(format!("Error: {}", e).into()),
@@ -983,7 +1017,7 @@ pub fn exec_with_auto_collection(
 pub fn exec_auto_collection(sdbql: String, collection_name: &str) -> Value {
     match exec_with_auto_collection(sdbql, None, collection_name) {
         Ok(results) => {
-            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            let values: Vec<Value> = results.into_iter().map(json_to_value_owned).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
         Err(e) => Value::String(format!("Error: {}", e).into()),
@@ -998,7 +1032,7 @@ pub fn exec_auto_collection_with_binds(
 ) -> Value {
     match exec_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
         Ok(results) => {
-            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            let values: Vec<Value> = results.into_iter().map(json_to_value_owned).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
         Err(e) => Value::String(format!("Error: {}", e).into()),

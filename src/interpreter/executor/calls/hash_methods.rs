@@ -268,9 +268,9 @@ impl Interpreter {
             RuntimeError::type_error(format!("Cannot use {} as hash key", key.type_name()), span)
         })?;
         let default = arguments.get(1).cloned().unwrap_or(Value::Null);
-
-        let entries_map: HashPairs = entries.iter().cloned().collect();
-        Ok(entries_map.get(&hash_key).cloned().unwrap_or(default))
+        Ok(super::array_ops::find_in_entries(entries, &hash_key)
+            .cloned()
+            .unwrap_or(default))
     }
 
     fn hash_fetch(
@@ -287,8 +287,7 @@ impl Interpreter {
             RuntimeError::type_error(format!("Cannot use {} as hash key", key.type_name()), span)
         })?;
 
-        let entries_map: HashPairs = entries.iter().cloned().collect();
-        if let Some(v) = entries_map.get(&hash_key) {
+        if let Some(v) = super::array_ops::find_in_entries(entries, &hash_key) {
             Ok(v.clone())
         } else if let Some(default) = arguments.get(1) {
             Ok(default.clone())
@@ -608,14 +607,13 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let parts: Vec<String> = entries
-            .iter()
-            .map(|(k, v)| format!("{} => {}", k.to_value(), v))
-            .collect();
-        // Braces, not brackets. This fallback rendered a hash as `[a => 1]`;
-        // it never showed because `to_string` is answered by the borrowed fast
-        // path above, and only surfaced when `to_s` was routed here.
-        Ok(Value::String(format!("{{{}}}", parts.join(", ")).into()))
+        Ok(Value::String(
+            super::array_ops::hash_pairs_to_string(
+                entries.iter().map(|(k, v)| (k, v)),
+                entries.len(),
+            )
+            .into(),
+        ))
     }
 
     fn hash_keys(
@@ -658,8 +656,9 @@ impl Interpreter {
             Some(k) => k,
             None => return Ok(Value::Bool(false)),
         };
-        let entries_map: HashPairs = entries.iter().cloned().collect();
-        Ok(Value::Bool(entries_map.contains_key(&hash_key)))
+        Ok(Value::Bool(
+            super::array_ops::find_in_entries(entries, &hash_key).is_some(),
+        ))
     }
 
     fn hash_delete(
@@ -671,13 +670,18 @@ impl Interpreter {
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
+        // Mutating delete is handled on the live `Rc<RefCell<HashPairs>>` path
+        // in `call_hash_method_on_rc`. This fallback only runs on a snapshot and
+        // returns the removed value without mutating the original (same as
+        // before, but without rebuilding an IndexMap for a linear scan).
         let key = &arguments[0];
         let hash_key = match key.to_hash_key() {
             Some(k) => k,
             None => return Ok(Value::Null),
         };
-        let mut entries_map: HashPairs = entries.iter().cloned().collect();
-        Ok(entries_map.shift_remove(&hash_key).unwrap_or(Value::Null))
+        Ok(super::array_ops::find_in_entries(entries, &hash_key)
+            .cloned()
+            .unwrap_or(Value::Null))
     }
 
     fn hash_merge(

@@ -535,18 +535,9 @@ impl Interpreter {
                         )))
                     }
                 };
-                let mut total_len = delim.len().saturating_mul(items.len().saturating_sub(1));
-                for value in items {
-                    total_len += value.display_len();
-                }
-                let mut result = String::with_capacity(total_len);
-                for (i, value) in items.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(delim);
-                    }
-                    value.write_to_string(&mut result);
-                }
-                Some(Ok(Value::String(result.into())))
+                Some(Ok(Value::String(
+                    super::array_ops::join_values(items, delim).into(),
+                )))
             }
             _ => None,
         }
@@ -585,7 +576,9 @@ impl Interpreter {
                     )))
                 }
             }
-            "length" | "len" => {
+            // `size` matches the VM and the slow path — without it here,
+            // `h.size()` paid a full entry-snapshot clone then fell through.
+            "length" | "len" | "size" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
@@ -595,7 +588,10 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                let keys: Vec<Value> = entries.keys().map(HashKey::to_value).collect();
+                let mut keys = Vec::with_capacity(entries.len());
+                for k in entries.keys() {
+                    keys.push(k.to_value());
+                }
                 Some(Ok(Value::Array(Rc::new(RefCell::new(keys)))))
             }
             "values" => {
@@ -623,8 +619,10 @@ impl Interpreter {
                 }
                 match &arguments[0] {
                     Value::Hash(other) => {
+                        let other = other.borrow();
                         let mut merged = entries.clone();
-                        for (k, v) in other.borrow().iter() {
+                        merged.reserve(other.len());
+                        for (k, v) in other.iter() {
                             merged.insert(k.clone(), v.clone());
                         }
                         Some(Ok(Value::Hash(Rc::new(RefCell::new(merged)))))
@@ -639,15 +637,10 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                let mut compacted = HashPairs::with_capacity_and_hasher(
-                    entries.len(),
-                    ahash::RandomState::default(),
-                );
-                for (k, v) in entries.iter() {
-                    if !matches!(v, Value::Null) {
-                        compacted.insert(k.clone(), v.clone());
-                    }
-                }
+                // Clone + retain keeps the hash table; re-inserting non-nulls
+                // rehashes every survivor (same approach as the VM).
+                let mut compacted = entries.clone();
+                compacted.retain(|_, v| !matches!(v, Value::Null));
                 Some(Ok(Value::Hash(Rc::new(RefCell::new(compacted)))))
             }
             "invert" => {
@@ -688,26 +681,9 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                let mut total_len = 2;
-                for (i, (k, v)) in entries.iter().enumerate() {
-                    total_len += k.display_len();
-                    total_len += 4 + v.display_len();
-                    if i > 0 {
-                        total_len += 2;
-                    }
-                }
-                let mut result = String::with_capacity(total_len);
-                result.push('{');
-                for (i, (k, v)) in entries.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    k.write_key_to_string(&mut result);
-                    result.push_str(" => ");
-                    v.write_to_string(&mut result);
-                }
-                result.push('}');
-                Some(Ok(Value::String(result.into())))
+                Some(Ok(Value::String(
+                    super::array_ops::hash_pairs_to_string(entries.iter(), entries.len()).into(),
+                )))
             }
             "flatten" => {
                 if !arguments.is_empty() {
@@ -1206,7 +1182,7 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(items.len());
         for item in items {
             call_env_rc
                 .borrow_mut()
@@ -2379,7 +2355,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let delim = match &arguments[0] {
-            Value::String(d) => d.clone(),
+            Value::String(d) => d.as_ref(),
             _ => {
                 return Err(RuntimeError::type_error(
                     "join expects a string delimiter",
@@ -2387,8 +2363,9 @@ impl Interpreter {
                 ))
             }
         };
-        let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-        Ok(Value::String(parts.join(&delim).into()))
+        Ok(Value::String(
+            super::array_ops::join_values(items, delim).into(),
+        ))
     }
 
     fn array_delete(

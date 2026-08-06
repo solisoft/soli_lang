@@ -32,7 +32,7 @@ use super::uploads_prelude;
 use super::FileTracker;
 use crate::interpreter::builtins::server::{set_worker_routes, WorkerRoute};
 use crate::interpreter::builtins::{mailer, named_routes, template};
-use crate::interpreter::value::{json_to_value, Value};
+use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
 use crate::span::Span;
 
@@ -254,10 +254,7 @@ fn worker_recv_loop(
     runner: Value,
 ) {
     while let Ok(job) = rx.recv() {
-        let args = match serde_json::from_str::<serde_json::Value>(&job.args_json)
-            .map_err(|e| e.to_string())
-            .and_then(json_to_value)
-        {
+        let args = match crate::interpreter::value::parse_json(&job.args_json) {
             Ok(value) => value,
             Err(e) => {
                 eprintln!(

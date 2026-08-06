@@ -150,8 +150,10 @@ impl Vm {
                 }
                 match &args[0] {
                     Value::Hash(other) => {
+                        let other = other.borrow();
                         let mut new_hash = hash.borrow().clone();
-                        for (k, v) in other.borrow().iter() {
+                        new_hash.reserve(other.len());
+                        for (k, v) in other.iter() {
                             new_hash.insert(k.clone(), v.clone());
                         }
                         Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
@@ -190,21 +192,13 @@ impl Vm {
             }
             "to_string" | "to_s" => {
                 let h = hash.borrow();
-                if h.is_empty() {
-                    return Ok(Value::String("{}".into()));
-                }
-                let mut result = String::with_capacity(2 + h.len() * 12);
-                result.push('{');
-                for (i, (k, v)) in h.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    k.write_key_to_string(&mut result);
-                    result.push_str(" => ");
-                    v.write_to_string(&mut result);
-                }
-                result.push('}');
-                Ok(Value::String(result.into()))
+                Ok(Value::String(
+                    crate::interpreter::executor::calls::array_ops::hash_pairs_to_string(
+                        h.iter(),
+                        h.len(),
+                    )
+                    .into(),
+                ))
             }
             // Universal methods
             "class" => Ok(Value::String("hash".into())),

@@ -1012,10 +1012,6 @@ async fn send_logged(
     }
 }
 
-fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
-    crate::interpreter::value::json_to_value(json)
-}
-
 pub fn register_http_class(env: &mut Environment) {
     let mut http_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
@@ -1519,10 +1515,8 @@ pub fn register_http_class(env: &mut Environment) {
                         }
 
                         let text = read_capped_text_async(resp).await?;
-                        match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(json),
-                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-                        }
+                        crate::interpreter::value::parse_json(&text)
+                            .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -1592,10 +1586,8 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let text = read_capped_text_async(resp).await?;
                         let inner = crate::interpreter::jsonp::strip_jsonp_padding(&text)?;
-                        match serde_json::from_str::<serde_json::Value>(inner) {
-                            Ok(json) => json_to_value(json),
-                            Err(e) => Err(format!("Failed to parse JSONP: {}", e)),
-                        }
+                        crate::interpreter::value::parse_json(inner)
+                            .map_err(|e| format!("Failed to parse JSONP: {}", e))
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -1666,10 +1658,8 @@ pub fn register_http_class(env: &mut Environment) {
                         }
 
                         let text = read_capped_text_async(resp).await?;
-                        match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(json),
-                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-                        }
+                        crate::interpreter::value::parse_json(&text)
+                            .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -1746,10 +1736,8 @@ pub fn register_http_class(env: &mut Environment) {
                         }
 
                         let text = read_capped_text_async(resp).await?;
-                        match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(json),
-                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-                        }
+                        crate::interpreter::value::parse_json(&text)
+                            .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -1826,10 +1814,8 @@ pub fn register_http_class(env: &mut Environment) {
                         }
 
                         let text = read_capped_text_async(resp).await?;
-                        match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(json),
-                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-                        }
+                        crate::interpreter::value::parse_json(&text)
+                            .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -2059,10 +2045,8 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             };
 
-            match serde_json::from_str::<serde_json::Value>(&json_str) {
-                Ok(json) => json_to_value(json),
-                Err(e) => Err(format!("Failed to parse JSON: {}", e)),
-            }
+            crate::interpreter::value::parse_json(&json_str)
+                .map_err(|e| format!("Failed to parse JSON: {}", e))
         })),
     );
 
@@ -2593,9 +2577,8 @@ fn run_parallel_gets_json(
         .into_iter()
         .map(|body_result| {
             let body = body_result?;
-            let json: serde_json::Value =
-                serde_json::from_str(&body).map_err(|e| format!("Failed to parse JSON: {}", e))?;
-            json_to_value(json)
+            crate::interpreter::value::parse_json(&body)
+                .map_err(|e| format!("Failed to parse JSON: {}", e))
         })
         .collect()
 }

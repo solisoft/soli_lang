@@ -90,7 +90,9 @@ impl Vm {
                 expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
                 let len = arr.borrow().len();
-                let mut result = Vec::new();
+                // Cap at `len` so a selective filter never reallocs; a sparse
+                // keep still only pays for the unused capacity once at free.
+                let mut result = Vec::with_capacity(len);
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
                     for i in 0..len {
@@ -543,21 +545,9 @@ impl Vm {
                     }
                 };
                 let items = arr.borrow();
-                if items.is_empty() {
-                    return Ok(Value::String(String::new().into()));
-                }
-                let mut total_len = sep.len() * (items.len() - 1);
-                for v in items.iter() {
-                    total_len += v.display_len();
-                }
-                let mut result = String::with_capacity(total_len);
-                for (i, v) in items.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(sep);
-                    }
-                    v.write_to_string(&mut result);
-                }
-                Ok(Value::String(result.into()))
+                Ok(Value::String(
+                    crate::interpreter::executor::calls::array_ops::join_values(&items, sep).into(),
+                ))
             }
             "get" => {
                 if args.len() != 1 {

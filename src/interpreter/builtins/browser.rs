@@ -1051,39 +1051,10 @@ pub fn register_browser_helpers(env: &mut Environment) {
 
 /// Convert a value that came back from the page into a Soli value.
 ///
-/// Deliberately *not* the shared `json_to_value`: that one promotes any
-/// numeric-looking string to a `Decimal`, which is a reasonable guess when
-/// parsing an API response of unknown provenance and plain wrong here. The
-/// page already told us the type — `textContent` is a string even when it
-/// reads "0" — and silently retyping it means `assert_eq(evaluate(...), "0")`
-/// fails for reasons a spec author cannot see.
+/// Shared `json_to_value` keeps strings as strings (no Decimal auto-promote),
+/// which is what browser CDP results need — `textContent` "0" stays a string.
 fn json_to_soli(json: serde_json::Value) -> Value {
-    use serde_json::Value as Json;
-    match json {
-        Json::Null => Value::Null,
-        Json::Bool(b) => Value::Bool(b),
-        Json::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else {
-                Value::Float(n.as_f64().unwrap_or(0.0))
-            }
-        }
-        Json::String(s) => Value::String(s.into()),
-        Json::Array(items) => Value::Array(std::rc::Rc::new(RefCell::new(
-            items.into_iter().map(json_to_soli).collect(),
-        ))),
-        Json::Object(fields) => {
-            let mut hash = crate::interpreter::value::HashPairs::default();
-            for (key, value) in fields {
-                hash.insert(
-                    crate::interpreter::value::HashKey::String(key.into()),
-                    json_to_soli(value),
-                );
-            }
-            Value::Hash(std::rc::Rc::new(RefCell::new(hash)))
-        }
-    }
+    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
 }
 
 /// Split `"Alt+d"` into its key and the protocol's modifier bitmask.

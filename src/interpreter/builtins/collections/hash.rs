@@ -37,12 +37,14 @@ pub fn register_hash_class(env: &mut Environment) {
             let value_opt = this.borrow().fields.get("__value").cloned();
             match value_opt {
                 Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    let parts: Vec<String> = hash
-                        .iter()
-                        .map(|(k, v)| format!("{} => {}", k, v))
-                        .collect();
-                    Ok(Value::String(format!("{{{}}}", parts.join(", ")).into()))
+                    let h = hash.borrow();
+                    Ok(Value::String(
+                        crate::interpreter::executor::calls::array_ops::hash_pairs_to_string(
+                            h.iter(),
+                            h.len(),
+                        )
+                        .into(),
+                    ))
                 }
                 _ => Err("Hash missing internal value".to_string()),
             }

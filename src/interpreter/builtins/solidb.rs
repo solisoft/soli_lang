@@ -23,8 +23,10 @@ where
     F: FnOnce() -> Result<String, String>,
 {
     let json_str = f()?;
-    match serde_json::from_str::<serde_json::Value>(&json_str) {
-        Ok(json) => Ok(crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)),
+    // One-pass into Soli Value when the body is JSON; otherwise keep the raw
+    // text (some endpoints return plain strings / non-JSON diagnostics).
+    match crate::interpreter::value::parse_json(&json_str) {
+        Ok(v) => Ok(v),
         Err(_) => Ok(Value::String(json_str.into())),
     }
 }

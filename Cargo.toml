@@ -82,6 +82,8 @@ serde_json = "1.0"
 sonic-rs = "0.3"
 itoa = "1"
 ryu = "1"
+# SIMD/memchr string scanning for the hand-rolled JSON parser.
+memchr = "2"
 
 # High-performance async HTTP server. `server-auto` on hyper-util pulls in
 # http2 so the same accept loop can auto-detect h1 vs h2c from the first
@@ -142,10 +144,12 @@ pkcs8 = "0.10"
 base64 = "0.22"
 rmp-serde = "1"
 
-# Optional: native SoliDB driver transport (feature "solidb-driver"). Path dep on
-# the sibling SoliDB checkout — see the feature comment above for why it is not
-# on by default.
-solidb-client = { path = "../db/clients/rust-client", optional = true }
+# Optional: native SoliDB driver transport (feature "solidb-driver").
+# Git dep so CI / `cargo install` work without a sibling SolidB checkout.
+# Local override when developing both repos side by side:
+#   [patch."https://github.com/solisoft/solidb"]
+#   solidb-client = { path = "../db/clients/rust-client" }
+solidb-client = { git = "https://github.com/solisoft/solidb", package = "solidb-client", optional = true }
 encoding_rs = "0.8"
 
 # Validation
@@ -328,6 +332,14 @@ harness = false
 
 [[bench]]
 name = "collections_perf"
+harness = false
+
+[[bench]]
+name = "json_paths"
+harness = false
+
+[[bench]]
+name = "array_string_paths"
 harness = false
 
 [profile.release]
