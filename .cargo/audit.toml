@@ -70,4 +70,12 @@ ignore = [
     # path (and risk) as rustybuzz above; unblocked when resvg/lopdf move to a
     # maintained ttf-parser.
     "RUSTSEC-2026-0192",
+
+    # rkyv 0.7.46 — insufficient archive validation (OOB read with Rc/Arc).
+    # Lockfile-only: rust_decimal 1.42.1 lists optional `rkyv = "0.7.46"` and
+    # cargo-audit flags it even though we never enable that feature (our
+    # rust_decimal features are only `std` + `serde`). There is no fix on the
+    # 0.7 line (advisory wants >=0.8.17); unblocked when rust_decimal ships an
+    # optional rkyv 0.8 dep (then `cargo update -p rust_decimal && cargo audit`).
+    "RUSTSEC-2026-0235",
 ]

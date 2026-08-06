@@ -2459,6 +2459,8 @@ mod decimal_tests {
 
     #[test]
     fn test_decimal_precision_variations() {
+        // Precision is tracked by the explicit Decimal constructor, not by
+        // json_to_value (which no longer silently promotes numeric-looking strings).
         let test_cases = vec![
             ("0.1", 1),
             ("0.01", 2),
@@ -2469,86 +2471,50 @@ mod decimal_tests {
         ];
 
         for (input, expected_precision) in test_cases {
-            let json = serde_json::Value::String(input.to_string());
-            let result = json_to_value(json);
-
-            assert!(result.is_ok(), "Failed for input: {}", input);
-            let value = result.unwrap();
-
-            match value {
-                Value::Decimal(dv) => {
-                    assert_eq!(
-                        dv.precision(),
-                        expected_precision,
-                        "Precision mismatch for input: {}",
-                        input
-                    );
-                }
-                _ => panic!("Expected Decimal value for input: {}", input),
-            }
+            let dv = DecimalValue::from_str(input, expected_precision)
+                .unwrap_or_else(|e| panic!("Failed for input {}: {}", input, e));
+            assert_eq!(
+                dv.precision(),
+                expected_precision,
+                "Precision mismatch for input: {}",
+                input
+            );
+            assert_eq!(dv.to_string(), input);
         }
     }
 
     #[test]
     fn test_decimal_zero_values() {
-        let zero_values = vec!["0", "0.0", "0.00", "0.000"];
+        let zero_values = vec![("0", 0), ("0.0", 1), ("0.00", 2), ("0.000", 3)];
 
-        for input in zero_values {
-            let json = serde_json::Value::String(input.to_string());
-            let result = json_to_value(json);
-
-            assert!(result.is_ok(), "Failed for zero input: {}", input);
-            let value = result.unwrap();
-
-            match value {
-                Value::Decimal(dv) => {
-                    let dv_str = dv.to_string();
-                    assert!(
-                        dv_str == "0" || dv_str == "0.0" || dv_str == "0.00" || dv_str == "0.000",
-                        "Unexpected zero format for input {}: got {}",
-                        input,
-                        dv_str
-                    );
-                }
-                _ => panic!("Expected Decimal value for zero input: {}", input),
-            }
+        for (input, precision) in zero_values {
+            let dv = DecimalValue::from_str(input, precision)
+                .unwrap_or_else(|e| panic!("Failed for zero input {}: {}", input, e));
+            let dv_str = dv.to_string();
+            assert!(
+                dv_str == "0" || dv_str == "0.0" || dv_str == "0.00" || dv_str == "0.000",
+                "Unexpected zero format for input {}: got {}",
+                input,
+                dv_str
+            );
         }
     }
 
     #[test]
     fn test_decimal_negative_values() {
-        let json = serde_json::Value::String("-19.99".to_string());
-        let result = json_to_value(json);
-
-        assert!(result.is_ok());
-        let value = result.unwrap();
-
-        match value {
-            Value::Decimal(dv) => {
-                assert_eq!(dv.to_string(), "-19.99");
-            }
-            _ => panic!("Expected Decimal value for negative input"),
-        }
+        let dv = DecimalValue::from_str("-19.99", 2).expect("parse -19.99");
+        assert_eq!(dv.to_string(), "-19.99");
     }
 
     #[test]
     fn test_decimal_large_values() {
-        let json = serde_json::Value::String("9999999999.99".to_string());
-        let result = json_to_value(json);
-
-        assert!(result.is_ok());
-        let value = result.unwrap();
-
-        match value {
-            Value::Decimal(dv) => {
-                assert_eq!(dv.to_string(), "9999999999.99");
-            }
-            _ => panic!("Expected Decimal value for large input"),
-        }
+        let dv = DecimalValue::from_str("9999999999.99", 2).expect("parse large");
+        assert_eq!(dv.to_string(), "9999999999.99");
     }
 
     #[test]
     fn test_decimal_in_array_json() {
+        // Numeric-looking strings stay strings (no silent Decimal promote).
         let json = serde_json::Value::Array(vec![
             serde_json::Value::String("10.00".to_string()),
             serde_json::Value::String("20.50".to_string()),
@@ -2566,8 +2532,8 @@ mod decimal_tests {
                 assert_eq!(arr.len(), 3);
 
                 match &arr[0] {
-                    Value::Decimal(dv) => assert_eq!(dv.to_string(), "10.00"),
-                    _ => panic!("Expected Decimal in array"),
+                    Value::String(s) => assert_eq!(&**s, "10.00"),
+                    other => panic!("Expected String in array, got {}", other.type_name()),
                 }
             }
             _ => panic!("Expected Array value"),
