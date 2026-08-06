@@ -63,7 +63,7 @@ fn bench_string_identity(c: &mut Criterion) {
         b.iter(|| upcase_string(black_box(&mixed)))
     });
     group.bench_function("upcase_legacy_to_uppercase", |b| {
-        b.iter(|| Value::String(black_box(&already_upper).to_uppercase().into()))
+        b.iter(|| Value::String(black_box(&already_upper).to_uppercase()))
     });
 
     group.bench_function("downcase_noop", |b| {
