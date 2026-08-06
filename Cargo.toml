@@ -144,10 +144,12 @@ pkcs8 = "0.10"
 base64 = "0.22"
 rmp-serde = "1"
 
-# Optional: native SoliDB driver transport (feature "solidb-driver"). Path dep on
-# the sibling SoliDB checkout — see the feature comment above for why it is not
-# on by default.
-solidb-client = { path = "../db/clients/rust-client", optional = true }
+# Optional: native SoliDB driver transport (feature "solidb-driver").
+# Git dep so CI / `cargo install` work without a sibling SolidB checkout.
+# Local override when developing both repos side by side:
+#   [patch."https://github.com/solisoft/solidb"]
+#   solidb-client = { path = "../db/clients/rust-client" }
+solidb-client = { git = "https://github.com/solisoft/solidb", package = "solidb-client", optional = true }
 encoding_rs = "0.8"
 
 # Validation
