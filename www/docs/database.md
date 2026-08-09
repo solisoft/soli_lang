@@ -90,7 +90,7 @@ Set `APP_ENV` when running commands:
 
 ```bash
 # Run migrations in production
-APP_ENV=production soli db:migrate
+APP_ENV=production soli db:migrate up
 
 # Start server in test mode
 APP_ENV=test soli serve
@@ -149,7 +149,7 @@ Test your database connection by running migrations:
 
 ```bash
 cd myapp
-soli db:migrate
+soli db:migrate up
 ```
 
 If successful, you'll see:

@@ -253,6 +253,11 @@ pub enum Command {
     Update {
         name: Option<String>,
     },
+    /// `soli update docs [folder]` — rewrite agent guides + bundled language
+    /// docs from the templates embedded in this `soli` binary.
+    UpdateDocs {
+        folder: String,
+    },
     Login {
         registry: Option<String>,
         token: Option<String>,
@@ -395,6 +400,7 @@ pub fn print_usage() {
     eprintln!("       soli remove <name>");
     eprintln!("       soli install");
     eprintln!("       soli update [name]");
+    eprintln!("       soli update docs [folder]");
     eprintln!("       soli login [--registry URL] [--token TOKEN]");
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
@@ -440,6 +446,9 @@ pub fn print_usage() {
     eprintln!("  install              Install all dependencies from soli.toml");
     eprintln!(
         "  update [name]      Update a dependency (soli update = self-update to latest release)"
+    );
+    eprintln!(
+        "  update docs [folder]  Rewrite agent guides + docs/ from this soli binary's templates"
     );
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
@@ -529,6 +538,8 @@ pub fn print_usage() {
     eprintln!("  soli install                  Install all dependencies");
     eprintln!("  soli update                    Update soli CLI to latest release");
     eprintln!("  soli update math               Update a specific dependency");
+    eprintln!("  soli update docs               Refresh project CLAUDE.md / docs/ from this soli");
+    eprintln!("  soli update docs ./myapp       Same, for a project at ./myapp");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli generate auth            Scaffold authentication + policy layer");
@@ -1518,6 +1529,18 @@ pub fn parse_args() -> Options {
             }
             "update" => {
                 i += 1;
+                // `soli update docs [folder]` — project agent/language docs,
+                // not a package named "docs".
+                if i < args.len() && args[i] == "docs" {
+                    i += 1;
+                    let folder = if i < args.len() && !args[i].starts_with('-') {
+                        args[i].clone()
+                    } else {
+                        ".".to_string()
+                    };
+                    options.command = Command::UpdateDocs { folder };
+                    return options;
+                }
                 let name = if i < args.len() && !args[i].starts_with('-') {
                     Some(args[i].clone())
                 } else {

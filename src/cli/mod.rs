@@ -154,6 +154,7 @@ pub fn run() {
         Command::Remove { name } => commands::run_remove(name),
         Command::Install => commands::run_install(),
         Command::Update { name } => commands::run_update(name.as_deref()),
+        Command::UpdateDocs { folder } => commands::run_update_docs(folder),
         Command::UpdateKeygen => {
             if let Err(e) = run_update_keygen() {
                 eprintln!("Error: {}", e);

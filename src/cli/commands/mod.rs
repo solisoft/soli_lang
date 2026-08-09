@@ -1702,6 +1702,44 @@ pub fn run_install() {
     println!();
 }
 
+/// `soli update docs [folder]` — rewrite agent guides and bundled language
+/// docs from the templates embedded in this `soli` binary (sourced from the
+/// soli_lang tree at compile time). Use after upgrading soli so existing
+/// projects pick up current CLAUDE.md / docs/ content.
+pub fn run_update_docs(folder: &str) {
+    use solilang::scaffold::app_generator::update_project_docs;
+
+    let app_path = Path::new(folder);
+    println!();
+    println!(
+        "  \x1b[1mUpdating project docs from soli {}…\x1b[0m",
+        VERSION
+    );
+    println!();
+
+    match update_project_docs(app_path) {
+        Ok(paths) => {
+            for rel in &paths {
+                println!("    \x1b[36m{rel}\x1b[0m");
+            }
+            println!("    \x1b[36mdocs/\x1b[0m  (language reference from www/docs)");
+            println!();
+            println!(
+                "  \x1b[32m\x1b[1m✓\x1b[0m Rewrote {} agent files + docs/ (custom edits in those paths were replaced)",
+                paths.len()
+            );
+            println!(
+                "  \x1b[2mTip: keep project-specific notes in a separate file, or re-apply them after update docs.\x1b[0m"
+            );
+            println!();
+        }
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m {e}");
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_update(name: Option<&str>) {
     use solilang::module::{installer, lockfile::LockFile, Package};
 

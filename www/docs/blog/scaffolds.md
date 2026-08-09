@@ -21,11 +21,10 @@ The most powerful experience is the custom slash command available to AI agents 
 
 This single command performs (and pauses at the right moment):
 
-1. `soli generate model post`
-2. `soli generate migration create_posts`
-3. `soli generate controller posts`
-4. Adds `resources("posts")` to `config/routes.sl`
-5. Stubs the standard view files and a controller spec
+1. `soli generate scaffold post` (optionally with field args) — model, controller, views, migration, routes, and `tests/controllers/post_controller_spec.sl`
+2. `soli db:migrate up`
+3. Extends or renames the controller spec if your project uses a flatter `tests/*_spec.sl` layout
+4. Adds a model unit spec by hand if you want one (scaffold does not emit a model test)
 
 It then **intentionally pauses** and tells you:
 

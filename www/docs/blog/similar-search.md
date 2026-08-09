@@ -144,7 +144,7 @@ end
 Apply it:
 
 ```bash
-soli db:migrate
+soli db:migrate up
 ```
 
 SolidDB uses **HNSW (Hierarchical Navigable Small World)** graphs for fast approximate nearest-neighbor search. With a vector index, search becomes O(log n) instead of O(n) with ~95%+ recall. You can also enable **scalar quantization** by adding `"quantization": "scalar"` to reduce memory 4x.

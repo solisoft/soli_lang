@@ -16,32 +16,33 @@ desktop products.
 
 ## Basic Usage
 
-Generate a scaffold for a resource:
+Pass the **singular** resource name (the model name). The generator derives the
+plural collection, view directory, and routes from it.
 
 ```bash
-soli generate scaffold <name>
+soli generate scaffold <singular-name>
 ```
 
 Example:
 
 ```bash
-soli generate scaffold users
+soli generate scaffold post
 ```
 
 This creates:
-- Model: `app/models/users_model.sl`
-- Controller: `app/controllers/users_controller.sl`
-- Views: `app/views/users/` (index, show, new, edit, _form partial)
-- Tests: `tests/models/users_test.sl`, `tests/controllers/users_controller_test.sl`
-- Migration: `db/migrations/<timestamp>create_users_<timestamp>.sl`
-- Routes: Added to `config/routes.sl`
+- Model: `app/models/post_model.sl` (`class Post < Model`)
+- Controller: `app/controllers/post_controller.sl` (`class PostController`)
+- Views: `app/views/posts/` (index, show, new, edit, `_form` partial)
+- Spec: `tests/controllers/post_controller_spec.sl` (controller E2E only — no model test file)
+- Migration: `db/migrations/<unix>create_posts_<unix>.sl`
+- Routes: CRUD paths appended to `config/routes.sl`
 
 ## Generate with Fields
 
 Specify fields with `name:type` syntax:
 
 ```bash
-soli generate scaffold users name:string email:text age:integer
+soli generate scaffold post title:string body:text author:string
 ```
 
 ### Supported Field Types
@@ -73,79 +74,71 @@ The model includes:
 - Before save callback hooks
 
 ```soli
-# Users model - auto-generated scaffold
-class Users < Model
-    static
-        # Fields
-        # name (string)
-        # email (email)
+# Post model - auto-generated scaffold
+# Collection: posts
 
-        # Validations
-        validates("name", { "presence": true })
-        validates("email", { "presence": true })
-    end
+class Post < Model
+  # Fields
+  # title (string)
+  # body (text)
 
-    before_save("normalize_fields")  # strings and symbols both work
-    before_save(:normalize_fields)   # Ruby-style symbol shorthand
+  # Validations
+  validates("title", { "presence": true })
+  validates("body", { "presence": true })
+
+  # Callbacks
+  before_save("normalize_fields")
 end
 ```
 
 ### Controller
 
-Standard CRUD actions:
+Standard CRUD actions (abbreviated — generated code also has `new` / `edit`
+and a `permit()`-based `_permit_params`):
 
 ```soli
-class UsersController < Controller
-    def index
-        users = Users.all
-        render("users/index", { "users": users })
-    end
+class PostController < Controller
+  static {
+    this.layout = "application"
+  }
 
-    def show
-        user = Users.find(params["id"])
-        render("users/show", { "user": user })
-    end
+  def index
+    posts = Post.all
+    render("posts/index", { "posts": posts, "title": "PostController" })
+  end
 
-    def create
-        permitted = this._permit_params(params)
-        user = Users.create(permitted)
-        if user._errors
-            return render("users/new", { "user": user })
-        end
-        return redirect("/users")
-    end
+  def show
+    post = Post.find(params["id"])
+    render("posts/show", { "post": post, "title": "View Post" })
+  end
 
-    def update
-        id = params["id"]
-        permitted = this._permit_params(params)
-        Users.update(id, permitted)
-        return redirect("/users")
+  def create
+    permitted = this._permit_params(params)
+    post = Post.create(permitted)
+    if post._errors
+      return render("posts/new", { "post": post, "title": "New Post" })
     end
+    return redirect("/posts")
+  end
 
-    def delete
-        id = params["id"]
-        Users.delete(id)
-        return redirect("/users")
-    end
-
-    def _permit_params(params)
-        return {
-            "name": params["name"],
-            "email": params["email"]
-        }
-    end
+  def _permit_params(params)
+    return permit(params, {
+      "title": true,
+      "body": true
+    })
+  end
 end
 ```
 
 | Action | Method | Path | Description |
 |--------|--------|------|-------------|
-| index | GET | /users | List all records |
-| show | GET | /users/:id | Show single record |
-| new | GET | /users/new | Show create form |
-| create | POST | /users | Create new record |
-| edit | GET | /users/:id/edit | Show edit form |
-| update | PUT | /users/:id | Update record |
-| delete | DELETE | /users/:id | Delete record |
+| index | GET | /posts | List all records |
+| show | GET | /posts/:id | Show single record |
+| new | GET | /posts/new | Show create form |
+| create | POST | /posts | Create new record |
+| edit | GET | /posts/:id/edit | Show edit form |
+| update | PUT | /posts/:id | Update record |
+| delete | DELETE | /posts/:id | Delete record |
 
 ### Views
 
@@ -161,31 +154,25 @@ Located in `app/views/<resource>/`:
 
 ### Tests
 
-Model tests include:
-- Collection name validation
-- Record creation tests
-- Find by ID tests
-- Validation tests
-
-Controller tests include:
-- Index action rendering
-- Show action rendering
-- New/edit form rendering
-- Create/update/delete redirects
+Scaffold writes **one** controller E2E spec at
+`tests/controllers/<name>_controller_spec.sl`. It covers index / new / show /
+edit status codes and a couple of create/update paths. There is no separate
+model test file — add `tests/<name>_model_spec.sl` (or similar) yourself if you
+want model-level coverage.
 
 ### Migration
 
-Migrations create the collection and indexes:
+Migrations create the collection and indexes (email/password fields get a
+unique index automatically):
 
 ```soli
 def up(db)
-    db.create_collection("users")
-    db.create_index("users", "idx_email", ["email"], { "unique": true })
+  db.create_collection("posts")
+  # No indexes defined  # unless an email/password field was passed
 end
 
 def down(db)
-    db.drop_index("users", "idx_email")
-    db.drop_collection("users")
+  db.drop_collection("posts")
 end
 ```
 
@@ -195,7 +182,7 @@ Generate scaffolds in your project directory:
 
 ```bash
 cd my_project
-soli generate scaffold posts title:string content:text author:string
+soli generate scaffold post title:string content:text author:string
 ```
 
 ## Field Input Types

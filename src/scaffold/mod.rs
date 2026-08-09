@@ -235,11 +235,7 @@ pub fn print_scaffold_success_message(name: &str) {
     println!("  \x1b[2mTest files:\x1b[0m");
     println!();
     println!(
-        "    \x1b[36mtests/models/{}_test.sl\x1b[0m",
-        to_snake_case(name)
-    );
-    println!(
-        "    \x1b[36mtests/controllers/{}_controller_test.sl\x1b[0m",
+        "    \x1b[36mtests/controllers/{}_controller_spec.sl\x1b[0m",
         to_snake_case(name)
     );
     println!();

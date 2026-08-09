@@ -72,11 +72,10 @@ The killer feature for agents.
 
 Running `/soli-resource post` executes:
 
-1. `soli generate model post`
-2. `soli generate migration create_posts`
-3. `soli generate controller posts`
-4. Adds `resources("posts")` to `config/routes.sl`
-5. Stubs the standard views and a controller spec
+1. `soli generate scaffold post` (optionally with field args) — model, controller, views, migration, routes, and `tests/controllers/post_controller_spec.sl`
+2. `soli db:migrate up`
+3. Extends or renames the controller spec if your project uses a flatter `tests/*_spec.sl` layout
+4. Adds a model unit spec by hand if you want one (scaffold does not emit a model test)
 
 It then **pauses** after step 4 and tells the agent: "Let the human fill in the fields, validations, and associations on the model before continuing."
 
@@ -122,14 +121,20 @@ The human's job shifts from "constant code review and correction" to "define the
 
 ## Adding This to an Existing Project
 
-If you have an older Soli app and want the agent support:
+If you have an older Soli app and want the agent support (or a current app whose
+guides have drifted after a soli upgrade):
 
-1. Run `soli new tmp-agent-kit` somewhere
-2. Copy the AI files across (preserving paths)
-3. Merge the "For AI agents" and "Footgun cheatsheet" sections into your existing root `CLAUDE.md`
-4. Run `/soli-verify`
+```bash
+soli update docs            # from the project root
+# or: soli update docs ./path/to/app
+```
 
-The files are deliberately designed to be incrementally adoptable.
+That rewrites root/per-directory `CLAUDE.md`, `AGENTS.md`, `.claude/`, and the
+bundled language docs under `docs/` from the templates baked into your
+installed `soli` binary. Custom edits in those paths are replaced — keep
+project-specific notes elsewhere (see [AI agents](/docs/development-tools/ai-agents)).
+
+Then run `/soli-verify`.
 
 ## The Bigger Bet
 

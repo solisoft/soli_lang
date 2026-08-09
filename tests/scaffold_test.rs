@@ -75,6 +75,23 @@ fn create_scaffold_writes_model_controller_views() {
             .exists(),
         "controller not created"
     );
+    // Only a controller E2E spec is generated (not a model test, not *_test.sl).
+    assert!(
+        dir.path()
+            .join("tests/controllers/post_controller_spec.sl")
+            .exists(),
+        "controller_spec not created"
+    );
+    assert!(
+        !dir.path().join("tests/models/post_test.sl").exists(),
+        "scaffold must not invent a model test file"
+    );
+    assert!(
+        !dir.path()
+            .join("tests/controllers/post_controller_test.sl")
+            .exists(),
+        "scaffold uses _controller_spec.sl, not _controller_test.sl"
+    );
 }
 
 #[test]

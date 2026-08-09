@@ -30,9 +30,9 @@ The class itself uses Ruby-style `class X < Y ... end`, and methods use
 `def name ... end` — but the `static` block **requires braces** (`static { ... }`).
 The Ruby-style `static ... end` form does not parse.
 
-Free-function actions (no class wrapper) also work — see
-`www/app/controllers/docs_controller.sl` for a real example — but the class
-form is recommended for anything stateful or with hooks.
+Free-function actions (no class wrapper) also work, but the class form is
+recommended for anything stateful or with hooks. See `docs/controllers.md`
+for the full controller contract.
 
 ## The `static { }` block
 
@@ -484,8 +484,9 @@ Custom routes named with `name: "..."` get the same treatment:
 
 ## Spec location
 
-Every controller has a sibling spec at `tests/<name>_controller_spec.sl`.
-`soli generate controller posts` scaffolds it for you. Use the E2E client:
+Every controller has a sibling spec at `tests/<name>_controller_spec.sl`
+(scaffold writes `tests/controllers/<name>_controller_spec.sl`). Use the E2E
+client:
 
 ```soli
 describe("PostsController") do

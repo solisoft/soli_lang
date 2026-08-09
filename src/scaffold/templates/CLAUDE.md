@@ -22,22 +22,23 @@ If a step fails, fix the root cause. Don't weaken assertions, lower the coverage
 
 ### Generators: what actually exists
 
-**`soli generate controller|model|migration` do not exist.** Run `soli generate`
-with no argument to see the real list; as of 1.25 it is `scaffold`, `auth`,
-`oidc_provider`, `mailer`, `component`, `devices`, `client`, `app_links`,
-`offline`. Reaching for the three above is the most common way an agent wastes
-its first five minutes in a new app.
+There are **no** standalone `controller` / `model` / `migration` generators.
+Run `soli generate` with no argument to see the real list; as of 1.25 it is
+`scaffold`, `auth`, `oidc_provider`, `mailer`, `component`, `devices`,
+`client`, `app_links`, `offline`. Reaching for the three missing ones is the
+most common way an agent wastes its first five minutes in a new app.
 
 | Task                          | Command                                  |
 |-------------------------------|------------------------------------------|
-| New migration                 | `soli db:migrate generate create_posts`  |
+| Full resource (model+ctrl+views+migration+routes) | `soli generate scaffold post title:string` |
+| New migration only            | `soli db:migrate generate create_posts`  |
 | New seed                      | `soli db:seed generate demo_posts`       |
 | New view component            | `soli generate component post_card`      |
-| Model, controller, spec       | write by hand, next to the existing ones |
+| Model / controller / spec alone | write by hand, next to the existing ones |
 
-`soli generate scaffold` exists and writes a full resource, but its specs land
-in `tests/models/*_test.sl` — rename them to `tests/*_spec.sl` to match the
-convention below.
+`soli generate scaffold` writes a full resource and a controller E2E spec at
+`tests/controllers/*_controller_spec.sl`. There is no model test file — add
+one under `tests/` yourself if you want model-level coverage.
 
 Two more things about generators, both learned the hard way:
 
@@ -106,19 +107,30 @@ the code you are writing — they are properties of the runtime.
 
 ### Add a RESTful resource end-to-end
 
-1. `soli generate model post` → fill fields, validations, associations.
-2. `soli generate migration create_posts` → fill `up`/`down`, then `soli db:migrate up`.
-3. `soli generate controller posts` → fill `index`/`show`/`create`/etc.
-4. In `config/routes.sl` add `resources("posts")
+**Fast path:** `soli generate scaffold post title:string body:text` — model,
+controller, views, migration, routes, and
+`tests/controllers/post_controller_spec.sl`. Then `soli db:migrate up`.
+Add a model unit spec by hand if you need one. Run the verification loop.
 
-# Built-in CORS for browser-facing APIs: answers preflights, stamps the
-# allow headers, and opens the CSRF origin gate for the listed origins only.
-cors("/api/*", {"origins": ["https://app.example.com"], "credentials": true})`.
+**Step-by-step** (when you want each piece by hand):
+
+1. Write `app/models/post.sl` — fields, validations, associations.
+2. `soli db:migrate generate create_posts` → fill `up`/`down`, then
+   `soli db:migrate up`.
+3. Write `app/controllers/posts_controller.sl` — `index`/`show`/`create`/etc.
+4. In `config/routes.sl` add `resources("posts")` (and CORS if the API is
+   browser-facing:
+
+   ```soli
+   # Built-in CORS: preflights, allow headers, origin-checked CSRF opt-in.
+   cors("/api/*", {"origins": ["https://app.example.com"], "credentials": true})
+   ```
+
 5. Edit `app/views/posts/*.html.slv`.
 6. Add specs in `tests/posts_controller_spec.sl`.
 7. Run the verification loop.
 
-(Or just: `/soli-resource post` — bundles steps 1-4 and stubs 5-6.)
+(Or: `/soli-resource post` — prefers scaffold, then stubs remaining specs.)
 
 ### Add an authenticated route
 
@@ -702,6 +714,7 @@ soli generate                         # list the generators that exist
 soli generate scaffold post           # full resource (see the caveat above)
 soli db:migrate generate create_posts  # scaffold migration
 soli db:seed generate demo_posts      # scaffold seed
+soli update docs                      # refresh CLAUDE.md / docs/ from this soli
 
 soli db:migrate up                    # run pending migrations
 soli db:migrate down                  # roll back last migration

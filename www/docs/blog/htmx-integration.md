@@ -36,7 +36,7 @@ Soli already has LiveView for real-time interactivity, but not everyone needs We
 First, add HTMx to your layout:
 
 ```soli
-# www/app/views/layouts/application.html.slv
+# app/views/layouts/application.html.slv
 <script src="<%= public_path("js/htmx.min.js") %>"></script>
 ```
 

@@ -270,6 +270,81 @@ pub fn create_dot_claude(app_path: &Path) -> Result<(), String> {
     )
 }
 
+/// Relative paths rewritten by [`update_project_docs`] (agent guides + slash
+/// commands + settings). Language reference under `docs/` is refreshed via
+/// [`create_bundled_docs`] and is not listed here (it is a tree, not a fixed set).
+pub const PROJECT_DOC_AGENT_PATHS: &[&str] = &[
+    "CLAUDE.md",
+    "AGENTS.md",
+    "app/controllers/CLAUDE.md",
+    "app/models/CLAUDE.md",
+    "app/views/CLAUDE.md",
+    "app/middleware/CLAUDE.md",
+    "tests/CLAUDE.md",
+    "db/migrations/CLAUDE.md",
+    ".claude/settings.json",
+    ".claude/commands/soli-verify.md",
+    ".claude/commands/soli-test.md",
+    ".claude/commands/soli-resource.md",
+];
+
+/// Whether `app_path` looks like a Soli MVC project (or at least a place
+/// `soli new` would have laid out docs).
+pub fn is_soli_project(app_path: &Path) -> bool {
+    app_path.join("soli.toml").is_file()
+        || app_path.join("config/routes.sl").is_file()
+        || app_path.join("app/controllers").is_dir()
+        || app_path.join("CLAUDE.md").is_file()
+}
+
+/// Refresh every markdown / agent file that `soli new` embeds, from the
+/// templates baked into this `soli` binary (sourced from the soli_lang git
+/// tree at compile time). Overwrites existing content — project-local
+/// customizations in those files will be replaced.
+///
+/// Returns the relative agent-guide paths that were written. Language docs
+/// under `docs/` are also rewritten (same skip list as `soli new`).
+pub fn update_project_docs(app_path: &Path) -> Result<Vec<String>, String> {
+    if !app_path.exists() {
+        return Err(format!("Directory '{}' does not exist", app_path.display()));
+    }
+    if !app_path.is_dir() {
+        return Err(format!("'{}' is not a directory", app_path.display()));
+    }
+    if !is_soli_project(app_path) {
+        return Err(format!(
+            "'{}' does not look like a Soli project (expected soli.toml, config/routes.sl, or app/controllers/)",
+            app_path.display()
+        ));
+    }
+
+    // Host dirs for nested agent files — older projects may lack some of them.
+    for dir in [
+        "app/controllers",
+        "app/models",
+        "app/views",
+        "app/middleware",
+        "tests",
+        "db/migrations",
+        ".claude/commands",
+        "docs",
+    ] {
+        fs::create_dir_all(app_path.join(dir))
+            .map_err(|e| format!("Failed to create '{}': {e}", app_path.join(dir).display()))?;
+    }
+
+    create_claude_md(app_path)?;
+    create_agents_md(app_path)?;
+    create_nested_claude_mds(app_path)?;
+    create_dot_claude(app_path)?;
+    create_bundled_docs(app_path)?;
+
+    Ok(PROJECT_DOC_AGENT_PATHS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect())
+}
+
 /// Create the application helper
 pub fn create_application_helper(app_path: &Path) -> Result<(), String> {
     write_file(

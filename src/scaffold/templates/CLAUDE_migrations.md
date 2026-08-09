@@ -8,7 +8,7 @@ applied.
 key, and the generator gets it right:
 
 ```bash
-soli generate migration create_posts
+soli db:migrate generate create_posts
 soli generate scaffold post title:string body:text   # also generates a migration
 ```
 
@@ -189,7 +189,7 @@ DB that already has the data.
 soli db:migrate up                # apply all pending migrations in order
 soli db:migrate down              # roll back the most recent applied migration
 soli db:migrate status            # show applied / pending status for each file
-soli db:migrate generate create_X # same as `soli generate migration create_X`
+soli db:migrate generate create_X # create a timestamped migration stub
 ```
 
 `up` is the everyday command. `down` is for local development — production
@@ -261,7 +261,7 @@ from each spec — whatever your project convention is.)
 
 | Do                                                          | Don't                                                              |
 |-------------------------------------------------------------|--------------------------------------------------------------------|
-| Use `soli db:migrate generate <name>` for naming            | Hand-pick a timestamp prefix, or reach for `soli generate migration` — that command doesn't exist |
+| Use `soli db:migrate generate <name>` for naming            | Hand-pick a timestamp prefix, or invent a non-existent `generate` subcommand for migrations |
 | Write a real `down(db)` for every migration                 | Leave `# TODO` or `pass` in `down`                                  |
 | Use `db.query("...")` with a plain SDBQL string             | Use `@sdbql{...}` blocks here — that's the model-side DSL, not migrations |
 | Use `[[ ... ]]` or `""" ... """` for multi-line SDBQL       | Hand-escape `\"` across long queries — or invent `@"..."` (not a thing) |

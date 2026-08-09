@@ -37,10 +37,7 @@ db/migrations/20260122143052_create_users_table.sl
 ### Run Migrations
 
 ```bash
-# Apply all pending migrations
-soli db:migrate
-
-# Or explicitly
+# Apply all pending migrations (action is required)
 soli db:migrate up
 ```
 
@@ -368,7 +365,7 @@ Or set them directly:
 ```bash
 export SOLIDB_HOST=http://localhost:6745
 export SOLIDB_DATABASE=myapp_development
-soli db:migrate
+soli db:migrate up
 ```
 
 ## Migration Tracking

@@ -73,27 +73,34 @@
         </table>
     </div>
 
-    <p class="text-gray-400 mb-12"><code>/soli-resource post</code> runs <code>soli generate model post</code>, <code>soli generate migration create_posts</code>, <code>soli generate controller posts</code>, adds <code>resources("posts")</code> to <code>config/routes.sl</code>, and stubs the views and spec. It pauses after step 4 so you can fill in fields and validations on the model before continuing.</p>
+    <p class="text-gray-400 mb-12"><code>/soli-resource post</code> prefers <code>soli generate scaffold post</code> (model, controller, views, migration, routes, and a controller E2E spec under <code>tests/controllers/</code>), then <code>soli db:migrate up</code>. Piece-by-piece: hand-write the model, <code>soli db:migrate generate create_posts</code>, hand-write the controller, add <code>resources("posts")</code>, and stub views/specs.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Permissions</h2>
     <p class="text-gray-400 mb-12"><code>.claude/settings.json</code> pre-allows the safe, read-only-or-sandboxed <code>soli</code> subcommands an agent uses constantly: <code>soli lint</code>, <code>soli test</code>, <code>soli serve</code>, <code>soli generate</code>, <code>soli db:migrate</code>, <code>soli run</code>. This removes the per-prompt approval tax without granting blanket access. Destructive things (<code>git push</code>, package mutations, anything outside the project) are deliberately left to require explicit approval.</p>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Migrating an existing project</h2>
-    <p class="text-gray-400 mb-6">To bring an older Soli project up to the new layout:</p>
-    <ol class="list-decimal list-inside text-gray-400 space-y-2 mb-12">
-        <li>Run <code>soli new tmp-agent-kit</code> in a scratch directory.</li>
-        <li>Copy <code>AGENTS.md</code>, every per-directory <code>CLAUDE.md</code>, and the <code>.claude/</code> folder into your project, preserving paths.</li>
-        <li>Merge the new "For AI agents — read this first", "Footgun cheatsheet", and "Recipes" sections from <code>tmp-agent-kit/CLAUDE.md</code> into the top of your existing <code>CLAUDE.md</code>.</li>
-        <li>Delete <code>tmp-agent-kit/</code>.</li>
-        <li>Run <code>/soli-verify</code> to confirm nothing regresses.</li>
-    </ol>
+    <h2 class="text-2xl font-bold text-white mb-6">Keeping docs up to date</h2>
+    <p class="text-gray-400 mb-6">Agent guides and the language reference under <code>docs/</code> are embedded in the <code>soli</code> binary at compile time. After upgrading soli, refresh an existing project:</p>
+    <div class="mb-8 rounded-xl bg-[#171412]/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">Terminal</span>
+        </div>
+        <div>
+            <pre class="text-sm font-mono text-gray-300 px-4 py-4"><span class="text-green-400">$</span> soli update docs              <span class="text-gray-500"># from the project root</span>
+<span class="text-green-400">$</span> soli update docs ./myapp       <span class="text-gray-500"># or point at a project path</span></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">This rewrites root <code>CLAUDE.md</code> / <code>AGENTS.md</code>, every per-directory <code>CLAUDE.md</code>, <code>.claude/settings.json</code> + slash commands, and the whole <code>docs/</code> language tree. <strong class="text-white">Custom edits in those paths are replaced.</strong> Keep project-specific notes elsewhere (or re-apply them after the update). <code>.claude/settings.local.json</code> is never touched.</p>
+    <p class="text-gray-400 mb-12">Typical flow: <code>soli update</code> (self-update the CLI) then <code>soli update docs</code> (refresh this project).</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Migrating an older project</h2>
+    <p class="text-gray-400 mb-12">If the project was created before agent scaffolding existed, <code>soli update docs</code> is enough — it creates missing host directories and writes the full kit. Then run <code>/soli-verify</code>.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Customizing</h2>
-    <p class="text-gray-400 mb-6">The shipped files are starting points — edit them to fit project conventions. Common additions:</p>
+    <p class="text-gray-400 mb-6">The shipped files are starting points. Common additions that survive an update:</p>
     <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
-        <li><strong class="text-white">Project-specific recipes</strong> in the root <code>CLAUDE.md</code> (e.g. "deploy: run <code>bin/deploy.sh</code>").</li>
-        <li><strong class="text-white">Stop hook</strong> in <code>.claude/settings.local.json</code> (not the shipped <code>settings.json</code>) to auto-run <code>soli lint</code> after the agent stops editing.</li>
-        <li><strong class="text-white">Extra slash commands</strong> under <code>.claude/commands/</code> — anything reusable enough to deserve a shortcut.</li>
+        <li><strong class="text-white">Project-specific notes</strong> in a file you own (e.g. <code>docs/project.md</code>) and a pointer you re-add after updates.</li>
+        <li><strong class="text-white">Stop hook</strong> in <code>.claude/settings.local.json</code> (not the shipped <code>settings.json</code>).</li>
+        <li><strong class="text-white">Extra slash commands</strong> under <code>.claude/commands/</code> with your own names — only the three <code>soli-*.md</code> commands are rewritten.</li>
     </ul>
-    <p class="text-gray-400 mb-12">Don't store secrets or environment-specific paths in the shipped <code>.claude/settings.json</code> — that file is committed. Use <code>.claude/settings.local.json</code> (gitignored) for per-machine overrides.</p>
+    <p class="text-gray-400 mb-12">Don't store secrets in the shipped <code>.claude/settings.json</code>. Use <code>.claude/settings.local.json</code> (gitignored) for per-machine overrides.</p>
 </div>
