@@ -55,10 +55,27 @@ if [ "$DRY_RUN" = true ]; then
   exit 0
 fi
 
-# Update Cargo.toml
-sed -i "0,/^version = \"$CURRENT\"/s//version = \"$NEW_VERSION\"/" Cargo.toml
+# Update Cargo.toml (portable: GNU sed -i and BSD sed -i '' both work via temp file)
+python3 - "$CURRENT" "$NEW_VERSION" <<'PY'
+import re, sys
+from pathlib import Path
+current, new = sys.argv[1], sys.argv[2]
+path = Path("Cargo.toml")
+text = path.read_text()
+updated, n = re.subn(
+    rf'^version = "{re.escape(current)}"',
+    f'version = "{new}"',
+    text,
+    count=1,
+    flags=re.M,
+)
+if n != 1:
+    sys.exit(f"Error: expected one version = \"{current}\" in Cargo.toml, found {n}")
+path.write_text(updated)
+print(f"Cargo.toml -> {new}")
+PY
 
-# Update Cargo.lock
+# Update Cargo.lock package version for solilang
 cargo check --quiet 2>/dev/null || true
 
 # Commit and tag

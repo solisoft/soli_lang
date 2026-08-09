@@ -21,7 +21,21 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
-        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.28.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet since v1.29.0.</p>
+    </section>
+
+    <section id="v1-29-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v1.29.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-08-09</span></h2>
+
+        <h3 id="v1-29-0-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli update docs [folder]</code>.</strong> Refresh agent guides (<code class="text-cyan-400">CLAUDE.md</code>, nested guides, <code class="text-cyan-400">AGENTS.md</code>, <code class="text-cyan-400">.claude/</code>) and the bundled language docs under <code class="text-cyan-400">docs/</code> from the templates embedded in the installed <code class="text-cyan-400">soli</code> binary. Use after upgrading soli so existing apps stay current. Overwrites those paths; project-local notes should live elsewhere. See <a href="/docs/development-tools/ai-agents" class="text-amber-400 hover:underline">AI Agents</a>.</li>
+        </ul>
+
+        <h3 id="v1-29-0-docs" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Docs</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Scaffold / agent guides match the real CLI.</strong> No more recommended <code class="text-cyan-400">soli generate controller|model|migration</code> (those subcommands do not exist). Recipes and <code class="text-cyan-400">/soli-resource</code> use <code class="text-cyan-400">soli generate scaffold</code> and <code class="text-cyan-400">soli db:migrate generate</code>. Migrations are documented as <code class="text-cyan-400">soli db:migrate up</code>. Scaffold output paths document the real controller E2E spec location.</li>
+        </ul>
     </section>
 
     <section id="v1-28-0" class="mb-16 scroll-mt-24">

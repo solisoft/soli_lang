@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-08-09
+
+### Added
+
+- **`soli update docs [folder]`** — rewrite the agent guides (`CLAUDE.md`,
+  nested `CLAUDE.md`, `AGENTS.md`, `.claude/`) and the bundled language
+  reference under `docs/` from the templates embedded in the installed `soli`
+  binary. Use after upgrading soli so existing apps pick up current guidance.
+  Overwrites those paths; keep project-specific notes elsewhere.
+  `.claude/settings.local.json` is left alone.
+
+### Fixed
+
+- Scaffold agent markdown and related docs no longer recommend the non-existent
+  generators `soli generate controller`, `soli generate model`, or
+  `soli generate migration`. Recipes and `/soli-resource` use
+  `soli generate scaffold` and `soli db:migrate generate`.
+- Documented migration runs as `soli db:migrate up` (a bare `soli db:migrate`
+  requires an action and fails).
+- Scaffold docs and the success message match real output: controller E2E at
+  `tests/controllers/*_controller_spec.sl`, no model test file, singular
+  resource names.
+
+### Changed
+
+- JSON / collection hot paths continued after 1.28.0 (parse/stringify, hash
+  get, array join, model/template value conversion). See the performance
+  commits since `v1.28.0`.
+
 ## [1.28.0] - 2026-08-05
 
 ### Added
