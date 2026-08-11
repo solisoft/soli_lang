@@ -3893,7 +3893,7 @@ token = csrf_token()
 
 ## Background Jobs and Cron
 
-Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static def perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).
+Soli ships an in-process queue and cron engine. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static def perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).
 
 ### Job class
 
@@ -3901,7 +3901,7 @@ Every user-defined `XJob` class also gets these static helpers injected automati
 
 #### Job.enqueue(handler, args, queue_or_opts?)
 
-Enqueues a job by handler name. Returns the SolidB job id. The trailing argument is either a queue-name string or an options hash `{ queue, priority, max_retries }` — `priority` is an Int and higher runs first.
+Enqueues a job by handler name. Returns the job id. The trailing argument is either a queue-name string or an options hash `{ queue, priority, max_retries }` — `priority` is an Int and higher runs first.
 
 ```soli
 job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
@@ -3934,7 +3934,7 @@ Returns the list of jobs in a queue. Defaults to the configured default queue.
 
 #### Job.queues()
 
-Returns the list of queue names known to SolidB.
+Returns the queues that currently hold non-terminal work.
 
 ### Per-class facade methods
 
@@ -3942,9 +3942,10 @@ Each user-defined `XJob` class gets:
 
 | Method | Behavior |
 |--------|----------|
-| `XJob.perform_later(args, queue_or_opts?)` | Enqueues into SolidB. Returns the job id. |
+| `XJob.perform_later(args, queue_or_opts?)` | Enqueues for a worker to run. Returns the job id. |
 | `XJob.perform_in(duration, args, queue_or_opts?)` | Enqueues with a relative delay. |
 | `XJob.perform_at(datetime, args, queue_or_opts?)` | Enqueues to run at an ISO-8601 timestamp. |
+| `XJob.perform_now(args)` | Runs `perform` inline, right now — no queue row, no worker, no database. Returns the handler's value. |
 | `XJob.schedule_cron(name, expr, args?)` | Idempotently registers a cron entry that triggers this class. |
 
 The trailing `queue_or_opts` argument is either a queue-name string or an options hash `{ queue, priority, max_retries }` (higher `priority` runs first).
@@ -3980,17 +3981,17 @@ Deletes a cron entry by id. Returns Bool.
 
 ### Cron expression helpers
 
-Pure string builders. No SolidB writes.
+Pure string builders — six-field expressions (`sec min hour day-of-month month day-of-week`). No writes; only `Cron.schedule` stores a schedule.
 
 | Helper | Cron string |
 |--------|-------------|
-| `Cron.every("5 minutes")` | `*/5 * * * *` |
-| `Cron.every("1 hour")` | `0 * * * *` |
-| `Cron.every("2 hours")` | `0 */2 * * *` |
-| `Cron.every("1 day")` | `0 0 */1 * *` |
-| `Cron.hourly()` | `0 * * * *` |
-| `Cron.daily_at("03:00")` | `0 3 * * *` |
-| `Cron.weekly_at("monday", "09:00")` | `0 9 * * 1` |
+| `Cron.every("5 minutes")` | `0 */5 * * * *` |
+| `Cron.every("1 hour")` | `0 0 * * * *` |
+| `Cron.every("2 hours")` | `0 0 */2 * * *` |
+| `Cron.every("1 day")` | `0 0 0 */1 * *` |
+| `Cron.hourly()` | `0 0 * * * *` |
+| `Cron.daily_at("03:00")` | `0 0 3 * * *` |
+| `Cron.weekly_at("monday", "09:00")` | `0 0 9 * * Mon` |
 
 ### Declarative `static cron`
 
@@ -3998,7 +3999,7 @@ A class can declare a `static cron` field; on boot, worker 0 upserts a cron entr
 
 ```soli
 class NightlyReportJob {
-  static cron = Cron.daily_at("03:00")
+  static cron: String = Cron.daily_at("03:00")
 
   static def perform(args: Hash) {
     Report.generate()
@@ -4006,16 +4007,19 @@ class NightlyReportJob {
 }
 ```
 
-Removing the field does not auto-delete the SolidB entry — call `Cron.delete(id)` explicitly.
+Removing the field does not auto-delete the schedule — call `Cron.delete(name)` explicitly.
 
 ### Configuration env vars
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_JOBS_DATABASE` | SolidB database for queues and cron | `SOLIDB_DATABASE` then `default` |
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied | `default` |
-| `SOLI_JOBS_CALLBACK_URL` | URL SolidB POSTs to when a job fires | `http://127.0.0.1:3000/_jobs/run` |
-| `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). The `/_jobs/run/:name` route is not registered if unset — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks) | unset |
+| `SOLI_JOB_WORKERS` | Worker threads that run job code; `0` disables the engine in this process | `1` |
+| `SOLI_JOBS_POLL_MS` | How often the poller looks for due work (ms) | `1000` |
+| `SOLI_JOBS_LEASE_SECS` | Lease length; a claimed job is reclaimable this long after its last heartbeat | `60` |
+| `SOLI_JOBS_MAX_RETRIES` | Default retry budget per job | `3` |
+| `SOLI_JOBS_RETENTION_SECS` | How long completed rows are kept before pruning | `604800` |
+| `SOLI_WEBHOOK_SECRET` | Default HMAC key for **outgoing** `Webhook.*` deliveries | unset |
 
 ---
 

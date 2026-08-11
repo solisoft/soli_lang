@@ -1,5 +1,15 @@
 # Background Jobs & Cron in Soli: Queues, Secure Callbacks, Retries, and Recurring Work Without the Ops Tax
 
+> **Architecture note (superseded).** This post describes the original design, in
+> which SolidB owned the queue and delivered work back to the app through a
+> signed `POST /_jobs/run/:name` webhook. Soli now runs jobs **in-process**: the
+> queue is a `_jobs` collection on your default connection (SolidB, PostgreSQL,
+> or MySQL), a poller claims work atomically, worker threads execute it, and Soli
+> owns retries and cron. There is no callback URL, no inbound route, and no
+> required callback secret. The public API (`Job.*`, `Webhook.*`, `Cron.*`,
+> `perform_later`, `static cron`) is unchanged. See
+> [Background Jobs and Cron](/docs/jobs) for the current behaviour.
+
 Sending a welcome email, generating a nightly report, or processing a CSV import inside the same HTTP request that the user is waiting on is one of the fastest ways to make a web app feel slow and brittle. The user submits the form, your controller calls an external API, the network hiccups for 1.2 seconds (or 8 seconds on a bad day), and the progress spinner spins while the user wonders if the page is broken.
 
 The right answer is not "make the external service faster." The right answer is to take the work completely off the request path — and to do it with a primitive that is as boring and reliable as the rest of your stack.

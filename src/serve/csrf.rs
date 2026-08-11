@@ -239,8 +239,8 @@ pub(crate) fn verify_csrf_token(
 ///
 /// Rules:
 /// - Safe methods (GET/HEAD/OPTIONS) are always allowed.
-/// - Paths under `/_` are exempt (machine-to-machine endpoints like
-///   `/_jobs/run/:name` carry their own HMAC auth).
+/// - Paths under `/_` are exempt (framework endpoints such as health probes
+///   and `/__solidev/*`, which are not browser form targets).
 /// - Paths matching a `skip_csrf("/pattern[/*]")` declaration in user
 ///   Soli code are exempt. This is the per-route opt-out — call it
 ///   from `config/routes.sl` or a controller's `static` block for

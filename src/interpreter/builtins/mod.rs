@@ -67,6 +67,7 @@ pub mod http_log;
 pub mod i18n;
 pub mod image;
 pub mod imap;
+pub mod job_log;
 pub mod jobs;
 pub mod json;
 pub mod jwt;

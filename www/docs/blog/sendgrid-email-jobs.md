@@ -1,5 +1,15 @@
 # Sending Email with SendGrid — and Doing It from a Background Job
 
+> **Architecture note (superseded).** This post describes the original design, in
+> which SolidB owned the queue and delivered work back to the app through a
+> signed `POST /_jobs/run/:name` webhook. Soli now runs jobs **in-process**: the
+> queue is a `_jobs` collection on your default connection (SolidB, PostgreSQL,
+> or MySQL), a poller claims work atomically, worker threads execute it, and Soli
+> owns retries and cron. There is no callback URL, no inbound route, and no
+> required callback secret. The public API (`Job.*`, `Webhook.*`, `Cron.*`,
+> `perform_later`, `static cron`) is unchanged. See
+> [Background Jobs and Cron](/docs/jobs) for the current behaviour.
+
 Email delivery is one of those features that quietly turns a synchronous request into a slow one. The user submits a signup form, your controller posts to SendGrid's API, the API takes 300 ms on a good day and several seconds on a bad one — and the user waits. The fix is not "make HTTP faster"; the fix is to take the work off the request path entirely.
 
 This post walks through two things together: building a thin SendGrid wrapper as an `app/services/` class, then handing the delivery off to a SolidB-backed background job so the controller returns immediately. By the end you will have a `SendGrid.send_mail(...)` you can call from anywhere, an `EmailJob` you can enqueue with one line, and a clear mental model of why those two pieces belong on opposite sides of the queue.

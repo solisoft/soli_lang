@@ -15,6 +15,10 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
         "app",
         "app/controllers",
         "app/helpers",
+        // Background job handlers (`*_job.sl`). Created up front: the job
+        // engine only starts when this directory exists, so a generated app can
+        // add a job and have it run without also having to create the folder.
+        "app/jobs",
         "app/middleware",
         "app/models",
         "app/views",

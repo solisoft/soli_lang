@@ -613,6 +613,119 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     })
 }
 
+// ---------- column-aware model introspection ----------
+
+/// Read the shape of an existing table for column mode: columns in declaration
+/// order (with type, nullability, and whether the database generates the value)
+/// plus the primary-key columns in key order.
+pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, String> {
+    with_conn(|client| {
+        let column_rows = client
+            .query(
+                "SELECT column_name, udt_name, is_nullable, \
+                        (column_default LIKE 'nextval(%' OR is_identity = 'YES') AS is_auto \
+                 FROM information_schema.columns \
+                 WHERE table_schema = current_schema() AND table_name = $1 \
+                 ORDER BY ordinal_position",
+                &[&table],
+            )
+            .map_err(|e| format!("postgres introspect columns: {e}"))?;
+
+        let mut columns = Vec::with_capacity(column_rows.len());
+        for row in &column_rows {
+            let name: String = row.get(0);
+            let udt: String = row.get(1);
+            let nullable: String = row.get(2);
+            let is_auto: Option<bool> = row.get(3);
+            columns.push((
+                name,
+                udt,
+                String::new(),
+                nullable.eq_ignore_ascii_case("YES"),
+                is_auto.unwrap_or(false),
+            ));
+        }
+
+        let pk_rows = client
+            .query(
+                "SELECT kcu.column_name \
+                 FROM information_schema.table_constraints tc \
+                 JOIN information_schema.key_column_usage kcu \
+                   ON kcu.constraint_name = tc.constraint_name \
+                  AND kcu.table_schema = tc.table_schema \
+                 WHERE tc.table_schema = current_schema() AND tc.table_name = $1 \
+                   AND tc.constraint_type = 'PRIMARY KEY' \
+                 ORDER BY kcu.ordinal_position",
+                &[&table],
+            )
+            .map_err(|e| format!("postgres introspect primary key: {e}"))?;
+        let pk = pk_rows.iter().map(|r| r.get::<_, String>(0)).collect();
+
+        Ok(super::introspect::RawColumns { columns, pk })
+    })
+}
+
+// ---------- Soli job engine ----------
+
+/// Atomically claim up to `batch` due jobs from `_jobs` for the Soli job
+/// engine. `FOR UPDATE SKIP LOCKED` keeps concurrent pollers (multi-process
+/// deploys) from double-claiming; the lease-reclaim clause recovers jobs
+/// whose worker died holding a lease. Timestamps are fixed-width ISO-8601
+/// strings, so text comparison is chronological.
+pub fn claim_jobs(
+    now_iso: &str,
+    worker_id: &str,
+    locked_until_iso: &str,
+    batch: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    if !table_exists("_jobs")? {
+        return Ok(Vec::new());
+    }
+    let sql = "UPDATE _jobs SET doc = doc || jsonb_build_object(\
+                   'state', 'running', 'locked_by', $1::text, 'locked_until', $2::text, \
+                   'attempts', COALESCE((doc->>'attempts')::bigint, 0) + 1) \
+               WHERE _key IN (\
+                   SELECT _key FROM _jobs \
+                   WHERE ((doc->>'state') IN ('pending','scheduled','failed') \
+                          AND (doc->>'run_at') <= $3) \
+                      OR ((doc->>'state') = 'running' AND (doc->>'locked_until') < $3) \
+                   ORDER BY COALESCE((doc->>'priority')::bigint, 0) DESC, (doc->>'run_at') ASC \
+                   LIMIT $4 FOR UPDATE SKIP LOCKED) \
+               RETURNING doc";
+    with_conn(|client| {
+        let rows = client
+            .query(
+                sql,
+                &[&worker_id, &locked_until_iso, &now_iso, &(batch as i64)],
+            )
+            .map_err(|e| format!("postgres claim_jobs: {e}"))?;
+        Ok(rows.iter().map(|r| r.get(0)).collect())
+    })
+}
+
+/// Compare-and-swap a cron slot: merge `patch` into the `_cron_jobs` row only
+/// when its stored `next_run_at` still equals `expected_next_run_at`. Returns
+/// true when this process won the slot (exactly one winner across processes).
+pub fn claim_cron_slot(
+    key: &str,
+    expected_next_run_at: &str,
+    patch: serde_json::Value,
+) -> Result<bool, String> {
+    if !table_exists("_cron_jobs")? {
+        return Ok(false);
+    }
+    with_conn(|client| {
+        let n = client
+            .execute(
+                "UPDATE _cron_jobs SET doc = doc || $1 \
+                 WHERE _key = $2 AND (doc->>'next_run_at') = $3",
+                &[&patch, &key, &expected_next_run_at],
+            )
+            .map_err(|e| format!("postgres claim_cron_slot: {e}"))?;
+        Ok(n == 1)
+    })
+}
+
 // ---------- helpers ----------
 
 fn table_exists(table: &str) -> Result<bool, String> {
@@ -647,6 +760,8 @@ fn resolve_key(key: Option<&str>, document: &mut serde_json::Value) -> Result<St
 #[derive(Debug)]
 enum OwnedParam {
     I64(i64),
+    F64(f64),
+    Bool(bool),
     Text(String),
     Json(serde_json::Value),
 }
@@ -659,6 +774,8 @@ impl ToSql for OwnedParam {
     ) -> Result<postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             OwnedParam::I64(n) => (*n).to_sql(ty, out),
+            OwnedParam::F64(f) => (*f).to_sql(ty, out),
+            OwnedParam::Bool(b) => (*b).to_sql(ty, out),
             OwnedParam::Text(s) => s.to_sql(ty, out),
             OwnedParam::Json(j) => j.to_sql(ty, out),
         }
@@ -694,6 +811,8 @@ fn bind_owned(params: &[SqlBind]) -> Vec<OwnedParam> {
             // is never true, which would make {f: null} filters match nothing.
             SqlBind::Json(j) => OwnedParam::Json(j.clone()),
             SqlBind::I64(n) => OwnedParam::I64(*n),
+            SqlBind::F64(f) => OwnedParam::F64(*f),
+            SqlBind::Bool(b) => OwnedParam::Bool(*b),
             SqlBind::Text(s) => OwnedParam::Text(s.clone()),
         })
         .collect()

@@ -1967,27 +1967,23 @@ fn run_hyper_server_worker_pool(
         );
     }
 
-    // Background job pool: jobs that opt in with `static background: Bool = true` run
-    // here so a long handler acks SolidB immediately (no callback timeout, no
-    // duplicate retry) and never occupies a web worker. Only started when jobs
-    // are actually active — a callback secret is set and `app/jobs` exists.
-    // `SOLI_JOB_WORKERS` sizes it (default 1); 0 disables backgrounding, so all
-    // jobs run inline exactly as before.
+    // Background job engine: a poller claims due rows from `_jobs` and hands
+    // them to this worker pool, so job code never runs on a web worker and a
+    // slow handler can't delay requests. Started when the app actually has jobs
+    // — `app/jobs` exists (handlers to run) or a mailer is configured
+    // (`deliver_later` enqueues the built-in delivery job). `SOLI_JOB_WORKERS`
+    // sizes the pool (default 1); 0 disables the engine entirely, leaving
+    // enqueued rows for another process (or a later run) to pick up.
     {
-        let jobs_secret_set = std::env::var("SOLI_WEBHOOK_SECRET")
+        let mailer_configured = std::env::var("SOLI_SMTP_HOST")
             .ok()
             .filter(|s| !s.is_empty())
-            .or_else(|| {
-                std::env::var("SOLI_JOBS_SECRET")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-            })
             .is_some();
         let num_job_workers = std::env::var("SOLI_JOB_WORKERS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(server_constants::DEFAULT_JOB_WORKERS);
-        if jobs_dir.exists() && jobs_secret_set && num_job_workers > 0 {
+        if (jobs_dir.exists() || mailer_configured) && num_job_workers > 0 {
             background_jobs::start_pool(background_jobs::PoolConfig {
                 models_dir: models_dir.clone(),
                 helpers_dir: helpers_dir.clone(),
@@ -1998,6 +1994,7 @@ fn run_hyper_server_worker_pool(
                 dev_mode,
                 num_workers: num_job_workers,
             });
+            crate::jobs::engine::start(num_job_workers, runtime_handle.clone());
         }
     }
 
@@ -5187,17 +5184,10 @@ fn call_handler(
         _ => true,
     };
 
-    // The background-job callback (`_jobs#run`) must run on the tree-walking
-    // interpreter, never the VM. Its prelude wraps `cls.perform(...)` in a
-    // try/catch that turns ANY error into a 500 return value — so a VM-only
-    // failure (optional-`let` bare assignment compiling to a doomed SetGlobal,
-    // a missing model property, etc.) is swallowed as a "successful" 500
-    // instead of bubbling up to trigger the normal VM->interpreter handler
-    // fallback below. That made every VM gap in a job's call graph a hard 500
-    // with no fallback. Jobs are infrequent and not latency-critical, so the
-    // interpreter — which honors optional-`let` and returns nil for absent
-    // properties — is the correct, safe runtime for the whole job call graph.
-    let force_interpreter = handler_name == "_jobs#run";
+    // Reserved for handlers that must never run on the VM. Job code no longer
+    // arrives over HTTP (the engine runs it on the pool's interpreters), so no
+    // handler currently needs the override.
+    let force_interpreter = false;
 
     // Try VM execution in production mode for function-based handlers
     if let Some(ref mut vm) = vm {
@@ -8921,11 +8911,11 @@ mod tests {
 
     #[test]
     fn csrf_allows_under_underscore_paths() {
-        // /_jobs/run/:name etc carry their own HMAC auth; they're
-        // machine-to-machine so we don't expect Origin/Referer.
+        // Framework endpoints under `/_` are machine-to-machine, not browser
+        // form targets, so we don't expect Origin/Referer on them.
         let _g = csrf_lock();
         let h = make_headers(&[("host", "example.com")]);
-        assert!(check_csrf_origin(&h, "POST", "/_jobs/run/EmailJob").is_ok());
+        assert!(check_csrf_origin(&h, "POST", "/_internal/probe").is_ok());
         assert!(check_csrf_origin(&h, "POST", "/__coverage__").is_ok());
     }
 
@@ -9233,7 +9223,7 @@ mod tests {
 
         // `/_` paths are exempt.
         let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
-        assert!(verify_csrf_token(&data, "POST", "/_jobs/run/x").is_ok());
+        assert!(verify_csrf_token(&data, "POST", "/_internal/probe").is_ok());
 
         set_current_session_id(None);
     }

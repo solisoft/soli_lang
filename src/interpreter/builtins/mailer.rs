@@ -869,9 +869,9 @@ pub fn register_mailer_builtins(env: &mut Environment) {
 ///
 /// In `test`/`logger` mode this delivers synchronously (so tests see it in
 /// `Mailer.deliveries()` without standing up a queue). In `smtp` mode it
-/// enqueues a `__MailDelivery` job onto the SolidB-backed Job queue; if the
-/// queue is unavailable it logs and falls back to sending synchronously so
-/// mail is never silently dropped.
+/// enqueues a `__MailDelivery` job for the job engine to run; if the queue is
+/// unavailable it logs and falls back to sending synchronously so mail is never
+/// silently dropped.
 pub(crate) fn mail_enqueue(args: &[Value]) -> Result<Value, String> {
     let mail = args.first().cloned().unwrap_or(Value::Null);
     let method = MAILER_CONFIG

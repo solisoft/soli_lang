@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-orange-400 to-orange-400 bg-clip-text text-transparent">Background Jobs &amp; Cron</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            SolidB-backed queues and scheduled jobs. Define a handler in <code class="text-amber-400">app/jobs/</code>, call <code class="text-amber-400">.perform_later</code>, and SolidB takes care of scheduling and retries.
+            In-process queues and scheduled jobs. Define a handler in <code class="text-amber-400">app/jobs/</code>, call <code class="text-amber-400">.perform_later</code>, and Soli's job engine stores, claims, runs, and retries it — on any database adapter.
         </p>
     </div>
 
@@ -28,13 +28,14 @@
         </h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
-            <p class="text-gray-400 mb-3">SolidB owns the queue, scheduling, and retries. Soli provides:</p>
+            <p class="text-gray-400 mb-3">Soli owns the whole lifecycle — storage, claiming, execution, retries, and cron:</p>
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
-                <li>A file-based handler convention (<code class="text-amber-400">app/jobs/email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>).</li>
-                <li>A small language-side API (<code class="text-amber-400">Job</code>, <code class="text-amber-400">Webhook</code>, <code class="text-amber-400">Cron</code>) plus per-class facade methods.</li>
-                <li>A built-in callback route (<code class="text-amber-400">POST /_jobs/run/:name</code>) that SolidB hits when a class-target job fires.</li>
+                <li><strong class="text-white">Enqueue</strong> writes a row to the <code class="text-amber-400">_jobs</code> collection on your default connection (works on SolidB, PostgreSQL, and MySQL).</li>
+                <li><strong class="text-white">Claim</strong> is atomic — Postgres <code class="text-amber-400">FOR UPDATE SKIP LOCKED</code>, MySQL a token claim, SolidB an <code class="text-amber-400">If-Match</code> compare-and-swap — so several app processes can share one queue without double-running a job.</li>
+                <li><strong class="text-white">Execute</strong> happens on a worker pool thread with its own loaded interpreter, never on a web worker, so a slow job can't delay requests.</li>
+                <li><strong class="text-white">Retry</strong> is exponential backoff with a lease; a job whose process dies is reclaimed once its lease expires.</li>
             </ul>
-            <p class="text-gray-400 mt-3 text-sm">When you enqueue a class-target job, Soli sends it to SolidB along with a callback URL. When SolidB is ready to run it, it POSTs back into your app with an HMAC-signed payload, which dispatches to <code class="text-amber-400">XJob.perform(args)</code>. When you enqueue via <code class="text-amber-400">Webhook</code>, SolidB POSTs straight to the URL you supplied — no Soli-side dispatcher in the loop.</p>
+            <p class="text-gray-400 mt-3 text-sm">Nothing calls back into your app over HTTP: there is no callback URL, no inbound route, and no shared secret to configure. <code class="text-amber-400">Webhook.*</code> jobs are delivered by the engine itself, with the same retry policy.</p>
         </div>
     </section>
 
@@ -49,7 +50,7 @@
     Mailer.send(user.email, "Welcome to the app")
   end
 end</code></pre>
-            <p class="text-gray-400 mt-3 text-sm">Every job class must define <code class="text-amber-400">static def perform(args: Hash)</code>. That's the entry point SolidB triggers when the job runs.</p>
+            <p class="text-gray-400 mt-3 text-sm">Every job class must define <code class="text-amber-400">static def perform(args: Hash)</code>. That's the entry point the engine calls when the job runs.</p>
         </div>
     </section>
 
@@ -69,7 +70,7 @@ end</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_later(args, queue_or_opts?)</code></td>
-                            <td class="py-3">Enqueues into SolidB. Returns the job id.</td>
+                            <td class="py-3">Enqueues for a worker to run. Returns the job id.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_in(duration, args, queue_or_opts?)</code></td>
@@ -78,6 +79,10 @@ end</code></pre>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_at(datetime, args, queue_or_opts?)</code></td>
                             <td class="py-3">Enqueues to run at an ISO-8601 timestamp.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_now(args)</code></td>
+                            <td class="py-3">Runs <code class="text-amber-400">perform</code> inline, right now — no queue row, no worker, no database. Returns whatever the handler returns, which makes it the right tool in a test.</td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.schedule_cron(name, expr, args?)</code></td>
@@ -90,6 +95,7 @@ end</code></pre>
             <pre data-filename="Examples" class="mt-4"><code class="language-soli text-sm">WelcomeEmailJob.perform_later({ "user_id": 42 })        # Default queue
 WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 })
 WelcomeEmailJob.perform_at("2026-05-01T08:00:00Z", { "user_id": 42 })
+WelcomeEmailJob.perform_now({ "user_id": 42 })                  # Inline, no queue
 WelcomeEmailJob.perform_later({ "user_id": 42 }, "mailers")     # Pick a queue
 WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority": 10 })</code></pre>
         </div>
@@ -104,7 +110,7 @@ WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority
                 <a href="#def-job-enqueue" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-amber-400">Job.enqueue(handler, args, queue_or_opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id. The trailing argument is a queue-name string or an options hash <code class="text-amber-400">{ queue, priority, max_retries }</code> (higher <code class="text-amber-400">priority</code> runs first).</p>
+                <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the job id. The trailing argument is a queue-name string or an options hash <code class="text-amber-400">{ queue, priority, max_retries }</code> (higher <code class="text-amber-400">priority</code> runs first).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
 Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 })</code></pre>
             </div>
@@ -155,7 +161,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
                 <a href="#def-job-queues" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-amber-400">Job.queues()</code>
                 </a>
-                <p class="text-gray-400 mb-3">Return all queues defined in the SolidB database.</p>
+                <p class="text-gray-400 mb-3">Return the queues that currently hold non-terminal work.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">names = Job.queues()</code></pre>
             </div>
         </section>
@@ -173,8 +179,8 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         </h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
-            <p class="text-gray-300 mb-3">For work that targets a URL rather than a Soli handler class. SolidB itself fires the HTTP request when the job runs — no Soli-side dispatcher involved.</p>
-            <p class="text-gray-400 text-sm">When the job fires, SolidB POSTs the payload as JSON with <code class="text-amber-400">X-Webhook-Event: job</code>, <code class="text-amber-400">X-Webhook-Delivery: &lt;job-id&gt;</code>, and (when a secret is set) <code class="text-amber-400">X-Webhook-Signature</code> (lowercase hex HMAC-SHA256 of the body). Non-2xx responses count as failure and are retried with the same exponential backoff as script jobs.</p>
+            <p class="text-gray-300 mb-3">For work that targets a URL rather than a Soli handler class. The engine fires the HTTP request itself when the job is due, so it works on every database adapter.</p>
+            <p class="text-gray-400 text-sm">Soli POSTs the payload as JSON with <code class="text-amber-400">X-Webhook-Event: job</code>, <code class="text-amber-400">X-Webhook-Delivery: &lt;job-id&gt;</code>, and (when a secret is configured — per-job <code class="text-amber-400">secret</code>, else <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>) <code class="text-amber-400">X-Webhook-Signature</code>, the lowercase hex HMAC-SHA256 of the body. Non-2xx responses count as failure and are retried with the same exponential backoff as class-target jobs.</p>
         </div>
 
         <section id="def-webhook-enqueue" class="scroll-mt-20 mb-6">
@@ -182,7 +188,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
                 <a href="#def-webhook-enqueue" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-amber-400">Webhook.enqueue(url, payload, opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue an HTTP POST to <code class="text-orange-400">url</code> with <code class="text-orange-400">payload</code> as the JSON body. Returns the SolidB-issued job id.</p>
+                <p class="text-gray-400 mb-3">Enqueue an HTTP POST to <code class="text-orange-400">url</code> with <code class="text-orange-400">payload</code> as the JSON body. Returns the job id.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue(
   "https://hooks.slack.com/services/T00/B00/abc",
   { "text": "Order #1234 shipped" }
@@ -331,7 +337,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <h2 class="text-2xl font-bold text-white mb-4">Cron Expression Helpers</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
-            <p class="text-gray-400 mb-4">Pure string builders — they produce standard 5-token cron strings. Calling them has no side effect; only <code class="text-amber-400">Cron.schedule</code> writes to SolidB.</p>
+            <p class="text-gray-400 mb-4">Pure string builders — they produce <strong class="text-white">six-field</strong> cron strings (<code class="text-amber-400">sec min hour day-of-month month day-of-week</code>). That leading seconds field is what distinguishes them from five-field Unix crontab lines, which are rejected rather than silently never firing. Calling a builder has no side effect; only <code class="text-amber-400">Cron.schedule</code> writes a schedule.</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
@@ -343,31 +349,31 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("5 minutes")</code></td>
-                            <td class="py-3"><code class="text-orange-400">*/5 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 */5 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 hour")</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("2 hours")</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 */2 * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 */2 * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 day")</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 0 */1 * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 0 */1 * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.hourly()</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.daily_at("03:00")</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 3 * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 3 * * *</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.weekly_at("monday", "09:00")</code></td>
-                            <td class="py-3"><code class="text-orange-400">0 9 * * 1</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 9 * * Mon</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -382,13 +388,13 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">A class can declare a <code class="text-amber-400">static cron</code> field. On boot, worker 0 upserts a cron entry named after the class — the auto-derived name is the snake-case of the class (<code class="text-amber-400">nightly_report_job</code>).</p>
             <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob
-  static cron = Cron.daily_at("03:00")
+  static cron: String = Cron.daily_at("03:00")
 
   static def perform(args: Hash)
     Report.generate()
   end
 end</code></pre>
-            <p class="text-gray-400 mt-3 text-sm">Re-registers idempotently on hot reload. Removing the field does <strong class="text-white">not</strong> auto-delete the SolidB entry — call <code class="text-amber-400">Cron.delete(id)</code> explicitly to avoid surprise data loss.</p>
+            <p class="text-gray-400 mt-3 text-sm">Re-registers idempotently on hot reload. Removing the field does <strong class="text-white">not</strong> auto-delete the schedule — call <code class="text-amber-400">Cron.delete(name)</code> explicitly to avoid surprise data loss.</p>
         </div>
     </section>
 
@@ -409,97 +415,93 @@ end</code></pre>
                     </thead>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DATABASE</code></td>
-                            <td class="py-3 pr-4">SolidB database hosting queues + cron entries</td>
-                            <td class="py-3"><code class="text-orange-400">SOLIDB_DATABASE</code> then <code class="text-orange-400">default</code></td>
-                        </tr>
-                        <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DEFAULT_QUEUE</code></td>
                             <td class="py-3 pr-4">Queue name when none is supplied</td>
                             <td class="py-3"><code class="text-orange-400">default</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code></td>
-                            <td class="py-3 pr-4">URL SolidB POSTs to when a Soli <code class="text-amber-400">Job</code> fires</td>
-                            <td class="py-3"><code class="text-orange-400">http://127.0.0.1:3000/_jobs/run</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOB_WORKERS</code></td>
+                            <td class="py-3 pr-4">Worker threads that run job code; <code class="text-orange-400">0</code> disables the engine in this process</td>
+                            <td class="py-3"><code class="text-orange-400">1</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_WEBHOOK_SECRET</code></td>
-                            <td class="py-3 pr-4"><span class="text-orange-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify callbacks</td>
-                            <td class="py-3"><span class="text-gray-500">unset</span></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_POLL_MS</code></td>
+                            <td class="py-3 pr-4">How often the poller looks for due work (milliseconds)</td>
+                            <td class="py-3"><code class="text-orange-400">1000</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_SECRET</code></td>
-                            <td class="py-3 pr-4">Legacy alias for <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>; still accepted</td>
-                            <td class="py-3"><span class="text-gray-500">unset</span></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_LEASE_SECS</code></td>
+                            <td class="py-3 pr-4">Lease length; a claimed job is reclaimable this long after its last heartbeat</td>
+                            <td class="py-3"><code class="text-orange-400">60</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_MAX_RETRIES</code></td>
+                            <td class="py-3 pr-4">Default retry budget per job</td>
+                            <td class="py-3"><code class="text-orange-400">3</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_RETENTION_SECS</code></td>
+                            <td class="py-3 pr-4">How long completed rows are kept before pruning</td>
+                            <td class="py-3"><code class="text-orange-400">604800</code></td>
                         </tr>
                         <tr>
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOB_WORKERS</code></td>
-                            <td class="py-3 pr-4">Size of the in-process pool for <code class="text-amber-400">static background: Bool = true</code> jobs; <code class="text-orange-400">0</code> disables (all jobs run inline)</td>
-                            <td class="py-3"><code class="text-orange-400">2</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_WEBHOOK_SECRET</code></td>
+                            <td class="py-3 pr-4">Default HMAC key for <strong class="text-white">outgoing</strong> <code class="text-amber-400">Webhook.*</code> deliveries</td>
+                            <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-3 text-sm">The callback URL must be reachable from the SolidB server. In production, set it to your Soli app's public URL plus <code class="text-amber-400">/_jobs/run</code>.</p>
+            <p class="text-gray-400 mt-3 text-sm">The engine starts with <code class="text-amber-400">soli serve</code> when the app has jobs — <code class="text-amber-400">app/jobs/</code> exists, or a mailer is configured. <code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code>, <code class="text-amber-400">SOLI_JOBS_SECRET</code>, and <code class="text-amber-400">SOLI_JOBS_DATABASE</code> are no longer read.</p>
         </div>
     </section>
 
-    <!-- Long-Running Jobs (Background Pool) -->
+    <!-- Long-Running Jobs -->
     <section id="section-background" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Long-Running Jobs (<code class="text-amber-400">static background</code>)</h2>
+        <h2 class="text-2xl font-bold text-white mb-4">Long-Running Jobs</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">By default <code class="text-amber-400">perform</code> runs <span class="text-white font-semibold">synchronously inside the callback</span> — SolidB holds the connection open until it returns. A job that runs for minutes trips SolidB's callback timeout, which marks it failed and <span class="text-orange-300 font-semibold">retries it (so it runs twice, concurrently)</span>, and it occupies a web worker the whole time.</p>
-            <p class="text-gray-400 mb-3">Add <code class="text-amber-400">static background: Bool = true</code> to run the job on a dedicated in-process pool instead. The callback acks <code class="text-orange-400">200 queued</code> immediately, so there's no timeout, no duplicate retry, and no worker held:</p>
+            <p class="text-gray-400 mb-3">Nothing special is required. Every job already runs on the worker pool, off the request path, with no timeout and with retries — so a heavy handler can't delay request serving.</p>
             <pre data-filename="app/jobs/monthly_report_job.sl"><code class="language-soli text-sm">class MonthlyReportJob
-  static background: Bool = true          # run on the background pool
-
   static def perform(args: Hash)
-    # Heavy work — bulk queries, exports, PDF generation — runs with no
-    # timeout and without holding a web worker. Owns its own error handling.
+    # Heavy work — bulk queries, exports, PDF generation — runs on a worker
+    # thread with no timeout, and is retried if it raises.
     generate_report(args["month"])
   end
 end</code></pre>
-            <p class="text-gray-400 mt-3 mb-3">Delayed (<code class="text-amber-400">perform_in</code>/<code class="text-amber-400">perform_at</code>) and <code class="text-amber-400">static cron</code> jobs honor the flag too — it's read at callback time.</p>
-            <div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4">
-                <p class="text-amber-200 text-sm mb-2"><span class="font-semibold">Fire-and-forget.</span> Because Soli acks <em>before</em> the work runs, SolidB never sees a backgrounded job's failure and <span class="font-semibold">will not retry it</span>. Backgrounded jobs must own their reliability:</p>
-                <ul class="list-disc list-inside text-amber-200/90 text-sm space-y-1">
-                    <li>Make <code class="text-amber-300">perform</code> idempotent and handle/log its own errors (a raised error just prints).</li>
-                    <li>Re-enqueue or checkpoint yourself if you need at-least-once semantics.</li>
-                    <li>Keep the default synchronous mode for short jobs where SolidB's automatic retry is the point.</li>
-                </ul>
+            <p class="text-gray-400 mt-3 text-sm">Size the pool with <code class="text-amber-400">SOLI_JOB_WORKERS</code>; each worker holds its own loaded interpreter (models, services, mailers, jobs), so it costs memory as well as concurrency.</p>
+            <div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 mt-4">
+                <p class="text-amber-200 text-sm"><span class="font-semibold">At-least-once semantics.</span> A job that outlives its lease (longer than <code class="text-amber-300">SOLI_JOBS_LEASE_SECS</code> without a heartbeat — a hard-frozen process, say) can be reclaimed and run again elsewhere. Write handlers to be idempotent, and raise the lease for long jobs.</p>
             </div>
-            <p class="text-gray-400 mt-3 text-sm">Sized by <code class="text-amber-400">SOLI_JOB_WORKERS</code> (default <code class="text-orange-400">2</code>); each worker holds its own loaded interpreter. <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> disables backgrounding entirely — every job runs inline as before.</p>
+            <p class="text-gray-400 mt-4 text-sm"><code class="text-amber-400">static background: Bool = true</code> is still accepted but has <strong class="text-white">no effect</strong> — it described the old opt-out from running jobs on a web worker, which is now the default for every job. It can be removed from your job classes.</p>
         </div>
     </section>
 
-    <!-- Security: Signed Callbacks -->
+    <!-- Retries and Crash Recovery -->
     <section id="section-security" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
             <span class="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center">
                 <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
             </span>
-            Signed Callbacks
+            Retries &amp; Crash Recovery
         </h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
-            <p class="text-gray-300 mb-3">The <code class="text-amber-400">POST /_jobs/run/:name</code> route dispatches to <code class="text-amber-400">XJob.perform(args)</code> on whichever class the URL names — it can call any loaded class with a static <code class="text-amber-400">perform</code>. To stop a passing client from invoking arbitrary code, every callback must carry a valid signature.</p>
             <ul class="list-disc list-inside text-gray-300 space-y-2 text-sm">
-                <li>A webhook secret is <strong>required</strong>. If neither <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code> nor <code class="text-amber-400">SOLI_JOBS_SECRET</code> is set, Soli does not register <code class="text-amber-400">/_jobs/run/:name</code> at all — workers log a warning at boot and SolidB callbacks will get 404s until a secret is configured.</li>
-                <li>SolidB sends <code class="text-amber-400">X-Webhook-Signature</code> (canonical) whose value is the lowercase hex HMAC-SHA256 of the raw request body, keyed with the configured secret. The legacy <code class="text-amber-400">X-Job-Signature</code> header is also accepted by the dispatcher.</li>
-                <li>Soli verifies the signature with <code class="text-amber-400">secure_compare()</code> (constant-time), so callers can't probe the secret by timing 401 responses.</li>
-                <li>Bad signature &rarr; <code class="text-amber-400">401</code>, missing class &rarr; <code class="text-amber-400">503</code>, handler error &rarr; <code class="text-amber-400">500</code>. Only a valid signature lets the request reach <code class="text-amber-400">cls.perform(args)</code>.</li>
+                <li><strong class="text-white">Backoff</strong> is exponential from 5 seconds, doubling per attempt, capped at 1 hour, with a small per-job spread so a burst of sibling failures doesn't retry in lockstep.</li>
+                <li><strong class="text-white">Attempts increment at claim time</strong>, not at completion — so a worker that dies mid-job counts the lost attempt.</li>
+                <li><strong class="text-white">Leases recover crashes.</strong> A <code class="text-amber-400">running</code> row whose <code class="text-amber-400">locked_until</code> has passed becomes claimable again, so a killed process's work is picked up rather than stranded. The poller heartbeats in-flight leases each tick.</li>
+                <li><strong class="text-white">Exhausted budgets are buried.</strong> Once <code class="text-amber-400">attempts</code> passes <code class="text-amber-400">max_retries</code> the row becomes <code class="text-amber-400">dead</code> with its last error, and is kept for inspection.</li>
+                <li><strong class="text-white">Completed rows are pruned</strong> after <code class="text-amber-400">SOLI_JOBS_RETENTION_SECS</code>; <code class="text-amber-400">failed</code> and <code class="text-amber-400">dead</code> rows are not.</li>
             </ul>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3 text-sm">Computing the signature yourself (e.g. for an integration test):</p>
-            <pre class="bg-black/30 rounded-lg p-4 overflow-x-auto"><code class="text-sm text-gray-300">let body = json_stringify({ "args": { "user_id": 42 } });
-let sig  = hmac(body, getenv("SOLI_WEBHOOK_SECRET"));   <span class="text-gray-500"># hex HMAC-SHA256</span>
-<span class="text-gray-500"># POST /_jobs/run/WelcomeEmailJob with body and X-Webhook-Signature: &lt;sig&gt;</span></code></pre>
-            <p class="text-gray-400 mt-3 text-sm">Use a long, random value for the secret (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.</p>
+            <p class="text-gray-400 mb-3 text-sm">Because claiming is atomic, several <code class="text-amber-400">soli serve</code> processes can share one database and one queue safely:</p>
+            <pre class="bg-black/30 rounded-lg p-4 overflow-x-auto"><code class="text-sm text-gray-300"># Two app processes, one Postgres, one queue — each job runs exactly once.
+SOLI_DB_ADAPTER=postgres DATABASE_URL=postgres://... soli serve --port 3000
+SOLI_DB_ADAPTER=postgres DATABASE_URL=postgres://... soli serve --port 3001</code></pre>
         </div>
     </section>
 
@@ -525,7 +527,7 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Recurring report (declarative)</h3>
             <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob
-  static cron = Cron.daily_at("03:00")
+  static cron: String = Cron.daily_at("03:00")
 
   static def perform(args: Hash)
     Report.generate()
@@ -536,7 +538,7 @@ end</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Fire-and-forget webhook to a third party</h3>
-            <p class="text-gray-400 text-sm mb-3">No handler class needed — SolidB POSTs the payload directly to the URL when the job is due. Retries on non-2xx with exponential backoff.</p>
+            <p class="text-gray-400 text-sm mb-3">No handler class needed — the engine POSTs the payload to the URL when the job is due. Retries on non-2xx with exponential backoff.</p>
             <pre data-filename="app/controllers/orders_controller.sl"><code class="language-soli text-sm">def create
   order = Order.create(req["json"])
   Webhook.enqueue(
@@ -550,7 +552,7 @@ end</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Idempotent retries</h3>
-            <p class="text-gray-400 text-sm mb-3">SolidB owns retry semantics. Treat handlers as idempotent. The callback receives <code class="text-amber-400">job_id</code> and <code class="text-amber-400">attempt</code> in the request body if you need to dedupe.</p>
+            <p class="text-gray-400 text-sm mb-3">Retries are automatic, and a lease-expiry reclaim can run a job more than once, so treat handlers as idempotent.</p>
             <pre data-filename="app/jobs/charge_job.sl"><code class="language-soli text-sm">class ChargeJob
   static def perform(args: Hash)
     charge_id = args["charge_id"]
@@ -570,8 +572,8 @@ end</code></pre>
             <ul class="list-disc list-inside text-gray-300 space-y-2 text-sm">
                 <li><strong class="text-white">Filename and class name must match.</strong> <code class="text-amber-400">email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>. A mismatch is a startup error.</li>
                 <li><code class="text-amber-400">perform</code> must be <code class="text-amber-400">static</code> — it's invoked on the class, never on an instance.</li>
-                <li>Job arguments round-trip through JSON via SolidB; pass plain hashes / arrays / strings / numbers, not class instances.</li>
-                <li>If a callback arrives before <code class="text-amber-400">app/jobs/</code> finishes loading, the dispatcher returns <code class="text-orange-400">503</code> so SolidB retries instead of failing.</li>
+                <li>Job arguments round-trip through JSON; pass plain hashes / arrays / strings / numbers, not class instances.</li>
+                <li>A handler that isn't loaded fails the job (so it retries) rather than marking it done — a rename mid-deploy recovers once the new code is live.</li>
                 <li>In <code class="text-amber-400">--dev</code> mode, edits under <code class="text-amber-400">app/jobs/</code> hot-reload the class without restarting the server.</li>
                 <li>Only worker 0 performs <code class="text-amber-400">static cron</code> auto-registration on boot, to avoid duplicate writes from multiple workers.</li>
             </ul>

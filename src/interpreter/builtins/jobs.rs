@@ -1,12 +1,15 @@
-//! Background jobs and cron scheduling, backed by SolidB.
+//! Background jobs and cron scheduling — the Soli-side API surface.
 //!
-//! Exposes two static-method-only classes:
+//! Exposes three static-method-only classes:
 //! - `Job` — enqueue, schedule, list, cancel queue jobs.
+//! - `Webhook` — enqueue an outbound HTTP delivery as a job.
 //! - `Cron` — manage recurring jobs and build cron expressions.
 //!
-//! Job handlers are user-defined classes in `app/jobs/*.sl`. SolidB triggers
-//! a handler by POSTing to `/_jobs/run/:name` on the Soli app; the callback
-//! route invokes the class's `static fn perform(args)`.
+//! Job handlers are user-defined classes in `app/jobs/*_job.sl` with a
+//! `static def perform(args)`. Everything here writes rows into the `_jobs` /
+//! `_cron_jobs` collections through [`crate::jobs::store`]; the engine
+//! (`crate::jobs::engine`) claims and runs them inside the Soli process. No
+//! database calls back into the app.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -14,7 +17,7 @@ use std::sync::OnceLock;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{empty_hash, value_to_json, Class, NativeFunction, Value};
-use crate::solidb_http::SoliDBClient;
+use crate::jobs::{scheduler, store, JobDoc};
 
 use std::cell::RefCell;
 
@@ -22,19 +25,18 @@ thread_local! {
     /// Per-worker registry of loaded `app/jobs/*_job.sl` classes, keyed by
     /// class name. Populated by `load_jobs_in_worker` after facade injection.
     ///
-    /// The `/_jobs/run/:name` callback dispatcher resolves the target class
-    /// through this registry. It exists because the prod execution path runs
-    /// requests through the bytecode VM, which never populates the thread-local
-    /// `CURRENT_ENV` that `current_env_lookup` reads — so an env-only lookup
-    /// returns Null in prod and the callback 503s ("Job class not loaded"),
-    /// even though the class loaded fine at boot. This registry is populated in
-    /// both modes on the worker thread, so dispatch works regardless of whether
-    /// the interpreter or the VM is serving the request.
+    /// The job runner resolves a handler name to its class through this
+    /// registry. It exists because the prod execution path runs requests through
+    /// the bytecode VM, which never populates the thread-local `CURRENT_ENV`
+    /// that `current_env_lookup` reads — so an env-only lookup returns Null in
+    /// prod even though the class loaded fine at boot. This registry is
+    /// populated in both modes on the worker thread, so dispatch works either
+    /// way.
     static JOB_CLASSES: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
 }
 
-/// Register a loaded job class so the `/_jobs/run/:name` dispatcher can find it
-/// independently of the (interpreter-only) `CURRENT_ENV` thread-local.
+/// Register a loaded job class so the job runner can find it independently of
+/// the (interpreter-only) `CURRENT_ENV` thread-local.
 pub fn register_job_class_in_registry(name: &str, class: Value) {
     JOB_CLASSES.with(|registry| {
         registry.borrow_mut().insert(name.to_string(), class);
@@ -47,69 +49,10 @@ pub fn lookup_job_class(name: &str) -> Option<Value> {
     JOB_CLASSES.with(|registry| registry.borrow().get(name).cloned())
 }
 
-/// Static configuration for the jobs system, sourced from env vars on first use.
-struct JobsConfig {
-    database: String,
-    default_queue: String,
-    callback_url: String,
-}
-
-impl JobsConfig {
-    fn from_env() -> Self {
-        let database = std::env::var("SOLI_JOBS_DATABASE")
-            .or_else(|_| std::env::var("SOLIDB_DATABASE"))
-            .unwrap_or_else(|_| "default".to_string());
-        let default_queue =
-            std::env::var("SOLI_JOBS_DEFAULT_QUEUE").unwrap_or_else(|_| "default".to_string());
-        let callback_url = std::env::var("SOLI_JOBS_CALLBACK_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3000/_jobs/run".to_string());
-        Self {
-            database,
-            default_queue,
-            callback_url,
-        }
-    }
-}
-
-fn jobs_config() -> &'static JobsConfig {
-    static CFG: OnceLock<JobsConfig> = OnceLock::new();
-    CFG.get_or_init(JobsConfig::from_env)
-}
-
-/// Build a SolidB client wired up with the configured database and credentials
-/// from the existing model DB config (so users don't have to set up auth twice).
-fn make_client() -> Result<SoliDBClient, String> {
-    use crate::interpreter::builtins::model::core::{
-        get_api_key, get_basic_auth, get_jwt_token, DB_CONFIG,
-    };
-    let host = &DB_CONFIG.host;
-    let mut client =
-        SoliDBClient::connect(host).map_err(|e| format!("SolidB connect failed: {}", e))?;
-    if let Some(jwt) = get_jwt_token() {
-        client = client.with_jwt_token(&jwt);
-    } else if let Some(key) = get_api_key() {
-        client = client.with_api_key(key);
-    } else if let Some(basic) = get_basic_auth() {
-        // The cached basic auth header is already "Basic <base64>". Decode to
-        // recover username/password so we can hand them to the client builder.
-        if let Some(rest) = basic.strip_prefix("Basic ") {
-            use base64::{engine::general_purpose::STANDARD, Engine as _};
-            if let Ok(decoded_bytes) = STANDARD.decode(rest) {
-                if let Ok(s) = String::from_utf8(decoded_bytes) {
-                    if let Some((u, p)) = s.split_once(':') {
-                        client = client.with_basic_auth(u, p);
-                    }
-                }
-            }
-        }
-    }
-    client.set_database(&jobs_config().database);
-    Ok(client)
-}
-
-fn callback_for(handler: &str) -> String {
-    let base = jobs_config().callback_url.trim_end_matches('/');
-    format!("{}/{}", base, handler)
+/// Default queue for enqueues that don't name one.
+fn default_queue() -> &'static str {
+    static Q: OnceLock<String> = OnceLock::new();
+    Q.get_or_init(|| crate::jobs::config().default_queue.clone())
 }
 
 fn arg_string(args: &[Value], idx: usize, fn_name: &str) -> Result<String, String> {
@@ -200,10 +143,10 @@ fn format_iso_utc(unix_seconds: i64) -> String {
 // ===== Cron expression helpers =====
 
 // All builders below emit SIX-field cron expressions
-// (`sec min hour day-of-month month day-of-week`). SolidB validates schedules
+// (`sec min hour day-of-month month day-of-week`). The scheduler parses them
 // with the `cron` crate, which requires the leading seconds field and rejects
-// the 5-field Unix form with a 400 — a 5-field expression here silently fails
-// `Cron.schedule` (the create call is rejected, so nothing is ever scheduled).
+// the 5-field Unix form — `Cron.schedule` surfaces that as an error naming the
+// six-field shape rather than accepting a schedule that would never fire.
 fn cron_every(arg: &Value) -> Result<String, String> {
     let secs = parse_duration(arg)?;
     if secs < 60 {
@@ -279,13 +222,13 @@ fn parse_hhmm(time: &str) -> Result<(u32, u32), String> {
 /// - omitted / `null` → default queue, no extra options
 /// - a `String` → queue name (the original positional form)
 /// - a `Hash` → `{ queue?, priority?, max_retries? }`; the `queue` key selects
-///   the queue (default when absent) and every other key is forwarded to SolidB
+///   the queue (default when absent) and every other key reaches the engine
 ///   as-is. `priority` is an Int — higher runs first.
 ///
 /// Returns `(queue_name, opts_json_object)` where the opts object carries the
-/// pass-through scheduling knobs (everything but `queue`).
+/// scheduling knobs the engine understands (everything but `queue`).
 fn job_queue_and_opts(arg: Option<&Value>) -> Result<(String, serde_json::Value), String> {
-    let mut queue = jobs_config().default_queue.clone();
+    let mut queue = default_queue().to_string();
     let mut out = serde_json::Map::new();
     match arg {
         None | Some(Value::Null) => {}
@@ -320,6 +263,14 @@ pub(crate) fn enqueue(args: &[Value]) -> Result<Value, String> {
     job_enqueue(args)
 }
 
+/// Write a job row and log the enqueue for the dev bar.
+fn enqueue_doc(mut doc: JobDoc, opts: &serde_json::Value, what: &str) -> Result<Value, String> {
+    doc.apply_opts(opts);
+    super::job_log::record(&doc);
+    let id = store::enqueue(&doc).map_err(|e| format!("{what} failed: {e}"))?;
+    Ok(Value::String(id.into()))
+}
+
 fn job_enqueue(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
         return Err(
@@ -329,12 +280,8 @@ fn job_enqueue(args: &[Value]) -> Result<Value, String> {
     let handler = arg_string(args, 0, "Job.enqueue")?;
     let payload = arg_hash_as_json(args, 1)?;
     let (queue, opts) = job_queue_and_opts(args.get(2))?;
-    let client = make_client()?;
-    let callback = callback_for(&handler);
-    let id = client
-        .enqueue_job(&queue, &handler, payload, &callback, None, Some(opts))
-        .map_err(|e| format!("Job.enqueue failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let doc = JobDoc::new(&handler, payload, &queue, crate::jobs::now_iso());
+    enqueue_doc(doc, &opts, "Job.enqueue")
 }
 
 fn job_enqueue_in(args: &[Value]) -> Result<Value, String> {
@@ -348,20 +295,8 @@ fn job_enqueue_in(args: &[Value]) -> Result<Value, String> {
     let secs = parse_duration(&args[1])?;
     let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts) = job_queue_and_opts(args.get(3))?;
-    let when = iso_now_plus_seconds(secs);
-    let client = make_client()?;
-    let callback = callback_for(&handler);
-    let id = client
-        .enqueue_job(
-            &queue,
-            &handler,
-            payload,
-            &callback,
-            Some(&when),
-            Some(opts),
-        )
-        .map_err(|e| format!("Job.enqueue_in failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let doc = JobDoc::new(&handler, payload, &queue, iso_now_plus_seconds(secs));
+    enqueue_doc(doc, &opts, "Job.enqueue_in")
 }
 
 fn job_enqueue_at(args: &[Value]) -> Result<Value, String> {
@@ -375,73 +310,84 @@ fn job_enqueue_at(args: &[Value]) -> Result<Value, String> {
     let when = arg_string(args, 1, "Job.enqueue_at")?;
     let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts) = job_queue_and_opts(args.get(3))?;
-    let client = make_client()?;
-    let callback = callback_for(&handler);
-    let id = client
-        .enqueue_job(
-            &queue,
-            &handler,
-            payload,
-            &callback,
-            Some(&when),
-            Some(opts),
-        )
-        .map_err(|e| format!("Job.enqueue_at failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let when = normalize_datetime(&when)?;
+    let doc = JobDoc::new(&handler, payload, &queue, when);
+    enqueue_doc(doc, &opts, "Job.enqueue_at")
+}
+
+/// Accept an RFC 3339 timestamp (with or without a `Z`/offset) and re-emit it in
+/// the fixed-width UTC form the engine compares against. Validating here means a
+/// typo fails at the enqueue call instead of silently never running.
+fn normalize_datetime(value: &str) -> Result<String, String> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Ok(crate::jobs::iso_from_unix(dt.timestamp()));
+    }
+    // Accept a naive "YYYY-MM-DDTHH:MM:SS" / "YYYY-MM-DD HH:MM:SS" as UTC.
+    let candidate = value.trim().replace(' ', "T");
+    for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&candidate, fmt) {
+            return Ok(crate::jobs::iso_from_unix(naive.and_utc().timestamp()));
+        }
+    }
+    Err(format!(
+        "invalid datetime {value:?}: expected an ISO-8601 timestamp \
+         like \"2026-08-11T03:00:00Z\""
+    ))
 }
 
 fn job_cancel(args: &[Value]) -> Result<Value, String> {
     let id = arg_string(args, 0, "Job.cancel")?;
-    let client = make_client()?;
-    client
-        .cancel_job(&id)
-        .map_err(|e| format!("Job.cancel failed: {}", e))?;
-    Ok(Value::Bool(true))
+    let cancelled = store::cancel(&id).map_err(|e| format!("Job.cancel failed: {e}"))?;
+    Ok(Value::Bool(cancelled))
 }
 
 fn job_list(args: &[Value]) -> Result<Value, String> {
+    // No argument lists every queue; a string narrows to one.
     let queue = match args.first() {
-        Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone().into(),
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
     };
-    let client = make_client()?;
-    let jobs = client
-        .list_jobs(&queue)
-        .map_err(|e| format!("Job.list failed: {}", e))?;
+    let jobs = store::list(queue.as_deref()).map_err(|e| format!("Job.list failed: {e}"))?;
     Ok(json_to_value_or_null(serde_json::Value::Array(jobs)))
 }
 
 fn job_queues(_args: &[Value]) -> Result<Value, String> {
-    let client = make_client()?;
-    let queues = client
-        .list_queues()
-        .map_err(|e| format!("Job.queues failed: {}", e))?;
+    let queues = store::queues().map_err(|e| format!("Job.queues failed: {e}"))?;
     Ok(json_to_value_or_null(serde_json::Value::Array(queues)))
 }
 
 // ===== Webhook class methods =====
 //
 // `Webhook.enqueue(url, payload, opts?)` enqueues a job whose target is the
-// given URL rather than a Soli job class. SolidB's queue worker POSTs the
-// payload to the URL with `X-Webhook-Signature` (HMAC-SHA256 of the body
-// keyed with `opts["secret"]` or the `SOLI_WEBHOOK_SECRET` env var) and
-// `X-Webhook-Event: job` / `X-Webhook-Delivery: <job_id>`.
+// given URL rather than a Soli job class. The job engine POSTs the payload with
+// `X-Webhook-Signature` (HMAC-SHA256 of the body keyed with `opts["secret"]` or
+// `SOLI_WEBHOOK_SECRET`), `X-Webhook-Event: job`, and
+// `X-Webhook-Delivery: <job_id>` — the same headers receivers verified before,
+// now sent by Soli itself so this works on every database adapter.
 //
 // `opts` may include:
-//   - queue:        String  — queue name (defaults to the jobs config default)
+//   - queue:        String  — queue name (defaults to the engine default)
 //   - priority:     Int     — higher first
 //   - max_retries:  Int
 //   - secret:       String  — per-job HMAC key
 //   - headers:      Hash    — extra outgoing HTTP headers
-//   - run_at:       Int     — Unix seconds (used only by enqueue_in / enqueue_at internally)
 
-fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<(String, serde_json::Value), String> {
-    let mut queue = jobs_config().default_queue.clone();
+/// Split webhook options into `(queue, engine_opts, secret, headers)`.
+type WebhookOpts = (
+    String,
+    serde_json::Value,
+    Option<String>,
+    Option<serde_json::Value>,
+);
+
+fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<WebhookOpts, String> {
+    let mut queue = default_queue().to_string();
     let mut out = serde_json::Map::new();
+    let mut secret = None;
+    let mut headers = None;
 
-    if let Some(Value::Hash(_)) = opts_arg {
-        let json = value_to_json(opts_arg.unwrap())?;
-        if let serde_json::Value::Object(map) = json {
+    if let Some(hash @ Value::Hash(_)) = opts_arg {
+        if let serde_json::Value::Object(map) = value_to_json(hash)? {
             for (k, v) in map {
                 match k.as_str() {
                     "queue" => {
@@ -449,13 +395,9 @@ fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<(String, serde_json::V
                             queue = s.to_string();
                         }
                     }
-                    "secret" => {
-                        out.insert("webhook_secret".to_string(), v);
-                    }
-                    "headers" => {
-                        out.insert("webhook_headers".to_string(), v);
-                    }
-                    // priority, max_retries, run_at pass through unchanged
+                    "secret" => secret = v.as_str().map(str::to_string),
+                    "headers" => headers = Some(v),
+                    // priority / max_retries reach the engine unchanged.
                     _ => {
                         out.insert(k, v);
                     }
@@ -464,7 +406,7 @@ fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<(String, serde_json::V
         }
     }
 
-    Ok((queue, serde_json::Value::Object(out)))
+    Ok((queue, serde_json::Value::Object(out), secret, headers))
 }
 
 fn webhook_enqueue(args: &[Value]) -> Result<Value, String> {
@@ -475,12 +417,15 @@ fn webhook_enqueue(args: &[Value]) -> Result<Value, String> {
     }
     let url = arg_string(args, 0, "Webhook.enqueue")?;
     let payload = arg_hash_as_json(args, 1)?;
-    let (queue, opts_json) = webhook_build_opts(args.get(2))?;
-    let client = make_client()?;
-    let id = client
-        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
-        .map_err(|e| format!("Webhook.enqueue failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let (queue, opts, secret, headers) = webhook_build_opts(args.get(2))?;
+    let doc = crate::jobs::engine::webhook_job(
+        &url,
+        payload,
+        &queue,
+        crate::jobs::now_iso(),
+        (secret, headers),
+    );
+    enqueue_doc(doc, &opts, "Webhook.enqueue")
 }
 
 fn webhook_enqueue_in(args: &[Value]) -> Result<Value, String> {
@@ -493,18 +438,15 @@ fn webhook_enqueue_in(args: &[Value]) -> Result<Value, String> {
     let url = arg_string(args, 0, "Webhook.enqueue_in")?;
     let secs = parse_duration(&args[1])?;
     let payload = arg_hash_as_json(args, 2)?;
-    let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
-    if let serde_json::Value::Object(ref mut map) = opts_json {
-        map.insert(
-            "run_at".to_string(),
-            serde_json::Value::String(iso_now_plus_seconds(secs)),
-        );
-    }
-    let client = make_client()?;
-    let id = client
-        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
-        .map_err(|e| format!("Webhook.enqueue_in failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let (queue, opts, secret, headers) = webhook_build_opts(args.get(3))?;
+    let doc = crate::jobs::engine::webhook_job(
+        &url,
+        payload,
+        &queue,
+        iso_now_plus_seconds(secs),
+        (secret, headers),
+    );
+    enqueue_doc(doc, &opts, "Webhook.enqueue_in")
 }
 
 fn webhook_enqueue_at(args: &[Value]) -> Result<Value, String> {
@@ -515,17 +457,11 @@ fn webhook_enqueue_at(args: &[Value]) -> Result<Value, String> {
         );
     }
     let url = arg_string(args, 0, "Webhook.enqueue_at")?;
-    let when = arg_string(args, 1, "Webhook.enqueue_at")?;
+    let when = normalize_datetime(&arg_string(args, 1, "Webhook.enqueue_at")?)?;
     let payload = arg_hash_as_json(args, 2)?;
-    let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
-    if let serde_json::Value::Object(ref mut map) = opts_json {
-        map.insert("run_at".to_string(), serde_json::Value::String(when));
-    }
-    let client = make_client()?;
-    let id = client
-        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
-        .map_err(|e| format!("Webhook.enqueue_at failed: {}", e))?;
-    Ok(Value::String(id.into()))
+    let (queue, opts, secret, headers) = webhook_build_opts(args.get(3))?;
+    let doc = crate::jobs::engine::webhook_job(&url, payload, &queue, when, (secret, headers));
+    enqueue_doc(doc, &opts, "Webhook.enqueue_at")
 }
 
 // ===== Cron class methods =====
@@ -540,60 +476,23 @@ fn cron_schedule(args: &[Value]) -> Result<Value, String> {
     let expr = arg_string(args, 1, "Cron.schedule")?;
     let handler = arg_string(args, 2, "Cron.schedule")?;
     let payload = arg_hash_as_json(args, 3)?;
-
-    let client = make_client()?;
-    let callback = callback_for(&handler);
-
-    // Upsert by name: look up existing entry, update if found else create.
-    let existing = client
-        .list_crons()
-        .map_err(|e| format!("Cron.schedule list failed: {}", e))?;
-    let existing_id = existing.iter().find_map(|entry| {
-        let entry_name = entry.get("name").and_then(|v| v.as_str())?;
-        if entry_name == name {
-            entry
-                .get("id")
-                .or_else(|| entry.get("_key"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        } else {
-            None
-        }
-    });
-
-    let id = match existing_id {
-        Some(id) => {
-            let fields = serde_json::json!({
-                "cron_expression": expr,
-                "handler": handler,
-                "args": payload,
-                "callback_url": callback,
-            });
-            client
-                .update_cron(&id, fields)
-                .map_err(|e| format!("Cron.schedule update failed: {}", e))?;
-            id
-        }
-        None => client
-            .create_cron(&name, &expr, &handler, payload, &callback)
-            .map_err(|e| format!("Cron.schedule create failed: {}", e))?,
-    };
+    // Validated here (not silently at fire time) so a bad expression fails the
+    // call that declared it.
+    let id = scheduler::upsert(&name, &expr, &handler, payload)
+        .map_err(|e| format!("Cron.schedule failed: {e}"))?;
     Ok(Value::String(id.into()))
 }
 
 fn cron_list(_args: &[Value]) -> Result<Value, String> {
-    let client = make_client()?;
-    let crons = client
-        .list_crons()
-        .map_err(|e| format!("Cron.list failed: {}", e))?;
+    let crons = store::list_crons().map_err(|e| format!("Cron.list failed: {e}"))?;
     Ok(json_to_value_or_null(serde_json::Value::Array(crons)))
 }
 
 fn cron_update_method(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
-        return Err("Cron.update(id, fields_hash) requires 2 arguments".to_string());
+        return Err("Cron.update(name, fields_hash) requires 2 arguments".to_string());
     }
-    let id = arg_string(args, 0, "Cron.update")?;
+    let name = arg_string(args, 0, "Cron.update")?;
     let fields = match &args[1] {
         Value::Hash(_) => value_to_json(&args[1])?,
         other => {
@@ -603,19 +502,23 @@ fn cron_update_method(args: &[Value]) -> Result<Value, String> {
             ))
         }
     };
-    let client = make_client()?;
-    client
-        .update_cron(&id, fields)
-        .map_err(|e| format!("Cron.update failed: {}", e))?;
+    // A new expression must be valid and must move the schedule position, or
+    // the row would keep firing on the old cadence.
+    let mut patch = fields.clone();
+    if let Some(expr) = fields.get("cron_expression").and_then(|v| v.as_str()) {
+        let next = scheduler::next_run_after(expr, crate::jobs::unix_now())
+            .map_err(|e| format!("Cron.update failed: {e}"))?;
+        if let Some(map) = patch.as_object_mut() {
+            map.insert("next_run_at".to_string(), serde_json::json!(next));
+        }
+    }
+    store::update_cron(&name, patch).map_err(|e| format!("Cron.update failed: {e}"))?;
     Ok(Value::Bool(true))
 }
 
 fn cron_delete(args: &[Value]) -> Result<Value, String> {
-    let id = arg_string(args, 0, "Cron.delete")?;
-    let client = make_client()?;
-    client
-        .delete_cron(&id)
-        .map_err(|e| format!("Cron.delete failed: {}", e))?;
+    let name = arg_string(args, 0, "Cron.delete")?;
+    store::delete_cron(&name).map_err(|e| format!("Cron.delete failed: {e}"))?;
     Ok(Value::Bool(true))
 }
 
@@ -626,9 +529,8 @@ pub fn register_jobs_builtins(env: &mut Environment) {
     register_webhook_class(env);
     register_cron_class(env);
 
-    // Internal: look up a class by name from the current execution env.
-    // Used by the SolidB-webhook callback handler to dispatch to a job class
-    // discovered at request time.
+    // Internal: look up a class by name from the current execution env. The
+    // pool's job runner uses this to resolve a handler name to its class.
     env.define(
         "__soli_get_class".to_string(),
         Value::NativeFunction(NativeFunction::new("__soli_get_class", Some(1), |args| {
@@ -648,53 +550,6 @@ pub fn register_jobs_builtins(env: &mut Environment) {
             let resolved = lookup_job_class(&name).or_else(|| current_env_lookup(&name));
             Ok(resolved.unwrap_or(Value::Null))
         })),
-    );
-
-    // Internal: if the named job class opted into the in-process background pool
-    // (`static background: Bool = true`), hand it off and return true so the callback
-    // acks SolidB immediately; otherwise return false so it runs inline. Args
-    // cross the pool thread as JSON (`Value` isn't `Send`).
-    env.define(
-        "__soli_try_background_job".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "__soli_try_background_job",
-            Some(2),
-            |args| {
-                let name = match &args[0] {
-                    Value::String(s) => s.to_string(),
-                    other => {
-                        return Err(format!(
-                            "__soli_try_background_job() expects string name, got {}",
-                            other.type_name()
-                        ))
-                    }
-                };
-                // Resolve exactly like `__soli_get_class` (which the prelude uses
-                // for `cls`) so the two never disagree: registry first, then the
-                // interpreter's current env.
-                use crate::interpreter::executor::current_env_lookup;
-                let resolved = lookup_job_class(&name).or_else(|| current_env_lookup(&name));
-                let wants_background = match resolved {
-                    Some(Value::Class(class)) => read_static_background(&class),
-                    _ => false,
-                };
-                if !wants_background {
-                    return Ok(Value::Bool(false));
-                }
-                let args_json = match value_to_json(&args[1]) {
-                    Ok(json) => json.to_string(),
-                    Err(e) => {
-                        return Err(format!(
-                            "__soli_try_background_job() failed to serialize args: {}",
-                            e
-                        ))
-                    }
-                };
-                Ok(Value::Bool(crate::serve::background_jobs::enqueue(
-                    name, args_json,
-                )))
-            },
-        )),
     );
 }
 
@@ -836,11 +691,11 @@ fn register_cron_class(env: &mut Environment) {
 
 // ===== Facade-method injection =====
 
-/// Inject perform_later / perform_in / perform_at / schedule_cron static methods
-/// into a user-defined `XJob` class, returning a fresh `Rc<Class>` that the
-/// caller should re-define in the environment. Each enqueue facade accepts an
-/// optional trailing queue-name string or `{ queue, priority, max_retries }`
-/// options hash (see `job_queue_and_opts`).
+/// Inject perform_later / perform_in / perform_at / perform_now / schedule_cron
+/// static methods into a user-defined `XJob` class, returning a fresh
+/// `Rc<Class>` that the caller should re-define in the environment. Each enqueue
+/// facade accepts an optional trailing queue-name string or
+/// `{ queue, priority, max_retries }` options hash (see `job_queue_and_opts`).
 ///
 /// User-defined methods on the class take precedence — facade methods are only
 /// added when the corresponding name is not already present.
@@ -851,6 +706,21 @@ pub fn inject_facade_methods(class: &Class) -> Class {
     let already_defined = |name: &str| {
         class.native_static_methods.contains_key(name) || class.static_methods.contains_key(name)
     };
+
+    // `perform_now` runs the handler inline, in this process, right now — no
+    // queue row, no worker. It is how a spec exercises a job, and how a caller
+    // opts out of asynchrony.
+    if !already_defined("perform_now") {
+        let target = Rc::new(class.clone());
+        native_statics.insert(
+            "perform_now".to_string(),
+            Rc::new(NativeFunction::new(
+                format!("{}.perform_now", class_name),
+                None,
+                move |args| perform_now_inline(&target, args),
+            )),
+        );
+    }
 
     if !already_defined("perform_later") {
         let cn = class_name.clone();
@@ -968,6 +838,43 @@ pub fn inject_facade_methods(class: &Class) -> Class {
     )
 }
 
+/// Run a job class's `perform` in the calling process, synchronously.
+///
+/// Backs `XJob.perform_now(args)` and the engine's dispatch of a claimed row on
+/// interpreters that have the class loaded. Handles all three shapes a static
+/// method can take (native, tree-walking, bytecode) so it works in dev and prod.
+fn perform_now_inline(class: &Rc<Class>, args: &[Value]) -> Result<Value, String> {
+    let call_args: Vec<Value> = if args.is_empty() {
+        vec![empty_hash()]
+    } else {
+        args.to_vec()
+    };
+
+    if let Some(native) = class.native_static_methods.get("perform") {
+        return (native.func)(&call_args);
+    }
+    if let Some(closure) = class.find_vm_static_method("perform") {
+        let mut interpreter = crate::interpreter::Interpreter::default();
+        return interpreter
+            .call_value(
+                Value::VmClosure(closure),
+                call_args,
+                crate::span::Span::default(),
+            )
+            .map_err(|e| e.to_string());
+    }
+    if let Some(method) = class.find_static_method("perform") {
+        let mut interpreter = crate::interpreter::Interpreter::default();
+        return interpreter
+            .call_function_with_this(&method, Some(Value::Class(class.clone())), call_args)
+            .map_err(|e| e.to_string());
+    }
+    Err(format!(
+        "{} has no `static def perform(args)` — a job class must define one",
+        class.name
+    ))
+}
+
 /// Read a `static cron` field from a class; returns the string if present.
 pub fn read_static_cron(class: &Class) -> Option<String> {
     let fields = class.static_fields.borrow();
@@ -977,9 +884,11 @@ pub fn read_static_cron(class: &Class) -> Option<String> {
     }
 }
 
-/// Whether a job class opted into the in-process background pool with
-/// `static background: Bool = true`. Only an explicit boolean `true` counts; anything
-/// else (absent, false, non-bool) means run inline as before.
+/// Whether a job class declares `static background: Bool = true`.
+///
+/// Retained for compatibility: under the Soli job engine every job already runs
+/// on the worker pool rather than a request thread, so this flag no longer
+/// changes behavior.
 pub fn read_static_background(class: &Class) -> bool {
     matches!(
         class.static_fields.borrow().get("background"),
@@ -987,84 +896,12 @@ pub fn read_static_background(class: &Class) -> bool {
     )
 }
 
-/// Idempotently register a `static cron`-declared schedule against SolidB.
-/// Equivalent to `Cron.schedule(name, expr, handler, {})` but callable from
-/// Rust during worker boot.
+/// Idempotently register a `static cron`-declared schedule. Equivalent to
+/// `Cron.schedule(name, expr, handler, {})` but callable from Rust during
+/// worker boot.
 pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<String, String> {
-    let args = vec![
-        Value::String(name.to_string().into()),
-        Value::String(expr.to_string().into()),
-        Value::String(handler.to_string().into()),
-    ];
-    match cron_schedule(&args)? {
-        Value::String(id) => Ok(id.to_string()),
-        _ => Ok(String::new()),
-    }
+    scheduler::upsert(name, expr, handler, serde_json::json!({}))
 }
-
-/// Soli prelude that defines the SolidB-webhook callback handler. Loaded once
-/// per worker. Looks up the matching XJob class by name, calls its `perform`
-/// method with the supplied args, and returns 200/503/500.
-///
-/// Security: every request must carry either `X-Webhook-Signature` (the
-/// canonical name SolidB emits) or `X-Job-Signature` (legacy alias) whose
-/// value is the HMAC-SHA256 (hex) of the raw request body, keyed with
-/// `SOLI_WEBHOOK_SECRET` (preferred) or `SOLI_JOBS_SECRET` (legacy). Comparison
-/// is constant-time. The route is only registered when at least one of the two
-/// secret env vars is set (see `app_loader.rs`); the belt-and-suspenders check
-/// below also rejects requests if the secret was somehow cleared after boot.
-///
-/// Header keys are stored lowercase in `req["headers"]` (hyper normalizes
-/// them), so the lookup uses lowercase names.
-pub const JOBS_CALLBACK_PRELUDE: &str = r#"
-fn __soli_jobs_run(req) {
-    let secret = getenv("SOLI_WEBHOOK_SECRET");
-    if secret == null or secret == "" {
-        secret = getenv("SOLI_JOBS_SECRET");
-    }
-    if secret == null or secret == "" {
-        return {"status": 503, "body": "Job dispatcher disabled: SOLI_WEBHOOK_SECRET / SOLI_JOBS_SECRET not set"};
-    }
-    let provided_sig = req["headers"]["x-webhook-signature"] ?? req["headers"]["x-job-signature"] ?? "";
-    let raw_body = req["body"] ?? "";
-    let expected_sig = hmac(raw_body, secret);
-    if !secure_compare(provided_sig, expected_sig) {
-        return {"status": 401, "body": "Invalid signature"};
-    }
-    let name = req["params"]["name"];
-    let cls = __soli_get_class(name);
-    if cls == null {
-        return {"status": 503, "body": "Job class not loaded: " + str(name)};
-    }
-    let payload = req["json"];
-    let job_args = {};
-    if payload != null {
-        // SolidB POSTs the raw `params` value (no wrapper), but older
-        // releases — and any caller that forwards the enqueue body verbatim
-        // — wrap it as `{ "args": {...} }`. Accept either shape.
-        let candidate = payload["args"];
-        if candidate != null {
-            job_args = candidate;
-        } else {
-            job_args = payload;
-        }
-    }
-    try {
-        // Jobs that opt in with `static background: Bool = true` run on the in-process
-        // background pool. Ack SolidB immediately so a long job never trips its
-        // callback timeout (and never gets retried as a duplicate). Falls
-        // through to inline execution when the pool is disabled.
-        if __soli_try_background_job(name, job_args) {
-            return {"status": 200, "body": "queued"};
-        }
-        cls.perform(job_args);
-        return {"status": 200, "body": "ok"};
-    } catch err {
-        print("Job " + str(name) + " failed: " + str(err));
-        return {"status": 500, "body": "job error: " + str(err)};
-    }
-}
-"#;
 
 /// Convert a `EmailJob` class name to a snake-case cron name like
 /// `email_job` (matches the file naming convention).
@@ -1080,173 +917,13 @@ pub fn class_name_to_snake(name: &str) -> String {
 }
 
 #[cfg(test)]
-mod prelude_tests {
-    //! Exercise the JOBS_CALLBACK_PRELUDE end-to-end through the interpreter.
-    //! Confirms the lowercase header lookup, constant-time comparison, and
-    //! hard-fail behaviour when the secret is missing — the regressions that
-    //! the original SEC-001 fix shipped with.
-    use super::JOBS_CALLBACK_PRELUDE;
-    use crate::interpreter::value::{HashKey, HashPairs, Value};
-    use crate::interpreter::Interpreter;
-    use std::cell::RefCell;
-    use std::rc::Rc;
-    use std::sync::Mutex;
-
-    /// std::env mutations are process-global; tests that touch them must run
-    /// serially or they'll observe each other's writes.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn run_prelude(interp: &mut Interpreter) {
-        let tokens = crate::lexer::Scanner::new(JOBS_CALLBACK_PRELUDE)
-            .scan_tokens()
-            .expect("prelude lex");
-        let program = crate::parser::Parser::new(tokens)
-            .parse()
-            .expect("prelude parse");
-        interp.interpret(&program).expect("prelude execute");
-    }
-
-    fn make_request(headers: &[(&str, &str)], body: &str, name: &str) -> Value {
-        let mut params = HashPairs::default();
-        params.insert(
-            HashKey::String("name".into()),
-            Value::String(name.to_string().into()),
-        );
-        let mut hdrs = HashPairs::default();
-        for (k, v) in headers {
-            hdrs.insert(
-                HashKey::String((*k).to_string().into()),
-                Value::String((*v).to_string().into()),
-            );
-        }
-        let mut req = HashPairs::default();
-        req.insert(
-            HashKey::String("params".into()),
-            Value::Hash(Rc::new(RefCell::new(params))),
-        );
-        req.insert(
-            HashKey::String("headers".into()),
-            Value::Hash(Rc::new(RefCell::new(hdrs))),
-        );
-        req.insert(
-            HashKey::String("body".into()),
-            Value::String(body.to_string().into()),
-        );
-        Value::Hash(Rc::new(RefCell::new(req)))
-    }
-
-    fn invoke(interp: &mut Interpreter, req: Value) -> Value {
-        let func = match interp.environment.borrow().get("__soli_jobs_run") {
-            Some(Value::Function(f)) => f,
-            other => panic!("__soli_jobs_run not defined as Function (got {:?})", other),
-        };
-        interp
-            .call_function(&func, vec![req])
-            .expect("call_function")
-    }
-
-    fn status_of(value: &Value) -> i64 {
-        let Value::Hash(h) = value else {
-            panic!("expected Hash response, got {:?}", value)
-        };
-        for (k, v) in h.borrow().iter() {
-            if matches!(k, HashKey::String(s) if **s == *"status") {
-                if let Value::Int(n) = v {
-                    return *n;
-                }
-            }
-        }
-        panic!("no status field in response");
-    }
-
-    fn hex_hmac(message: &str, key: &str) -> String {
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("hmac key");
-        mac.update(message.as_bytes());
-        let bytes = mac.finalize().into_bytes();
-        let mut out = String::with_capacity(bytes.len() * 2);
-        for b in bytes.iter() {
-            out.push_str(&format!("{:02x}", b));
-        }
-        out
-    }
-
-    #[test]
-    fn rejects_when_secret_unset() {
-        let _g = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("SOLI_JOBS_SECRET");
-        let mut interp = Interpreter::new();
-        run_prelude(&mut interp);
-        let req = make_request(&[], r#"{"args":{}}"#, "Foo");
-        let resp = invoke(&mut interp, req);
-        assert_eq!(status_of(&resp), 503);
-    }
-
-    #[test]
-    fn rejects_missing_signature_header() {
-        let _g = ENV_LOCK.lock().unwrap();
-        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
-        let mut interp = Interpreter::new();
-        run_prelude(&mut interp);
-        let req = make_request(&[], r#"{"args":{}}"#, "Foo");
-        let resp = invoke(&mut interp, req);
-        assert_eq!(status_of(&resp), 401);
-    }
-
-    #[test]
-    fn rejects_wrong_signature() {
-        let _g = ENV_LOCK.lock().unwrap();
-        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
-        let mut interp = Interpreter::new();
-        run_prelude(&mut interp);
-        let req = make_request(&[("x-job-signature", "deadbeef")], r#"{"args":{}}"#, "Foo");
-        let resp = invoke(&mut interp, req);
-        assert_eq!(status_of(&resp), 401);
-    }
-
-    #[test]
-    fn rejects_canonical_case_signature_header() {
-        // hyper normalises header names to lowercase before they reach the
-        // request hash; the prelude must look up the lowercase form. If a
-        // future regression switches to "X-Job-Signature" this test catches it.
-        let _g = ENV_LOCK.lock().unwrap();
-        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
-        let mut interp = Interpreter::new();
-        run_prelude(&mut interp);
-        let body = r#"{"args":{}}"#;
-        let sig = hex_hmac(body, "test-secret");
-        // Insert under the canonical case only — the lookup should miss and
-        // the request should be rejected.
-        let req = make_request(&[("X-Job-Signature", &sig)], body, "Foo");
-        let resp = invoke(&mut interp, req);
-        assert_eq!(status_of(&resp), 401);
-    }
-
-    #[test]
-    fn accepts_valid_signature_returns_503_for_unknown_class() {
-        let _g = ENV_LOCK.lock().unwrap();
-        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
-        let mut interp = Interpreter::new();
-        run_prelude(&mut interp);
-        let body = r#"{"args":{}}"#;
-        let sig = hex_hmac(body, "test-secret");
-        let req = make_request(&[("x-job-signature", &sig)], body, "NotARealJob");
-        let resp = invoke(&mut interp, req);
-        // Auth passed → falls through to class lookup, which returns 503
-        // because the class isn't loaded in this test interpreter.
-        assert_eq!(status_of(&resp), 503);
-    }
-}
-
-#[cfg(test)]
 mod job_opts_tests {
     //! `job_queue_and_opts` is the single point where the trailing enqueue
     //! argument is interpreted, so these tests pin all four shapes: omitted,
     //! a bare queue-name string (the original form), and an options hash with
     //! or without an explicit `queue`. The `priority` / `max_retries` knobs
     //! must survive into the forwarded opts object unchanged.
-    use super::{job_queue_and_opts, jobs_config};
+    use super::{default_queue, job_queue_and_opts};
     use crate::interpreter::value::{HashKey, HashPairs, Value};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1262,14 +939,14 @@ mod job_opts_tests {
     #[test]
     fn omitted_uses_default_queue_and_no_opts() {
         let (queue, opts) = job_queue_and_opts(None).unwrap();
-        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(queue, default_queue());
         assert_eq!(opts, serde_json::json!({}));
     }
 
     #[test]
     fn null_is_treated_as_omitted() {
         let (queue, opts) = job_queue_and_opts(Some(&Value::Null)).unwrap();
-        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(queue, default_queue());
         assert_eq!(opts, serde_json::json!({}));
     }
 
@@ -1300,7 +977,7 @@ mod job_opts_tests {
     fn hash_without_queue_keeps_default_but_keeps_priority() {
         let arg = hash(&[("priority", Value::Int(5))]);
         let (queue, opts) = job_queue_and_opts(Some(&arg)).unwrap();
-        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(queue, default_queue());
         assert_eq!(opts, serde_json::json!({ "priority": 5 }));
     }
 
@@ -1313,11 +990,11 @@ mod job_opts_tests {
 #[cfg(test)]
 mod cron_expr_tests {
     //! The `Cron.*` expression builders must emit SIX-field expressions
-    //! (`sec min hour day-of-month month day-of-week`). SolidB validates
-    //! schedules with the `cron` crate, which rejects the 5-field Unix form
-    //! with a 400 — so a 5-field expression made `Cron.schedule` silently fail
-    //! and nothing was ever scheduled. These tests pin the exact output AND
-    //! parse it with the same crate so that regression can't come back.
+    //! (`sec min hour day-of-month month day-of-week`). The scheduler parses
+    //! them with the `cron` crate, which rejects the 5-field Unix form — a
+    //! 5-field expression would be refused at declaration time. These tests pin
+    //! the exact output AND parse it with the same crate so that regression
+    //! can't come back.
     use super::{cron_daily_at, cron_every, cron_hourly, cron_weekly_at};
     use crate::interpreter::value::Value;
     use cron::Schedule;
@@ -1332,7 +1009,7 @@ mod cron_expr_tests {
         );
         assert!(
             Schedule::from_str(expr).is_ok(),
-            "expression must parse with the `cron` crate SolidB uses: {:?}",
+            "expression must parse with the `cron` crate the scheduler uses: {:?}",
             expr
         );
     }
@@ -1386,5 +1063,128 @@ mod cron_expr_tests {
         for (day, time) in [("monday", "09:00"), ("sunday", "00:00"), ("fri", "17:30")] {
             assert_valid(&cron_weekly_at(day, time).unwrap());
         }
+    }
+}
+
+#[cfg(test)]
+mod facade_tests {
+    //! `perform_now` runs a handler inline, with no queue and no database — it
+    //! is how a spec exercises job logic. These tests also pin the facade
+    //! injection contract: user-defined methods always win over injected ones.
+    use super::*;
+    use std::cell::Cell;
+
+    thread_local! {
+        // Per-thread so the parallel test runner can't cross-count calls.
+        static CALLS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// A job class whose `perform` is a native static, so the test needs no
+    /// interpreter setup.
+    fn job_class(name: &str) -> Class {
+        let mut statics: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        statics.insert(
+            "perform".to_string(),
+            Rc::new(NativeFunction::new("perform", None, |args| {
+                CALLS.with(|c| c.set(c.get() + 1));
+                // Echo the args back so the caller can assert they arrived.
+                Ok(args.first().cloned().unwrap_or(Value::Null))
+            })),
+        );
+        Class {
+            name: name.to_string(),
+            native_static_methods: statics,
+            ..Default::default()
+        }
+    }
+
+    fn call_static(class: &Class, method: &str, args: &[Value]) -> Result<Value, String> {
+        let f = class
+            .native_static_methods
+            .get(method)
+            .unwrap_or_else(|| panic!("{method} should be injected"));
+        (f.func)(args)
+    }
+
+    #[test]
+    fn injection_adds_the_full_facade_set() {
+        let injected = inject_facade_methods(&job_class("EmailJob"));
+        for name in [
+            "perform_now",
+            "perform_later",
+            "perform_in",
+            "perform_at",
+            "schedule_cron",
+        ] {
+            assert!(
+                injected.native_static_methods.contains_key(name),
+                "{name} should be injected"
+            );
+        }
+    }
+
+    #[test]
+    fn perform_now_runs_the_handler_immediately_and_returns_its_value() {
+        let injected = inject_facade_methods(&job_class("EmailJob"));
+        let before = CALLS.with(|c| c.get());
+
+        let args = crate::interpreter::value::json_to_value(serde_json::json!({"to": "a@b.c"}))
+            .expect("args");
+        let result = call_static(&injected, "perform_now", &[args]).expect("perform_now");
+
+        assert_eq!(
+            CALLS.with(|c| c.get()),
+            before + 1,
+            "perform_now must call perform exactly once, inline"
+        );
+        // The handler's return value reaches the caller (so a spec can assert it).
+        match result {
+            Value::Hash(h) => {
+                let borrowed = h.borrow();
+                let to = borrowed
+                    .get(&crate::interpreter::value::HashKey::String("to".into()))
+                    .cloned();
+                assert!(matches!(to, Some(Value::String(s)) if s.as_ref() == "a@b.c"));
+            }
+            other => panic!("expected the handler's hash back, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn perform_now_defaults_missing_args_to_an_empty_hash() {
+        // `Job.perform_now()` with no argument must still call perform(args)
+        // rather than failing an arity check.
+        let injected = inject_facade_methods(&job_class("NoArgJob"));
+        let result = call_static(&injected, "perform_now", &[]).expect("perform_now");
+        assert!(matches!(result, Value::Hash(_)));
+    }
+
+    #[test]
+    fn perform_now_reports_a_missing_perform_clearly() {
+        // A class with no `perform` is a user error worth naming precisely.
+        let bare = Class {
+            name: "BrokenJob".to_string(),
+            ..Default::default()
+        };
+        let injected = inject_facade_methods(&bare);
+        let err = call_static(&injected, "perform_now", &[]).expect_err("must error");
+        assert!(err.contains("BrokenJob"), "{err}");
+        assert!(err.contains("perform"), "{err}");
+    }
+
+    #[test]
+    fn user_defined_methods_are_not_overwritten() {
+        // If an app defines its own perform_now/perform_later, injection must
+        // leave it alone.
+        let mut class = job_class("CustomJob");
+        class.native_static_methods.insert(
+            "perform_now".to_string(),
+            Rc::new(NativeFunction::new("custom", None, |_| {
+                Ok(Value::String("custom".into()))
+            })),
+        );
+        let injected = inject_facade_methods(&class);
+        let result = call_static(&injected, "perform_now", &[]).expect("custom perform_now");
+        assert!(matches!(result, Value::String(s) if s.as_ref() == "custom"));
     }
 }

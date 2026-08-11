@@ -1,17 +1,12 @@
 //! In-process background job worker pool.
 //!
-//! A job class that opts in with `static background: Bool = true` is not run inline on
-//! the web-worker thread that handles the SolidB `/_jobs/run/:name` callback.
-//! Instead the callback hands the job to this pool and immediately replies
-//! `200 queued`, so:
-//!   * SolidB never times out waiting for a long `perform()` and therefore never
-//!     retries the job as a (concurrent, duplicate) failure, and
-//!   * the web worker is freed instantly instead of being occupied for the whole
-//!     run — no request starvation.
+//! Job code runs here, never on a web-worker thread, so a slow handler cannot
+//! delay request serving. The job engine's poller (`crate::jobs::engine`) claims
+//! due rows from the queue and hands each one to this pool; the worker reports
+//! the outcome back so the row is completed or retried.
 //!
-//! The trade-off (accepted, opt-in) is fire-and-forget: because we ack before
-//! the work runs, SolidB no longer sees success/failure and will not retry a
-//! backgrounded job. Such jobs own their idempotency and error handling.
+//! Jobs handed over without a queue row (`enqueue`) are fire-and-forget: nothing
+//! records their outcome, so they own their idempotency and error handling.
 //!
 //! `Value` is `Rc`-based and not `Send`, so job args cannot cross the thread
 //! boundary as a `Value`. They travel as a JSON string and are re-parsed on the
@@ -36,11 +31,15 @@ use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
 use crate::span::Span;
 
-/// A unit of work handed from a web worker to the background pool. Both fields
-/// are `Send`; args are carried as JSON (see module docs).
+/// A unit of work handed to the background pool. Every field is `Send`; args
+/// are carried as JSON (see module docs).
 struct BackgroundJob {
     class_name: String,
     args_json: String,
+    /// The queue row this work came from, when the job engine dispatched it.
+    /// `None` for legacy fire-and-forget hand-offs, which have no row to
+    /// update and therefore no retry.
+    record: Option<crate::jobs::JobDoc>,
 }
 
 /// Set once when the pool starts. `enqueue` returns `false` while unset so
@@ -62,34 +61,52 @@ pub struct PoolConfig {
     pub num_workers: usize,
 }
 
-/// The Soli runner defined in each pool interpreter. Mirrors the try/catch in
-/// `JOBS_CALLBACK_PRELUDE` but without the HMAC check (the callback already
-/// verified the signature before enqueuing).
+/// The Soli runner defined in each pool interpreter.
+///
+/// Returns `null` on success and an error string on failure, so the Rust side
+/// can complete or retry the queue row. A missing class is an error too — the
+/// job must not be marked done when nothing ran (that happens during a deploy
+/// where a handler was renamed; the retry gives the new code a chance).
 const JOBS_BACKGROUND_RUNNER: &str = r#"
 fn __soli_run_job_bg(name, args) {
     let cls = __soli_get_class(name);
     if cls == null {
-        print("Background job class not loaded: " + str(name));
-        return;
+        return "job class not loaded: " + str(name);
     }
     try {
         cls.perform(args);
+        return null;
     } catch err {
-        print("Background job " + str(name) + " failed: " + str(err));
+        return str(err);
     }
 }
 "#;
 
-/// Hand a backgrounded job to the pool. Returns `false` if the pool isn't
-/// running, so the caller runs the job inline instead.
+/// Hand a job to the pool without a queue row: fire-and-forget, no retry.
+/// Returns `false` if the pool isn't running, so the caller can fall back to
+/// running the job inline.
 pub fn enqueue(class_name: String, args_json: String) -> bool {
+    send(BackgroundJob {
+        class_name,
+        args_json,
+        record: None,
+    })
+}
+
+/// Hand a claimed queue row to the pool. The worker reports its outcome back to
+/// the job store, so the row is completed or retried. Returns `false` when the
+/// pool isn't running — the caller must then release its claim.
+pub fn enqueue_with_id(class_name: String, args_json: String, record: crate::jobs::JobDoc) -> bool {
+    send(BackgroundJob {
+        class_name,
+        args_json,
+        record: Some(record),
+    })
+}
+
+fn send(job: BackgroundJob) -> bool {
     match BG_SENDER.get() {
-        Some(tx) => tx
-            .send(BackgroundJob {
-                class_name,
-                args_json,
-            })
-            .is_ok(),
+        Some(tx) => tx.send(job).is_ok(),
         None => false,
     }
 }
@@ -246,33 +263,57 @@ fn define_bg_runner(id: usize, interpreter: &mut Interpreter) {
     }
 }
 
-/// Drain the channel: parse args JSON, run the job via the Soli runner, log the
-/// outcome. Returns when the channel is closed.
+/// Drain the channel: parse args JSON, run the job via the Soli runner, then
+/// report the outcome to the job store (when the work came from a queue row).
+/// Returns when the channel is closed.
 fn worker_recv_loop(
     rx: &channel::Receiver<BackgroundJob>,
     interpreter: &mut Interpreter,
     runner: Value,
 ) {
     while let Ok(job) = rx.recv() {
-        let args = match crate::interpreter::value::parse_json(&job.args_json) {
-            Ok(value) => value,
-            Err(e) => {
-                eprintln!(
-                    "Background job {}: invalid args JSON: {}",
-                    job.class_name, e
-                );
-                continue;
-            }
-        };
-
-        let start = Instant::now();
-        let call_args = vec![Value::String(job.class_name.clone().into()), args];
-        match interpreter.call_value(runner.clone(), call_args, Span::default()) {
-            Ok(_) => {
-                let ms = start.elapsed().as_millis();
-                println!("[bg-job] {} finished in {}ms", job.class_name, ms);
-            }
-            Err(e) => eprintln!("Background job {} error: {}", job.class_name, e),
+        if let Some(record) = &job.record {
+            crate::jobs::engine::mark_started(&record.key);
+        }
+        // Every exit path below must clear the in-flight marker, or the poller
+        // keeps renewing a lease for work that already finished.
+        let outcome = run_one(&job, interpreter, &runner);
+        if let Some(record) = &job.record {
+            crate::jobs::engine::mark_finished(&record.key);
+            crate::jobs::engine::report_outcome(record, outcome.as_deref());
+        } else if let Some(err) = &outcome {
+            eprintln!("Background job {} error: {}", job.class_name, err);
         }
     }
+}
+
+/// Execute one job. Returns `None` on success, `Some(error)` otherwise.
+///
+/// A panicking handler is caught here (not just at the thread level) so the
+/// queue row is failed and retried rather than lost when the worker restarts.
+fn run_one(job: &BackgroundJob, interpreter: &mut Interpreter, runner: &Value) -> Option<String> {
+    let args = match crate::interpreter::value::parse_json(&job.args_json) {
+        Ok(value) => value,
+        Err(e) => return Some(format!("invalid args JSON: {e}")),
+    };
+
+    let start = Instant::now();
+    let call_args = vec![Value::String(job.class_name.clone().into()), args];
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        interpreter.call_value(runner.clone(), call_args, Span::default())
+    }));
+
+    let error = match result {
+        // The runner returns null on success, an error string on failure.
+        Ok(Ok(Value::String(err))) => Some(err.to_string()),
+        Ok(Ok(_)) => None,
+        Ok(Err(e)) => Some(e.to_string()),
+        Err(_) => Some("job panicked".to_string()),
+    };
+
+    let ms = start.elapsed().as_millis();
+    if error.is_none() {
+        println!("[bg-job] {} finished in {}ms", job.class_name, ms);
+    }
+    error
 }

@@ -77,10 +77,17 @@ pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<
 }
 
 /// A bind parameter with explicit SQL type intent.
+///
+/// `Bool` and `F64` exist for column-aware models, whose binds go into real
+/// typed columns — a `bool` column will not accept a JSON or text bind.
+/// SQL NULL is never a bind: the column compiler emits `IS NULL` / the `NULL`
+/// literal instead, which keeps both drivers' typed-null handling out of play.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SqlBind {
     Json(serde_json::Value),
     I64(i64),
+    F64(f64),
+    Bool(bool),
     Text(String),
 }
 

@@ -137,6 +137,31 @@ pub fn clear_transaction() {
     super::mysql::clear_transaction();
 }
 
+/// Atomically claim up to `batch` due jobs for the Soli job engine.
+pub fn claim_jobs(
+    now_iso: &str,
+    worker_id: &str,
+    locked_until_iso: &str,
+    batch: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    route_sql!(
+        super::postgres::claim_jobs(now_iso, worker_id, locked_until_iso, batch),
+        super::mysql::claim_jobs(now_iso, worker_id, locked_until_iso, batch)
+    )
+}
+
+/// CAS a `_cron_jobs` slot on its stored `next_run_at`; true = this process won.
+pub fn claim_cron_slot(
+    key: &str,
+    expected_next_run_at: &str,
+    patch: serde_json::Value,
+) -> Result<bool, String> {
+    route_sql!(
+        super::postgres::claim_cron_slot(key, expected_next_run_at, patch),
+        super::mysql::claim_cron_slot(key, expected_next_run_at, patch)
+    )
+}
+
 pub fn insert(
     table: &str,
     key: Option<&str>,

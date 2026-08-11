@@ -1,8 +1,8 @@
 # Background Jobs and Cron
 
-Soli ships with a SolidB-backed background-job and cron system. Define a handler class in `app/jobs/`, enqueue it from your controllers or models, and SolidB takes care of scheduling, retries, and triggering the handler when it's time to run.
+Soli ships a background-job and cron system that runs **inside the Soli process**. Define a handler class in `app/jobs/`, enqueue it from your controllers or models, and Soli's job engine stores it, claims it, runs it on a worker thread, retries it on failure, and fires your cron schedules.
 
-> **Backend.** The first version targets SolidB only. SolidB owns the queue, scheduling, and retry policy; Soli provides the language-side API and a webhook the SolidB worker calls to actually execute your code.
+> **Storage.** Jobs are ordinary documents in a `_jobs` collection (and `_cron_jobs` for schedules) on your default database connection, so the engine works the same on SolidB, PostgreSQL, and MySQL. Nothing calls back into your app over HTTP — no callback URL, no inbound route, no shared secret required.
 
 ## Defining a Job
 
@@ -18,19 +18,22 @@ class WelcomeEmailJob {
 }
 ```
 
-Every job class must define a `static def perform(args: Hash)`. That's the entry point SolidB triggers when the job runs.
+Every job class must define a `static def perform(args: Hash)`. That's the entry point the engine calls when the job runs.
 
 ## Enqueueing Jobs (Facade-style)
 
 Job classes get a set of static helpers automatically — you don't need to inherit from anything:
 
 ```soli
-# Enqueue. SolidB picks it up and calls back to /_jobs/run/WelcomeEmailJob.
+# Enqueue. A worker claims it on the next poll and runs it.
 WelcomeEmailJob.perform_later({ "user_id": 42 });
 
 # Schedule for later.
 WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 });
 WelcomeEmailJob.perform_at("2026-05-01T08:00:00Z", { "user_id": 42 });
+
+# Run it right here, right now — no queue, no worker. Useful in specs.
+WelcomeEmailJob.perform_now({ "user_id": 42 });
 
 # Pick a non-default queue: pass its name as the trailing argument.
 WelcomeEmailJob.perform_later({ "user_id": 42 }, "mailers");
@@ -45,9 +48,11 @@ Every enqueue helper (`perform_later`, `perform_in`, `perform_at`) takes the sam
 |---------------|--------|----------------------------------------------------|
 | `queue`       | String | Queue name (defaults to `SOLI_JOBS_DEFAULT_QUEUE`) |
 | `priority`    | Int    | Higher executes first                              |
-| `max_retries` | Int    | Retry budget                                       |
+| `max_retries` | Int    | Retry budget (defaults to `SOLI_JOBS_MAX_RETRIES`) |
 
 Duration strings accept `seconds`, `minutes`, `hours`, `days`, `weeks` (and the singular/abbreviated forms — `s`, `min`, `hr`, `d`, `wk`). Numeric values are interpreted as seconds.
+
+`perform_now` runs the handler synchronously in the calling process and returns whatever `perform` returns. It writes no queue row, so it works with no database and no worker pool — which is what makes it the right tool in a test.
 
 ## Low-level API
 
@@ -63,14 +68,16 @@ Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 });
 Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, "mailers");
 Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 });
 
-Job.cancel(job_id);
-jobs = Job.list("default");      # jobs in the "default" queue
-queue_names = Job.queues();
+Job.cancel(job_id);              # true when removed; raises if already running
+jobs = Job.list("default");      # rows in the "default" queue (omit for all)
+queue_names = Job.queues();      # queues with non-terminal work
 ```
+
+`Job.cancel` only applies to work that hasn't started. A `running` job holds a worker and a lease, so cancelling it raises rather than pretending to stop it.
 
 ## Webhook Jobs (Arbitrary URLs)
 
-Sometimes the work you want to enqueue isn't a Soli class — it's a POST to a third-party API (Slack, Stripe, an internal service), or a webhook to some other system on a delay. The `Webhook` class enqueues jobs whose target is a URL rather than a Soli handler. SolidB itself fires the HTTP request when the job runs.
+Sometimes the work you want to enqueue isn't a Soli class — it's a POST to a third-party API (Slack, Stripe, an internal service), or a webhook to some other system on a delay. The `Webhook` class enqueues jobs whose target is a URL. The engine fires the HTTP request itself, with the same retry policy as any other job.
 
 ```soli
 # Fire immediately
@@ -116,19 +123,19 @@ Webhook.enqueue(
 );
 ```
 
-When the job fires, SolidB POSTs the payload as JSON with these headers:
+When the job fires, Soli POSTs the payload as JSON with these headers:
 
 - `Content-Type: application/json`
 - `X-Webhook-Event: job`
 - `X-Webhook-Delivery: <job-id>`
-- `X-Webhook-Signature: <lowercase hex HMAC-SHA256(body, secret)>` — present when a secret is configured
+- `X-Webhook-Signature: <lowercase hex HMAC-SHA256(body, secret)>` — present when a secret is configured (per-job `secret`, else `SOLI_WEBHOOK_SECRET`)
 - Plus any `headers` you supply
 
-Non-2xx responses count as failure and are retried with the same exponential backoff as script-target jobs. `Webhook.cancel(id)` and `Webhook.list(queue)` operate on the same underlying `_jobs` collection as `Job`.
+Non-2xx responses count as failure and are retried with the same exponential backoff as class-target jobs. `Webhook.cancel(id)` and `Webhook.list(queue)` operate on the same `_jobs` collection as `Job`.
 
 ## Cron (Recurring Jobs)
 
-Schedule a recurring job by passing a cron expression to `Cron.schedule` or by declaring it on the class.
+Schedule a recurring job by passing a cron expression to `Cron.schedule` or by declaring it on the class. Soli evaluates the expressions and fires the schedules itself.
 
 ### Imperative
 
@@ -136,11 +143,13 @@ Schedule a recurring job by passing a cron expression to `Cron.schedule` or by d
 Cron.schedule("nightly_report", Cron.daily_at("03:00"), "ReportJob", {});
 Cron.schedule("warm_cache",     Cron.every("5 minutes"), "WarmCacheJob", {});
 Cron.list();
-Cron.update(cron_id, { "schedule": "0 4 * * *" });
-Cron.delete(cron_id);
+Cron.update("nightly_report", { "cron_expression": "0 0 4 * * *" });
+Cron.delete("nightly_report");
 ```
 
-`Cron.schedule` is **idempotent**. Calling it twice with the same name updates the existing entry rather than creating a duplicate, so it's safe to call from a boot script.
+`Cron.schedule` is **idempotent**. Calling it twice with the same name updates the existing entry rather than creating a duplicate, so it's safe to call from a boot script. `Cron.update` and `Cron.delete` take the schedule **name** (the same one you passed to `schedule`).
+
+An invalid expression is rejected by `Cron.schedule` / `Cron.update` with an error naming the expected shape — a schedule that could never fire is never stored.
 
 ### Convention (declarative)
 
@@ -148,7 +157,7 @@ A class can declare a `static cron`. On boot, worker 0 upserts a cron entry name
 
 ```soli
 class NightlyReportJob {
-  static cron = Cron.daily_at("03:00");
+  static cron: String = Cron.daily_at("03:00");
 
   static def perform(args: Hash) {
     Report.generate();
@@ -156,114 +165,107 @@ class NightlyReportJob {
 }
 ```
 
-The auto-derived cron name is the snake-case of the class (`nightly_report_job`). To remove a static-cron schedule, delete the field and call `Cron.delete(id)` once — Soli does not auto-delete to avoid surprise data loss.
+The auto-derived cron name is the snake-case of the class (`nightly_report_job`). To remove a static-cron schedule, delete the field and call `Cron.delete(name)` once — Soli does not auto-delete to avoid surprise data loss.
 
 ### Cron expression helpers
 
+Soli uses **six-field** cron expressions: `sec min hour day-of-month month day-of-week`. That leading seconds field is what distinguishes them from five-field Unix crontab lines — pasting a five-field line is an error, not a silently-never-firing schedule.
+
 | Helper                                    | Cron string         |
 |-------------------------------------------|---------------------|
-| `Cron.every("5 minutes")`                 | `*/5 * * * *`       |
-| `Cron.every("1 hour")`                    | `0 * * * *`         |
-| `Cron.every("2 hours")`                   | `0 */2 * * *`       |
-| `Cron.every("1 day")`                     | `0 0 */1 * *`       |
-| `Cron.hourly()`                           | `0 * * * *`         |
-| `Cron.daily_at("03:00")`                  | `0 3 * * *`         |
-| `Cron.weekly_at("monday", "09:00")`       | `0 9 * * 1`         |
+| `Cron.every("5 minutes")`                 | `0 */5 * * * *`     |
+| `Cron.every("1 hour")`                    | `0 0 * * * *`       |
+| `Cron.every("2 hours")`                   | `0 0 */2 * * *`     |
+| `Cron.every("1 day")`                     | `0 0 0 */1 * *`     |
+| `Cron.hourly()`                           | `0 0 * * * *`       |
+| `Cron.daily_at("03:00")`                  | `0 0 3 * * *`       |
+| `Cron.weekly_at("monday", "09:00")`       | `0 0 9 * * Mon`     |
 
-You can always pass a raw cron string instead.
+You can always pass a raw six-field cron string instead.
 
 ## Configuration
 
 Set these env vars (typically in `.env`):
 
-| Variable                  | Purpose                                                                 | Default                            |
-|---------------------------|-------------------------------------------------------------------------|------------------------------------|
-| `SOLI_JOBS_DATABASE`      | SolidB database hosting queues + cron entries                           | `SOLIDB_DATABASE` then `default`   |
-| `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied                                        | `default`                          |
-| `SOLI_JOBS_CALLBACK_URL`  | URL SolidB POSTs to when a Soli `Job` fires                             | `http://127.0.0.1:3000/_jobs/run`  |
-| `SOLI_WEBHOOK_SECRET`     | **Required.** HMAC-SHA256 key used to sign and verify callbacks         | unset                              |
-| `SOLI_JOBS_SECRET`        | Legacy alias for `SOLI_WEBHOOK_SECRET`; still accepted                  | unset                              |
-| `SOLI_JOB_WORKERS`        | Size of the in-process pool for `static background: Bool = true` jobs; `0` disables (all jobs run inline) | `2`            |
+| Variable                  | Purpose                                                                       | Default   |
+|---------------------------|-------------------------------------------------------------------------------|-----------|
+| `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied                                              | `default` |
+| `SOLI_JOB_WORKERS`        | Worker threads that run job code; `0` disables the engine in this process     | `1`       |
+| `SOLI_JOBS_POLL_MS`       | How often the poller looks for due work (milliseconds)                        | `1000`    |
+| `SOLI_JOBS_LEASE_SECS`    | Lease length; a claimed job is reclaimable this long after its last heartbeat  | `60`      |
+| `SOLI_JOBS_MAX_RETRIES`   | Default retry budget per job                                                  | `3`       |
+| `SOLI_JOBS_RETENTION_SECS`| How long completed rows are kept before pruning                               | `604800`  |
+| `SOLI_WEBHOOK_SECRET`     | Default HMAC key for **outgoing** `Webhook.*` deliveries                      | unset     |
+| `SOLI_JOB_VIEW_HELPERS`   | Set `0` to skip loading view helpers/i18n into job interpreters (saves memory) | enabled   |
 
-The callback URL must be reachable from the SolidB server. In production set it to your Soli app's public URL plus `/_jobs/run`. Either env var alone is enough to enable signed callbacks — the dispatcher checks `SOLI_WEBHOOK_SECRET` first, then falls back to `SOLI_JOBS_SECRET`.
+The engine starts with `soli serve` when the app has jobs — `app/jobs/` exists, or a mailer is configured (so `deliver_later` works). `SOLI_JOB_WORKERS=0` disables it in that process; enqueued rows simply wait for a process that does run workers.
 
-## Security: Signed Callbacks
-
-The `POST /_jobs/run/:name` route dispatches to `XJob.perform(args)` on whichever class the URL names — i.e. it can call any loaded class with a static `perform`. To stop a passing client from invoking arbitrary code, every callback must carry a valid signature.
-
-- **A webhook secret is required.** If neither `SOLI_WEBHOOK_SECRET` nor `SOLI_JOBS_SECRET` is set, Soli **does not register** the `/_jobs/run/:name` route at all. Workers log a warning at boot and SolidB callbacks will get 404s until you configure a secret.
-- **Signature header.** SolidB sends `X-Webhook-Signature` (canonical) whose value is the lowercase hex HMAC-SHA256 of the raw request body, computed with the configured secret as the key. The legacy `X-Job-Signature` header is also accepted by the dispatcher for backward compatibility.
-- **Constant-time check.** Soli verifies the signature with `secure_compare()` (constant-time) so callers can't probe the secret by timing 401 responses.
-- **Bad signature → 401, missing class → 503, handler error → 500** — only a valid signature lets the request reach `cls.perform(args)`.
-
-If you compute the signature yourself (e.g. for an integration test), it's:
-
-```soli
-let body = json_stringify({ "args": { "user_id": 42 } });
-let sig  = hmac(body, getenv("SOLI_WEBHOOK_SECRET"));   # hex HMAC-SHA256
-# POST /_jobs/run/WelcomeEmailJob with body and X-Webhook-Signature: <sig>
-```
-
-Use a long, random value for the secret (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.
+There is **no** callback URL and **no** required secret any more. `SOLI_JOBS_CALLBACK_URL`, `SOLI_JOBS_SECRET`, and `SOLI_JOBS_DATABASE` are no longer read; `SOLI_WEBHOOK_SECRET` now only signs outgoing webhook deliveries.
 
 ## How Dispatch Works
 
-1. `WelcomeEmailJob.perform_later(args)` calls `Job.enqueue("WelcomeEmailJob", args)`.
-2. Soli POSTs the job to `/_api/database/{db}/queues/default/enqueue` on SolidB, including the configured callback URL as `webhook_url`.
-3. SolidB picks up the job and POSTs `/_jobs/run/WelcomeEmailJob` on the Soli app with `{ "args": ... }` in the body, signed with `X-Webhook-Signature`.
-4. Soli's built-in handler verifies the signature, looks up `WelcomeEmailJob` in the loaded class registry, and calls `WelcomeEmailJob.perform(args)`.
-5. Soli replies `200 ok` on success or `500` on error. SolidB owns the retry policy.
+1. `WelcomeEmailJob.perform_later(args)` writes a row to `_jobs` with `state: "pending"` and `run_at: now`.
+2. The poller thread claims due rows atomically — Postgres `FOR UPDATE SKIP LOCKED`, MySQL a token claim, SolidB an `If-Match` compare-and-swap — stamping each with `state: "running"`, a `locked_until` lease, and an incremented `attempts`.
+3. Claimed jobs go to the worker pool, where a fully-loaded interpreter (models, services, mailers, templates) calls `WelcomeEmailJob.perform(args)`.
+4. The worker reports the outcome: success marks the row `done`; a raised error, a panic, or a non-2xx webhook response marks it `failed` with the next retry time, or `dead` once the retry budget is spent.
 
-For cron, the flow is identical except step 3 is triggered by the cron schedule rather than an explicit enqueue. For `Webhook.enqueue(...)`, steps 3–4 collapse: SolidB POSTs directly to the URL you supplied — there is no Soli-side dispatcher to invoke.
+Because claiming is atomic, several `soli serve` processes can share one database and one queue without ever running the same job twice concurrently. Cron works the same way: the poller claims a due schedule with a compare-and-swap on its `next_run_at`, so exactly one process enqueues each occurrence.
 
-## Long-Running Jobs (Background Pool)
+Job code never runs on a web-server worker, so a slow handler cannot delay request serving.
 
-By default `cls.perform(args)` runs **synchronously inside the callback** (step 4 above): SolidB holds the HTTP connection open until it returns. That's fine for quick jobs, but a job that runs for minutes will trip SolidB's callback timeout — SolidB then marks it failed and **retries it, so it runs a second time concurrently** — and while it runs it occupies one of your web-server workers.
+## Retries and Crash Recovery
 
-Opt a job out of the synchronous path with `static background: Bool = true`:
+- **Backoff** is exponential from 5 seconds, doubling per attempt, capped at 1 hour, with a small per-job spread so a burst of sibling failures doesn't retry in lockstep.
+- **`attempts` increments at claim time**, not at completion. A worker that dies mid-job therefore counts the lost attempt.
+- **Leases recover crashes.** A `running` row whose `locked_until` has passed is claimable again, so a job whose process was killed is picked up by the next poller instead of being stranded. The poller heartbeats the leases of in-flight jobs each tick, so a long job is not reclaimed while it is still running.
+- **At-least-once semantics.** A job that outlives its lease (longer than `SOLI_JOBS_LEASE_SECS` without a heartbeat, e.g. a hard-frozen process) can be picked up elsewhere. **Write handlers to be idempotent**, and raise `SOLI_JOBS_LEASE_SECS` if your jobs are long-running.
+- **Completed rows are pruned** after `SOLI_JOBS_RETENTION_SECS`; `failed` and `dead` rows are kept for inspection.
+
+## Long-Running Jobs
+
+Nothing special is required: every job already runs on the worker pool, off the request path, with no timeout and with retries. Size the pool with `SOLI_JOB_WORKERS` — each worker holds its own loaded interpreter (models, services, mailers, jobs), so it costs memory as well as concurrency.
+
+`static background: Bool = true` is still accepted for compatibility but has no effect — it described the old opt-out from running jobs on a web worker, which is now the default for every job. It can be removed from your job classes.
+
+## Testing Jobs
+
+`perform_now` runs a handler inline with no queue and no database, which is the simplest way to test job logic:
 
 ```soli
-# app/jobs/monthly_report_job.sl
-class MonthlyReportJob {
-  static background: Bool = true          # run on the in-process background pool
-
-  static def perform(args: Hash) {
-    # Heavy work — bulk queries, exports, PDF generation — runs here with no
-    # timeout and without holding a web worker. Owns its own error handling.
-    generate_report(args["month"]);
-  }
-}
+test("welcome email job sends mail", fn() {
+  WelcomeEmailJob.perform_now({ "user_id": user.id });
+  assert_eq(Mailer.deliveries().length(), 1);
+});
 ```
 
-When such a job's callback arrives, Soli hands it to a dedicated **background worker pool** and replies `200 queued` immediately. The job then runs on its own thread with no timeout, and the web worker is freed at once. Delayed (`perform_in`/`perform_at`) and `static cron` jobs honor the flag the same way — it's read at callback time, regardless of how the job was scheduled.
+`soli test` runs no poller, so `perform_later` in a test writes a row that nothing claims. Assert on the enqueue (`Job.list(...)`) or call `perform_now` to exercise the handler.
 
-**Trade-off — fire-and-forget.** Because Soli acks *before* the work runs, SolidB sees only the immediate `200` and **will not retry a backgrounded job if it fails**. Backgrounded jobs must own their reliability:
+## Idempotency and Registration Notes
 
-- Make `perform` idempotent and handle/log its own errors (a raised error just prints; it does not signal SolidB).
-- Re-enqueue or checkpoint yourself if you need at-least-once semantics.
-- Keep the default synchronous mode for short jobs where SolidB's automatic retry is the point.
-
-The pool is sized by `SOLI_JOB_WORKERS` (default `2`). Each worker holds its own loaded interpreter (models, services, mailers, jobs), so size it for your concurrency and memory budget. `SOLI_JOB_WORKERS=0` disables backgrounding entirely — every job, including those marked `static background: Bool = true`, runs inline as before.
-
-## Idempotency and Retries
-
-- **Cron upsert.** `Cron.schedule(name, ...)` is keyed by `name`. Same name = update, never duplicate. Worker 0 is the only worker that performs cron auto-registration on boot, to avoid races between workers.
-- **Job retries.** SolidB owns retry semantics. Soli's callback returns 5xx on handler error so SolidB will retry. Treat handlers as idempotent where possible. **Exception:** jobs marked `static background: Bool = true` ack `200` before running, so SolidB never sees their failures and does **not** retry them — see [Long-Running Jobs](#long-running-jobs-background-pool).
-- **`job_id` and `attempt`.** When SolidB retries, it includes an `attempt` count and `job_id` in the callback body. Read them from `req["json"]` if you need de-dup logic.
+- **Cron upsert.** `Cron.schedule(name, ...)` is keyed by `name`: same name updates, never duplicates. Only worker 0 performs `static cron` auto-registration at boot, and the row key is the schedule name, so concurrent boots converge instead of racing.
+- **`_jobs` lives on the default connection.** Per-model `connection "name"` routing does not apply to the queue itself.
 
 ## Hot Reload
 
-In `--dev` mode, editing a file under `app/jobs/` reloads the class without restarting the server, like controllers and models. Existing enqueued jobs continue to use the new code on their next callback.
+In `--dev` mode, editing a file under `app/jobs/` reloads the class without restarting the server, like controllers and models. A job already executing finishes on the code it started with; the next job picks up the new code.
 
 ## Worker Convention Notes
 
 - Filename and class name must match (`email_job.sl` ↔ `EmailJob`). A mismatch is a startup error.
 - `perform` must be `static` — it's invoked on the class, never on an instance.
-- Job arguments round-trip through JSON via SolidB; pass plain hashes/arrays/strings/numbers, not class instances.
-- A handler that's not yet loaded responds `503` to the callback so SolidB retries instead of failing.
+- Job arguments round-trip through JSON; pass plain hashes/arrays/strings/numbers, not class instances.
+- A handler that isn't loaded fails the job (and retries), rather than marking it done — so a rename mid-deploy recovers once the new code is live.
+
+## Migrating from the SolidB-callback engine
+
+Earlier releases delegated the queue, schedule, and retry policy to SolidB, which POSTed a signed webhook back to `/_jobs/run/:name`. That inbound route, `SOLI_JOBS_CALLBACK_URL`, and the required callback secret are gone. To upgrade:
+
+1. Let SolidB's internal queue drain before deploying (in-flight jobs there are invisible to the new engine).
+2. Remove `SOLI_JOBS_CALLBACK_URL` and `SOLI_JOBS_SECRET`; keep `SOLI_WEBHOOK_SECRET` only if you use `Webhook.*`.
+3. Drop any firewall or ingress rule that let SolidB reach your app — the app no longer receives job traffic.
+4. Your job classes, `Job.*`, `Webhook.*`, `Cron.*` calls, and `static cron` declarations need no changes.
 
 ## See Also
 
-- [Background Jobs & Cron deep dive (blog)](/docs/blog/background-jobs-and-cron) — architecture, security model, production patterns, and real examples.
-- [SolidB queues and cron API](https://solidb.solisoft.net/docs/) — the underlying server-side primitives.
+- [Multiple Databases](multi-database.md) — the queue works on any configured adapter.
 - [Sessions](sessions.md) — same pluggable-backend pattern, different domain.

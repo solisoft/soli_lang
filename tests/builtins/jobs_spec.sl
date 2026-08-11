@@ -1,15 +1,15 @@
-// ============================================================================
-// Job and Cron Class Test Suite
-// ============================================================================
-//
-// Pure-API tests for the static helpers. Network-touching paths
-// (`Job.enqueue`, `Cron.schedule`, etc.) require a running SolidB and are
-// intentionally not exercised here — they're covered by manual e2e in the
-// jobs documentation.
+# ============================================================================
+# Job and Cron Class Test Suite
+# ============================================================================
+#
+# Pure-API tests for the static helpers plus `perform_now`, which needs no
+# database. The queue paths (`Job.enqueue`, `Cron.schedule`, claim/retry) are
+# covered by the Rust integration suite in `src/jobs/claim.rs`, which runs
+# against a real Postgres.
 
 describe("Cron expression helpers", fn() {
-    // All helpers emit 6-field expressions (sec min hour dom month dow) —
-    // SolidB validates with the `cron` crate, which rejects the 5-field form.
+    # All helpers emit 6-field expressions (sec min hour dom month dow) — the
+    # scheduler parses with the `cron` crate, which rejects the 5-field form.
     test("Cron.every returns minute cron strings", fn() {
         assert_eq(Cron.every("5 minutes"), "0 */5 * * * *");
         assert_eq(Cron.every("15 minutes"), "0 */15 * * * *");
@@ -40,9 +40,13 @@ describe("Cron expression helpers", fn() {
     });
 });
 
-describe("Job class is registered", fn() {
+describe("Job classes are registered", fn() {
     test("Job class exists", fn() {
         assert(defined("Job"));
+    });
+
+    test("Webhook class exists", fn() {
+        assert(defined("Webhook"));
     });
 
     test("Cron class exists", fn() {

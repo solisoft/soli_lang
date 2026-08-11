@@ -13,12 +13,14 @@ mod adapter;
 mod caps;
 mod error;
 pub mod import;
+pub mod introspect;
 #[cfg(feature = "mysql")]
 pub mod mysql;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod registry;
 pub mod sql;
+pub mod sql_columns_compile;
 pub mod sql_compile;
 
 pub use adapter::{parse_adapter, Adapter, AdapterConfig};

@@ -70,7 +70,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Jobs &amp; mail</td>
-                        <td class="py-3 px-4 text-gray-400"><code>Job.perform_later/perform_in/perform_at</code>, cron DSL, webhook jobs with HMAC signing (queue backed by SolidB); ActionMailer-style mailer with SMTP/STARTTLS, multipart, attachments, test mode</td>
+                        <td class="py-3 px-4 text-gray-400"><code>Job.perform_later/perform_in/perform_at/perform_now</code>, cron DSL, webhook jobs with HMAC signing &mdash; in-process engine with atomic claiming, retries with backoff, and lease-based crash recovery on any adapter (SolidB, Postgres, MySQL); ActionMailer-style mailer with SMTP/STARTTLS, multipart, attachments, test mode</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Documents</td>
@@ -163,7 +163,7 @@
     <h3 class="text-xl font-semibold text-white mb-4">Operations</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No TLS in-process</strong> &mdash; you front Soli with a reverse proxy (HTTP/2 is cleartext-only behind it). Deliberate, but different from Phoenix.</li>
-        <li><strong class="text-white">Jobs require a SolidB server</strong> &mdash; there is no standalone worker daemon and no dashboard (no Sidekiq/Horizon equivalent). The opt-in in-process pool for long jobs is fire-and-forget.</li>
+        <li><strong class="text-white">Jobs run inside the app process</strong> &mdash; there is no standalone worker daemon to scale job capacity separately from web capacity, and no dashboard (no Sidekiq/Horizon equivalent). Several <code>soli serve</code> processes can share one queue safely, but each also serves HTTP.</li>
         <li><strong class="text-white">Observability is opt-in rather than auto-instrumented everywhere.</strong> Prometheus counters at <code>/_metrics</code>, health and readiness probes, structured JSON logs (<code>SOLI_LOG_FORMAT=json</code>), and OpenTelemetry traces (W3C <code>traceparent</code> + OTLP/HTTP JSON export of the same span tree the dev-bar flamegraph uses) are all first-party &mdash; see <a href="/docs/development-tools/observability" class="text-amber-400 hover:underline">Observability</a>. What is still thinner than the big four: no auto-instrumentation of every third-party client library, no OTLP metrics/logs pipelines beyond traces, and no sampling UI &mdash; you point Soli at a collector (Jaeger, Grafana Tempo, Datadog agent, &hellip;) and configure sampling there.</li>
     </ul>
 

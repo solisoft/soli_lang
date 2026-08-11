@@ -21,6 +21,7 @@ pub mod generation;
 pub mod graph;
 pub mod inflect;
 pub mod interpreter;
+pub mod jobs;
 pub mod lexer;
 pub mod lint;
 pub mod live;

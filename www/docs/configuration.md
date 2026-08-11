@@ -224,7 +224,7 @@ locale tables) — with the size of that app. The levers, cheapest first:
 | Lever | Effect |
 |-------|--------|
 | `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. With `APP_ENV=production`, the default is already **2** (not one-per-core). Raise it for throughput, or set `1` for a low-traffic service. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near `workers × (1 / query latency)` — roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves >140k req/s). |
-| `SOLI_JOB_WORKERS=1` (or `0`) | The background-job pool is a second set of full interpreters. It defaults to `1`; `0` runs jobs inline with no extra interpreter. |
+| `SOLI_JOB_WORKERS=1` (or `0`) | The job worker pool is a second set of full interpreters. It defaults to `1`; `0` disables the job engine in this process. |
 | `SOLI_JOB_VIEW_HELPERS=0` | Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don't render helper-using templates. |
 | Slim Cargo features | Build only the subsystems you need (see below). Omitting SQL clients and PASETO shrinks the binary and the code pages mapped into every worker. |
 | `MIMALLOC_PURGE_DELAY=0` | mimalloc returns freed pages to the OS promptly instead of after its default delay — trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more `madvise`/decommit syscalls under churny allocation. |
@@ -323,11 +323,12 @@ These knobs control how the request edge handles untrusted input. See the
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_JOBS_DATABASE` | SolidB database that stores queues and cron entries. Falls back to `SOLIDB_DATABASE`. | `default` |
+| `SOLI_JOBS_POLL_MS` | How often the job poller looks for due work, in milliseconds. | `1000` |
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
-| `SOLI_JOBS_CALLBACK_URL` | Base URL SolidB calls when a job fires. | `http://127.0.0.1:3000/_jobs/run` |
-| `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). If unset, `/_jobs/run/:name` is not registered — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks). | unset |
-| `SOLI_JOB_WORKERS` | Size of the in-process pool that runs jobs marked `static background: Bool = true`. Each worker is a full interpreter copy, so the default is conservative; raise it for higher background throughput, or set `0` to disable backgrounding (all jobs run inline) — see [Jobs / Long-Running Jobs](jobs.md#long-running-jobs-background-pool). | `1` |
+| `SOLI_JOBS_LEASE_SECS` | Lease length for a claimed job. A `running` job whose lease expires is reclaimed by another poller — raise this for long jobs. | `60` |
+| `SOLI_JOBS_MAX_RETRIES` | Default retry budget per job; a job past it becomes `dead`. | `3` |
+| `SOLI_JOBS_RETENTION_SECS` | How long completed job rows are kept before pruning. | `604800` |
+| `SOLI_JOB_WORKERS` | Worker threads that run job code. Each worker is a full interpreter copy, so the default is conservative; raise it for higher throughput, or set `0` to disable the job engine in this process — see [Jobs](jobs.md#configuration). | `1` |
 | `SOLI_JOB_VIEW_HELPERS` | Whether background-job interpreters load view helpers (which include an app's i18n locale tables — often the largest per-interpreter cost). Set `0` to skip them when no job renders a helper-using template, dropping that memory from every job interpreter. | enabled |
 
 ## Cache And KV

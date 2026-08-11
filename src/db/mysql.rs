@@ -253,6 +253,8 @@ fn to_mysql_params(params: &[SqlBind]) -> Vec<MysqlValue> {
         .map(|p| match p {
             SqlBind::Text(s) => MysqlValue::from(s.as_str()),
             SqlBind::I64(n) => MysqlValue::from(*n),
+            SqlBind::F64(f) => MysqlValue::from(*f),
+            SqlBind::Bool(b) => MysqlValue::from(*b),
             SqlBind::Json(j) => MysqlValue::from(j.to_string()),
         })
         .collect()
@@ -612,6 +614,118 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
         conn.exec_drop("DELETE FROM `_migrations` WHERE version = ?", (version,))
             .map_err(|e| format!("mysql remove migration: {e}"))?;
         Ok(())
+    })
+}
+
+// ---------- column-aware model introspection ----------
+
+/// Read the shape of an existing table for column mode. `COLUMN_TYPE` is
+/// carried alongside `DATA_TYPE` because only the former distinguishes
+/// `tinyint(1)` (the MySQL bool convention) from a wider tinyint, and shows
+/// `unsigned`.
+pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, String> {
+    with_conn(|conn| {
+        let rows: Vec<(String, String, String, String, String, String)> = conn
+            .exec(
+                "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, \
+                        COALESCE(COLUMN_KEY, ''), COALESCE(EXTRA, '') \
+                 FROM information_schema.COLUMNS \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? \
+                 ORDER BY ORDINAL_POSITION",
+                (table,),
+            )
+            .map_err(|e| format!("mysql introspect columns: {e}"))?;
+
+        let mut columns = Vec::with_capacity(rows.len());
+        let mut pk = Vec::new();
+        for (name, data_type, column_type, nullable, key, extra) in rows {
+            if key.eq_ignore_ascii_case("PRI") {
+                pk.push(name.clone());
+            }
+            let is_auto = extra.to_ascii_lowercase().contains("auto_increment");
+            columns.push((
+                name,
+                data_type,
+                column_type,
+                nullable.eq_ignore_ascii_case("YES"),
+                is_auto,
+            ));
+        }
+
+        Ok(super::introspect::RawColumns { columns, pk })
+    })
+}
+
+// ---------- Soli job engine ----------
+
+/// Atomically claim up to `batch` due jobs from `_jobs` for the Soli job
+/// engine. MySQL forbids self-referencing subqueries in UPDATE, so this uses
+/// the token-claim pattern: one atomic `UPDATE … ORDER BY … LIMIT n` stamps a
+/// unique claim token into `locked_by`, then a SELECT retrieves exactly the
+/// rows this call won. The lease-reclaim clause recovers jobs whose worker
+/// died holding a lease.
+pub fn claim_jobs(
+    now_iso: &str,
+    worker_id: &str,
+    locked_until_iso: &str,
+    batch: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    if !table_exists("_jobs")? {
+        return Ok(Vec::new());
+    }
+    let token = format!("{}#{}", worker_id, uuid::Uuid::new_v4());
+    let update = "UPDATE `_jobs` SET doc = JSON_SET(doc, \
+                      '$.state', 'running', '$.locked_by', ?, '$.locked_until', ?, \
+                      '$.attempts', COALESCE(JSON_EXTRACT(doc, '$.attempts'), 0) + 1) \
+                  WHERE ((JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) IN ('pending','scheduled','failed') \
+                          AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) <= ?) \
+                     OR (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) = 'running' \
+                         AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_until')) < ?)) \
+                  ORDER BY COALESCE(JSON_EXTRACT(doc, '$.priority'), 0) DESC, \
+                           JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) ASC \
+                  LIMIT ?";
+    with_conn(|conn| {
+        conn.exec_drop(
+            update,
+            (&token, locked_until_iso, now_iso, now_iso, batch as u64),
+        )
+        .map_err(|e| format!("mysql claim_jobs: {e}"))?;
+        let rows: Vec<String> = conn
+            .exec(
+                "SELECT doc FROM `_jobs` \
+                 WHERE JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_by')) = ?",
+                (&token,),
+            )
+            .map_err(|e| format!("mysql claim_jobs select: {e}"))?;
+        rows.into_iter()
+            .map(|s| serde_json::from_str(&s).map_err(|e| format!("mysql claim_jobs json: {e}")))
+            .collect()
+    })
+}
+
+/// Compare-and-swap a cron slot: merge `patch` into the `_cron_jobs` row only
+/// when its stored `next_run_at` still equals `expected_next_run_at`. Returns
+/// true when this process won the slot.
+pub fn claim_cron_slot(
+    key: &str,
+    expected_next_run_at: &str,
+    patch: serde_json::Value,
+) -> Result<bool, String> {
+    if !table_exists("_cron_jobs")? {
+        return Ok(false);
+    }
+    let patch_str = patch.to_string();
+    with_conn(|conn| {
+        let affected = conn
+            .exec_iter(
+                "UPDATE `_cron_jobs` \
+                 SET doc = JSON_MERGE_PATCH(doc, CAST(? AS JSON)) \
+                 WHERE _key = ? AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.next_run_at')) = ?",
+                (&patch_str, key, expected_next_run_at),
+            )
+            .map_err(|e| format!("mysql claim_cron_slot: {e}"))?
+            .affected_rows();
+        Ok(affected == 1)
     })
 }
 

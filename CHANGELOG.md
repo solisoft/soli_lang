@@ -4,6 +4,57 @@
 
 ### Added
 
+- **Soli-side background job engine** — jobs now run *inside* the Soli process
+  instead of being delegated to SolidB's queue and delivered back through a
+  signed webhook. Jobs are rows in a `_jobs` collection on the default
+  connection, so the engine works identically on **SolidB, PostgreSQL, and
+  MySQL** (apps on the SQL adapters could not run jobs at all before).
+  - A poller thread claims due work **atomically** — Postgres
+    `UPDATE … FOR UPDATE SKIP LOCKED`, MySQL a single-statement token claim,
+    SolidB an `If-Match` compare-and-swap — so several `soli serve` processes can
+    share one queue without ever double-running a job.
+  - Execution happens on the worker pool (`SOLI_JOB_WORKERS`, default 1), never
+    on a web worker, so a slow handler can no longer delay request serving.
+  - Soli owns **retries**: exponential backoff from 5s, doubling, capped at 1h
+    with per-job jitter; `attempts` increments at claim time; a `running` row
+    whose lease expires is reclaimed, which is how a killed process's work
+    recovers. Completed rows are pruned after `SOLI_JOBS_RETENTION_SECS`.
+  - **Cron runs in Soli too**: `Cron.schedule/list/update/delete`, the
+    `Cron.every/hourly/daily_at/weekly_at` builders, and `static cron` are
+    evaluated with the `cron` crate and fired via a compare-and-swap on the
+    schedule's `next_run_at`, so exactly one process fires each occurrence.
+    Invalid expressions are now rejected at declaration time (with a message
+    naming the six-field shape) instead of silently never firing.
+  - `Webhook.enqueue/enqueue_in/enqueue_at` is a built-in job type delivered by
+    the engine, with the same `X-Webhook-Signature` / `X-Webhook-Event` /
+    `X-Webhook-Delivery` headers receivers already verify — and now with retries,
+    on every adapter.
+  - **`XJob.perform_now(args)`** runs a handler inline with no queue, worker, or
+    database — the documented-but-missing method that makes jobs unit-testable.
+  - New env: `SOLI_JOBS_POLL_MS` (1000), `SOLI_JOBS_LEASE_SECS` (60),
+    `SOLI_JOBS_MAX_RETRIES` (3), `SOLI_JOBS_RETENTION_SECS` (604800).
+  - `soli new` now creates `app/jobs/`, so a generated app can add a job without
+    also having to create the directory the engine looks for.
+
+### Changed
+
+- **BREAKING (ops, not code): the job callback endpoint is gone.** `POST
+  /_jobs/run/:name`, `SOLI_JOBS_CALLBACK_URL`, `SOLI_JOBS_SECRET`, and
+  `SOLI_JOBS_DATABASE` are no longer used, and the database no longer needs
+  network access back to the app. `SOLI_WEBHOOK_SECRET` now signs only
+  *outgoing* `Webhook.*` deliveries. Every public API — job classes, `Job.*`,
+  `Webhook.*`, `Cron.*`, `perform_later`, `static cron` — is unchanged. Let
+  SolidB's internal queue drain before upgrading; jobs sitting in it are
+  invisible to the new engine.
+- `static background: Bool = true` is accepted but has **no effect**: it opted a
+  job out of running on a web worker, which is now the default for every job.
+  Jobs no longer ack before running, so they are retried on failure — the old
+  fire-and-forget caveat is gone.
+- Fixed docs that had drifted: the cron helper tables showed five-field strings
+  while the builders emit six-field ones (a five-field expression was rejected
+  by the scheduler), and `SOLI_JOB_WORKERS` was documented as defaulting to 2.
+
+
 - **SQL adapters (Postgres + MySQL, Phase 2–3)** — `SOLI_DB_ADAPTER=postgres|mysql`
   + `DATABASE_URL` runs Model CRUD against JSON document tables, hash `.where`,
   order/limit/count/exists, partial merges, `sum`/`avg`/`min`/`max`,
