@@ -55,7 +55,7 @@ impl BackendCaps {
             string_sdbql_where: false,
             associations: true, // includes batching (belongs_to/has_many/has_one)
             aggregates: true,   // sum/avg/min/max/count + multi-row group_by
-            transactions: false,
+            transactions: true, // Model.transaction holds one pool connection
             grouped_coalesce: false,
             graph: false,
             vector_search: false,
@@ -97,6 +97,7 @@ mod tests {
         assert!(c.hash_where);
         assert!(c.associations); // Phase 3 includes batching
         assert!(c.aggregates);
+        assert!(c.transactions);
         assert!(!c.string_sdbql_where && !c.graph);
         assert!(!c.vector_search); // pgvector still optional / deferred
         assert!(c.raw_sql);
@@ -105,7 +106,7 @@ mod tests {
     #[test]
     fn mysql_matches_postgres_caps() {
         let c = BackendCaps::mysql();
-        assert!(c.implemented && c.aggregates && c.associations);
+        assert!(c.implemented && c.aggregates && c.associations && c.transactions);
         assert!(!c.string_sdbql_where);
     }
 }

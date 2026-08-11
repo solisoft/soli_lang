@@ -1,0 +1,399 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400 bg-clip-text text-transparent">Multiple Databases</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            One connection for the whole app, or several named connections in one process &mdash;
+            including SoliDB and Postgres/MySQL together. Models choose with
+            <code class="text-cyan-400">connection "name"</code>.
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+            <strong class="text-white">Three modes:</strong>
+            (1) default SoliDB via <code>SOLIDB_*</code>,
+            (2) whole app on SQL with <code>SOLI_DB_ADAPTER</code> + <code>DATABASE_URL</code>,
+            (3) multi-DB via <code>config/database.toml</code> + per-model binding.
+            Design matrix: <code>docs/sql-adapter-design.md</code>.
+            Narrative: <a href="/docs/blog/multi-database" class="text-amber-400 hover:underline">blog post</a>.
+        </p>
+    </div>
+
+    <h2 id="single" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Single connection (no TOML)</h2>
+    <p class="text-gray-400 mb-6">
+        Without <code>config/database.toml</code>, Soli builds one connection named
+        <code class="text-cyan-400">primary</code> from the environment.
+    </p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Variable</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Purpose</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Default</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_HOST</code></td>
+                    <td class="py-3 px-4">SoliDB URL</td>
+                    <td class="py-3 px-4"><code class="text-green-300">http://localhost:6745</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_DATABASE</code></td>
+                    <td class="py-3 px-4">SoliDB database name</td>
+                    <td class="py-3 px-4"><code class="text-green-300">default</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLI_DB_ADAPTER</code></td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, or <code>mysql</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">solidb</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">DATABASE_URL</code></td>
+                    <td class="py-3 px-4">Required for SQL adapters</td>
+                    <td class="py-3 px-4 text-gray-500">unset</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLI_DB_POOL_SIZE</code></td>
+                    <td class="py-3 px-4">SQL pool size</td>
+                    <td class="py-3 px-4"><code class="text-green-300">10</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">.env</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># SoliDB (default)
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp
+
+# Or: whole app on Postgres document tables
+# SOLI_DB_ADAPTER=postgres
+# DATABASE_URL=postgres://user:pass@localhost:5432/myapp</code></pre>
+        </div>
+    </div>
+
+    <h2 id="toml" class="text-2xl font-bold text-white mb-6 scroll-mt-24"><code>config/database.toml</code></h2>
+    <p class="text-gray-400 mb-6">
+        Loaded at <code>soli serve</code> / migrate / import after <code>.env</code>.
+        Secrets stay in env via <code>${VAR}</code> / <code>${VAR:-default}</code> expansion.
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/database.toml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">default = "primary"
+
+[connections.primary]
+adapter = "solidb"
+host = "${SOLIDB_HOST:-http://localhost:6745}"
+database = "${SOLIDB_DATABASE:-default}"
+username = "${SOLIDB_USERNAME:-}"
+password = "${SOLIDB_PASSWORD:-}"
+
+[connections.legacy]
+adapter = "postgres"
+url = "${LEGACY_DATABASE_URL}"
+pool = 10
+
+[connections.warehouse]
+adapter = "mysql"
+url = "${WAREHOUSE_DATABASE_URL}"
+pool = 5</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Field reference</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Field</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Adapters</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">default</code></td>
+                    <td class="py-3 px-4">&mdash;</td>
+                    <td class="py-3 px-4">Connection for models without <code>connection "…"</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">adapter</code></td>
+                    <td class="py-3 px-4">all</td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, or <code>mysql</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">host</code> / <code class="text-amber-300">database</code></td>
+                    <td class="py-3 px-4">solidb</td>
+                    <td class="py-3 px-4">SoliDB URL and database name</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">url</code></td>
+                    <td class="py-3 px-4">postgres, mysql</td>
+                    <td class="py-3 px-4">Connection string &mdash; <strong class="text-white">required</strong> for SQL</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">pool</code></td>
+                    <td class="py-3 px-4">postgres, mysql</td>
+                    <td class="py-3 px-4">Pool size (default 10)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 mb-8">
+        <p class="text-gray-400 text-sm">
+            <strong class="text-amber-300">SoliDB connections and env:</strong> SoliDB requests
+            are always routed to the env-configured <code>SOLIDB_HOST</code> /
+            <code>SOLIDB_DATABASE</code>, so a <code>solidb</code> connection's
+            <code>host</code>/<code>database</code> must match the env values (use the
+            <code>${SOLIDB_HOST:-…}</code> expansion shown above). A mismatch is rejected at
+            boot rather than silently sending traffic to the wrong server. Per-connection
+            SoliDB targets (two SoliDB servers/databases in one app) are not supported yet;
+            secondary connections must use a SQL adapter.
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-white/5 border border-white/10 mb-12">
+        <p class="text-gray-400 text-sm">
+            <strong class="text-white">Precedence:</strong> TOML present &rarr; named registry.
+            No TOML &rarr; env-only <code>primary</code> (unchanged for existing apps).
+        </p>
+    </div>
+
+    <h2 id="model" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Per-model <code>connection</code></h2>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/*.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User &lt; Model
+  # uses default ("primary")
+end
+
+class LegacyOrder &lt; Model
+  connection "legacy"
+end
+
+class FactSale &lt; Model
+  connection "warehouse"
+end</code></pre>
+        </div>
+    </div>
+
+    <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
+        <li>String or symbol name; validated at class load against the registry</li>
+        <li>STI subclasses inherit the parent connection unless redeclared</li>
+        <li>CRUD and the query builder route through the active connection</li>
+    </ul>
+
+    <h2 id="sql" class="text-2xl font-bold text-white mb-6 scroll-mt-24">SQL document backends</h2>
+    <p class="text-gray-400 mb-6">
+        Postgres/MySQL connections store each collection as
+        <code class="text-cyan-400">_key</code> + <code class="text-cyan-400">doc</code> (JSON/JSONB).
+        Hash-style filters only &mdash; not raw SDBQL.
+    </p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Capability</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">SQL docs</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4">CRUD, hash <code>.where</code>, order/limit/count</td>
+                    <td class="py-3 px-4 text-green-400">✓</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">sum / avg / min / max, <code>delete_all</code> / <code>update_all</code></td>
+                    <td class="py-3 px-4 text-green-400">✓</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Batched <code>.includes</code> (belongs_to / has_many / has_one)</td>
+                    <td class="py-3 px-4 text-green-400">✓</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Multi-row <code>group_by</code></td>
+                    <td class="py-3 px-4 text-green-400">✓</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">HABTM / through includes, <code>.having</code>, <code>.join</code></td>
+                    <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>Model.transaction</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ (holds one pool connection for the block)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Graph, vector, columnar, timeseries</td>
+                    <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Import SoliDB &rarr; SQL</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_DB_ADAPTER=postgres DATABASE_URL=postgres://…
+SOLIDB_HOST=… SOLIDB_USERNAME=… SOLIDB_PASSWORD=…
+soli db:import              # all non-_ collections
+soli db:import posts users  # named only</code></pre>
+        </div>
+    </div>
+
+    <h2 id="rules" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Cross-connection rules</h2>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Operation</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Rule</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code>.includes</code> across connections</td>
+                    <td class="py-3 px-4"><strong class="text-white">Error</strong> (both names in the message)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">FK stored across DBs</td>
+                    <td class="py-3 px-4">Allowed; no integrity guarantees</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>Model.transaction</code></td>
+                    <td class="py-3 px-4">Begins on the receiving model's connection; covers that connection only</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-200 text-sm">
+            <strong class="text-white">No federated joins.</strong>
+            Place related models on the same connection when you need eager loads.
+            Distributed transactions are out of scope.
+        </p>
+    </div>
+
+    <h2 id="hybrid" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Hybrid example</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Controllers use the same Model API
+def index
+  @users  = User.limit(20).all
+  @orders = LegacyOrder.where({ "status": "open" }).limit(20).all
+  render("home/index")
+end
+
+# Raises — different connections
+# LegacyOrder.includes("user").all</code></pre>
+        </div>
+    </div>
+
+    <h2 id="migrations" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Migrations</h2>
+    <p class="text-gray-400 mb-4">
+        Default migrate target is the <strong class="text-white">default</strong> connection.
+        Target a named SQL secondary with:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:migrate up --connection legacy
+soli db:migrate status -c legacy
+soli db:migrate down --connection legacy</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Prefer naming the connection in migration filenames when multi-DB is in use.
+        <code class="text-cyan-400">Model.transaction</code> works on Postgres/MySQL (one held pool connection for the block).
+    </p>
+
+    <h2 id="limits" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limitations</h2>
+    <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
+        <li>Per-connection SoliDB hosts: registry stores fields; prefer one SoliDB endpoint + SQL secondaries for now</li>
+        <li>HABTM / <code>through:</code> includes on SQL are not yet supported (basic <code>belongs_to</code>/<code>has_many</code>/<code>has_one</code> are)</li>
+        <li>Read-replica / request-scoped roles are not v1</li>
+        <li>pgvector on document tables remains SoliDB-only</li>
+    </ul>
+
+    <h2 id="compile-time" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Compile-time features</h2>
+    <p class="text-gray-400 mb-4">
+        Postgres and MySQL client code is optional at <strong class="text-white">build time</strong> (on by default).
+        A binary built without <code class="text-cyan-400">postgres</code> or <code class="text-cyan-400">mysql</code>
+        cannot open those adapters &mdash; boot fails with a rebuild hint if
+        <code class="text-cyan-400">SOLI_DB_ADAPTER</code> or <code class="text-cyan-400">database.toml</code>
+        selects one that was not compiled in.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># SoliDB only (no SQL client crates)
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph
+
+# Postgres only (no MySQL)
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,postgres</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Full table:
+        <a href="/docs/getting-started/configuration#slim-binary-cargo-features" class="text-amber-400 hover:underline">Configuration &rarr; Slim binary</a>.
+    </p>
+
+    <h2 id="troubleshooting" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Troubleshooting</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Symptom</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Check</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-400">Unknown database connection "…"</code></td>
+                    <td class="py-3 px-4">Name matches <code>[connections.*]</code> / <code>default</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-400">url</code> required for postgres/mysql</td>
+                    <td class="py-3 px-4">Set <code>url =</code> or expand <code>${…}</code> from <code>.env</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-400">not compiled into this soli binary</code></td>
+                    <td class="py-3 px-4">Rebuild with <code>--features postgres</code> and/or <code>mysql</code>
+                        (<a href="/docs/getting-started/configuration#slim-binary-cargo-features" class="text-amber-400 hover:underline">Slim binary</a>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Includes error across DBs</td>
+                    <td class="py-3 px-4">Expected &mdash; query each side separately or colocate models</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="next" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Next steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/database/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Database config &rarr;</h3>
+            <p class="text-sm text-gray-400">SoliDB env basics and .env layout.</p>
+        </a>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Models &rarr;</h3>
+            <p class="text-sm text-gray-400">ORM surface shared across connections.</p>
+        </a>
+        <a href="/docs/blog/multi-database" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Blog post &rarr;</h3>
+            <p class="text-sm text-gray-400">Why multi-DB and how it compares to Rails.</p>
+        </a>
+    </div>
+</div>

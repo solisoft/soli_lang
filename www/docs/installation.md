@@ -68,11 +68,20 @@ cargo install solilang
 git clone https://github.com/solisoft/soli_lang.git
 cd soli_lang
 
-# Build the project
+# Build the project (full default features)
 cargo build --release
 
-# Install globally
-cargo install --path .
+# Install globally — always use --locked so Cargo.lock is honoured
+cargo install --path . --locked
+```
+
+To shrink the binary (and baseline RSS) when you only need SoliDB, drop optional
+subsystems at build time — see [Configuration → Slim binary](configuration.md#slim-binary-cargo-features):
+
+```bash
+# SoliDB-only: no Postgres/MySQL clients, no PASETO
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph
 ```
 
 ## Docker

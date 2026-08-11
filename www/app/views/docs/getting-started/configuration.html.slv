@@ -32,9 +32,9 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SOLI_DB_ADAPTER</code></td><td class="py-3 px-4">Database backend: <code>solidb</code> (default, full Model surface), <code>postgres</code>, or <code>mysql</code> (document CRUD + hash filters + sum/avg/min/max + migrations). Graph/vector/raw SDBQL stay SoliDB-only. Design: <code>docs/sql-adapter-design.md</code>.</td><td class="py-3 px-4"><code>solidb</code></td></tr>
-                    <tr><td class="py-3 px-4"><code>DATABASE_URL</code></td><td class="py-3 px-4">Connection URL for SQL adapters (e.g. <code>postgres://user:pass@localhost:5432/myapp</code>). Required when <code>SOLI_DB_ADAPTER</code> is <code>postgres</code> or <code>mysql</code>. Ignored for SoliDB.</td><td class="py-3 px-4">unset</td></tr>
-                    <tr><td class="py-3 px-4"><code>SOLI_DB_POOL_SIZE</code></td><td class="py-3 px-4">Max connections in the PostgreSQL pool.</td><td class="py-3 px-4"><code>10</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DB_ADAPTER</code></td><td class="py-3 px-4">Single-connection backend when <code>config/database.toml</code> is absent: <code>solidb</code> (default), <code>postgres</code>, or <code>mysql</code> (document subset). Multi-DB: <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.</td><td class="py-3 px-4"><code>solidb</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>DATABASE_URL</code></td><td class="py-3 px-4">Connection URL for SQL adapters (e.g. <code>postgres://user:pass@localhost:5432/myapp</code>). Required when <code>SOLI_DB_ADAPTER</code> is <code>postgres</code> or <code>mysql</code>. TOML named connections use <code>url =</code> per entry.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DB_POOL_SIZE</code></td><td class="py-3 px-4">Default SQL pool size (single-connection mode). TOML <code>pool = N</code> overrides per connection.</td><td class="py-3 px-4"><code>10</code></td></tr>
                     <tr><td class="py-3 px-4"><code>APP_ENV</code></td><td class="py-3 px-4">Selects <code>.env.{APP_ENV}</code> and marks test mode for features that need it.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PROTECT_ENV</code></td><td class="py-3 px-4">Comma-separated variable names that <code>.env.{APP_ENV}</code> must not override. Mostly used by the test runner.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
@@ -209,7 +209,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
             The ping runs on its own thread, and with one connection pool per worker it can only refresh its own &mdash; so a worker's connection is instead kept inside the 25s idle window described above, short enough that the pool retires it before SoliDB's 30s idle close. A worker idle longer than that pays one reconnect on its next query, which is the fresh-connect cost the ping avoids elsewhere.
         </p>
 
-        <h3 class="text-xl font-bold text-white mt-8 mb-4">Keeping memory low</h3>
+        <h3 id="keeping-memory-low" class="text-xl font-bold text-white mt-8 mb-4 scroll-mt-24">Keeping memory low</h3>
         <p class="text-gray-400 mb-4">
             <code>soli serve</code> runs a pool of worker <strong class="text-white">threads</strong> in one process, and each worker holds its own copy of the parsed app plus the full builtin surface (<code>Rc</code>-based values can&rsquo;t be shared across threads). So baseline RSS scales with the worker count and &mdash; for apps with lots of code or large in-memory data such as i18n locale tables &mdash; with the size of that app. The levers, cheapest first:
         </p>
@@ -222,11 +222,46 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
                     <tr><td class="py-3 px-4"><code>SOLI_WORKERS=N</code></td><td class="py-3 px-4">The biggest one &mdash; each worker is a full interpreter copy. With <code>APP_ENV=production</code>, the default is already <strong>2</strong> (not one-per-core). Raise it for throughput, or set <code>1</code> for a low-traffic service. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near <code>workers &times; (1 / query latency)</code> &mdash; roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves &gt;140k req/s).</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOB_WORKERS=1</code> (or <code>0</code>)</td><td class="py-3 px-4">The background-job pool is a second set of full interpreters. It defaults to <code>1</code>; <code>0</code> runs jobs inline with no extra interpreter.</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOB_VIEW_HELPERS=0</code></td><td class="py-3 px-4">Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don&rsquo;t render helper-using templates.</td></tr>
+                    <tr><td class="py-3 px-4">Slim Cargo features</td><td class="py-3 px-4">Build only the subsystems you need (see below). Omitting SQL clients and PASETO shrinks the binary and the code pages mapped into every worker.</td></tr>
                     <tr><td class="py-3 px-4"><code>MIMALLOC_PURGE_DELAY=0</code></td><td class="py-3 px-4">mimalloc returns freed pages to the OS promptly instead of after its default delay &mdash; trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more <code>madvise</code>/decommit syscalls under churny allocation.</td></tr>
                     <tr><td class="py-3 px-4">Fewer/lazier locales</td><td class="py-3 px-4">If most of an app&rsquo;s per-worker memory is i18n tables, load only the locales you serve (or move them to <code>config/locales/*.yml</code>, which the framework loads <strong class="text-white">once</strong> process-wide into a shared store rather than per-worker).</td></tr>
                 </tbody>
             </table>
         </div>
+
+        <h4 id="slim-binary-cargo-features" class="text-lg font-semibold text-white mt-6 mb-3 scroll-mt-24">Slim binary (Cargo features)</h4>
+        <p class="text-gray-400 mb-4">
+            <code>cargo install</code> / CI use the <strong class="text-white">default</strong> feature set so published binaries match a full product build. Optional subsystems can be dropped at <strong class="text-white">compile time</strong> when you build from source:
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Feature</th><th class="py-3 px-4">Default</th><th class="py-3 px-4">What it pulls in</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>embedding</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">Vector / embedding helpers</td></tr>
+                    <tr><td class="py-3 px-4"><code>llm</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4"><code>llm_generate</code> (OpenAI-compatible chat)</td></tr>
+                    <tr><td class="py-3 px-4"><code>codegraph</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4"><code>soli graph build</code> on non-Soli repos (tree-sitter + grammars)</td></tr>
+                    <tr><td class="py-3 px-4"><code>paseto</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4"><code>Paseto</code> class (<code>pasetors</code> crate)</td></tr>
+                    <tr><td class="py-3 px-4"><code>postgres</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">PostgreSQL document adapter + client pool</td></tr>
+                    <tr><td class="py-3 px-4"><code>mysql</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">MySQL / MariaDB document adapter + client pool</td></tr>
+                    <tr><td class="py-3 px-4"><code>sql</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Alias for <code>postgres</code> + <code>mysql</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>solidb-driver</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Native SoliDB TCP driver</td></tr>
+                    <tr><td class="py-3 px-4"><code>full</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Default set + <code>solidb-driver</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-3">SoliDB (HTTP) always stays linked. SoliDB-only install without PASETO or SQL clients:</p>
+        <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-cyan-300 overflow-x-auto mb-4"><code>cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph</code></pre>
+        <p class="text-gray-400 mb-3">Postgres only (no MySQL client, no PASETO):</p>
+        <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-cyan-300 overflow-x-auto mb-4"><code>cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,postgres</code></pre>
+        <p class="text-gray-400 mb-4">
+            If the binary was built without an adapter and you set <code>SOLI_DB_ADAPTER=postgres</code>
+            (or a <code>database.toml</code> entry for it), boot fails with a rebuild hint rather than a
+            missing symbol. The <code>Paseto</code> class is simply not registered when the <code>paseto</code> feature is off.
+        </p>
         <p class="text-gray-400">
             The boot process also builds one extra interpreter to register the shared route/model/controller/template registries before workers start; it is now reclaimed immediately after boot rather than parked for the process lifetime.
         </p>

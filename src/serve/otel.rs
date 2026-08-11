@@ -481,7 +481,12 @@ fn build_otlp_body(
             if let Some(meta) = &s.meta {
                 // Bound meta so a huge AQL template can't blow the payload.
                 let clipped = if meta.len() > 512 {
-                    format!("{}…", &meta[..512])
+                    // Back off to a char boundary — a byte slice mid-UTF-8 panics.
+                    let mut cut = 512;
+                    while !meta.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    format!("{}…", &meta[..cut])
                 } else {
                     meta.clone()
                 };

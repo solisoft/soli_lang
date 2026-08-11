@@ -2857,6 +2857,11 @@
     --tw-gradient-from: var(--color-yellow-400);
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .via-amber-400 {
+    --tw-gradient-via: var(--color-amber-400);
+    --tw-gradient-via-stops: var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-via) var(--tw-gradient-via-position), var(--tw-gradient-to) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-via-stops);
+  }
   .via-amber-600\/10 {
     --tw-gradient-via: color-mix(in srgb, oklch(66.6% 0.179 58.318) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -4145,6 +4150,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         color: var(--color-cyan-400);
+      }
+    }
+  }
+  .group-hover\:text-emerald-400 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        color: var(--color-emerald-400);
       }
     }
   }

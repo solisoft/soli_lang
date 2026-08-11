@@ -76,6 +76,12 @@ pub enum Command {
     GenerateOidcProvider {
         folder: String,
     },
+    /// `soli generate oauth <github|google> [folder]` — OAuth *client*
+    /// (sign in with a provider). Requires `soli generate auth` first.
+    GenerateOauth {
+        provider: String,
+        folder: String,
+    },
     /// `soli generate mailer <Name> <action...> [folder]` — scaffold a mailer
     /// class (app/mailers/<name>_mailer.sl) and one HTML view per action.
     GenerateMailer {
@@ -151,6 +157,8 @@ pub enum Command {
     DbMigrate {
         action: DbMigrateAction,
         folder: String,
+        /// Named connection from `config/database.toml` (SQL secondaries).
+        connection: Option<String>,
     },
     DbSeed {
         action: DbSeedAction,
@@ -412,6 +420,7 @@ pub fn print_usage() {
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli generate auth [folder]");
     eprintln!("       soli generate oidc_provider [folder]");
+    eprintln!("       soli generate oauth <github|google> [folder]");
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli generate devices [folder]");
     eprintln!("       soli generate client <android|ios|linux|windows> [--url URL] [--package ID] [--scheme S] [--fcm] [folder]");
@@ -430,7 +439,7 @@ pub fn print_usage() {
     eprintln!("  soli env up [branch] [--server <name>] [--no-seed]");
     eprintln!("  soli env down [branch] [--server <name>] [--keep-data]");
     eprintln!("  soli env <list|url> [branch] [--server <name>]");
-    eprintln!("  soli db:migrate <up|down|status> [folder]");
+    eprintln!("  soli db:migrate <up|down|status> [--connection NAME] [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
     eprintln!("  soli db:seed generate <name> [folder]");
@@ -460,6 +469,7 @@ pub fn print_usage() {
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
     eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
+    eprintln!("  generate oauth       OAuth client: sign in with github|google (needs auth)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
     );
@@ -550,6 +560,7 @@ pub fn print_usage() {
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli generate auth            Scaffold authentication + policy layer");
     eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
+    eprintln!("  soli generate oauth github    Sign in with GitHub (OAuth client)");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
     eprintln!("  soli build my_app --standalone     Self-contained executable ./my_app");
@@ -573,6 +584,7 @@ pub fn print_usage() {
     eprintln!("  soli db:migrate up            Run pending migrations");
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
+    eprintln!("  soli db:migrate up --connection legacy  Migrate a named SQL connection");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
     eprintln!("  soli db:seed                  Run db/seeds.sl and db/seeds/*.sl");
     eprintln!("  soli db:seed db/seeds/demo.sl  Run a single seed file");
@@ -694,6 +706,23 @@ pub fn parse_args() -> Options {
                             ".".to_string()
                         };
                         options.command = Command::GenerateOidcProvider { folder };
+                        return options;
+                    }
+                    "oauth" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("generate oauth requires a provider (github|google)");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        let provider = args[i].clone();
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateOauth { provider, folder };
                         return options;
                     }
                     "mailer" => {
@@ -918,7 +947,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, mailer, component, devices, client, app_links, offline)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, oauth, mailer, component, devices, client, app_links, offline)",
                             subcommand
                         );
                         print_usage();
@@ -959,12 +988,38 @@ pub fn parse_args() -> Options {
                     }
                 };
                 i += 1;
-                let folder = if i < args.len() && !args[i].starts_with('-') {
-                    args[i].clone()
-                } else {
-                    ".".to_string()
+                let mut connection: Option<String> = None;
+                let mut folder = ".".to_string();
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--connection" | "-c" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("db:migrate --connection requires a connection name");
+                                process::exit(64);
+                            }
+                            connection = Some(args[i].clone());
+                            i += 1;
+                        }
+                        flag if flag.starts_with("--connection=") => {
+                            connection = Some(flag["--connection=".len()..].to_string());
+                            i += 1;
+                        }
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown db:migrate flag: {other}");
+                            process::exit(64);
+                        }
+                        other => {
+                            folder = other.to_string();
+                            i += 1;
+                        }
+                    }
+                }
+                options.command = Command::DbMigrate {
+                    action,
+                    folder,
+                    connection,
                 };
-                options.command = Command::DbMigrate { action, folder };
                 return options;
             }
             "db:indexes" => {

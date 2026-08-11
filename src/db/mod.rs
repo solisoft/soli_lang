@@ -4,13 +4,18 @@
 //! `config/database.toml` (or a single env-derived `primary`). Models opt into
 //! a connection via class-body `connection "name"`.
 //!
+//! SQL backends and their client crates are Cargo features (`postgres`,
+//! `mysql`; both on by default). Drop them at build time for a smaller binary.
+//!
 //! Design: `docs/sql-adapter-design.md`.
 
 mod adapter;
 mod caps;
 mod error;
 pub mod import;
+#[cfg(feature = "mysql")]
 pub mod mysql;
+#[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod registry;
 pub mod sql;
@@ -19,14 +24,24 @@ pub mod sql_compile;
 pub use adapter::{parse_adapter, Adapter, AdapterConfig};
 pub use caps::BackendCaps;
 pub use error::DbError;
-pub use postgres::ListQueryParts;
 pub use registry::{
     active_connection_name, active_spec, clear_registry_override, init_from_app_path, registry,
     set_registry_for_tests, with_connection, ConnectionRegistry, ConnectionSpec,
 };
-pub use sql_compile::{GroupAgg, ListQuery, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg};
+pub use sql_compile::{
+    GroupAgg, ListQuery, ListQueryParts, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg,
+};
 
 use std::sync::OnceLock;
+
+/// Whether this binary was built with the given SQL adapter's client code.
+pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
+    match adapter {
+        Adapter::Solidb => true,
+        Adapter::Postgres => cfg!(feature = "postgres"),
+        Adapter::Mysql => cfg!(feature = "mysql"),
+    }
+}
 
 /// Process-wide adapter config for the **default** connection (compat).
 pub fn config() -> &'static AdapterConfig {
@@ -78,7 +93,34 @@ pub fn ensure_runtime_ready() -> Result<(), DbError> {
     let reg = registry();
     for (name, spec) in &reg.connections {
         if !spec.adapter.is_sql() {
+            // Per-connection SoliDB routing is not implemented: every SoliDB
+            // request builds its URL from SOLIDB_HOST/SOLIDB_DATABASE env. A
+            // spec declaring a different target would validate here yet send
+            // ALL of its traffic to the env default — silent cross-database
+            // corruption. Refuse to boot instead.
+            let env_host = std::env::var("SOLIDB_HOST")
+                .unwrap_or_else(|_| "http://localhost:6745".to_string());
+            let env_db = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+            let host_mismatch = spec
+                .solidb_host
+                .as_deref()
+                .is_some_and(|h| h.trim_end_matches('/') != env_host.trim_end_matches('/'));
+            let db_mismatch = spec.solidb_database.as_deref().is_some_and(|d| d != env_db);
+            if host_mismatch || db_mismatch {
+                return Err(DbError::Backend(format!(
+                    "connection {name:?}: per-connection SoliDB hosts/databases are not \
+                     supported yet — SoliDB requests always target SOLIDB_HOST/\
+                     SOLIDB_DATABASE ({env_host}, database {env_db:?}). Point this \
+                     connection at the same host and database (or configure it via env), \
+                     or use a SQL adapter (postgres/mysql) for secondary connections."
+                )));
+            }
             continue;
+        }
+        if !adapter_feature_enabled(spec.adapter) {
+            return Err(DbError::FeatureNotCompiled {
+                adapter: spec.adapter,
+            });
         }
         if spec.url.is_none() {
             return Err(DbError::MissingDatabaseUrl {
@@ -112,11 +154,17 @@ pub fn adapter_label() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use registry::{set_registry_for_tests, clear_registry_override, ConnectionRegistry, ConnectionSpec};
+    use registry::{
+        clear_registry_override, set_registry_for_tests, ConnectionRegistry, ConnectionSpec,
+    };
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn env_lock() -> &'static Mutex<()> {
+        // Shared with the postgres/mysql integration tests — the registry
+        // override is process-global, so one mutex must cover every module.
+        registry::registry_test_lock()
+    }
 
     fn solidb_primary() -> ConnectionRegistry {
         let mut connections = HashMap::new();
@@ -142,10 +190,18 @@ mod tests {
     }
 
     fn with_registry(reg: ConnectionRegistry, f: impl FnOnce()) {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        // Clear on unwind too — a panicking test must not leak its override
+        // into whichever test takes the (poison-recovered) lock next.
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_registry_override();
+            }
+        }
         set_registry_for_tests(reg);
+        let _clear = ClearOnDrop;
         f();
-        clear_registry_override();
     }
 
     #[test]
@@ -153,6 +209,36 @@ mod tests {
         with_registry(solidb_primary(), || {
             assert!(ensure_runtime_ready().is_ok());
             assert!(is_solidb());
+        });
+    }
+
+    #[test]
+    fn solidb_connection_pointing_elsewhere_errors() {
+        // A named SoliDB connection targeting a host/database other than the
+        // env-configured one must fail at boot — SoliDB traffic is routed via
+        // SOLIDB_HOST/SOLIDB_DATABASE, so it would silently hit the wrong DB.
+        let mut reg = solidb_primary();
+        reg.connections.insert(
+            "analytics".into(),
+            ConnectionSpec {
+                name: "analytics".into(),
+                adapter: Adapter::Solidb,
+                url: None,
+                solidb_host: Some("http://db2:6745".into()),
+                solidb_database: Some("metrics".into()),
+                solidb_username: None,
+                solidb_password: None,
+                solidb_api_key: None,
+                pool_size: None,
+            },
+        );
+        with_registry(reg, || {
+            let err = ensure_runtime_ready().unwrap_err();
+            assert!(
+                err.message().contains("per-connection SoliDB"),
+                "{}",
+                err.message()
+            );
         });
     }
 
@@ -181,7 +267,11 @@ mod tests {
             },
             || {
                 let err = ensure_runtime_ready().unwrap_err();
-                assert!(matches!(err, DbError::MissingDatabaseUrl { .. }));
+                if cfg!(feature = "postgres") {
+                    assert!(matches!(err, DbError::MissingDatabaseUrl { .. }));
+                } else {
+                    assert!(matches!(err, DbError::FeatureNotCompiled { .. }));
+                }
             },
         );
     }
@@ -211,7 +301,11 @@ mod tests {
             },
             || {
                 let err = ensure_runtime_ready().unwrap_err();
-                assert!(matches!(err, DbError::MissingDatabaseUrl { .. }));
+                if cfg!(feature = "mysql") {
+                    assert!(matches!(err, DbError::MissingDatabaseUrl { .. }));
+                } else {
+                    assert!(matches!(err, DbError::FeatureNotCompiled { .. }));
+                }
             },
         );
     }
@@ -244,6 +338,19 @@ mod tests {
                 assert!(err.contains("SoliDB-only"));
                 assert!(err.contains("postgres") || err.contains("primary"));
             },
+        );
+    }
+
+    #[test]
+    fn adapter_feature_flags_match_cfg() {
+        assert!(adapter_feature_enabled(Adapter::Solidb));
+        assert_eq!(
+            adapter_feature_enabled(Adapter::Postgres),
+            cfg!(feature = "postgres")
+        );
+        assert_eq!(
+            adapter_feature_enabled(Adapter::Mysql),
+            cfg!(feature = "mysql")
         );
     }
 }

@@ -187,7 +187,6 @@ pub fn get_connection_for_collection(collection: &str) -> Option<String> {
 }
 
 /// Run `f` with the model's database connection active (multi-DB routing).
-#[allow(dead_code)]
 pub fn run_on_model_connection<T>(class_name: &str, f: impl FnOnce() -> T) -> T {
     match get_connection_for_class(class_name) {
         Some(n) => crate::db::with_connection(&n, f),
@@ -196,7 +195,6 @@ pub fn run_on_model_connection<T>(class_name: &str, f: impl FnOnce() -> T) -> T 
 }
 
 /// Run `f` with the collection's database connection active.
-#[allow(dead_code)]
 pub fn run_on_collection_connection<T>(collection: &str, f: impl FnOnce() -> T) -> T {
     match get_connection_for_collection(collection) {
         Some(n) => crate::db::with_connection(&n, f),

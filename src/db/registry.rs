@@ -82,6 +82,16 @@ pub fn set_registry_for_tests(reg: ConnectionRegistry) {
     *REGISTRY_OVERRIDE.lock().unwrap() = Some(reg);
 }
 
+/// Serializes tests that install a registry override. The override is
+/// process-global, so module-local mutexes cannot exclude each other — a
+/// postgres integration test would see another module's solidb "primary"
+/// mid-flight. Every `set_registry_for_tests` caller must hold THIS lock
+/// (poison-tolerantly) for the whole override window.
+pub fn registry_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 pub fn clear_registry_override() {
     *REGISTRY_OVERRIDE.lock().unwrap() = None;
 }

@@ -13,6 +13,7 @@ use mysql::prelude::*;
 use mysql::{Opts, OptsBuilder, Value as MysqlValue};
 use r2d2::Pool;
 use r2d2_mysql::MySqlConnectionManager;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -21,6 +22,41 @@ type MyPool = Pool<MySqlConnectionManager>;
 type MyConn = r2d2::PooledConnection<MySqlConnectionManager>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, MyPool>>> = OnceLock::new();
+
+struct TxState {
+    conn: MyConn,
+    nest: u32,
+    /// Connection name the tx was begun on. Ops on OTHER mysql connections
+    /// must not reuse this connection — that would execute them on the wrong
+    /// database (silent cross-database write).
+    name: String,
+}
+
+thread_local! {
+    static TX: RefCell<Option<TxState>> = const { RefCell::new(None) };
+    static TX_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    /// Re-entrancy for `with_conn`: the live connection plus the connection
+    /// name it belongs to, so a nested op on a DIFFERENT named connection
+    /// never borrows it.
+    static ACTIVE_CONN: RefCell<Option<(*mut MyConn, String)>> = const { RefCell::new(None) };
+}
+
+/// Panic-safe reset for `ACTIVE_CONN`: if `f` unwinds, the pointer must not
+/// dangle into the next `with_conn` on this (reused worker) thread.
+struct ActiveConnGuard;
+
+impl ActiveConnGuard {
+    fn set(conn: &mut MyConn, name: String) -> Self {
+        ACTIVE_CONN.with(|c| *c.borrow_mut() = Some((conn as *mut MyConn, name)));
+        ActiveConnGuard
+    }
+}
+
+impl Drop for ActiveConnGuard {
+    fn drop(&mut self) {
+        ACTIVE_CONN.with(|c| *c.borrow_mut() = None);
+    }
+}
 
 fn pools() -> &'static Mutex<HashMap<String, MyPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -62,9 +98,152 @@ pub fn ensure_connected() -> Result<(), String> {
     Ok(())
 }
 
+pub fn has_active_tx() -> bool {
+    TX_ACTIVE.get()
+}
+
+fn map_isolation(level: Option<&str>) -> Result<&'static str, String> {
+    match level
+        .unwrap_or("read_committed")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "read_committed" | "read committed" => Ok("READ COMMITTED"),
+        "repeatable_read" | "repeatable read" => Ok("REPEATABLE READ"),
+        "serializable" => Ok("SERIALIZABLE"),
+        "read_uncommitted" | "read uncommitted" => Ok("READ UNCOMMITTED"),
+        other => Err(format!(
+            "unsupported isolation level {other:?} for mysql \
+             (use read_committed, repeatable_read, serializable)"
+        )),
+    }
+}
+
+pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let name = active_connection_name();
+        if let Some(tx) = slot.as_mut() {
+            if tx.name != name {
+                return Err(format!(
+                    "a transaction is already open on connection {:?}; cannot begin one \
+                     on {:?} from the same block (one SQL transaction per thread)",
+                    tx.name, name
+                ));
+            }
+            tx.nest += 1;
+            return Ok(format!("sql-mysql-nested-{}", tx.nest));
+        }
+        let iso = map_isolation(isolation_level)?;
+        let pool = pool_for_active()?;
+        let mut conn = pool
+            .get()
+            .map_err(|e| format!("mysql transaction checkout: {e}"))?;
+        // SET TRANSACTION must run before START TRANSACTION for isolation.
+        conn.query_drop(format!("SET TRANSACTION ISOLATION LEVEL {iso}"))
+            .map_err(|e| format!("mysql SET TRANSACTION: {e}"))?;
+        conn.query_drop("START TRANSACTION")
+            .map_err(|e| format!("mysql START TRANSACTION: {e}"))?;
+        *slot = Some(TxState {
+            conn,
+            nest: 0,
+            name,
+        });
+        TX_ACTIVE.set(true);
+        Ok("sql-mysql".into())
+    })
+}
+
+pub fn commit_transaction() -> Result<(), String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let tx = slot
+            .as_mut()
+            .ok_or_else(|| "No active mysql transaction".to_string())?;
+        if tx.nest > 0 {
+            tx.nest -= 1;
+            return Ok(());
+        }
+        let mut state = slot.take().expect("tx present");
+        TX_ACTIVE.set(false);
+        state
+            .conn
+            .query_drop("COMMIT")
+            .map_err(|e| format!("mysql COMMIT: {e}"))?;
+        Ok(())
+    })
+}
+
+pub fn rollback_transaction() -> Result<(), String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let Some(tx) = slot.as_mut() else {
+            return Ok(());
+        };
+        if tx.nest > 0 {
+            tx.nest -= 1;
+            return Ok(());
+        }
+        let mut state = slot.take().expect("tx present");
+        TX_ACTIVE.set(false);
+        state
+            .conn
+            .query_drop("ROLLBACK")
+            .map_err(|e| format!("mysql ROLLBACK: {e}"))
+    })
+}
+
+pub fn clear_transaction() {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if let Some(mut state) = slot.take() {
+            TX_ACTIVE.set(false);
+            let _ = state.conn.query_drop("ROLLBACK");
+        }
+    });
+}
+
 fn with_conn<T>(f: impl FnOnce(&mut MyConn) -> Result<T, String>) -> Result<T, String> {
+    let name = active_connection_name();
+
+    // Re-entrant — reuse the outer connection only when the nested op targets
+    // the SAME named connection.
+    let reentrant = ACTIVE_CONN.with(|c| match &*c.borrow() {
+        Some((ptr, n)) if *n == name => Some(*ptr),
+        _ => None,
+    });
+    if let Some(ptr) = reentrant {
+        // SAFETY: pointer set only for the duration of an outer with_conn on
+        // this thread; the guard clears it even on unwind.
+        let conn = unsafe { &mut *ptr };
+        return f(conn);
+    }
+
+    // Prefer the open transaction connection — but only for ops on the SAME
+    // named connection: handing it to another connection's op would execute
+    // that op on the wrong database.
+    struct RestoreTx(Option<TxState>);
+    impl Drop for RestoreTx {
+        fn drop(&mut self) {
+            if let Some(state) = self.0.take() {
+                TX.with(|c| *c.borrow_mut() = Some(state));
+            }
+        }
+    }
+
+    let tx_matches = TX.with(|c| c.borrow().as_ref().is_some_and(|t| t.name == name));
+    if tx_matches {
+        let mut restore = RestoreTx(TX.with(|c| c.borrow_mut().take()));
+        if let Some(ref mut state) = restore.0 {
+            let conn: &mut MyConn = &mut state.conn;
+            let _guard = ActiveConnGuard::set(conn, name);
+            return f(conn);
+        }
+    }
+
     let pool = pool_for_active()?;
     let mut conn = pool.get().map_err(|e| format!("mysql checkout: {e}"))?;
+    let _guard = ActiveConnGuard::set(&mut conn, name);
     f(&mut conn)
 }
 
@@ -80,6 +259,23 @@ fn to_mysql_params(params: &[SqlBind]) -> Vec<MysqlValue> {
 }
 
 // ---------- CRUD ----------
+
+/// SELECT one doc on an already-checked-out connection. Write paths use this
+/// instead of `get` — a second pool checkout while holding a connection
+/// stalls (and with pool_size=1, deadlocks) under concurrency.
+fn get_on(conn: &mut MyConn, table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
+    let table_q = Dialect::Mysql.quote_ident(table)?;
+    let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
+    let row: Option<String> = conn
+        .exec_first(&sql, (key,))
+        .map_err(|e| format!("mysql get: {e}"))?;
+    match row {
+        Some(s) => serde_json::from_str(&s)
+            .map(Some)
+            .map_err(|e| format!("mysql get json: {e}")),
+        None => Ok(None),
+    }
+}
 
 pub fn insert(
     table: &str,
@@ -100,7 +296,7 @@ pub fn insert(
     with_conn(|conn| {
         conn.exec_drop(&sql, (&key, &doc_str))
             .map_err(|e| format!("mysql insert: {e}"))?;
-        get(table, &key)?.ok_or_else(|| "mysql insert: row missing after write".into())
+        get_on(conn, table, &key)?.ok_or_else(|| "mysql insert: row missing after write".into())
     })
 }
 
@@ -108,21 +304,7 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
     if !table_exists(table)? {
         return Ok(None);
     }
-    let table_q = Dialect::Mysql.quote_ident(table)?;
-    let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
-    with_conn(|conn| {
-        let row: Option<String> = conn
-            .exec_first(&sql, (key,))
-            .map_err(|e| format!("mysql get: {e}"))?;
-        match row {
-            Some(s) => {
-                let v: serde_json::Value =
-                    serde_json::from_str(&s).map_err(|e| format!("mysql get json: {e}"))?;
-                Ok(Some(v))
-            }
-            None => Ok(None),
-        }
-    })
+    with_conn(|conn| get_on(conn, table, key))
 }
 
 pub fn update(
@@ -143,17 +325,23 @@ pub fn update(
              WHERE _key = ?"
         );
         return with_conn(|conn| {
-            let affected = conn
-                .exec_iter(&sql, (&doc_str, key))
-                .map_err(|e| format!("mysql update merge: {e}"))?
-                .affected_rows();
-            if affected == 0 {
-                // Insert patch as full document.
-                let ins = format!("INSERT INTO {table_q} (_key, doc) VALUES (?, CAST(? AS JSON))");
-                conn.exec_drop(&ins, (key, &doc_str))
-                    .map_err(|e| format!("mysql update merge insert: {e}"))?;
+            conn.exec_drop(&sql, (&doc_str, key))
+                .map_err(|e| format!("mysql update merge: {e}"))?;
+            // affected_rows() can't tell "row missing" from "no-op merge"
+            // (CLIENT_FOUND_ROWS is off, so it reports CHANGED rows) — read
+            // back instead, and only insert when the row truly isn't there.
+            if let Some(doc) = get_on(conn, table, key)? {
+                return Ok(doc);
             }
-            get(table, key)?.ok_or_else(|| "mysql update: row missing".into())
+            // Insert patch as full document; merge on a concurrent insert.
+            let ins = format!(
+                "INSERT INTO {table_q} (_key, doc) VALUES (?, CAST(? AS JSON)) \
+                 ON DUPLICATE KEY UPDATE \
+                 doc = JSON_MERGE_PATCH(COALESCE(doc, '{{}}'), CAST(? AS JSON))"
+            );
+            conn.exec_drop(&ins, (key, &doc_str, &doc_str))
+                .map_err(|e| format!("mysql update merge insert: {e}"))?;
+            get_on(conn, table, key)?.ok_or_else(|| "mysql update: row missing".into())
         });
     }
     let sql = format!(
@@ -163,7 +351,7 @@ pub fn update(
     with_conn(|conn| {
         conn.exec_drop(&sql, (key, &doc_str))
             .map_err(|e| format!("mysql update: {e}"))?;
-        get(table, key)?.ok_or_else(|| "mysql update: row missing".into())
+        get_on(conn, table, key)?.ok_or_else(|| "mysql update: row missing".into())
     })
 }
 
@@ -456,12 +644,13 @@ fn resolve_key(key: Option<&str>, document: &mut serde_json::Value) -> Result<St
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static LOCK: Mutex<()> = Mutex::new(());
 
     fn with_mysql(f: impl FnOnce()) {
-        let _g = LOCK.lock().unwrap();
+        // Cross-module lock: the registry override is process-global, so all
+        // override-installing test modules must serialize on the same mutex.
+        let _g = crate::db::registry::registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let url = match std::env::var("MYSQL_URL").or_else(|_| std::env::var("DATABASE_URL")) {
             Ok(u) if u.starts_with("mysql") => u,
             _ => {
@@ -498,8 +687,16 @@ mod integration_tests {
             connections,
             from_file: false,
         });
+        // Clear on unwind too — a panicking test must not leak its override
+        // into whichever test takes the (poison-recovered) lock next.
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_registry_override();
+            }
+        }
+        let _clear = ClearOnDrop;
         f();
-        clear_registry_override();
     }
 
     #[test]

@@ -33,9 +33,27 @@ name = "soli"
 path = "src/main.rs"
 
 [features]
-default = ["embedding", "llm", "codegraph"]
-# Coverage is now always enabled at runtime via --coverage flag
-full = ["embedding", "llm", "codegraph"]
+# Full product build: SoliDB always-on; optional subsystems on by default so
+# `cargo install` / CI match published binaries. Drop with
+# `--no-default-features --features …` for a slimmer binary / lower RSS.
+default = [
+    "embedding",
+    "llm",
+    "codegraph",
+    "paseto",
+    "postgres",
+    "mysql",
+]
+# Kitchen-sink alias (default set + native SoliDB driver).
+full = [
+    "embedding",
+    "llm",
+    "codegraph",
+    "paseto",
+    "postgres",
+    "mysql",
+    "solidb-driver",
+]
 embedding = []
 # LLM text completion via an OpenAI-compatible chat/completions endpoint
 # (src/generation.rs, exposed to Soli as the `llm_generate` builtin).
@@ -50,6 +68,13 @@ codegraph = ["dep:soli-codegraph"]
 # the SoliDB checkout beside this one: `solidb-client` is not published, so a
 # path dependency would break `cargo install --path .` for anyone without it.
 solidb-driver = ["dep:solidb-client"]
+# PASETO v4 builtins (`Paseto` class). Omit to drop `pasetors` from the link.
+paseto = ["dep:pasetors"]
+# SQL document adapters (Model when SOLI_DB_ADAPTER / database.toml selects them).
+postgres = ["dep:postgres", "dep:r2d2_postgres", "dep:r2d2"]
+mysql = ["dep:mysql", "dep:r2d2_mysql", "dep:r2d2"]
+# Both SQL backends.
+sql = ["postgres", "mysql"]
 
 [dependencies]
 thiserror = "1.0"
@@ -120,7 +145,8 @@ sha1 = "0.10"
 # a profile we don't expose. `paserk` gives us the `k4.local.` / `k4.public.`
 # key serialization format, so keys are self-describing strings rather than
 # bare bytes a caller could feed to the wrong purpose.
-pasetors = { version = "0.8", default-features = false, features = ["std", "v4", "paserk"] }
+# Gated by feature `paseto` (on by default).
+pasetors = { version = "0.8", default-features = false, features = ["std", "v4", "paserk"], optional = true }
 
 # Arbitrary-precision integers for RSA-style modular exponentiation
 # (Crypto.modexp). Pairs with the PKCS#1 v1.5 padding helpers and
@@ -287,11 +313,12 @@ soli-codegraph = { path = "codegraph", optional = true }
 toml = "0.8"
 cms = { version = "0.2", features = ["std"] }
 x509-cert = "0.2"
-postgres = { version = "0.19.14", features = ["with-serde_json-1"] }
-r2d2 = "0.8.10"
-r2d2_postgres = "0.18.2"
-mysql = { version = "28.0.0", features = ["default"] }
-r2d2_mysql = "28.0.0"
+# SQL document adapters — features `postgres` / `mysql` (on by default).
+postgres = { version = "0.19.14", features = ["with-serde_json-1"], optional = true }
+r2d2 = { version = "0.8.10", optional = true }
+r2d2_postgres = { version = "0.18.2", optional = true }
+mysql = { version = "28.0.0", features = ["default"], optional = true }
+r2d2_mysql = { version = "28.0.0", optional = true }
 
 # Windows-only dependencies. `windows-sys` is pure Rust bindings — no C
 # toolchain involved — so it compiles for the Windows target from any host.

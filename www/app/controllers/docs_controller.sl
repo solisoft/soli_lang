@@ -112,6 +112,10 @@ def database_configuration
     render_docs("docs/database/configuration", "Database Configuration", "database", "configuration")
 end
 
+def database_multi_database
+    render_docs("docs/database/multi-database", "Multiple Databases", "database", "multi_database")
+end
+
 def database_models
     render_docs("docs/database/models", "Models & ORM", "database", "models")
 end
@@ -170,6 +174,10 @@ end
 
 def security_oidc_provider
     render_docs("docs/security/oidc-provider", "OpenID Connect Provider", "security", "oidc_provider")
+end
+
+def security_oauth_client
+    render_docs("docs/security/oauth-client", "OAuth Client", "security", "oauth_client")
 end
 
 # Development Tools

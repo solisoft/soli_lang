@@ -5,6 +5,7 @@
 //! `DATABASE_URL`) as `_key` + `doc` rows.
 
 use super::sql;
+use crate::solidb_http::SoliDBClient;
 
 /// Result summary for one collection.
 #[derive(Debug, Clone)]
@@ -28,8 +29,9 @@ pub fn import_collections(collections: &[String]) -> Result<Vec<ImportCollection
     }
     sql::ensure_connected()?;
 
+    let client = solidb_client()?;
     let names: Vec<String> = if collections.is_empty() {
-        list_solidb_collections()?
+        list_solidb_collections(&client)?
     } else {
         collections.to_vec()
     };
@@ -39,13 +41,13 @@ pub fn import_collections(collections: &[String]) -> Result<Vec<ImportCollection
         if name.starts_with('_') {
             continue;
         }
-        results.push(import_one(&name)?);
+        results.push(import_one(&client, &name)?);
     }
     Ok(results)
 }
 
-fn import_one(collection: &str) -> Result<ImportCollectionResult, String> {
-    let docs = fetch_solidb_docs(collection)?;
+fn import_one(client: &SoliDBClient, collection: &str) -> Result<ImportCollectionResult, String> {
+    let docs = fetch_solidb_docs(client, collection)?;
     let mut imported = 0usize;
     let mut errors = Vec::new();
     sql::ensure_table(collection)?;
@@ -73,127 +75,54 @@ fn import_one(collection: &str) -> Result<ImportCollectionResult, String> {
     })
 }
 
-struct SolidbEndpoint {
-    host: String,
-    basic: Option<(String, String)>,
-    api_key: Option<String>,
-}
-
-fn solidb_base() -> Result<SolidbEndpoint, String> {
+/// Build a SoliDB client from the same `SOLIDB_*` env the Model layer uses.
+/// Auth priority mirrors `SoliDBClient::apply_auth`: JWT > API key > basic.
+fn solidb_client() -> Result<SoliDBClient, String> {
     let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".into());
-    let host = host.trim_end_matches('/').to_string();
-    let user = std::env::var("SOLIDB_USERNAME").ok();
-    let pass = std::env::var("SOLIDB_PASSWORD").ok();
-    let basic = match (user, pass) {
-        (Some(u), Some(p)) => Some((u, p)),
-        _ => None,
-    };
-    let api_key = std::env::var("SOLIDB_API_KEY").ok();
-    Ok(SolidbEndpoint {
-        host,
-        basic,
-        api_key,
-    })
+    let mut client = SoliDBClient::connect(&host).map_err(|e| format!("solidb connect: {e}"))?;
+    if let Ok(jwt) = std::env::var("SOLIDB_JWT") {
+        client = client.with_jwt_token(&jwt);
+    }
+    if let Ok(api_key) = std::env::var("SOLIDB_API_KEY") {
+        client = client.with_api_key(&api_key);
+    }
+    if let (Ok(user), Ok(pass)) = (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        client = client.with_basic_auth(&user, &pass);
+    }
+    let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".into());
+    client.set_database(&database);
+    Ok(client)
 }
 
-fn solidb_database() -> String {
-    std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".into())
-}
-
-fn list_solidb_collections() -> Result<Vec<String>, String> {
-    let ep = solidb_base()?;
-    let db = solidb_database();
-    let url = format!("{}/_api/database/{db}/collection", ep.host);
-    let body = http_get(&url, ep.basic.as_ref(), ep.api_key.as_deref())?;
-    // Response shapes: { "result": ["posts", …] } or [ "posts", … ]
-    if let Ok(arr) = serde_json::from_str::<Vec<String>>(&body) {
-        return Ok(arr);
-    }
-    let v: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("list collections json: {e}: {body}"))?;
-    if let Some(arr) = v.get("result").and_then(|x| x.as_array()) {
-        return Ok(arr
-            .iter()
-            .filter_map(|x| x.as_str().map(|s| s.to_string()))
-            .collect());
-    }
-    if let Some(arr) = v.get("collections").and_then(|x| x.as_array()) {
-        return Ok(arr
-            .iter()
-            .filter_map(|x| {
-                x.as_str().map(|s| s.to_string()).or_else(|| {
-                    x.get("name")
-                        .and_then(|n| n.as_str())
-                        .map(|s| s.to_string())
-                })
+fn list_solidb_collections(client: &SoliDBClient) -> Result<Vec<String>, String> {
+    let items = client
+        .list_collections()
+        .map_err(|e| format!("list collections: {e}"))?;
+    // Items are either bare names or {"name": …} objects.
+    Ok(items
+        .iter()
+        .filter_map(|x| {
+            x.as_str().map(|s| s.to_string()).or_else(|| {
+                x.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string())
             })
-            .collect());
-    }
-    Err(format!("unexpected collections response: {body}"))
+        })
+        .collect())
 }
 
-fn fetch_solidb_docs(collection: &str) -> Result<Vec<serde_json::Value>, String> {
-    let ep = solidb_base()?;
-    let db = solidb_database();
-    let url = format!("{}/_api/database/{db}/cursor", ep.host);
+/// Full collection scan. `SoliDBClient::query` drains the cursor
+/// (`has_more` + `PUT /_api/cursor/{id}`), so collections larger than one
+/// batch (default 1000 docs) come back complete.
+fn fetch_solidb_docs(
+    client: &SoliDBClient,
+    collection: &str,
+) -> Result<Vec<serde_json::Value>, String> {
     let query = format!("FOR doc IN {collection} RETURN doc");
-    let payload = serde_json::json!({ "query": query });
-    let body = http_post_json(&url, &payload, ep.basic.as_ref(), ep.api_key.as_deref())?;
-    let v: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("cursor json: {e}: {body}"))?;
-    // { result: [ … ] } or { result: { result: […] } }
-    if let Some(arr) = v.get("result").and_then(|x| x.as_array()) {
-        return Ok(arr.clone());
-    }
-    Err(format!(
-        "unexpected cursor response for {collection}: {body}"
-    ))
-}
-
-fn http_get(
-    url: &str,
-    basic: Option<&(String, String)>,
-    api_key: Option<&str>,
-) -> Result<String, String> {
-    let agent = ureq::Agent::new();
-    let mut req = agent.get(url);
-    if let Some((u, p)) = basic {
-        req = req.set("Authorization", &basic_auth_header(u, p));
-    }
-    if let Some(k) = api_key {
-        req = req.set("X-API-Key", k);
-    }
-    let resp = req.call().map_err(|e| format!("GET {url}: {e}"))?;
-    resp.into_string()
-        .map_err(|e| format!("GET {url} read: {e}"))
-}
-
-fn http_post_json(
-    url: &str,
-    body: &serde_json::Value,
-    basic: Option<&(String, String)>,
-    api_key: Option<&str>,
-) -> Result<String, String> {
-    let agent = ureq::Agent::new();
-    let mut req = agent.post(url).set("Content-Type", "application/json");
-    if let Some((u, p)) = basic {
-        req = req.set("Authorization", &basic_auth_header(u, p));
-    }
-    if let Some(k) = api_key {
-        req = req.set("X-API-Key", k);
-    }
-    let resp = req
-        .send_string(&body.to_string())
-        .map_err(|e| format!("POST {url}: {e}"))?;
-    resp.into_string()
-        .map_err(|e| format!("POST {url} read: {e}"))
-}
-
-fn basic_auth_header(user: &str, pass: &str) -> String {
-    use base64::Engine;
-    let raw = format!("{user}:{pass}");
-    format!(
-        "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode(raw.as_bytes())
-    )
+    client
+        .query(&query, None)
+        .map_err(|e| format!("fetch {collection}: {e}"))
 }

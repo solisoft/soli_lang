@@ -1634,10 +1634,10 @@ impl Interpreter {
         // Only a model class gets the transaction-block treatment; anything else
         // is some unrelated `.transaction` method → let normal dispatch handle it.
         let receiver = self.evaluate(object)?;
-        match &receiver {
-            Value::Class(class) if class.is_model_subclass() => {}
+        let class_name = match &receiver {
+            Value::Class(class) if class.is_model_subclass() => class.name.clone(),
             _ => return Ok(None),
-        }
+        };
 
         let block = self.evaluate(block_expr)?;
         if !matches!(
@@ -1652,7 +1652,15 @@ impl Interpreter {
             return self.call_value(block, Vec::new(), span).map(Some);
         }
 
-        begin_transaction(None).map_err(|e| RuntimeError::General {
+        // Begin on the RECEIVER's connection: `LegacyOrder.transaction` must
+        // open the tx where LegacyOrder lives, not on the ambient default —
+        // otherwise a SQL model's transaction would start a SoliDB tx (and
+        // every write inside would be refused). Commit/rollback below need no
+        // wrapping: they route to whichever adapter holds the open tx.
+        crate::interpreter::builtins::model::run_on_model_connection(&class_name, || {
+            begin_transaction(None)
+        })
+        .map_err(|e| RuntimeError::General {
             message: format!("transaction: failed to begin: {}", e),
             span,
         })?;

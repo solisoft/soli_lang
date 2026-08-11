@@ -1,6 +1,8 @@
 # Database Configuration
 
-SoliLang uses SoliDB as its database backend. This guide covers how to configure and connect to your database.
+Soli uses **SoliDB** as the default full-featured backend. This guide covers the single-connection setup via environment variables.
+
+For **Postgres/MySQL document adapters**, named connections, and per-model `connection "name"`, see **[Multiple Databases](multi-database.md)** (`/docs/database/multi-database`).
 
 ## Environment Variables
 
@@ -375,8 +377,18 @@ Error: Database 'mydb' not found
 
 **Solution**: Ensure `.env` is in your project root (same directory as `main.sl`).
 
+## SQL adapters and multi-DB
+
+| Need | Where |
+|------|--------|
+| Whole app on Postgres/MySQL | `SOLI_DB_ADAPTER` + `DATABASE_URL` — [Multiple Databases](multi-database.md) |
+| SoliDB + SQL in one process | `config/database.toml` + `connection "…"` on models |
+| Capability matrix | repo `docs/sql-adapter-design.md` |
+| Smaller binary (no SQL client) | Cargo features `postgres` / `mysql` — [Slim binary](configuration.md#slim-binary-cargo-features) |
+
 ## Next Steps
 
+- [Multiple Databases](/docs/database/multi-database) - Named connections and SQL backends
 - [Models & ORM](/docs/models) - Learn how to work with data
 - [Analytics & Columnar Stores](/docs/database/analytics) - Grouped aggregation and columnar models
 - [Search: Vector, Fulltext & Geo](/docs/database/search) - Search indexes and queries

@@ -84,6 +84,7 @@ pub mod nanoid;
 pub mod native;
 pub mod pades;
 pub mod pades_tsa;
+#[cfg(feature = "paseto")]
 pub mod paseto;
 pub mod pdf;
 pub mod pdf_markdown;
@@ -671,7 +672,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     cookie_jar::register_cookie_jar_builtins(env);
 
     // PASETO v4 tokens (the `Paseto` class: local encrypt/decrypt and public
-    // sign/verify, with PASERK-serialized keys).
+    // sign/verify, with PASERK-serialized keys). Feature-gated (`paseto`, on
+    // by default) so slim builds can drop the pasetors crate.
+    #[cfg(feature = "paseto")]
     paseto::register_paseto_builtins(env);
 }
 

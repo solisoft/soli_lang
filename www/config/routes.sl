@@ -45,6 +45,7 @@ get("/docs/core-concepts/feature-flags", "docs#core_concepts_feature_flags")
 
 # Database
 get("/docs/database/configuration", "docs#database_configuration")
+get("/docs/database/multi-database", "docs#database_multi_database")
 get("/docs/database/models", "docs#database_models")
 get("/docs/database/query-builder", "docs#database_query_builder")
 get("/docs/database/relationships", "docs#database_relationships")
@@ -60,6 +61,7 @@ get("/docs/database/migrations", "docs#database_migrations")
 get("/docs/security/authentication", "docs#security_authentication")
 get("/docs/security/authorization", "docs#security_authorization")
 get("/docs/security/oidc-provider", "docs#security_oidc_provider")
+get("/docs/security/oauth-client", "docs#security_oauth_client")
 get("/docs/security/sessions", "docs#security_sessions")
 
 # Development Tools

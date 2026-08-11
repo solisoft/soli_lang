@@ -37,7 +37,35 @@
     log↔trace joins.
   - Docs: `/docs/development-tools/observability` (and `www/docs/observability.md`).
 
+### Added
+
+- **SQL `Model.transaction`** — Postgres and MySQL document adapters hold one
+  pool connection for the duration of `Model.transaction { … }` (BEGIN/COMMIT/
+  ROLLBACK). Nested blocks join the outer transaction. Keep blocks short so the
+  pool is not starved. SoliDB path unchanged.
+- **`soli db:migrate --connection NAME`** (`-c`) — run `up` / `down` / `status`
+  against a named connection from `config/database.toml` (SQL secondaries).
+- **`soli generate oauth <github|google>`** — OAuth *client* scaffold (requires
+  `generate auth`): `OauthIdentity`, provider services, `/auth/:provider`
+  routes, CSRF `state`, find-or-create user + session login. Docs:
+  `/docs/security/oauth-client`.
+
 ### Changed
+
+- **Cargo feature gates for slim builds** — `paseto`, `postgres`, and `mysql`
+  are optional (on by default with `embedding` / `llm` / `codegraph`). Drop
+  unused clients at compile time to shrink the binary and mapped code pages:
+
+  ```bash
+  cargo install --path . --locked --no-default-features \
+    --features embedding,llm,codegraph
+  ```
+
+  Using a disabled SQL adapter at runtime fails with a rebuild hint
+  (`DbError::FeatureNotCompiled`); the `Paseto` class is not registered when
+  `paseto` is off. Meta-features: `sql` (= both SQL backends), `full` (=
+  defaults + `solidb-driver`). Docs: Configuration → Slim binary / Keeping
+  memory low.
 
 - **Production HTTP worker default is 2** when `APP_ENV=production` (or `prod`)
   and neither `SOLI_WORKERS` nor `--workers` is set — caps baseline RSS on

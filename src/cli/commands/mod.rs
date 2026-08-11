@@ -746,6 +746,16 @@ pub fn run_generate_oidc_provider(folder: &str) {
     }
 }
 
+pub fn run_generate_oauth(provider: &str, folder: &str) {
+    match solilang::scaffold::create_oauth(folder, provider) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_generate_mailer(name: &str, actions: &[String], folder: &str) {
     match solilang::scaffold::create_mailer(folder, name, actions) {
         Ok(()) => {}
@@ -2250,7 +2260,7 @@ fn create_tarball(project_dir: &Path, dest: &std::path::Path) -> Result<(), Stri
     Ok(())
 }
 
-pub fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
+pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option<&str>) {
     use solilang::migration::{DbConfig, MigrationRunner};
 
     let app_path = Path::new(folder);
@@ -2260,70 +2270,110 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
         process::exit(1);
     }
 
-    let config = DbConfig::from_env(app_path);
+    // Load .env + named connections so SQL secondaries resolve before migrate.
+    solilang::serve::env_loader::load_env_files(app_path);
+    if let Err(e) = solilang::db::init_from_app_path(app_path) {
+        eprintln!("  \x1b[31mError:\x1b[0m {}", e.message());
+        process::exit(1);
+    }
 
-    match action {
-        DbMigrateAction::Up => {
-            println!();
-            println!("  \x1b[1mRunning migrations...\x1b[0m");
-            println!();
+    if let Some(name) = connection {
+        let reg = solilang::db::registry();
+        if !reg.connections.contains_key(name) {
+            let known: Vec<_> = reg.connections.keys().cloned().collect();
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m Unknown database connection {name:?}. \
+                 Known: {}. See config/database.toml.",
+                if known.is_empty() {
+                    "(none — no database.toml?)".into()
+                } else {
+                    known.join(", ")
+                }
+            );
+            process::exit(1);
+        }
+        println!();
+        println!(
+            "  \x1b[1mConnection:\x1b[0m {} ({})",
+            name,
+            reg.connections
+                .get(name)
+                .map(|s| s.adapter.as_str())
+                .unwrap_or("?")
+        );
+    }
 
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.migrate_up() {
-                Ok(result) => {
-                    println!();
-                    println!("  \x1b[32m{}\x1b[0m", result.message);
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        DbMigrateAction::Down => {
-            println!();
-            println!("  \x1b[1mRolling back migration...\x1b[0m");
-            println!();
+    let run = || {
+        let config = DbConfig::from_env(app_path);
+        match action {
+            DbMigrateAction::Up => {
+                println!();
+                println!("  \x1b[1mRunning migrations...\x1b[0m");
+                println!();
 
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.migrate_down() {
-                Ok(result) => {
-                    println!();
-                    println!("  \x1b[32m{}\x1b[0m", result.message);
-                    println!();
+                let runner = MigrationRunner::new(config, app_path);
+                match runner.migrate_up() {
+                    Ok(result) => {
+                        println!();
+                        println!("  \x1b[32m{}\x1b[0m", result.message);
+                        println!();
+                    }
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                        process::exit(1);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
+            }
+            DbMigrateAction::Down => {
+                println!();
+                println!("  \x1b[1mRolling back migration...\x1b[0m");
+                println!();
+
+                let runner = MigrationRunner::new(config, app_path);
+                match runner.migrate_down() {
+                    Ok(result) => {
+                        println!();
+                        println!("  \x1b[32m{}\x1b[0m", result.message);
+                        println!();
+                    }
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+            DbMigrateAction::Status => {
+                let runner = MigrationRunner::new(config, app_path);
+                match runner.status() {
+                    Ok(status) => {
+                        solilang::migration::print_status(&status);
+                    }
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+            DbMigrateAction::Generate { name } => {
+                match solilang::migration::generate_migration(app_path, name) {
+                    Ok(path) => {
+                        println!();
+                        println!("  \x1b[32mCreated migration:\x1b[0m {}", path.display());
+                        println!();
+                    }
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                        process::exit(1);
+                    }
                 }
             }
         }
-        DbMigrateAction::Status => {
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.status() {
-                Ok(status) => {
-                    solilang::migration::print_status(&status);
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        DbMigrateAction::Generate { name } => {
-            match solilang::migration::generate_migration(app_path, name) {
-                Ok(path) => {
-                    println!();
-                    println!("  \x1b[32mCreated migration:\x1b[0m {}", path.display());
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
+    };
+
+    if let Some(name) = connection {
+        solilang::db::with_connection(name, run);
+    } else {
+        run();
     }
 }
 

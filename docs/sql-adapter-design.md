@@ -1,6 +1,6 @@
 # SQL PostgreSQL / MySQL Adapter Design
 
-**Status:** Phase 3 — includes batching, multi-row `group_by`, and `soli db:import` on Postgres + MySQL.  
+**Status:** Phase 4 started — SQL `Model.transaction`, `db:migrate --connection`; Phase 3 includes/import remain.  
 **Related:** comparison page; `src/db/`.
 
 ## Goals
@@ -61,12 +61,13 @@ Model API → QueryBuilder IR
 | `pluck` / `select` projection | ✓ (server) | ✓ (client) | ✓ (client) |
 | `increment` / `decrement` | ✓ (CAS) | ✓ (R-M-W) | ✓ (R-M-W) |
 | `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) |
-| `.includes` HABTM / through / filtered | ✓ | ✗ | ✗ |
+| `.includes` HABTM / through / filtered | ✓ | ✗ (planned) | ✗ (planned) |
 | multi-row `group_by` + multi-agg | ✓ | ✓ | ✓ |
 | `.having` on groups | ✓ | ✗ | ✗ |
 | String SDBQL `where` | ✓ | ✗ | ✗ |
 | `.join` existence filter | ✓ | ✗ | ✗ |
-| Transactions (`Model.transaction`) | ✓ | ✗ | ✗ |
+| Transactions (`Model.transaction`) | ✓ | ✓ | ✓ |
+| `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ |
 | Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ |
 | Auto-create table on first write | collections | ✓ | ✓ |
 | `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ |
@@ -125,7 +126,8 @@ end
 
 - Without `config/database.toml`, env (`SOLI_DB_ADAPTER` / `DATABASE_URL` / `SOLIDB_*`) becomes connection **`primary`** (unchanged for existing apps).
 - Cross-connection `.includes` raises a clear error.
-- Per-connection SoliDB hosts and migrate `--connection` flags are iterative follow-ups; SQL multi-pool + model `connection` DSL work today.
+- SQL multi-pool + model `connection` DSL work today.
+- `soli db:migrate up|down|status --connection NAME` targets a named connection (SQL secondaries fully supported).
 
 ## pgvector (deferred)
 
@@ -139,4 +141,7 @@ Optional Postgres vector search was listed for Phase 3 but is **not implemented*
 | **1** Postgres CRUD + hash filters + migrations | done |
 | **2** MySQL + aggregates + delete_all/update_all | done |
 | **3** includes batching, group_by multi-row, import tool | **done** (pgvector deferred) |
-| **M0–M1** multi-DB `database.toml` + per-model `connection` | **in progress** (registry + SQL multi-pool + DSL) |
+| **M0–M1** multi-DB `database.toml` + per-model `connection` | **done** (docs: `/docs/database/multi-database`) |
+| **4a** SQL `Model.transaction` (held pool connection) | **done** |
+| **4b** `db:migrate --connection` | **done** |
+| **4c** HABTM / through includes on SQL | planned |

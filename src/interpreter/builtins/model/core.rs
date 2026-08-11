@@ -219,6 +219,45 @@ pub(crate) fn sti_scope_clause(class_name: &str) -> String {
     format!(" FILTER doc.type IN [{}]", quoted.join(", "))
 }
 
+/// `find_by` / `first_by` on a SQL connection: the raw-SDBQL form those
+/// methods build is SoliDB-only, so express the lookup as a portable
+/// eq-filter `ListQuery` instead. Errors propagate — swallowing them to nil
+/// makes an outage indistinguishable from "not found".
+fn sql_find_first_by(
+    class: &Rc<Class>,
+    collection: &str,
+    field: &str,
+    value: serde_json::Value,
+    order_by_key: bool,
+) -> Result<Value, String> {
+    if super::registry::is_sti_subclass(&class.name) {
+        return Err(format!(
+            "{}.find_by/first_by on an STI subclass is SoliDB-only on SQL adapters. \
+             See docs/sql-adapter-design.md.",
+            class.name
+        ));
+    }
+    let mut eq_filters = std::collections::BTreeMap::new();
+    eq_filters.insert(field.to_string(), value);
+    let lq = crate::db::ListQuery {
+        table: collection.to_string(),
+        eq_filters,
+        filter_sdbql: None,
+        // Mirrors the SoliDB form, which applies no deleted_at scope here.
+        soft_delete: crate::db::SqlSoftDeleteMode::Default,
+        is_soft_delete_model: false,
+        order_field: order_by_key.then(|| "_key".to_string()),
+        order_desc: false,
+        limit: Some(1),
+        offset: None,
+    };
+    let rows = crate::db::sql::select(&lq)?;
+    Ok(match rows.into_iter().next() {
+        Some(doc) => super::crud::json_doc_to_instance_owned(class, doc),
+        None => Value::Null,
+    })
+}
+
 /// STI: does a fetched row belong to `class_name`'s hierarchy? Non-STI
 /// classes match everything; subclass matches require the row's `type` to
 /// name the class or one of its descendants.
@@ -1860,7 +1899,10 @@ impl Model {
                 // cursor query so it can be coalesced with the others. The
                 // transform preserves the RecordNotFound-on-miss contract, so
                 // the error still surfaces (as a 404) when the deferred is read.
-                if super::batch::is_active() {
+                // SQL-bound collections skip registration — the coalesced flush
+                // is raw SDBQL, which SQL adapters reject; exec_get below
+                // routes them correctly.
+                if super::batch::is_active() && !super::crud::collection_is_sql(&collection) {
                     let sdbql = format!(
                         "FOR doc IN {} FILTER doc._key == @k LIMIT 1 RETURN doc",
                         collection
@@ -2762,6 +2804,14 @@ impl Model {
                     Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
                     None => return Err("find_by() requires a value".to_string()),
                 };
+                // SQL connections can't run the raw-SDBQL form below (and the
+                // old `_ => nil` arm would silently swallow that error) —
+                // express the lookup as a portable eq-filter query instead.
+                if super::crud::collection_is_sql(&collection) {
+                    return super::registry::run_on_collection_connection(&collection, || {
+                        sql_find_first_by(&class, &collection, &field, value.clone(), false)
+                    });
+                }
                 let sdbql = format!(
                     "FOR doc IN {} FILTER doc.{} == @val{} LIMIT 1 RETURN doc",
                     collection,
@@ -2810,6 +2860,12 @@ impl Model {
                     Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
                     None => return Err("first_by() requires a value".to_string()),
                 };
+                // SQL connections: portable eq-filter query — see find_by.
+                if super::crud::collection_is_sql(&collection) {
+                    return super::registry::run_on_collection_connection(&collection, || {
+                        sql_find_first_by(&class, &collection, &field, value.clone(), true)
+                    });
+                }
                 let sdbql = format!(
                     "FOR doc IN {} FILTER doc.{} == @val{} SORT doc._key ASC LIMIT 1 RETURN doc",
                     collection,

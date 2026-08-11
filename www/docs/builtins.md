@@ -2348,6 +2348,9 @@ There is no `alg` header to confuse, no `none` algorithm, and no way to hand a
 verifier the wrong key type: a v4 token is either **local** (encrypted, symmetric)
 or **public** (signed, asymmetric), and the key tells you which.
 
+The `Paseto` class is on by default (Cargo feature `paseto`). Slim builds can omit
+it — see [Configuration → Slim binary](configuration.md#slim-binary-cargo-features).
+
 Keys and tokens are **PASERK** strings, so they are self-describing:
 `k4.local.…` (symmetric), `k4.secret.…` / `k4.public.…` (key pair),
 `k4.lid.…` / `k4.pid.…` (key identifiers).

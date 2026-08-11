@@ -25,6 +25,9 @@ pub fn run() {
         } => commands::run_generate(scaffold_name, fields, folder),
         Command::GenerateAuth { folder } => commands::run_generate_auth(folder),
         Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
+        Command::GenerateOauth { provider, folder } => {
+            commands::run_generate_oauth(provider, folder)
+        }
         Command::GenerateMailer {
             name,
             actions,
@@ -67,7 +70,11 @@ pub fn run() {
             folder,
         ),
         Command::GenerateOffline { folder } => commands::run_generate_offline(folder),
-        Command::DbMigrate { action, folder } => commands::run_db_migrate(action, folder),
+        Command::DbMigrate {
+            action,
+            folder,
+            connection,
+        } => commands::run_db_migrate(action, folder, connection.as_deref()),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
         Command::DbImport { collections } => commands::run_db_import(collections),
         Command::DbIndexes { folder } => commands::run_db_indexes(folder),

@@ -14,6 +14,13 @@
         <p class="text-xl text-gray-300 leading-8">
             Platform-Agnostic Security Tokens &mdash; the same job as a JWT, without the negotiable algorithm.
         </p>
+        <p class="text-gray-400 mt-4 text-sm leading-relaxed">
+            The <code class="text-cyan-400">Paseto</code> class is compiled in by default (Cargo feature
+            <code class="text-cyan-400">paseto</code>). Slim builds can drop it with
+            <code class="text-cyan-400">--no-default-features</code> and omit <code class="text-cyan-400">paseto</code>
+            from <code class="text-cyan-400">--features</code>; the class is then not registered.
+            See <a href="/docs/getting-started/configuration#slim-binary-cargo-features" class="text-amber-400 hover:underline">Slim binary</a>.
+        </p>
     </div>
 
     <!-- Why -->

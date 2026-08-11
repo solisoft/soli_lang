@@ -2,6 +2,8 @@
 
 Models manage data and business logic in your MVC application. SoliLang provides a simple OOP-style interface for database operations.
 
+To bind a model to a named database (SoliDB, Postgres, or MySQL), use class-body `connection "name"` with `config/database.toml` — see **[Multiple Databases](multi-database.md)**.
+
 ## Defining Models
 
 Create model files in `app/models/`. The collection name is **automatically derived** from the class name:

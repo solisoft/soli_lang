@@ -10,6 +10,7 @@ pub mod controller;
 pub mod devices;
 pub mod migration;
 pub mod model;
+pub mod oauth;
 pub mod offline;
 pub mod oidc;
 pub mod view;

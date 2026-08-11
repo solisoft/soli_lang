@@ -319,7 +319,7 @@ pub use registry::{
     clear_all_model_registries, clear_model_classes, get_collection_type, get_columnar_schema,
     get_edge_spec, get_model_class, get_timeseries_spec, is_columnar_model, is_edge_model,
     is_soft_delete, is_timeseries_model, register_collection_type, register_model_class,
-    ColumnarColumnDef, ColumnarSchemaDef, EdgeSpec, TimeseriesSpec,
+    run_on_model_connection, ColumnarColumnDef, ColumnarSchemaDef, EdgeSpec, TimeseriesSpec,
 };
 pub use relations::{
     build_relation, classify, get_relation, get_relations, parse_relation_options,

@@ -8,18 +8,60 @@ use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
     compile_group_by_d, compile_select_by_keys_d, compile_select_d, compile_select_json_text_in_d,
     compile_update_all_d, create_table_sql_d, drop_table_sql_d, migrations_table_sql_d, Dialect,
-    GroupAgg, ListQuery, SoftDeleteMode, SqlAgg, SqlBind,
+    GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
 use postgres::types::{ToSql, Type};
 use r2d2::Pool;
 use r2d2_postgres::{postgres::NoTls, PostgresConnectionManager};
-use std::collections::{BTreeMap, HashMap};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 type PgPool = Pool<PostgresConnectionManager<NoTls>>;
+type PgPooled = r2d2::PooledConnection<PostgresConnectionManager<NoTls>>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, PgPool>>> = OnceLock::new();
+
+/// Open SQL transaction on this thread: holds one pool connection until
+/// commit/rollback. Nested `Model.transaction` increments `nest` only.
+struct TxState {
+    conn: PgPooled,
+    nest: u32,
+    /// Connection name the tx was begun on. Ops on OTHER postgres connections
+    /// must not reuse this connection — that would execute them on the wrong
+    /// database (silent cross-database write).
+    name: String,
+}
+
+thread_local! {
+    static TX: RefCell<Option<TxState>> = const { RefCell::new(None) };
+    /// Fast flag so `has_active_tx` never needs to borrow `TX` (avoids RefCell
+    /// conflicts while `with_conn` temporarily takes the connection).
+    static TX_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    /// Re-entrancy for `with_conn` (e.g. `insert` → `ensure_table` →
+    /// `with_conn`): the live client plus the connection name it belongs to,
+    /// so a nested op on a DIFFERENT named connection never borrows it.
+    static ACTIVE_CLIENT: RefCell<Option<(*mut postgres::Client, String)>> =
+        const { RefCell::new(None) };
+}
+
+/// Panic-safe reset for `ACTIVE_CLIENT`: if `f` unwinds, the pointer must not
+/// dangle into the next `with_conn` on this (reused worker) thread.
+struct ActiveClientGuard;
+
+impl ActiveClientGuard {
+    fn set(client: &mut postgres::Client, name: String) -> Self {
+        ACTIVE_CLIENT.with(|c| *c.borrow_mut() = Some((client as *mut postgres::Client, name)));
+        ActiveClientGuard
+    }
+}
+
+impl Drop for ActiveClientGuard {
+    fn drop(&mut self) {
+        ACTIVE_CLIENT.with(|c| *c.borrow_mut() = None);
+    }
+}
 
 fn pools() -> &'static Mutex<HashMap<String, PgPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -63,10 +105,154 @@ pub fn ensure_connected() -> Result<(), String> {
     Ok(())
 }
 
+pub fn has_active_tx() -> bool {
+    TX_ACTIVE.get()
+}
+
+fn map_isolation(level: Option<&str>) -> Result<&'static str, String> {
+    match level
+        .unwrap_or("read_committed")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "read_committed" | "read committed" => Ok("READ COMMITTED"),
+        "repeatable_read" | "repeatable read" => Ok("REPEATABLE READ"),
+        "serializable" => Ok("SERIALIZABLE"),
+        "read_uncommitted" | "read uncommitted" => Ok("READ UNCOMMITTED"),
+        other => Err(format!(
+            "unsupported isolation level {other:?} for postgres \
+             (use read_committed, repeatable_read, serializable)"
+        )),
+    }
+}
+
+/// Begin a transaction on a checked-out pool connection (held until commit/rollback).
+pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let name = active_connection_name();
+        if let Some(tx) = slot.as_mut() {
+            if tx.name != name {
+                return Err(format!(
+                    "a transaction is already open on connection {:?}; cannot begin one \
+                     on {:?} from the same block (one SQL transaction per thread)",
+                    tx.name, name
+                ));
+            }
+            tx.nest += 1;
+            return Ok(format!("sql-pg-nested-{}", tx.nest));
+        }
+        let iso = map_isolation(isolation_level)?;
+        let pool = pool_for_active()?;
+        let mut conn = pool
+            .get()
+            .map_err(|e| format!("postgres transaction checkout: {e}"))?;
+        conn.batch_execute(&format!("BEGIN ISOLATION LEVEL {iso}"))
+            .map_err(|e| format!("postgres BEGIN: {e}"))?;
+        *slot = Some(TxState {
+            conn,
+            nest: 0,
+            name,
+        });
+        TX_ACTIVE.set(true);
+        Ok("sql-pg".into())
+    })
+}
+
+pub fn commit_transaction() -> Result<(), String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let tx = slot
+            .as_mut()
+            .ok_or_else(|| "No active postgres transaction".to_string())?;
+        if tx.nest > 0 {
+            tx.nest -= 1;
+            return Ok(());
+        }
+        let mut state = slot.take().expect("tx present");
+        TX_ACTIVE.set(false);
+        state
+            .conn
+            .batch_execute("COMMIT")
+            .map_err(|e| format!("postgres COMMIT: {e}"))?;
+        Ok(())
+    })
+}
+
+pub fn rollback_transaction() -> Result<(), String> {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let Some(tx) = slot.as_mut() else {
+            return Ok(());
+        };
+        if tx.nest > 0 {
+            tx.nest -= 1;
+            return Ok(());
+        }
+        let mut state = slot.take().expect("tx present");
+        TX_ACTIVE.set(false);
+        state
+            .conn
+            .batch_execute("ROLLBACK")
+            .map_err(|e| format!("postgres ROLLBACK: {e}"))
+    })
+}
+
+/// Drop transaction state, rolling back if still open (defensive for worker reuse).
+pub fn clear_transaction() {
+    TX.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if let Some(mut state) = slot.take() {
+            TX_ACTIVE.set(false);
+            let _ = state.conn.batch_execute("ROLLBACK");
+        }
+    });
+}
+
 fn with_conn<T>(f: impl FnOnce(&mut postgres::Client) -> Result<T, String>) -> Result<T, String> {
+    let name = active_connection_name();
+
+    // Re-entrant (insert → ensure_table → with_conn) — reuse the outer client
+    // only when the nested op targets the SAME named connection.
+    let reentrant = ACTIVE_CLIENT.with(|c| match &*c.borrow() {
+        Some((ptr, n)) if *n == name => Some(*ptr),
+        _ => None,
+    });
+    if let Some(ptr) = reentrant {
+        // SAFETY: pointer set only for the duration of an outer with_conn on
+        // this thread; the guard clears it even on unwind.
+        let client = unsafe { &mut *ptr };
+        return f(client);
+    }
+
+    // Prefer the open transaction connection — but only for ops on the SAME
+    // named connection: handing it to another connection's op would execute
+    // that op on the wrong database. Take it out of the RefCell so nested
+    // helpers (has_active_tx, begin nest) don't fight borrow_mut.
+    struct RestoreTx(Option<TxState>);
+    impl Drop for RestoreTx {
+        fn drop(&mut self) {
+            if let Some(state) = self.0.take() {
+                TX.with(|c| *c.borrow_mut() = Some(state));
+            }
+        }
+    }
+
+    let tx_matches = TX.with(|c| c.borrow().as_ref().is_some_and(|t| t.name == name));
+    if tx_matches {
+        let mut restore = RestoreTx(TX.with(|c| c.borrow_mut().take()));
+        if let Some(ref mut state) = restore.0 {
+            let client: &mut postgres::Client = &mut state.conn;
+            let _guard = ActiveClientGuard::set(client, name);
+            return f(client);
+        }
+    }
+
     let pool = pool_for_active()?;
     let mut conn = pool.get().map_err(|e| format!("postgres checkout: {e}"))?;
-    f(&mut conn)
+    let client: &mut postgres::Client = &mut conn;
+    let _guard = ActiveClientGuard::set(client, name);
+    f(client)
 }
 
 // ---------- document CRUD ----------
@@ -460,7 +646,6 @@ fn resolve_key(key: Option<&str>, document: &mut serde_json::Value) -> Result<St
 /// Owned bind values so we can build `&dyn ToSql` slices.
 #[derive(Debug)]
 enum OwnedParam {
-    Null,
     I64(i64),
     Text(String),
     Json(serde_json::Value),
@@ -473,7 +658,6 @@ impl ToSql for OwnedParam {
         out: &mut bytes::BytesMut,
     ) -> Result<postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
         match self {
-            OwnedParam::Null => Ok(postgres::types::IsNull::Yes),
             OwnedParam::I64(n) => (*n).to_sql(ty, out),
             OwnedParam::Text(s) => s.to_sql(ty, out),
             OwnedParam::Json(j) => j.to_sql(ty, out),
@@ -506,10 +690,9 @@ fn bind_owned(params: &[SqlBind]) -> Vec<OwnedParam> {
     params
         .iter()
         .map(|v| match v {
-            SqlBind::Json(j) => match j {
-                serde_json::Value::Null => OwnedParam::Null,
-                other => OwnedParam::Json(other.clone()),
-            },
+            // JSON null binds as 'null'::jsonb, NOT SQL NULL — `(doc->'f') = NULL`
+            // is never true, which would make {f: null} filters match nothing.
+            SqlBind::Json(j) => OwnedParam::Json(j.clone()),
             SqlBind::I64(n) => OwnedParam::I64(*n),
             SqlBind::Text(s) => OwnedParam::Text(s.clone()),
         })
@@ -520,56 +703,25 @@ fn bind_refs(owned: &[OwnedParam]) -> Vec<&(dyn ToSql + Sync)> {
     owned.iter().map(|p| p as &(dyn ToSql + Sync)).collect()
 }
 
-/// Inputs for [`list_query_from_parts`].
-pub struct ListQueryParts {
-    pub table: String,
-    pub filter_sdbql: Option<String>,
-    pub bind_vars: HashMap<String, serde_json::Value>,
-    pub soft_delete: SoftDeleteMode,
-    pub is_soft_delete_model: bool,
-    pub order_field: Option<String>,
-    pub order_desc: bool,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
-
-/// Build a ListQuery IR (dialect-agnostic filters); validates with `dialect`.
-pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<ListQuery, String> {
-    let mut eq_filters = BTreeMap::new();
-    if let Some(ref f) = parts.filter_sdbql {
-        if !f.trim().is_empty() {
-            for (k, v) in &parts.bind_vars {
-                if k.starts_with("__soli_") {
-                    continue;
-                }
-                eq_filters.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    let q = ListQuery {
-        table: parts.table,
-        eq_filters,
-        filter_sdbql: parts.filter_sdbql,
-        soft_delete: parts.soft_delete,
-        is_soft_delete_model: parts.is_soft_delete_model,
-        order_field: parts.order_field,
-        order_desc: parts.order_desc,
-        limit: parts.limit,
-        offset: parts.offset,
-    };
-    let _ = compile_select_d(dialect, &q)?;
-    Ok(q)
-}
-
 #[cfg(test)]
 mod integration_tests {
+    use super::super::sql_compile::SoftDeleteMode;
     use super::*;
-    use std::sync::Mutex;
-
-    static LOCK: Mutex<()> = Mutex::new(());
+    use std::collections::BTreeMap;
 
     fn with_pg(f: impl FnOnce()) {
-        let _g = LOCK.lock().unwrap();
+        with_pg_conns(&["primary"], f)
+    }
+
+    /// Like [`with_pg`], but registers every name in `names` as a postgres
+    /// connection on the same URL (first name is the default). Lets tests
+    /// exercise multi-connection routing against a single server.
+    fn with_pg_conns(names: &[&str], f: impl FnOnce()) {
+        // Cross-module lock: the registry override is process-global, so all
+        // override-installing test modules must serialize on the same mutex.
+        let _g = crate::db::registry::registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let url = std::env::var("PG_DATABASE_URL")
             .or_else(|_| std::env::var("DATABASE_URL"))
             .ok()
@@ -579,31 +731,43 @@ mod integration_tests {
             eprintln!("skip: postgres not reachable at {url}");
             return;
         }
-        use crate::db::registry::{set_registry_for_tests, clear_registry_override, ConnectionRegistry, ConnectionSpec};
+        use crate::db::registry::{
+            clear_registry_override, set_registry_for_tests, ConnectionRegistry, ConnectionSpec,
+        };
         use crate::db::Adapter;
         use std::collections::HashMap;
         let mut connections = HashMap::new();
-        connections.insert(
-            "primary".into(),
-            ConnectionSpec {
-                name: "primary".into(),
-                adapter: Adapter::Postgres,
-                url: Some(url.clone()),
-                solidb_host: None,
-                solidb_database: None,
-                solidb_username: None,
-                solidb_password: None,
-                solidb_api_key: None,
-                pool_size: Some(5),
-            },
-        );
+        for name in names {
+            connections.insert(
+                (*name).to_string(),
+                ConnectionSpec {
+                    name: (*name).to_string(),
+                    adapter: Adapter::Postgres,
+                    url: Some(url.clone()),
+                    solidb_host: None,
+                    solidb_database: None,
+                    solidb_username: None,
+                    solidb_password: None,
+                    solidb_api_key: None,
+                    pool_size: Some(5),
+                },
+            );
+        }
         set_registry_for_tests(ConnectionRegistry {
-            default: "primary".into(),
+            default: names[0].to_string(),
             connections,
             from_file: false,
         });
+        // Clear on unwind too — a panicking test must not leak its override
+        // into whichever test takes the (poison-recovered) lock next.
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_registry_override();
+            }
+        }
+        let _clear = ClearOnDrop;
         f();
-        clear_registry_override();
     }
 
     #[test]
@@ -655,6 +819,53 @@ mod integration_tests {
             assert!(exists(&q).unwrap());
             delete(table, "k1").expect("delete");
             assert!(get(table, "k1").unwrap().is_none());
+            let _ = drop_table(table);
+        });
+    }
+
+    /// `where({field: null})` must match documents whose field is JSON null.
+    /// Binding SQL NULL would compile to `(doc->'f') = NULL`, which is never
+    /// true — the filter would silently return 0 rows.
+    #[test]
+    fn null_filter_matches_json_null() {
+        with_pg(|| {
+            if ensure_connected().is_err() {
+                return;
+            }
+            let table = "soli_pg_null_filter_test";
+            let _ = drop_table(table);
+            if ensure_table(table).is_err() {
+                return;
+            }
+            insert(
+                table,
+                Some("t1"),
+                serde_json::json!({ "_key": "t1", "assignee_id": null }),
+            )
+            .expect("insert");
+            insert(
+                table,
+                Some("t2"),
+                serde_json::json!({ "_key": "t2", "assignee_id": "u9" }),
+            )
+            .expect("insert");
+            let mut eq = BTreeMap::new();
+            eq.insert("assignee_id".into(), serde_json::Value::Null);
+            let q = ListQuery {
+                table: table.into(),
+                eq_filters: eq,
+                filter_sdbql: Some("doc.assignee_id == @assignee_id".into()),
+                soft_delete: SoftDeleteMode::Default,
+                is_soft_delete_model: false,
+                order_field: None,
+                order_desc: false,
+                limit: None,
+                offset: None,
+            };
+            let rows = select(&q).expect("select");
+            assert_eq!(rows.len(), 1, "null filter must match the JSON-null row");
+            assert_eq!(rows[0]["_key"], "t1");
+            assert_eq!(count(&q).unwrap(), 1);
             let _ = drop_table(table);
         });
     }
@@ -773,6 +984,101 @@ mod integration_tests {
             let applied = list_applied_migrations().expect("list");
             assert!(applied.iter().any(|(v, _)| v == "20990101000000"));
             remove_migration("20990101000000").expect("remove");
+        });
+    }
+
+    #[test]
+    fn transaction_commit_and_rollback_when_pg_available() {
+        with_pg(|| {
+            if ensure_connected().is_err() {
+                return;
+            }
+            clear_transaction();
+            let table = "soli_pg_tx_test";
+            let _ = drop_table(table);
+            if ensure_table(table).is_err() {
+                return;
+            }
+
+            // Commit path: row visible after commit.
+            begin_transaction(None).expect("begin");
+            assert!(has_active_tx());
+            insert(
+                table,
+                Some("commit-me"),
+                serde_json::json!({"_key": "commit-me", "n": 1}),
+            )
+            .expect("insert in tx");
+            commit_transaction().expect("commit");
+            assert!(!has_active_tx());
+            assert!(get(table, "commit-me").unwrap().is_some());
+
+            // Rollback path: row never lands.
+            begin_transaction(None).expect("begin2");
+            insert(
+                table,
+                Some("rollback-me"),
+                serde_json::json!({"_key": "rollback-me", "n": 2}),
+            )
+            .expect("insert in tx2");
+            rollback_transaction().expect("rollback");
+            assert!(!has_active_tx());
+            assert!(get(table, "rollback-me").unwrap().is_none());
+
+            let _ = drop_table(table);
+        });
+    }
+
+    /// A transaction on one named connection must NOT capture operations on a
+    /// different connection of the same adapter — those would execute on the
+    /// wrong database. Both names point at the same server here; routing
+    /// correctness is still observable: if the "secondary" write wrongly
+    /// joined the primary tx, the rollback would erase it.
+    #[test]
+    fn transaction_does_not_capture_other_connections() {
+        with_pg_conns(&["primary", "secondary"], || {
+            if ensure_connected().is_err() {
+                return;
+            }
+            clear_transaction();
+            let table = "soli_pg_tx_route_test";
+            let _ = drop_table(table);
+            if ensure_table(table).is_err() {
+                return;
+            }
+
+            begin_transaction(None).expect("begin on primary");
+
+            // Same-connection write joins the tx.
+            insert(table, Some("inside"), serde_json::json!({"_key": "inside"}))
+                .expect("insert inside tx");
+
+            // Other-connection write must run on its own pool connection.
+            crate::db::with_connection("secondary", || {
+                insert(
+                    table,
+                    Some("outside"),
+                    serde_json::json!({"_key": "outside"}),
+                )
+                .expect("insert outside tx")
+            });
+
+            // A nested begin on a different connection is refused, not joined.
+            let err = crate::db::with_connection("secondary", || begin_transaction(None))
+                .expect_err("cross-connection begin must fail");
+            assert!(err.contains("already open"), "{err}");
+
+            rollback_transaction().expect("rollback");
+            assert!(
+                get(table, "inside").unwrap().is_none(),
+                "tx write must roll back"
+            );
+            assert!(
+                get(table, "outside").unwrap().is_some(),
+                "other-connection write must persist through the rollback"
+            );
+
+            let _ = drop_table(table);
         });
     }
 

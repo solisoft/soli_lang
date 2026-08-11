@@ -12,6 +12,10 @@ pub enum DbError {
     MissingDatabaseUrl {
         adapter: Adapter,
     },
+    /// Config asked for an SQL adapter that was not compiled into this binary.
+    FeatureNotCompiled {
+        adapter: Adapter,
+    },
     /// Runtime backend failure (connection, query, etc.).
     Backend(String),
 }
@@ -35,6 +39,16 @@ impl DbError {
                      (e.g. {example}). \
                      See docs/sql-adapter-design.md.",
                     adapter.as_str()
+                )
+            }
+            DbError::FeatureNotCompiled { adapter } => {
+                let feature = adapter.as_str();
+                format!(
+                    "Database adapter `{feature}` is not compiled into this soli binary. \
+                     Rebuild with `--features {feature}` (or `sql` for both Postgres and MySQL). \
+                     Slim SoliDB-only example: cargo install --path . --locked \
+                     --no-default-features --features embedding,llm,codegraph. \
+                     See Cargo.toml [features]."
                 )
             }
             DbError::Backend(msg) => msg.clone(),

@@ -3,7 +3,7 @@
 //! Supports PostgreSQL and MySQL dialects. Only hash-style equality filters
 //! (`doc.field == @field AND …`) are portable; raw SDBQL is rejected.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// SQL dialect for identifier quoting, placeholders, and JSON operators.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +32,48 @@ pub struct ListQuery {
     pub order_desc: bool,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+/// Inputs for [`list_query_from_parts`] (dialect-agnostic; lives here so SQL
+/// backends can be feature-gated independently).
+pub struct ListQueryParts {
+    pub table: String,
+    pub filter_sdbql: Option<String>,
+    pub bind_vars: HashMap<String, serde_json::Value>,
+    pub soft_delete: SoftDeleteMode,
+    pub is_soft_delete_model: bool,
+    pub order_field: Option<String>,
+    pub order_desc: bool,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// Build a ListQuery IR (dialect-agnostic filters); validates with `dialect`.
+pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<ListQuery, String> {
+    let mut eq_filters = BTreeMap::new();
+    if let Some(ref f) = parts.filter_sdbql {
+        if !f.trim().is_empty() {
+            for (k, v) in &parts.bind_vars {
+                if k.starts_with("__soli_") {
+                    continue;
+                }
+                eq_filters.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    let q = ListQuery {
+        table: parts.table,
+        eq_filters,
+        filter_sdbql: parts.filter_sdbql,
+        soft_delete: parts.soft_delete,
+        is_soft_delete_model: parts.is_soft_delete_model,
+        order_field: parts.order_field,
+        order_desc: parts.order_desc,
+        limit: parts.limit,
+        offset: parts.offset,
+    };
+    let _ = compile_select_d(dialect, &q)?;
+    Ok(q)
 }
 
 /// A bind parameter with explicit SQL type intent.

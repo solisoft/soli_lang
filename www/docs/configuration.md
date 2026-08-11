@@ -19,9 +19,9 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 |----------|---------|---------|
 | `APP_ENV` | Selects `.env.{APP_ENV}` and marks test mode for features that need it. | unset |
 | `SOLI_PROTECT_ENV` | Comma-separated variable names that `.env.{APP_ENV}` must not override. Mostly used by the test runner. | unset |
-| `SOLI_DB_ADAPTER` | Database backend: `solidb` (default, full Model surface), `postgres`, or `mysql` (document CRUD + hash filters + sum/avg/min/max + migrations). Graph/vector/raw SDBQL stay SoliDB-only. See `docs/sql-adapter-design.md`. | `solidb` |
-| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`). Required when `SOLI_DB_ADAPTER` is `postgres` or `mysql`. Ignored for SoliDB. | unset |
-| `SOLI_DB_POOL_SIZE` | Max connections in the PostgreSQL pool. | `10` |
+| `SOLI_DB_ADAPTER` | Single-connection backend when `config/database.toml` is absent: `solidb` (default), `postgres`, or `mysql`. SQL adapters are a document subset (CRUD, hash filters, aggregates, includes batching, migrations). Multi-DB apps use `config/database.toml` instead — see [Multiple Databases](multi-database.md). | `solidb` |
+| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`). Required when `SOLI_DB_ADAPTER` is `postgres` or `mysql`. Ignored for SoliDB. Named SQL connections in TOML use `url =` per connection. | unset |
+| `SOLI_DB_POOL_SIZE` | Default SQL pool size (single-connection mode). TOML `pool = N` overrides per connection. | `10` |
 
 ## Server And Development
 
@@ -226,8 +226,44 @@ locale tables) — with the size of that app. The levers, cheapest first:
 | `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. With `APP_ENV=production`, the default is already **2** (not one-per-core). Raise it for throughput, or set `1` for a low-traffic service. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near `workers × (1 / query latency)` — roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves >140k req/s). |
 | `SOLI_JOB_WORKERS=1` (or `0`) | The background-job pool is a second set of full interpreters. It defaults to `1`; `0` runs jobs inline with no extra interpreter. |
 | `SOLI_JOB_VIEW_HELPERS=0` | Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don't render helper-using templates. |
+| Slim Cargo features | Build only the subsystems you need (see below). Omitting SQL clients and PASETO shrinks the binary and the code pages mapped into every worker. |
 | `MIMALLOC_PURGE_DELAY=0` | mimalloc returns freed pages to the OS promptly instead of after its default delay — trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more `madvise`/decommit syscalls under churny allocation. |
 | Fewer/lazier locales | If most of an app's per-worker memory is i18n tables, load only the locales you serve (or move them to `config/locales/*.yml`, which the framework loads **once** process-wide into a shared store rather than per-worker). |
+
+#### Slim binary (Cargo features)
+
+`cargo install` / CI use the **default** feature set so published binaries match a full product build. Optional subsystems can be dropped at **compile time** when you build from source:
+
+| Feature | Default | What it pulls in |
+|---------|---------|------------------|
+| `embedding` | on | Vector / embedding helpers |
+| `llm` | on | `llm_generate` (OpenAI-compatible chat) |
+| `codegraph` | on | `soli graph build` on non-Soli repos (tree-sitter + grammars) |
+| `paseto` | on | `Paseto` class (`pasetors` crate) |
+| `postgres` | on | PostgreSQL document adapter + client pool |
+| `mysql` | on | MySQL / MariaDB document adapter + client pool |
+| `sql` | off | Alias for `postgres` + `mysql` |
+| `solidb-driver` | off | Native SoliDB TCP driver (needs `solidb-client`) |
+| `full` | off | Default set + `solidb-driver` |
+
+SoliDB (HTTP) and the rest of the runtime always stay linked. A SoliDB-only install without PASETO or SQL clients:
+
+```bash
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph
+```
+
+Postgres only (no MySQL client, no PASETO):
+
+```bash
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,postgres
+```
+
+If the binary was built without an adapter and you set `SOLI_DB_ADAPTER=postgres`
+(or a `database.toml` entry for it), boot fails with a rebuild hint rather than a
+missing symbol. The same applies to `Paseto.*` — the class is simply not registered
+when the `paseto` feature is off.
 
 The boot process also builds one extra interpreter to register the shared
 route/model/controller/template registries before workers start; it is now

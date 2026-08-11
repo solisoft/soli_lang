@@ -98,13 +98,15 @@ pub struct TransactionState {
     pub affected: std::collections::HashSet<String>,
 }
 
-/// Get the current transaction ID if one is active.
+/// Get the current **SoliDB** transaction ID if one is active.
+/// SQL adapters hold a pool connection instead; they do not use this id.
 pub fn get_current_tx_id() -> Option<String> {
     CURRENT_TX.with(|tx| tx.borrow().as_ref().map(|t| t.tx_id.clone()))
 }
 
 /// Record that `collection` was written inside the active transaction, so
 /// `commit_transaction` can wake its live queries after the rows commit.
+/// No-op for SQL transactions (document backends have no live-query path).
 fn record_tx_write(collection: &str) {
     CURRENT_TX.with(|tx| {
         if let Some(t) = tx.borrow_mut().as_mut() {
@@ -113,28 +115,25 @@ fn record_tx_write(collection: &str) {
     });
 }
 
-/// True when a transaction is open on this thread.
+/// True when a transaction is open on this thread (SoliDB or SQL).
 pub fn has_active_tx() -> bool {
-    CURRENT_TX.with(|tx| tx.borrow().is_some())
+    CURRENT_TX.with(|tx| tx.borrow().is_some()) || crate::db::sql::has_active_tx()
 }
 
-/// Forcibly drop the thread-local transaction state without touching the
-/// server. `commit_transaction`/`rollback_transaction` already clear it on
-/// success; this is the defensive backstop the block-form runner calls after a
-/// commit/rollback that itself errored, so a half-finished transaction can
-/// never leak into the next request handled by a reused worker thread.
+/// Forcibly drop the thread-local transaction state without a clean server
+/// commit. SoliDB: drop tx id. SQL: ROLLBACK then return the pool connection.
+/// Used after a failed commit/rollback so a reused worker never leaks a tx.
 pub fn clear_current_tx() {
     CURRENT_TX.with(|tx| {
         tx.borrow_mut().take();
     });
+    crate::db::sql::clear_transaction();
 }
 
-/// Begin a new transaction.
+/// Begin a new transaction on the **active** connection (SoliDB HTTP or SQL).
 pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
     if crate::db::is_sql() {
-        return Err("Model.transaction is SoliDB-only on this adapter. \
-             See docs/sql-adapter-design.md."
-            .to_string());
+        return crate::db::sql::begin_transaction(isolation_level);
     }
     let host = super::core::DB_CONFIG.host.clone();
     let database = get_database_name().to_string();
@@ -194,6 +193,10 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
 
 /// Commit the current transaction.
 pub fn commit_transaction() -> Result<(), String> {
+    if crate::db::sql::has_active_tx() {
+        return crate::db::sql::commit_transaction();
+    }
+
     let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
 
     let database = get_database_name().to_string();
@@ -239,6 +242,10 @@ pub fn commit_transaction() -> Result<(), String> {
 
 /// Rollback the current transaction.
 pub fn rollback_transaction() -> Result<(), String> {
+    if crate::db::sql::has_active_tx() {
+        return crate::db::sql::rollback_transaction();
+    }
+
     let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
 
     let database = get_database_name().to_string();
@@ -913,6 +920,17 @@ pub fn exec_db_api_request(
     path_suffix: &str,
     body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
+    // These endpoints (vector/hybrid/geo search, columnar, index sync) only
+    // exist on SoliDB. Without this gate a SQL connection would post to the
+    // env-default SOLIDB_HOST — a database the user never configured.
+    if crate::db::is_sql() {
+        return Err(format!(
+            "This operation requires SoliDB ({} is the active adapter): \
+             vector/hybrid/geo search, columnar, and index APIs are not \
+             available on SQL connections.",
+            crate::db::adapter_label()
+        ));
+    }
     let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     let (scheme, host) = super::db_config::parse_solidb_host(&raw);
     let database = get_database_name();
@@ -1215,6 +1233,25 @@ fn exec_document_request_with_headers(
     })
 }
 
+/// Whether `collection` resolves (via its model's `connection` declaration or
+/// the active default) to a SQL adapter.
+pub(crate) fn collection_is_sql(collection: &str) -> bool {
+    super::registry::run_on_collection_connection(collection, crate::db::is_sql)
+}
+
+/// A SQL-bound model was written inside a **SoliDB** `transaction(){}` block
+/// (`get_current_tx_id()` is SoliDB-only; SQL transactions hold a pool
+/// connection instead and never hit this). Routing the write through the
+/// SoliDB tx would silently create the document in SoliDB instead of the SQL
+/// table, so refuse instead.
+fn sql_write_in_tx_error(collection: &str) -> String {
+    format!(
+        "transaction(): collection '{collection}' is on a SQL connection, but the open \
+         transaction is a SoliDB transaction — writes cannot span both. Move this write \
+         outside the transaction block."
+    )
+}
+
 /// Execute an insert with automatic collection creation.
 pub fn exec_insert(
     collection: &str,
@@ -1224,30 +1261,22 @@ pub fn exec_insert(
     // Encrypt declared `encrypts` fields before the write (covers tx and
     // non-tx paths; the tx delegation below carries the already-encrypted doc).
     super::registry::encrypt_document_fields(collection, &mut document)?;
+    // Multi-DB: SQL-bound collections dispatch BEFORE the transaction check —
+    // an open SoliDB tx must not capture (and misroute) a SQL model's write.
+    if collection_is_sql(collection) {
+        if get_current_tx_id().is_some() {
+            return Err(sql_write_in_tx_error(collection));
+        }
+        return super::registry::run_on_collection_connection(collection, || {
+            crate::db::sql::insert(collection, key, document.clone())
+        });
+    }
     // When a transaction is open on this thread, route the write through the
     // transaction endpoint so it participates in (and rolls back with) the tx.
     // `exec_insert_tx` delegates straight back here when no tx is active, so
     // this never recurses.
     if get_current_tx_id().is_some() {
         return exec_insert_tx(collection, key, document);
-    }
-    // Multi-DB: run SQL path under the collection's connection when active.
-    {
-        let conn = super::registry::get_connection_for_collection(collection);
-        let try_sql = || {
-            if crate::db::is_sql() {
-                Some(crate::db::sql::insert(collection, key, document.clone()))
-            } else {
-                None
-            }
-        };
-        let sql_result = match &conn {
-            Some(c) => crate::db::with_connection(c, try_sql),
-            None => try_sql(),
-        };
-        if let Some(r) = sql_result {
-            return r;
-        }
     }
     if let Some(k) = key {
         if let Some(obj) = document.as_object_mut() {
@@ -1282,30 +1311,22 @@ pub fn exec_insert(
 
 /// Execute a get with automatic collection creation.
 pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    // SQL-bound collections read straight from SQL even when a SoliDB tx is
+    // open (SQL writes inside a SoliDB tx are refused, so there is no SQL
+    // state that read could miss). Inside a SQL transaction, with_conn in the
+    // adapter reuses the held tx connection, so uncommitted writes are seen.
+    if collection_is_sql(collection) {
+        return super::registry::run_on_collection_connection(collection, || {
+            match crate::db::sql::get(collection, key) {
+                Ok(Some(doc)) => Ok(doc),
+                Ok(None) => Err(format!("Document '{}/{}' not found", collection, key)),
+                Err(e) => Err(e),
+            }
+        });
+    }
     // Read through the active transaction so it sees uncommitted writes.
     if get_current_tx_id().is_some() {
         return exec_get_tx(collection, key);
-    }
-    {
-        let conn = super::registry::get_connection_for_collection(collection);
-        let try_sql = || {
-            if crate::db::is_sql() {
-                Some(match crate::db::sql::get(collection, key) {
-                    Ok(Some(doc)) => Ok(doc),
-                    Ok(None) => Err(format!("Document '{}/{}' not found", collection, key)),
-                    Err(e) => Err(e),
-                })
-            } else {
-                None
-            }
-        };
-        let sql_result = match &conn {
-            Some(c) => crate::db::with_connection(c, try_sql),
-            None => try_sql(),
-        };
-        if let Some(r) = sql_result {
-            return r;
-        }
     }
     let url = format!(
         "{}/{}",
@@ -1340,31 +1361,18 @@ pub fn exec_update(
     merge: bool,
 ) -> Result<serde_json::Value, String> {
     super::registry::encrypt_document_fields(collection, &mut document)?;
+    // SQL-bound collections dispatch before the tx check — see exec_insert.
+    if collection_is_sql(collection) {
+        if get_current_tx_id().is_some() {
+            return Err(sql_write_in_tx_error(collection));
+        }
+        return super::registry::run_on_collection_connection(collection, || {
+            crate::db::sql::update(collection, key, document.clone(), merge)
+        });
+    }
     // Route the update through the active transaction when one is open.
     if get_current_tx_id().is_some() {
         return exec_update_tx(collection, key, document);
-    }
-    {
-        let conn = super::registry::get_connection_for_collection(collection);
-        let try_sql = || {
-            if crate::db::is_sql() {
-                Some(crate::db::sql::update(
-                    collection,
-                    key,
-                    document.clone(),
-                    merge,
-                ))
-            } else {
-                None
-            }
-        };
-        let sql_result = match &conn {
-            Some(c) => crate::db::with_connection(c, try_sql),
-            None => try_sql(),
-        };
-        if let Some(r) = sql_result {
-            return r;
-        }
     }
     let url = format!(
         "{}/{}",
@@ -1489,29 +1497,18 @@ pub fn cas_field_delta(
 
 /// Execute a delete with automatic collection creation.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    // SQL-bound collections dispatch before the tx check — see exec_insert.
+    if collection_is_sql(collection) {
+        if get_current_tx_id().is_some() {
+            return Err(sql_write_in_tx_error(collection));
+        }
+        return super::registry::run_on_collection_connection(collection, || {
+            crate::db::sql::delete(collection, key).map(|_| serde_json::json!({ "_key": key }))
+        });
+    }
     // Route the delete through the active transaction when one is open.
     if get_current_tx_id().is_some() {
         return exec_delete_tx(collection, key);
-    }
-    {
-        let conn = super::registry::get_connection_for_collection(collection);
-        let try_sql = || {
-            if crate::db::is_sql() {
-                Some(
-                    crate::db::sql::delete(collection, key)
-                        .map(|_| serde_json::json!({ "_key": key })),
-                )
-            } else {
-                None
-            }
-        };
-        let sql_result = match &conn {
-            Some(c) => crate::db::with_connection(c, try_sql),
-            None => try_sql(),
-        };
-        if let Some(r) = sql_result {
-            return r;
-        }
     }
     let url = format!(
         "{}/{}",

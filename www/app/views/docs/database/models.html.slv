@@ -6,6 +6,9 @@
         <p class="text-xl text-gray-300 leading-8">
             Models manage data and business logic in your MVC application.
             SoliLang provides a simple OOP-style interface for database operations.
+            Bind a model to a named connection with
+            <code class="text-cyan-400">connection "name"</code> &mdash;
+            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.
         </p>
     </div>
 

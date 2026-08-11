@@ -1902,14 +1902,50 @@ fn execute_similar_pushdown(
 
 /// Execute a QueryBuilder for first result only (as instance if class is available).
 pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
-    // Reuse .all path under the same multi-DB connection, then take first.
-    // SQL + SoliDB both go through execute_query_builder (connection-aware).
-    match execute_query_builder(&{
-        let mut q = qb.clone();
-        q.set_limit(1);
-        q
-    }) {
+    // Reuse .all machinery under the same multi-DB connection, then take first.
+    let mut q = qb.clone();
+    q.set_limit(1);
+    let run = || execute_query_builder_first_inner(&q);
+    if let Some(ref name) = q.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
+    // Inside grouped{} on SoliDB, register the limit-1 read with a
+    // first-or-nil transform. Delegating to execute_query_builder_inner would
+    // hand back a Deferred that resolves to the whole one-element ARRAY —
+    // `@user = User.where(...).first` would later read as `[<User>]`.
+    if super::batch::is_active()
+        && !crate::db::is_sql()
+        && qb.similar_query.is_none()
+        && qb.time_bucket_info.is_none()
+    {
+        let (query, bind_vars) = qb.build_query();
+        let class = qb.hydration_class().cloned();
+        return super::batch::register(
+            query,
+            bind_vars,
+            Box::new(move |rows| {
+                Ok(match rows.into_iter().next() {
+                    Some(doc) => match &class {
+                        Some(c) => super::crud::json_doc_to_instance_owned(c, doc),
+                        None => super::crud::json_to_value_owned(doc),
+                    },
+                    None => Value::Null,
+                })
+            }),
+        );
+    }
+
+    match execute_query_builder_inner(qb) {
         Value::Array(arr) => arr.borrow().first().cloned().unwrap_or(Value::Null),
+        // Exec failures surface as strings from the query paths. `.first`
+        // means "instance or nil", so a failed read is nil — never a truthy
+        // "Error: …" string a presence guard would mistake for a record.
+        Value::String(_) => Value::Null,
         other => other,
     }
 }

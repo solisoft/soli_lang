@@ -1,11 +1,31 @@
 //! Shared SQL document-backend facade (Postgres + MySQL).
 //!
 //! Routes through the **active** named connection (`registry::with_connection`).
+//! Each backend is feature-gated (`postgres` / `mysql`); calling a disabled
+//! adapter yields a rebuild hint rather than a link error at app boot.
 
-pub use super::postgres::ListQueryParts;
+// When neither SQL client is linked, every dispatch arm returns
+// `feature_missing` without reading the call args — silence that noise.
+#![cfg_attr(
+    not(any(feature = "postgres", feature = "mysql")),
+    allow(unused_variables)
+)]
+
 use super::registry::active_spec;
-use super::sql_compile::{GroupAgg, ListQuery, SqlAgg};
-use super::{mysql, postgres, Adapter};
+pub use super::sql_compile::ListQueryParts;
+use super::sql_compile::{list_query_from_parts as build_list_query, GroupAgg, ListQuery, SqlAgg};
+use super::Adapter;
+
+/// Only referenced when at least one of `postgres` / `mysql` is off.
+#[cfg(any(not(feature = "postgres"), not(feature = "mysql")))]
+fn feature_missing(adapter: &str) -> String {
+    format!(
+        "SQL adapter `{adapter}` is not compiled into this soli binary. \
+         Rebuild with `--features {adapter}` (or `sql` for both Postgres and MySQL). \
+         Example: cargo install --path . --locked --no-default-features \
+         --features embedding,llm,codegraph,{adapter}"
+    )
+}
 
 pub fn is_sql() -> bool {
     active_spec().map(|s| s.is_sql()).unwrap_or(false)
@@ -23,13 +43,98 @@ pub fn is_mysql() -> bool {
         .unwrap_or(false)
 }
 
+/// Dispatch a SQL op to the active backend, or a clear missing-feature error.
+macro_rules! route_sql {
+    ($pg:expr, $my:expr) => {{
+        match active_spec()?.adapter {
+            Adapter::Mysql => {
+                #[cfg(feature = "mysql")]
+                {
+                    $my
+                }
+                #[cfg(not(feature = "mysql"))]
+                {
+                    Err(feature_missing("mysql"))
+                }
+            }
+            Adapter::Postgres => {
+                #[cfg(feature = "postgres")]
+                {
+                    $pg
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    Err(feature_missing("postgres"))
+                }
+            }
+            Adapter::Solidb => {
+                Err("SQL facade used on a solidb connection (internal error; report this)".into())
+            }
+        }
+    }};
+}
+
 pub fn ensure_connected() -> Result<(), String> {
-    let spec = active_spec()?;
-    match spec.adapter {
-        Adapter::Mysql => mysql::ensure_connected(),
-        Adapter::Postgres => postgres::ensure_connected(),
-        Adapter::Solidb => Err("ensure_connected called for solidb connection".into()),
+    route_sql!(
+        super::postgres::ensure_connected(),
+        super::mysql::ensure_connected()
+    )
+}
+
+/// True when this thread holds an open SQL transaction (Postgres or MySQL).
+pub fn has_active_tx() -> bool {
+    #[cfg(feature = "postgres")]
+    if super::postgres::has_active_tx() {
+        return true;
     }
+    #[cfg(feature = "mysql")]
+    if super::mysql::has_active_tx() {
+        return true;
+    }
+    false
+}
+
+pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
+    route_sql!(
+        super::postgres::begin_transaction(isolation_level),
+        super::mysql::begin_transaction(isolation_level)
+    )
+}
+
+pub fn commit_transaction() -> Result<(), String> {
+    // Route by whichever adapter HOLDS the tx, not the active spec — the tx
+    // may live on a named connection while the ambient default is something
+    // else entirely (even solidb).
+    #[cfg(feature = "postgres")]
+    if super::postgres::has_active_tx() {
+        return super::postgres::commit_transaction();
+    }
+    #[cfg(feature = "mysql")]
+    if super::mysql::has_active_tx() {
+        return super::mysql::commit_transaction();
+    }
+    Err("No active SQL transaction".into())
+}
+
+pub fn rollback_transaction() -> Result<(), String> {
+    // Holder-routed like commit; no-op success when nothing is open
+    // (mirrors defensive rollback paths).
+    #[cfg(feature = "postgres")]
+    if super::postgres::has_active_tx() {
+        return super::postgres::rollback_transaction();
+    }
+    #[cfg(feature = "mysql")]
+    if super::mysql::has_active_tx() {
+        return super::mysql::rollback_transaction();
+    }
+    Ok(())
+}
+
+pub fn clear_transaction() {
+    #[cfg(feature = "postgres")]
+    super::postgres::clear_transaction();
+    #[cfg(feature = "mysql")]
+    super::mysql::clear_transaction();
 }
 
 pub fn insert(
@@ -37,19 +142,17 @@ pub fn insert(
     key: Option<&str>,
     document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    if is_mysql() {
-        mysql::insert(table, key, document)
-    } else {
-        postgres::insert(table, key, document)
-    }
+    route_sql!(
+        super::postgres::insert(table, key, document),
+        super::mysql::insert(table, key, document)
+    )
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
-    if is_mysql() {
-        mysql::get(table, key)
-    } else {
-        postgres::get(table, key)
-    }
+    route_sql!(
+        super::postgres::get(table, key),
+        super::mysql::get(table, key)
+    )
 }
 
 pub fn update(
@@ -58,35 +161,28 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    if is_mysql() {
-        mysql::update(table, key, document, merge)
-    } else {
-        postgres::update(table, key, document, merge)
-    }
+    route_sql!(
+        super::postgres::update(table, key, document, merge),
+        super::mysql::update(table, key, document, merge)
+    )
 }
 
 pub fn delete(table: &str, key: &str) -> Result<(), String> {
-    if is_mysql() {
-        mysql::delete(table, key)
-    } else {
-        postgres::delete(table, key)
-    }
+    route_sql!(
+        super::postgres::delete(table, key),
+        super::mysql::delete(table, key)
+    )
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
-    if is_mysql() {
-        mysql::select(q)
-    } else {
-        postgres::select(q)
-    }
+    route_sql!(super::postgres::select(q), super::mysql::select(q))
 }
 
 pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Value>, String> {
-    if is_mysql() {
-        mysql::select_by_keys(table, keys)
-    } else {
-        postgres::select_by_keys(table, keys)
-    }
+    route_sql!(
+        super::postgres::select_by_keys(table, keys),
+        super::mysql::select_by_keys(table, keys)
+    )
 }
 
 pub fn select_json_text_in(
@@ -94,11 +190,10 @@ pub fn select_json_text_in(
     field: &str,
     values: &[String],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if is_mysql() {
-        mysql::select_json_text_in(table, field, values)
-    } else {
-        postgres::select_json_text_in(table, field, values)
-    }
+    route_sql!(
+        super::postgres::select_json_text_in(table, field, values),
+        super::mysql::select_json_text_in(table, field, values)
+    )
 }
 
 pub fn group_by(
@@ -106,107 +201,90 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if is_mysql() {
-        mysql::group_by(q, group_fields, aggs)
-    } else {
-        postgres::group_by(q, group_fields, aggs)
-    }
+    route_sql!(
+        super::postgres::group_by(q, group_fields, aggs),
+        super::mysql::group_by(q, group_fields, aggs)
+    )
 }
 
 pub fn count(q: &ListQuery) -> Result<i64, String> {
-    if is_mysql() {
-        mysql::count(q)
-    } else {
-        postgres::count(q)
-    }
+    route_sql!(super::postgres::count(q), super::mysql::count(q))
 }
 
 pub fn exists(q: &ListQuery) -> Result<bool, String> {
-    if is_mysql() {
-        mysql::exists(q)
-    } else {
-        postgres::exists(q)
-    }
+    route_sql!(super::postgres::exists(q), super::mysql::exists(q))
 }
 
 pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    if is_mysql() {
-        mysql::aggregate(q, func, field)
-    } else {
-        postgres::aggregate(q, func, field)
-    }
+    route_sql!(
+        super::postgres::aggregate(q, func, field),
+        super::mysql::aggregate(q, func, field)
+    )
 }
 
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
-    if is_mysql() {
-        mysql::delete_all(q)
-    } else {
-        postgres::delete_all(q)
-    }
+    route_sql!(super::postgres::delete_all(q), super::mysql::delete_all(q))
 }
 
 pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String> {
-    if is_mysql() {
-        mysql::update_all(q, patch)
-    } else {
-        postgres::update_all(q, patch)
-    }
+    route_sql!(
+        super::postgres::update_all(q, patch),
+        super::mysql::update_all(q, patch)
+    )
 }
 
 pub fn ensure_table(table: &str) -> Result<(), String> {
-    if is_mysql() {
-        mysql::ensure_table(table)
-    } else {
-        postgres::ensure_table(table)
-    }
+    route_sql!(
+        super::postgres::ensure_table(table),
+        super::mysql::ensure_table(table)
+    )
 }
 
 pub fn drop_table(table: &str) -> Result<(), String> {
-    if is_mysql() {
-        mysql::drop_table(table)
-    } else {
-        postgres::drop_table(table)
-    }
+    route_sql!(
+        super::postgres::drop_table(table),
+        super::mysql::drop_table(table)
+    )
 }
 
 pub fn ensure_migrations_table() -> Result<(), String> {
-    if is_mysql() {
-        mysql::ensure_migrations_table()
-    } else {
-        postgres::ensure_migrations_table()
-    }
+    route_sql!(
+        super::postgres::ensure_migrations_table(),
+        super::mysql::ensure_migrations_table()
+    )
 }
 
 pub fn list_applied_migrations() -> Result<Vec<(String, String)>, String> {
-    if is_mysql() {
-        mysql::list_applied_migrations()
-    } else {
-        postgres::list_applied_migrations()
-    }
+    route_sql!(
+        super::postgres::list_applied_migrations(),
+        super::mysql::list_applied_migrations()
+    )
 }
 
 pub fn record_migration(version: &str, name: &str) -> Result<(), String> {
-    if is_mysql() {
-        mysql::record_migration(version, name)
-    } else {
-        postgres::record_migration(version, name)
-    }
+    route_sql!(
+        super::postgres::record_migration(version, name),
+        super::mysql::record_migration(version, name)
+    )
 }
 
 pub fn remove_migration(version: &str) -> Result<(), String> {
-    if is_mysql() {
-        mysql::remove_migration(version)
-    } else {
-        postgres::remove_migration(version)
-    }
+    route_sql!(
+        super::postgres::remove_migration(version),
+        super::mysql::remove_migration(version)
+    )
 }
 
 pub fn list_query_from_parts(parts: ListQueryParts) -> Result<ListQuery, String> {
     use super::sql_compile::Dialect;
-    let dialect = if is_mysql() {
-        Dialect::Mysql
-    } else {
-        Dialect::Postgres
+    let dialect = match active_spec()?.adapter {
+        Adapter::Mysql => Dialect::Mysql,
+        Adapter::Postgres => Dialect::Postgres,
+        Adapter::Solidb => {
+            return Err("list_query_from_parts on solidb connection".into());
+        }
     };
-    postgres::list_query_from_parts(parts, dialect)
+    // Validation only — no live DB; works even if the matching feature is off
+    // so unit tests and error paths stay consistent. Real I/O fails at route_sql.
+    build_list_query(parts, dialect)
 }
