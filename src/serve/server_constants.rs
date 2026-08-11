@@ -3,13 +3,68 @@ use std::path::Path;
 use std::time::SystemTime;
 
 /// Default number of worker threads if CPU parallelism cannot be detected
+/// (non-production / when the core count cannot be read).
 pub const DEFAULT_WORKER_COUNT: usize = 4;
+
+/// HTTP workers when `APP_ENV=production` and neither `SOLI_WORKERS` nor
+/// `--workers` is set.
+///
+/// Each worker is a full interpreter (parsed app + builtins). Spawning one per
+/// CPU core maximises throughput but multiplies baseline RSS. Production
+/// defaults to a small fixed pool so a 16-core box does not open 16 copies of
+/// the app unless the operator opts in.
+pub const PRODUCTION_DEFAULT_WORKERS: usize = 2;
 
 /// Default number of background-job worker threads (overridable via
 /// `SOLI_JOB_WORKERS`). The job pool is opt-in background work and each worker
 /// is a full interpreter copy, so the default is deliberately conservative —
 /// bump `SOLI_JOB_WORKERS` for higher background throughput.
 pub const DEFAULT_JOB_WORKERS: usize = 1;
+
+/// True when `APP_ENV` names a production-style environment (case-insensitive).
+pub fn is_production_env() -> bool {
+    std::env::var("APP_ENV")
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "production" || v == "prod"
+        })
+        .unwrap_or(false)
+}
+
+/// Resolve HTTP worker count for `soli serve`.
+///
+/// Priority:
+/// 1. `SOLI_WORKERS` if set to a positive integer
+/// 2. Explicit override from the CLI (`--workers`), when `cli_workers` is `Some`
+/// 3. `PRODUCTION_DEFAULT_WORKERS` when `APP_ENV` is production
+/// 4. CPU core count (or [`DEFAULT_WORKER_COUNT`])
+///
+/// Call sites that already applied `--workers` into a concrete number should
+/// pass `None` for `cli_workers` and put the resolved value in
+/// `explicit_workers` instead — see [`resolve_http_workers_for_serve`].
+pub fn resolve_http_workers_from_env() -> usize {
+    if let Some(n) = std::env::var("SOLI_WORKERS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+    {
+        return n;
+    }
+    if is_production_env() {
+        return PRODUCTION_DEFAULT_WORKERS;
+    }
+    std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(DEFAULT_WORKER_COUNT)
+}
+
+/// Whether the resolved worker count is the production memory default (so the
+/// boot banner can say how to raise it).
+pub fn using_production_worker_default(workers: usize) -> bool {
+    is_production_env()
+        && std::env::var("SOLI_WORKERS").is_err()
+        && workers == PRODUCTION_DEFAULT_WORKERS
+}
 
 /// Smallest worker pool that gets a *default* realtime (WS/LiveView) worker.
 ///
@@ -371,6 +426,64 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ---------- resolve_http_workers_from_env ----------
+
+    fn with_worker_env(app_env: Option<&str>, soli_workers: Option<&str>, f: impl FnOnce()) {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _g = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let prev_app = std::env::var("APP_ENV").ok();
+        let prev_workers = std::env::var("SOLI_WORKERS").ok();
+        match app_env {
+            Some(v) => std::env::set_var("APP_ENV", v),
+            None => std::env::remove_var("APP_ENV"),
+        }
+        match soli_workers {
+            Some(v) => std::env::set_var("SOLI_WORKERS", v),
+            None => std::env::remove_var("SOLI_WORKERS"),
+        }
+        f();
+        match prev_app {
+            Some(v) => std::env::set_var("APP_ENV", v),
+            None => std::env::remove_var("APP_ENV"),
+        }
+        match prev_workers {
+            Some(v) => std::env::set_var("SOLI_WORKERS", v),
+            None => std::env::remove_var("SOLI_WORKERS"),
+        }
+    }
+
+    #[test]
+    fn production_env_defaults_to_two_workers() {
+        with_worker_env(Some("production"), None, || {
+            assert_eq!(resolve_http_workers_from_env(), PRODUCTION_DEFAULT_WORKERS);
+            assert!(using_production_worker_default(PRODUCTION_DEFAULT_WORKERS));
+        });
+        with_worker_env(Some("prod"), None, || {
+            assert_eq!(resolve_http_workers_from_env(), PRODUCTION_DEFAULT_WORKERS);
+        });
+        with_worker_env(Some("PRODUCTION"), None, || {
+            assert_eq!(resolve_http_workers_from_env(), PRODUCTION_DEFAULT_WORKERS);
+        });
+    }
+
+    #[test]
+    fn soli_workers_overrides_production_default() {
+        with_worker_env(Some("production"), Some("8"), || {
+            assert_eq!(resolve_http_workers_from_env(), 8);
+            assert!(!using_production_worker_default(8));
+        });
+    }
+
+    #[test]
+    fn non_production_is_not_forced_to_two() {
+        with_worker_env(Some("development"), None, || {
+            let n = resolve_http_workers_from_env();
+            assert!(n >= 1);
+            assert!(!using_production_worker_default(n));
+        });
     }
 
     // ---------- get_mime_type ----------

@@ -188,6 +188,10 @@ def development_tools_debugging
     render_docs("docs/development-tools/debugging", "Debugging", "development_tools", "debugging")
 end
 
+def development_tools_observability
+    render_docs("docs/development-tools/observability", "Observability", "development_tools", "observability")
+end
+
 def development_tools_scaffold
     render_docs("docs/development-tools/scaffold", "Scaffold Generator", "development_tools", "scaffold")
 end

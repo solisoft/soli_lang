@@ -200,11 +200,21 @@ impl MigrationRunner {
         }
     }
 
+    /// Ensure the selected adapter is ready (SoliDB default, or SQL pool).
+    fn ensure_adapter(&self) -> Result<(), String> {
+        crate::db::ensure_runtime_ready().map_err(|e| e.message())
+    }
+
     /// Ensure the configured database exists, creating it if absent. Lets
     /// `db:migrate up` (and `down`/`status`) bootstrap a brand-new database
     /// instead of failing with a 404 when no one has created it yet — the
     /// database-level analogue of the `_migrations` collection bootstrap.
     fn ensure_database(&self) -> Result<(), String> {
+        self.ensure_adapter()?;
+        if crate::db::is_sql() {
+            // DATABASE_URL already names the target database; ensure version table.
+            return crate::db::sql::ensure_migrations_table();
+        }
         let mut client = SoliDBClient::connect(&self.config.host)
             .map_err(|e| format!("Failed to connect: {}", e))?;
         if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
@@ -251,6 +261,10 @@ impl MigrationRunner {
 
     /// Get list of applied migrations from database
     pub fn get_applied_migrations(&self) -> Result<Vec<String>, String> {
+        if crate::db::is_sql() {
+            let applied = crate::db::sql::list_applied_migrations()?;
+            return Ok(applied.into_iter().map(|(v, _)| v).collect());
+        }
         let config = self.config.clone();
 
         let mut client =
@@ -290,6 +304,9 @@ impl MigrationRunner {
 
     /// Record a migration as applied
     fn record_migration(&self, migration: &Migration) -> Result<(), String> {
+        if crate::db::is_sql() {
+            return crate::db::sql::record_migration(&migration.version, &migration.name);
+        }
         let config = self.config.clone();
         let version = migration.version.clone();
         let name = migration.name.clone();
@@ -343,6 +360,9 @@ impl MigrationRunner {
 
     /// Remove a migration record
     fn remove_migration_record(&self, migration: &Migration) -> Result<(), String> {
+        if crate::db::is_sql() {
+            return crate::db::sql::remove_migration(&migration.version);
+        }
         let config = self.config.clone();
         let version = migration.version.clone();
 
@@ -366,6 +386,10 @@ impl MigrationRunner {
         // Read migration file
         let source = fs::read_to_string(&migration.path)
             .map_err(|e| format!("Failed to read migration file: {}", e))?;
+
+        if crate::db::is_sql() {
+            return self.execute_migration_sql(&source, direction);
+        }
 
         // Create interpreter with db connection
         let config = self.config.clone();
@@ -487,6 +511,56 @@ let db = MigrationDb();
         crate::run_with_options(&full_source, false)
             .map_err(|e| format!("Migration {} failed: {}", direction, e))?;
 
+        Ok(())
+    }
+
+    /// SQL migration runner (Postgres/MySQL): create_table / drop_table.
+    fn execute_migration_sql(&self, source: &str, direction: &str) -> Result<(), String> {
+        let full_source = format!(
+            r#"
+{source}
+
+class MigrationDb {{
+    fn create_table(name: String) -> Any {{
+        return __soli_sql_create_table(name);
+    }}
+
+    fn drop_table(name: String) -> Any {{
+        return __soli_sql_drop_table(name);
+    }}
+
+    # Document-collection alias — same as create_table on SQL adapters.
+    fn create_collection(name: String, collection_type: String = "") -> Any {{
+        if (collection_type != "" && collection_type != "document") {{
+            throw "SQL migrations only support document tables (create_table / create_collection without type). Typed collections (edge/timeseries/blob) are SoliDB-only.";
+        }}
+        return __soli_sql_create_table(name);
+    }}
+
+    fn drop_collection(name: String) -> Any {{
+        return __soli_sql_drop_table(name);
+    }}
+
+    fn query(sdbql: String, bind_vars: Any = null) -> Any {{
+        throw "Raw SDBQL db.query is SoliDB-only. On SQL adapters use create_table / drop_table.";
+    }}
+
+    fn create_columnar(name: String, columns: Any, options: Any = null) -> Any {{
+        throw "create_columnar is SoliDB-only.";
+    }}
+
+    fn create_vector_index(collection: String, name: String, field: String, dimension: Int, options: Any = "cosine") -> Any {{
+        throw "create_vector_index is SoliDB-only.";
+    }}
+}}
+
+let db = MigrationDb();
+{direction}(db);
+"#
+        );
+
+        crate::run_with_options(&full_source, false)
+            .map_err(|e| format!("Migration {direction} failed: {e}"))?;
         Ok(())
     }
 

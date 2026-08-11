@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Added
+
+- **SQL adapters (Postgres + MySQL, Phase 2–3)** — `SOLI_DB_ADAPTER=postgres|mysql`
+  + `DATABASE_URL` runs Model CRUD against JSON document tables, hash `.where`,
+  order/limit/count/exists, partial merges, `sum`/`avg`/`min`/`max`,
+  `delete_all`/`update_all`, soft-delete scope, client-side `pluck`/`select`,
+  and `Model.all`/`count`/`delete_all` on SQL (no raw SDBQL). **Phase 3:**
+  eager `.includes` batching (`belongs_to` / `has_many` / `has_one`),
+  multi-row `group_by` + multi-aggregate, and `soli db:import [collections…]`
+  (SoliDB → SQL document tables). HABTM/through includes, `.having`, `.join`,
+  graph, pgvector, and transactions stay SoliDB-only. Multi-DB Soli bench:
+  `bench/frameworks/soli/bench-multi-db.sh`. Design: `docs/sql-adapter-design.md`.
+
+- **Multi-database connections (M0–M1)** — optional `config/database.toml` names
+  connections (`solidb` / `postgres` / `mysql`) with `${ENV}` expansion; without
+  the file, env still defines a single `primary`. Class-body
+  `connection "name"` binds a model (and its collection) to a named pool;
+  QueryBuilder / CRUD route through the active connection. Cross-connection
+  `.includes` errors clearly. Follow-ups: multi-SoliDB hosts, migrate
+  `--connection`, request-scoped roles.
+
+- **Production observability** — structured JSON logs and OpenTelemetry traces:
+  - `SOLI_LOG_FORMAT=json` emits one NDJSON object per request (and per
+    production error on stderr). Detail channels (`query`/`http`/`kv`/`timing`)
+    become nested arrays; secret-bearing binds stay redacted.
+  - `SOLI_OTEL=1` or `OTEL_EXPORTER_OTLP_ENDPOINT` enables distributed tracing:
+    W3C `traceparent` in/out, OTLP/HTTP JSON export of the same span tree the
+    dev-bar flamegraph builds (middleware, action, views, DB, HTTP). Export is
+    async on a background thread (full queue drops rather than stalling
+    workers). Also `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`,
+    `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_SDK_DISABLED`.
+  - JSON access lines carry `trace_id` / `span_id` when tracing is on for
+    log↔trace joins.
+  - Docs: `/docs/development-tools/observability` (and `www/docs/observability.md`).
+
+### Changed
+
+- **Production HTTP worker default is 2** when `APP_ENV=production` (or `prod`)
+  and neither `SOLI_WORKERS` nor `--workers` is set — caps baseline RSS on
+  many-core boxes. Explicit env/CLI still wins; non-production still defaults
+  to CPU cores.
+
 ## [1.29.0] - 2026-08-09
 
 ### Added

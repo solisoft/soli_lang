@@ -29,7 +29,7 @@
         <li><strong class="text-white">One binary, three commands.</strong> <code>curl</code> the binary, <code>soli new</code>, <code>soli serve</code>. No <code>bundle install</code>, no <code>npm install</code>, no compile step for your app code.</li>
         <li><strong class="text-white">Convention over configuration</strong>, Rails-style: auto-loaded models/controllers/policies, RESTful <code>resources</code> routing, <code class="text-amber-300">*_path</code> helpers, ERB-style views.</li>
         <li><strong class="text-white">Server-rendered first.</strong> htmx + Alpine.js ship vendored in every new app; instant navigation and hover prefetch are built into the server. No JS build pipeline &mdash; by design.</li>
-        <li><strong class="text-white">SoliDB-native.</strong> The ORM speaks to SoliDB. There are no SQL adapters &mdash; the stack is integrated top to bottom, and that trade-off is deliberate.</li>
+        <li><strong class="text-white">SoliDB-native by default.</strong> The full ORM surface (graph, vector, columnar, timeseries, raw SDBQL) speaks SoliDB. <code>SOLI_DB_ADAPTER=postgres</code> or <code>mysql</code> is a document-CRUD + aggregates + batched <code>includes</code> subset for brownfield data &mdash; not full SQL parity, and deliberate about that ceiling. See <code>docs/sql-adapter-design.md</code>.</li>
         <li><strong class="text-white">Fast by default.</strong> 170,000+ req/s on a single server: engine-per-worker architecture, production bytecode VM, in-memory asset cache.</li>
     </ul>
 
@@ -101,7 +101,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Container-native lifecycle</h3>
-            <p class="text-gray-400 text-sm">Liveness (<code>/_health</code>) and readiness (<code>/_ready</code>) endpoints, and a <strong class="text-white">graceful drain</strong> on <code>SIGTERM</code>: readiness starts failing so the load balancer stops routing, new requests get a clean <code>503</code>, and requests already in flight run to completion before the process exits (bounded by <code>SOLI_SHUTDOWN_GRACE_SECS</code>, default 25s). Rolling deploys don't truncate responses. Prometheus metrics at <code>/_metrics</code> round it out. Parity with the big four here, not an edge &mdash; but it means no sidecar or wrapper script is needed to deploy on Kubernetes or ECS.</p>
+            <p class="text-gray-400 text-sm">Liveness (<code>/_health</code>) and readiness (<code>/_ready</code>) endpoints, and a <strong class="text-white">graceful drain</strong> on <code>SIGTERM</code>: readiness starts failing so the load balancer stops routing, new requests get a clean <code>503</code>, and requests already in flight run to completion before the process exits (bounded by <code>SOLI_SHUTDOWN_GRACE_SECS</code>, default 25s). Rolling deploys don't truncate responses. Prometheus metrics at <code>/_metrics</code>, structured JSON logs (<code>SOLI_LOG_FORMAT=json</code>), and OpenTelemetry traces (W3C <code>traceparent</code> + OTLP/HTTP) round it out. Parity with the big four here, not an edge &mdash; but it means no sidecar or wrapper script is needed to deploy on Kubernetes or ECS.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Developer experience in <code>--dev</code></h3>
@@ -142,7 +142,7 @@
 
     <h3 class="text-xl font-semibold text-white mb-4">Data layer</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
-        <li><strong class="text-white">SoliDB only.</strong> No PostgreSQL/MySQL/SQLite adapters, no multi-database support. If your data must live in SQL, Soli is the wrong tool today.</li>
+        <li><strong class="text-white">SoliDB is the full stack; Postgres/MySQL are a document subset.</strong> Set <code>SOLI_DB_ADAPTER=postgres</code> or <code>mysql</code> + <code>DATABASE_URL</code> for document CRUD, hash-style <code>.where</code>, sum/avg/min/max, multi-row <code>group_by</code>, batched <code>includes</code> (<code>belongs_to</code>/<code>has_many</code>/<code>has_one</code>), SQL migrations, and <code>soli db:import</code>. Graph, vector, columnar, timeseries, raw SDBQL, HABTM/through includes, and transactions remain SoliDB-only. See <code>docs/sql-adapter-design.md</code>.</li>
         <li><strong class="text-white">Dirty tracking is value-based</strong> (<code>changed?</code>, <code>changes</code>, <code>previous_changes</code>, <code>attribute_was</code> exist, but in-place mutation of a nested Hash/Array isn't tracked &mdash; no <code>attribute_will_change!</code>), <strong class="text-white"><code>through:</code> associations can't be eager-loaded</strong> (<code>&lt;&lt;</code> pushes create the join record, but <code>includes</code> of a through relation raises), and <strong class="text-white">cascade deletes / counter caches skip bulk writes</strong> (<code>delete_all</code>/<code>update_all</code> &mdash; matching Rails; <code>reset_counters</code> repairs drift).</li>
         <li><strong class="text-white">Migrations roll back one step at a time</strong> &mdash; no <code>STEP=n</code>, no version targeting, no schema dump, no <code>db:reset</code>.</li>
         <li><strong class="text-white">Uniqueness validation</strong> is only race-safe when backed by a database unique index &mdash; the same caveat as Rails' <code>validates_uniqueness_of</code>; Soli maps the index's 409 back into <code>_errors</code> automatically. (Conditional <code>if:</code>/<code>unless:</code> and per-operation <code>on: create/update</code> validation forms exist.)</li>
@@ -157,7 +157,7 @@
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
         <li><strong class="text-white">No TLS in-process</strong> &mdash; you front Soli with a reverse proxy (HTTP/2 is cleartext-only behind it). Deliberate, but different from Phoenix.</li>
         <li><strong class="text-white">Jobs require a SolidB server</strong> &mdash; there is no standalone worker daemon and no dashboard (no Sidekiq/Horizon equivalent). The opt-in in-process pool for long jobs is fire-and-forget.</li>
-        <li><strong class="text-white">Observability stops at metrics.</strong> Prometheus counters at <code>/_metrics</code>, health and readiness probes, and a rich per-request breakdown in <code>--dev</code> &mdash; but <strong class="text-white">no distributed tracing and no structured (JSON) log output</strong>. There is no OpenTelemetry exporter, so Soli cannot yet join a trace that spans your other services, and production logs are human-formatted rather than machine-parseable. Rails, Laravel, Phoenix and Django all have mature OTel integrations.</li>
+        <li><strong class="text-white">Observability is opt-in rather than auto-instrumented everywhere.</strong> Prometheus counters at <code>/_metrics</code>, health and readiness probes, structured JSON logs (<code>SOLI_LOG_FORMAT=json</code>), and OpenTelemetry traces (W3C <code>traceparent</code> + OTLP/HTTP JSON export of the same span tree the dev-bar flamegraph uses) are all first-party &mdash; see <a href="/docs/development-tools/observability" class="text-amber-400 hover:underline">Observability</a>. What is still thinner than the big four: no auto-instrumentation of every third-party client library, no OTLP metrics/logs pipelines beyond traces, and no sampling UI &mdash; you point Soli at a collector (Jaeger, Grafana Tempo, Datadog agent, &hellip;) and configure sampling there.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Ecosystem</h3>
@@ -211,7 +211,7 @@
         <div class="p-6 rounded-xl bg-red-500/10 border border-red-500/20">
             <h3 class="text-lg font-semibold text-red-400 mb-3">Reach for something else if you need</h3>
             <ul class="list-disc pl-5 text-red-200/80 text-sm space-y-2">
-                <li>SQL, or an existing SQL database (PostgreSQL, MySQL, SQLite) &mdash; today Soli means SoliDB (itself a relational database, just not SQL)</li>
+                <li>Full SQL parity (MySQL, raw SQL dialects, multi-DB) &mdash; Postgres is a document-CRUD subset; SoliDB remains the integrated stack for graph/search/columnar</li>
                 <li>A generic, zero-build admin UI (Django-style) &mdash; Soli's bet is agents + scaffolding for bespoke admins instead</li>
                 <li>Phoenix-LiveView-depth realtime UI, or a rich SPA toolchain</li>
                 <li>A large third-party package ecosystem</li>

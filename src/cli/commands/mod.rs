@@ -2711,6 +2711,45 @@ pub fn run_graph_query(
     println!();
 }
 
+/// `soli db:import [collection…]` — SoliDB → SQL document tables (Phase 3).
+pub fn run_db_import(collections: &[String]) {
+    // Load .env from cwd so SOLIDB_* / DATABASE_URL / SOLI_DB_ADAPTER apply.
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    solilang::serve::env_loader::load_env_files(&cwd);
+    match solilang::db::import::import_collections(collections) {
+        Ok(results) => {
+            if results.is_empty() {
+                println!("  No collections to import.");
+                return;
+            }
+            println!();
+            for r in &results {
+                if r.errors.is_empty() {
+                    println!(
+                        "  \x1b[32mimported\x1b[0m {} — {} document(s)",
+                        r.collection, r.imported
+                    );
+                } else {
+                    println!(
+                        "  \x1b[33mimported\x1b[0m {} — {} ok, {} error(s)",
+                        r.collection,
+                        r.imported,
+                        r.errors.len()
+                    );
+                    for e in r.errors.iter().take(5) {
+                        println!("    \x1b[31m-\x1b[0m {e}");
+                    }
+                }
+            }
+            println!();
+        }
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m {e}");
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
     let app_path = Path::new(folder);
 

@@ -131,6 +131,11 @@ pub fn clear_current_tx() {
 
 /// Begin a new transaction.
 pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
+    if crate::db::is_sql() {
+        return Err("Model.transaction is SoliDB-only on this adapter. \
+             See docs/sql-adapter-design.md."
+            .to_string());
+    }
     let host = super::core::DB_CONFIG.host.clone();
     let database = get_database_name().to_string();
     // SEC-027: use the configured scheme; was forcing http:// regardless.
@@ -459,6 +464,15 @@ pub fn exec_async_query_with_binds(
     sdbql: String,
     bind_vars: Option<HashMap<String, serde_json::Value>>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // SQL adapters use the structured QueryBuilder path; raw SDBQL is SoliDB-only.
+    if crate::db::is_sql() {
+        return Err(
+            "Raw SDBQL queries are SoliDB-only. On SQL adapters use the Model \
+             query builder with hash-style `.where({ ... })`. \
+             See docs/sql-adapter-design.md."
+                .to_string(),
+        );
+    }
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
 
@@ -1217,6 +1231,24 @@ pub fn exec_insert(
     if get_current_tx_id().is_some() {
         return exec_insert_tx(collection, key, document);
     }
+    // Multi-DB: run SQL path under the collection's connection when active.
+    {
+        let conn = super::registry::get_connection_for_collection(collection);
+        let try_sql = || {
+            if crate::db::is_sql() {
+                Some(crate::db::sql::insert(collection, key, document.clone()))
+            } else {
+                None
+            }
+        };
+        let sql_result = match &conn {
+            Some(c) => crate::db::with_connection(c, try_sql),
+            None => try_sql(),
+        };
+        if let Some(r) = sql_result {
+            return r;
+        }
+    }
     if let Some(k) = key {
         if let Some(obj) = document.as_object_mut() {
             obj.insert("_key".to_string(), serde_json::json!(k));
@@ -1254,6 +1286,27 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     if get_current_tx_id().is_some() {
         return exec_get_tx(collection, key);
     }
+    {
+        let conn = super::registry::get_connection_for_collection(collection);
+        let try_sql = || {
+            if crate::db::is_sql() {
+                Some(match crate::db::sql::get(collection, key) {
+                    Ok(Some(doc)) => Ok(doc),
+                    Ok(None) => Err(format!("Document '{}/{}' not found", collection, key)),
+                    Err(e) => Err(e),
+                })
+            } else {
+                None
+            }
+        };
+        let sql_result = match &conn {
+            Some(c) => crate::db::with_connection(c, try_sql),
+            None => try_sql(),
+        };
+        if let Some(r) = sql_result {
+            return r;
+        }
+    }
     let url = format!(
         "{}/{}",
         document_base_url(collection),
@@ -1277,16 +1330,41 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
 }
 
 /// Execute an update (PUT) with automatic collection creation.
+///
+/// `merge == true` (Model.update / soft_delete / touch / restore) patches the
+/// provided fields into the existing document. `merge == false` replaces.
 pub fn exec_update(
     collection: &str,
     key: &str,
     mut document: serde_json::Value,
-    _merge: bool,
+    merge: bool,
 ) -> Result<serde_json::Value, String> {
     super::registry::encrypt_document_fields(collection, &mut document)?;
     // Route the update through the active transaction when one is open.
     if get_current_tx_id().is_some() {
         return exec_update_tx(collection, key, document);
+    }
+    {
+        let conn = super::registry::get_connection_for_collection(collection);
+        let try_sql = || {
+            if crate::db::is_sql() {
+                Some(crate::db::sql::update(
+                    collection,
+                    key,
+                    document.clone(),
+                    merge,
+                ))
+            } else {
+                None
+            }
+        };
+        let sql_result = match &conn {
+            Some(c) => crate::db::with_connection(c, try_sql),
+            None => try_sql(),
+        };
+        if let Some(r) = sql_result {
+            return r;
+        }
     }
     let url = format!(
         "{}/{}",
@@ -1348,6 +1426,26 @@ pub fn cas_field_delta(
     field: &str,
     delta: i64,
 ) -> Result<(i64, String), String> {
+    // SQL document tables have no `_rev` / If-Match. Use a merge update —
+    // not multi-writer atomic like SoliDB CAS, but correct for the common
+    // single-writer increment/decrement path.
+    if crate::db::is_sql() {
+        let current_doc = exec_get(collection, key)?;
+        let current_value = current_doc
+            .get(field)
+            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
+            .unwrap_or(0);
+        let new_value = current_value + delta;
+        let patch = serde_json::json!({ field: new_value });
+        let resp = exec_update(collection, key, patch, true)?;
+        let rev = resp
+            .get("_rev")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        return Ok((new_value, rev));
+    }
+
     const MAX_ATTEMPTS: usize = 10;
 
     for _ in 0..MAX_ATTEMPTS {
@@ -1394,6 +1492,26 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
     // Route the delete through the active transaction when one is open.
     if get_current_tx_id().is_some() {
         return exec_delete_tx(collection, key);
+    }
+    {
+        let conn = super::registry::get_connection_for_collection(collection);
+        let try_sql = || {
+            if crate::db::is_sql() {
+                Some(
+                    crate::db::sql::delete(collection, key)
+                        .map(|_| serde_json::json!({ "_key": key })),
+                )
+            } else {
+                None
+            }
+        };
+        let sql_result = match &conn {
+            Some(c) => crate::db::with_connection(c, try_sql),
+            None => try_sql(),
+        };
+        if let Some(r) = sql_result {
+            return r;
+        }
     }
     let url = format!(
         "{}/{}",

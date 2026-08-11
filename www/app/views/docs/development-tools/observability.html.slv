@@ -1,0 +1,288 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Observability</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Metrics, structured logs, and OpenTelemetry traces &mdash; opt-in so a quiet process pays nothing until you turn a channel on. The same span tree that powers the dev-bar flamegraph exports to your collector in production.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">Three signals, one process</h4>
+                <p class="text-blue-200/80 text-sm">
+                    Prometheus at <code class="text-cyan-400">/_metrics</code>, NDJSON on stdout, OTLP/HTTP to a collector. Pair JSON logs with traces so <code class="text-cyan-400">trace_id</code> joins them in Grafana or Datadog. Env-var tables live on
+                    <a href="/docs/getting-started/configuration" class="text-amber-400 hover:underline">Configuration</a>; this page is the operator guide.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Signal</th>
+                    <th class="py-3 px-4 font-semibold">Enable</th>
+                    <th class="py-3 px-4 font-semibold">Where it goes</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Metrics</td>
+                    <td class="py-3 px-4"><code>SOLI_METRICS=1</code></td>
+                    <td class="py-3 px-4">Prometheus text at <code>GET /_metrics</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Logs</td>
+                    <td class="py-3 px-4"><code>SOLI_LOG=&hellip;</code> (+ optional <code>SOLI_LOG_FORMAT=json</code>)</td>
+                    <td class="py-3 px-4">stdout / stderr</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Traces</td>
+                    <td class="py-3 px-4"><code>SOLI_OTEL=1</code> or <code>OTEL_EXPORTER_OTLP_*</code></td>
+                    <td class="py-3 px-4">OTLP/HTTP JSON to your collector</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Health</td>
+                    <td class="py-3 px-4">always on</td>
+                    <td class="py-3 px-4"><code>GET /_health</code>, <code>GET /_ready</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Quick start</h2>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>APP_ENV=production \
+SOLI_METRICS=1 \
+SOLI_LOG=access \
+SOLI_LOG_FORMAT=json \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+OTEL_SERVICE_NAME=myapp \
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production \
+soli serve</code></pre>
+    <p class="text-gray-400 mb-12">
+        Boot prints a one-line banner for each signal that is active (worker count, OTEL endpoint, JSON log format).
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Health and readiness</h2>
+    <p class="text-gray-400 mb-4">
+        Always available &mdash; nothing to enable. Use them for load balancers and orchestrators.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Endpoint</th>
+                    <th class="py-3 px-4 font-semibold">Meaning</th>
+                    <th class="py-3 px-4 font-semibold">Answers</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code>GET /_health</code></td>
+                    <td class="py-3 px-4 text-white font-medium">Liveness</td>
+                    <td class="py-3 px-4"><code>200 ok</code> while the process runs, <em>including mid-drain</em></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>GET /_ready</code></td>
+                    <td class="py-3 px-4 text-white font-medium">Readiness</td>
+                    <td class="py-3 px-4"><code>200 ready</code>, or <code>503 starting</code> / <code>503 draining</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Point liveness at <code>/_health</code> and readiness at <code>/_ready</code>. On <code>SIGTERM</code> readiness fails first so the LB stops routing, in-flight requests finish, then the process exits (bounded by <code>SOLI_SHUTDOWN_GRACE_SECS</code>, default 25s). Full drain walkthrough:
+        <a href="/docs/getting-started/configuration#health-checks-and-graceful-shutdown" class="text-amber-400 hover:underline">Configuration &rarr; Health checks</a>.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Metrics (<code>/_metrics</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        Collection is opt-in via <code>SOLI_METRICS=1</code> (or <code>true</code>). Until that is set, counters stay at zero and the hot path skips the per-operation clocks.
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_METRICS=1 soli serve
+curl -s localhost:5011/_metrics</code></pre>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Metric</th>
+                    <th class="py-3 px-4 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>soli_http_requests_total</code></td><td class="py-3 px-4">Requests handled</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_lexing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the lexer</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_parsing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the parser</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_vm_execution_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Bytecode VM wall time</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_template_render_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Views, layouts, partials</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_middleware_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Middleware totals</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_db_query_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">SoliDB / SolidB query time</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_vm_handler_demotions_total</code></td><td class="py-3 px-4">Handlers that fell back from the VM to the tree-walker (cached per worker)</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_handler_panics_total</code></td><td class="py-3 px-4">Panics contained by the per-request <code>catch_unwind</code> (client got 500; worker stayed up)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code>soli_handler_panics_total</code> and <code>soli_vm_handler_demotions_total</code> are counted even when <code>SOLI_METRICS</code> is off &mdash; rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance. There is no auth on <code>/_metrics</code>; bind it to a private interface or front it with a proxy that restricts access.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Structured logs</h2>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Channels (<code>SOLI_LOG</code>)</h3>
+    <p class="text-gray-400 mb-4">
+        Comma-separated list. Any detail channel implies <code>access</code> so the block has a request line to hang off. Legacy: <code>SOLI_REQUEST_LOG=1</code> aliases <code>access</code>.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Channel</th>
+                    <th class="py-3 px-4 font-semibold">What it prints</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>access</code></td><td class="py-3 px-4">Method, path, status, handler ms (+ queue wait)</td></tr>
+                <tr><td class="py-3 px-4"><code>query</code></td><td class="py-3 px-4">AQL with binds + duration (secret-looking bind <em>names</em> redacted)</td></tr>
+                <tr><td class="py-3 px-4"><code>http</code></td><td class="py-3 px-4">Outgoing <code>HTTP.*</code> calls (credential-like query params redacted)</td></tr>
+                <tr><td class="py-3 px-4"><code>kv</code></td><td class="py-3 px-4">SoliKV / Cache commands</td></tr>
+                <tr><td class="py-3 px-4"><code>timing</code></td><td class="py-3 px-4">Middleware / view / phase breakdown</td></tr>
+                <tr><td class="py-3 px-4"><code>all</code></td><td class="py-3 px-4">Everything</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-8"><code># Access only
+SOLI_LOG=access soli serve
+
+# Full per-request breakdown (noisy &mdash; prefer slow mode in prod)
+SOLI_LOG=query,http,timing soli serve</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Slow requests</h3>
+    <p class="text-gray-400 mb-4">
+        <code>SOLI_SLOW_REQUEST_MS</code> emits the full detail block only when queue wait + handler time crosses a threshold. Fast requests stay silent unless you also asked for explicit channels.
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-8"><code>SOLI_SLOW_REQUEST_MS=100 soli serve</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Format (<code>SOLI_LOG_FORMAT</code>)</h3>
+    <p class="text-gray-400 mb-4">
+        Default is multi-line human <code>text</code>. Set <code>json</code> for one NDJSON object per event on stdout (errors on stderr) so Loki / CloudWatch / Datadog can ingest without a parser.
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_LOG=access SOLI_LOG_FORMAT=json soli serve</code></pre>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>{
+  "ts": "2026-08-09T12:00:00.123Z",
+  "level": "info",
+  "msg": "request",
+  "method": "GET",
+  "path": "/users",
+  "status": 200,
+  "duration_ms": 4.2,
+  "total_ms": 4.2,
+  "request_id": "&hellip;",
+  "trace_id": "&hellip;",
+  "span_id": "&hellip;"
+}</code></pre>
+    <p class="text-gray-400 mb-12">
+        Detail channels (or a slow hit) grow nested <code>db</code> / <code>http</code> / <code>kv</code> / <code>timing</code> arrays on the same object. Production errors use <code>level: "error"</code> and <code>msg: "request_error"</code> with a redacted request snapshot, stack, and env. No file rotation in-process &mdash; use your supervisor or container log driver.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Distributed tracing (OpenTelemetry)</h2>
+    <p class="text-gray-400 mb-4">
+        Soli does <strong class="text-white">not</strong> pull in the heavyweight OTel SDK. It reuses the hierarchical span tree already built for the dev-bar flamegraph and exports it as OTLP/HTTP JSON.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Enable</h3>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code># Local collector sidecar (defaults to http://127.0.0.1:4318/v1/traces)
+SOLI_OTEL=1 soli serve
+
+# Explicit collector
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+OTEL_SERVICE_NAME=myapp \
+soli serve</code></pre>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-8">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Variable</th>
+                    <th class="py-3 px-4 font-semibold">Role</th>
+                    <th class="py-3 px-4 font-semibold">Default</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>SOLI_OTEL</code></td><td class="py-3 px-4">Force tracing on (<code>1</code> / <code>true</code> / <code>yes</code>)</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td class="py-3 px-4">Collector base URL; enables tracing. Appends <code>/v1/traces</code> unless already present.</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code></td><td class="py-3 px-4">Full traces URL override</td><td class="py-3 px-4">derived</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_SERVICE_NAME</code></td><td class="py-3 px-4"><code>service.name</code> resource attribute</td><td class="py-3 px-4"><code>soli</code></td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td class="py-3 px-4">Extra <code>key=value</code> pairs, comma-separated</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_SDK_DISABLED</code></td><td class="py-3 px-4">Force off when <code>true</code></td><td class="py-3 px-4">unset</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">What is exported</h3>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
+        <li>A <strong class="text-white">SERVER</strong> root span (<code>GET /path</code>) with <code>http.request.method</code>, <code>url.path</code>, <code>http.response.status_code</code>, <code>soli.request_id</code>.</li>
+        <li>Nested middleware / before-after actions / controller actions / views / DB / outgoing HTTP spans &mdash; the same tree the flamegraph shows under <code>--dev</code>.</li>
+        <li>Export is <strong class="text-white">async</strong> on a dedicated background thread. A full queue drops batches rather than stalling web workers; the first drop and the first POST failure print a one-time warning on stderr.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">W3C Trace Context</h3>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
+        <li>Inbound <code>traceparent</code> is parsed and becomes the parent of the root span.</li>
+        <li>Every response carries <code>traceparent</code> so gateways and clients can correlate.</li>
+        <li>When tracing is on, responses also get <code>X-Request-Id</code> (unless <code>X-Soli-Request-Id</code> was already set in <code>--dev</code>).</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Log &harr; trace joins</h3>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_LOG=access SOLI_LOG_FORMAT=json SOLI_OTEL=1 soli serve</code></pre>
+    <p class="text-gray-400 mb-4">
+        JSON access lines include <code>trace_id</code> and <code>span_id</code> matching the exported root span. In Grafana / Datadog / Jaeger, jump from a log line to the full span tree.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Soli always samples when tracing is enabled (flags bit <code>0x01</code>). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, &hellip;) rather than in the Soli process.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Dev vs production</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold"></th>
+                    <th class="py-3 px-4 font-semibold"><code>--dev</code></th>
+                    <th class="py-3 px-4 font-semibold">Production</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4 text-white">Dev bar (queries, flamegraph, replay)</td><td class="py-3 px-4">on</td><td class="py-3 px-4">off</td></tr>
+                <tr><td class="py-3 px-4 text-white">Access log</td><td class="py-3 px-4">always on</td><td class="py-3 px-4"><code>SOLI_LOG</code> / <code>SOLI_REQUEST_LOG</code></td></tr>
+                <tr><td class="py-3 px-4 text-white">JSON format</td><td class="py-3 px-4">available</td><td class="py-3 px-4">available</td></tr>
+                <tr><td class="py-3 px-4 text-white">Span tree</td><td class="py-3 px-4">flamegraph</td><td class="py-3 px-4">OTLP when OTEL on</td></tr>
+                <tr><td class="py-3 px-4 text-white">Metrics</td><td class="py-3 px-4">opt-in</td><td class="py-3 px-4">opt-in</td></tr>
+                <tr><td class="py-3 px-4 text-white">Health endpoints</td><td class="py-3 px-4">on</td><td class="py-3 px-4">on</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Limits (honest)</h2>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
+        <li>No auto-instrumentation of every third-party client library &mdash; only Soli's own request path, ORM, and <code>HTTP.*</code> client.</li>
+        <li>OTLP export is <strong class="text-white">traces only</strong> (not metrics or logs pipelines). Metrics stay on Prometheus <code>/_metrics</code>; logs stay on stdout.</li>
+        <li>Outbound <code>traceparent</code> injection on every <code>HTTP.*</code> call is not yet automatic; inbound propagation and response echo are.</li>
+        <li>No in-process sampling UI &mdash; put that on the collector.</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">See also</h2>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
+        <li><a href="/docs/getting-started/configuration" class="text-amber-400 hover:underline">Configuration</a> &mdash; full env-var reference</li>
+        <li><a href="/docs/development-tools/debugging" class="text-amber-400 hover:underline">Debugging</a> &mdash; dev bar, flamegraph, breakpoints</li>
+        <li><a href="/docs/development-tools/deploy" class="text-amber-400 hover:underline">Deploy</a> &mdash; shipping the binary</li>
+        <li><a href="/docs/getting-started/comparison" class="text-amber-400 hover:underline">How Soli Compares</a> &mdash; ops posture vs Rails / Phoenix / Laravel / Django</li>
+    </ul>
+</div>

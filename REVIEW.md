@@ -116,14 +116,13 @@ the drain check cannot do its one job.
 
 ## P1 — Recommended next
 
-### Observability stops at counters
+### ~~Observability stops at counters~~ — shipped
 
-No `tracing`, no OpenTelemetry, no structured/JSON logs anywhere in the tree. `/_metrics`
-covers Prometheus counters — including the genuinely thoughtful
-`soli_vm_handler_demotions_total` — but there is no way to export a trace or ship parseable
-logs. For a framework positioned against Rails and Phoenix in production, this is now the
-largest operational gap. Note the internals already exist: `span_log.rs` builds a real span
-tree per request for the dev bar; an OTel exporter is largely a matter of wiring it up.
+**Fixed.** `SOLI_LOG_FORMAT=json` emits NDJSON access/error logs; `SOLI_OTEL=1` /
+`OTEL_EXPORTER_OTLP_*` exports the existing `span_log` tree over OTLP/HTTP JSON with W3C
+`traceparent` propagation. Remaining thinner than the big four: no auto-instrumentation of
+every client library, no OTLP metrics/logs pipelines beyond traces (Prometheus `/_metrics`
+stays separate).
 
 ### ~~The VM's fast path is off by default for idiomatic Soli~~ — measured, and largely wrong
 
@@ -424,7 +423,9 @@ hash*, not the *output-proportional* copies.
 
 A team adopting Soli will hit these in roughly this order.
 
-- **SoliDB-only.** Zero files in `src/` mention Postgres, SQLite, or MySQL. The comparison
+- **SoliDB default; PostgreSQL Phase 1 shipped.** `SOLI_DB_ADAPTER=postgres` + `DATABASE_URL`
+  supports document CRUD, hash filters, and SQL migrations (`src/db/`). Graph/vector/raw SDBQL
+  remain SoliDB-only; MySQL not implemented. The comparison
   page is honest about it; it remains the single largest adoption blocker.
 - **No admin panel.** Rails has Administrate, Laravel has Nova/Filament, Django ships
   `contrib.admin` — the most-cited reason teams pick Django at all. Soli has the scaffolding

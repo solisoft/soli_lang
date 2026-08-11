@@ -146,6 +146,8 @@ pub struct QueryBuilder {
     /// plus its descendants). Set for STI subclasses; emitted with the
     /// FOR-head so it composes with every mode and chained `.where()`.
     pub sti_types: Option<Vec<String>>,
+    /// Named multi-DB connection for this builder (from model `connection "…"`).
+    pub connection_name: Option<String>,
 }
 
 /// The join-subquery filter a `through:` accessor seeds:
@@ -197,6 +199,7 @@ impl QueryBuilder {
             through: None,
             assoc_seed: None,
             sti_types: None,
+            connection_name: None,
         }
     }
 
@@ -207,6 +210,7 @@ impl QueryBuilder {
         } else {
             None
         };
+        let connection_name = super::registry::get_connection_for_class(&class_name);
         let class_id = crate::interpreter::get_symbol(&class_name);
         let collection_id = crate::interpreter::get_symbol(&collection);
         Self {
@@ -237,6 +241,7 @@ impl QueryBuilder {
             through: None,
             assoc_seed: None,
             sti_types,
+            connection_name,
         }
     }
 
@@ -998,19 +1003,46 @@ impl QueryBuilder {
 
 /// Execute a QueryBuilder and return results (as instances if class is available).
 pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
+    let run = || execute_query_builder_inner(qb);
+    if let Some(ref name) = qb.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_inner(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
 
     // Handle similarity search
     if let Some(ref spec) = qb.similar_query {
+        if crate::db::is_sql() {
+            return Value::String(
+                "Vector `.similar()` is SoliDB-only on this adapter. \
+                 See docs/sql-adapter-design.md."
+                    .into(),
+            );
+        }
         return execute_similar_query(qb, &collection, spec);
     }
 
     // Time-bucketed aggregation (so the Enumerable array passthrough also
     // works on time_bucket chains).
     if qb.time_bucket_info.is_some() {
+        if crate::db::is_sql() {
+            return Value::String(
+                "`.time_bucket()` is SoliDB-only on this adapter. \
+                 See docs/sql-adapter-design.md."
+                    .into(),
+            );
+        }
         return execute_query_builder_time_bucket(qb);
+    }
+
+    if crate::db::is_sql() {
+        return execute_query_builder_postgres(qb, &collection);
     }
 
     let (query, bind_vars) = qb.build_query();
@@ -1051,6 +1083,583 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
     } else {
         exec_auto_collection_with_binds(query, bind_vars, &collection)
     }
+}
+
+/// SQL document path: compile hash filters + order/limit, fetch JSON docs.
+fn execute_query_builder_postgres(qb: &QueryBuilder, collection: &str) -> Value {
+    if qb.traversal.is_some() || qb.through.is_some() {
+        return Value::String(
+            "Graph / through queries are SoliDB-only. \
+             See docs/sql-adapter-design.md."
+                .into(),
+        );
+    }
+    if !qb.joins.is_empty() {
+        return Value::String(
+            "`.join` is SoliDB-only on SQL adapters \
+             (use `.includes` for eager loads). See docs/sql-adapter-design.md."
+                .into(),
+        );
+    }
+    if qb.having.is_some() {
+        return Value::String(
+            "`.having` is SoliDB-only on SQL adapters. \
+             See docs/sql-adapter-design.md."
+                .into(),
+        );
+    }
+    // Multi-row group_by (legacy 3-arg or multi-key + aggregate specs).
+    if qb.group_by_info.is_some() || !qb.group_fields.is_empty() || !qb.aggregate_specs.is_empty() {
+        return execute_sql_group_by(qb, collection);
+    }
+    if let Some((func, field)) = &qb.aggregation {
+        return execute_sql_aggregate(qb, collection, func, field);
+    }
+
+    match list_query_from_qb(qb, collection) {
+        Ok(lq) => match crate::db::sql::select(&lq) {
+            Ok(mut rows) => {
+                if !qb.includes.is_empty() || !qb.includes_counts.is_empty() {
+                    if let Err(e) = sql_attach_includes(qb, &mut rows) {
+                        return Value::String(format!("Error: {e}").into());
+                    }
+                }
+                hydrate_or_project_rows(qb, rows)
+            }
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        },
+        Err(e) => Value::String(format!("Error: {e}").into()),
+    }
+}
+
+/// Batch-load associations for SQL parents (Phase 3). Supports belongs_to,
+/// has_many, has_one. HABTM / through / polymorphic child / filtered includes
+/// stay SoliDB-only with a clear error.
+fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> Result<(), String> {
+    if parents.is_empty() {
+        return Ok(());
+    }
+    let parent_conn = qb
+        .connection_name
+        .clone()
+        .unwrap_or_else(|| crate::db::registry().default.clone());
+    for inc in &qb.includes {
+        if let Some(rel_conn) = super::registry::get_connection_for_class(&inc.relation.class_name)
+            .or_else(|| super::registry::get_connection_for_collection(&inc.relation.collection))
+        {
+            if rel_conn != parent_conn {
+                return Err(format!(
+                    "`.includes(\"{}\")` spans database connections \
+                     ({parent_conn:?} → {rel_conn:?}). Cross-connection eager loads \
+                     are not supported. See docs/sql-adapter-design.md.",
+                    inc.relation_name
+                ));
+            }
+        }
+        if inc.filter.is_some() || !inc.bind_vars.is_empty() {
+            return Err(format!(
+                "`.includes(\"{}\", filter: …)` is SoliDB-only on SQL adapters. \
+                 See docs/sql-adapter-design.md.",
+                inc.relation_name
+            ));
+        }
+        if inc.relation.through.is_some() {
+            return Err(format!(
+                "`.includes(\"{}\")` through: relations are SoliDB-only on SQL adapters. \
+                 See docs/sql-adapter-design.md.",
+                inc.relation_name
+            ));
+        }
+        match inc.relation.relation_type {
+            RelationType::BelongsTo => sql_include_belongs_to(parents, inc)?,
+            RelationType::HasMany | RelationType::HasOne => sql_include_has_many(parents, inc)?,
+            RelationType::HasAndBelongsToMany => {
+                return Err(format!(
+                    "`.includes(\"{}\")` HABTM is SoliDB-only on SQL adapters (Phase 3). \
+                     See docs/sql-adapter-design.md.",
+                    inc.relation_name
+                ));
+            }
+            RelationType::Polymorphic => {
+                return Err(format!(
+                    "`.includes(\"{}\")` polymorphic belongs_to is SoliDB-only on SQL adapters. \
+                     See docs/sql-adapter-design.md.",
+                    inc.relation_name
+                ));
+            }
+        }
+    }
+    for inc in &qb.includes_counts {
+        if inc.relation.through.is_some()
+            || inc.relation.relation_type == RelationType::HasAndBelongsToMany
+        {
+            return Err(format!(
+                "`.includes_count(\"{}\")` is SoliDB-only for through/HABTM on SQL adapters. \
+                 See docs/sql-adapter-design.md.",
+                inc.relation_name
+            ));
+        }
+        sql_include_count(parents, inc)?;
+    }
+    Ok(())
+}
+
+fn sql_include_belongs_to(
+    parents: &mut [serde_json::Value],
+    inc: &IncludeClause,
+) -> Result<(), String> {
+    let fk = &inc.relation.foreign_key;
+    let mut keys: Vec<String> = Vec::new();
+    for p in parents.iter() {
+        if let Some(k) = json_text_field(p, fk) {
+            if !keys.iter().any(|x| x == &k) {
+                keys.push(k);
+            }
+        }
+    }
+    let related = crate::db::sql::select_by_keys(&inc.relation.collection, &keys)?;
+    let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
+    for doc in related {
+        if let Some(k) = doc
+            .get("_key")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| doc.get("id").map(value_as_text))
+        {
+            by_key.insert(k, project_include_fields(doc, &inc.fields));
+        }
+    }
+    for p in parents.iter_mut() {
+        let attached = json_text_field(p, fk)
+            .and_then(|k| by_key.get(&k).cloned())
+            .unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = p.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), attached);
+        }
+    }
+    Ok(())
+}
+
+fn sql_include_has_many(
+    parents: &mut [serde_json::Value],
+    inc: &IncludeClause,
+) -> Result<(), String> {
+    let fk = &inc.relation.foreign_key;
+    let mut parent_keys: Vec<String> = Vec::new();
+    for p in parents.iter() {
+        if let Some(k) = parent_key(p) {
+            if !parent_keys.iter().any(|x| x == &k) {
+                parent_keys.push(k);
+            }
+        }
+    }
+    let mut related =
+        crate::db::sql::select_json_text_in(&inc.relation.collection, fk, &parent_keys)?;
+    // Polymorphic type guard (has_many as: …).
+    if let (Some(type_field), Some(type_val)) = (
+        &inc.relation.polymorphic_type_field,
+        &inc.relation.polymorphic_type_value,
+    ) {
+        related.retain(|doc| {
+            doc.get(type_field)
+                .and_then(|v| v.as_str())
+                .map(|s| s == type_val)
+                .unwrap_or(false)
+        });
+    }
+    let mut by_fk: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for doc in related {
+        if let Some(k) = json_text_field(&doc, fk) {
+            by_fk
+                .entry(k)
+                .or_default()
+                .push(project_include_fields(doc, &inc.fields));
+        }
+    }
+    let singular = matches!(inc.relation.relation_type, RelationType::HasOne);
+    for p in parents.iter_mut() {
+        let key = parent_key(p).unwrap_or_default();
+        let kids = by_fk.remove(&key).unwrap_or_default();
+        let attached = if singular {
+            kids.into_iter().next().unwrap_or(serde_json::Value::Null)
+        } else {
+            serde_json::Value::Array(kids)
+        };
+        if let Some(obj) = p.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), attached);
+        }
+    }
+    Ok(())
+}
+
+fn sql_include_count(
+    parents: &mut [serde_json::Value],
+    inc: &IncludeCountClause,
+) -> Result<(), String> {
+    // Reuse has_many batch load and count in memory (small parent sets).
+    let mut fake = IncludeClause {
+        relation_name: inc.relation_name.clone(),
+        relation: inc.relation.clone(),
+        filter: None,
+        bind_vars: HashMap::new(),
+        fields: Some(vec!["_key".into()]),
+    };
+    // Temporarily attach under a private key then convert to counts.
+    let tmp = format!("__soli_cnt_{}", inc.relation_name);
+    fake.relation_name = tmp.clone();
+    fake.relation.relation_type = RelationType::HasMany;
+    sql_include_has_many(parents, &fake)?;
+    for p in parents.iter_mut() {
+        let n = p
+            .get(&tmp)
+            .and_then(|v| v.as_array())
+            .map(|a| a.len() as i64)
+            .unwrap_or(0);
+        if let Some(obj) = p.as_object_mut() {
+            obj.remove(&tmp);
+            obj.insert(inc.alias.clone(), serde_json::json!(n));
+        }
+    }
+    Ok(())
+}
+
+fn parent_key(doc: &serde_json::Value) -> Option<String> {
+    doc.get("_key")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| doc.get("id").map(value_as_text))
+}
+
+fn json_text_field(doc: &serde_json::Value, field: &str) -> Option<String> {
+    doc.get(field)
+        .map(value_as_text)
+        .filter(|s| !s.is_empty() && s != "null")
+}
+
+fn value_as_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn project_include_fields(
+    mut doc: serde_json::Value,
+    fields: &Option<Vec<String>>,
+) -> serde_json::Value {
+    let Some(fields) = fields else {
+        return doc;
+    };
+    let Some(obj) = doc.as_object_mut() else {
+        return doc;
+    };
+    let mut out = serde_json::Map::new();
+    for f in fields {
+        if let Some(v) = obj.remove(f) {
+            out.insert(f.clone(), v);
+        }
+    }
+    for k in ["_key", "id", "_id"] {
+        if !out.contains_key(k) {
+            if let Some(v) = obj.get(k) {
+                out.insert(k.to_string(), v.clone());
+            }
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+fn execute_sql_group_by(qb: &QueryBuilder, collection: &str) -> Value {
+    // Map QB group_by shape onto SQL GroupAgg list.
+    let (group_fields, aggs): (Vec<String>, Vec<crate::db::GroupAgg>) =
+        if let Some((field, func, agg_field)) = &qb.group_by_info {
+            let sql_func = match func {
+                AggregationFunc::Sum => crate::db::SqlAgg::Sum,
+                AggregationFunc::Avg => crate::db::SqlAgg::Avg,
+                AggregationFunc::Min => crate::db::SqlAgg::Min,
+                AggregationFunc::Max => crate::db::SqlAgg::Max,
+                AggregationFunc::Count => crate::db::SqlAgg::Count,
+                other => {
+                    return Value::String(
+                        format!(
+                            "group_by aggregate {:?} is SoliDB-only on SQL adapters. \
+                             Supported: sum, avg, min, max, count. See docs/sql-adapter-design.md.",
+                            other
+                        )
+                        .into(),
+                    );
+                }
+            };
+            (
+                vec![field.clone()],
+                vec![crate::db::GroupAgg {
+                    alias: "result".into(),
+                    func: sql_func,
+                    field: agg_field.clone(),
+                }],
+            )
+        } else {
+            let fields = if qb.group_fields.is_empty() {
+                // ungrouped multi-aggregate: one row, no GROUP BY fields —
+                // not the multi-row group_by path; fall back to sequential
+                // scalar aggregates as a single hash.
+                return execute_sql_multi_aggregate_ungrouped(qb, collection);
+            } else {
+                qb.group_fields.clone()
+            };
+            let mut aggs = Vec::new();
+            if qb.aggregate_specs.is_empty() {
+                // implicit count → alias "n"
+                aggs.push(crate::db::GroupAgg {
+                    alias: "n".into(),
+                    func: crate::db::SqlAgg::Count,
+                    field: String::new(),
+                });
+            } else {
+                for spec in &qb.aggregate_specs {
+                    let sql_func = match &spec.func {
+                        AggregationFunc::Sum => crate::db::SqlAgg::Sum,
+                        AggregationFunc::Avg => crate::db::SqlAgg::Avg,
+                        AggregationFunc::Min => crate::db::SqlAgg::Min,
+                        AggregationFunc::Max => crate::db::SqlAgg::Max,
+                        AggregationFunc::Count => crate::db::SqlAgg::Count,
+                        other => {
+                            return Value::String(
+                                format!(
+                                    "aggregate {:?} is SoliDB-only on SQL adapters. \
+                                     Supported: sum, avg, min, max, count. \
+                                     See docs/sql-adapter-design.md.",
+                                    other
+                                )
+                                .into(),
+                            );
+                        }
+                    };
+                    aggs.push(crate::db::GroupAgg {
+                        alias: spec.alias.clone(),
+                        func: sql_func,
+                        field: spec.field.clone(),
+                    });
+                }
+            }
+            (fields, aggs)
+        };
+
+    match list_query_from_qb(qb, collection) {
+        Ok(lq) => match crate::db::sql::group_by(&lq, &group_fields, &aggs) {
+            Ok(rows) => {
+                // Legacy group_by returns {group, result}; multi-key returns field keys.
+                let values: Vec<Value> = if qb.group_by_info.is_some() {
+                    rows.into_iter()
+                        .map(|row| {
+                            let group = row
+                                .get(&group_fields[0])
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+                            let result = row
+                                .get("result")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+                            super::crud::json_to_value_owned(serde_json::json!({
+                                "group": group,
+                                "result": result,
+                            }))
+                        })
+                        .collect()
+                } else {
+                    rows.into_iter()
+                        .map(super::crud::json_to_value_owned)
+                        .collect()
+                };
+                Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)))
+            }
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        },
+        Err(e) => Value::String(format!("Error: {e}").into()),
+    }
+}
+
+/// Ungrouped `.aggregate({ total: ["sum","amount"], n: ["count"] })` on SQL.
+fn execute_sql_multi_aggregate_ungrouped(qb: &QueryBuilder, collection: &str) -> Value {
+    match list_query_from_qb(qb, collection) {
+        Ok(lq) => {
+            let mut map = serde_json::Map::new();
+            for spec in &qb.aggregate_specs {
+                let sql_func = match &spec.func {
+                    AggregationFunc::Sum => crate::db::SqlAgg::Sum,
+                    AggregationFunc::Avg => crate::db::SqlAgg::Avg,
+                    AggregationFunc::Min => crate::db::SqlAgg::Min,
+                    AggregationFunc::Max => crate::db::SqlAgg::Max,
+                    AggregationFunc::Count => crate::db::SqlAgg::Count,
+                    other => {
+                        return Value::String(
+                            format!(
+                                "aggregate {:?} is SoliDB-only on SQL adapters. \
+                                 See docs/sql-adapter-design.md.",
+                                other
+                            )
+                            .into(),
+                        );
+                    }
+                };
+                match crate::db::sql::aggregate(&lq, sql_func, &spec.field) {
+                    Ok(v) => {
+                        map.insert(spec.alias.clone(), v);
+                    }
+                    Err(e) => return Value::String(format!("Error: {e}").into()),
+                }
+            }
+            super::crud::json_to_value_owned(serde_json::Value::Object(map))
+        }
+        Err(e) => Value::String(format!("Error: {e}").into()),
+    }
+}
+
+fn execute_sql_aggregate(
+    qb: &QueryBuilder,
+    collection: &str,
+    func: &AggregationFunc,
+    field: &str,
+) -> Value {
+    let sql_func = match func {
+        AggregationFunc::Sum => crate::db::SqlAgg::Sum,
+        AggregationFunc::Avg => crate::db::SqlAgg::Avg,
+        AggregationFunc::Min => crate::db::SqlAgg::Min,
+        AggregationFunc::Max => crate::db::SqlAgg::Max,
+        AggregationFunc::Count => crate::db::SqlAgg::Count,
+        other => {
+            return Value::String(
+                format!(
+                    "Aggregate {:?} is SoliDB-only on SQL adapters. \
+                     Supported: sum, avg, min, max, count. See docs/sql-adapter-design.md.",
+                    other
+                )
+                .into(),
+            );
+        }
+    };
+    match list_query_from_qb(qb, collection) {
+        Ok(lq) => match crate::db::sql::aggregate(&lq, sql_func, field) {
+            Ok(v) => super::crud::json_to_value(&v),
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        },
+        Err(e) => Value::String(format!("Error: {e}").into()),
+    }
+}
+
+fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::ListQuery, String> {
+    let bind_vars: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+    let (order_field, order_desc) = match &qb.order_by {
+        Some((f, d)) => {
+            let field = crate::interpreter::symbol_string(*f)
+                .unwrap_or("unknown")
+                .to_string();
+            let dir = crate::interpreter::symbol_string(*d)
+                .unwrap_or("asc")
+                .to_lowercase();
+            let desc = matches!(dir.as_str(), "desc" | "descending");
+            (Some(field), desc)
+        }
+        None => (None, false),
+    };
+    let soft = match qb.soft_delete_mode {
+        SoftDeleteMode::Default => crate::db::SqlSoftDeleteMode::Default,
+        SoftDeleteMode::WithDeleted => crate::db::SqlSoftDeleteMode::WithDeleted,
+        SoftDeleteMode::OnlyDeleted => crate::db::SqlSoftDeleteMode::OnlyDeleted,
+    };
+    crate::db::sql::list_query_from_parts(crate::db::ListQueryParts {
+        table: collection.to_string(),
+        filter_sdbql: qb.filter.clone(),
+        bind_vars,
+        soft_delete: soft,
+        is_soft_delete_model: qb.is_soft_delete_model,
+        order_field,
+        order_desc,
+        limit: qb.limit_val,
+        offset: qb.offset_val,
+    })
+}
+
+/// Apply pluck/select projection (client-side on SQL) then hydrate instances.
+fn hydrate_or_project_rows(qb: &QueryBuilder, rows: Vec<serde_json::Value>) -> Value {
+    if let Some(fields) = &qb.pluck_fields {
+        let values: Vec<Value> = rows
+            .into_iter()
+            .map(|row| project_pluck_row(&row, fields))
+            .collect();
+        return Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)));
+    }
+    let rows = if let Some(fields) = &qb.select_fields {
+        rows.into_iter()
+            .map(|row| project_select_row(&row, fields))
+            .collect()
+    } else {
+        rows
+    };
+    hydrate_rows(qb, rows)
+}
+
+fn project_pluck_row(row: &serde_json::Value, fields: &[String]) -> Value {
+    if fields.len() == 1 {
+        return super::crud::json_to_value(row.get(&fields[0]).unwrap_or(&serde_json::Value::Null));
+    }
+    // Multi-field pluck returns self-describing hashes (matches SoliDB path).
+    use crate::interpreter::value::{HashKey, HashPairs};
+    use std::cell::RefCell;
+    let mut map = HashPairs::default();
+    for f in fields {
+        let v = row.get(f).cloned().unwrap_or(serde_json::Value::Null);
+        map.insert(
+            HashKey::String(f.clone().into()),
+            super::crud::json_to_value_owned(v),
+        );
+    }
+    Value::Hash(Rc::new(RefCell::new(map)))
+}
+
+fn project_select_row(row: &serde_json::Value, fields: &[String]) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for f in fields {
+        if let Some(v) = row.get(f) {
+            out.insert(f.clone(), v.clone());
+        }
+    }
+    // Keep identity keys so hydration / links still work.
+    for k in ["_key", "id", "_id"] {
+        if !out.contains_key(k) {
+            if let Some(v) = row.get(k) {
+                out.insert(k.to_string(), v.clone());
+            }
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+fn hydrate_rows(qb: &QueryBuilder, rows: Vec<serde_json::Value>) -> Value {
+    let values: Vec<Value> = match qb.hydration_class() {
+        Some(class) => rows
+            .into_iter()
+            .map(|j| super::crud::json_doc_to_instance_owned(class, j))
+            .collect(),
+        None => rows
+            .into_iter()
+            .map(super::crud::json_to_value_owned)
+            .collect(),
+    };
+    Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)))
 }
 
 /// Extract a float vector from a Soli Value (expects Array of floats).
@@ -1293,58 +1902,41 @@ fn execute_similar_pushdown(
 
 /// Execute a QueryBuilder for first result only (as instance if class is available).
 pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
-    let collection = crate::interpreter::symbol_string(qb.collection)
-        .unwrap_or("unknown")
-        .to_string();
-    let mut qb_with_limit = qb.clone();
-    qb_with_limit.set_limit(1);
-    let (query, bind_vars) = qb_with_limit.build_query();
-
-    if super::batch::is_active() {
-        let class = qb.hydration_class().cloned();
-        return super::batch::register(
-            query,
-            bind_vars,
-            Box::new(move |rows| {
-                Ok(match rows.first() {
-                    Some(doc) => match &class {
-                        Some(c) => json_doc_to_instance(c, doc),
-                        None => super::crud::json_to_value(doc),
-                    },
-                    None => Value::Null,
-                })
-            }),
-        );
-    }
-
-    // For first(), we can use raw JSON results + convert single item to instance
-    let raw_result = if bind_vars.is_empty() {
-        super::crud::exec_with_auto_collection(query, None, &collection)
-    } else {
-        super::crud::exec_with_auto_collection(query, Some(bind_vars), &collection)
-    };
-
-    match raw_result {
-        Ok(results) => {
-            if let Some(doc) = results.first() {
-                if let Some(class) = qb.hydration_class() {
-                    json_doc_to_instance(class, doc)
-                } else {
-                    super::crud::json_to_value(doc)
-                }
-            } else {
-                Value::Null
-            }
-        }
-        Err(_) => Value::Null,
+    // Reuse .all path under the same multi-DB connection, then take first.
+    // SQL + SoliDB both go through execute_query_builder (connection-aware).
+    match execute_query_builder(&{
+        let mut q = qb.clone();
+        q.set_limit(1);
+        q
+    }) {
+        Value::Array(arr) => arr.borrow().first().cloned().unwrap_or(Value::Null),
+        other => other,
     }
 }
 
 /// Execute a QueryBuilder for count.
 pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
+    let run = || execute_query_builder_count_inner(qb);
+    if let Some(ref name) = qb.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if crate::db::is_sql() {
+        return match list_query_from_qb(qb, &collection) {
+            Ok(lq) => match crate::db::sql::count(&lq) {
+                Ok(n) => Value::Int(n),
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            },
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     let mut query = qb.for_head();
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb
@@ -1424,9 +2016,27 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 /// ignored — they don't compose with REMOVE. Soft-deleted models still get
 /// a real REMOVE here (this is a hard delete, not a soft-delete shortcut).
 pub fn execute_query_builder_delete_all(qb: &QueryBuilder) -> Value {
+    let run = || execute_query_builder_delete_all_inner(qb);
+    if let Some(ref name) = qb.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if crate::db::is_sql() {
+        return match list_query_from_qb(qb, &collection) {
+            Ok(lq) => match crate::db::sql::delete_all(&lq) {
+                Ok(_) => Value::Null,
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            },
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     let mut query = format!("FOR doc IN {}", collection);
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb
@@ -1480,9 +2090,30 @@ pub fn execute_query_builder_update_all(
     qb: &QueryBuilder,
     update_data: serde_json::Value,
 ) -> Value {
+    let run = || execute_query_builder_update_all_inner(qb, update_data.clone());
+    if let Some(ref name) = qb.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_update_all_inner(
+    qb: &QueryBuilder,
+    update_data: serde_json::Value,
+) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if crate::db::is_sql() {
+        return match list_query_from_qb(qb, &collection) {
+            Ok(lq) => match crate::db::sql::update_all(&lq, update_data) {
+                Ok(_) => Value::Null,
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            },
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     let mut query = format!("FOR doc IN {}", collection);
 
     let mut bind_vars_str: HashMap<String, serde_json::Value> = qb
@@ -1525,9 +2156,27 @@ pub fn execute_query_builder_update_all(
 
 /// Execute a QueryBuilder for exists check - returns boolean.
 pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
+    let run = || execute_query_builder_exists_inner(qb);
+    if let Some(ref name) = qb.connection_name {
+        crate::db::with_connection(name, run)
+    } else {
+        run()
+    }
+}
+
+fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if crate::db::is_sql() {
+        return match list_query_from_qb(qb, &collection) {
+            Ok(lq) => match crate::db::sql::exists(&lq) {
+                Ok(b) => Value::Bool(b),
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            },
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     let mut query = format!("FOR doc IN {}", collection);
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb
@@ -1714,11 +2363,14 @@ pub fn execute_query_builder_aggregate(
     func: AggregationFunc,
     field: &str,
 ) -> Value {
-    let (query, bind_vars_str) = build_aggregation_query(qb, func, field);
-
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if crate::db::is_sql() {
+        return execute_sql_aggregate(qb, &collection, &func, field);
+    }
+
+    let (query, bind_vars_str) = build_aggregation_query(qb, func, field);
 
     if super::batch::is_active() {
         return super::batch::register(
@@ -1754,6 +2406,14 @@ pub fn execute_query_builder_group_by(
     func: AggregationFunc,
     agg_field: &str,
 ) -> Value {
+    if crate::db::is_sql() {
+        let mut qb = qb.clone();
+        qb.group_by_info = Some((group_field.to_string(), func, agg_field.to_string()));
+        let collection = crate::interpreter::symbol_string(qb.collection)
+            .unwrap_or("unknown")
+            .to_string();
+        return execute_sql_group_by(&qb, &collection);
+    }
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
@@ -2216,6 +2876,23 @@ impl QueryBuilder {
 /// Execute a grouped (group_fields/aggregate_specs) QueryBuilder. Returns
 /// raw hash rows — one per group, keyed by group fields + aliases.
 pub fn execute_query_builder_grouped(qb: &QueryBuilder) -> Result<Value, String> {
+    if crate::db::is_sql() {
+        if qb.having.is_some() {
+            return Err(
+                "`.having` is SoliDB-only on SQL adapters. See docs/sql-adapter-design.md."
+                    .to_string(),
+            );
+        }
+        let collection = crate::interpreter::symbol_string(qb.collection)
+            .unwrap_or("unknown")
+            .to_string();
+        return match execute_sql_group_by(qb, &collection) {
+            Value::String(s) if s.starts_with("Error:") || s.contains("SoliDB-only") => {
+                Err(s.to_string())
+            }
+            other => Ok(other),
+        };
+    }
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();

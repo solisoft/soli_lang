@@ -29,6 +29,14 @@
 //! detail block has a request line to anchor to. The legacy
 //! `SOLI_REQUEST_LOG=1` still works as an alias for the `access` channel.
 //!
+//! ## Log format (`SOLI_LOG_FORMAT`)
+//!
+//! Default is human-readable multi-line text. Set `SOLI_LOG_FORMAT=json`
+//! for one NDJSON object per request (machine-parseable: ship to Loki,
+//! CloudWatch, Datadog, …). Detail channels become nested arrays on the
+//! same object. Errors go through the same switch in
+//! [`super::error_logging`].
+//!
 //! ## Slow-request mode (`SOLI_SLOW_REQUEST_MS`)
 //!
 //! `SOLI_LOG=all` prints a block for *every* request — too noisy to leave
@@ -41,6 +49,61 @@
 //! requests log nothing at all.
 
 use std::sync::OnceLock;
+
+/// Output shape for production request (and error) logs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LogFormat {
+    /// Multi-line human text (historical default).
+    #[default]
+    Text,
+    /// One JSON object per line (NDJSON).
+    Json,
+}
+
+/// Process-wide log format, parsed once from `SOLI_LOG_FORMAT`.
+pub fn format() -> LogFormat {
+    static FMT: OnceLock<LogFormat> = OnceLock::new();
+    *FMT.get_or_init(|| {
+        match std::env::var("SOLI_LOG_FORMAT")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .map(|s| s.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("json") | Some("ndjson") => LogFormat::Json,
+            Some("text") | Some("plain") | Some("") | None => LogFormat::Text,
+            Some(other) => {
+                eprintln!(
+                    "[WARN] SOLI_LOG_FORMAT: unknown value '{}' (use text|json); defaulting to text",
+                    other
+                );
+                LogFormat::Text
+            }
+        }
+    })
+}
+
+/// Optional correlation fields for a single emit.
+#[derive(Clone, Copy, Default)]
+pub struct EmitMeta<'a> {
+    pub request_id: Option<&'a str>,
+    pub trace_id: Option<&'a str>,
+    pub span_id: Option<&'a str>,
+}
+
+/// Fields shared by the text and JSON emit paths.
+struct EmitRequest<'a> {
+    method: &'a str,
+    path: &'a str,
+    status: u16,
+    elapsed_ms: f64,
+    queue_ms: Option<f64>,
+    total_ms: f64,
+    slow_hit: bool,
+    ch: LogChannels,
+    meta: EmitMeta<'a>,
+}
 
 #[derive(Clone, Copy, Default)]
 pub struct LogChannels {
@@ -215,8 +278,28 @@ pub fn emit(
     queue_ms: Option<f64>,
     ch: LogChannels,
 ) {
-    use std::fmt::Write;
+    emit_with_meta(
+        method,
+        path,
+        status,
+        elapsed_ms,
+        queue_ms,
+        ch,
+        EmitMeta::default(),
+    );
+}
 
+/// Like [`emit`], with optional `request_id` / trace correlation fields
+/// (populated when OpenTelemetry is on or a request id was minted).
+pub fn emit_with_meta(
+    method: &str,
+    path: &str,
+    status: u16,
+    elapsed_ms: f64,
+    queue_ms: Option<f64>,
+    ch: LogChannels,
+    meta: EmitMeta<'_>,
+) {
     let total_ms = elapsed_ms + queue_ms.unwrap_or(0.0);
     let slow_hit = ch.slow_ms.is_some_and(|t| total_ms >= t);
     if !slow_hit && !ch.access {
@@ -239,24 +322,50 @@ pub fn emit(
         ch
     };
 
+    let req = EmitRequest {
+        method,
+        path,
+        status,
+        elapsed_ms,
+        queue_ms,
+        total_ms,
+        slow_hit,
+        ch,
+        meta,
+    };
+    match format() {
+        LogFormat::Json => emit_json(req),
+        LogFormat::Text => emit_text(req),
+    }
+}
+
+fn emit_text(req: EmitRequest<'_>) {
+    use std::fmt::Write;
+
     let mut out = String::with_capacity(256);
     let _ = write!(
         out,
         "[{}] {} {} - {} ({:.3}ms",
-        if slow_hit { "SLOW" } else { "LOG" },
-        method,
-        path,
-        status,
-        elapsed_ms
+        if req.slow_hit { "SLOW" } else { "LOG" },
+        req.method,
+        req.path,
+        req.status,
+        req.elapsed_ms
     );
-    match queue_ms {
+    match req.queue_ms {
         Some(q) => {
             let _ = write!(out, " + {:.3}ms queue)", q);
         }
         None => out.push(')'),
     }
+    if let Some(rid) = req.meta.request_id {
+        let _ = write!(out, " request_id={}", rid);
+    }
+    if let Some(tid) = req.meta.trace_id {
+        let _ = write!(out, " trace_id={}", tid);
+    }
 
-    if ch.query {
+    if req.ch.query {
         let queries = crate::interpreter::builtins::model::query_log::snapshot();
         if !queries.is_empty() {
             let total: f64 = queries.iter().map(|q| q.duration_ms).sum();
@@ -278,7 +387,7 @@ pub fn emit(
         }
     }
 
-    if ch.http {
+    if req.ch.http {
         let calls = crate::interpreter::builtins::http_log::snapshot();
         if !calls.is_empty() {
             let total: f64 = calls.iter().map(|c| c.duration_ms).sum();
@@ -305,7 +414,7 @@ pub fn emit(
         }
     }
 
-    if ch.kv {
+    if req.ch.kv {
         let calls = crate::interpreter::builtins::kv_log::snapshot();
         if !calls.is_empty() {
             let total: f64 = calls.iter().map(|c| c.duration_ms).sum();
@@ -329,7 +438,7 @@ pub fn emit(
         }
     }
 
-    if ch.timing {
+    if req.ch.timing {
         let middlewares = crate::serve::middleware_log::snapshot();
         let views = crate::serve::view_log::snapshot();
         let phases = crate::serve::phase_log::snapshot();
@@ -368,6 +477,234 @@ pub fn emit(
     }
 
     println!("{}", out);
+}
+
+fn emit_json(req: EmitRequest<'_>) {
+    use serde_json::{json, Map, Value};
+
+    let mut obj = Map::new();
+    obj.insert("ts".into(), json!(chrono_like_ts()));
+    obj.insert(
+        "level".into(),
+        json!(if req.slow_hit {
+            "warn"
+        } else if req.status >= 500 {
+            "error"
+        } else if req.status >= 400 {
+            "warn"
+        } else {
+            "info"
+        }),
+    );
+    obj.insert(
+        "msg".into(),
+        json!(if req.slow_hit {
+            "slow_request"
+        } else {
+            "request"
+        }),
+    );
+    obj.insert("method".into(), json!(req.method));
+    obj.insert("path".into(), json!(req.path));
+    obj.insert("status".into(), json!(req.status));
+    obj.insert("duration_ms".into(), json!(round3(req.elapsed_ms)));
+    if let Some(q) = req.queue_ms {
+        obj.insert("queue_ms".into(), json!(round3(q)));
+    }
+    obj.insert("total_ms".into(), json!(round3(req.total_ms)));
+    if req.slow_hit {
+        obj.insert("slow".into(), json!(true));
+    }
+    if let Some(rid) = req.meta.request_id {
+        obj.insert("request_id".into(), json!(rid));
+    }
+    if let Some(tid) = req.meta.trace_id {
+        obj.insert("trace_id".into(), json!(tid));
+    }
+    if let Some(sid) = req.meta.span_id {
+        obj.insert("span_id".into(), json!(sid));
+    }
+
+    if req.ch.query {
+        let queries = crate::interpreter::builtins::model::query_log::snapshot();
+        if !queries.is_empty() {
+            let arr: Vec<Value> = queries
+                .iter()
+                .map(|q| {
+                    let mut m = Map::new();
+                    m.insert("duration_ms".into(), json!(round3(q.duration_ms)));
+                    m.insert("query".into(), json!(one_line(&q.query)));
+                    if let Some(binds) = &q.bind_vars {
+                        if !binds.is_empty() {
+                            m.insert("binds".into(), redacted_binds_value(binds));
+                        }
+                    }
+                    Value::Object(m)
+                })
+                .collect();
+            obj.insert("db".into(), Value::Array(arr));
+        }
+    }
+
+    if req.ch.http {
+        let calls = crate::interpreter::builtins::http_log::snapshot();
+        if !calls.is_empty() {
+            let arr: Vec<Value> = calls
+                .iter()
+                .map(|c| {
+                    let mut m = Map::new();
+                    m.insert("duration_ms".into(), json!(round3(c.duration_ms)));
+                    m.insert("method".into(), json!(c.method));
+                    m.insert(
+                        "url".into(),
+                        json!(crate::redaction::redact_url_query(&c.url)),
+                    );
+                    m.insert("status".into(), json!(c.status));
+                    if let Some(err) = &c.error {
+                        m.insert("error".into(), json!(err));
+                    }
+                    Value::Object(m)
+                })
+                .collect();
+            obj.insert("http".into(), Value::Array(arr));
+        }
+    }
+
+    if req.ch.kv {
+        let calls = crate::interpreter::builtins::kv_log::snapshot();
+        if !calls.is_empty() {
+            let arr: Vec<Value> = calls
+                .iter()
+                .map(|c| {
+                    let mut m = Map::new();
+                    m.insert("duration_ms".into(), json!(round3(c.duration_ms)));
+                    m.insert("command".into(), json!(c.command));
+                    m.insert("key".into(), json!(c.key));
+                    if let Some(err) = &c.error {
+                        m.insert("error".into(), json!(err));
+                    }
+                    Value::Object(m)
+                })
+                .collect();
+            obj.insert("kv".into(), Value::Array(arr));
+        }
+    }
+
+    if req.ch.timing {
+        let middlewares = crate::serve::middleware_log::snapshot();
+        let views = crate::serve::view_log::snapshot();
+        let phases = crate::serve::phase_log::snapshot();
+        if !middlewares.is_empty() || !views.is_empty() || !phases.is_empty() {
+            let mut timing = Map::new();
+            if !phases.is_empty() {
+                timing.insert(
+                    "phases".into(),
+                    Value::Array(
+                        phases
+                            .iter()
+                            .map(|(name, us)| {
+                                json!({"name": name, "duration_ms": round3(*us as f64 / 1000.0)})
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+            if !middlewares.is_empty() {
+                timing.insert(
+                    "middleware".into(),
+                    Value::Array(
+                        middlewares
+                            .iter()
+                            .map(|(name, us)| {
+                                json!({"name": name, "duration_ms": round3(*us as f64 / 1000.0)})
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+            if !views.is_empty() {
+                timing.insert(
+                    "views".into(),
+                    Value::Array(
+                        views
+                            .iter()
+                            .map(|(_id, parent, name, us)| {
+                                json!({
+                                    "name": name,
+                                    "duration_ms": round3(*us as f64 / 1000.0),
+                                    "nested": parent.is_some(),
+                                })
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+            obj.insert("timing".into(), Value::Object(timing));
+        }
+    }
+
+    println!("{}", Value::Object(obj));
+}
+
+fn redacted_binds_value(
+    binds: &std::collections::HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    let safe: serde_json::Map<String, serde_json::Value> = binds
+        .iter()
+        .map(|(k, v)| {
+            let value = if crate::redaction::looks_sensitive(k) {
+                serde_json::Value::String(crate::redaction::REDACTED.to_string())
+            } else {
+                v.clone()
+            };
+            (k.clone(), value)
+        })
+        .collect();
+    serde_json::Value::Object(safe)
+}
+
+fn round3(v: f64) -> f64 {
+    (v * 1000.0).round() / 1000.0
+}
+
+/// RFC3339-ish UTC timestamp without pulling chrono — good enough for log shippers.
+/// Public so error logging can share the same clock format.
+pub(crate) fn chrono_like_ts_public() -> String {
+    chrono_like_ts()
+}
+
+fn chrono_like_ts() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let dur = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = dur.as_secs() as i64;
+    let millis = dur.subsec_millis();
+    // Manual UTC breakdown (no leap-second handling — fine for logs).
+    let (y, mo, d, h, mi, s) = civil_from_days(secs);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{millis:03}Z")
+}
+
+/// Convert unix seconds to (year, month, day, hour, min, sec) UTC.
+fn civil_from_days(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
+    let days = secs.div_euclid(86_400);
+    let tod = secs.rem_euclid(86_400) as u32;
+    let h = tod / 3600;
+    let mi = (tod % 3600) / 60;
+    let s = tod % 60;
+
+    // Howard Hinnant civil_from_days algorithm.
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m as u32, d as u32, h, mi, s)
 }
 
 #[cfg(test)]
@@ -461,5 +798,25 @@ mod tests {
     fn zero_or_negative_slow_threshold_is_ignored() {
         assert_eq!(parse(None, false, Some(0.0)).slow_ms, None);
         assert_eq!(parse(None, false, Some(-5.0)).slow_ms, None);
+    }
+
+    #[test]
+    fn civil_from_days_epoch() {
+        // 1970-01-01T00:00:00Z
+        assert_eq!(civil_from_days(0), (1970, 1, 1, 0, 0, 0));
+        // 1970-01-01T00:00:01Z
+        assert_eq!(civil_from_days(1), (1970, 1, 1, 0, 0, 1));
+        // 2024-01-01T00:00:00Z = 1704067200
+        assert_eq!(civil_from_days(1_704_067_200), (2024, 1, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn chrono_like_ts_is_rfc3339ish() {
+        let ts = chrono_like_ts();
+        // 2026-08-09T12:00:00.123Z
+        assert!(ts.ends_with('Z'), "{ts}");
+        assert_eq!(ts.len(), 24, "{ts}");
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[10..11], "T");
     }
 }

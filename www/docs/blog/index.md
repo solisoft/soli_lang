@@ -7,6 +7,13 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
+<a href="/docs/blog/multi-database"><img src="/images/blog/multi-database.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Multiple databases"></a>
+<br>
+<strong><a href="/docs/blog/multi-database">Multiple Databases in One Soli App</a></strong><br>
+<small>Named connections in <code>config/database.toml</code>, per-model <code>connection "name"</code>, SoliDB + Postgres/MySQL in one process — with hard errors on cross-DB includes.</small>
+</div>
+
+<div>
 <a href="/docs/blog/native-mobile"><img src="/images/blog/native-mobile.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Native Mobile"></a>
 <br>
 <strong><a href="/docs/blog/native-mobile">Ship a Native Mobile App Without Rewriting the Stack</a></strong><br>

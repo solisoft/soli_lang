@@ -156,6 +156,12 @@ pub enum Command {
         action: DbSeedAction,
         folder: String,
     },
+    /// `soli db:import [collection…]` — copy SoliDB collections into the
+    /// configured SQL document backend (`SOLI_DB_ADAPTER=postgres|mysql` +
+    /// `DATABASE_URL`). Reads from SOLIDB_*; writes JSON document tables.
+    DbImport {
+        collections: Vec<String>,
+    },
     /// `soli db:indexes [folder]` — create any missing indexes declared with
     /// the class-body DSL (`index`, `vector_index`, `fulltext_index`,
     /// `geo_index`). Idempotent; the production counterpart of the dev-boot
@@ -510,7 +516,7 @@ pub fn print_usage() {
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
-    eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
+    eprintln!("  --workers N     Worker threads (default: CPU cores; APP_ENV=production → 2)");
     eprintln!("  --static        Serve the folder as plain files, even if it is a Soli app");
     eprintln!("  --app           Require a Soli app; fail if the folder is not one");
     eprintln!(
@@ -571,6 +577,7 @@ pub fn print_usage() {
     eprintln!("  soli db:seed                  Run db/seeds.sl and db/seeds/*.sl");
     eprintln!("  soli db:seed db/seeds/demo.sl  Run a single seed file");
     eprintln!("  soli db:seed generate demo_users  Generate new seed file");
+    eprintln!("  soli db:import [coll…]        SoliDB → SQL document import (Phase 3)");
     eprintln!("  soli routes                   Print the route table of the app in .");
     eprintln!("  soli routes -g posts          Only routes matching 'posts'");
     eprintln!("  soli engine create shop       Create a new engine named 'shop'");
@@ -1203,6 +1210,16 @@ pub fn parse_args() -> Options {
                     }
                 }
             }
+            "db:import" => {
+                i += 1;
+                let mut collections = Vec::new();
+                while i < args.len() && !args[i].starts_with('-') {
+                    collections.push(args[i].clone());
+                    i += 1;
+                }
+                options.command = Command::DbImport { collections };
+                return options;
+            }
             "db:seed" => {
                 // Unlike `db:migrate`, a bare `soli db:seed` is valid and
                 // means "run the seeds". Only `generate` is a sub-action.
@@ -1254,18 +1271,11 @@ pub fn parse_args() -> Options {
                 let mut mode: Option<ServeModeArg> = None;
                 let mut strict_port = false;
                 let mut assets: Vec<String> = Vec::new();
-                // Worker count: `SOLI_WORKERS` env (the documented baseline-RSS
-                // lever) if set, else the CPU core count. An explicit
+                // Worker count: `SOLI_WORKERS` if set; else production default
+                // of 2 when `APP_ENV=production`; else CPU cores. An explicit
                 // `--workers N` below overrides either.
-                let mut workers = std::env::var("SOLI_WORKERS")
-                    .ok()
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .filter(|&n| n > 0)
-                    .unwrap_or_else(|| {
-                        std::thread::available_parallelism()
-                            .map(|p| p.get())
-                            .unwrap_or(4)
-                    });
+                let mut workers =
+                    solilang::serve::server_constants::resolve_http_workers_from_env();
                 i += 1;
                 while i < args.len() {
                     if args[i] == "--port" {

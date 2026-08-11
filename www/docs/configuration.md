@@ -19,17 +19,27 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 |----------|---------|---------|
 | `APP_ENV` | Selects `.env.{APP_ENV}` and marks test mode for features that need it. | unset |
 | `SOLI_PROTECT_ENV` | Comma-separated variable names that `.env.{APP_ENV}` must not override. Mostly used by the test runner. | unset |
+| `SOLI_DB_ADAPTER` | Database backend: `solidb` (default, full Model surface), `postgres`, or `mysql` (document CRUD + hash filters + sum/avg/min/max + migrations). Graph/vector/raw SDBQL stay SoliDB-only. See `docs/sql-adapter-design.md`. | `solidb` |
+| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`). Required when `SOLI_DB_ADAPTER` is `postgres` or `mysql`. Ignored for SoliDB. | unset |
+| `SOLI_DB_POOL_SIZE` | Max connections in the PostgreSQL pool. | `10` |
 
 ## Server And Development
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SOLI_HOST` | IP address the server binds to. Set `127.0.0.1` to keep a dev server off the LAN (only local processes can connect); the default listens on all interfaces. An invalid value is a startup error. [File mode](static-server.md) defaults to `127.0.0.1` instead. | `0.0.0.0` |
-| `SOLI_WORKERS` | Number of request-handling worker threads. Each worker is a full interpreter copy (its own parsed app + builtins), so this is the primary lever on baseline RSS: pin it low (e.g. `2`) on many-core boxes to cap memory from duplicated interpreter state + the tokio runtime. Defaults to the number of CPU cores. | CPU cores |
+| `SOLI_WORKERS` | Number of request-handling worker threads. Each worker is a full interpreter copy (its own parsed app + builtins), so this is the primary lever on baseline RSS. Defaults to the number of CPU cores; when `APP_ENV=production` (or `prod`) and this is unset, defaults to **2** so a many-core box does not open one interpreter per core. Set explicitly (or pass `--workers N`) to opt into more throughput. | CPU cores; **2** in production |
 | `SOLI_WS_WORKERS` | Worker threads reserved exclusively for realtime (WebSocket/LiveView) events, so a burst of them can't starve HTTP and a slow handler can't delay presence/broadcasts. The reservation costs a whole HTTP worker, so by default it only applies once the pool has **4 or more** workers; below that every worker drains both channels and realtime shares the pool. Set it explicitly to force the split at any size (`1` on a 2-worker pool leaves 1 HTTP worker), or `0` to disable it entirely. Always clamped so at least one HTTP worker remains. The startup line reports the resulting layout. | `1` when workers ≥ 4, else `0` |
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
 | `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration; bind values whose name looks like a credential are logged as `[REDACTED]`), `http` (outgoing `HTTP.*` calls; query-string values whose parameter name looks like a credential are logged as `[REDACTED]`), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
+| `SOLI_LOG_FORMAT` | Shape of production request (and error) logs: `text` (default multi-line human output) or `json` (one NDJSON object per event on stdout/stderr — ship to Loki, CloudWatch, Datadog, …). Detail channels become nested arrays on the same object; secret-bearing bind/query values stay redacted. | `text` |
 | `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
+| `SOLI_OTEL` | Set to `1`/`true`/`yes` to enable OpenTelemetry tracing. Reuses the same per-request span tree the dev-bar flamegraph builds (middleware, action, views, DB, HTTP). Honours inbound W3C `traceparent`, echoes it on the response, and exports spans over OTLP/HTTP JSON. When set without an endpoint, defaults to `http://127.0.0.1:4318/v1/traces` (sidecar collector). | unset |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector base URL (e.g. `http://otel-collector:4318`). Enables tracing even when `SOLI_OTEL` is unset. Soli appends `/v1/traces` unless the value already ends with it. | unset |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL override (takes precedence over `OTEL_EXPORTER_OTLP_ENDPOINT`). | unset |
+| `OTEL_SERVICE_NAME` | `service.name` resource attribute on exported spans. | `soli` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes as comma-separated `key=value` pairs (e.g. `deployment.environment=prod,service.namespace=shop`). | unset |
+| `OTEL_SDK_DISABLED` | Set to `true` to force tracing off regardless of the other OTEL vars. | unset |
 | `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. Two defaults, because the two clients can afford different windows: the shared client holds a connection for 90s (its reactor runs continuously, so it sees the server close one and drops it), while a per-worker pool holds one for 25s — a worker's reactor only runs during a query, so between requests nothing notices the peer closing an idle connection and the pool must retire it first. SoliDB closes idle keep-alives after 30s. Setting this overrides both; keep it below the idle-close of whatever is on the other end. | `90` shared, `25` per-worker |
 | `SOLI_DB_KEEP_WARM` | Set to `0` to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (`SOLIDB_HOST` or credentials set). | enabled |
 | `SOLI_DB_POOL_MAX_IDLE` | Max idle SoliDB connections kept per host by the shared internal HTTP client. Per-worker DB clients hold one hot connection each and are unaffected; this sizes the pool for the paths that still share a client (async contexts, keep-warm). | `8` |
@@ -45,6 +55,26 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_OPENAPI_TITLE` | Title of the generated OpenAPI document. | `Soli API` |
 | `SOLI_SHUTDOWN_GRACE_SECS` | How long a `SIGTERM`/`SIGINT` shutdown waits for in-flight requests to finish before exiting anyway. See [Health checks and graceful shutdown](#health-checks-and-graceful-shutdown). `0` exits immediately. | `25` |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
+
+### Structured logs and OpenTelemetry
+
+Production logs and distributed traces have a dedicated operator guide:
+
+**[Observability](observability.md)** — metrics (`/_metrics`), `SOLI_LOG` channels, `SOLI_LOG_FORMAT=json`, slow-request mode, W3C `traceparent`, OTLP export, and log↔trace joins.
+
+Quick enable:
+
+```bash
+# Machine-parseable access logs
+SOLI_LOG=access SOLI_LOG_FORMAT=json soli serve
+
+# Traces → collector (or SOLI_OTEL=1 for a local :4318 sidecar)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+OTEL_SERVICE_NAME=myapp \
+soli serve
+```
+
+The env rows above (`SOLI_LOG_FORMAT`, `SOLI_OTEL`, `OTEL_*`) are the full knobs; the guide covers fields, span kinds, and limits.
 
 ### Health checks and graceful shutdown
 
@@ -193,7 +223,7 @@ locale tables) — with the size of that app. The levers, cheapest first:
 
 | Lever | Effect |
 |-------|--------|
-| `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. On a many-core box a small app still spawns one worker per core; pin `2` (or `1` for a low-traffic service) to cut baseline RSS proportionally. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near `workers × (1 / query latency)` — roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves >140k req/s). |
+| `SOLI_WORKERS=N` | The biggest one — each worker is a full interpreter copy. With `APP_ENV=production`, the default is already **2** (not one-per-core). Raise it for throughput, or set `1` for a low-traffic service. Note the throughput floor: a worker blocks for the whole of each database round-trip, so a DB-backed route tops out near `workers × (1 / query latency)` — roughly 11k req/s per worker against a loopback SoliDB. Routes that never touch the DB are unaffected (a single worker serves >140k req/s). |
 | `SOLI_JOB_WORKERS=1` (or `0`) | The background-job pool is a second set of full interpreters. It defaults to `1`; `0` runs jobs inline with no extra interpreter. |
 | `SOLI_JOB_VIEW_HELPERS=0` | Drops view helpers (incl. i18n locale tables) from every job interpreter when jobs don't render helper-using templates. |
 | `MIMALLOC_PURGE_DELAY=0` | mimalloc returns freed pages to the OS promptly instead of after its default delay — trims the RSS left over from the one-time boot-parse churn. Read by the allocator at startup, so set it in the environment before launch. Trade-off: a few more `madvise`/decommit syscalls under churny allocation. |

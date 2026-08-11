@@ -119,6 +119,9 @@ pub struct ModelMetadata {
     pub geo_indexes: Vec<GeoIndexDef>,
     /// Set by the `index` class-body DSL.
     pub secondary_indexes: Vec<SecondaryIndexDef>,
+    /// Named database connection from class-body `connection "…"`.
+    /// `None` = registry default connection.
+    pub connection_name: Option<String>,
 }
 
 lazy_static! {
@@ -136,6 +139,10 @@ lazy_static! {
     /// can send the right `type` without a class handle.
     static ref COLLECTION_TYPES: RwLock<HashMap<String, String>> =
         RwLock::new(HashMap::new());
+
+    /// Collection name -> database connection name (for multi-DB routing).
+    static ref COLLECTION_CONNECTIONS: RwLock<HashMap<String, String>> =
+        RwLock::new(HashMap::new());
 }
 
 /// Record the SolidB collection type declared for a collection (via the
@@ -145,6 +152,62 @@ pub fn register_collection_type(collection: &str, ctype: &str) {
         .write()
         .unwrap()
         .insert(collection.to_string(), ctype.to_string());
+}
+
+/// Bind a model (and its collection) to a named database connection.
+pub fn register_connection(class_name: &str, connection: &str) {
+    let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
+    {
+        let mut registry = MODEL_REGISTRY.write().unwrap();
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.connection_name = Some(connection.to_string());
+    }
+    COLLECTION_CONNECTIONS
+        .write()
+        .unwrap()
+        .insert(collection, connection.to_string());
+}
+
+/// Connection name for a model class, if declared.
+pub fn get_connection_for_class(class_name: &str) -> Option<String> {
+    MODEL_REGISTRY
+        .read()
+        .unwrap()
+        .get(class_name)
+        .and_then(|m| m.connection_name.clone())
+}
+
+/// Connection name for a collection (from any model that registered it).
+pub fn get_connection_for_collection(collection: &str) -> Option<String> {
+    COLLECTION_CONNECTIONS
+        .read()
+        .unwrap()
+        .get(collection)
+        .cloned()
+}
+
+/// Run `f` with the model's database connection active (multi-DB routing).
+#[allow(dead_code)]
+pub fn run_on_model_connection<T>(class_name: &str, f: impl FnOnce() -> T) -> T {
+    match get_connection_for_class(class_name) {
+        Some(n) => crate::db::with_connection(&n, f),
+        None => f(),
+    }
+}
+
+/// Run `f` with the collection's database connection active.
+#[allow(dead_code)]
+pub fn run_on_collection_connection<T>(collection: &str, f: impl FnOnce() -> T) -> T {
+    match get_connection_for_collection(collection) {
+        Some(n) => crate::db::with_connection(&n, f),
+        None => f(),
+    }
+}
+
+/// Effective connection name for a class (declared or registry default).
+#[allow(dead_code)]
+pub fn effective_connection_name(class_name: &str) -> String {
+    get_connection_for_class(class_name).unwrap_or_else(|| crate::db::registry().default.clone())
 }
 
 /// The declared SolidB collection type for a collection, if any.

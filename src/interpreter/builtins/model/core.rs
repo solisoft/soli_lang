@@ -2140,6 +2140,17 @@ impl Model {
                 |args| {
                     let class = get_class_rc_from_args(args)?;
                     let collection = class_name_to_collection(&class.name);
+                    // SQL document adapters have no raw SDBQL — route through
+                    // the QueryBuilder so hash filters / soft-delete / STI
+                    // scopes compile to portable SQL.
+                    if crate::db::is_sql() {
+                        let qb = QueryBuilder::new_with_class(
+                            class.name.clone(),
+                            collection,
+                            class.clone(),
+                        );
+                        return Ok(super::query::execute_query_builder(&qb));
+                    }
                     let sdbql = format!(
                         "FOR doc IN {}{} RETURN doc",
                         collection,
@@ -2176,12 +2187,39 @@ impl Model {
                 "Model.all_json",
                 Some(1),
                 |args| {
-                    let class_name = get_class_name_from_class(args)?;
-                    let collection = class_name_to_collection(&class_name);
+                    let class = get_class_rc_from_args(args)?;
+                    let collection = class_name_to_collection(&class.name);
+                    if crate::db::is_sql() {
+                        let qb = QueryBuilder::new_with_class(
+                            class.name.clone(),
+                            collection,
+                            class.clone(),
+                        );
+                        let rows = super::query::execute_query_builder(&qb);
+                        // Mirror SoliDB all_json: return a JSON array string.
+                        return Ok(match rows {
+                            Value::Array(arr) => {
+                                let json_rows: Vec<serde_json::Value> = arr
+                                    .borrow()
+                                    .iter()
+                                    .map(|v| {
+                                        crate::interpreter::value::value_to_json(v)
+                                            .unwrap_or(serde_json::Value::Null)
+                                    })
+                                    .collect();
+                                Value::String(
+                                    serde_json::to_string(&json_rows)
+                                        .unwrap_or_else(|_| "[]".into())
+                                        .into(),
+                                )
+                            }
+                            other => Value::String(format!("{}", other).into()),
+                        });
+                    }
                     let sdbql = format!(
                         "FOR doc IN {}{} RETURN doc",
                         collection,
-                        sti_scope_clause(&class_name)
+                        sti_scope_clause(&class.name)
                     );
                     Ok(exec_async_query_raw(sdbql))
                 },
@@ -2432,16 +2470,22 @@ impl Model {
         // Model.delete_all() - Remove every document in the collection.
         // Primarily intended for test setup/teardown. Fetches all keys
         // then deletes each individually — a single `FOR doc IN … REMOVE`
-        // query isn't actually applied in SolidB, so iterate.
+        // query isn't actually applied in SolidB, so iterate. On SQL, use
+        // bulk DELETE via the query-builder path.
         native_static_methods.insert(
             "delete_all".to_string(),
             Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
-                let class_name = get_class_name_from_class(args)?;
-                let collection = class_name_to_collection(&class_name);
+                let class = get_class_rc_from_args(args)?;
+                let collection = class_name_to_collection(&class.name);
+                if crate::db::is_sql() {
+                    let qb =
+                        QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
+                    return Ok(super::query::execute_query_builder_delete_all(&qb));
+                }
                 let sdbql = format!(
                     "FOR doc IN {}{} RETURN doc._key",
                     collection,
-                    sti_scope_clause(&class_name)
+                    sti_scope_clause(&class.name)
                 );
                 let results = match super::crud::exec_query(&collection, sdbql) {
                     Ok(r) => r,
@@ -2528,6 +2572,16 @@ impl Model {
                                 )?;
                             return super::columnar::aggregate(&collection, &column, "count", None);
                         }
+                    }
+
+                    if crate::db::is_sql() {
+                        let class = get_class_rc_from_args(args)?;
+                        let qb = QueryBuilder::new_with_class(
+                            class.name.clone(),
+                            collection.clone(),
+                            class,
+                        );
+                        return Ok(super::query::execute_query_builder_count(&qb));
                     }
 
                     let sti_clause = get_class_name_from_class(args)
@@ -5308,6 +5362,30 @@ pub fn register_model_builtins(env: &mut Environment) {
             let mut metadata = get_or_create_metadata(&class_name);
             metadata.soft_delete = true;
             update_metadata(&class_name, metadata);
+            Ok(Value::Null)
+        })),
+    );
+
+    // connection "name" — bind this model to a named entry in
+    // config/database.toml (or the env-derived primary connection).
+    env.define(
+        "connection".to_string(),
+        Value::NativeFunction(NativeFunction::new("connection", Some(2), |args| {
+            let class_name = get_class_name_from_class(args)?;
+            let name = match args.get(1) {
+                Some(Value::String(s) | Value::Symbol(s)) => s.to_string(),
+                Some(other) => {
+                    return Err(format!(
+                        "connection() expects a name (string or symbol), got {}",
+                        other.type_name()
+                    ))
+                }
+                None => return Err("connection() requires a connection name".to_string()),
+            };
+            // Validate name exists in the registry early so class load fails
+            // fast rather than on first query.
+            crate::db::registry().resolve(Some(&name))?;
+            super::registry::register_connection(&class_name, &name);
             Ok(Value::Null)
         })),
     );

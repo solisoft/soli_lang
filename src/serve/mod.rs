@@ -24,6 +24,7 @@ pub mod native;
 pub mod nav;
 pub mod openapi;
 mod origin;
+pub mod otel;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
@@ -31,7 +32,7 @@ pub mod route_listing;
 pub mod route_log;
 mod router;
 pub mod sensors;
-mod server_constants;
+pub mod server_constants;
 pub mod shutdown;
 pub mod span_log;
 pub mod template_warnings;
@@ -487,23 +488,12 @@ use file_upload::uploaded_files_to_value;
 
 /// Serve an MVC application from a folder in production mode by default.
 ///
-/// Respects `SOLI_WORKERS` env var (or falls back to CPU core count).
-/// Operators running on boxes with many cores can pin this low (e.g. 2-4)
-/// to keep baseline RSS from duplicated interpreter state + tokio runtimes
-/// under control — directly relevant to "keep RAM low as much as possible".
+/// Respects `SOLI_WORKERS` / `APP_ENV=production` defaults (see
+/// [`server_constants::resolve_http_workers_from_env`]).
+/// Operators can pin workers low (e.g. 2) to keep baseline RSS from duplicated
+/// interpreter state + tokio runtimes under control.
 pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
-    // Allow operators to explicitly cap workers (common on multi-core boxes
-    // when the goal is minimizing memory rather than maximizing throughput).
-    let num_workers = std::env::var("SOLI_WORKERS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or_else(|| {
-            std::thread::available_parallelism()
-                .map(|p| p.get())
-                .unwrap_or(server_constants::DEFAULT_WORKER_COUNT)
-        });
-
+    let num_workers = server_constants::resolve_http_workers_from_env();
     serve_folder_with_options(folder, port, false, num_workers)
 }
 
@@ -605,6 +595,25 @@ pub fn serve_folder_with_options_and_hooks(
     // and SolidB 401s.
     load_env_files(folder);
     boot_trace("env loaded");
+
+    // Multi-DB: load config/database.toml when present (else env → primary).
+    if let Err(e) = crate::db::init_from_app_path(folder) {
+        return Err(RuntimeError::General {
+            message: e.message(),
+            span: Span::default(),
+        });
+    }
+    boot_trace("db connections");
+
+    // Validate SOLI_DB_ADAPTER / DATABASE_URL early (missing URL, unknown
+    // adapter, SQL pool failure) so boot fails with a clear message instead
+    // of a cryptic mid-request SoliDB or SQL error.
+    if let Err(e) = crate::db::ensure_runtime_ready() {
+        return Err(RuntimeError::General {
+            message: e.message(),
+            span: Span::default(),
+        });
+    }
 
     // Cache SoliDB host/database/api-key/basic-auth derived from the env
     // we just loaded. Must run before `init_jwt_token` so the JWT login
@@ -1840,10 +1849,35 @@ fn run_hyper_server_worker_pool(
     if public_dir.exists() {
         println!("Static files served from {}", public_dir.display());
     }
-    println!(
-        "Using hyper async HTTP server with {} worker threads\n",
-        num_workers
-    );
+    if server_constants::using_production_worker_default(num_workers) {
+        println!(
+            "Using hyper async HTTP server with {} worker threads \
+             (production default — set SOLI_WORKERS or --workers to raise)",
+            num_workers
+        );
+    } else {
+        println!(
+            "Using hyper async HTTP server with {} worker threads",
+            num_workers
+        );
+    }
+    if otel::enabled() {
+        let cfg = otel::config();
+        match &cfg.traces_endpoint {
+            Some(ep) => println!(
+                "OpenTelemetry tracing enabled → {} (service.name={})",
+                ep, cfg.service_name
+            ),
+            None => println!(
+                "OpenTelemetry context enabled (service.name={}; no OTLP endpoint)",
+                cfg.service_name
+            ),
+        }
+    }
+    if prod_log::format() == prod_log::LogFormat::Json {
+        println!("Production logs: JSON (SOLI_LOG_FORMAT=json)");
+    }
+    println!();
 
     // Workers are spawned and the listener is accepting: `/_ready` flips to 200
     // here. Deliberately after the banner, so nothing routes to a process that
@@ -1937,7 +1971,7 @@ fn run_hyper_server_worker_pool(
     // here so a long handler acks SolidB immediately (no callback timeout, no
     // duplicate retry) and never occupies a web worker. Only started when jobs
     // are actually active — a callback secret is set and `app/jobs` exists.
-    // `SOLI_JOB_WORKERS` sizes it (default 2); 0 disables backgrounding, so all
+    // `SOLI_JOB_WORKERS` sizes it (default 1); 0 disables backgrounding, so all
     // jobs run inline exactly as before.
     {
         let jobs_secret_set = std::env::var("SOLI_WEBHOOK_SECRET")
@@ -2181,9 +2215,9 @@ fn worker_loop(
     phase_log::set_enabled(dev_mode || log_channels.collect_timing());
     middleware_log::set_enabled(dev_mode || log_channels.collect_timing());
     view_log::set_enabled(dev_mode || log_channels.collect_timing());
-    // The span flamegraph stays dev-only — it's a visualization the prod
-    // log block doesn't consume, and it's the heaviest of the gates.
-    span_log::set_enabled(dev_mode);
+    // Span tree: always on in --dev (flamegraph). Also on when OpenTelemetry
+    // is enabled so production can export the same hierarchy over OTLP.
+    span_log::set_enabled(dev_mode || otel::enabled());
     // Component prop warnings are a dev-only surface (dev bar + console).
     template_warnings::set_enabled(dev_mode);
 
@@ -6378,7 +6412,8 @@ fn handle_request(
     // request's queries. Cheap when dev mode is off (early-out on the flag).
     // Also clear when production logging is on, otherwise the thread-local
     // buffers would accumulate across requests on the same worker thread.
-    if dev_mode || prod_log::channels().has_detail() {
+    // OpenTelemetry reuses span_log, so clear that tree whenever OTEL is on.
+    if dev_mode || prod_log::channels().has_detail() || otel::enabled() {
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
         crate::interpreter::builtins::kv_log::clear();
@@ -6509,6 +6544,15 @@ fn handle_request(
     // injected bar can show server-side render time. Cheap when off.
     let dev_started = if dev_mode { Some(Instant::now()) } else { None };
 
+    // OpenTelemetry: parse inbound W3C `traceparent` (if any) and mint a
+    // request-scoped TraceContext. Cheap early-out when SOLI_OTEL / OTLP
+    // endpoint is unset.
+    let trace_ctx = otel::begin_request(
+        method.as_ref(),
+        path.as_str(),
+        header_str(&data.headers, "traceparent"),
+    );
+
     // Anchor the span log to this request's start so every span's
     // `start_us` / `end_us` is encoded as microseconds-since-request-start.
     // Also open the synthetic root request span so the flamegraph has a
@@ -6517,7 +6561,15 @@ fn handle_request(
     // instead of appearing as detached sibling roots. The root is closed
     // explicitly inside `finalize_response` right before the snapshot, so
     // it actually ends up in the recorded log.
-    if let Some(t) = dev_started {
+    //
+    // Same tree is used for OTLP export when tracing is on (dev or prod).
+    let span_started = dev_started.or_else(|| {
+        trace_ctx
+            .as_ref()
+            .map(|c| c.instant_start)
+            .or_else(|| otel::enabled().then(Instant::now))
+    });
+    if let Some(t) = span_started {
         span_log::begin_request(t);
         span_log::open_request_root(format!("{} {}", method, path));
     }
@@ -6851,6 +6903,22 @@ fn handle_request(
                 resp.headers.push((name, value));
             }
         }
+        // W3C Trace Context: always echo a traceparent when OTEL is on so
+        // upstream proxies / clients can correlate with our OTLP export and
+        // JSON access logs. Also stamp a stable request id (dev already does
+        // via X-Soli-Request-Id) so logs, traces, and clients share a key.
+        if let Some(ref ctx) = trace_ctx {
+            resp.headers
+                .push(("traceparent".to_string(), ctx.traceparent()));
+            let has_req_id = resp.headers.iter().any(|(k, _)| {
+                k.eq_ignore_ascii_case("x-soli-request-id")
+                    || k.eq_ignore_ascii_case("x-request-id")
+            });
+            if !has_req_id {
+                resp.headers
+                    .push(("X-Request-Id".to_string(), Uuid::new_v4().to_string()));
+            }
+        }
         // E2E test client: ship the render captured by render() back as
         // response headers, so assigns()/view_path()/render_template() work
         // across the test-runner -> server process boundary. The locals JSON
@@ -7014,6 +7082,27 @@ fn handle_request(
                 }
             }
         }
+        // Close the request-root span and export the tree over OTLP when
+        // tracing is on. In --dev the same close happens above for the
+        // flamegraph; close_request_root is idempotent.
+        if span_started.is_some() && !dev_mode {
+            span_log::close_request_root();
+        }
+        if let Some(ref ctx) = trace_ctx {
+            // Prefer the request id already stamped on the response (dev
+            // path); otherwise mint one so logs and OTLP share a key.
+            let req_id_owned = resp
+                .headers
+                .iter()
+                .find(|(k, _)| {
+                    k.eq_ignore_ascii_case("x-soli-request-id")
+                        || k.eq_ignore_ascii_case("x-request-id")
+                })
+                .map(|(_, v)| v.clone());
+            let spans = span_log::snapshot();
+            otel::export_request(ctx, &spans, resp.status, req_id_owned.as_deref());
+        }
+
         // Log timing (skip health checks to avoid benchmark noise)
         if log_requests && path != "/health" {
             let elapsed_ms = start_time.unwrap().elapsed().as_secs_f64() * 1000.0;
@@ -7035,13 +7124,26 @@ fn handle_request(
                 // gates the SOLI_SLOW_REQUEST_MS full-detail block on
                 // queue + handler time and prints nothing for fast
                 // requests when only the slow threshold is configured.
-                prod_log::emit(
+                let emit_meta = prod_log::EmitMeta {
+                    request_id: resp
+                        .headers
+                        .iter()
+                        .find(|(k, _)| {
+                            k.eq_ignore_ascii_case("x-soli-request-id")
+                                || k.eq_ignore_ascii_case("x-request-id")
+                        })
+                        .map(|(_, v)| v.as_str()),
+                    trace_id: trace_ctx.as_ref().map(|c| c.trace_id.as_str()),
+                    span_id: trace_ctx.as_ref().map(|c| c.span_id.as_str()),
+                };
+                prod_log::emit_with_meta(
                     method.as_ref(),
                     path.as_str(),
                     resp.status,
                     elapsed_ms,
                     queue_ms,
                     log_channels,
+                    emit_meta,
                 );
             }
         }

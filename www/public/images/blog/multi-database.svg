@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Soli multi-database: models User and Post on primary SoliDB, LegacyOrder on Postgres, FactSale on MySQL, connected via config/database.toml and connection name on each model.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="48" y="48" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="28" font-weight="700" fill="#f4f4f5">Multiple databases, one process</text>
+  <text x="48" y="76" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">config/database.toml names connections · models pick with connection "name"</text>
+
+  <!-- Config chip -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace">
+    <rect x="620" y="28" width="360" height="56" rx="12" fill="#12151b" stroke="#3a2f14"/>
+    <text x="640" y="50" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.2" fill="#f59e0b">CONFIG</text>
+    <text x="640" y="70" font-size="13" fill="#e5e7eb">config/database.toml</text>
+  </g>
+
+  <!-- App process box -->
+  <rect x="40" y="110" width="300" height="420" rx="14" fill="#101319" stroke="#2b3038"/>
+  <rect x="40" y="110" width="300" height="44" rx="14" fill="#151922"/>
+  <rect x="40" y="138" width="300" height="16" fill="#151922"/>
+  <text x="58" y="138" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#cbd5e1">soli serve · models</text>
+
+  <!-- Model cards -->
+  <g font-family="ui-monospace, Menlo, monospace" font-size="13">
+    <rect x="60" y="176" width="260" height="72" rx="12" fill="#0c0e12" stroke="#2b3038"/>
+    <text x="78" y="204" fill="#e5e7eb">class User</text>
+    <text x="78" y="226" fill="#8b929e"># default → primary</text>
+
+    <rect x="60" y="262" width="260" height="72" rx="12" fill="#0c0e12" stroke="#2b3038"/>
+    <text x="78" y="290" fill="#e5e7eb">class Post</text>
+    <text x="78" y="312" fill="#8b929e"># default → primary</text>
+
+    <rect x="60" y="348" width="260" height="72" rx="12" fill="#0c0e12" stroke="#3a2f14"/>
+    <text x="78" y="376" fill="#e5e7eb">class LegacyOrder</text>
+    <text x="78" y="398" fill="#f59e0b">connection "legacy"</text>
+
+    <rect x="60" y="434" width="260" height="72" rx="12" fill="#0c0e12" stroke="#1e3a2f"/>
+    <text x="78" y="462" fill="#e5e7eb">class FactSale</text>
+    <text x="78" y="484" fill="#22c55e">connection "warehouse"</text>
+  </g>
+
+  <!-- Connection cylinders / cards right -->
+  <!-- primary SoliDB -->
+  <g>
+    <rect x="420" y="130" width="260" height="150" rx="14" fill="#101319" stroke="#f59e0b" stroke-opacity="0.45"/>
+    <text x="440" y="160" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1" fill="#f59e0b">PRIMARY</text>
+    <text x="440" y="188" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#f4f4f5">SoliDB</text>
+    <text x="440" y="214" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#8b929e">adapter = "solidb"</text>
+    <text x="440" y="238" font-family="system-ui, sans-serif" font-size="13" fill="#cbd5e1">User · Post</text>
+    <text x="440" y="258" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">full ORM · graph · vector</text>
+  </g>
+
+  <!-- legacy Postgres -->
+  <g>
+    <rect x="420" y="300" width="260" height="100" rx="14" fill="#101319" stroke="#38bdf8" stroke-opacity="0.4"/>
+    <text x="440" y="330" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1" fill="#38bdf8">LEGACY</text>
+    <text x="440" y="356" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#f4f4f5">Postgres</text>
+    <text x="440" y="380" font-family="system-ui, sans-serif" font-size="13" fill="#cbd5e1">LegacyOrder · document tables</text>
+  </g>
+
+  <!-- warehouse MySQL -->
+  <g>
+    <rect x="420" y="420" width="260" height="100" rx="14" fill="#101319" stroke="#22c55e" stroke-opacity="0.4"/>
+    <text x="440" y="450" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1" fill="#22c55e">WAREHOUSE</text>
+    <text x="440" y="476" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#f4f4f5">MySQL</text>
+    <text x="440" y="500" font-family="system-ui, sans-serif" font-size="13" fill="#cbd5e1">FactSale · analytics</text>
+  </g>
+
+  <!-- Arrows models → connections -->
+  <path d="M320 210 C360 210, 380 190, 420 190" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M320 296 C360 296, 380 220, 420 220" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M320 384 C370 384, 390 350, 420 350" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M320 470 C370 470, 390 470, 420 470" fill="none" stroke="#22c55e" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Cross-connection blocked callout -->
+  <g>
+    <rect x="720" y="200" width="264" height="180" rx="14" fill="#141018" stroke="#7f1d1d"/>
+    <text x="740" y="232" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1" fill="#ef4444">BLOCKED</text>
+    <text x="740" y="262" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#e5e7eb">LegacyOrder</text>
+    <text x="740" y="282" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#e5e7eb">  .includes("user")</text>
+    <text x="740" y="318" font-family="system-ui, sans-serif" font-size="13" fill="#fca5a5">Cross-connection</text>
+    <text x="740" y="340" font-family="system-ui, sans-serif" font-size="13" fill="#fca5a5">eager loads raise</text>
+    <path d="M720 290 L700 250" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowRed)"/>
+  </g>
+
+  <text x="720" y="520" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">Honest boundaries &gt; fake joins</text>
+</svg>

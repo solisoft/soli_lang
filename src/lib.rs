@@ -12,6 +12,7 @@ pub mod cdp;
 pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
+pub mod db;
 pub mod desktop;
 pub mod embedding;
 pub mod error;
