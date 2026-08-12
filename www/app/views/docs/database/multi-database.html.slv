@@ -227,7 +227,11 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4">HABTM / through includes, <code>.having</code>, <code>.join</code></td>
+                    <td class="py-3 px-4">Batched HABTM <code>.includes</code> + <code>includes_count</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">(two queries: the join table, then the targets)</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>through:</code> includes, <code>.having</code>, <code>.join</code></td>
                     <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
                 </tr>
                 <tr>
@@ -423,7 +427,7 @@ soli db:migrate down --connection legacy</code></pre>
     <h2 id="limits" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limitations</h2>
     <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
         <li>Per-connection SoliDB hosts: registry stores fields; prefer one SoliDB endpoint + SQL secondaries for now</li>
-        <li>HABTM / <code>through:</code> includes on SQL are not yet supported (basic <code>belongs_to</code>/<code>has_many</code>/<code>has_one</code> are)</li>
+        <li><code>through:</code> includes on SQL are not yet supported (<code>belongs_to</code>, <code>has_many</code>, <code>has_one</code> and HABTM are)</li>
         <li>Read-replica / request-scoped roles are not v1</li>
         <li>pgvector on document tables remains SoliDB-only</li>
     </ul>

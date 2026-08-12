@@ -1229,13 +1229,7 @@ fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> 
         match inc.relation.relation_type {
             RelationType::BelongsTo => sql_include_belongs_to(parents, inc)?,
             RelationType::HasMany | RelationType::HasOne => sql_include_has_many(parents, inc)?,
-            RelationType::HasAndBelongsToMany => {
-                return Err(format!(
-                    "`.includes(\"{}\")` HABTM is SoliDB-only on SQL adapters (Phase 3). \
-                     See docs/sql-adapter-design.md.",
-                    inc.relation_name
-                ));
-            }
+            RelationType::HasAndBelongsToMany => sql_include_habtm(parents, inc)?,
             RelationType::Polymorphic => {
                 return Err(format!(
                     "`.includes(\"{}\")` polymorphic belongs_to is SoliDB-only on SQL adapters. \
@@ -1246,11 +1240,9 @@ fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> 
         }
     }
     for inc in &qb.includes_counts {
-        if inc.relation.through.is_some()
-            || inc.relation.relation_type == RelationType::HasAndBelongsToMany
-        {
+        if inc.relation.through.is_some() {
             return Err(format!(
-                "`.includes_count(\"{}\")` is SoliDB-only for through/HABTM on SQL adapters. \
+                "`.includes_count(\"{}\")` through: relations are SoliDB-only on SQL adapters. \
                  See docs/sql-adapter-design.md.",
                 inc.relation_name
             ));
@@ -1348,6 +1340,93 @@ fn sql_include_has_many(
     Ok(())
 }
 
+/// Eager-load a `has_and_belongs_to_many` association on a SQL adapter.
+///
+/// Two batched queries, whatever the number of parents:
+///   1. the join-table rows whose owner FK is one of the parent keys, which
+///      gives the (parent key, target key) pairs;
+///   2. the target documents for the distinct target keys.
+///
+/// Join rows are kept in the order the database returned them, so the attached
+/// array order is stable for a given query rather than hash order.
+fn sql_include_habtm(parents: &mut [serde_json::Value], inc: &IncludeClause) -> Result<(), String> {
+    let join_table = inc.relation.join_table.as_deref().ok_or_else(|| {
+        format!(
+            "`.includes(\"{}\")`: this has_and_belongs_to_many relation has no join table",
+            inc.relation_name
+        )
+    })?;
+    let assoc_fk = inc
+        .relation
+        .association_foreign_key
+        .as_deref()
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: this has_and_belongs_to_many relation has no \
+             association_foreign_key",
+                inc.relation_name
+            )
+        })?;
+    let owner_fk = &inc.relation.foreign_key;
+
+    let mut parent_keys: Vec<String> = Vec::new();
+    for p in parents.iter() {
+        if let Some(k) = parent_key(p) {
+            if !parent_keys.iter().any(|x| x == &k) {
+                parent_keys.push(k);
+            }
+        }
+    }
+
+    // Hop 1: the join rows.
+    let join_rows = crate::db::sql::select_json_text_in(join_table, owner_fk, &parent_keys)?;
+    let mut links: Vec<(String, String)> = Vec::with_capacity(join_rows.len());
+    let mut target_keys: Vec<String> = Vec::new();
+    for row in &join_rows {
+        let (Some(parent), Some(target)) = (
+            json_text_field(row, owner_fk),
+            json_text_field(row, assoc_fk),
+        ) else {
+            continue;
+        };
+        if !target_keys.iter().any(|x| x == &target) {
+            target_keys.push(target.clone());
+        }
+        links.push((parent, target));
+    }
+
+    // Hop 2: the targets. A target key with no row (a dangling join row) simply
+    // contributes nothing, rather than a null hole in the array.
+    let targets = crate::db::sql::select_by_keys(&inc.relation.collection, &target_keys)?;
+    let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
+    for doc in targets {
+        if let Some(k) = doc
+            .get("_key")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| doc.get("id").map(value_as_text))
+        {
+            by_key.insert(k, project_include_fields(doc, &inc.fields));
+        }
+    }
+
+    let mut by_parent: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for (parent, target) in links {
+        if let Some(doc) = by_key.get(&target) {
+            by_parent.entry(parent).or_default().push(doc.clone());
+        }
+    }
+
+    for p in parents.iter_mut() {
+        let key = parent_key(p).unwrap_or_default();
+        let related = by_parent.remove(&key).unwrap_or_default();
+        if let Some(obj) = p.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), serde_json::Value::Array(related));
+        }
+    }
+    Ok(())
+}
+
 fn sql_include_count(
     parents: &mut [serde_json::Value],
     inc: &IncludeCountClause,
@@ -1363,8 +1442,13 @@ fn sql_include_count(
     // Temporarily attach under a private key then convert to counts.
     let tmp = format!("__soli_cnt_{}", inc.relation_name);
     fake.relation_name = tmp.clone();
-    fake.relation.relation_type = RelationType::HasMany;
-    sql_include_has_many(parents, &fake)?;
+    // HABTM counts its join rows; everything else counts child rows by FK.
+    if inc.relation.relation_type == RelationType::HasAndBelongsToMany {
+        sql_include_habtm(parents, &fake)?;
+    } else {
+        fake.relation.relation_type = RelationType::HasMany;
+        sql_include_has_many(parents, &fake)?;
+    }
     for p in parents.iter_mut() {
         let n = p
             .get(&tmp)
@@ -3853,5 +3937,230 @@ mod tests {
         assert!(
             parse_time_bucket_args(&Value::String("1h".into()), Some(&aggs), "Metric").is_err()
         );
+    }
+}
+
+/// HABTM eager loading against a live Postgres. Skips when none is reachable,
+/// like the other SQL integration suites.
+#[cfg(all(test, feature = "postgres"))]
+mod habtm_integration_tests {
+    use super::*;
+    use crate::db::registry::{
+        clear_registry_override, registry_test_lock, set_registry_for_tests, ConnectionRegistry,
+        ConnectionSpec,
+    };
+    use crate::interpreter::builtins::model::relations::RelationDef;
+
+    const POSTS: &str = "soli_habtm_posts";
+    const TAGS: &str = "soli_habtm_tags";
+    const JOIN: &str = "soli_habtm_posts_tags";
+
+    fn with_pg(f: impl FnOnce()) {
+        let _g = registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let url = std::env::var("PG_DATABASE_URL")
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .ok()
+            .filter(|u| u.starts_with("postgres"))
+            .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
+        let mut connections = std::collections::HashMap::new();
+        connections.insert(
+            "primary".into(),
+            ConnectionSpec {
+                name: "primary".into(),
+                adapter: crate::db::Adapter::Postgres,
+                url: Some(url),
+                solidb_host: None,
+                solidb_database: None,
+                solidb_username: None,
+                solidb_password: None,
+                solidb_api_key: None,
+                pool_size: Some(5),
+            },
+        );
+        set_registry_for_tests(ConnectionRegistry {
+            default: "primary".into(),
+            connections,
+            from_file: false,
+        });
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_registry_override();
+            }
+        }
+        let _clear = ClearOnDrop;
+        f();
+    }
+
+    fn habtm_relation() -> RelationDef {
+        RelationDef {
+            name: "tags".into(),
+            relation_type: RelationType::HasAndBelongsToMany,
+            class_name: "Tag".into(),
+            collection: TAGS.into(),
+            foreign_key: "post_id".into(),
+            polymorphic_type_field: None,
+            polymorphic_type_value: None,
+            join_table: Some(JOIN.into()),
+            association_foreign_key: Some("tag_id".into()),
+            dependent: None,
+            through: None,
+            source: None,
+            counter_cache: None,
+        }
+    }
+
+    fn include(fields: Option<Vec<String>>) -> IncludeClause {
+        IncludeClause {
+            relation_name: "tags".into(),
+            relation: habtm_relation(),
+            filter: None,
+            bind_vars: HashMap::new(),
+            fields,
+        }
+    }
+
+    /// Two posts, three tags, and a join row pointing at a tag that does not
+    /// exist. Returns false when Postgres is unreachable.
+    fn seed() -> bool {
+        if crate::db::sql::ensure_connected().is_err() {
+            eprintln!("skip: postgres not reachable");
+            return false;
+        }
+        for t in [POSTS, TAGS, JOIN] {
+            let _ = crate::db::sql::drop_table(t);
+            crate::db::sql::ensure_table(t).expect("ensure table");
+        }
+        for (key, title) in [("p1", "First"), ("p2", "Second"), ("p3", "Untagged")] {
+            crate::db::sql::insert(POSTS, Some(key), serde_json::json!({ "title": title }))
+                .expect("insert post");
+        }
+        for (key, name) in [("t1", "rust"), ("t2", "sql"), ("t3", "web")] {
+            crate::db::sql::insert(TAGS, Some(key), serde_json::json!({ "name": name }))
+                .expect("insert tag");
+        }
+        // p1 -> t1, t2 (in that order); p2 -> t3 plus a dangling link; p3 -> none.
+        for (key, post, tag) in [
+            ("j1", "p1", "t1"),
+            ("j2", "p1", "t2"),
+            ("j3", "p2", "t3"),
+            ("j4", "p2", "missing"),
+        ] {
+            crate::db::sql::insert(
+                JOIN,
+                Some(key),
+                serde_json::json!({ "post_id": post, "tag_id": tag }),
+            )
+            .expect("insert join row");
+        }
+        true
+    }
+
+    fn parents() -> Vec<serde_json::Value> {
+        vec![
+            serde_json::json!({ "_key": "p1", "title": "First" }),
+            serde_json::json!({ "_key": "p2", "title": "Second" }),
+            serde_json::json!({ "_key": "p3", "title": "Untagged" }),
+        ]
+    }
+
+    fn names(parent: &serde_json::Value) -> Vec<String> {
+        parent["tags"]
+            .as_array()
+            .expect("tags array")
+            .iter()
+            .map(|t| t["name"].as_str().unwrap_or("?").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn habtm_attaches_targets_per_parent_in_join_order() {
+        with_pg(|| {
+            if !seed() {
+                return;
+            }
+            let mut rows = parents();
+            sql_include_habtm(&mut rows, &include(None)).expect("habtm include");
+
+            assert_eq!(names(&rows[0]), vec!["rust", "sql"], "join order is kept");
+            assert_eq!(names(&rows[1]), vec!["web"]);
+            // A parent with no join rows gets an empty array, never a null.
+            assert_eq!(
+                rows[2]["tags"],
+                serde_json::json!([]),
+                "an unlinked parent gets []"
+            );
+
+            for t in [POSTS, TAGS, JOIN] {
+                let _ = crate::db::sql::drop_table(t);
+            }
+        });
+    }
+
+    #[test]
+    fn a_dangling_join_row_contributes_nothing() {
+        with_pg(|| {
+            if !seed() {
+                return;
+            }
+            let mut rows = parents();
+            sql_include_habtm(&mut rows, &include(None)).expect("habtm include");
+            // p2 has two join rows but only one existing tag: no null hole.
+            let tags = rows[1]["tags"].as_array().expect("array");
+            assert_eq!(tags.len(), 1);
+            assert!(tags.iter().all(|t| !t.is_null()));
+
+            for t in [POSTS, TAGS, JOIN] {
+                let _ = crate::db::sql::drop_table(t);
+            }
+        });
+    }
+
+    #[test]
+    fn habtm_honors_field_projection() {
+        with_pg(|| {
+            if !seed() {
+                return;
+            }
+            let mut rows = parents();
+            let inc = include(Some(vec!["name".into()]));
+            sql_include_habtm(&mut rows, &inc).expect("habtm include");
+            let first = &rows[0]["tags"][0];
+            assert_eq!(first["name"], "rust");
+            assert!(
+                first.get("_key").is_some(),
+                "identity keys survive projection"
+            );
+
+            for t in [POSTS, TAGS, JOIN] {
+                let _ = crate::db::sql::drop_table(t);
+            }
+        });
+    }
+
+    #[test]
+    fn includes_count_counts_join_rows_for_habtm() {
+        with_pg(|| {
+            if !seed() {
+                return;
+            }
+            let mut rows = parents();
+            let inc = IncludeCountClause {
+                relation_name: "tags".into(),
+                relation: habtm_relation(),
+                alias: "tags_count".into(),
+            };
+            sql_include_count(&mut rows, &inc).expect("habtm count");
+            assert_eq!(rows[0]["tags_count"], 2);
+            // The dangling link has no tag, so it is not counted.
+            assert_eq!(rows[1]["tags_count"], 1);
+            assert_eq!(rows[2]["tags_count"], 0);
+
+            for t in [POSTS, TAGS, JOIN] {
+                let _ = crate::db::sql::drop_table(t);
+            }
+        });
     }
 }

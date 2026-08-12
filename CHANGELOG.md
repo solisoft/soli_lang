@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Batched HABTM `.includes` on Postgres and MySQL.** A
+  `has_and_belongs_to_many` eager load was SoliDB-only; it now runs on the SQL
+  document adapters in **two queries regardless of parent count**: one for the
+  join-table rows whose owner key matches the parents, one for the distinct
+  targets those rows point at. Targets attach in the order the join rows came
+  back, a parent with no links gets `[]` rather than null, and a dangling join
+  row (a link to a deleted target) contributes nothing instead of a null hole.
+  `includes_count` follows the same path, so it counts join rows for HABTM.
+  `through:` includes, `.having`, and `.join` remain SoliDB-only.
+
 - **Column-aware models — use Soli against an existing relational database.**
   Until now the SQL adapters were a document store *on top of* SQL: every table
   was `_key` + `doc JSONB`, so pointing a connection at a real schema failed on

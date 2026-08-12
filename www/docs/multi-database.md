@@ -141,7 +141,8 @@ Portable surface (hash filters, not raw SDBQL):
 | `pluck` / `select` (client projection) | ✓ |
 | Batched `.includes` (belongs_to / has_many / has_one) | ✓ |
 | Multi-row `group_by` + multi-agg | ✓ |
-| HABTM / through includes, `.having`, `.join` | ✗ SoliDB-only (through/HABTM SQL planned) |
+| Batched HABTM `.includes` + `includes_count` | ✓ (two queries: the join table, then the targets) |
+| `through:` includes, `.having`, `.join` | ✗ SoliDB-only (`through:` on SQL planned) |
 | Graph, vector, columnar, timeseries | ✗ SoliDB-only |
 | `Model.transaction` | ✓ (holds one SQL pool connection for the block) |
 | Raw SDBQL / string `.where("doc…")` | ✗ SoliDB-only |

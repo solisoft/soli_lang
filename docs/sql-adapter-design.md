@@ -61,7 +61,8 @@ Model API → QueryBuilder IR
 | `pluck` / `select` projection | ✓ (server) | ✓ (client) | ✓ (client) |
 | `increment` / `decrement` | ✓ (CAS) | ✓ (R-M-W) | ✓ (R-M-W) |
 | `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) |
-| `.includes` HABTM / through / filtered | ✓ | ✗ (planned) | ✗ (planned) |
+| `.includes` HABTM | ✓ | ✓ | ✓ |
+| `.includes` through / filtered | ✓ | ✗ (planned) | ✗ (planned) |
 | multi-row `group_by` + multi-agg | ✓ | ✓ | ✓ |
 | `.having` on groups | ✓ | ✗ | ✗ |
 | String SDBQL `where` | ✓ | ✗ | ✗ |
@@ -82,7 +83,7 @@ After the parent `SELECT`, Soli issues **one extra query per include**:
 | `has_many` / `has_one` | `WHERE doc->>fk IN (…parent keys…)` |
 | `includes_count` (has_many) | same batch, count in memory |
 
-Not on SQL: HABTM, `through:`, polymorphic `belongs_to` child, include filters, `.join`.
+Not on SQL: `through:`, polymorphic `belongs_to` child, include filters, `.join`. HABTM is supported — two batched queries (the join table, then the targets).
 
 ## Import
 
@@ -144,4 +145,5 @@ Optional Postgres vector search was listed for Phase 3 but is **not implemented*
 | **M0–M1** multi-DB `database.toml` + per-model `connection` | **done** (docs: `/docs/database/multi-database`) |
 | **4a** SQL `Model.transaction` (held pool connection) | **done** |
 | **4b** `db:migrate --connection` | **done** |
-| **4c** HABTM / through includes on SQL | planned |
+| **4c** HABTM includes on SQL | done |
+| **4d** `through:` includes on SQL | planned |
