@@ -617,6 +617,222 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+// ---------- column-aware model execution ----------
+
+use super::introspect::{ColType, TableSchema};
+use super::sql_columns_compile as cols;
+
+/// Convert one driver row into a JSON object keyed by column name, so
+/// downstream hydration matches the document path.
+fn row_to_json(schema: &TableSchema, row: &mysql::Row) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let mut idx = 0usize;
+    for col in &schema.columns {
+        // Unreadable columns are never selected, so they hold no position.
+        if col.ty == ColType::Unknown {
+            continue;
+        }
+        let value = match col.ty {
+            // Numbers arrive as text (see ColType::reads_as_text) so neither
+            // backend has to match an exact SQL width.
+            ColType::Int => row
+                .get_opt::<Option<String>, usize>(idx)
+                .and_then(Result::ok)
+                .flatten()
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .map(|n| serde_json::json!(n))
+                .unwrap_or(serde_json::Value::Null),
+            ColType::Float => row
+                .get_opt::<Option<String>, usize>(idx)
+                .and_then(Result::ok)
+                .flatten()
+                .and_then(|s| s.trim().parse::<f64>().ok())
+                .map(|f| serde_json::json!(f))
+                .unwrap_or(serde_json::Value::Null),
+            // MySQL has no native bool: tinyint(1) arrives as 0/1.
+            ColType::Bool => row
+                .get_opt::<Option<i64>, usize>(idx)
+                .and_then(Result::ok)
+                .flatten()
+                .map(|n| serde_json::json!(n != 0))
+                .unwrap_or(serde_json::Value::Null),
+            ColType::Json => row
+                .get_opt::<Option<String>, usize>(idx)
+                .and_then(Result::ok)
+                .flatten()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::Value::Null),
+            _ => row
+                .get_opt::<Option<String>, usize>(idx)
+                .and_then(Result::ok)
+                .flatten()
+                .map(|s| serde_json::json!(normalize_text(col.ty, &s)))
+                .unwrap_or(serde_json::Value::Null),
+        };
+        out.insert(col.name.clone(), value);
+        idx += 1;
+    }
+    // Mirror the key under `_key` when the table has no such column, so the
+    // instance plumbing (dirty tracking, delete) keeps working unchanged.
+    if !schema.has_column("_key") {
+        if let Some(pk) = out.get(&schema.pk) {
+            let key = match pk {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.insert("_key".to_string(), serde_json::json!(key));
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+/// MySQL renders DATETIME as `2026-08-11 10:00:00`; re-emit the RFC 3339 form
+/// Soli's DateTime parses. MySQL stores no offset, so UTC is assumed — the
+/// documented convention for column-aware models.
+fn normalize_text(ty: ColType, raw: &str) -> String {
+    if ty != ColType::DateTime {
+        return raw.to_string();
+    }
+    let mut out = raw.replacen(' ', "T", 1);
+    if !out.ends_with('Z') && !out.contains('+') {
+        out.push('Z');
+    }
+    out
+}
+
+/// Re-read a row by primary key on the connection already held, so an insert or
+/// update can return the stored row (MySQL has no RETURNING).
+fn read_back(
+    conn: &mut MyConn,
+    schema: &TableSchema,
+    pk: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, String> {
+    let compiled = cols::compile_get_cols(Dialect::Mysql, schema, pk)?;
+    let params = to_mysql_params(&compiled.params);
+    let row: Option<mysql::Row> = conn
+        .exec_first(&compiled.sql, params)
+        .map_err(|e| format!("mysql column read-back: {e}"))?;
+    Ok(row.map(|r| row_to_json(schema, &r)))
+}
+
+pub fn col_get(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, String> {
+    with_conn(|conn| read_back(conn, schema, pk))
+}
+
+pub fn col_insert(
+    schema: &std::sync::Arc<TableSchema>,
+    doc: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_insert_cols(Dialect::Mysql, schema, doc)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        conn.exec_drop(&compiled.sql, params)
+            .map_err(|e| format!("mysql column insert: {e}"))?;
+        // A generated key comes from LAST_INSERT_ID(); an explicit one is
+        // whatever the caller supplied. Both must read back on THIS connection.
+        let key = if schema.pk_auto && doc.get(&schema.pk).is_none_or(|v| v.is_null()) {
+            serde_json::json!(conn.last_insert_id())
+        } else {
+            doc.get(&schema.pk)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        };
+        read_back(conn, schema, &key)?.ok_or_else(|| {
+            format!(
+                "mysql column insert: row missing after write in {:?}",
+                schema.table
+            )
+        })
+    })
+}
+
+pub fn col_update(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+    patch: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_update_cols(Dialect::Mysql, schema, pk, patch)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        conn.exec_drop(&compiled.sql, params)
+            .map_err(|e| format!("mysql column update: {e}"))?;
+        // Read back rather than trusting affected_rows: MySQL reports 0 for a
+        // no-op update, which would look like a missing row.
+        read_back(conn, schema, pk)?
+            .ok_or_else(|| format!("no row in {:?} with {} = {}", schema.table, schema.pk, pk))
+    })
+}
+
+pub fn col_delete(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+) -> Result<(), String> {
+    let compiled = cols::compile_delete_cols(Dialect::Mysql, schema, pk)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        conn.exec_drop(&compiled.sql, params)
+            .map_err(|e| format!("mysql column delete: {e}"))?;
+        Ok(())
+    })
+}
+
+pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
+    let compiled = cols::compile_select_cols(Dialect::Mysql, q)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        let rows: Vec<mysql::Row> = conn
+            .exec(&compiled.sql, params)
+            .map_err(|e| format!("mysql column select: {e}"))?;
+        Ok(rows.iter().map(|r| row_to_json(&q.schema, r)).collect())
+    })
+}
+
+pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
+    let compiled = cols::compile_count_cols(Dialect::Mysql, q)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        let n: Option<i64> = conn
+            .exec_first(&compiled.sql, params)
+            .map_err(|e| format!("mysql column count: {e}"))?;
+        Ok(n.unwrap_or(0))
+    })
+}
+
+pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
+    let compiled = cols::compile_exists_cols(Dialect::Mysql, q)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        let hit: Option<i64> = conn
+            .exec_first(&compiled.sql, params)
+            .map_err(|e| format!("mysql column exists: {e}"))?;
+        Ok(hit.is_some())
+    })
+}
+
+pub fn col_aggregate(
+    q: &cols::ColumnQuery,
+    func: SqlAgg,
+    field: &str,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_aggregate_cols(Dialect::Mysql, q, func, field)?;
+    with_conn(|conn| {
+        let params = to_mysql_params(&compiled.params);
+        if func == SqlAgg::Count {
+            let n: Option<i64> = conn
+                .exec_first(&compiled.sql, params)
+                .map_err(|e| format!("mysql column aggregate: {e}"))?;
+            return Ok(serde_json::json!(n.unwrap_or(0)));
+        }
+        let raw: Option<Option<String>> = conn
+            .exec_first(&compiled.sql, params)
+            .map_err(|e| format!("mysql column aggregate: {e}"))?;
+        Ok(super::columns::parse_agg_text(raw.flatten()))
+    })
+}
+
 // ---------- column-aware model introspection ----------
 
 /// Read the shape of an existing table for column mode. `COLUMN_TYPE` is

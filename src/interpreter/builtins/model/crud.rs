@@ -1268,6 +1268,17 @@ pub fn exec_insert(
             return Err(sql_write_in_tx_error(collection));
         }
         return super::registry::run_on_collection_connection(collection, || {
+            // Column-aware models write real columns of an existing table.
+            if let Some(schema) = super::column_mode::require_schema(collection)? {
+                let mut doc = super::column_mode::prepare_write(&schema, &document, true)?;
+                if let Some(k) = key {
+                    // An explicit key means the caller chose the primary key.
+                    if let Some(obj) = doc.as_object_mut() {
+                        obj.insert(schema.pk.clone(), serde_json::json!(k));
+                    }
+                }
+                return crate::db::columns::insert_row(&schema, &doc);
+            }
             crate::db::sql::insert(collection, key, document.clone())
         });
     }
@@ -1317,6 +1328,13 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     // adapter reuses the held tx connection, so uncommitted writes are seen.
     if collection_is_sql(collection) {
         return super::registry::run_on_collection_connection(collection, || {
+            if let Some(schema) = super::column_mode::require_schema(collection)? {
+                let pk = super::column_mode::pk_value(&schema, key)?;
+                return match crate::db::columns::get_row(&schema, &pk)? {
+                    Some(row) => Ok(row),
+                    None => Err(format!("Document '{}/{}' not found", collection, key)),
+                };
+            }
             match crate::db::sql::get(collection, key) {
                 Ok(Some(doc)) => Ok(doc),
                 Ok(None) => Err(format!("Document '{}/{}' not found", collection, key)),
@@ -1367,6 +1385,13 @@ pub fn exec_update(
             return Err(sql_write_in_tx_error(collection));
         }
         return super::registry::run_on_collection_connection(collection, || {
+            if let Some(schema) = super::column_mode::require_schema(collection)? {
+                // Column mode always patches named columns: a whole-row replace
+                // has no meaning when the schema is fixed.
+                let patch = super::column_mode::prepare_write(&schema, &document, false)?;
+                let pk = super::column_mode::pk_value(&schema, key)?;
+                return crate::db::columns::update_row(&schema, &pk, &patch);
+            }
             crate::db::sql::update(collection, key, document.clone(), merge)
         });
     }
@@ -1503,6 +1528,11 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
             return Err(sql_write_in_tx_error(collection));
         }
         return super::registry::run_on_collection_connection(collection, || {
+            if let Some(schema) = super::column_mode::require_schema(collection)? {
+                let pk = super::column_mode::pk_value(&schema, key)?;
+                crate::db::columns::delete_row(&schema, &pk)?;
+                return Ok(serde_json::json!({ "_key": key }));
+            }
             crate::db::sql::delete(collection, key).map(|_| serde_json::json!({ "_key": key }))
         });
     }

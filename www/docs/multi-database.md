@@ -160,6 +160,88 @@ soli db:import posts users  # named only
 
 Each document is upserted as `_key` + `doc`.
 
+## Column-aware models (existing databases)
+
+The document backend above stores every collection as `_key` + `doc`, which means it only reads tables Soli created. To use Soli against a database that **already exists** — a legacy app's schema, a warehouse table, anything with real columns — declare the physical table on the model:
+
+```soli
+# app/models/order.sl
+class Order < Model
+  connection "legacy"    # a postgres or mysql connection
+  table "orders"         # bind to an existing table -> column mode
+end
+```
+
+`table "…"` is what switches the model into **column mode**. Soli then reads and writes the table's real columns, and never creates or alters it.
+
+### What Soli learns, and when
+
+At boot, Soli introspects each declared table (`information_schema`) once and caches the result:
+
+- every column, its type, and whether it is nullable;
+- the **primary key**, detected automatically, including whether the database generates it (`BIGSERIAL` / `IDENTITY` / `AUTO_INCREMENT`), so inserts leave it to the database;
+- whether `created_at` / `updated_at` exist — they are stamped only if they do.
+
+Problems fail the boot with a message naming the connection and table: a missing table, a **composite** primary key (not supported yet), no primary key at all, or a `solidb` connection. Editing a model in `--dev` re-introspects; an `ALTER TABLE` while the server runs needs a restart.
+
+### Type mapping
+
+| PostgreSQL | MySQL | Soli |
+|---|---|---|
+| `int2` / `int4` / `int8` | `smallint` / `mediumint` / `int` / `bigint` | Int |
+| `float4` / `float8` | `float` / `double` | Float |
+| `numeric` | `decimal` | Float (see caveat) |
+| `bool` | `tinyint(1)`, `boolean`, `bit(1)` | Bool |
+| `text` / `varchar` / `char` / `citext` | `char` / `varchar` / `text` / `enum` / `set` | String |
+| `uuid` | — | String |
+| `date`, `timestamp`, `timestamptz` | `date`, `datetime`, `timestamp` | DateTime (native) |
+| `json` / `jsonb` | `json` | Hash / Array |
+| anything else (`bytea`, arrays, geometry, unsigned `bigint`) | `blob`, geometry, unsigned `bigint` | unsupported |
+
+- **Exact numerics** (`numeric`/`decimal`) travel as text and are read as Float, so a value beyond f64's exact range loses precision on read. They are *written* as text, so a stored value keeps its scale.
+- **Unsupported columns** are skipped on read (they come back absent) and error clearly if you try to filter or write them — they never silently corrupt a row.
+- **MySQL has no timezone-aware timestamp**: `datetime`/`timestamp` values are interpreted as UTC.
+
+### Supported operations
+
+```soli
+order = Order.find(42)                       # real primary key, Int or String
+Order.find_by("email", "a@b.c")              # equality on a real column
+Order.where({ "status": "open" }).all
+Order.where({ "assignee_id": null }).all     # compiles to IS NULL
+Order.where({ "status": "open" }).order("created_at", "desc").limit(20).all
+Order.where({ "status": "open" }).count
+Order.where({ "status": "open" }).exists
+Order.sum("total").all                       # sum/avg/min/max on numeric columns
+Order.create({ "name": "Ada", "total": "19.99" })
+order.status = "closed"
+order.save
+order.delete
+Order.transaction(fn() { ... })              # real SQL transaction
+```
+
+`pluck` and `select` work too (projection happens client-side, as on the document path).
+
+### Not supported on column-aware models
+
+Each of these raises an error naming the feature rather than returning wrong data:
+
+| Feature | Why |
+|---|---|
+| Raw/string `.where("doc…")` | SDBQL has no meaning against columns; use the hash form |
+| Associations, `.includes`, `.join` | Slice 2 — needs FK-aware batching over real columns |
+| `group_by`, `.having` | Slice 2 |
+| `delete_all` / `update_all` | Slice 2 |
+| `soft_delete`, `encrypts`, STI, `counter_cache` | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
+| `grouped {}` coalescing, graph, vector, columnar, timeseries | SoliDB features |
+| Migrations against a column table | The schema is yours — manage it with your own tooling; Soli issues no DDL in column mode |
+
+Doc-store models on the same connection keep working exactly as before; column mode is per model.
+
+### Getting data in
+
+If you would rather migrate a SoliDB collection into a table Soli manages, use `soli db:import` (below) and skip column mode entirely. Column mode is for schemas you cannot or do not want to change.
+
 ## Cross-connection rules
 
 | Operation | Rule |
@@ -229,7 +311,8 @@ soli db:migrate down --connection legacy
 
 ## Not yet / limitations
 
-- **Per-connection SoliDB hosts:** registry stores host fields; full multi-host SoliDB routing is still completing — prefer one SoliDB endpoint plus SQL secondaries for now.
+- **Per-connection SoliDB hosts:** registry stores host fields; full multi-host SoliDB routing is still completing — prefer one SoliDB endpoint plus SQL secondaries for now. A mismatch with the env values is rejected at boot.
+- **Column-aware models:** associations/`.includes`, `group_by`, `delete_all`/`update_all`, and composite primary keys are not implemented yet — see [Column-aware models](#column-aware-models-existing-databases).
 - **Request-scoped roles** (read replica / `writing`/`reading`) — not v1.
 - **pgvector** on document tables — SoliDB-only (or a later design).
 

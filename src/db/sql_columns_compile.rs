@@ -96,10 +96,22 @@ pub fn bind_for_column(
             }
             _ => return Err(mismatch()),
         },
-        ColType::Float | ColType::Decimal => match value {
+        ColType::Float => match value {
             serde_json::Value::Number(n) => n.as_f64().map(SqlBind::F64).ok_or_else(mismatch)?,
             serde_json::Value::String(s) => {
                 s.parse::<f64>().map(SqlBind::F64).map_err(|_| mismatch())?
+            }
+            _ => return Err(mismatch()),
+        },
+        // Exact numerics travel as text so no scale is lost in an f64 round
+        // trip, and so the driver never has to bind a float into `numeric`.
+        ColType::Decimal => match value {
+            serde_json::Value::Number(n) => SqlBind::Text(n.to_string()),
+            serde_json::Value::String(s) => {
+                // Validate before sending: a bad string would be a runtime
+                // database error rather than a named field problem.
+                s.parse::<f64>().map_err(|_| mismatch())?;
+                SqlBind::Text(s.clone())
             }
             _ => return Err(mismatch()),
         },
@@ -211,12 +223,20 @@ fn placeholder(d: Dialect, n: usize, ty: ColType) -> String {
     };
     if d == Dialect::Postgres {
         // Text binds into a typed column need an explicit cast on Postgres.
+        // A bare `$n::uuid` makes Postgres infer the *parameter* as uuid, which
+        // then refuses the text we actually send. `$n::text::uuid` pins the
+        // parameter to text and casts server-side.
         return match ty {
-            ColType::Uuid => format!("{base}::uuid"),
-            ColType::Date => format!("{base}::date"),
-            ColType::DateTime => format!("{base}::timestamptz"),
-            ColType::Decimal => format!("{base}::numeric"),
+            ColType::Uuid => format!("{base}::text::uuid"),
+            ColType::Date => format!("{base}::text::date"),
+            ColType::DateTime => format!("{base}::text::timestamptz"),
+            ColType::Decimal => format!("{base}::text::numeric"),
             ColType::Json => format!("{base}::jsonb"),
+            // Binds are i64/f64, but the column may be int2/int4/float4. Cast
+            // so the driver's type matches and Postgres does the
+            // (assignment-legal) narrowing.
+            ColType::Int => format!("{base}::bigint"),
+            ColType::Float => format!("{base}::float8"),
             _ => base,
         };
     }
@@ -542,12 +562,15 @@ mod tests {
     #[test]
     fn select_names_real_columns_and_skips_unreadable_ones() {
         let c = compile_select_cols(Dialect::Postgres, &query()).unwrap();
+        // Numeric and temporal columns are read as text (the exact SQL width is
+        // not knowable from information_schema, and the driver refuses
+        // int4 -> i64) and parsed in Rust; plain text columns select directly.
         assert!(
-            c.sql.starts_with("SELECT \"id\", \"name\", \"qty\""),
+            c.sql
+                .starts_with("SELECT \"id\"::text AS \"id\", \"name\", \"qty\"::text AS \"qty\""),
             "{}",
             c.sql
         );
-        // Exact/temporal types are read as text for a canonical form.
         assert!(c.sql.contains("\"total\"::text AS \"total\""), "{}", c.sql);
         assert!(
             c.sql.contains("\"created_at\"::text AS \"created_at\""),
@@ -601,7 +624,12 @@ mod tests {
         q.offset = Some(20);
         let c = compile_select_cols(Dialect::Postgres, &q).unwrap();
         assert!(c.sql.contains("ORDER BY \"created_at\" DESC"), "{}", c.sql);
-        assert!(c.sql.contains("LIMIT $1 OFFSET $2"), "{}", c.sql);
+        // LIMIT/OFFSET binds are i64, cast like any other integer bind.
+        assert!(
+            c.sql.contains("LIMIT $1::bigint OFFSET $2::bigint"),
+            "{}",
+            c.sql
+        );
         assert_eq!(c.params, vec![SqlBind::I64(10), SqlBind::I64(20)]);
     }
 
@@ -612,7 +640,7 @@ mod tests {
         let mut q = query();
         q.offset = Some(5);
         let pg = compile_select_cols(Dialect::Postgres, &q).unwrap();
-        assert!(pg.sql.contains("OFFSET $1"), "{}", pg.sql);
+        assert!(pg.sql.contains("OFFSET $1::bigint"), "{}", pg.sql);
         assert!(!pg.sql.contains("LIMIT"), "{}", pg.sql);
         // MySQL requires a LIMIT; use its documented maximum.
         let my = compile_select_cols(Dialect::Mysql, &q).unwrap();
@@ -712,9 +740,16 @@ mod tests {
             "meta": { "k": 1 }
         });
         let c = compile_insert_cols(Dialect::Postgres, &schema, &doc).unwrap();
-        assert!(c.sql.contains("::timestamptz"), "{}", c.sql);
-        assert!(c.sql.contains("::numeric"), "{}", c.sql);
+        // Parameters are pinned to text, then cast server-side.
+        assert!(c.sql.contains("::text::timestamptz"), "{}", c.sql);
+        assert!(c.sql.contains("::text::numeric"), "{}", c.sql);
         assert!(c.sql.contains("::jsonb"), "{}", c.sql);
+        // An exact numeric is sent as text so no scale is lost.
+        assert!(
+            c.params.contains(&SqlBind::Text("19.99".into())),
+            "{:?}",
+            c.params
+        );
     }
 
     #[test]

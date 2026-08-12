@@ -270,6 +270,7 @@
 
 pub mod batch;
 pub mod callbacks;
+pub mod column_mode;
 pub mod columnar;
 pub mod core;
 pub mod counter_cache;

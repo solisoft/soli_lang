@@ -1565,4 +1565,36 @@ mod parser_tests {
             other => panic!("expected let, got {:?}", other),
         }
     }
+
+    /// Class-body DSL calls are recognized by name. `connection` and `table`
+    /// were both missing from that list, so `connection "legacy"` — the
+    /// documented multi-database binding — failed to parse as "expected ':'
+    /// and type annotation for field declaration", making the feature
+    /// unusable. Keep every routing declaration parseable.
+    #[test]
+    fn class_body_accepts_database_routing_declarations() {
+        for body in [
+            "connection \"legacy\"",
+            "table \"orders\"",
+            "connection \"legacy\"\n  table \"orders\"",
+            // Parenthesised form must keep working too.
+            "connection(\"legacy\")",
+            "table(\"orders\")",
+        ] {
+            let source = format!("class Order < Model {{\n  {body}\n}}");
+            let tokens = Scanner::new(&source).scan_tokens().expect("lex");
+            Parser::new(tokens)
+                .parse()
+                .unwrap_or_else(|e| panic!("{body:?} should parse in a class body: {e}"));
+        }
+    }
+
+    /// A field genuinely named `table`/`connection` still needs its type
+    /// annotation, so the DSL names must not swallow field declarations.
+    #[test]
+    fn fields_named_like_routing_declarations_still_parse() {
+        let source = "class Seat < Model {\n  table: String;\n  connection: String;\n}";
+        let tokens = Scanner::new(source).scan_tokens().expect("lex");
+        Parser::new(tokens).parse().expect("annotated fields parse");
+    }
 }

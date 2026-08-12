@@ -253,7 +253,7 @@
             <!-- Jobs -->
             <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
                 <h3 class="text-base font-semibold text-white">Background jobs</h3>
-                <p class="mt-1.5 text-sm text-stone-400">SolidB-backed queue with scheduling, priorities, retries, and cron.</p>
+                <p class="mt-1.5 text-sm text-stone-400">In-process queue with scheduling, priorities, retries, and cron &mdash; on any adapter.</p>
                 <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-amber-200">WelcomeEmailJob</span>.perform_in(<span class="text-stone-100">"5 minutes"</span>, { <span class="text-stone-100">"user_id"</span>: <span class="text-amber-300">42</span> })</code></pre>
             </div>
             <!-- Mailer -->
@@ -398,10 +398,13 @@
 <section class="relative py-20 sm:py-28">
     <div class="container mx-auto max-w-6xl px-6 lg:px-8">
         <div class="mb-12 reveal-on-scroll">
-            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">Powered by SoliDB</h2>
+            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">Powered by SoliDB &mdash; or your Postgres</h2>
             <p class="mt-5 text-lg text-stone-400 max-w-3xl">
-                A distributed, ACID-compliant multi-model database built in Rust. Documents, graph,
-                vector search, time series, full-text, and blobs &mdash; the ORM speaks to all of it.
+                SoliDB is the flagship: a distributed, ACID-compliant multi-model database built in
+                Rust. Documents, graph, vector search, time series, full-text, and blobs &mdash; one
+                ORM speaks to all of it. The same models also run on <strong class="text-stone-200">PostgreSQL</strong>
+                and <strong class="text-stone-200">MySQL</strong>, including straight onto the tables
+                of a database you already have.
             </p>
         </div>
 
@@ -432,6 +435,21 @@
             </div>
         </div>
 
+        <div class="grid sm:grid-cols-3 gap-4 mb-10 reveal-on-scroll">
+            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">SoliDB</div>
+                <p class="mt-1.5 text-sm text-stone-400">The full surface: graph, vector, columnar, time series, raw SDBQL, live queries.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">PostgreSQL &amp; MySQL</div>
+                <p class="mt-1.5 text-sm text-stone-400">Document tables with CRUD, filters, aggregates, eager loads, transactions, and migrations.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Your existing schema</div>
+                <p class="mt-1.5 text-sm text-stone-400">Declare <code class="text-amber-300">table "orders"</code> and models map to real columns &mdash; introspected at boot, no DDL ever issued.</p>
+            </div>
+        </div>
+
         <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden reveal-on-scroll">
             <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
                 <span class="text-xs font-mono text-stone-400">app/models/user.sl</span>
@@ -446,17 +464,29 @@
   <span class="text-orange-300">end</span>
 <span class="text-orange-300">end</span>
 
-<span class="text-stone-500"># Chainable query builder — compiles to a single AQL query</span>
+<span class="text-stone-500"># Chainable query builder — one query, same code on every adapter</span>
 <span class="text-stone-300">admins = </span><span class="text-amber-200">User</span>
-  <span class="text-stone-300">.where(</span><span class="text-stone-100">"doc.role == @r"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"r"</span><span class="text-stone-300">: </span><span class="text-stone-100">"admin"</span><span class="text-stone-300"> })</span>
+  <span class="text-stone-300">.where({ </span><span class="text-stone-100">"role"</span><span class="text-stone-300">: </span><span class="text-stone-100">"admin"</span><span class="text-stone-300"> })</span>
   <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
-  <span class="text-stone-300">.limit(</span><span class="text-amber-300">20</span><span class="text-stone-300">).all</span></code></pre>
+  <span class="text-stone-300">.limit(</span><span class="text-amber-300">20</span><span class="text-stone-300">).all</span>
+
+<span class="text-stone-500"># Point a model at a database you already have</span>
+<span class="text-orange-300">class</span> <span class="text-amber-200">Order</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
+  <span class="text-stone-300">connection </span><span class="text-stone-100">"legacy"</span>
+  <span class="text-stone-300">table </span><span class="text-stone-100">"orders"</span>
+<span class="text-orange-300">end</span></code></pre>
             </div>
         </div>
 
         <div class="mt-8 flex flex-wrap items-center gap-6 reveal-on-scroll">
             <a href="/docs/database/models" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
                 <span>Soli ORM docs</span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+            <a href="/docs/database/multi-database" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <span>Postgres, MySQL &amp; multi-DB</span>
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>

@@ -11,6 +11,7 @@
 
 mod adapter;
 mod caps;
+pub mod columns;
 mod error;
 pub mod import;
 pub mod introspect;

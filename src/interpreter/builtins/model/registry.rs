@@ -122,6 +122,10 @@ pub struct ModelMetadata {
     /// Named database connection from class-body `connection "…"`.
     /// `None` = registry default connection.
     pub connection_name: Option<String>,
+    /// Physical table this model maps to, when it declared `table "name"`.
+    /// Its presence is what puts the model in **column mode**: reads and writes
+    /// target real columns of an existing table instead of `_key` + `doc`.
+    pub table_mapping: Option<String>,
 }
 
 lazy_static! {
@@ -142,6 +146,12 @@ lazy_static! {
 
     /// Collection name -> database connection name (for multi-DB routing).
     static ref COLLECTION_CONNECTIONS: RwLock<HashMap<String, String>> =
+        RwLock::new(HashMap::new());
+
+    /// Collection name -> physical table, for column-aware models. Keyed by
+    /// collection so the CRUD paths can look it up without a class handle,
+    /// mirroring COLLECTION_CONNECTIONS.
+    static ref COLLECTION_TABLES: RwLock<HashMap<String, String>> =
         RwLock::new(HashMap::new());
 }
 
@@ -166,6 +176,65 @@ pub fn register_connection(class_name: &str, connection: &str) {
         .write()
         .unwrap()
         .insert(collection, connection.to_string());
+}
+
+/// Bind a model (and its collection) to an existing physical table, putting it
+/// in column mode. Records only — the schema is introspected on first use, so
+/// declaration order inside the class body does not matter.
+pub fn register_table_mapping(class_name: &str, table: &str) {
+    let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
+    {
+        let mut registry = MODEL_REGISTRY.write().unwrap();
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.table_mapping = Some(table.to_string());
+    }
+    COLLECTION_TABLES
+        .write()
+        .unwrap()
+        .insert(collection, table.to_string());
+}
+
+/// Physical table for a collection, when its model declared `table "name"`.
+pub fn get_table_mapping(collection: &str) -> Option<String> {
+    COLLECTION_TABLES.read().unwrap().get(collection).cloned()
+}
+
+/// Every declared column-aware model as `(class, collection, table)`, plus the
+/// document-only declarations it also carries — everything the boot sweep needs
+/// to validate a model without re-reading the registry per check.
+pub struct ColumnModelDecl {
+    pub class_name: String,
+    pub collection: String,
+    pub table: String,
+    pub soft_delete: bool,
+    pub has_encrypted_fields: bool,
+    pub collection_type: Option<String>,
+}
+
+/// Declared column-aware models, for the boot sweep that introspects and
+/// validates them before serving traffic.
+pub fn all_column_models() -> Vec<ColumnModelDecl> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    let types = COLLECTION_TYPES.read().unwrap();
+    let encrypted = ENCRYPTED_COLLECTIONS.read().unwrap();
+    registry
+        .iter()
+        .filter_map(|(class_name, metadata)| {
+            let table = metadata.table_mapping.clone()?;
+            let collection =
+                crate::interpreter::builtins::model::class_name_to_collection(class_name);
+            Some(ColumnModelDecl {
+                class_name: class_name.clone(),
+                soft_delete: metadata.soft_delete,
+                has_encrypted_fields: encrypted
+                    .get(&collection)
+                    .is_some_and(|fields| !fields.is_empty()),
+                collection_type: types.get(&collection).cloned(),
+                collection,
+                table,
+            })
+        })
+        .collect()
 }
 
 /// Connection name for a model class, if declared.
@@ -636,6 +705,9 @@ pub fn clear_model_classes() {
 pub fn clear_all_model_registries() {
     MODEL_REGISTRY.write().unwrap().clear();
     COLLECTION_TYPES.write().unwrap().clear();
+    COLLECTION_TABLES.write().unwrap().clear();
+    // Cached table shapes belong to the mappings just dropped.
+    crate::db::introspect::clear_schema_cache();
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
     STI_PARENTS.with(|m| m.borrow_mut().clear());
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {

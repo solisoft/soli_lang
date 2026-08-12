@@ -1087,6 +1087,18 @@ fn execute_query_builder_inner(qb: &QueryBuilder) -> Value {
 
 /// SQL document path: compile hash filters + order/limit, fetch JSON docs.
 fn execute_query_builder_postgres(qb: &QueryBuilder, collection: &str) -> Value {
+    // Column-aware models read real columns; nothing below applies to them.
+    // An aggregate builder must still reach the scalar path — `.all` on
+    // `Model.sum("x")` means "the sum", not "every row".
+    if super::column_mode::is_column_mode(collection) {
+        if let Some((func, field)) = &qb.aggregation {
+            return execute_sql_aggregate(qb, collection, func, field);
+        }
+        return match execute_column_select(qb, collection) {
+            Ok(value) => value,
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     if qb.traversal.is_some() || qb.through.is_some() {
         return Value::String(
             "Graph / through queries are SoliDB-only. \
@@ -1130,6 +1142,50 @@ fn execute_query_builder_postgres(qb: &QueryBuilder, collection: &str) -> Value 
         },
         Err(e) => Value::String(format!("Error: {e}").into()),
     }
+}
+
+/// Column-aware `.all()` / `.first()`: compile against the real columns, then
+/// hydrate (with temporal columns converted to native DateTime values).
+fn execute_column_select(qb: &QueryBuilder, collection: &str) -> Result<Value, String> {
+    let Some(schema) = super::column_mode::require_schema(collection)? else {
+        return Err(super::column_mode::unsupported("this query", collection));
+    };
+    if qb.pluck_fields.is_some() || qb.select_fields.is_some() {
+        // Projection stays client-side, exactly like the document SQL path.
+        let q = super::column_mode::column_query_from_qb(qb, schema.clone(), collection)?;
+        let rows = crate::db::columns::select_rows(&q)?;
+        return Ok(hydrate_or_project_rows(qb, rows));
+    }
+    let q = super::column_mode::column_query_from_qb(qb, schema.clone(), collection)?;
+    let rows = crate::db::columns::select_rows(&q)?;
+    Ok(super::column_mode::hydrate_column_rows(qb, &schema, rows))
+}
+
+/// Column-aware count / exists / scalar aggregate.
+fn execute_column_scalar(
+    qb: &QueryBuilder,
+    collection: &str,
+    op: ColumnScalarOp,
+) -> Result<Value, String> {
+    let Some(schema) = super::column_mode::require_schema(collection)? else {
+        return Err(super::column_mode::unsupported("this query", collection));
+    };
+    let q = super::column_mode::column_query_from_qb(qb, schema, collection)?;
+    match op {
+        ColumnScalarOp::Count => Ok(Value::Int(crate::db::columns::count(&q)?)),
+        ColumnScalarOp::Exists => Ok(Value::Bool(crate::db::columns::exists(&q)?)),
+        ColumnScalarOp::Aggregate(func, field) => {
+            let json = crate::db::columns::aggregate(&q, func, &field)?;
+            Ok(super::crud::json_to_value_owned(json))
+        }
+    }
+}
+
+/// Which scalar the column path should compute.
+enum ColumnScalarOp {
+    Count,
+    Exists,
+    Aggregate(crate::db::SqlAgg, String),
 }
 
 /// Batch-load associations for SQL parents (Phase 3). Supports belongs_to,
@@ -1540,6 +1596,16 @@ fn execute_sql_aggregate(
             );
         }
     };
+    if super::column_mode::is_column_mode(collection) {
+        return match execute_column_scalar(
+            qb,
+            collection,
+            ColumnScalarOp::Aggregate(sql_func, field.to_string()),
+        ) {
+            Ok(value) => value,
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
+    }
     match list_query_from_qb(qb, collection) {
         Ok(lq) => match crate::db::sql::aggregate(&lq, sql_func, field) {
             Ok(v) => super::crud::json_to_value(&v),
@@ -1965,6 +2031,12 @@ fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
         .unwrap_or("unknown")
         .to_string();
     if crate::db::is_sql() {
+        if super::column_mode::is_column_mode(&collection) {
+            return match execute_column_scalar(qb, &collection, ColumnScalarOp::Count) {
+                Ok(value) => value,
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            };
+        }
         return match list_query_from_qb(qb, &collection) {
             Ok(lq) => match crate::db::sql::count(&lq) {
                 Ok(n) => Value::Int(n),
@@ -2064,6 +2136,15 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if super::column_mode::is_column_mode(&collection) {
+        return Value::String(
+            format!(
+                "Error: {}",
+                super::column_mode::unsupported("`delete_all`", &collection)
+            )
+            .into(),
+        );
+    }
     if crate::db::is_sql() {
         return match list_query_from_qb(qb, &collection) {
             Ok(lq) => match crate::db::sql::delete_all(&lq) {
@@ -2141,6 +2222,15 @@ fn execute_query_builder_update_all_inner(
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+    if super::column_mode::is_column_mode(&collection) {
+        return Value::String(
+            format!(
+                "Error: {}",
+                super::column_mode::unsupported("`update_all`", &collection)
+            )
+            .into(),
+        );
+    }
     if crate::db::is_sql() {
         return match list_query_from_qb(qb, &collection) {
             Ok(lq) => match crate::db::sql::update_all(&lq, update_data) {
@@ -2205,6 +2295,12 @@ fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
         .unwrap_or("unknown")
         .to_string();
     if crate::db::is_sql() {
+        if super::column_mode::is_column_mode(&collection) {
+            return match execute_column_scalar(qb, &collection, ColumnScalarOp::Exists) {
+                Ok(value) => value,
+                Err(e) => Value::String(format!("Error: {e}").into()),
+            };
+        }
         return match list_query_from_qb(qb, &collection) {
             Ok(lq) => match crate::db::sql::exists(&lq) {
                 Ok(b) => Value::Bool(b),

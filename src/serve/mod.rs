@@ -697,6 +697,21 @@ pub fn serve_folder_with_options_and_hooks(
     }
     boot_trace("models loaded");
 
+    // Column-aware models (`table "…"`) map to schemas Soli does not own, so
+    // introspect and validate them now: a missing table, a composite primary
+    // key, or a conflicting class-body declaration must fail here rather than
+    // on the first request that touches the model.
+    {
+        let problems = crate::interpreter::builtins::model::column_mode::validate_declared_models();
+        if !problems.is_empty() {
+            return Err(RuntimeError::General {
+                message: format!("column-aware models:\n  - {}", problems.join("\n  - ")),
+                span: Span::default(),
+            });
+        }
+        boot_trace("column-aware models validated");
+    }
+
     // Dev convenience: ensure class-body index declarations (`index`,
     // `vector_index`, `fulltext_index`, `geo_index`) exist in the DB.
     // Production deploys run `soli db:indexes` (or migrations) instead.

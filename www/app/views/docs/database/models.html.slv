@@ -633,6 +633,14 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4"><code class="text-amber-300">index field_or_fields, options?</code></td>
                     <td class="py-3 px-4 text-gray-400">Declare a secondary index (<code>unique:</code>, <code>type:</code> &mdash; <code>"persistent"</code> default / <code>"hash"</code> / <code>"fulltext"</code> / <code>"bloom"</code> / <code>"cuckoo"</code>, <code>name:</code>)</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">connection name</code></td>
+                    <td class="py-3 px-4 text-gray-400">Bind the model to a named connection from <code>config/database.toml</code>. See <a href="/docs/database/multi-database#model" class="text-amber-400 hover:underline">Multiple Databases</a>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">table name</code></td>
+                    <td class="py-3 px-4 text-gray-400">Bind the model to an <strong class="text-white">existing</strong> SQL table and read/write its real columns instead of <code>_key</code> + <code>doc</code>. Columns, types, and the primary key are introspected at boot; Soli never creates or alters the table. See <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">Column-aware models</a>.</td>
+                </tr>
             </tbody>
         </table>
     </div>

@@ -261,6 +261,8 @@ Class-body declarations for the multi-model and search features:
 | `fulltext_index field, ...` | Declare a fulltext index over one or more fields |
 | `geo_index field` | Declare a geospatial index (`{ "lat": ..., "lon": ... }` field) |
 | `index field_or_fields, options?` | Declare a secondary index (`unique:`, `type:` — `"persistent"` default / `"hash"` / `"fulltext"` / `"bloom"` / `"cuckoo"`, `name:`) |
+| `connection name` | Bind the model to a named connection from `config/database.toml`. See [Multiple Databases](multi-database.md#per-model-connection). |
+| `table name` | Bind the model to an **existing** SQL table and read/write its real columns instead of `_key` + `doc`. Schema (columns, types, primary key) is introspected at boot; Soli never creates or alters the table. See [Column-aware models](multi-database.md#column-aware-models-existing-databases). |
 
 Index declarations are metadata-only at load: dev ensures them at server
 boot; in production run `soli db:indexes` or create them in migrations. See

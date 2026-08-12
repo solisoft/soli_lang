@@ -613,6 +613,208 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     })
 }
 
+// ---------- column-aware model execution ----------
+
+use super::introspect::{ColType, TableSchema};
+use super::sql_columns_compile as cols;
+
+/// Read one row into a JSON object keyed by column name, so downstream
+/// hydration is identical to the document path.
+fn row_to_json(schema: &TableSchema, row: &postgres::Row) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let mut idx = 0usize;
+    for col in &schema.columns {
+        // Unreadable columns are not selected, so they hold no position.
+        if col.ty == ColType::Unknown {
+            continue;
+        }
+        let value = match col.ty {
+            // Numbers arrive as text (see ColType::reads_as_text) so the
+            // driver never has to match an exact SQL width.
+            ColType::Int => row
+                .get::<_, Option<String>>(idx)
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .map(|n| serde_json::json!(n))
+                .unwrap_or(serde_json::Value::Null),
+            ColType::Float => row
+                .get::<_, Option<String>>(idx)
+                .and_then(|s| s.trim().parse::<f64>().ok())
+                .map(|f| serde_json::json!(f))
+                .unwrap_or(serde_json::Value::Null),
+            ColType::Bool => row
+                .get::<_, Option<bool>>(idx)
+                .map(|b| serde_json::json!(b))
+                .unwrap_or(serde_json::Value::Null),
+            ColType::Json => row
+                .get::<_, Option<serde_json::Value>>(idx)
+                .unwrap_or(serde_json::Value::Null),
+            // Text-carried types (timestamps, uuid, exact numerics) plus plain text.
+            _ => row
+                .get::<_, Option<String>>(idx)
+                .map(|s| serde_json::json!(normalize_text(col.ty, &s)))
+                .unwrap_or(serde_json::Value::Null),
+        };
+        out.insert(col.name.clone(), value);
+        idx += 1;
+    }
+    // Mirror the key under `_key` when the table has no such column, so the
+    // instance plumbing (dirty tracking, delete) keeps working unchanged.
+    if !schema.has_column("_key") {
+        if let Some(pk) = out.get(&schema.pk) {
+            let key = match pk {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.insert("_key".to_string(), serde_json::json!(key));
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+/// Postgres renders `timestamptz` as `2026-08-11 10:00:00+00`; re-emit the
+/// RFC 3339 form Soli's DateTime parses.
+fn normalize_text(ty: ColType, raw: &str) -> String {
+    if ty != ColType::DateTime {
+        return raw.to_string();
+    }
+    let mut out = raw.replacen(' ', "T", 1);
+    if let Some(pos) = out.rfind('+') {
+        // "+00" -> "+00:00" so the offset is well-formed.
+        if out.len() - pos == 3 {
+            out.push_str(":00");
+        }
+    }
+    out
+}
+
+fn rows_to_json(schema: &TableSchema, rows: &[postgres::Row]) -> Vec<serde_json::Value> {
+    rows.iter().map(|r| row_to_json(schema, r)).collect()
+}
+
+pub fn col_get(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, String> {
+    let compiled = cols::compile_get_cols(Dialect::Postgres, schema, pk)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column get: {e}"))?;
+        Ok(rows.first().map(|r| row_to_json(schema, r)))
+    })
+}
+
+pub fn col_insert(
+    schema: &std::sync::Arc<TableSchema>,
+    doc: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_insert_cols(Dialect::Postgres, schema, doc)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let row = client
+            .query_one(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column insert: {e}"))?;
+        Ok(row_to_json(schema, &row))
+    })
+}
+
+pub fn col_update(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+    patch: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_update_cols(Dialect::Postgres, schema, pk, patch)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column update: {e}"))?;
+        match rows.first() {
+            Some(row) => Ok(row_to_json(schema, row)),
+            None => Err(format!(
+                "no row in {:?} with {} = {}",
+                schema.table, schema.pk, pk
+            )),
+        }
+    })
+}
+
+pub fn col_delete(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+) -> Result<(), String> {
+    let compiled = cols::compile_delete_cols(Dialect::Postgres, schema, pk)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        client
+            .execute(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column delete: {e}"))?;
+        Ok(())
+    })
+}
+
+pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
+    let compiled = cols::compile_select_cols(Dialect::Postgres, q)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column select: {e}"))?;
+        Ok(rows_to_json(&q.schema, &rows))
+    })
+}
+
+pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
+    let compiled = cols::compile_count_cols(Dialect::Postgres, q)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let row = client
+            .query_one(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column count: {e}"))?;
+        Ok(row.get(0))
+    })
+}
+
+pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
+    let compiled = cols::compile_exists_cols(Dialect::Postgres, q)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column exists: {e}"))?;
+        Ok(!rows.is_empty())
+    })
+}
+
+pub fn col_aggregate(
+    q: &cols::ColumnQuery,
+    func: SqlAgg,
+    field: &str,
+) -> Result<serde_json::Value, String> {
+    let compiled = cols::compile_aggregate_cols(Dialect::Postgres, q, func, field)?;
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let row = client
+            .query_one(&compiled.sql, &refs)
+            .map_err(|e| format!("postgres column aggregate: {e}"))?;
+        if func == SqlAgg::Count {
+            let n: i64 = row.get(0);
+            return Ok(serde_json::json!(n));
+        }
+        let raw: Option<String> = row.get(0);
+        Ok(super::columns::parse_agg_text(raw))
+    })
+}
+
 // ---------- column-aware model introspection ----------
 
 /// Read the shape of an existing table for column mode: columns in declaration
@@ -1253,6 +1455,318 @@ mod integration_tests {
             let kids = select_json_text_in(table, "country", &["FR".into()]).expect("in");
             assert_eq!(kids.len(), 2);
             let _ = drop_table(table);
+        });
+    }
+}
+
+/// Integration tests for column-aware models: a real table with real columns,
+/// exercised end to end. Skips when Postgres is unreachable.
+#[cfg(test)]
+mod column_integration_tests {
+    use super::*;
+    use crate::db::introspect::{clear_schema_cache, ColType};
+    use crate::db::registry::{
+        clear_registry_override, registry_test_lock, set_registry_for_tests, ConnectionRegistry,
+        ConnectionSpec,
+    };
+    use crate::db::sql_columns_compile::ColumnQuery;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    const TABLE: &str = "soli_col_orders";
+
+    fn with_pg(f: impl FnOnce()) {
+        let _g = registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let url = std::env::var("PG_DATABASE_URL")
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .ok()
+            .filter(|u| u.starts_with("postgres"))
+            .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
+        let mut connections = HashMap::new();
+        connections.insert(
+            "primary".into(),
+            ConnectionSpec {
+                name: "primary".into(),
+                adapter: crate::db::Adapter::Postgres,
+                url: Some(url),
+                solidb_host: None,
+                solidb_database: None,
+                solidb_username: None,
+                solidb_password: None,
+                solidb_api_key: None,
+                pool_size: Some(5),
+            },
+        );
+        set_registry_for_tests(ConnectionRegistry {
+            default: "primary".into(),
+            connections,
+            from_file: false,
+        });
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_registry_override();
+                // Schemas are cached per (connection, table); the next test
+                // must not answer from this test's table.
+                clear_schema_cache();
+            }
+        }
+        let _clear = ClearOnDrop;
+        clear_schema_cache();
+        f();
+    }
+
+    /// Create a table with the column types a real legacy schema mixes.
+    fn setup_table() -> bool {
+        if ensure_connected().is_err() {
+            eprintln!("skip: postgres not reachable");
+            return false;
+        }
+        let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
+        execute_ddl(&format!(
+            "CREATE TABLE {TABLE} (
+                 id BIGSERIAL PRIMARY KEY,
+                 name TEXT NOT NULL,
+                 qty INT,
+                 price NUMERIC(10,2),
+                 active BOOLEAN,
+                 meta JSONB,
+                 created_at TIMESTAMPTZ,
+                 updated_at TIMESTAMPTZ
+             )"
+        ))
+        .expect("create table");
+        true
+    }
+
+    fn schema() -> Arc<crate::db::introspect::TableSchema> {
+        crate::db::introspect::get_schema(TABLE).expect("introspect")
+    }
+
+    #[test]
+    fn introspection_reads_columns_types_and_the_generated_key() {
+        with_pg(|| {
+            if !setup_table() {
+                return;
+            }
+            let s = schema();
+            assert_eq!(s.pk, "id");
+            assert_eq!(s.pk_type, ColType::Int);
+            assert!(s.pk_auto, "BIGSERIAL is database-generated");
+            assert_eq!(s.column("name").unwrap().ty, ColType::Text);
+            assert!(!s.column("name").unwrap().nullable);
+            assert_eq!(s.column("qty").unwrap().ty, ColType::Int);
+            assert_eq!(s.column("price").unwrap().ty, ColType::Decimal);
+            assert_eq!(s.column("active").unwrap().ty, ColType::Bool);
+            assert_eq!(s.column("meta").unwrap().ty, ColType::Json);
+            assert_eq!(s.column("created_at").unwrap().ty, ColType::DateTime);
+            assert!(s.has_created_at && s.has_updated_at);
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
+        });
+    }
+
+    #[test]
+    fn crud_round_trips_every_column_type() {
+        with_pg(|| {
+            if !setup_table() {
+                return;
+            }
+            let s = schema();
+
+            // INSERT: the generated key is assigned by the database.
+            let doc = serde_json::json!({
+                "name": "Ada",
+                "qty": 3,
+                "price": "19.99",
+                "active": true,
+                "meta": { "tier": "gold" },
+                "created_at": "2026-08-11T10:00:00Z"
+            });
+            let inserted = super::super::columns::insert_row(&s, &doc).expect("insert");
+            let id = inserted["id"].as_i64().expect("generated id");
+            assert!(id > 0, "the database assigned the key");
+            assert_eq!(inserted["name"], "Ada");
+            assert_eq!(inserted["qty"], 3);
+            assert_eq!(inserted["active"], true);
+            assert_eq!(inserted["meta"]["tier"], "gold");
+            // Exact numerics keep their scale by travelling as text.
+            assert_eq!(inserted["price"], "19.99");
+            // Timestamps come back RFC 3339 so Soli's DateTime can parse them.
+            let created = inserted["created_at"].as_str().expect("created_at");
+            assert!(created.contains('T'), "{created}");
+            // The key is mirrored for the instance plumbing.
+            assert_eq!(inserted["_key"], id.to_string());
+
+            // GET by primary key.
+            let fetched = super::super::columns::get_row(&s, &serde_json::json!(id))
+                .expect("get")
+                .expect("row");
+            assert_eq!(fetched["name"], "Ada");
+
+            // UPDATE patches only the named columns.
+            let updated = super::super::columns::update_row(
+                &s,
+                &serde_json::json!(id),
+                &serde_json::json!({ "qty": 10 }),
+            )
+            .expect("update");
+            assert_eq!(updated["qty"], 10);
+            assert_eq!(updated["name"], "Ada", "unnamed columns are preserved");
+
+            // DELETE.
+            super::super::columns::delete_row(&s, &serde_json::json!(id)).expect("delete");
+            assert!(super::super::columns::get_row(&s, &serde_json::json!(id))
+                .expect("get")
+                .is_none());
+
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
+        });
+    }
+
+    #[test]
+    fn filters_order_count_exists_and_aggregates() {
+        with_pg(|| {
+            if !setup_table() {
+                return;
+            }
+            let s = schema();
+            for (name, qty, price, active) in [
+                ("a", Some(1), "10.00", true),
+                ("b", Some(5), "20.50", true),
+                ("c", None, "30.00", false),
+            ] {
+                let mut doc = serde_json::json!({
+                    "name": name, "price": price, "active": active
+                });
+                if let Some(q) = qty {
+                    doc["qty"] = serde_json::json!(q);
+                }
+                super::super::columns::insert_row(&s, &doc).expect("insert");
+            }
+
+            // Equality filter on a bool column.
+            let mut q = ColumnQuery::new(s.clone());
+            q.eq_filters
+                .insert("active".into(), serde_json::json!(true));
+            assert_eq!(super::super::columns::count(&q).expect("count"), 2);
+            assert!(super::super::columns::exists(&q).expect("exists"));
+
+            // NULL filter must match the row whose qty is NULL — the bug that
+            // `col = NULL` would silently produce zero rows.
+            let mut null_q = ColumnQuery::new(s.clone());
+            null_q
+                .eq_filters
+                .insert("qty".into(), serde_json::Value::Null);
+            let null_rows = super::super::columns::select_rows(&null_q).expect("select");
+            assert_eq!(null_rows.len(), 1);
+            assert_eq!(null_rows[0]["name"], "c");
+
+            // Order + limit.
+            let mut ordered = ColumnQuery::new(s.clone());
+            ordered.order_field = Some("name".into());
+            ordered.order_desc = true;
+            ordered.limit = Some(2);
+            let rows = super::super::columns::select_rows(&ordered).expect("select");
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0]["name"], "c");
+            assert_eq!(rows[1]["name"], "b");
+
+            // Aggregates over real numeric columns.
+            let all = ColumnQuery::new(s.clone());
+            let sum = super::super::columns::aggregate(&all, SqlAgg::Sum, "price").expect("sum");
+            assert_eq!(sum.as_f64().expect("numeric sum"), 60.50);
+            let max = super::super::columns::aggregate(&all, SqlAgg::Max, "qty").expect("max");
+            assert_eq!(max.as_i64(), Some(5));
+            let count = super::super::columns::aggregate(&all, SqlAgg::Count, "id").expect("count");
+            assert_eq!(count.as_i64(), Some(3));
+
+            // A non-numeric aggregate is refused, not silently zero.
+            let err = super::super::columns::aggregate(&all, SqlAgg::Sum, "name")
+                .expect_err("sum over text must error");
+            assert!(err.contains("not numeric"), "{err}");
+
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
+        });
+    }
+
+    #[test]
+    fn column_writes_participate_in_transactions() {
+        with_pg(|| {
+            if !setup_table() {
+                return;
+            }
+            clear_transaction();
+            let s = schema();
+
+            // Committed insert survives.
+            begin_transaction(None).expect("begin");
+            let kept =
+                super::super::columns::insert_row(&s, &serde_json::json!({ "name": "keep" }))
+                    .expect("insert in tx");
+            commit_transaction().expect("commit");
+            let id = kept["id"].as_i64().unwrap();
+            assert!(super::super::columns::get_row(&s, &serde_json::json!(id))
+                .expect("get")
+                .is_some());
+
+            // Rolled-back insert vanishes — proof the column path reuses the
+            // transaction's held connection rather than its own.
+            begin_transaction(None).expect("begin2");
+            let dropped =
+                super::super::columns::insert_row(&s, &serde_json::json!({ "name": "drop" }))
+                    .expect("insert in tx2");
+            let dropped_id = dropped["id"].as_i64().unwrap();
+            rollback_transaction().expect("rollback");
+            assert!(
+                super::super::columns::get_row(&s, &serde_json::json!(dropped_id))
+                    .expect("get")
+                    .is_none(),
+                "a rolled-back column write must not persist"
+            );
+
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
+        });
+    }
+
+    #[test]
+    fn composite_and_missing_primary_keys_fail_introspection() {
+        with_pg(|| {
+            if ensure_connected().is_err() {
+                return;
+            }
+            let composite = "soli_col_composite";
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {composite}"));
+            execute_ddl(&format!(
+                "CREATE TABLE {composite} (
+                     order_id BIGINT NOT NULL,
+                     item_id BIGINT NOT NULL,
+                     PRIMARY KEY (order_id, item_id)
+                 )"
+            ))
+            .expect("create composite table");
+            let err = crate::db::introspect::get_schema(composite)
+                .expect_err("composite PK must be refused");
+            assert!(err.contains("composite primary key"), "{err}");
+            assert!(err.contains("order_id, item_id"), "{err}");
+
+            let keyless = "soli_col_keyless";
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {keyless}"));
+            execute_ddl(&format!("CREATE TABLE {keyless} (message TEXT)"))
+                .expect("create keyless table");
+            let err =
+                crate::db::introspect::get_schema(keyless).expect_err("missing PK must be refused");
+            assert!(err.contains("no primary key"), "{err}");
+
+            // A table that does not exist names the connection and the table.
+            let err = crate::db::introspect::get_schema("soli_col_ghost")
+                .expect_err("missing table must be refused");
+            assert!(err.contains("not found"), "{err}");
+            assert!(err.contains("never creates or alters"), "{err}");
+
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {composite}"));
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {keyless}"));
         });
     }
 }

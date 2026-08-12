@@ -4,6 +4,42 @@
 
 ### Added
 
+- **Column-aware models — use Soli against an existing relational database.**
+  Until now the SQL adapters were a document store *on top of* SQL: every table
+  was `_key` + `doc JSONB`, so pointing a connection at a real schema failed on
+  the first query ("column doc does not exist"). A model can now bind to an
+  existing table and read/write its **real columns**:
+
+  ```soli
+  class Order < Model
+    connection "legacy"    # a postgres or mysql connection
+    table "orders"         # bind to an existing table -> column mode
+  end
+  ```
+
+  - **Schema by introspection.** At boot Soli reads `information_schema` once
+    per table and caches it: columns, types, nullability, and the **primary key**
+    — including whether the database generates it (`BIGSERIAL` / `IDENTITY` /
+    `AUTO_INCREMENT`), so inserts leave it alone. `created_at`/`updated_at` are
+    stamped only when those columns actually exist.
+  - **Full CRUD**: `find` (Int or String key), `find_by`/`first_by`, hash
+    `.where` (including `{field: null}` → `IS NULL`), `order`/`limit`/`offset`,
+    `count`/`exists`, `sum`/`avg`/`min`/`max`, `create`/`save`/`update`/`delete`,
+    `pluck`/`select`, and `Model.transaction` (which works because the column
+    path reuses the same held connection as the document path).
+  - **Never issues DDL.** Column mode maps to a schema Soli does not own, so
+    there is no auto-create, no migration, and no index sync against it.
+  - **Fails loudly, never silently.** A missing table, composite primary key,
+    keyless table, or `solidb` connection fails at boot naming the connection and
+    table. Writing an unknown field, filtering an unsupported column type, or
+    summing a text column errors with the column and its type. Unsupported
+    features (associations/`.includes`, `group_by`, `delete_all`/`update_all`,
+    soft-delete, `encrypts`, STI) each raise a message naming the feature and
+    listing what does work.
+  - Doc-store models on the same connection are untouched: column mode is
+    per-model, and the document compiler was left byte-for-byte alone (the column
+    path is a separate IR, `src/db/sql_columns_compile.rs`).
+
 - **Soli-side background job engine** — jobs now run *inside* the Soli process
   instead of being delegated to SolidB's queue and delivered back through a
   signed webhook. Jobs are rows in a `_jobs` collection on the default
@@ -35,6 +71,16 @@
     `SOLI_JOBS_MAX_RETRIES` (3), `SOLI_JOBS_RETENTION_SECS` (604800).
   - `soli new` now creates `app/jobs/`, so a generated app can add a job without
     also having to create the directory the engine looks for.
+
+### Fixed
+
+- **`connection "name"` never parsed in a class body.** The multi-database
+  binding shipped documented but unusable: the parser recognizes class-body DSL
+  calls by name and `connection` was missing from that list, so a model
+  declaring it failed to load with "expected ':' and type annotation for field
+  declaration". Both `connection` and the new `table` are registered now, with
+  parser tests covering the bare and parenthesised forms — and confirming a
+  field genuinely named `table`/`connection` still needs its annotation.
 
 ### Changed
 

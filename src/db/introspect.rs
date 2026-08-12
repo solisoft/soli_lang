@@ -37,12 +37,23 @@ impl ColType {
         matches!(self, ColType::Int | ColType::Float | ColType::Decimal)
     }
 
-    /// Whether values of this type are carried as text through the driver and
-    /// normalized in Rust (timestamps, uuid, exact numerics).
+    /// Whether values of this type are carried as **text** through the driver
+    /// and parsed in Rust.
+    ///
+    /// Numbers are included deliberately. `information_schema` collapses
+    /// int2/int4/int8 (and float4/float8) into one Soli type, so the reader
+    /// cannot know the exact width — and the Postgres driver refuses to
+    /// deserialize an `int4` into an `i64`. Reading text and parsing sidesteps
+    /// width entirely and gives both backends one canonical form.
     pub fn reads_as_text(self) -> bool {
         matches!(
             self,
-            ColType::Uuid | ColType::Date | ColType::DateTime | ColType::Decimal
+            ColType::Uuid
+                | ColType::Date
+                | ColType::DateTime
+                | ColType::Decimal
+                | ColType::Int
+                | ColType::Float
         )
     }
 
@@ -446,8 +457,11 @@ mod tests {
     fn numeric_and_text_read_classifications() {
         assert!(ColType::Int.is_numeric() && ColType::Decimal.is_numeric());
         assert!(!ColType::Text.is_numeric() && !ColType::Bool.is_numeric());
-        // Types the driver hands back as text and Rust normalizes.
+        // Types the driver hands back as text and Rust parses. Numbers are
+        // included: the exact SQL width is unknown, and the Postgres driver
+        // refuses int4 -> i64.
         assert!(ColType::DateTime.reads_as_text() && ColType::Uuid.reads_as_text());
-        assert!(!ColType::Int.reads_as_text() && !ColType::Json.reads_as_text());
+        assert!(ColType::Int.reads_as_text() && ColType::Float.reads_as_text());
+        assert!(!ColType::Json.reads_as_text() && !ColType::Bool.reads_as_text());
     }
 }

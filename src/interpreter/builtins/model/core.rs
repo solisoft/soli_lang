@@ -237,6 +237,23 @@ fn sql_find_first_by(
             class.name
         ));
     }
+    // Column-aware models filter on a real column.
+    if let Some(schema) = super::column_mode::require_schema(collection)? {
+        let mut q = crate::db::sql_columns_compile::ColumnQuery::new(schema.clone());
+        q.eq_filters.insert(field.to_string(), value);
+        if order_by_key {
+            q.order_field = Some(schema.pk.clone());
+        }
+        q.limit = Some(1);
+        let rows = crate::db::columns::select_rows(&q)?;
+        return Ok(match rows.into_iter().next() {
+            Some(row) => super::column_mode::convert_temporal_fields(
+                &schema,
+                super::crud::json_doc_to_instance_owned(class, row),
+            ),
+            None => Value::Null,
+        });
+    }
     let mut eq_filters = std::collections::BTreeMap::new();
     eq_filters.insert(field.to_string(), value);
     let lq = crate::db::ListQuery {
@@ -1859,7 +1876,23 @@ impl Model {
                                 }
                             }
                         }
-                        inst_mut.set("id", json_to_value(&id));
+                        // `id` is the row's identifier, not the whole response.
+                        // The response shape differs per backend — SoliDB
+                        // returns `{_key, _id, _rev}`, while a column-aware
+                        // insert returns every column of the stored row — so
+                        // take the row's own `id` when it has one, else its
+                        // `_key`. Assigning the response object wholesale made
+                        // `instance.id` a hash (and, in column mode, clobbered
+                        // the real `id` column that hydration had just set).
+                        let id_value = match &id {
+                            serde_json::Value::Object(map) => map
+                                .get("id")
+                                .or_else(|| map.get("_key"))
+                                .map(json_to_value)
+                                .unwrap_or_else(|| json_to_value(&id)),
+                            other => json_to_value(other),
+                        };
+                        inst_mut.set("id", id_value);
                         super::dirty::finalize_persist(&mut inst_mut);
                         super::counter_cache::bump_for_instance(&inst_mut, 1);
                         drop(inst_mut);
@@ -1886,9 +1919,15 @@ impl Model {
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    // A column-aware model on a serial/identity key is looked
+                    // up with a number (`Order.find(42)`), which is also what
+                    // `instance.id` hands back. Keys travel as strings
+                    // internally; the column layer converts back to the
+                    // primary key's real type.
+                    Some(Value::Int(n)) => n.to_string().into(),
                     Some(other) => {
                         return Err(format!(
-                            "Model.find() expects string id, got {}",
+                            "Model.find() expects a string or integer id, got {}",
                             other.type_name()
                         ))
                     }
@@ -2342,9 +2381,11 @@ impl Model {
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    // Integer keys: see Model.find.
+                    Some(Value::Int(n)) => n.to_string().into(),
                     Some(other) => {
                         return Err(format!(
-                            "Model.update() expects string id, got {}",
+                            "Model.update() expects a string or integer id, got {}",
                             other.type_name()
                         ))
                     }
@@ -2437,9 +2478,11 @@ impl Model {
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    // Integer keys: see Model.find.
+                    Some(Value::Int(n)) => n.to_string().into(),
                     Some(other) => {
                         return Err(format!(
-                            "Model.delete() expects string id, got {}",
+                            "Model.delete() expects a string or integer id, got {}",
                             other.type_name()
                         ))
                     }
@@ -5442,6 +5485,40 @@ pub fn register_model_builtins(env: &mut Environment) {
             // fast rather than on first query.
             crate::db::registry().resolve(Some(&name))?;
             super::registry::register_connection(&class_name, &name);
+            Ok(Value::Null)
+        })),
+    );
+
+    // table "orders" — bind the model to an EXISTING relational table with real
+    // columns (column mode) instead of the `_key` + `doc` document layout.
+    //
+    // Records the mapping only: the schema is introspected on first use (and by
+    // the boot sweep), so `connection` and `table` may appear in either order,
+    // and loading a class never depends on the database being reachable.
+    env.define(
+        "table".to_string(),
+        Value::NativeFunction(NativeFunction::new("table", Some(2), |args| {
+            let class_name = get_class_name_from_class(args)?;
+            let name = match args.get(1) {
+                Some(Value::String(s) | Value::Symbol(s)) => s.to_string(),
+                Some(other) => {
+                    return Err(format!(
+                        "table() expects a table name (string or symbol), got {}",
+                        other.type_name()
+                    ))
+                }
+                None => return Err("table() requires a table name".to_string()),
+            };
+            // Reject a name that could not be quoted safely, at declaration
+            // rather than at query time.
+            crate::db::sql_compile::quote_ident(&name).map_err(|e| {
+                format!(
+                    "table {name:?} is not a usable SQL identifier ({e}). \
+                     Column mode supports plain tables in the connection's \
+                     default schema — no \"schema.table\" qualification."
+                )
+            })?;
+            super::registry::register_table_mapping(&class_name, &name);
             Ok(Value::Null)
         })),
     );

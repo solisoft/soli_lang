@@ -430,6 +430,10 @@ impl Parser {
                 "vector_index",
                 "fulltext_index",
                 "geo_index",
+                // Multi-database routing: bind the model to a named connection
+                // and/or an existing physical table (column mode).
+                "connection",
+                "table",
             ];
             // Bare class-level macros (no parentheses needed). A following
             // `:` means it's really a field declaration (`timeseries: Bool`),

@@ -72,9 +72,18 @@ pub fn snapshot() -> Vec<LoggedJobCall> {
 mod tests {
     use super::*;
     use crate::jobs::{iso_from_unix, now_iso, unix_now, JobDoc};
+    use std::sync::Mutex;
+
+    /// `ENABLED` is a process-global flag, so these tests must not run
+    /// concurrently — one flipping it off mid-run would empty another's log.
+    fn log_lock() -> &'static Mutex<()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        &LOCK
+    }
 
     #[test]
     fn recording_is_a_noop_while_disabled() {
+        let _g = log_lock().lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(false);
         clear();
         record(&JobDoc::new(
@@ -88,6 +97,7 @@ mod tests {
 
     #[test]
     fn enabled_log_captures_metadata_but_never_args() {
+        let _g = log_lock().lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(true);
         clear();
         let mut doc = JobDoc::new(
@@ -116,6 +126,7 @@ mod tests {
 
     #[test]
     fn future_enqueues_are_flagged_delayed() {
+        let _g = log_lock().lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(true);
         clear();
         let later = iso_from_unix(unix_now() + 300);

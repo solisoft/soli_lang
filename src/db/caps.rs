@@ -22,6 +22,8 @@ pub struct BackendCaps {
     pub auto_create_collection: bool,
     pub raw_sdbql: bool,
     pub raw_sql: bool,
+    /// Models can map to existing tables with real columns (`table "…"`).
+    pub column_tables: bool,
 }
 
 impl BackendCaps {
@@ -44,6 +46,7 @@ impl BackendCaps {
             auto_create_collection: true,
             raw_sdbql: true,
             raw_sql: false,
+            column_tables: false,
         }
     }
 
@@ -68,6 +71,7 @@ impl BackendCaps {
             auto_create_collection: true,
             raw_sdbql: false,
             raw_sql: true,
+            column_tables: true,
         }
     }
 
@@ -101,6 +105,7 @@ mod tests {
         assert!(!c.string_sdbql_where && !c.graph);
         assert!(!c.vector_search); // pgvector still optional / deferred
         assert!(c.raw_sql);
+        assert!(c.column_tables);
     }
 
     #[test]

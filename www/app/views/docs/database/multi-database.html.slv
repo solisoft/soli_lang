@@ -286,6 +286,108 @@ soli db:import posts users  # named only</code></pre>
         </p>
     </div>
 
+    <h2 id="columns" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Column-aware models (existing databases)</h2>
+    <p class="text-gray-400 mb-6">
+        The document backend above stores every collection as <code class="text-cyan-400">_key</code> + <code class="text-cyan-400">doc</code>, so it only reads tables Soli created. To point Soli at a database that <strong class="text-white">already exists</strong> &mdash; a legacy app's schema, a warehouse table, anything with real columns &mdash; declare the physical table on the model.
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/order.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Order &lt; Model
+  connection "legacy"    # a postgres or mysql connection
+  table "orders"         # bind to an existing table -&gt; column mode
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        <code class="text-cyan-400">table "…"</code> is what switches the model into <strong class="text-white">column mode</strong>: Soli reads and writes the table's real columns, and never creates or alters it.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">What Soli learns, and when</h3>
+    <p class="text-gray-400 mb-4">At boot, Soli introspects each declared table once (via <code class="text-cyan-400">information_schema</code>) and caches the result:</p>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-6">
+        <li>every column, its type, and whether it is nullable;</li>
+        <li>the <strong class="text-white">primary key</strong>, detected automatically &mdash; including whether the database generates it (<code class="text-cyan-400">BIGSERIAL</code> / <code class="text-cyan-400">IDENTITY</code> / <code class="text-cyan-400">AUTO_INCREMENT</code>), so inserts leave it to the database;</li>
+        <li>whether <code class="text-cyan-400">created_at</code> / <code class="text-cyan-400">updated_at</code> exist &mdash; they are stamped only if they do.</li>
+    </ul>
+    <p class="text-gray-400 mb-8">
+        Problems fail the boot with a message naming the connection and table: a missing table, a <strong class="text-white">composite</strong> primary key (not supported yet), no primary key at all, or a <code class="text-cyan-400">solidb</code> connection. Editing a model in <code class="text-cyan-400">--dev</code> re-introspects; an <code class="text-cyan-400">ALTER TABLE</code> while the server runs needs a restart.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Type mapping</h3>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">PostgreSQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">MySQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>int2</code> / <code>int4</code> / <code>int8</code></td><td class="py-3 px-4"><code>smallint</code> … <code>bigint</code></td><td class="py-3 px-4">Int</td></tr>
+                <tr><td class="py-3 px-4"><code>float4</code> / <code>float8</code></td><td class="py-3 px-4"><code>float</code> / <code>double</code></td><td class="py-3 px-4">Float</td></tr>
+                <tr><td class="py-3 px-4"><code>numeric</code></td><td class="py-3 px-4"><code>decimal</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(precision caveat)</span></td></tr>
+                <tr><td class="py-3 px-4"><code>bool</code></td><td class="py-3 px-4"><code>tinyint(1)</code>, <code>boolean</code>, <code>bit(1)</code></td><td class="py-3 px-4">Bool</td></tr>
+                <tr><td class="py-3 px-4"><code>text</code> / <code>varchar</code> / <code>citext</code></td><td class="py-3 px-4"><code>varchar</code> / <code>text</code> / <code>enum</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>uuid</code></td><td class="py-3 px-4">&mdash;</td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>date</code>, <code>timestamptz</code></td><td class="py-3 px-4"><code>date</code>, <code>datetime</code></td><td class="py-3 px-4">DateTime (native)</td></tr>
+                <tr><td class="py-3 px-4"><code>json</code> / <code>jsonb</code></td><td class="py-3 px-4"><code>json</code></td><td class="py-3 px-4">Hash / Array</td></tr>
+                <tr><td class="py-3 px-4"><code>bytea</code>, arrays, geometry</td><td class="py-3 px-4"><code>blob</code>, geometry, unsigned <code>bigint</code></td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
+        <li><strong class="text-white">Exact numerics</strong> travel as text and read as Float, so a value beyond f64's exact range loses precision on read; writes keep their scale.</li>
+        <li><strong class="text-white">Unsupported columns</strong> are skipped on read and error clearly if you filter or write them &mdash; they never silently corrupt a row.</li>
+        <li><strong class="text-white">MySQL stores no offset</strong>: <code class="text-cyan-400">datetime</code>/<code class="text-cyan-400">timestamp</code> values are interpreted as UTC.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Supported operations</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">order = Order.find(42)                       # real primary key, Int or String
+Order.find_by("email", "a@b.c")              # equality on a real column
+Order.where({ "status": "open" }).all
+Order.where({ "assignee_id": null }).all     # compiles to IS NULL
+Order.where({ "status": "open" }).order("created_at", "desc").limit(20).all
+Order.where({ "status": "open" }).count
+Order.where({ "status": "open" }).exists
+Order.sum("total").all                       # sum/avg/min/max on numeric columns
+Order.create({ "name": "Ada", "total": "19.99" })
+order.status = "closed"
+order.save
+order.delete
+Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8"><code class="text-cyan-400">pluck</code> and <code class="text-cyan-400">select</code> work too (projection happens client-side, as on the document path).</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Not supported on column-aware models</h3>
+    <p class="text-gray-400 mb-4">Each of these raises an error naming the feature rather than returning wrong data:</p>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Feature</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Why</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4">Raw/string <code>.where("doc…")</code></td><td class="py-3 px-4">SDBQL has no meaning against columns &mdash; use the hash form</td></tr>
+                <tr><td class="py-3 px-4">Associations, <code>.includes</code>, <code>.join</code></td><td class="py-3 px-4">Slice 2 &mdash; needs FK-aware batching over real columns</td></tr>
+                <tr><td class="py-3 px-4"><code>group_by</code>, <code>.having</code></td><td class="py-3 px-4">Slice 2</td></tr>
+                <tr><td class="py-3 px-4"><code>delete_all</code> / <code>update_all</code></td><td class="py-3 px-4">Slice 2</td></tr>
+                <tr><td class="py-3 px-4"><code>soft_delete</code>, <code>encrypts</code>, STI, <code>counter_cache</code></td><td class="py-3 px-4">Assume Soli-managed document storage; declaring one alongside <code>table</code> fails at boot</td></tr>
+                <tr><td class="py-3 px-4"><code>grouped {}</code>, graph, vector, columnar, timeseries</td><td class="py-3 px-4">SoliDB features</td></tr>
+                <tr><td class="py-3 px-4">Migrations against a column table</td><td class="py-3 px-4">The schema is yours &mdash; Soli issues no DDL in column mode</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">Doc-store models on the same connection keep working exactly as before; column mode is per model.</p>
+
     <h2 id="hybrid" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Hybrid example</h2>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">

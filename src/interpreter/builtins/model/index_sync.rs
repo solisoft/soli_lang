@@ -19,6 +19,14 @@ pub fn sync_declared_indexes() -> Vec<String> {
     let mut report = Vec::new();
 
     for (collection, secondary, vector, fulltext, geo) in super::registry::all_declared_indexes() {
+        // Column-aware models map to a schema Soli does not own — never issue
+        // index DDL against it.
+        if super::column_mode::is_column_mode(&collection) {
+            report.push(format!(
+                "skipped {collection}: column-aware models manage their own schema"
+            ));
+            continue;
+        }
         // --- secondary + fulltext (same route family)
         let existing = list_names(&format!("/index/{}", collection), "indexes");
         for def in &secondary {
