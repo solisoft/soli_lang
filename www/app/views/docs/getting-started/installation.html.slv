@@ -89,7 +89,7 @@ soli --version</code></pre>
         To shrink the binary when you only need SoliDB, drop optional subsystems at build time
         (see <a href="/docs/getting-started/configuration#keeping-memory-low" class="text-amber-400 hover:underline">Keeping memory low</a>):
     </p>
-    <pre data-filename="Terminal"><code class="language-bash text-sm"># SoliDB-only: no Postgres/MySQL clients, no PASETO
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># SoliDB-only: no Postgres/MySQL/SQLite clients, no PASETO
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph</code></pre>
 

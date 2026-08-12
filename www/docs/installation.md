@@ -79,7 +79,7 @@ To shrink the binary (and baseline RSS) when you only need SoliDB, drop optional
 subsystems at build time — see [Configuration → Slim binary](configuration.md#slim-binary-cargo-features):
 
 ```bash
-# SoliDB-only: no Postgres/MySQL clients, no PASETO
+# SoliDB-only: no Postgres/MySQL/SQLite clients, no PASETO
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph
 ```

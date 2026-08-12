@@ -514,7 +514,7 @@ let db = MigrationDb();
         Ok(())
     }
 
-    /// SQL migration runner (Postgres/MySQL): create_table / drop_table.
+    /// SQL migration runner (Postgres / MySQL / SQLite): create_table / drop_table.
     fn execute_migration_sql(&self, source: &str, direction: &str) -> Result<(), String> {
         let full_source = format!(
             r#"

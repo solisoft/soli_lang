@@ -5,7 +5,7 @@
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Soli uses SoliDB as the default full-featured backend. Configure a single connection with environment variables.
-            For Postgres/MySQL and named multi-DB setups, see
+            For the Postgres, MySQL, and SQLite adapters and named multi-DB setups, see
             <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.
         </p>
     </div>
@@ -465,7 +465,7 @@ SOLIDB_API_KEY=</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr>
-                    <td class="py-3 px-4">Whole app on Postgres/MySQL</td>
+                    <td class="py-3 px-4">Whole app on Postgres, MySQL, or SQLite</td>
                     <td class="py-3 px-4"><code class="text-cyan-400">SOLI_DB_ADAPTER</code> + <code class="text-cyan-400">DATABASE_URL</code> &mdash;
                         <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a></td>
                 </tr>
@@ -479,7 +479,7 @@ SOLIDB_API_KEY=</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4">Smaller binary (no SQL client)</td>
-                    <td class="py-3 px-4">Cargo features <code class="text-cyan-400">postgres</code> / <code class="text-cyan-400">mysql</code> &mdash;
+                    <td class="py-3 px-4">Cargo features <code class="text-cyan-400">postgres</code> / <code class="text-cyan-400">mysql</code> / <code class="text-cyan-400">sqlite</code> &mdash;
                         <a href="/docs/getting-started/configuration#slim-binary-cargo-features" class="text-amber-400 hover:underline">Slim binary</a></td>
                 </tr>
             </tbody>

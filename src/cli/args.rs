@@ -165,7 +165,7 @@ pub enum Command {
         folder: String,
     },
     /// `soli db:import [collection…]` — copy SoliDB collections into the
-    /// configured SQL document backend (`SOLI_DB_ADAPTER=postgres|mysql` +
+    /// configured SQL document backend (`SOLI_DB_ADAPTER=postgres|mysql|sqlite` +
     /// `DATABASE_URL`). Reads from SOLIDB_*; writes JSON document tables.
     DbImport {
         collections: Vec<String>,

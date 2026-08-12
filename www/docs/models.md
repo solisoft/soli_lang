@@ -2,7 +2,31 @@
 
 Models manage data and business logic in your MVC application. SoliLang provides a simple OOP-style interface for database operations.
 
-To bind a model to a named database (SoliDB, Postgres, or MySQL), use class-body `connection "name"` with `config/database.toml` — see **[Multiple Databases](multi-database.md)**.
+To bind a model to a named database (SoliDB, Postgres, MySQL, or SQLite), use class-body `connection "name"` with `config/database.toml` — see **[Multiple Databases](multi-database.md)**.
+
+## Which backends support what
+
+This page documents the full surface, which is what **SoliDB** (the default)
+provides. The SQL adapters — `postgres`, `mysql`, `sqlite` — run the portable
+part of it; anything they do not implement raises an error naming the feature
+rather than returning wrong rows.
+
+| Area | SoliDB | Postgres / MySQL / SQLite |
+|------|--------|---------------------------|
+| CRUD, validations, callbacks, scopes, soft delete | ✓ | ✓ |
+| Hash `.where`, order/limit/offset, count, exists | ✓ | ✓ |
+| Aggregations (`sum`/`avg`/`min`/`max`/`count`), multi-row `group_by` | ✓ | ✓ |
+| `pluck` / `select`, `delete_all` / `update_all`, batch ops | ✓ | ✓ |
+| `.includes` for `belongs_to` / `has_many` / `has_one` / HABTM | ✓ | ✓ (batched) |
+| `Transactions` (`Model.transaction`) | ✓ | ✓ |
+| Raw SDBQL string `.where("doc…")`, `.join`, `.having` | ✓ | ✗ |
+| `.includes` with `through:` | ✓ | ✗ (planned) |
+| Graph/edge models, vector search, timeseries, columnar, `grouped {}` | ✓ | ✗ |
+| Encrypted attributes, STI, counter caches | ✓ | ✓ on document tables, ✗ in column mode |
+
+A model that declares `table "orders"` runs in **column mode** against an
+existing relational schema; its narrower support line is documented under
+[Column-aware models](multi-database.md#column-aware-models-existing-databases).
 
 ## Defining Models
 

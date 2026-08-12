@@ -4,7 +4,8 @@
 //! table with real columns, rather than the `_key` + `doc` document layout the
 //! rest of the SQL backend uses. To read and write such a table, Soli needs to
 //! know its columns, their types, and its primary key — so it asks the database
-//! (`information_schema`) once and caches the answer.
+//! once (`information_schema`, or `PRAGMA table_info` on SQLite) and caches the
+//! answer.
 //!
 //! Column mode never issues DDL. The schema is owned by whoever created the
 //! table; Soli only reads its shape.
@@ -310,10 +311,27 @@ fn introspect(connection: &str, table: &str) -> Result<TableSchema, String> {
                 Err(feature_missing("mysql", table))
             }
         }
+        super::Adapter::Sqlite => {
+            #[cfg(feature = "sqlite")]
+            {
+                let raw = super::sqlite::introspect_table(table)?;
+                build_schema(connection, table, raw, |t, _| {
+                    super::sqlite::sqlite_coltype(t)
+                })
+            }
+            #[cfg(not(feature = "sqlite"))]
+            {
+                Err(feature_missing("sqlite", table))
+            }
+        }
     }
 }
 
-#[cfg(any(not(feature = "postgres"), not(feature = "mysql")))]
+#[cfg(any(
+    not(feature = "postgres"),
+    not(feature = "mysql"),
+    not(feature = "sqlite")
+))]
 fn feature_missing(adapter: &str, table: &str) -> String {
     format!(
         "column-aware model for table {table:?} needs the `{adapter}` adapter, which is \

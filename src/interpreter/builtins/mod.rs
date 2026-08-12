@@ -494,7 +494,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register SoliDB functions
     solidb::register_solidb_builtins(env);
 
-    // SQL migration DDL helpers (create_table / drop_table) for postgres/mysql.
+    // SQL migration DDL helpers (create_table / drop_table) for the SQL adapters.
     let sql_create = Value::NativeFunction(NativeFunction::new(
         "__soli_sql_create_table",
         Some(1),
@@ -505,7 +505,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
             };
             if !crate::db::is_sql() {
                 return Err(
-                    "__soli_sql_create_table requires SOLI_DB_ADAPTER=postgres|mysql".into(),
+                    "__soli_sql_create_table requires SOLI_DB_ADAPTER=postgres|mysql|sqlite".into(),
                 );
             }
             crate::db::sql::ensure_table(&name)?;
@@ -521,7 +521,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
                 _ => return Err("__soli_sql_drop_table(name) expects a string".into()),
             };
             if !crate::db::is_sql() {
-                return Err("__soli_sql_drop_table requires SOLI_DB_ADAPTER=postgres|mysql".into());
+                return Err(
+                    "__soli_sql_drop_table requires SOLI_DB_ADAPTER=postgres|mysql|sqlite".into(),
+                );
             }
             crate::db::sql::drop_table(&name)?;
             Ok(Value::Bool(true))

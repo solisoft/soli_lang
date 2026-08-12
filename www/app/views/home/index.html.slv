@@ -402,9 +402,9 @@
             <p class="mt-5 text-lg text-stone-400 max-w-3xl">
                 SoliDB is the flagship: a distributed, ACID-compliant multi-model database built in
                 Rust. Documents, graph, vector search, time series, full-text, and blobs &mdash; one
-                ORM speaks to all of it. The same models also run on <strong class="text-stone-200">PostgreSQL</strong>
-                and <strong class="text-stone-200">MySQL</strong>, including straight onto the tables
-                of a database you already have.
+                ORM speaks to all of it. The same models also run on <strong class="text-stone-200">PostgreSQL</strong>,
+                <strong class="text-stone-200">MySQL</strong>, and <strong class="text-stone-200">SQLite</strong>
+                &mdash; including straight onto the tables of a database you already have.
             </p>
         </div>
 
@@ -441,8 +441,8 @@
                 <p class="mt-1.5 text-sm text-stone-400">The full surface: graph, vector, columnar, time series, raw SDBQL, live queries.</p>
             </div>
             <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">PostgreSQL &amp; MySQL</div>
-                <p class="mt-1.5 text-sm text-stone-400">Document tables with CRUD, filters, aggregates, eager loads, transactions, and migrations.</p>
+                <div class="text-sm font-semibold text-stone-200">Postgres, MySQL &amp; SQLite</div>
+                <p class="mt-1.5 text-sm text-stone-400">Document tables with CRUD, filters, aggregates, eager loads, transactions, migrations, and background jobs. SQLite needs no server &mdash; just a file.</p>
             </div>
             <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
                 <div class="text-sm font-semibold text-stone-200">Your existing schema</div>
@@ -486,7 +486,7 @@
                 </svg>
             </a>
             <a href="/docs/database/multi-database" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>Postgres, MySQL &amp; multi-DB</span>
+                <span>Postgres, MySQL, SQLite &amp; multi-DB</span>
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>

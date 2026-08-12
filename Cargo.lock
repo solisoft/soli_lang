@@ -4831,6 +4831,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "r2d2_sqlite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a982edf65c129796dba72f8775b292ef482b40d035e827a9825b3bc07ccc5f2"
+dependencies = [
+ "r2d2",
+ "rusqlite",
+ "uuid",
+]
+
+[[package]]
 name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6071,6 +6082,7 @@ dependencies = [
  "r2d2",
  "r2d2_mysql",
  "r2d2_postgres",
+ "r2d2_sqlite",
  "rand 0.8.7",
  "rand_core 0.6.4",
  "ratatui",
@@ -6080,6 +6092,7 @@ dependencies = [
  "rusoto_core",
  "rusoto_credential",
  "rusoto_s3",
+ "rusqlite",
  "rust_decimal",
  "rustls",
  "rustls-pki-types",
@@ -7315,6 +7328,7 @@ checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "rand 0.10.2",
  "serde_core",
  "wasm-bindgen",
 ]

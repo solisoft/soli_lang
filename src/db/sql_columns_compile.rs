@@ -166,8 +166,10 @@ fn select_expr(d: Dialect, col: &ColumnDef) -> Result<String, String> {
     if col.ty.reads_as_text() {
         return Ok(match d {
             Dialect::Postgres => format!("{quoted}::text AS {quoted}"),
-            // MySQL converts these itself; CAST keeps the shape identical.
+            // MySQL and SQLite convert these themselves; CAST keeps the shape
+            // identical across all three.
             Dialect::Mysql => format!("CAST({quoted} AS CHAR) AS {quoted}"),
+            Dialect::Sqlite => format!("CAST({quoted} AS TEXT) AS {quoted}"),
         });
     }
     Ok(quoted)
@@ -219,7 +221,7 @@ fn compile_where(d: Dialect, q: &ColumnQuery, params: &mut Vec<SqlBind>) -> Resu
 fn placeholder(d: Dialect, n: usize, ty: ColType) -> String {
     let base = match d {
         Dialect::Postgres => format!("${n}"),
-        Dialect::Mysql => "?".to_string(),
+        Dialect::Mysql | Dialect::Sqlite => "?".to_string(),
     };
     if d == Dialect::Postgres {
         // Text binds into a typed column need an explicit cast on Postgres.
@@ -241,7 +243,13 @@ fn placeholder(d: Dialect, n: usize, ty: ColType) -> String {
         };
     }
     if ty == ColType::Json {
-        return format!("CAST({base} AS JSON)");
+        return match d {
+            // SQLite has no JSON type. `CAST(? AS JSON)` would give the value
+            // NUMERIC affinity and mangle the document; `json()` validates the
+            // text and stores it as JSON the json1 functions can read.
+            Dialect::Sqlite => format!("json({base})"),
+            _ => format!("CAST({base} AS JSON)"),
+        };
     }
     base
 }
@@ -268,20 +276,15 @@ fn append_order_limit(
             sql.push_str(&format!(" OFFSET {off}"));
         }
     } else if let Some(offset) = q.offset {
-        // Both dialects require a LIMIT before OFFSET. Rather than invent a
-        // magic ceiling, use the maximum the dialect accepts so "skip N, take
-        // the rest" means exactly that.
+        // MySQL requires a LIMIT before OFFSET, so it needs a ceiling; Postgres
+        // takes a bare OFFSET, and SQLite reads `LIMIT -1` as "no limit". None
+        // of the three needs an invented row cap.
+        params.push(SqlBind::I64(offset as i64));
+        let off = placeholder(d, params.len(), ColType::Int);
         match d {
-            Dialect::Postgres => {
-                params.push(SqlBind::I64(offset as i64));
-                let off = placeholder(d, params.len(), ColType::Int);
-                sql.push_str(&format!(" OFFSET {off}"));
-            }
-            Dialect::Mysql => {
-                params.push(SqlBind::I64(offset as i64));
-                let off = placeholder(d, params.len(), ColType::Int);
-                sql.push_str(&format!(" LIMIT 18446744073709551615 OFFSET {off}"));
-            }
+            Dialect::Postgres => sql.push_str(&format!(" OFFSET {off}")),
+            Dialect::Mysql => sql.push_str(&format!(" LIMIT 18446744073709551615 OFFSET {off}")),
+            Dialect::Sqlite => sql.push_str(&format!(" LIMIT -1 OFFSET {off}")),
         }
     }
     Ok(())
@@ -304,7 +307,7 @@ pub fn compile_count_cols(d: Dialect, q: &ColumnQuery) -> Result<CompiledSql, St
     let mut params = Vec::new();
     let count = match d {
         Dialect::Postgres => "COUNT(*)::bigint",
-        Dialect::Mysql => "COUNT(*)",
+        Dialect::Mysql | Dialect::Sqlite => "COUNT(*)",
     };
     let mut sql = format!("SELECT {count} FROM {table}");
     sql.push_str(&compile_where(d, q, &mut params)?);
@@ -346,7 +349,7 @@ pub fn compile_aggregate_cols(
         SqlAgg::Max => format!("MAX({quoted})"),
         SqlAgg::Count => match d {
             Dialect::Postgres => "COUNT(*)::bigint".to_string(),
-            Dialect::Mysql => "COUNT(*)".to_string(),
+            Dialect::Mysql | Dialect::Sqlite => "COUNT(*)".to_string(),
         },
     };
     // Aggregates come back as text so an exact numeric keeps its precision
@@ -354,6 +357,7 @@ pub fn compile_aggregate_cols(
     let expr = match d {
         Dialect::Postgres if !matches!(func, SqlAgg::Count) => format!("({expr})::text"),
         Dialect::Mysql if !matches!(func, SqlAgg::Count) => format!("CAST({expr} AS CHAR)"),
+        Dialect::Sqlite if !matches!(func, SqlAgg::Count) => format!("CAST({expr} AS TEXT)"),
         _ => expr,
     };
     let mut params = Vec::new();
@@ -418,7 +422,8 @@ pub fn compile_insert_cols(
         names.join(", "),
         placeholders.join(", ")
     );
-    if d == Dialect::Postgres {
+    // Postgres and SQLite both support RETURNING; MySQL reads the row back.
+    if matches!(d, Dialect::Postgres | Dialect::Sqlite) {
         sql.push_str(&format!(" RETURNING {}", select_list(d, schema)?));
     }
     Ok(CompiledSql { sql, params })
@@ -479,7 +484,8 @@ pub fn compile_update_cols(
         "UPDATE {table} SET {} WHERE {pk_quoted} = {pk_ph}",
         assignments.join(", ")
     );
-    if d == Dialect::Postgres {
+    // Postgres and SQLite both support RETURNING; MySQL reads the row back.
+    if matches!(d, Dialect::Postgres | Dialect::Sqlite) {
         sql.push_str(&format!(" RETURNING {}", select_list(d, schema)?));
     }
     Ok(CompiledSql { sql, params })

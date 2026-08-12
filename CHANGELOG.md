@@ -4,6 +4,37 @@
 
 ### Added
 
+- **SQLite adapter.** `SOLI_DB_ADAPTER=sqlite` with
+  `DATABASE_URL=sqlite://db/app.sqlite3` (or `adapter = "sqlite"` on a named
+  connection) runs the **same Model surface as Postgres and MySQL**: document
+  CRUD, hash `.where`, order/limit/offset, count/exists, aggregates, `group_by`,
+  bulk writes, soft-delete, batched `.includes` (HABTM included),
+  `Model.transaction`, SQL migrations, and background jobs + cron. A connection
+  is a path — no server to install, start, or credential — and the client is
+  compiled in, so the host needs no `libsqlite3`.
+
+  - **Column mode works too**: `table "orders"` maps a model onto an existing
+    SQLite schema, introspected with `PRAGMA table_info`. SQLite enforces no
+    types, so Soli reads the declared type to decide how to convert and reads
+    each value by what it actually is — a `DATETIME` holding a unix timestamp
+    (seconds or milliseconds) reads as a date, like stored text does. An
+    `INTEGER PRIMARY KEY` is recognised as database-generated (it aliases the
+    rowid, with or without `AUTOINCREMENT`).
+  - **Job claiming** has no `SKIP LOCKED` to lean on, so it takes the database
+    write lock (`BEGIN IMMEDIATE`) for the length of the select-then-update —
+    exclusive by construction. Leases, retries, backoff, and single-winner cron
+    firing are unchanged.
+  - **Defaults**: WAL, a 10s busy timeout, foreign keys on, `BEGIN IMMEDIATE`
+    transactions (a deferred one can fail to upgrade a read into a write),
+    `sqlite::memory:` pinned to one pooled connection, and the file's parent
+    directory created if missing.
+  - **Caveats are SQLite's own**: one writer at a time (a write-heavy
+    multi-process app belongs on Postgres), and no exact numeric type —
+    `DECIMAL` values are written as text so the stored scale is kept, and
+    aggregates come back through `REAL`.
+  - New Cargo feature `sqlite` (on by default, included in the `sql` alias).
+    Tests need no server, so the adapter is covered on every CI run.
+
 - **Batched HABTM `.includes` on Postgres and MySQL.** A
   `has_and_belongs_to_many` eager load was SoliDB-only; it now runs on the SQL
   document adapters in **two queries regardless of parent count**: one for the
@@ -53,8 +84,8 @@
 - **Soli-side background job engine** — jobs now run *inside* the Soli process
   instead of being delegated to SolidB's queue and delivered back through a
   signed webhook. Jobs are rows in a `_jobs` collection on the default
-  connection, so the engine works identically on **SolidB, PostgreSQL, and
-  MySQL** (apps on the SQL adapters could not run jobs at all before).
+  connection, so the engine works identically on **SolidB, PostgreSQL, MySQL,
+  and SQLite** (apps on the SQL adapters could not run jobs at all before).
   - A poller thread claims due work **atomically** — Postgres
     `UPDATE … FOR UPDATE SKIP LOCKED`, MySQL a single-statement token claim,
     SolidB an `If-Match` compare-and-swap — so several `soli serve` processes can

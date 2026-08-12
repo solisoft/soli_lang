@@ -2,7 +2,7 @@
 
 Soli ships a background-job and cron system that runs **inside the Soli process**. Define a handler class in `app/jobs/`, enqueue it from your controllers or models, and Soli's job engine stores it, claims it, runs it on a worker thread, retries it on failure, and fires your cron schedules.
 
-> **Storage.** Jobs are ordinary documents in a `_jobs` collection (and `_cron_jobs` for schedules) on your default database connection, so the engine works the same on SolidB, PostgreSQL, and MySQL. Nothing calls back into your app over HTTP — no callback URL, no inbound route, no shared secret required.
+> **Storage.** Jobs are ordinary documents in a `_jobs` collection (and `_cron_jobs` for schedules) on your default database connection, so the engine works the same on SolidB, PostgreSQL, MySQL, and SQLite. Nothing calls back into your app over HTTP — no callback URL, no inbound route, no shared secret required.
 
 ## Defining a Job
 
@@ -205,7 +205,7 @@ There is **no** callback URL and **no** required secret any more. `SOLI_JOBS_CAL
 ## How Dispatch Works
 
 1. `WelcomeEmailJob.perform_later(args)` writes a row to `_jobs` with `state: "pending"` and `run_at: now`.
-2. The poller thread claims due rows atomically — Postgres `FOR UPDATE SKIP LOCKED`, MySQL a token claim, SolidB an `If-Match` compare-and-swap — stamping each with `state: "running"`, a `locked_until` lease, and an incremented `attempts`.
+2. The poller thread claims due rows atomically — Postgres `FOR UPDATE SKIP LOCKED`, MySQL a token claim, SQLite the database write lock (`BEGIN IMMEDIATE`), SolidB an `If-Match` compare-and-swap — stamping each with `state: "running"`, a `locked_until` lease, and an incremented `attempts`.
 3. Claimed jobs go to the worker pool, where a fully-loaded interpreter (models, services, mailers, templates) calls `WelcomeEmailJob.perform(args)`.
 4. The worker reports the outcome: success marks the row `done`; a raised error, a panic, or a non-2xx webhook response marks it `failed` with the next retry time, or `dead` once the retry budget is spent.
 

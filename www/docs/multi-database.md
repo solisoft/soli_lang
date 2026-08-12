@@ -1,9 +1,9 @@
 # Multiple Databases
 
-Soli can use **one connection for the whole app** (the default) or **several named connections** at once — including **SoliDB and Postgres/MySQL in the same process**.
+Soli can use **one connection for the whole app** (the default) or **several named connections** at once — including **SoliDB and Postgres/MySQL/SQLite in the same process**.
 
 - **Default:** SoliDB via `SOLIDB_*` (full Model surface: graph, vector, timeseries, raw SDBQL).
-- **Whole app on SQL:** `SOLI_DB_ADAPTER=postgres|mysql` + `DATABASE_URL` (document tables).
+- **Whole app on SQL:** `SOLI_DB_ADAPTER=postgres|mysql|sqlite` + `DATABASE_URL` (document tables).
 - **Multi-DB:** `config/database.toml` + per-model `connection "name"`.
 
 Design notes and the full capability matrix: repo `docs/sql-adapter-design.md`. Narrative: [Multiple Databases in One Soli App](/docs/blog/multi-database).
@@ -19,9 +19,9 @@ If `config/database.toml` is absent, Soli builds one connection named **`primary
 | `SOLIDB_DATABASE` | SoliDB database name | `default` |
 | `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` | Basic auth | unset |
 | `SOLIDB_API_KEY` | API key auth | unset |
-| `SOLI_DB_ADAPTER` | `solidb` (default), `postgres`, or `mysql` | `solidb` |
-| `DATABASE_URL` | Required for `postgres` / `mysql` | unset |
-| `SOLI_DB_POOL_SIZE` | SQL pool size | `10` |
+| `SOLI_DB_ADAPTER` | `solidb` (default), `postgres`, `mysql`, or `sqlite` | `solidb` |
+| `DATABASE_URL` | Required for every SQL adapter | unset |
+| `SOLI_DB_POOL_SIZE` | SQL pool size | `10` (`5` on SQLite) |
 
 ```bash
 # SoliDB (default)
@@ -31,6 +31,10 @@ SOLIDB_DATABASE=myapp
 # Or: whole app on Postgres document tables
 SOLI_DB_ADAPTER=postgres
 DATABASE_URL=postgres://user:pass@localhost:5432/myapp
+
+# Or: whole app on a single SQLite file — no server to run
+SOLI_DB_ADAPTER=sqlite
+DATABASE_URL=sqlite://db/app.sqlite3
 ```
 
 See also [Database Configuration](database.md) and [Configuration](configuration.md).
@@ -44,7 +48,7 @@ Place the file under the app root (same level as `config/routes.sl`). It is load
 default = "primary"
 
 [connections.primary]
-adapter = "solidb"          # solidb | postgres | mysql
+adapter = "solidb"          # solidb | postgres | mysql | sqlite
 host = "${SOLIDB_HOST:-http://localhost:6745}"
 database = "${SOLIDB_DATABASE:-default}"
 username = "${SOLIDB_USERNAME:-}"
@@ -60,6 +64,10 @@ pool = 10
 adapter = "mysql"
 url = "${WAREHOUSE_DATABASE_URL}"
 pool = 5
+
+[connections.analytics]
+adapter = "sqlite"
+url = "sqlite://db/analytics.sqlite3"   # a path, not a server
 ```
 
 ### Field reference
@@ -67,13 +75,13 @@ pool = 5
 | Field | Adapters | Description |
 |-------|----------|-------------|
 | `default` | — | Connection name for models without `connection "…"` |
-| `adapter` | all | `solidb`, `postgres`, or `mysql` (aliases: `pg`, `postgresql`, `mariadb`, …) |
+| `adapter` | all | `solidb`, `postgres`, `mysql`, or `sqlite` (aliases: `pg`, `postgresql`, `mariadb`, `sqlite3`, …) |
 | `host` | solidb | SoliDB base URL |
 | `database` | solidb | SoliDB database name |
 | `username` / `password` | solidb | Optional basic auth |
 | `api_key` | solidb | Optional API key |
-| `url` | postgres, mysql | Connection string (`postgres://…` or `mysql://…`) — **required** for SQL |
-| `pool` | postgres, mysql | Pool size (default 10) |
+| `url` | postgres, mysql, sqlite | Connection string (`postgres://…`, `mysql://…`) or a SQLite path (`sqlite://db/app.sqlite3`) — **required** for SQL |
+| `pool` | postgres, mysql, sqlite | Pool size (default 10; 5 on SQLite, forced to 1 for `:memory:`) |
 
 > **SoliDB connections and env**: SoliDB requests are always routed to the
 > env-configured `SOLIDB_HOST` / `SOLIDB_DATABASE`. A `solidb` connection's
@@ -121,13 +129,17 @@ end
 
 ## SQL document backends
 
-When a connection uses `adapter = "postgres"` or `"mysql"`, Model data is stored as:
+When a connection uses `adapter = "postgres"`, `"mysql"`, or `"sqlite"`, Model data is stored as:
 
 ```text
 table <collection>
-  _key  TEXT/VARCHAR PRIMARY KEY
-  doc   JSONB / JSON   -- full Soli document
+  _key  TEXT / VARCHAR PRIMARY KEY
+  doc   JSONB / JSON / TEXT   -- full Soli document
 ```
+
+SQLite has no JSON *type* — it stores JSON as text and reads it with the json1
+functions (`->>`, `json_patch`, `json_set`), which every write goes through. The
+Model surface is the same on all three.
 
 Portable surface (hash filters, not raw SDBQL):
 
@@ -161,6 +173,44 @@ soli db:import posts users  # named only
 
 Each document is upserted as `_key` + `doc`.
 
+## SQLite specifics
+
+SQLite is a file, not a server: there is nothing to install, start, or
+credential. That makes it the shortest path from `soli new` to persistent data,
+and a good fit for single-node apps, embedded/desktop builds, CI, and tests.
+
+### URL forms
+
+| URL | Meaning |
+|-----|---------|
+| `sqlite://db/app.sqlite3` | Relative path (the directory is created if missing) |
+| `sqlite:///var/lib/app/app.db` | Absolute path |
+| `sqlite:app.db` | Path, short form |
+| `sqlite::memory:` or `:memory:` | Private in-memory database, gone at exit |
+| `./app.db` | A bare path works too |
+
+Every connection is opened in **WAL** mode with a 10-second busy timeout and
+foreign keys on.
+
+### What to know before you choose it
+
+- **One writer at a time.** WAL lets readers run during a write, but writers
+  serialize. A busy write path across many processes belongs on Postgres.
+- **No exact numeric type.** `DECIMAL`/`NUMERIC` is affinity only. Values are
+  written as text so the stored scale is kept, and aggregates come back through
+  `REAL` — the same precision caveat as the other adapters, one step earlier.
+- **Backups are file copies** — use `.backup` / `VACUUM INTO`, not a `cp` of a
+  live WAL database.
+- **`:memory:` is one connection.** The pool is forced to a single connection,
+  because a second one would be a second, empty database.
+
+### Background jobs on SQLite
+
+Jobs work unchanged. Postgres claims with `SKIP LOCKED` and MySQL with a claim
+token; SQLite takes the database write lock (`BEGIN IMMEDIATE`) for the length of
+the claim, which is exclusive by construction. Leases, retries, and cron behave
+the same. See [Background Jobs](jobs.md).
+
 ## Column-aware models (existing databases)
 
 The document backend above stores every collection as `_key` + `doc`, which means it only reads tables Soli created. To use Soli against a database that **already exists** — a legacy app's schema, a warehouse table, anything with real columns — declare the physical table on the model:
@@ -168,7 +218,7 @@ The document backend above stores every collection as `_key` + `doc`, which mean
 ```soli
 # app/models/order.sl
 class Order < Model
-  connection "legacy"    # a postgres or mysql connection
+  connection "legacy"    # a postgres, mysql, or sqlite connection
   table "orders"         # bind to an existing table -> column mode
 end
 ```
@@ -177,7 +227,7 @@ end
 
 ### What Soli learns, and when
 
-At boot, Soli introspects each declared table (`information_schema`) once and caches the result:
+At boot, Soli introspects each declared table once and caches the result (`information_schema` on Postgres and MySQL, `PRAGMA table_info` on SQLite):
 
 - every column, its type, and whether it is nullable;
 - the **primary key**, detected automatically, including whether the database generates it (`BIGSERIAL` / `IDENTITY` / `AUTO_INCREMENT`), so inserts leave it to the database;
@@ -187,21 +237,23 @@ Problems fail the boot with a message naming the connection and table: a missing
 
 ### Type mapping
 
-| PostgreSQL | MySQL | Soli |
-|---|---|---|
-| `int2` / `int4` / `int8` | `smallint` / `mediumint` / `int` / `bigint` | Int |
-| `float4` / `float8` | `float` / `double` | Float |
-| `numeric` | `decimal` | Float (see caveat) |
-| `bool` | `tinyint(1)`, `boolean`, `bit(1)` | Bool |
-| `text` / `varchar` / `char` / `citext` | `char` / `varchar` / `text` / `enum` / `set` | String |
-| `uuid` | — | String |
-| `date`, `timestamp`, `timestamptz` | `date`, `datetime`, `timestamp` | DateTime (native) |
-| `json` / `jsonb` | `json` | Hash / Array |
-| anything else (`bytea`, arrays, geometry, unsigned `bigint`) | `blob`, geometry, unsigned `bigint` | unsupported |
+| PostgreSQL | MySQL | SQLite (declared type) | Soli |
+|---|---|---|---|
+| `int2` / `int4` / `int8` | `smallint` / `mediumint` / `int` / `bigint` | anything containing `INT` | Int |
+| `float4` / `float8` | `float` / `double` | `REAL`, `FLOAT`, `DOUBLE` | Float |
+| `numeric` | `decimal` | `DECIMAL`, `NUMERIC`, `MONEY` | Float (see caveat) |
+| `bool` | `tinyint(1)`, `boolean`, `bit(1)` | `BOOLEAN` | Bool |
+| `text` / `varchar` / `char` / `citext` | `char` / `varchar` / `text` / `enum` / `set` | `TEXT`, `VARCHAR`, `CHAR`, `CLOB`, no declared type | String |
+| `uuid` | — | `UUID`, `GUID` | String |
+| `date`, `timestamp`, `timestamptz` | `date`, `datetime`, `timestamp` | `DATE`, `DATETIME`, `TIMESTAMP` | DateTime (native) |
+| `json` / `jsonb` | `json` | `JSON` | Hash / Array |
+| anything else (`bytea`, arrays, geometry, unsigned `bigint`) | `blob`, geometry, unsigned `bigint` | `BLOB` | unsupported |
 
 - **Exact numerics** (`numeric`/`decimal`) travel as text and are read as Float, so a value beyond f64's exact range loses precision on read. They are *written* as text, so a stored value keeps its scale.
 - **Unsupported columns** are skipped on read (they come back absent) and error clearly if you try to filter or write them — they never silently corrupt a row.
 - **MySQL has no timezone-aware timestamp**: `datetime`/`timestamp` values are interpreted as UTC.
+- **SQLite enforces no types.** It applies *affinity* to the declared type, and any column can hold any value. Soli reads the declared type (`PRAGMA table_info`) to decide how to convert, and reads each value by what it actually is — so an `INTEGER` stored in a `TEXT` column still comes back as a number. A `DATETIME` column holding a unix timestamp (seconds or milliseconds) is converted to RFC 3339, like a stored text date is.
+- **A SQLite `INTEGER PRIMARY KEY` is generated** — it aliases the rowid, with or without `AUTOINCREMENT` — so inserts omit it. A key of any other type must be supplied.
 
 ### Supported operations
 
@@ -319,19 +371,23 @@ soli db:migrate down --connection legacy
 
 ## Compile-time features
 
-Postgres and MySQL client code is optional at **build time** (on by default). A
-binary built without `postgres` or `mysql` cannot open those adapters — boot
-fails with a rebuild hint if `SOLI_DB_ADAPTER` or `database.toml` selects one
-that was not compiled in.
+Postgres, MySQL, and SQLite client code is optional at **build time** (all on by
+default). A binary built without an adapter cannot open it — boot fails with a
+rebuild hint if `SOLI_DB_ADAPTER` or `database.toml` selects one that was not
+compiled in.
 
 ```bash
 # SoliDB only (no SQL client crates)
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph
 
-# Postgres only (no MySQL)
+# Postgres only (no MySQL, no SQLite)
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph,postgres
+
+# SQLite only — the client is bundled, so nothing to install on the host
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,sqlite
 ```
 
 Full table: [Configuration → Slim binary](configuration.md#slim-binary-cargo-features).
@@ -341,9 +397,11 @@ Full table: [Configuration → Slim binary](configuration.md#slim-binary-cargo-f
 | Symptom | Check |
 |---------|--------|
 | `Unknown database connection "…"` | Name matches `[connections.*]` / `default` |
-| `url` required for postgres/mysql | Set `url =` or expand `${…}` from `.env` |
-| SQL features missing | Confirm model’s connection adapter is `postgres`/`mysql`; see matrix above |
-| `not compiled into this soli binary` | Rebuild with `--features postgres` and/or `mysql` (see [Slim binary](configuration.md#slim-binary-cargo-features)) |
+| `url` required for postgres/mysql/sqlite | Set `url =` or expand `${…}` from `.env` |
+| SQL features missing | Confirm model’s connection adapter is `postgres`/`mysql`/`sqlite`; see matrix above |
+| `not compiled into this soli binary` | Rebuild with `--features postgres`, `mysql`, and/or `sqlite` (see [Slim binary](configuration.md#slim-binary-cargo-features)) |
+| `database is locked` on SQLite | Another writer held the lock past the 10s busy timeout. Shorten write transactions, or move to Postgres for write-heavy multi-process work |
+| SQLite file not created | The parent directory is created automatically; check the process can write there, and that the path is not read-only |
 | Includes error across DBs | Expected — query each side separately or colocate models |
 
 ## Related

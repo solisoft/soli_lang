@@ -21,6 +21,12 @@ def down(db: Any)    db.drop_index("users", "idx_email")
 end
 ```
 
+## Which backends run migrations
+
+Everything below is written for **SoliDB**, the default backend. Migrations also
+run on the SQL adapters (`postgres`, `mysql`, `sqlite`), with a smaller helper
+set — see [On the SQL adapters](#on-the-sql-adapters).
+
 ## CLI Commands
 
 ### Generate a Migration
@@ -349,6 +355,52 @@ def down(db: Any)    # Drop indexes first
 end
 ```
 
+## On the SQL adapters
+
+On a `postgres`, `mysql`, or `sqlite` connection, a migration manages **document
+tables** (`_key` + `doc`). The helper set is deliberately small, and anything
+SoliDB-specific raises rather than being silently skipped:
+
+| Helper | On SQL |
+|--------|--------|
+| `db.create_table(name)` | ✓ creates the document table if absent |
+| `db.drop_table(name)` | ✓ |
+| `db.create_collection(name)` | ✓ alias of `create_table` (no type, or `"document"`) |
+| `db.drop_collection(name)` | ✓ alias of `drop_table` |
+| `db.create_collection(name, "edge"/"timeseries"/…)` | ✗ raises — typed collections are SoliDB-only |
+| `db.create_index` / index helpers | ✗ raises — use your own DDL tooling |
+| `db.query(sdbql)` | ✗ raises — SDBQL has no meaning on SQL |
+| `db.create_columnar`, `db.create_vector_index` | ✗ raise — SoliDB-only |
+
+```soli
+# Runs on SoliDB and on every SQL adapter
+def up(db: Any)
+  db.create_table("posts")
+end
+
+def down(db: Any)
+  db.drop_table("posts")
+end
+```
+
+Target a named connection from `config/database.toml`:
+
+```bash
+soli db:migrate up --connection legacy
+soli db:migrate status -c legacy
+soli db:migrate down --connection legacy
+```
+
+Two things to know:
+
+- **Column-aware models are never migrated.** A model that declares
+  `table "orders"` maps to a schema Soli does not own, so Soli issues no DDL
+  against it — manage that schema with your own tooling. See
+  [Column-aware models](multi-database.md#column-aware-models-existing-databases).
+- **Document tables are auto-created on first write**, so a migration is only
+  needed when you want the table to exist ahead of time (or want an explicit
+  rollback path).
+
 ## Environment Configuration
 
 Migrations use environment variables for database connection. Create a `.env` file in your app root:
@@ -358,6 +410,14 @@ SOLIDB_HOST=http://localhost:6745
 SOLIDB_DATABASE=myapp_development
 SOLIDB_USERNAME=root
 SOLIDB_PASSWORD=secret
+```
+
+On a SQL adapter the target comes from `SOLI_DB_ADAPTER` + `DATABASE_URL`
+instead (or from the named connection in `config/database.toml`):
+
+```bash
+SOLI_DB_ADAPTER=sqlite
+DATABASE_URL=sqlite://db/app.sqlite3
 ```
 
 Or set them directly:
@@ -370,7 +430,8 @@ soli db:migrate up
 
 ## Migration Tracking
 
-Applied migrations are tracked in the `_migrations` collection with:
+Applied migrations are tracked in the `_migrations` collection — a real
+`_migrations` table on the SQL adapters — with:
 
 - `version` - The timestamp portion of the filename
 - `name` - The descriptive name

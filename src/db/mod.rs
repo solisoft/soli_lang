@@ -5,7 +5,8 @@
 //! a connection via class-body `connection "name"`.
 //!
 //! SQL backends and their client crates are Cargo features (`postgres`,
-//! `mysql`; both on by default). Drop them at build time for a smaller binary.
+//! `mysql`, `sqlite`; all on by default). Drop them at build time for a smaller
+//! binary.
 //!
 //! Design: `docs/sql-adapter-design.md`.
 
@@ -23,6 +24,8 @@ pub mod registry;
 pub mod sql;
 pub mod sql_columns_compile;
 pub mod sql_compile;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 
 pub use adapter::{parse_adapter, Adapter, AdapterConfig};
 pub use caps::BackendCaps;
@@ -43,6 +46,7 @@ pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
         Adapter::Solidb => true,
         Adapter::Postgres => cfg!(feature = "postgres"),
         Adapter::Mysql => cfg!(feature = "mysql"),
+        Adapter::Sqlite => cfg!(feature = "sqlite"),
     }
 }
 
@@ -83,6 +87,13 @@ pub fn is_postgres() -> bool {
 pub fn is_mysql() -> bool {
     active_spec()
         .map(|s| s.adapter == Adapter::Mysql)
+        .unwrap_or(false)
+}
+
+/// True when the active connection is SQLite.
+pub fn is_sqlite() -> bool {
+    active_spec()
+        .map(|s| s.adapter == Adapter::Sqlite)
         .unwrap_or(false)
 }
 

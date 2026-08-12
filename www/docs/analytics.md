@@ -1,5 +1,10 @@
 # Analytics & Columnar Stores
 
+> **Backends.** Multi-row `group_by` with multiple aggregates also runs on the
+> SQL adapters (`postgres`, `mysql`, `sqlite`); `having`, the statistical
+> terminals, and columnar stores are SoliDB-only and raise a message naming the
+> feature there. See [SQL document backends](multi-database.md#sql-document-backends).
+
 Soli gives you two complementary tools for analytical workloads, both backed
 by SolidB:
 

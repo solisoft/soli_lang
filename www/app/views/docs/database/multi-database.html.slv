@@ -5,13 +5,14 @@
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             One connection for the whole app, or several named connections in one process &mdash;
-            including SoliDB and Postgres/MySQL together. Models choose with
+            including SoliDB, Postgres, MySQL, and SQLite together. Models choose with
             <code class="text-cyan-400">connection "name"</code>.
         </p>
     </div>
 
     <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
         <p class="text-cyan-200 text-sm leading-relaxed">
+
             <strong class="text-white">Three modes:</strong>
             (1) default SoliDB via <code>SOLIDB_*</code>,
             (2) whole app on SQL with <code>SOLI_DB_ADAPTER</code> + <code>DATABASE_URL</code>,
@@ -49,7 +50,7 @@
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">SOLI_DB_ADAPTER</code></td>
-                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, or <code>mysql</code></td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">solidb</code></td>
                 </tr>
                 <tr>
@@ -105,7 +106,11 @@ pool = 10
 [connections.warehouse]
 adapter = "mysql"
 url = "${WAREHOUSE_DATABASE_URL}"
-pool = 5</code></pre>
+pool = 5
+
+[connections.analytics]
+adapter = "sqlite"
+url = "sqlite://db/analytics.sqlite3"   # a path, not a server</code></pre>
         </div>
     </div>
 
@@ -128,7 +133,7 @@ pool = 5</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">adapter</code></td>
                     <td class="py-3 px-4">all</td>
-                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, or <code>mysql</code></td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">host</code> / <code class="text-amber-300">database</code></td>
@@ -137,13 +142,13 @@ pool = 5</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">url</code></td>
-                    <td class="py-3 px-4">postgres, mysql</td>
-                    <td class="py-3 px-4">Connection string &mdash; <strong class="text-white">required</strong> for SQL</td>
+                    <td class="py-3 px-4">postgres, mysql, sqlite</td>
+                    <td class="py-3 px-4">Connection string, or a SQLite path (<code>sqlite://db/app.sqlite3</code>) &mdash; <strong class="text-white">required</strong> for SQL</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">pool</code></td>
-                    <td class="py-3 px-4">postgres, mysql</td>
-                    <td class="py-3 px-4">Pool size (default 10)</td>
+                    <td class="py-3 px-4">postgres, mysql, sqlite</td>
+                    <td class="py-3 px-4">Pool size (default 10; 5 on SQLite, 1 for <code>:memory:</code>)</td>
                 </tr>
             </tbody>
         </table>
@@ -196,8 +201,9 @@ end</code></pre>
 
     <h2 id="sql" class="text-2xl font-bold text-white mb-6 scroll-mt-24">SQL document backends</h2>
     <p class="text-gray-400 mb-6">
-        Postgres/MySQL connections store each collection as
-        <code class="text-cyan-400">_key</code> + <code class="text-cyan-400">doc</code> (JSON/JSONB).
+        Postgres, MySQL, and SQLite connections store each collection as
+        <code class="text-cyan-400">_key</code> + <code class="text-cyan-400">doc</code>
+        (JSONB, JSON, or TEXT read with SQLite's json1 functions).
         Hash-style filters only &mdash; not raw SDBQL.
     </p>
 
@@ -256,6 +262,68 @@ soli db:import posts users  # named only</code></pre>
         </div>
     </div>
 
+    <h2 id="sqlite" class="text-2xl font-bold text-white mb-6 scroll-mt-24">SQLite specifics</h2>
+    <p class="text-gray-400 mb-6">
+        SQLite is a file, not a server: there is nothing to install, start, or
+        credential. That makes it the shortest path from <code class="text-cyan-400">soli new</code>
+        to persistent data, and a good fit for single-node apps, embedded and desktop
+        builds, CI, and tests.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">URL forms</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">URL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">sqlite://db/app.sqlite3</code></td>
+                    <td class="py-3 px-4">Relative path (the directory is created if missing)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">sqlite:///var/lib/app/app.db</code></td>
+                    <td class="py-3 px-4">Absolute path</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">sqlite:app.db</code></td>
+                    <td class="py-3 px-4">Path, short form</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">sqlite::memory:</code></td>
+                    <td class="py-3 px-4">Private in-memory database, gone at exit</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-8">
+        Every connection is opened in <strong class="text-white">WAL</strong> mode with a
+        10-second busy timeout and foreign keys on.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">What to know before you choose it</h3>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
+        <li><strong class="text-white">One writer at a time.</strong> WAL lets readers run during a write, but writers serialize. A busy write path across many processes belongs on Postgres.</li>
+        <li><strong class="text-white">No exact numeric type.</strong> <code class="text-cyan-400">DECIMAL</code>/<code class="text-cyan-400">NUMERIC</code> is affinity only. Values are written as text so the stored scale is kept, and aggregates come back through <code class="text-cyan-400">REAL</code>.</li>
+        <li><strong class="text-white">Backups are file copies</strong> &mdash; use <code class="text-cyan-400">.backup</code> or <code class="text-cyan-400">VACUUM INTO</code>, never a <code class="text-cyan-400">cp</code> of a live WAL database.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">:memory:</code> is one connection.</strong> The pool is forced to a single connection, because a second one would be a second, empty database.</li>
+    </ul>
+
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-12">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+
+            <strong class="text-white">Background jobs work unchanged.</strong>
+            Postgres claims with <code>SKIP LOCKED</code> and MySQL with a claim token;
+            SQLite takes the database write lock (<code>BEGIN IMMEDIATE</code>) for the
+            length of the claim, which is exclusive by construction. Leases, retries, and
+            cron behave the same &mdash; see
+            <a href="/docs/builtins/jobs" class="text-amber-400 hover:underline">Background Jobs</a>.
+        </p>
+    </div>
+
     <h2 id="rules" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Cross-connection rules</h2>
     <div class="overflow-x-auto mb-8">
         <table class="w-full text-sm">
@@ -299,7 +367,7 @@ soli db:import posts users  # named only</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/order.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Order &lt; Model
-  connection "legacy"    # a postgres or mysql connection
+  connection "legacy"    # a postgres, mysql, or sqlite connection
   table "orders"         # bind to an existing table -&gt; column mode
 end</code></pre>
         </div>
@@ -310,7 +378,7 @@ end</code></pre>
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">What Soli learns, and when</h3>
-    <p class="text-gray-400 mb-4">At boot, Soli introspects each declared table once (via <code class="text-cyan-400">information_schema</code>) and caches the result:</p>
+    <p class="text-gray-400 mb-4">At boot, Soli introspects each declared table once and caches the result (<code class="text-cyan-400">information_schema</code> on Postgres and MySQL, <code class="text-cyan-400">PRAGMA table_info</code> on SQLite):</p>
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-6">
         <li>every column, its type, and whether it is nullable;</li>
         <li>the <strong class="text-white">primary key</strong>, detected automatically &mdash; including whether the database generates it (<code class="text-cyan-400">BIGSERIAL</code> / <code class="text-cyan-400">IDENTITY</code> / <code class="text-cyan-400">AUTO_INCREMENT</code>), so inserts leave it to the database;</li>
@@ -327,19 +395,20 @@ end</code></pre>
                 <tr class="border-b border-white/10">
                     <th class="text-left py-3 px-4 text-gray-400 font-semibold">PostgreSQL</th>
                     <th class="text-left py-3 px-4 text-gray-400 font-semibold">MySQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">SQLite (declared)</th>
                     <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
-                <tr><td class="py-3 px-4"><code>int2</code> / <code>int4</code> / <code>int8</code></td><td class="py-3 px-4"><code>smallint</code> … <code>bigint</code></td><td class="py-3 px-4">Int</td></tr>
-                <tr><td class="py-3 px-4"><code>float4</code> / <code>float8</code></td><td class="py-3 px-4"><code>float</code> / <code>double</code></td><td class="py-3 px-4">Float</td></tr>
-                <tr><td class="py-3 px-4"><code>numeric</code></td><td class="py-3 px-4"><code>decimal</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(precision caveat)</span></td></tr>
-                <tr><td class="py-3 px-4"><code>bool</code></td><td class="py-3 px-4"><code>tinyint(1)</code>, <code>boolean</code>, <code>bit(1)</code></td><td class="py-3 px-4">Bool</td></tr>
-                <tr><td class="py-3 px-4"><code>text</code> / <code>varchar</code> / <code>citext</code></td><td class="py-3 px-4"><code>varchar</code> / <code>text</code> / <code>enum</code></td><td class="py-3 px-4">String</td></tr>
-                <tr><td class="py-3 px-4"><code>uuid</code></td><td class="py-3 px-4">&mdash;</td><td class="py-3 px-4">String</td></tr>
-                <tr><td class="py-3 px-4"><code>date</code>, <code>timestamptz</code></td><td class="py-3 px-4"><code>date</code>, <code>datetime</code></td><td class="py-3 px-4">DateTime (native)</td></tr>
-                <tr><td class="py-3 px-4"><code>json</code> / <code>jsonb</code></td><td class="py-3 px-4"><code>json</code></td><td class="py-3 px-4">Hash / Array</td></tr>
-                <tr><td class="py-3 px-4"><code>bytea</code>, arrays, geometry</td><td class="py-3 px-4"><code>blob</code>, geometry, unsigned <code>bigint</code></td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
+                <tr><td class="py-3 px-4"><code>int2</code> / <code>int4</code> / <code>int8</code></td><td class="py-3 px-4"><code>smallint</code> … <code>bigint</code></td><td class="py-3 px-4">any name with <code>INT</code></td><td class="py-3 px-4">Int</td></tr>
+                <tr><td class="py-3 px-4"><code>float4</code> / <code>float8</code></td><td class="py-3 px-4"><code>float</code> / <code>double</code></td><td class="py-3 px-4"><code>REAL</code>, <code>DOUBLE</code></td><td class="py-3 px-4">Float</td></tr>
+                <tr><td class="py-3 px-4"><code>numeric</code></td><td class="py-3 px-4"><code>decimal</code></td><td class="py-3 px-4"><code>DECIMAL</code>, <code>NUMERIC</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(precision caveat)</span></td></tr>
+                <tr><td class="py-3 px-4"><code>bool</code></td><td class="py-3 px-4"><code>tinyint(1)</code>, <code>boolean</code>, <code>bit(1)</code></td><td class="py-3 px-4"><code>BOOLEAN</code></td><td class="py-3 px-4">Bool</td></tr>
+                <tr><td class="py-3 px-4"><code>text</code> / <code>varchar</code> / <code>citext</code></td><td class="py-3 px-4"><code>varchar</code> / <code>text</code> / <code>enum</code></td><td class="py-3 px-4"><code>TEXT</code>, <code>VARCHAR</code>, none</td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>uuid</code></td><td class="py-3 px-4">&mdash;</td><td class="py-3 px-4">String</td><td class="py-3 px-4"><code>UUID</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>date</code>, <code>timestamptz</code></td><td class="py-3 px-4"><code>date</code>, <code>datetime</code></td><td class="py-3 px-4"><code>DATE</code>, <code>DATETIME</code></td><td class="py-3 px-4">DateTime (native)</td></tr>
+                <tr><td class="py-3 px-4"><code>json</code> / <code>jsonb</code></td><td class="py-3 px-4"><code>json</code></td><td class="py-3 px-4">Hash / Array</td><td class="py-3 px-4"><code>JSON</code></td><td class="py-3 px-4">Hash / Array</td></tr>
+                <tr><td class="py-3 px-4"><code>bytea</code>, arrays, geometry</td><td class="py-3 px-4"><code>blob</code>, geometry, unsigned <code>bigint</code></td><td class="py-3 px-4"><code>BLOB</code></td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
             </tbody>
         </table>
     </div>
@@ -347,6 +416,8 @@ end</code></pre>
         <li><strong class="text-white">Exact numerics</strong> travel as text and read as Float, so a value beyond f64's exact range loses precision on read; writes keep their scale.</li>
         <li><strong class="text-white">Unsupported columns</strong> are skipped on read and error clearly if you filter or write them &mdash; they never silently corrupt a row.</li>
         <li><strong class="text-white">MySQL stores no offset</strong>: <code class="text-cyan-400">datetime</code>/<code class="text-cyan-400">timestamp</code> values are interpreted as UTC.</li>
+        <li><strong class="text-white">SQLite enforces no types.</strong> It applies affinity to the declared type, so any column can hold any value. Soli reads the declared type to decide how to convert, and reads each value by what it actually is &mdash; a <code class="text-cyan-400">DATETIME</code> holding a unix timestamp becomes RFC 3339, exactly like a stored text date.</li>
+        <li><strong class="text-white">A SQLite <code class="text-cyan-400">INTEGER PRIMARY KEY</code> is generated</strong> (it aliases the rowid, with or without <code class="text-cyan-400">AUTOINCREMENT</code>), so inserts omit it. A key of any other type must be supplied.</li>
     </ul>
 
     <h3 class="text-lg font-semibold text-white mb-4">Supported operations</h3>
@@ -421,7 +492,7 @@ soli db:migrate down --connection legacy</code></pre>
     </div>
     <p class="text-gray-400 mb-12">
         Prefer naming the connection in migration filenames when multi-DB is in use.
-        <code class="text-cyan-400">Model.transaction</code> works on Postgres/MySQL (one held pool connection for the block).
+        <code class="text-cyan-400">Model.transaction</code> works on Postgres, MySQL, and SQLite (one held pool connection for the block).
     </p>
 
     <h2 id="limits" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limitations</h2>
@@ -434,7 +505,7 @@ soli db:migrate down --connection legacy</code></pre>
 
     <h2 id="compile-time" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Compile-time features</h2>
     <p class="text-gray-400 mb-4">
-        Postgres and MySQL client code is optional at <strong class="text-white">build time</strong> (on by default).
+        Postgres, MySQL, and SQLite client code is optional at <strong class="text-white">build time</strong> (all on by default).
         A binary built without <code class="text-cyan-400">postgres</code> or <code class="text-cyan-400">mysql</code>
         cannot open those adapters &mdash; boot fails with a rebuild hint if
         <code class="text-cyan-400">SOLI_DB_ADAPTER</code> or <code class="text-cyan-400">database.toml</code>
@@ -446,7 +517,7 @@ soli db:migrate down --connection legacy</code></pre>
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph
 
-# Postgres only (no MySQL)
+# Postgres only (no MySQL, no SQLite)
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph,postgres</code></pre>
         </div>
@@ -471,12 +542,12 @@ cargo install --path . --locked --no-default-features \
                     <td class="py-3 px-4">Name matches <code>[connections.*]</code> / <code>default</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-400">url</code> required for postgres/mysql</td>
+                    <td class="py-3 px-4"><code class="text-cyan-400">url</code> required for postgres/mysql/sqlite</td>
                     <td class="py-3 px-4">Set <code>url =</code> or expand <code>${…}</code> from <code>.env</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-400">not compiled into this soli binary</code></td>
-                    <td class="py-3 px-4">Rebuild with <code>--features postgres</code> and/or <code>mysql</code>
+                    <td class="py-3 px-4">Rebuild with <code>--features postgres</code>, <code>mysql</code>, and/or <code>sqlite</code>
                         (<a href="/docs/getting-started/configuration#slim-binary-cargo-features" class="text-amber-400 hover:underline">Slim binary</a>)</td>
                 </tr>
                 <tr>

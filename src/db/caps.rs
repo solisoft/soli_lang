@@ -79,6 +79,14 @@ impl BackendCaps {
     pub const fn mysql() -> Self {
         Self::postgres()
     }
+
+    /// SQLite document backend. Same surface as the other SQL adapters: it has
+    /// JSON operators (`->>`), `RETURNING`, `ON CONFLICT` upserts and
+    /// `json_patch` for partial merges. One writer at a time, and no exact
+    /// numeric type — see the docs for both caveats.
+    pub const fn sqlite() -> Self {
+        Self::postgres()
+    }
 }
 
 #[cfg(test)]
@@ -113,5 +121,13 @@ mod tests {
         let c = BackendCaps::mysql();
         assert!(c.implemented && c.aggregates && c.associations && c.transactions);
         assert!(!c.string_sdbql_where);
+    }
+
+    #[test]
+    fn sqlite_matches_postgres_caps() {
+        let c = BackendCaps::sqlite();
+        assert!(c.implemented && c.aggregates && c.associations && c.transactions);
+        assert!(c.column_tables && c.raw_sql);
+        assert!(!c.string_sdbql_where && !c.grouped_coalesce);
     }
 }

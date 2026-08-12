@@ -7,6 +7,11 @@ embedded, so AI agents (and your own tools) can retrieve the right code by
 **semantic search** and then **traverse relationships** from there. It's a graph
 RAG index of your own codebase.
 
+> **SoliDB only.** The graph store, its traversals, and the embeddings behind
+> semantic retrieval are SoliDB engine features; `soli graph build` needs a
+> SoliDB connection. The SQL adapters (`postgres`, `mysql`, `sqlite`) do not
+> implement graph or vector storage.
+
 Unlike `Model.rag`, which indexes your *application data*, this points the same
 vector + graph machinery at the *code itself*.
 

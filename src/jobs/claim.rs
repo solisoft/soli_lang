@@ -6,6 +6,8 @@
 //! - Postgres: `UPDATE … WHERE _key IN (SELECT … FOR UPDATE SKIP LOCKED)`.
 //! - MySQL: a unique claim token stamped by one `UPDATE … LIMIT n`, then read
 //!   back by token (MySQL cannot self-reference a table in an UPDATE subquery).
+//! - SQLite: `BEGIN IMMEDIATE` takes the database write lock for the length of
+//!   the select-then-update; SQLite has no row-level `SKIP LOCKED`.
 //! - SoliDB: fetch due candidates, then `If-Match` CAS per row; a rev mismatch
 //!   means another process won that row, so it is skipped.
 //!

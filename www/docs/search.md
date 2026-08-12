@@ -4,6 +4,12 @@ Models can declare **search indexes** in the class body — vector (HNSW ANN),
 fulltext, geospatial, and plain secondary indexes — and query them with
 `similar`, `search`, `hybrid`, `near`, and `within`.
 
+> **SoliDB only.** Vector (HNSW), fulltext, and geo indexes are SoliDB engine
+> features. On the SQL adapters (`postgres`, `mysql`, `sqlite`) these
+> declarations and queries raise rather than degrade silently — pgvector is a
+> separate, deferred design. See
+> [SQL document backends](multi-database.md#sql-document-backends).
+
 ## Index DSL
 
 ```soli

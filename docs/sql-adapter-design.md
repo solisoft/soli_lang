@@ -1,11 +1,11 @@
-# SQL PostgreSQL / MySQL Adapter Design
+# SQL PostgreSQL / MySQL / SQLite Adapter Design
 
-**Status:** Phase 4 started — SQL `Model.transaction`, `db:migrate --connection`; Phase 3 includes/import remain.  
+**Status:** Phase 4 — SQL `Model.transaction`, `db:migrate --connection`, HABTM includes, and the SQLite adapter are done; `through:` includes on SQL remain.  
 **Related:** comparison page; `src/db/`.
 
 ## Goals
 
-1. Run a Soli MVC app against **PostgreSQL** or **MySQL** for the common CRUD / hash-where / list / aggregate loop.
+1. Run a Soli MVC app against **PostgreSQL**, **MySQL**, or **SQLite** for the common CRUD / hash-where / list / aggregate loop.
 2. Keep **SoliDB as the default full-featured backend**.
 3. Publish a hard **capability matrix** — no silent half-support.
 
@@ -24,6 +24,10 @@ DATABASE_URL=postgres://user:pass@localhost:5432/myapp
 SOLI_DB_ADAPTER=mysql
 DATABASE_URL=mysql://user:pass@localhost:3306/myapp
 
+# SQLite — a path, not a server (`sqlite::memory:` for a throwaway database)
+SOLI_DB_ADAPTER=sqlite
+DATABASE_URL=sqlite://db/app.sqlite3
+
 SOLI_DB_POOL_SIZE=10              # optional, default 10
 ```
 
@@ -36,7 +40,8 @@ Model API → QueryBuilder IR
               ├─ SoliDB: build_query() → SDBQL → HTTP/driver
               └─ SQL facade (src/db/sql.rs)
                    ├─ Postgres: JSONB tables (_key, doc)
-                   └─ MySQL:    JSON tables  (_key, doc)
+                   ├─ MySQL:    JSON tables  (_key, doc)
+                   └─ SQLite:   TEXT tables  (_key, doc) read with json1
 ```
 
 - Hash-style `.where({ "field": value })` → portable SQL equalities.
@@ -51,27 +56,27 @@ Model API → QueryBuilder IR
 
 ## Capability matrix
 
-| Capability | SoliDB | Postgres | MySQL |
-|------------|--------|----------|-------|
-| CRUD, validations, callbacks | ✓ | ✓ | ✓ |
-| Hash `where` / order / limit / count / exists | ✓ | ✓ | ✓ |
-| sum / avg / min / max / count | ✓ | ✓ | ✓ |
-| `delete_all` / `update_all` (merge patch) | ✓ | ✓ | ✓ |
-| Soft-delete scope (`with_deleted` / `only_deleted`) | ✓ | ✓ | ✓ |
-| `pluck` / `select` projection | ✓ (server) | ✓ (client) | ✓ (client) |
-| `increment` / `decrement` | ✓ (CAS) | ✓ (R-M-W) | ✓ (R-M-W) |
-| `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) |
-| `.includes` HABTM | ✓ | ✓ | ✓ |
-| `.includes` through / filtered | ✓ | ✗ (planned) | ✗ (planned) |
-| multi-row `group_by` + multi-agg | ✓ | ✓ | ✓ |
-| `.having` on groups | ✓ | ✗ | ✗ |
-| String SDBQL `where` | ✓ | ✗ | ✗ |
-| `.join` existence filter | ✓ | ✗ | ✗ |
-| Transactions (`Model.transaction`) | ✓ | ✓ | ✓ |
-| `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ |
-| Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ |
-| Auto-create table on first write | collections | ✓ | ✓ |
-| `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ |
+| Capability | SoliDB | Postgres | MySQL | SQLite |
+|------------|--------|----------|-------|--------|
+| CRUD, validations, callbacks | ✓ | ✓ | ✓ | ✓ |
+| Hash `where` / order / limit / count / exists | ✓ | ✓ | ✓ | ✓ |
+| sum / avg / min / max / count | ✓ | ✓ | ✓ | ✓ |
+| `delete_all` / `update_all` (merge patch) | ✓ | ✓ | ✓ | ✓ |
+| Soft-delete scope (`with_deleted` / `only_deleted`) | ✓ | ✓ | ✓ | ✓ |
+| `pluck` / `select` projection | ✓ (server) | ✓ (client) | ✓ (client) | ✓ (client) |
+| `increment` / `decrement` | ✓ (CAS) | ✓ (R-M-W) | ✓ (R-M-W) | ✓ (R-M-W) |
+| `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) | ✓ (batch) |
+| `.includes` HABTM | ✓ | ✓ | ✓ | ✓ |
+| `.includes` through / filtered | ✓ | ✗ (planned) | ✗ (planned) | ✗ (planned) |
+| multi-row `group_by` + multi-agg | ✓ | ✓ | ✓ | ✓ |
+| `.having` on groups | ✓ | ✗ | ✗ | ✗ |
+| String SDBQL `where` | ✓ | ✗ | ✗ | ✗ |
+| `.join` existence filter | ✓ | ✗ | ✗ | ✗ |
+| Transactions (`Model.transaction`) | ✓ | ✓ | ✓ | ✓ (serializable only) |
+| `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ | ✓ |
+| Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ | ✗ |
+| Auto-create table on first write | collections | ✓ | ✓ | ✓ |
+| `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ | ✓ |
 
 ## Includes batching (SQL)
 
@@ -147,3 +152,4 @@ Optional Postgres vector search was listed for Phase 3 but is **not implemented*
 | **4b** `db:migrate --connection` | **done** |
 | **4c** HABTM includes on SQL | done |
 | **4d** `through:` includes on SQL | planned |
+| **5** SQLite adapter (document + column mode, jobs, migrations) | **done** |

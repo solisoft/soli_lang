@@ -9,6 +9,15 @@
         </p>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+            <strong class="text-white">Backends.</strong> Finders, <code>count</code>/<code>exists</code>,
+            <code>sum</code>/<code>avg</code>/<code>min</code>/<code>max</code>, <code>pluck</code>, and
+            <code>increment</code>/<code>decrement</code> work on <strong class="text-white">SoliDB and every
+            SQL adapter</strong>. List statistics (median and friends) are SoliDB-only; on SQL,
+            <code>increment</code> is a read-modify-write rather than SoliDB's compare-and-swap, so treat it
+            as best-effort under heavy contention.</p>
+    </div>
     <h2 id="finder-methods" class="text-2xl font-bold text-white mb-6">Finder Methods</h2>
     <p class="text-gray-400 mb-6">
         Finder methods provide convenient shortcuts for common lookup patterns. They return model instances (or <code>null</code> when no match is found).

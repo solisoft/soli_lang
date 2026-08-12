@@ -12,6 +12,17 @@
         </p>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+            <strong class="text-white">Backends.</strong> This page documents the full surface, which is what
+            <strong class="text-white">SoliDB</strong> (the default) provides. The SQL adapters
+            (<code>postgres</code>, <code>mysql</code>, <code>sqlite</code>) run the portable part:
+            CRUD, validations, callbacks, hash <code>.where</code>, aggregates, <code>group_by</code>,
+            batched <code>.includes</code>, soft delete, and transactions. Raw SDBQL, graph, vector,
+            timeseries, columnar, and <code>grouped {}</code> are SoliDB-only, and each raises a message
+            naming the feature rather than returning wrong rows. See
+            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.</p>
+    </div>
     <h2 class="text-2xl font-bold text-white mb-6">Defining Models</h2>
     <p class="text-gray-400 mb-4">
         Create model files in <code>app/models/</code>. The collection name is <strong class="text-white">automatically derived</strong> from the class name:

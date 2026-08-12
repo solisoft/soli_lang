@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 pub enum Dialect {
     Postgres,
     Mysql,
+    Sqlite,
 }
 
 /// Soft-delete handling for SQL emission (mirrors model SoftDeleteMode).
@@ -112,7 +113,8 @@ impl Dialect {
     fn ph(self, n: usize) -> String {
         match self {
             Dialect::Postgres => format!("${n}"),
-            Dialect::Mysql => "?".to_string(),
+            // SQLite accepts `?` positionally, like MySQL.
+            Dialect::Mysql | Dialect::Sqlite => "?".to_string(),
         }
     }
 
@@ -124,7 +126,10 @@ impl Dialect {
             return Err(format!("invalid SQL identifier: {name:?}"));
         }
         Ok(match self {
-            Dialect::Postgres => format!("\"{}\"", name.replace('"', "\"\"")),
+            // SQLite quotes identifiers with double quotes, like Postgres.
+            Dialect::Postgres | Dialect::Sqlite => {
+                format!("\"{}\"", name.replace('"', "\"\""))
+            }
             Dialect::Mysql => format!("`{}`", name.replace('`', "``")),
         })
     }
@@ -133,6 +138,10 @@ impl Dialect {
         match self {
             Dialect::Postgres => format!("(doc->'{field}') = {ph}"),
             Dialect::Mysql => format!("JSON_EXTRACT(doc, '$.{field}') = CAST({ph} AS JSON)"),
+            // `->` yields JSON text on both sides, so a JSON-encoded bind
+            // compares like it does on the other two adapters — including a
+            // JSON null, which `->>` would flatten to SQL NULL and never match.
+            Dialect::Sqlite => format!("(doc -> '$.{field}') = json({ph})"),
         }
     }
 
@@ -140,6 +149,7 @@ impl Dialect {
         match self {
             Dialect::Postgres => format!("doc->>'{field}'"),
             Dialect::Mysql => format!("JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}'))"),
+            Dialect::Sqlite => format!("(doc ->> '$.{field}')"),
         }
     }
 
@@ -147,6 +157,7 @@ impl Dialect {
         match self {
             Dialect::Postgres => "(doc->>'deleted_at') IS NULL",
             Dialect::Mysql => "JSON_EXTRACT(doc, '$.deleted_at') IS NULL",
+            Dialect::Sqlite => "(doc ->> '$.deleted_at') IS NULL",
         }
     }
 
@@ -154,13 +165,14 @@ impl Dialect {
         match self {
             Dialect::Postgres => "(doc->>'deleted_at') IS NOT NULL",
             Dialect::Mysql => "JSON_EXTRACT(doc, '$.deleted_at') IS NOT NULL",
+            Dialect::Sqlite => "(doc ->> '$.deleted_at') IS NOT NULL",
         }
     }
 
     fn count_expr(self) -> &'static str {
         match self {
             Dialect::Postgres => "COUNT(*)::bigint",
-            Dialect::Mysql => "COUNT(*)",
+            Dialect::Mysql | Dialect::Sqlite => "COUNT(*)",
         }
     }
 
@@ -171,6 +183,8 @@ impl Dialect {
             Dialect::Mysql => {
                 format!("CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) AS DECIMAL(30,10))")
             }
+            // SQLite has no exact numeric type; REAL is the widest it offers.
+            Dialect::Sqlite => format!("CAST((doc ->> '$.{field}') AS REAL)"),
         }
     }
 
@@ -179,6 +193,7 @@ impl Dialect {
         match self {
             Dialect::Postgres => format!("(doc->>'{field}')"),
             Dialect::Mysql => format!("JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}'))"),
+            Dialect::Sqlite => format!("(doc ->> '$.{field}')"),
         }
     }
 }
@@ -498,6 +513,11 @@ pub fn compile_update_all_d(
         Dialect::Mysql => {
             format!("doc = JSON_MERGE_PATCH(COALESCE(doc, '{{}}'), CAST({patch_ph} AS JSON))")
         }
+        // json_patch is SQLite's RFC 7396 merge — the same semantics as
+        // JSON_MERGE_PATCH and jsonb `||` for a flat patch.
+        Dialect::Sqlite => {
+            format!("doc = json_patch(COALESCE(doc, '{{}}'), json({patch_ph}))")
+        }
     };
     let mut sql = format!("UPDATE {table} SET {set}");
     let (where_sql, where_params) = compile_where_offset(d, q, params.len())?;
@@ -595,9 +615,11 @@ pub fn create_table_sql_d(d: Dialect, table: &str) -> Result<String, String> {
     let json_ty = match d {
         Dialect::Postgres => "JSONB",
         Dialect::Mysql => "JSON",
+        // SQLite stores JSON as TEXT and validates it with the json1 functions.
+        Dialect::Sqlite => "TEXT",
     };
     let key_ty = match d {
-        Dialect::Postgres => "TEXT",
+        Dialect::Postgres | Dialect::Sqlite => "TEXT",
         Dialect::Mysql => "VARCHAR(255)",
     };
     Ok(format!(
@@ -635,6 +657,13 @@ pub fn migrations_table_sql_d(d: Dialect) -> &'static str {
              \t`version` VARCHAR(64) PRIMARY KEY,\n\
              \t`name` VARCHAR(255) NOT NULL,\n\
              \t`executed_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP\n\
+             )"
+        }
+        Dialect::Sqlite => {
+            "CREATE TABLE IF NOT EXISTS \"_migrations\" (\n\
+             \t\"version\" TEXT PRIMARY KEY,\n\
+             \t\"name\" TEXT NOT NULL,\n\
+             \t\"executed_at\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n\
              )"
         }
     }

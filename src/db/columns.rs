@@ -1,13 +1,20 @@
 //! Execution facade for column-aware models.
 //!
 //! Mirrors [`super::sql`] but for real-column tables: it routes each operation
-//! to the active adapter's `col_*` implementation. Those run through the same
-//! private `with_conn` the document path uses, which is what makes
-//! `Model.transaction` work here for free — an open transaction on the same
-//! named connection is reused automatically.
+//! to the active adapter's `col_*` implementation (Postgres, MySQL, SQLite).
+//! Those run through the same private `with_conn` the document path uses, which
+//! is what makes `Model.transaction` work here for free — an open transaction on
+//! the same named connection is reused automatically.
 //!
 //! Nothing on this path ever issues DDL. Column mode maps to a schema someone
 //! else owns.
+
+// When no SQL client is linked, every dispatch arm returns `feature_missing`
+// without reading the call args — silence that noise.
+#![cfg_attr(
+    not(any(feature = "postgres", feature = "mysql", feature = "sqlite")),
+    allow(unused_variables)
+)]
 
 use std::sync::Arc;
 
@@ -16,8 +23,12 @@ use super::sql_columns_compile::ColumnQuery;
 use super::sql_compile::SqlAgg;
 use super::Adapter;
 
-/// Only referenced when at least one of `postgres` / `mysql` is off.
-#[cfg(any(not(feature = "postgres"), not(feature = "mysql")))]
+/// Only referenced when one of the SQL adapters is off.
+#[cfg(any(
+    not(feature = "postgres"),
+    not(feature = "mysql"),
+    not(feature = "sqlite")
+))]
 fn feature_missing(adapter: &str) -> String {
     format!(
         "column-aware models need the `{adapter}` adapter, which is not compiled \
@@ -27,7 +38,7 @@ fn feature_missing(adapter: &str) -> String {
 
 /// Dispatch to the active SQL backend, or a clear missing-feature error.
 macro_rules! route_cols {
-    ($pg:expr, $my:expr) => {{
+    ($pg:expr, $my:expr, $lite:expr) => {{
         match super::registry::active_spec()?.adapter {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
@@ -49,6 +60,16 @@ macro_rules! route_cols {
                     Err(feature_missing("postgres"))
                 }
             }
+            Adapter::Sqlite => {
+                #[cfg(feature = "sqlite")]
+                {
+                    $lite
+                }
+                #[cfg(not(feature = "sqlite"))]
+                {
+                    Err(feature_missing("sqlite"))
+                }
+            }
             Adapter::Solidb => Err("column-aware models require a SQL connection \
                                     (internal error; report this)"
                 .to_string()),
@@ -63,7 +84,8 @@ pub fn get_row(
 ) -> Result<Option<serde_json::Value>, String> {
     route_cols!(
         super::postgres::col_get(schema, pk),
-        super::mysql::col_get(schema, pk)
+        super::mysql::col_get(schema, pk),
+        super::sqlite::col_get(schema, pk)
     )
 }
 
@@ -74,7 +96,8 @@ pub fn insert_row(
 ) -> Result<serde_json::Value, String> {
     route_cols!(
         super::postgres::col_insert(schema, doc),
-        super::mysql::col_insert(schema, doc)
+        super::mysql::col_insert(schema, doc),
+        super::sqlite::col_insert(schema, doc)
     )
 }
 
@@ -86,7 +109,8 @@ pub fn update_row(
 ) -> Result<serde_json::Value, String> {
     route_cols!(
         super::postgres::col_update(schema, pk, patch),
-        super::mysql::col_update(schema, pk, patch)
+        super::mysql::col_update(schema, pk, patch),
+        super::sqlite::col_update(schema, pk, patch)
     )
 }
 
@@ -94,27 +118,41 @@ pub fn update_row(
 pub fn delete_row(schema: &Arc<TableSchema>, pk: &serde_json::Value) -> Result<(), String> {
     route_cols!(
         super::postgres::col_delete(schema, pk),
-        super::mysql::col_delete(schema, pk)
+        super::mysql::col_delete(schema, pk),
+        super::sqlite::col_delete(schema, pk)
     )
 }
 
 pub fn select_rows(q: &ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
-    route_cols!(super::postgres::col_select(q), super::mysql::col_select(q))
+    route_cols!(
+        super::postgres::col_select(q),
+        super::mysql::col_select(q),
+        super::sqlite::col_select(q)
+    )
 }
 
 pub fn count(q: &ColumnQuery) -> Result<i64, String> {
-    route_cols!(super::postgres::col_count(q), super::mysql::col_count(q))
+    route_cols!(
+        super::postgres::col_count(q),
+        super::mysql::col_count(q),
+        super::sqlite::col_count(q)
+    )
 }
 
 pub fn exists(q: &ColumnQuery) -> Result<bool, String> {
-    route_cols!(super::postgres::col_exists(q), super::mysql::col_exists(q))
+    route_cols!(
+        super::postgres::col_exists(q),
+        super::mysql::col_exists(q),
+        super::sqlite::col_exists(q)
+    )
 }
 
 /// Scalar aggregate over a numeric column. Returns JSON null for an empty set.
 pub fn aggregate(q: &ColumnQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
     route_cols!(
         super::postgres::col_aggregate(q, func, field),
-        super::mysql::col_aggregate(q, func, field)
+        super::mysql::col_aggregate(q, func, field),
+        super::sqlite::col_aggregate(q, func, field)
     )
 }
 

@@ -37,6 +37,16 @@ end</code></pre>
         </div>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-8">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+
+            <strong class="text-white">Which backends?</strong> Everything on this page is written for
+            <strong class="text-white">SoliDB</strong>, the default. Migrations also run on the SQL
+            adapters (<code>postgres</code>, <code>mysql</code>, <code>sqlite</code>) with a smaller
+            helper set &mdash; see <a href="#sql-adapters" class="text-amber-400 hover:underline">On the SQL adapters</a>.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">CLI Commands</h2>
 
     <div class="space-y-6 mb-12">
@@ -364,6 +374,88 @@ end
 print("Seeded users")</code></pre>
         </div>
     </div>
+
+    <h2 id="sql-adapters" class="text-2xl font-bold text-white mb-6 scroll-mt-24">On the SQL adapters</h2>
+    <p class="text-gray-400 mb-6">
+        On a <code class="text-cyan-400">postgres</code>, <code class="text-cyan-400">mysql</code>, or
+        <code class="text-cyan-400">sqlite</code> connection, a migration manages
+        <strong class="text-white">document tables</strong> (<code class="text-cyan-400">_key</code> +
+        <code class="text-cyan-400">doc</code>). The helper set is deliberately small, and anything
+        SoliDB-specific raises rather than being silently skipped.
+    </p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Helper</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">On SQL</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_table(name)</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ creates the document table if absent</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_table(name)</code></td>
+                    <td class="py-3 px-4 text-green-400">✓</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name)</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ alias of <code>create_table</code> (no type, or <code>"document"</code>)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_collection(name)</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ alias of <code>drop_table</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name, "edge"|"timeseries"|…)</code></td>
+                    <td class="py-3 px-4 text-red-400">✗ raises &mdash; typed collections are SoliDB-only</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Index helpers (<code class="text-cyan-300">db.create_index</code>, …)</td>
+                    <td class="py-3 px-4 text-red-400">✗ raise &mdash; use your own DDL tooling</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql)</code></td>
+                    <td class="py-3 px-4 text-red-400">✗ raises &mdash; SDBQL has no meaning on SQL</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_columnar</code>, <code class="text-cyan-300">db.create_vector_index</code></td>
+                    <td class="py-3 px-4 text-red-400">✗ raise &mdash; SoliDB-only</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260812120000_create_posts.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Runs on SoliDB and on every SQL adapter
+<span class="text-orange-300">def</span> up(db: Any)
+  db.create_table("posts")
+<span class="text-orange-300">end</span>
+
+<span class="text-orange-300">def</span> down(db: Any)
+  db.drop_table("posts")
+<span class="text-orange-300">end</span></code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">Target a named connection from <code class="text-cyan-400">config/database.toml</code>:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:migrate up --connection legacy
+soli db:migrate status -c legacy
+soli db:migrate down --connection legacy</code></pre>
+        </div>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white">Column-aware models are never migrated.</strong> A model declaring <code class="text-cyan-400">table "orders"</code> maps to a schema Soli does not own, so Soli issues no DDL against it &mdash; manage that schema with your own tooling. See <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">Column-aware models</a>.</li>
+        <li><strong class="text-white">Document tables are auto-created on first write</strong>, so a migration is only needed when you want the table to exist ahead of time (or want an explicit rollback path).</li>
+    </ul>
 
     <h2 class="text-2xl font-bold text-white mb-6">Environment Configuration</h2>
     <p class="text-gray-400 mb-6">Configure database connection via <code>.env</code> file:</p>

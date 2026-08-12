@@ -9,6 +9,16 @@
         </p>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+            <strong class="text-white">Backends.</strong> <code>belongs_to</code>, <code>has_many</code>,
+            <code>has_one</code>, and <code>has_and_belongs_to_many</code> &mdash; including eager
+            <code>.includes</code> and <code>includes_count</code> &mdash; work on
+            <strong class="text-white">SoliDB and every SQL adapter</strong>, batched so parent count does
+            not add queries. <code>through:</code> includes and <code>.join</code> filtering are SoliDB-only
+            for now, and eager loading across two different connections raises (query each side, or
+            colocate the models). Column-aware models (<code>table "…"</code>) have no associations yet.</p>
+    </div>
     <h2 class="text-2xl font-bold text-white mb-6">Relationship DSL</h2>
     <p class="text-gray-400 mb-4">Declare associations inside your model class using the built-in relationship methods:</p>
 

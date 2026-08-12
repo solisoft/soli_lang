@@ -32,8 +32,8 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SOLI_DB_ADAPTER</code></td><td class="py-3 px-4">Single-connection backend when <code>config/database.toml</code> is absent: <code>solidb</code> (default), <code>postgres</code>, or <code>mysql</code> (document subset). Multi-DB: <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.</td><td class="py-3 px-4"><code>solidb</code></td></tr>
-                    <tr><td class="py-3 px-4"><code>DATABASE_URL</code></td><td class="py-3 px-4">Connection URL for SQL adapters (e.g. <code>postgres://user:pass@localhost:5432/myapp</code>). Required when <code>SOLI_DB_ADAPTER</code> is <code>postgres</code> or <code>mysql</code>. TOML named connections use <code>url =</code> per entry.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DB_ADAPTER</code></td><td class="py-3 px-4">Single-connection backend when <code>config/database.toml</code> is absent: <code>solidb</code> (default), <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code> (document subset). Multi-DB: <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.</td><td class="py-3 px-4"><code>solidb</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>DATABASE_URL</code></td><td class="py-3 px-4">Connection URL for SQL adapters (e.g. <code>postgres://user:pass@localhost:5432/myapp</code>, or a path such as <code>sqlite://db/app.sqlite3</code>). Required when <code>SOLI_DB_ADAPTER</code> is <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code>. TOML named connections use <code>url =</code> per entry.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_DB_POOL_SIZE</code></td><td class="py-3 px-4">Default SQL pool size (single-connection mode). TOML <code>pool = N</code> overrides per connection.</td><td class="py-3 px-4"><code>10</code></td></tr>
                     <tr><td class="py-3 px-4"><code>APP_ENV</code></td><td class="py-3 px-4">Selects <code>.env.{APP_ENV}</code> and marks test mode for features that need it.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PROTECT_ENV</code></td><td class="py-3 px-4">Comma-separated variable names that <code>.env.{APP_ENV}</code> must not override. Mostly used by the test runner.</td><td class="py-3 px-4">unset</td></tr>
@@ -245,7 +245,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
                     <tr><td class="py-3 px-4"><code>paseto</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4"><code>Paseto</code> class (<code>pasetors</code> crate)</td></tr>
                     <tr><td class="py-3 px-4"><code>postgres</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">PostgreSQL document adapter + client pool</td></tr>
                     <tr><td class="py-3 px-4"><code>mysql</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">MySQL / MariaDB document adapter + client pool</td></tr>
-                    <tr><td class="py-3 px-4"><code>sql</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Alias for <code>postgres</code> + <code>mysql</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>sqlite</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">SQLite document adapter (bundled client &mdash; no system library needed)</td></tr>
+                    <tr><td class="py-3 px-4"><code>sql</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Alias for <code>postgres</code> + <code>mysql</code> + <code>sqlite</code></td></tr>
                     <tr><td class="py-3 px-4"><code>solidb-driver</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Native SoliDB TCP driver</td></tr>
                     <tr><td class="py-3 px-4"><code>full</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Default set + <code>solidb-driver</code></td></tr>
                 </tbody>
@@ -254,9 +255,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
         <p class="text-gray-400 mb-3">SoliDB (HTTP) always stays linked. SoliDB-only install without PASETO or SQL clients:</p>
         <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-cyan-300 overflow-x-auto mb-4"><code>cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph</code></pre>
-        <p class="text-gray-400 mb-3">Postgres only (no MySQL client, no PASETO):</p>
+        <p class="text-gray-400 mb-3">Postgres only (no MySQL or SQLite client, no PASETO):</p>
         <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-cyan-300 overflow-x-auto mb-4"><code>cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph,postgres</code></pre>
+        <p class="text-gray-400 mb-3">SQLite only &mdash; the client is compiled in, so the host needs no <code>libsqlite3</code>:</p>
+        <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-cyan-300 overflow-x-auto mb-4"><code>cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,sqlite</code></pre>
         <p class="text-gray-400 mb-4">
             If the binary was built without an adapter and you set <code>SOLI_DB_ADAPTER=postgres</code>
             (or a <code>database.toml</code> entry for it), boot fails with a rebuild hint rather than a

@@ -19,8 +19,8 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 |----------|---------|---------|
 | `APP_ENV` | Selects `.env.{APP_ENV}` and marks test mode for features that need it. | unset |
 | `SOLI_PROTECT_ENV` | Comma-separated variable names that `.env.{APP_ENV}` must not override. Mostly used by the test runner. | unset |
-| `SOLI_DB_ADAPTER` | Single-connection backend when `config/database.toml` is absent: `solidb` (default), `postgres`, or `mysql`. SQL adapters are a document subset (CRUD, hash filters, aggregates, includes batching, migrations). Multi-DB apps use `config/database.toml` instead — see [Multiple Databases](multi-database.md). | `solidb` |
-| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`). Required when `SOLI_DB_ADAPTER` is `postgres` or `mysql`. Ignored for SoliDB. Named SQL connections in TOML use `url =` per connection. | unset |
+| `SOLI_DB_ADAPTER` | Single-connection backend when `config/database.toml` is absent: `solidb` (default), `postgres`, `mysql`, or `sqlite`. SQL adapters are a document subset (CRUD, hash filters, aggregates, includes batching, migrations). Multi-DB apps use `config/database.toml` instead — see [Multiple Databases](multi-database.md). | `solidb` |
+| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`, or a path such as `sqlite://db/app.sqlite3`). Required when `SOLI_DB_ADAPTER` is `postgres`, `mysql`, or `sqlite`. Ignored for SoliDB. Named SQL connections in TOML use `url =` per connection. | unset |
 | `SOLI_DB_POOL_SIZE` | Default SQL pool size (single-connection mode). TOML `pool = N` overrides per connection. | `10` |
 
 ## Server And Development
@@ -242,7 +242,8 @@ locale tables) — with the size of that app. The levers, cheapest first:
 | `paseto` | on | `Paseto` class (`pasetors` crate) |
 | `postgres` | on | PostgreSQL document adapter + client pool |
 | `mysql` | on | MySQL / MariaDB document adapter + client pool |
-| `sql` | off | Alias for `postgres` + `mysql` |
+| `sqlite` | on | SQLite document adapter (bundled client — no system library needed) |
+| `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
 | `solidb-driver` | off | Native SoliDB TCP driver (needs `solidb-client`) |
 | `full` | off | Default set + `solidb-driver` |
 
@@ -253,11 +254,18 @@ cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph
 ```
 
-Postgres only (no MySQL client, no PASETO):
+Postgres only (no MySQL or SQLite client, no PASETO):
 
 ```bash
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph,postgres
+```
+
+SQLite only — the client is compiled in, so the host needs no `libsqlite3`:
+
+```bash
+cargo install --path . --locked --no-default-features \
+  --features embedding,llm,codegraph,sqlite
 ```
 
 If the binary was built without an adapter and you set `SOLI_DB_ADAPTER=postgres`

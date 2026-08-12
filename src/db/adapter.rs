@@ -12,6 +12,8 @@ pub enum Adapter {
     Postgres,
     /// MySQL / MariaDB document backend (`_key` + JSON `doc`).
     Mysql,
+    /// SQLite document backend (`_key` + JSON `doc`), one file, no server.
+    Sqlite,
 }
 
 impl Adapter {
@@ -20,6 +22,7 @@ impl Adapter {
             Adapter::Solidb => "solidb",
             Adapter::Postgres => "postgres",
             Adapter::Mysql => "mysql",
+            Adapter::Sqlite => "sqlite",
         }
     }
 
@@ -28,11 +31,12 @@ impl Adapter {
             Adapter::Solidb => BackendCaps::solidb(),
             Adapter::Postgres => BackendCaps::postgres(),
             Adapter::Mysql => BackendCaps::mysql(),
+            Adapter::Sqlite => BackendCaps::sqlite(),
         }
     }
 
     pub fn is_sql(self) -> bool {
-        matches!(self, Adapter::Postgres | Adapter::Mysql)
+        matches!(self, Adapter::Postgres | Adapter::Mysql | Adapter::Sqlite)
     }
 }
 
@@ -73,6 +77,7 @@ impl AdapterConfig {
 /// - solidb, solid, sdb
 /// - postgres, postgresql, pg
 /// - mysql, mariadb
+/// - sqlite, sqlite3
 pub fn parse_adapter(raw: Option<&str>) -> Result<Adapter, DbError> {
     let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Adapter::Solidb);
@@ -81,6 +86,7 @@ pub fn parse_adapter(raw: Option<&str>) -> Result<Adapter, DbError> {
         "solidb" | "solid" | "sdb" | "default" => Ok(Adapter::Solidb),
         "postgres" | "postgresql" | "pg" => Ok(Adapter::Postgres),
         "mysql" | "mariadb" => Ok(Adapter::Mysql),
+        "sqlite" | "sqlite3" => Ok(Adapter::Sqlite),
         other => Err(DbError::UnknownAdapter {
             value: other.to_string(),
         }),
@@ -102,15 +108,23 @@ mod tests {
             Adapter::Postgres
         );
         assert_eq!(parse_adapter(Some("mariadb")).unwrap(), Adapter::Mysql);
+        assert_eq!(parse_adapter(Some("sqlite")).unwrap(), Adapter::Sqlite);
     }
 
     #[test]
     fn rejects_unknown() {
-        let err = parse_adapter(Some("sqlite")).unwrap_err();
+        let err = parse_adapter(Some("mongo")).unwrap_err();
         match err {
-            DbError::UnknownAdapter { value } => assert_eq!(value, "sqlite"),
+            DbError::UnknownAdapter { value } => assert_eq!(value, "mongo"),
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_sqlite_aliases() {
+        assert_eq!(parse_adapter(Some("sqlite")).unwrap(), Adapter::Sqlite);
+        assert_eq!(parse_adapter(Some("SQLite3")).unwrap(), Adapter::Sqlite);
+        assert!(Adapter::Sqlite.is_sql());
     }
 
     #[test]

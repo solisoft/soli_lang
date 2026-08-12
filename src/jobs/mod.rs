@@ -2,12 +2,13 @@
 //!
 //! Jobs are ordinary documents in the `_jobs` collection/table on the default
 //! database connection, so the engine works identically on SoliDB, Postgres,
-//! and MySQL. Soli owns the whole lifecycle: enqueue, claim, execute, retry,
-//! and cron scheduling. Nothing calls back into the app over HTTP.
+//! MySQL, and SQLite. Soli owns the whole lifecycle: enqueue, claim, execute,
+//! retry, and cron scheduling. Nothing calls back into the app over HTTP.
 //!
 //! - [`store`] — backend-agnostic row operations.
 //! - [`claim`] — atomic claim (Postgres `SKIP LOCKED`, MySQL token-claim,
-//!   SoliDB `If-Match` CAS) so several processes can poll one queue safely.
+//!   SQLite write-lock, SoliDB `If-Match` CAS) so several processes can poll one
+//!   queue safely.
 //! - [`scheduler`] — cron evaluation and single-winner firing.
 //! - [`engine`] — the poller thread, retry/backoff, and the native webhook job.
 

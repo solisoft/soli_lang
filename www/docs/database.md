@@ -2,7 +2,7 @@
 
 Soli uses **SoliDB** as the default full-featured backend. This guide covers the single-connection setup via environment variables.
 
-For **Postgres/MySQL document adapters**, named connections, and per-model `connection "name"`, see **[Multiple Databases](multi-database.md)** (`/docs/database/multi-database`).
+For the **Postgres / MySQL / SQLite document adapters**, named connections, and per-model `connection "name"`, see **[Multiple Databases](multi-database.md)** (`/docs/database/multi-database`).
 
 ## Environment Variables
 
@@ -381,10 +381,10 @@ Error: Database 'mydb' not found
 
 | Need | Where |
 |------|--------|
-| Whole app on Postgres/MySQL | `SOLI_DB_ADAPTER` + `DATABASE_URL` — [Multiple Databases](multi-database.md) |
+| Whole app on Postgres/MySQL/SQLite | `SOLI_DB_ADAPTER` + `DATABASE_URL` — [Multiple Databases](multi-database.md) |
 | SoliDB + SQL in one process | `config/database.toml` + `connection "…"` on models |
 | Capability matrix | repo `docs/sql-adapter-design.md` |
-| Smaller binary (no SQL client) | Cargo features `postgres` / `mysql` — [Slim binary](configuration.md#slim-binary-cargo-features) |
+| Smaller binary (no SQL client) | Cargo features `postgres` / `mysql` / `sqlite` — [Slim binary](configuration.md#slim-binary-cargo-features) |
 
 ## Next Steps
 

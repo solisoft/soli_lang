@@ -43,6 +43,7 @@ default = [
     "paseto",
     "postgres",
     "mysql",
+    "sqlite",
 ]
 # Kitchen-sink alias (default set + native SoliDB driver).
 full = [
@@ -52,6 +53,7 @@ full = [
     "paseto",
     "postgres",
     "mysql",
+    "sqlite",
     "solidb-driver",
 ]
 embedding = []
@@ -73,8 +75,11 @@ paseto = ["dep:pasetors"]
 # SQL document adapters (Model when SOLI_DB_ADAPTER / database.toml selects them).
 postgres = ["dep:postgres", "dep:r2d2_postgres", "dep:r2d2"]
 mysql = ["dep:mysql", "dep:r2d2_mysql", "dep:r2d2"]
-# Both SQL backends.
-sql = ["postgres", "mysql"]
+# SQLite document adapter. Bundled: no system libsqlite3 needed, and it pins a
+# SQLite new enough for the `->>` JSON operator (3.38+) and RETURNING (3.35+).
+sqlite = ["dep:rusqlite", "dep:r2d2_sqlite", "dep:r2d2"]
+# Every SQL backend.
+sql = ["postgres", "mysql", "sqlite"]
 
 [dependencies]
 thiserror = "1.0"
@@ -319,6 +324,9 @@ r2d2 = { version = "0.8.10", optional = true }
 r2d2_postgres = { version = "0.18.2", optional = true }
 mysql = { version = "28.0.0", features = ["default"], optional = true }
 r2d2_mysql = { version = "28.0.0", optional = true }
+
+rusqlite = { version = "0.31", features = ["bundled", "serde_json"], optional = true }
+r2d2_sqlite = { version = "0.24", optional = true }
 
 # Cron expression parsing for the job scheduler (src/jobs/scheduler.rs). Six
 # fields (`sec min hour dom mon dow`) — the same crate and semantics the
