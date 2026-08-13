@@ -104,6 +104,49 @@ pub(crate) fn parse_target(url: &str) -> Target {
     Target::File(PathBuf::from(rest))
 }
 
+/// Render a driver error, and classify a constraint violation by SQLite's
+/// extended result code. SQLite names `table.column` in the message, which is
+/// the most precise of the three adapters.
+fn lite_error(context: &str, e: &rusqlite::Error) -> String {
+    let text = format!("{context}: {e}");
+    let rusqlite::Error::SqliteFailure(code, message) = e else {
+        return text;
+    };
+    let kind = match code.extended_code {
+        2067 | 1555 => Some(super::error::ConstraintKind::Unique),
+        787 => Some(super::error::ConstraintKind::ForeignKey),
+        1299 => Some(super::error::ConstraintKind::NotNull),
+        275 => Some(super::error::ConstraintKind::Check),
+        _ => None,
+    };
+    let Some(kind) = kind else {
+        return text;
+    };
+    // Two shapes, depending on what was violated:
+    //   "UNIQUE constraint failed: orders.code"          → a real column
+    //   "UNIQUE constraint failed: index 'idx_x_status'"  → an expression index,
+    //                                                       which has no column
+    let tail = message
+        .as_deref()
+        .and_then(|m| m.rsplit(": ").next())
+        .map(str::trim);
+    let index_name = tail
+        .and_then(|t| t.strip_prefix("index "))
+        .map(|t| t.trim_matches('\'').to_string());
+    let column = match index_name {
+        Some(_) => None,
+        None => tail
+            .and_then(|t| t.split(',').next())
+            .and_then(|first| first.trim().rsplit('.').next())
+            .map(str::to_string)
+            .filter(|c| !c.is_empty() && !c.contains(' ')),
+    };
+    let constraint = super::error::Constraint::new(kind)
+        .with_column(column)
+        .with_name(index_name);
+    format!("{} {text}", constraint.to_marker())
+}
+
 fn pools() -> &'static Mutex<HashMap<String, SqPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -217,7 +260,7 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
         // SQLITE_BUSY even with a busy timeout — a lost transaction rather than
         // a wait.
         conn.execute_batch("BEGIN IMMEDIATE")
-            .map_err(|e| format!("sqlite BEGIN: {e}"))?;
+            .map_err(|e| lite_error("sqlite BEGIN", &e))?;
         *slot = Some(TxState {
             conn,
             nest: 0,
@@ -243,7 +286,7 @@ pub fn commit_transaction() -> Result<(), String> {
         state
             .conn
             .execute_batch("COMMIT")
-            .map_err(|e| format!("sqlite COMMIT: {e}"))
+            .map_err(|e| lite_error("sqlite COMMIT", &e))
     })
 }
 
@@ -262,7 +305,7 @@ pub fn rollback_transaction() -> Result<(), String> {
         state
             .conn
             .execute_batch("ROLLBACK")
-            .map_err(|e| format!("sqlite ROLLBACK: {e}"))
+            .map_err(|e| lite_error("sqlite ROLLBACK", &e))
     })
 }
 
@@ -330,11 +373,11 @@ fn in_write_tx<T>(
         return f(conn);
     }
     conn.execute_batch("BEGIN IMMEDIATE")
-        .map_err(|e| format!("sqlite BEGIN IMMEDIATE: {e}"))?;
+        .map_err(|e| lite_error("sqlite BEGIN IMMEDIATE", &e))?;
     match f(conn) {
         Ok(value) => {
             conn.execute_batch("COMMIT")
-                .map_err(|e| format!("sqlite COMMIT: {e}"))?;
+                .map_err(|e| lite_error("sqlite COMMIT", &e))?;
             Ok(value)
         }
         Err(e) => {
@@ -384,7 +427,7 @@ fn get_on(conn: &mut SqConn, table: &str, key: &str) -> Result<Option<serde_json
     let row: Option<String> = conn
         .query_row(&sql, [key], |r| r.get(0))
         .optional()
-        .map_err(|e| format!("sqlite get: {e}"))?;
+        .map_err(|e| lite_error("sqlite get", &e))?;
     match row {
         Some(s) => serde_json::from_str(&s)
             .map(Some)
@@ -411,7 +454,7 @@ pub fn insert(
     let doc_str = document.to_string();
     with_conn(|conn| {
         conn.execute(&sql, rusqlite::params![&key, &doc_str])
-            .map_err(|e| format!("sqlite insert: {e}"))?;
+            .map_err(|e| lite_error("sqlite insert", &e))?;
         get_on(conn, table, &key)?.ok_or_else(|| "sqlite insert: row missing after write".into())
     })
 }
@@ -449,7 +492,7 @@ pub fn update(
     );
     with_conn(|conn| {
         conn.execute(&sql, rusqlite::params![key, &doc_str])
-            .map_err(|e| format!("sqlite update: {e}"))?;
+            .map_err(|e| lite_error("sqlite update", &e))?;
         get_on(conn, table, key)?.ok_or_else(|| "sqlite update: row missing".into())
     })
 }
@@ -462,7 +505,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
     with_conn(|conn| {
         conn.execute(&sql, [key])
-            .map_err(|e| format!("sqlite delete: {e}"))?;
+            .map_err(|e| lite_error("sqlite delete", &e))?;
         Ok(())
     })
 }
@@ -517,14 +560,14 @@ pub fn group_by(
         let params = to_sqlite_params(&compiled.params);
         let mut stmt = conn
             .prepare(&compiled.sql)
-            .map_err(|e| format!("sqlite group_by prepare: {e}"))?;
+            .map_err(|e| lite_error("sqlite group_by prepare", &e))?;
         let mut rows = stmt
             .query(params_from_iter(params.iter()))
-            .map_err(|e| format!("sqlite group_by: {e}"))?;
+            .map_err(|e| lite_error("sqlite group_by", &e))?;
         let mut out = Vec::new();
         while let Some(row) = rows
             .next()
-            .map_err(|e| format!("sqlite group_by row: {e}"))?
+            .map_err(|e| lite_error("sqlite group_by row", &e))?
         {
             let mut map = serde_json::Map::new();
             for (i, name) in col_names.iter().enumerate() {
@@ -547,7 +590,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         let n: Option<i64> = conn
             .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite count: {e}"))?;
+            .map_err(|e| lite_error("sqlite count", &e))?;
         Ok(n.unwrap_or(0))
     })
 }
@@ -562,7 +605,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         let hit: Option<i64> = conn
             .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite exists: {e}"))?;
+            .map_err(|e| lite_error("sqlite exists", &e))?;
         Ok(hit.is_some())
     })
 }
@@ -579,7 +622,7 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
                 Ok(r.get_ref(0).map(value_to_json).unwrap_or_default())
             })
             .optional()
-            .map_err(|e| format!("sqlite aggregate: {e}"))?;
+            .map_err(|e| lite_error("sqlite aggregate", &e))?;
         // COUNT of nothing is 0; SUM of nothing is null, and the compiler's
         // aggregate already returns SQL NULL there.
         Ok(match value {
@@ -599,7 +642,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
             .execute(&compiled.sql, params_from_iter(params.iter()))
-            .map_err(|e| format!("sqlite delete_all: {e}"))?;
+            .map_err(|e| lite_error("sqlite delete_all", &e))?;
         Ok(n as u64)
     })
 }
@@ -613,7 +656,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         let params = to_sqlite_params(&compiled.params);
         let n = conn
             .execute(&compiled.sql, params_from_iter(params.iter()))
-            .map_err(|e| format!("sqlite update_all: {e}"))?;
+            .map_err(|e| lite_error("sqlite update_all", &e))?;
         Ok(n as u64)
     })
 }
@@ -623,13 +666,13 @@ fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, S
         let params = to_sqlite_params(params);
         let mut stmt = conn
             .prepare(sql)
-            .map_err(|e| format!("sqlite prepare: {e}"))?;
+            .map_err(|e| lite_error("sqlite prepare", &e))?;
         let mut rows = stmt
             .query(params_from_iter(params.iter()))
-            .map_err(|e| format!("sqlite query: {e}"))?;
+            .map_err(|e| lite_error("sqlite query", &e))?;
         let mut out = Vec::new();
-        while let Some(row) = rows.next().map_err(|e| format!("sqlite row: {e}"))? {
-            let text: String = row.get(0).map_err(|e| format!("sqlite row doc: {e}"))?;
+        while let Some(row) = rows.next().map_err(|e| lite_error("sqlite row", &e))? {
+            let text: String = row.get(0).map_err(|e| lite_error("sqlite row doc", &e))?;
             out.push(serde_json::from_str(&text).map_err(|e| format!("sqlite row json: {e}"))?);
         }
         Ok(out)
@@ -642,7 +685,7 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
     let ddl = create_table_sql_d(Dialect::Sqlite, table)?;
     with_conn(|conn| {
         conn.execute_batch(&ddl)
-            .map_err(|e| format!("sqlite ensure_table: {e}"))
+            .map_err(|e| lite_error("sqlite ensure_table", &e))
     })
 }
 
@@ -650,14 +693,14 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     let ddl = drop_table_sql_d(Dialect::Sqlite, table)?;
     with_conn(|conn| {
         conn.execute_batch(&ddl)
-            .map_err(|e| format!("sqlite drop_table: {e}"))
+            .map_err(|e| lite_error("sqlite drop_table", &e))
     })
 }
 
 pub fn ensure_migrations_table() -> Result<(), String> {
     with_conn(|conn| {
         conn.execute_batch(migrations_table_sql_d(Dialect::Sqlite))
-            .map_err(|e| format!("sqlite migrations table: {e}"))
+            .map_err(|e| lite_error("sqlite migrations table", &e))
     })
 }
 
@@ -666,12 +709,12 @@ pub fn list_applied_migrations() -> Result<Vec<(String, String)>, String> {
     with_conn(|conn| {
         let mut stmt = conn
             .prepare("SELECT version, name FROM \"_migrations\" ORDER BY version")
-            .map_err(|e| format!("sqlite list migrations: {e}"))?;
+            .map_err(|e| lite_error("sqlite list migrations", &e))?;
         let rows = stmt
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-            .map_err(|e| format!("sqlite list migrations: {e}"))?;
+            .map_err(|e| lite_error("sqlite list migrations", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| format!("sqlite list migrations row: {e}"))
+            .map_err(|e| lite_error("sqlite list migrations row", &e))
     })
 }
 
@@ -682,7 +725,7 @@ pub fn record_migration(version: &str, name: &str) -> Result<(), String> {
             "INSERT OR IGNORE INTO \"_migrations\" (version, name) VALUES (?, ?)",
             [version, name],
         )
-        .map_err(|e| format!("sqlite record migration: {e}"))?;
+        .map_err(|e| lite_error("sqlite record migration", &e))?;
         Ok(())
     })
 }
@@ -691,7 +734,7 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     ensure_migrations_table()?;
     with_conn(|conn| {
         conn.execute("DELETE FROM \"_migrations\" WHERE version = ?", [version])
-            .map_err(|e| format!("sqlite remove migration: {e}"))?;
+            .map_err(|e| lite_error("sqlite remove migration", &e))?;
         Ok(())
     })
 }
@@ -718,7 +761,7 @@ pub fn increment_field(
         let value: Option<Option<String>> = conn
             .query_row(&sql, rusqlite::params![delta, key], |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite increment: {e}"))?;
+            .map_err(|e| lite_error("sqlite increment", &e))?;
         Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
@@ -728,12 +771,12 @@ pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     with_conn(|conn| {
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?")
-            .map_err(|e| format!("sqlite list indexes: {e}"))?;
+            .map_err(|e| lite_error("sqlite list indexes", &e))?;
         let rows = stmt
             .query_map([table], |r| r.get::<_, String>(0))
-            .map_err(|e| format!("sqlite list indexes: {e}"))?;
+            .map_err(|e| lite_error("sqlite list indexes", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| format!("sqlite list indexes row: {e}"))
+            .map_err(|e| lite_error("sqlite list indexes row", &e))
     })
 }
 
@@ -757,7 +800,7 @@ pub fn ensure_doc_index(
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| {
         conn.execute_batch(sql)
-            .map_err(|e| format!("sqlite ddl: {e}"))
+            .map_err(|e| lite_error("sqlite ddl", &e))
     })
 }
 
@@ -796,16 +839,16 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
         Target::Memory => with_conn(|conn| {
             let result = conn
                 .execute_batch(sql)
-                .map_err(|e| format!("sqlite execute: {e}"));
+                .map_err(|e| lite_error("sqlite execute", &e));
             reset_sqlite_session(conn);
             result
         }),
         Target::File(path) => {
             let mut conn = rusqlite::Connection::open(&path)
-                .map_err(|e| format!("sqlite execute open: {e}"))?;
-            init_conn(&mut conn).map_err(|e| format!("sqlite execute init: {e}"))?;
+                .map_err(|e| lite_error("sqlite execute open", &e))?;
+            init_conn(&mut conn).map_err(|e| lite_error("sqlite execute init", &e))?;
             conn.execute_batch(sql)
-                .map_err(|e| format!("sqlite execute: {e}"))
+                .map_err(|e| lite_error("sqlite execute", &e))
         }
     }
 }
@@ -946,14 +989,14 @@ fn col_rows(
     let params = to_sqlite_params(params);
     let mut stmt = conn
         .prepare(sql)
-        .map_err(|e| format!("sqlite column {what} prepare: {e}"))?;
+        .map_err(|e| lite_error(&format!("sqlite column {what} prepare"), &e))?;
     let mut rows = stmt
         .query(params_from_iter(params.iter()))
-        .map_err(|e| format!("sqlite column {what}: {e}"))?;
+        .map_err(|e| lite_error(&format!("sqlite column {what}"), &e))?;
     let mut out = Vec::new();
     while let Some(row) = rows
         .next()
-        .map_err(|e| format!("sqlite column {what} row: {e}"))?
+        .map_err(|e| lite_error(&format!("sqlite column {what} row"), &e))?
     {
         out.push(row_to_json(schema, row));
     }
@@ -1012,7 +1055,7 @@ pub fn col_delete(
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         conn.execute(&compiled.sql, params_from_iter(params.iter()))
-            .map_err(|e| format!("sqlite column delete: {e}"))?;
+            .map_err(|e| lite_error("sqlite column delete", &e))?;
         Ok(())
     })
 }
@@ -1033,7 +1076,7 @@ pub fn col_increment(
         let value: Option<Option<String>> = conn
             .query_row(&sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite column increment: {e}"))?;
+            .map_err(|e| lite_error("sqlite column increment", &e))?;
         Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
@@ -1050,7 +1093,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
         let n: Option<i64> = conn
             .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite column count: {e}"))?;
+            .map_err(|e| lite_error("sqlite column count", &e))?;
         Ok(n.unwrap_or(0))
     })
 }
@@ -1062,7 +1105,7 @@ pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
         let hit: Option<i64> = conn
             .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite column exists: {e}"))?;
+            .map_err(|e| lite_error("sqlite column exists", &e))?;
         Ok(hit.is_some())
     })
 }
@@ -1079,13 +1122,13 @@ pub fn col_aggregate(
             let n: Option<i64> = conn
                 .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
                 .optional()
-                .map_err(|e| format!("sqlite column aggregate: {e}"))?;
+                .map_err(|e| lite_error("sqlite column aggregate", &e))?;
             return Ok(serde_json::json!(n.unwrap_or(0)));
         }
         let raw: Option<Option<String>> = conn
             .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
             .optional()
-            .map_err(|e| format!("sqlite column aggregate: {e}"))?;
+            .map_err(|e| lite_error("sqlite column aggregate", &e))?;
         Ok(super::columns::parse_agg_text(raw.flatten()))
     })
 }
@@ -1104,7 +1147,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
     with_conn(|conn| {
         let mut stmt = conn
             .prepare("SELECT name, type, \"notnull\", pk FROM pragma_table_info(?) ORDER BY cid")
-            .map_err(|e| format!("sqlite introspect prepare: {e}"))?;
+            .map_err(|e| lite_error("sqlite introspect prepare", &e))?;
         let rows = stmt
             .query_map([table], |r| {
                 Ok((
@@ -1114,7 +1157,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
                     r.get::<_, i64>(3)?,
                 ))
             })
-            .map_err(|e| format!("sqlite introspect columns: {e}"))?;
+            .map_err(|e| lite_error("sqlite introspect columns", &e))?;
 
         let mut columns = Vec::new();
         // `pk` is the 1-based position in the key, so sort by it to keep key
@@ -1123,7 +1166,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
         let mut pk_ordered: Vec<(i64, String)> = Vec::new();
         for row in rows {
             let (name, declared, notnull, pk_pos) =
-                row.map_err(|e| format!("sqlite introspect row: {e}"))?;
+                row.map_err(|e| lite_error("sqlite introspect row", &e))?;
             if pk_pos > 0 {
                 pk_ordered.push((pk_pos, name.clone()));
             }
@@ -1233,12 +1276,12 @@ pub fn claim_jobs(
                               (doc ->> '$.run_at') ASC \
                      LIMIT ?2",
                 )
-                .map_err(|e| format!("sqlite claim_jobs prepare: {e}"))?;
+                .map_err(|e| lite_error("sqlite claim_jobs prepare", &e))?;
             let keys: Vec<String> = stmt
                 .query_map(rusqlite::params![now_iso, batch as i64], |r| r.get(0))
-                .map_err(|e| format!("sqlite claim_jobs select: {e}"))?
+                .map_err(|e| lite_error("sqlite claim_jobs select", &e))?
                 .collect::<rusqlite::Result<Vec<String>>>()
-                .map_err(|e| format!("sqlite claim_jobs row: {e}"))?;
+                .map_err(|e| lite_error("sqlite claim_jobs row", &e))?;
             drop(stmt);
 
             let mut claimed = Vec::with_capacity(keys.len());
@@ -1255,7 +1298,7 @@ pub fn claim_jobs(
                         |r| r.get(0),
                     )
                     .optional()
-                    .map_err(|e| format!("sqlite claim_jobs update: {e}"))?;
+                    .map_err(|e| lite_error("sqlite claim_jobs update", &e))?;
                 if let Some(text) = doc {
                     claimed.push(
                         serde_json::from_str(&text)
@@ -1287,7 +1330,7 @@ pub fn claim_cron_slot(
                  WHERE _key = ?1 AND (doc ->> '$.next_run_at') = ?3",
                 rusqlite::params![key, &patch_str, expected_next_run_at],
             )
-            .map_err(|e| format!("sqlite claim_cron_slot: {e}"))?;
+            .map_err(|e| lite_error("sqlite claim_cron_slot", &e))?;
         Ok(changed == 1)
     })
 }
@@ -1301,7 +1344,7 @@ fn table_exists(table: &str) -> Result<bool, String> {
                 |r| r.get(0),
             )
             .optional()
-            .map_err(|e| format!("sqlite table_exists: {e}"))?;
+            .map_err(|e| lite_error("sqlite table_exists", &e))?;
         Ok(found.is_some())
     })
 }
@@ -2251,6 +2294,87 @@ mod tests {
                 col_increment(&schema, &serde_json::json!(99), "hits", 1).unwrap(),
                 None
             );
+        });
+    }
+
+    /// A constraint violation must arrive as a field error, not as driver prose.
+    #[test]
+    fn a_violation_is_classified_with_its_column() {
+        use crate::db::error::{Constraint, ConstraintKind};
+
+        with_sqlite("constraint-errors", || {
+            execute_ddl("CREATE TABLE parents (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE)")
+                .expect("ddl");
+            execute_ddl(
+                "CREATE TABLE kids (id INTEGER PRIMARY KEY, parent_id BIGINT \
+                 REFERENCES parents(id), note TEXT NOT NULL)",
+            )
+            .expect("ddl");
+            let schema = |table: &str| {
+                let raw = introspect_table(table).expect("introspect");
+                std::sync::Arc::new(
+                    super::super::introspect::build_schema("primary", table, raw, |t, _| {
+                        sqlite_coltype(t)
+                    })
+                    .expect("schema"),
+                )
+            };
+            let parents = schema("parents");
+            let kids = schema("kids");
+            col_insert(&parents, &serde_json::json!({ "code": "A" })).expect("insert");
+
+            // Unique: the column comes from "UNIQUE constraint failed: parents.code".
+            let err =
+                col_insert(&parents, &serde_json::json!({ "code": "A" })).expect_err("duplicate");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::Unique);
+            assert_eq!(violation.field().as_deref(), Some("code"));
+
+            // NOT NULL names its column too.
+            let err =
+                col_insert(&parents, &serde_json::json!({ "code": null })).expect_err("null code");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::NotNull);
+            assert_eq!(violation.field().as_deref(), Some("code"));
+
+            // Foreign keys are enforced (PRAGMA foreign_keys=ON) and classified.
+            let err = col_insert(&kids, &serde_json::json!({ "parent_id": 999, "note": "x" }))
+                .expect_err("dangling fk");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::ForeignKey);
+
+            // An unrelated failure stays unclassified rather than being guessed.
+            let err = col_insert(&parents, &serde_json::json!({ "nope": 1 }))
+                .expect_err("unknown column");
+            assert!(Constraint::parse(&err).is_none(), "{err}");
+        });
+    }
+
+    /// The document path (`_key` + `doc`) classifies the same way, and the model
+    /// layer turns it into `{field, message}`.
+    #[test]
+    fn a_duplicate_reads_as_a_field_error_not_driver_text() {
+        with_sqlite("constraint-model", || {
+            let table = "accounts";
+            ensure_table(table).expect("table");
+            ensure_doc_index(table, &["email".to_string()], "idx_accounts_email", true)
+                .expect("index");
+            insert(table, Some("a"), serde_json::json!({ "email": "a@b.c" })).expect("insert");
+
+            let err = insert(table, Some("b"), serde_json::json!({ "email": "a@b.c" }))
+                .expect_err("duplicate");
+
+            // What the model layer reports for that error.
+            use crate::interpreter::builtins::model::validation::{
+                build_constraint_errors, is_unique_violation,
+            };
+            assert!(is_unique_violation(&err), "{err}");
+            let errors = build_constraint_errors(&err).expect("field errors");
+            assert_eq!(errors.len(), 1);
+            // The index is named after the column, which is how the field is
+            // recovered when the database names only the index.
+            assert_eq!(errors[0].field, "email");
+            assert_eq!(errors[0].message, "has already been taken");
         });
     }
 

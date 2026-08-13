@@ -153,21 +153,53 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Atomic Uniqueness</h2>
     <p class="text-gray-400 mb-4">
-        <code>uniqueness: true</code> issues a <code>SELECT &hellip; LIMIT 1</code> before the write, but that check is <strong class="text-white">best-effort</strong>: two concurrent <code>User.create({ "email": "x" })</code> calls can both pass the SELECT and both insert. To make uniqueness atomic, declare a unique index on the column at deploy time and let the database enforce it. Soli detects the resulting 409 from <code>Model.create</code>, <code>instance.save</code>, <code>instance.update</code>, <code>Model.upsert</code>, and <code>Model.find_or_create_by</code>, and turns it into the same <code>_errors</code> entry the SELECT path produces (<code>field: "has already been taken"</code>), so callers handle the race identically.
+        <code>uniqueness: true</code> issues a <code>SELECT &hellip; LIMIT 1</code> before the write, but that check is <strong class="text-white">best-effort</strong>: two concurrent <code>User.create({ "email": "x" })</code> calls can both pass the SELECT and both insert. To make uniqueness atomic, declare a unique index on the column at deploy time and let the database enforce it. Soli detects the resulting violation from <code>Model.create</code>, <code>instance.save</code>, <code>instance.update</code>, <code>Model.upsert</code>, and <code>Model.find_or_create_by</code>, and turns it into the same <code>_errors</code> entry the SELECT path produces (<code>field: "has already been taken"</code>), so callers handle the race identically.
     </p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm"># Run once at deploy time (e.g. in a migration):
-solidb.create_index("users", "users_email_unique", ["email"], { "unique": true })</code></pre>
+            <pre><code class="language-soli text-sm"># Declare the index on the model — it is created on every backend
+<span class="text-orange-300">class</span> User &lt; Model
+  index "email", unique: true
+  validates("email", { "uniqueness": true })
+<span class="text-orange-300">end</span></code></pre>
         </div>
     </div>
 
-    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-8">
         <p class="text-yellow-300 text-sm">
             <strong>Without the index,</strong> the SELECT is the only line of defense and the race is silently lost &mdash; two parallel writers can both produce duplicate rows.
         </p>
     </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">On the SQL adapters</h3>
+    <p class="text-gray-400 mb-4">
+        The database's own error is classified, so a violation becomes a field error even for a
+        constraint the model never declared:
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Violation</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Reported as</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4">unique index / constraint</td><td class="py-3 px-4"><code>{ field, "has already been taken" }</code></td></tr>
+                <tr><td class="py-3 px-4">foreign key</td><td class="py-3 px-4"><code>{ field, "must reference an existing record" }</code></td></tr>
+                <tr><td class="py-3 px-4"><code>NOT NULL</code> column</td><td class="py-3 px-4"><code>{ field, "can't be blank" }</code></td></tr>
+                <tr><td class="py-3 px-4"><code>CHECK</code> constraint</td><td class="py-3 px-4"><code>{ field, "is invalid" }</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The field comes from whatever the database names &mdash; Postgres reports the column in
+        <code>DETAIL</code>, SQLite names <code>table.column</code> (or the index, for an expression
+        index), MySQL names the index &mdash; falling back to <code>_base</code> when there is nothing
+        to go on. Anything that is <em>not</em> a constraint violation is still reported as-is, so a
+        connection failure never masquerades as a validation error.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Custom Methods on Models</h2>
     <p class="text-gray-400 mb-4">

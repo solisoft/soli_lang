@@ -58,6 +58,42 @@ impl Drop for ActiveConnGuard {
     }
 }
 
+/// Render a driver error, and classify a constraint violation by MySQL's error
+/// number. MySQL names the *index* rather than the column, which is usually
+/// enough to recover the field (`idx_orders_code`, `orders.code`).
+fn my_error(context: &str, e: &mysql::Error) -> String {
+    let text = format!("{context}: {e}");
+    let mysql::Error::MySqlError(db) = e else {
+        return text;
+    };
+    let kind = match db.code {
+        1062 | 1586 => Some(super::error::ConstraintKind::Unique),
+        1216 | 1217 | 1451 | 1452 => Some(super::error::ConstraintKind::ForeignKey),
+        1048 | 1364 => Some(super::error::ConstraintKind::NotNull),
+        3819 => Some(super::error::ConstraintKind::Check),
+        _ => None,
+    };
+    let Some(kind) = kind else {
+        return text;
+    };
+    // "Duplicate entry 'x' for key 'orders.idx_orders_code'" → the index name.
+    let name = db.message.split("for key '").nth(1).and_then(|rest| {
+        rest.split('\'')
+            .next()
+            .map(|key| key.rsplit('.').next().unwrap_or(key).to_string())
+    });
+    // "Column 'needed' cannot be null" → the column name.
+    let column = db
+        .message
+        .split("Column '")
+        .nth(1)
+        .and_then(|rest| rest.split('\'').next().map(str::to_string));
+    let constraint = super::error::Constraint::new(kind)
+        .with_column(column)
+        .with_name(name);
+    format!("{} {text}", constraint.to_marker())
+}
+
 fn pools() -> &'static Mutex<HashMap<String, MyPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -141,9 +177,9 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
             .map_err(|e| format!("mysql transaction checkout: {e}"))?;
         // SET TRANSACTION must run before START TRANSACTION for isolation.
         conn.query_drop(format!("SET TRANSACTION ISOLATION LEVEL {iso}"))
-            .map_err(|e| format!("mysql SET TRANSACTION: {e}"))?;
+            .map_err(|e| my_error("mysql SET TRANSACTION", &e))?;
         conn.query_drop("START TRANSACTION")
-            .map_err(|e| format!("mysql START TRANSACTION: {e}"))?;
+            .map_err(|e| my_error("mysql START TRANSACTION", &e))?;
         *slot = Some(TxState {
             conn,
             nest: 0,
@@ -169,7 +205,7 @@ pub fn commit_transaction() -> Result<(), String> {
         state
             .conn
             .query_drop("COMMIT")
-            .map_err(|e| format!("mysql COMMIT: {e}"))?;
+            .map_err(|e| my_error("mysql COMMIT", &e))?;
         Ok(())
     })
 }
@@ -189,7 +225,7 @@ pub fn rollback_transaction() -> Result<(), String> {
         state
             .conn
             .query_drop("ROLLBACK")
-            .map_err(|e| format!("mysql ROLLBACK: {e}"))
+            .map_err(|e| my_error("mysql ROLLBACK", &e))
     })
 }
 
@@ -270,7 +306,7 @@ fn get_on(conn: &mut MyConn, table: &str, key: &str) -> Result<Option<serde_json
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
     let row: Option<String> = conn
         .exec_first(&sql, (key,))
-        .map_err(|e| format!("mysql get: {e}"))?;
+        .map_err(|e| my_error("mysql get", &e))?;
     match row {
         Some(s) => serde_json::from_str(&s)
             .map(Some)
@@ -297,7 +333,7 @@ pub fn insert(
     let doc_str = document.to_string();
     with_conn(|conn| {
         conn.exec_drop(&sql, (&key, &doc_str))
-            .map_err(|e| format!("mysql insert: {e}"))?;
+            .map_err(|e| my_error("mysql insert", &e))?;
         get_on(conn, table, &key)?.ok_or_else(|| "mysql insert: row missing after write".into())
     })
 }
@@ -328,7 +364,7 @@ pub fn update(
         );
         return with_conn(|conn| {
             conn.exec_drop(&sql, (&doc_str, key))
-                .map_err(|e| format!("mysql update merge: {e}"))?;
+                .map_err(|e| my_error("mysql update merge", &e))?;
             // affected_rows() can't tell "row missing" from "no-op merge"
             // (CLIENT_FOUND_ROWS is off, so it reports CHANGED rows) — read
             // back instead, and only insert when the row truly isn't there.
@@ -342,7 +378,7 @@ pub fn update(
                  doc = JSON_MERGE_PATCH(COALESCE(doc, '{{}}'), CAST(? AS JSON))"
             );
             conn.exec_drop(&ins, (key, &doc_str, &doc_str))
-                .map_err(|e| format!("mysql update merge insert: {e}"))?;
+                .map_err(|e| my_error("mysql update merge insert", &e))?;
             get_on(conn, table, key)?.ok_or_else(|| "mysql update: row missing".into())
         });
     }
@@ -352,7 +388,7 @@ pub fn update(
     );
     with_conn(|conn| {
         conn.exec_drop(&sql, (key, &doc_str))
-            .map_err(|e| format!("mysql update: {e}"))?;
+            .map_err(|e| my_error("mysql update", &e))?;
         get_on(conn, table, key)?.ok_or_else(|| "mysql update: row missing".into())
     })
 }
@@ -365,7 +401,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
     with_conn(|conn| {
         conn.exec_drop(&sql, (key,))
-            .map_err(|e| format!("mysql delete: {e}"))?;
+            .map_err(|e| my_error("mysql delete", &e))?;
         Ok(())
     })
 }
@@ -420,7 +456,7 @@ pub fn group_by(
         let params = to_mysql_params(&compiled.params);
         let rows: Vec<mysql::Row> = conn
             .exec(&compiled.sql, params)
-            .map_err(|e| format!("mysql group_by: {e}"))?;
+            .map_err(|e| my_error("mysql group_by", &e))?;
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
             let mut map = serde_json::Map::new();
@@ -464,7 +500,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         let params = to_mysql_params(&compiled.params);
         let n: Option<i64> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql count: {e}"))?;
+            .map_err(|e| my_error("mysql count", &e))?;
         Ok(n.unwrap_or(0))
     })
 }
@@ -478,7 +514,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         let params = to_mysql_params(&compiled.params);
         let row: Option<i64> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql exists: {e}"))?;
+            .map_err(|e| my_error("mysql exists", &e))?;
         Ok(row.is_some())
     })
 }
@@ -493,13 +529,13 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
         if matches!(func, SqlAgg::Count) {
             let n: Option<i64> = conn
                 .exec_first(&compiled.sql, params)
-                .map_err(|e| format!("mysql aggregate: {e}"))?;
+                .map_err(|e| my_error("mysql aggregate", &e))?;
             return Ok(serde_json::json!(n.unwrap_or(0)));
         }
         // SUM/AVG may come back as Decimal string or f64
         let row: Option<MysqlValue> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql aggregate: {e}"))?;
+            .map_err(|e| my_error("mysql aggregate", &e))?;
         Ok(match row {
             None | Some(MysqlValue::NULL) => serde_json::Value::Null,
             Some(v) => {
@@ -530,7 +566,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         let params = to_mysql_params(&compiled.params);
         let result = conn
             .exec_iter(&compiled.sql, params)
-            .map_err(|e| format!("mysql delete_all: {e}"))?;
+            .map_err(|e| my_error("mysql delete_all", &e))?;
         Ok(result.affected_rows())
     })
 }
@@ -544,7 +580,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         let params = to_mysql_params(&compiled.params);
         let result = conn
             .exec_iter(&compiled.sql, params)
-            .map_err(|e| format!("mysql update_all: {e}"))?;
+            .map_err(|e| my_error("mysql update_all", &e))?;
         Ok(result.affected_rows())
     })
 }
@@ -554,7 +590,7 @@ fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, S
         let params = to_mysql_params(params);
         let rows: Vec<String> = conn
             .exec(sql, params)
-            .map_err(|e| format!("mysql query: {e}"))?;
+            .map_err(|e| my_error("mysql query", &e))?;
         rows.into_iter()
             .map(|s| serde_json::from_str(&s).map_err(|e| format!("mysql row json: {e}")))
             .collect()
@@ -567,7 +603,7 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
     let ddl = create_table_sql_d(Dialect::Mysql, table)?;
     with_conn(|conn| {
         conn.query_drop(&ddl)
-            .map_err(|e| format!("mysql ensure_table: {e}"))
+            .map_err(|e| my_error("mysql ensure_table", &e))
     })
 }
 
@@ -575,7 +611,7 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     let ddl = drop_table_sql_d(Dialect::Mysql, table)?;
     with_conn(|conn| {
         conn.query_drop(&ddl)
-            .map_err(|e| format!("mysql drop_table: {e}"))
+            .map_err(|e| my_error("mysql drop_table", &e))
     })
 }
 
@@ -603,10 +639,10 @@ pub fn increment_field(
     );
     with_conn(|conn| {
         conn.exec_drop(&update, (delta, key))
-            .map_err(|e| format!("mysql increment: {e}"))?;
+            .map_err(|e| my_error("mysql increment", &e))?;
         let text: Option<Option<String>> = conn
             .exec_first(&select, (key,))
-            .map_err(|e| format!("mysql increment read-back: {e}"))?;
+            .map_err(|e| my_error("mysql increment read-back", &e))?;
         Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
@@ -620,7 +656,7 @@ pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
                 (table,),
             )
-            .map_err(|e| format!("mysql list indexes: {e}"))?;
+            .map_err(|e| my_error("mysql list indexes", &e))?;
         Ok(rows)
     })
 }
@@ -635,7 +671,7 @@ fn list_column_names(table: &str) -> Result<Vec<String>, String> {
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
                 (table,),
             )
-            .map_err(|e| format!("mysql list columns: {e}"))?;
+            .map_err(|e| my_error("mysql list columns", &e))?;
         Ok(rows)
     })
 }
@@ -672,7 +708,7 @@ pub fn ensure_doc_index(
 
 /// Run compiled DDL (migrations' column-table helpers).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
-    with_conn(|conn| conn.query_drop(sql).map_err(|e| format!("mysql ddl: {e}")))
+    with_conn(|conn| conn.query_drop(sql).map_err(|e| my_error("mysql ddl", &e)))
 }
 
 /// `db.execute`: a dedicated connection, dropped afterwards, so
@@ -684,15 +720,15 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
         .as_deref()
         .ok_or_else(|| format!("connection {:?}: url required for mysql", spec.name))?;
     let opts = Opts::from_url(url).map_err(|e| format!("mysql execute: {e}"))?;
-    let mut conn = mysql::Conn::new(opts).map_err(|e| format!("mysql execute: {e}"))?;
+    let mut conn = mysql::Conn::new(opts).map_err(|e| my_error("mysql execute", &e))?;
     conn.query_drop(sql)
-        .map_err(|e| format!("mysql execute: {e}"))
+        .map_err(|e| my_error("mysql execute", &e))
 }
 
 pub fn ensure_migrations_table() -> Result<(), String> {
     with_conn(|conn| {
         conn.query_drop(migrations_table_sql_d(Dialect::Mysql))
-            .map_err(|e| format!("mysql migrations table: {e}"))
+            .map_err(|e| my_error("mysql migrations table", &e))
     })
 }
 
@@ -701,7 +737,7 @@ pub fn list_applied_migrations() -> Result<Vec<(String, String)>, String> {
     with_conn(|conn| {
         let rows: Vec<(String, String)> = conn
             .query("SELECT version, name FROM `_migrations` ORDER BY version")
-            .map_err(|e| format!("mysql list migrations: {e}"))?;
+            .map_err(|e| my_error("mysql list migrations", &e))?;
         Ok(rows)
     })
 }
@@ -713,7 +749,7 @@ pub fn record_migration(version: &str, name: &str) -> Result<(), String> {
             "INSERT IGNORE INTO `_migrations` (version, name) VALUES (?, ?)",
             (version, name),
         )
-        .map_err(|e| format!("mysql record migration: {e}"))?;
+        .map_err(|e| my_error("mysql record migration", &e))?;
         Ok(())
     })
 }
@@ -722,7 +758,7 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     ensure_migrations_table()?;
     with_conn(|conn| {
         conn.exec_drop("DELETE FROM `_migrations` WHERE version = ?", (version,))
-            .map_err(|e| format!("mysql remove migration: {e}"))?;
+            .map_err(|e| my_error("mysql remove migration", &e))?;
         Ok(())
     })
 }
@@ -821,7 +857,7 @@ fn read_back(
     let params = to_mysql_params(&compiled.params);
     let row: Option<mysql::Row> = conn
         .exec_first(&compiled.sql, params)
-        .map_err(|e| format!("mysql column read-back: {e}"))?;
+        .map_err(|e| my_error("mysql column read-back", &e))?;
     Ok(row.map(|r| row_to_json(schema, &r)))
 }
 
@@ -840,7 +876,7 @@ pub fn col_insert(
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
-            .map_err(|e| format!("mysql column insert: {e}"))?;
+            .map_err(|e| my_error("mysql column insert", &e))?;
         // A generated key comes from LAST_INSERT_ID(); an explicit one is
         // whatever the caller supplied. Both must read back on THIS connection.
         let key = if schema.pk_auto && doc.get(&schema.pk).is_none_or(|v| v.is_null()) {
@@ -868,7 +904,7 @@ pub fn col_update(
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
-            .map_err(|e| format!("mysql column update: {e}"))?;
+            .map_err(|e| my_error("mysql column update", &e))?;
         // Read back rather than trusting affected_rows: MySQL reports 0 for a
         // no-op update, which would look like a missing row.
         read_back(conn, schema, pk)?
@@ -884,7 +920,7 @@ pub fn col_delete(
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
-            .map_err(|e| format!("mysql column delete: {e}"))?;
+            .map_err(|e| my_error("mysql column delete", &e))?;
         Ok(())
     })
 }
@@ -904,10 +940,10 @@ pub fn col_increment(
     let read_back = cols::compile_read_column(Dialect::Mysql, schema, pk, column)?;
     with_conn(|conn| {
         conn.exec_drop(&sql, to_mysql_params(&params))
-            .map_err(|e| format!("mysql column increment: {e}"))?;
+            .map_err(|e| my_error("mysql column increment", &e))?;
         let text: Option<Option<String>> = conn
             .exec_first(&read_back.sql, to_mysql_params(&read_back.params))
-            .map_err(|e| format!("mysql column increment read-back: {e}"))?;
+            .map_err(|e| my_error("mysql column increment read-back", &e))?;
         Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
@@ -918,7 +954,7 @@ pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, Strin
         let params = to_mysql_params(&compiled.params);
         let rows: Vec<mysql::Row> = conn
             .exec(&compiled.sql, params)
-            .map_err(|e| format!("mysql column select: {e}"))?;
+            .map_err(|e| my_error("mysql column select", &e))?;
         Ok(rows.iter().map(|r| row_to_json(&q.schema, r)).collect())
     })
 }
@@ -929,7 +965,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
         let params = to_mysql_params(&compiled.params);
         let n: Option<i64> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql column count: {e}"))?;
+            .map_err(|e| my_error("mysql column count", &e))?;
         Ok(n.unwrap_or(0))
     })
 }
@@ -940,7 +976,7 @@ pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
         let params = to_mysql_params(&compiled.params);
         let hit: Option<i64> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql column exists: {e}"))?;
+            .map_err(|e| my_error("mysql column exists", &e))?;
         Ok(hit.is_some())
     })
 }
@@ -956,12 +992,12 @@ pub fn col_aggregate(
         if func == SqlAgg::Count {
             let n: Option<i64> = conn
                 .exec_first(&compiled.sql, params)
-                .map_err(|e| format!("mysql column aggregate: {e}"))?;
+                .map_err(|e| my_error("mysql column aggregate", &e))?;
             return Ok(serde_json::json!(n.unwrap_or(0)));
         }
         let raw: Option<Option<String>> = conn
             .exec_first(&compiled.sql, params)
-            .map_err(|e| format!("mysql column aggregate: {e}"))?;
+            .map_err(|e| my_error("mysql column aggregate", &e))?;
         Ok(super::columns::parse_agg_text(raw.flatten()))
     })
 }
@@ -983,7 +1019,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
                  ORDER BY ORDINAL_POSITION",
                 (table,),
             )
-            .map_err(|e| format!("mysql introspect columns: {e}"))?;
+            .map_err(|e| my_error("mysql introspect columns", &e))?;
 
         let mut columns = Vec::with_capacity(rows.len());
         let mut pk = Vec::new();
@@ -1038,14 +1074,14 @@ pub fn claim_jobs(
             update,
             (&token, locked_until_iso, now_iso, now_iso, batch as u64),
         )
-        .map_err(|e| format!("mysql claim_jobs: {e}"))?;
+        .map_err(|e| my_error("mysql claim_jobs", &e))?;
         let rows: Vec<String> = conn
             .exec(
                 "SELECT doc FROM `_jobs` \
                  WHERE JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_by')) = ?",
                 (&token,),
             )
-            .map_err(|e| format!("mysql claim_jobs select: {e}"))?;
+            .map_err(|e| my_error("mysql claim_jobs select", &e))?;
         rows.into_iter()
             .map(|s| serde_json::from_str(&s).map_err(|e| format!("mysql claim_jobs json: {e}")))
             .collect()
@@ -1072,7 +1108,7 @@ pub fn claim_cron_slot(
                  WHERE _key = ? AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.next_run_at')) = ?",
                 (&patch_str, key, expected_next_run_at),
             )
-            .map_err(|e| format!("mysql claim_cron_slot: {e}"))?
+            .map_err(|e| my_error("mysql claim_cron_slot", &e))?
             .affected_rows();
         Ok(affected == 1)
     })
@@ -1086,7 +1122,7 @@ fn table_exists(table: &str) -> Result<bool, String> {
                  WHERE table_schema = DATABASE() AND table_name = ?",
                 (table,),
             )
-            .map_err(|e| format!("mysql table_exists: {e}"))?;
+            .map_err(|e| my_error("mysql table_exists", &e))?;
         Ok(n.unwrap_or(0) > 0)
     })
 }

@@ -557,19 +557,38 @@ end
 check is **best-effort**: two concurrent `User.create({ "email": "x" })`
 calls can both pass the SELECT and both insert. To make uniqueness atomic,
 declare a unique index on the column at deploy time and let the database
-enforce it. Soli detects the resulting 409 from `Model.create`,
+enforce it. Soli detects the resulting violation from `Model.create`,
 `instance.save`, `instance.update`, `Model.upsert`, and
 `Model.find_or_create_by`, and turns it into the same `_errors` entry the
 SELECT path produces (`field: "has already been taken"`), so callers
 handle the race identically.
 
 ```soli
-# Run once at deploy time (e.g. in a migration):
-solidb.create_index("users", "users_email_unique", ["email"], { "unique": true });
+# Declare the index on the model — it is created on every backend:
+class User < Model
+  index "email", unique: true
+  validates("email", { "uniqueness": true })
+end
 ```
 
 Without the index, the SELECT is the only line of defense and the race is
 silently lost.
+
+**On the SQL adapters** the database's own error is classified, so a violation
+becomes a field error even for a constraint the model never declared:
+
+| Violation | Reported as |
+|-----------|-------------|
+| unique index / constraint | `{ field, "has already been taken" }` |
+| foreign key | `{ field, "must reference an existing record" }` |
+| `NOT NULL` column | `{ field, "can't be blank" }` |
+| `CHECK` constraint | `{ field, "is invalid" }` |
+
+The field comes from whatever the database names — Postgres reports the column in
+`DETAIL`, SQLite names `table.column` (or the index, for an expression index),
+MySQL names the index — and falls back to `_base` when there is nothing to go on.
+Anything that is *not* a constraint violation is still reported as-is, so a
+connection failure never masquerades as a validation error.
 
 ## Callbacks
 

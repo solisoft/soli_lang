@@ -358,6 +358,11 @@ pub fn parse_validates_options(
 /// anchor on `HTTP 409` plus a body keyword keeps the false-positive rate
 /// near zero.
 pub fn is_unique_violation(err: &str) -> bool {
+    // A SQL adapter classifies its own driver error and marks it, so there is
+    // nothing to infer from prose there (see `db::error::Constraint`).
+    if let Some(constraint) = crate::db::error::Constraint::parse(err) {
+        return constraint.kind == crate::db::error::ConstraintKind::Unique;
+    }
     let lower = err.to_lowercase();
     if !lower.contains("http 409") {
         return false;
@@ -368,6 +373,88 @@ pub fn is_unique_violation(err: &str) -> bool {
         return false;
     }
     !(lower.contains("collection") && lower.contains("already"))
+}
+
+/// Is `value` already used in `field` by a row other than `exclude_key`?
+///
+/// The portable equivalent of the SDBQL pre-check: a hash filter plus a
+/// key comparison done in Rust, since the SQL compiler takes equality filters
+/// only. Column-aware models answer through their own path.
+fn unique_taken_on_sql(
+    collection: &str,
+    field: &str,
+    value: &str,
+    exclude_key: Option<&str>,
+) -> Result<bool, String> {
+    use std::collections::BTreeMap;
+
+    let mut eq_filters = BTreeMap::new();
+    eq_filters.insert(
+        field.to_string(),
+        serde_json::Value::String(value.to_string()),
+    );
+
+    if let Some(schema) = super::column_mode::schema_for_collection(collection) {
+        let mut query = crate::db::sql_columns_compile::ColumnQuery::new(schema.clone());
+        query.eq_filters = eq_filters;
+        let rows = crate::db::columns::select_rows(&query)?;
+        return Ok(rows
+            .iter()
+            .any(|row| !is_same_row(row, &schema.pk, exclude_key)));
+    }
+
+    let query = crate::db::ListQuery {
+        table: collection.to_string(),
+        eq_filters,
+        filter_sdbql: Some(format!("doc.{field} == @{field}")),
+        soft_delete: crate::db::SqlSoftDeleteMode::Default,
+        is_soft_delete_model: false,
+        order_field: None,
+        order_desc: false,
+        limit: None,
+        offset: None,
+    };
+    let rows = crate::db::sql::select(&query)?;
+    Ok(rows
+        .iter()
+        .any(|row| !is_same_row(row, "_key", exclude_key)))
+}
+
+/// True when `row` is the record being updated, which must not conflict with
+/// itself.
+fn is_same_row(row: &serde_json::Value, key_field: &str, exclude_key: Option<&str>) -> bool {
+    let Some(exclude) = exclude_key else {
+        return false;
+    };
+    let stored = row
+        .get(key_field)
+        .or_else(|| row.get("_key"))
+        .map(|v| match v {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        });
+    stored.as_deref() == Some(exclude)
+}
+
+/// The field a marked constraint violation points at, if any.
+fn constraint_field(err: &str) -> Option<String> {
+    crate::db::error::Constraint::parse(err).and_then(|c| c.field())
+}
+
+/// Turn any marked constraint violation into field errors.
+///
+/// A unique violation reads as "has already been taken", a foreign key as
+/// "must reference an existing record", a NOT NULL as "can't be blank" — so a
+/// database-level rule the model never declared still surfaces as a normal
+/// validation failure instead of driver text. Returns `None` when the error was
+/// not a classified violation, leaving it to be reported as-is.
+pub fn build_constraint_errors(err: &str) -> Option<Vec<ValidationError>> {
+    let constraint = crate::db::error::Constraint::parse(err)?;
+    let field = constraint.field().unwrap_or_else(|| "_base".to_string());
+    Some(vec![ValidationError::new(
+        &field,
+        constraint.kind.message(),
+    )])
 }
 
 /// Fields with `validates uniqueness: true` registered on `class_name`.
@@ -392,6 +479,11 @@ pub fn unique_validation_fields(class_name: &str) -> Vec<String> {
 /// `_base` if none are registered. Silently dropping the error would leave
 /// callers thinking the write succeeded, so be loud rather than precise.
 pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<ValidationError> {
+    // When the database named the column, use it: it is the truth, and it works
+    // for a unique index the model never declared a validation for.
+    if let Some(field) = constraint_field(err) {
+        return vec![ValidationError::new(&field, "has already been taken")];
+    }
     let unique = unique_validation_fields(class_name);
     let lower = err.to_lowercase();
     if let Some(field) = unique.iter().find(|f| lower.contains(&f.to_lowercase())) {
@@ -560,6 +652,24 @@ pub fn run_validations(
             if let Some(Value::String(val)) = &field_value {
                 if !val.is_empty() {
                     let collection = class_name_to_collection(class_name);
+                    // SQL adapters have no SDBQL. Ask the portable path instead —
+                    // without this, declaring `uniqueness` made every create on
+                    // Postgres/MySQL/SQLite raise "Raw SDBQL queries are
+                    // SoliDB-only" before any row was written.
+                    if crate::db::is_sql() {
+                        let taken = unique_taken_on_sql(
+                            &collection,
+                            &rule.field,
+                            val.as_ref(),
+                            exclude_key,
+                        )
+                        .map_err(|e| format!("Database error during uniqueness check: {e}"))?;
+                        if taken {
+                            errors
+                                .push(ValidationError::new(&rule.field, "has already been taken"));
+                        }
+                        continue;
+                    }
                     #[allow(unused_variables)]
                     let sdbql = if exclude_key.is_some() {
                         format!(

@@ -1104,13 +1104,17 @@ fn apply_hash_to_instance(
 /// preserved verbatim as before.
 fn build_persistence_errors(class_name: &str, err: String) -> Vec<Value> {
     if super::validation::is_unique_violation(&err) {
-        super::validation::build_unique_violation_errors(class_name, &err)
+        return super::validation::build_unique_violation_errors(class_name, &err)
             .iter()
             .map(|v| v.to_value())
-            .collect()
-    } else {
-        vec![Value::String(err.into())]
+            .collect();
     }
+    // A foreign-key or NOT NULL violation is just as much a validation failure
+    // as a duplicate: the caller wants the field, not the driver's sentence.
+    if let Some(errors) = super::validation::build_constraint_errors(&err) {
+        return errors.iter().map(|v| v.to_value()).collect();
+    }
+    vec![Value::String(err.into())]
 }
 
 pub struct Model;

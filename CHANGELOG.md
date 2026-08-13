@@ -200,6 +200,28 @@
 
 ### Fixed
 
+- **`validates uniqueness:` raised on every SQL adapter.** Its pre-check ran a
+  raw SDBQL query, so declaring it made `create`/`save` fail with "Raw SDBQL
+  queries are SoliDB-only" before any row was written. It now uses the portable
+  hash-filter path (and the column path for a column-aware model).
+
+- **Constraint violations arrived as driver text instead of field errors on SQL.**
+  Detection matched only SoliDB's `HTTP 409`, so a duplicate on Postgres/MySQL/
+  SQLite surfaced as e.g. `sqlite column insert row: UNIQUE constraint failed:
+  orders.code` in `_errors`. Each adapter now classifies its own driver error —
+  Postgres by SQLSTATE, MySQL by error number, SQLite by extended result code —
+  and the model layer turns it into `{ field, message }`: "has already been
+  taken", "must reference an existing record" (foreign key), "can't be blank"
+  (NOT NULL), "is invalid" (CHECK). The field comes from whatever the database
+  names, falling back to `_base`. Anything that is not a constraint violation is
+  still reported as-is, so a connection failure cannot masquerade as a validation
+  error.
+
+- **Postgres errors said "db error" and nothing else.** `postgres::Error`'s
+  `Display` is that literal string; every message users saw was our context plus
+  those two words. Errors now carry the driver's real message and `DETAIL`, which
+  is also where the offending column comes from.
+
 - **Concurrent `increment` / `decrement` and counter caches lost counts on the
   SQL adapters.** `cas_field_delta` fell back to a read-modify-write there — its
   own comment admitted it was "not multi-writer atomic" — so two requests both

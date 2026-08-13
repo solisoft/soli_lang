@@ -14,7 +14,7 @@ mod adapter;
 mod caps;
 pub mod columns;
 pub mod ddl;
-mod error;
+pub mod error;
 pub mod import;
 pub mod introspect;
 #[cfg(feature = "mysql")]

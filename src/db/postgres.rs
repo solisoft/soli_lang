@@ -63,6 +63,44 @@ impl Drop for ActiveClientGuard {
     }
 }
 
+/// Render a driver error usefully, and classify a constraint violation.
+///
+/// `postgres::Error`'s own `Display` is the string "db error" — every message
+/// the user saw was that plus our context. The real information lives in
+/// `as_db_error()`: SQLSTATE, the primary message, DETAIL, and the offending
+/// column or constraint name.
+fn pg_error(context: &str, e: &postgres::Error) -> String {
+    let Some(db) = e.as_db_error() else {
+        return format!("{context}: {e}");
+    };
+    let mut text = format!("{context}: {}", db.message());
+    if let Some(detail) = db.detail() {
+        text.push_str(&format!(" ({detail})"));
+    }
+    let kind = match db.code().code() {
+        "23505" => Some(super::error::ConstraintKind::Unique),
+        "23503" => Some(super::error::ConstraintKind::ForeignKey),
+        "23502" => Some(super::error::ConstraintKind::NotNull),
+        "23514" => Some(super::error::ConstraintKind::Check),
+        _ => None,
+    };
+    match kind {
+        None => text,
+        Some(kind) => {
+            // 23502 names the column directly; the key violations put it in
+            // DETAIL as `Key (col)=(value)`.
+            let column = db
+                .column()
+                .map(str::to_string)
+                .or_else(|| db.detail().and_then(super::error::column_from_key_detail));
+            let constraint = super::error::Constraint::new(kind)
+                .with_column(column)
+                .with_name(db.constraint().map(str::to_string));
+            format!("{} {text}", constraint.to_marker())
+        }
+    }
+}
+
 fn pools() -> &'static Mutex<HashMap<String, PgPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -148,7 +186,7 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
             .get()
             .map_err(|e| format!("postgres transaction checkout: {e}"))?;
         conn.batch_execute(&format!("BEGIN ISOLATION LEVEL {iso}"))
-            .map_err(|e| format!("postgres BEGIN: {e}"))?;
+            .map_err(|e| pg_error("postgres BEGIN", &e))?;
         *slot = Some(TxState {
             conn,
             nest: 0,
@@ -174,7 +212,7 @@ pub fn commit_transaction() -> Result<(), String> {
         state
             .conn
             .batch_execute("COMMIT")
-            .map_err(|e| format!("postgres COMMIT: {e}"))?;
+            .map_err(|e| pg_error("postgres COMMIT", &e))?;
         Ok(())
     })
 }
@@ -194,7 +232,7 @@ pub fn rollback_transaction() -> Result<(), String> {
         state
             .conn
             .batch_execute("ROLLBACK")
-            .map_err(|e| format!("postgres ROLLBACK: {e}"))
+            .map_err(|e| pg_error("postgres ROLLBACK", &e))
     })
 }
 
@@ -276,7 +314,7 @@ pub fn insert(
     with_conn(|client| {
         let row = client
             .query_one(&sql, &[&key, &document])
-            .map_err(|e| format!("postgres insert: {e}"))?;
+            .map_err(|e| pg_error("postgres insert", &e))?;
         let doc: serde_json::Value = row.get(0);
         Ok(doc)
     })
@@ -291,7 +329,7 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
     with_conn(|client| {
         let rows = client
             .query(&sql, &[&key])
-            .map_err(|e| format!("postgres get: {e}"))?;
+            .map_err(|e| pg_error("postgres get", &e))?;
         Ok(rows.first().map(|r| r.get(0)))
     })
 }
@@ -320,7 +358,7 @@ pub fn update(
         return with_conn(|client| {
             let rows = client
                 .query(&sql, &[&key, &document])
-                .map_err(|e| format!("postgres update (merge): {e}"))?;
+                .map_err(|e| pg_error("postgres update (merge)", &e))?;
             if let Some(row) = rows.first() {
                 return Ok(row.get(0));
             }
@@ -329,7 +367,7 @@ pub fn update(
                 format!("INSERT INTO {table_q} (_key, doc) VALUES ($1, $2) RETURNING doc");
             let row = client
                 .query_one(&insert_sql, &[&key, &document])
-                .map_err(|e| format!("postgres update (merge insert): {e}"))?;
+                .map_err(|e| pg_error("postgres update (merge insert)", &e))?;
             Ok(row.get(0))
         });
     }
@@ -341,7 +379,7 @@ pub fn update(
     with_conn(|client| {
         let row = client
             .query_one(&sql, &[&key, &document])
-            .map_err(|e| format!("postgres update: {e}"))?;
+            .map_err(|e| pg_error("postgres update", &e))?;
         Ok(row.get(0))
     })
 }
@@ -355,7 +393,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     with_conn(|client| {
         client
             .execute(&sql, &[&key])
-            .map_err(|e| format!("postgres delete: {e}"))?;
+            .map_err(|e| pg_error("postgres delete", &e))?;
         Ok(())
     })
 }
@@ -405,7 +443,7 @@ pub fn group_by(
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres group_by: {e}"))?;
+            .map_err(|e| pg_error("postgres group_by", &e))?;
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
             let mut map = serde_json::Map::new();
@@ -453,7 +491,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         let refs = bind_refs(&owned);
         let row = client
             .query_one(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres count: {e}"))?;
+            .map_err(|e| pg_error("postgres count", &e))?;
         let n: i64 = row.get(0);
         Ok(n)
     })
@@ -469,7 +507,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres exists: {e}"))?;
+            .map_err(|e| pg_error("postgres exists", &e))?;
         Ok(!rows.is_empty())
     })
 }
@@ -484,7 +522,7 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
         let refs = bind_refs(&owned);
         let row = client
             .query_one(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres aggregate: {e}"))?;
+            .map_err(|e| pg_error("postgres aggregate", &e))?;
         // COUNT returns i64; SUM/AVG may be f64 or Decimal as string via float.
         if matches!(func, SqlAgg::Count) {
             let n: i64 = row.get(0);
@@ -506,7 +544,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         let refs = bind_refs(&owned);
         let n = client
             .execute(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres delete_all: {e}"))?;
+            .map_err(|e| pg_error("postgres delete_all", &e))?;
         Ok(n)
     })
 }
@@ -521,7 +559,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         let refs = bind_refs(&owned);
         let n = client
             .execute(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres update_all: {e}"))?;
+            .map_err(|e| pg_error("postgres update_all", &e))?;
         Ok(n)
     })
 }
@@ -532,7 +570,7 @@ fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, S
         let refs = bind_refs(&owned);
         let rows = client
             .query(sql, &refs)
-            .map_err(|e| format!("postgres query: {e}"))?;
+            .map_err(|e| pg_error("postgres query", &e))?;
         Ok(rows.iter().map(|r| r.get(0)).collect())
     })
 }
@@ -544,7 +582,7 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
     with_conn(|client| {
         client
             .batch_execute(&ddl)
-            .map_err(|e| format!("postgres ensure_table: {e}"))
+            .map_err(|e| pg_error("postgres ensure_table", &e))
     })
 }
 
@@ -553,7 +591,7 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     with_conn(|client| {
         client
             .batch_execute(&ddl)
-            .map_err(|e| format!("postgres drop_table: {e}"))
+            .map_err(|e| pg_error("postgres drop_table", &e))
     })
 }
 
@@ -561,7 +599,7 @@ pub fn ensure_migrations_table() -> Result<(), String> {
     with_conn(|client| {
         client
             .batch_execute(migrations_table_sql_d(Dialect::Postgres))
-            .map_err(|e| format!("postgres migrations table: {e}"))
+            .map_err(|e| pg_error("postgres migrations table", &e))
     })
 }
 
@@ -573,7 +611,7 @@ pub fn list_applied_migrations() -> Result<Vec<(String, String)>, String> {
                 "SELECT version, name FROM _migrations ORDER BY version",
                 &[],
             )
-            .map_err(|e| format!("postgres list migrations: {e}"))?;
+            .map_err(|e| pg_error("postgres list migrations", &e))?;
         Ok(rows
             .iter()
             .map(|r| (r.get::<_, String>(0), r.get::<_, String>(1)))
@@ -590,7 +628,7 @@ pub fn record_migration(version: &str, name: &str) -> Result<(), String> {
                  ON CONFLICT (version) DO NOTHING",
                 &[&version, &name],
             )
-            .map_err(|e| format!("postgres record migration: {e}"))?;
+            .map_err(|e| pg_error("postgres record migration", &e))?;
         Ok(())
     })
 }
@@ -600,7 +638,7 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     with_conn(|client| {
         client
             .execute("DELETE FROM _migrations WHERE version = $1", &[&version])
-            .map_err(|e| format!("postgres remove migration: {e}"))?;
+            .map_err(|e| pg_error("postgres remove migration", &e))?;
         Ok(())
     })
 }
@@ -631,7 +669,7 @@ pub fn increment_field(
     with_conn(|client| {
         let rows = client
             .query(&sql, &[&delta, &key])
-            .map_err(|e| format!("postgres increment: {e}"))?;
+            .map_err(|e| pg_error("postgres increment", &e))?;
         Ok(rows
             .first()
             .and_then(|r| r.get::<_, Option<String>>(0))
@@ -648,7 +686,7 @@ pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
                  AND tablename = $1",
                 &[&table],
             )
-            .map_err(|e| format!("postgres list indexes: {e}"))?;
+            .map_err(|e| pg_error("postgres list indexes", &e))?;
         Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
     })
 }
@@ -673,7 +711,7 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|client| {
         client
             .batch_execute(sql)
-            .map_err(|e| format!("postgres ddl: {e}"))
+            .map_err(|e| pg_error("postgres ddl", &e))
     })
 }
 
@@ -686,10 +724,10 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
         .as_deref()
         .ok_or_else(|| format!("connection {:?}: url required for postgres", spec.name))?;
     let mut client =
-        postgres::Client::connect(url, NoTls).map_err(|e| format!("postgres execute: {e}"))?;
+        postgres::Client::connect(url, NoTls).map_err(|e| pg_error("postgres execute", &e))?;
     client
         .batch_execute(sql)
-        .map_err(|e| format!("postgres execute: {e}"))
+        .map_err(|e| pg_error("postgres execute", &e))
 }
 
 // ---------- column-aware model execution ----------
@@ -780,7 +818,7 @@ pub fn col_get(
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column get: {e}"))?;
+            .map_err(|e| pg_error("postgres column get", &e))?;
         Ok(rows.first().map(|r| row_to_json(schema, r)))
     })
 }
@@ -795,7 +833,7 @@ pub fn col_insert(
         let refs = bind_refs(&owned);
         let row = client
             .query_one(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column insert: {e}"))?;
+            .map_err(|e| pg_error("postgres column insert", &e))?;
         Ok(row_to_json(schema, &row))
     })
 }
@@ -811,7 +849,7 @@ pub fn col_update(
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column update: {e}"))?;
+            .map_err(|e| pg_error("postgres column update", &e))?;
         match rows.first() {
             Some(row) => Ok(row_to_json(schema, row)),
             None => Err(format!(
@@ -832,7 +870,7 @@ pub fn col_delete(
         let refs = bind_refs(&owned);
         client
             .execute(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column delete: {e}"))?;
+            .map_err(|e| pg_error("postgres column delete", &e))?;
         Ok(())
     })
 }
@@ -853,7 +891,7 @@ pub fn col_increment(
         let refs = bind_refs(&owned);
         let rows = client
             .query(&sql, &refs)
-            .map_err(|e| format!("postgres column increment: {e}"))?;
+            .map_err(|e| pg_error("postgres column increment", &e))?;
         Ok(rows
             .first()
             .and_then(|r| r.get::<_, Option<String>>(0))
@@ -868,7 +906,7 @@ pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, Strin
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column select: {e}"))?;
+            .map_err(|e| pg_error("postgres column select", &e))?;
         Ok(rows_to_json(&q.schema, &rows))
     })
 }
@@ -880,7 +918,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
         let refs = bind_refs(&owned);
         let row = client
             .query_one(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column count: {e}"))?;
+            .map_err(|e| pg_error("postgres column count", &e))?;
         Ok(row.get(0))
     })
 }
@@ -892,7 +930,7 @@ pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
         let refs = bind_refs(&owned);
         let rows = client
             .query(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column exists: {e}"))?;
+            .map_err(|e| pg_error("postgres column exists", &e))?;
         Ok(!rows.is_empty())
     })
 }
@@ -908,7 +946,7 @@ pub fn col_aggregate(
         let refs = bind_refs(&owned);
         let row = client
             .query_one(&compiled.sql, &refs)
-            .map_err(|e| format!("postgres column aggregate: {e}"))?;
+            .map_err(|e| pg_error("postgres column aggregate", &e))?;
         if func == SqlAgg::Count {
             let n: i64 = row.get(0);
             return Ok(serde_json::json!(n));
@@ -934,7 +972,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
                  ORDER BY ordinal_position",
                 &[&table],
             )
-            .map_err(|e| format!("postgres introspect columns: {e}"))?;
+            .map_err(|e| pg_error("postgres introspect columns", &e))?;
 
         let mut columns = Vec::with_capacity(column_rows.len());
         for row in &column_rows {
@@ -963,7 +1001,7 @@ pub fn introspect_table(table: &str) -> Result<super::introspect::RawColumns, St
                  ORDER BY kcu.ordinal_position",
                 &[&table],
             )
-            .map_err(|e| format!("postgres introspect primary key: {e}"))?;
+            .map_err(|e| pg_error("postgres introspect primary key", &e))?;
         let pk = pk_rows.iter().map(|r| r.get::<_, String>(0)).collect();
 
         Ok(super::introspect::RawColumns { columns, pk })
@@ -1003,7 +1041,7 @@ pub fn claim_jobs(
                 sql,
                 &[&worker_id, &locked_until_iso, &now_iso, &(batch as i64)],
             )
-            .map_err(|e| format!("postgres claim_jobs: {e}"))?;
+            .map_err(|e| pg_error("postgres claim_jobs", &e))?;
         Ok(rows.iter().map(|r| r.get(0)).collect())
     })
 }
@@ -1026,7 +1064,7 @@ pub fn claim_cron_slot(
                  WHERE _key = $2 AND (doc->>'next_run_at') = $3",
                 &[&patch, &key, &expected_next_run_at],
             )
-            .map_err(|e| format!("postgres claim_cron_slot: {e}"))?;
+            .map_err(|e| pg_error("postgres claim_cron_slot", &e))?;
         Ok(n == 1)
     })
 }
@@ -1043,7 +1081,7 @@ fn table_exists(table: &str) -> Result<bool, String> {
                 )",
                 &[&table],
             )
-            .map_err(|e| format!("postgres table_exists: {e}"))?;
+            .map_err(|e| pg_error("postgres table_exists", &e))?;
         Ok(row.get(0))
     })
 }
@@ -1234,6 +1272,64 @@ mod integration_tests {
             );
             assert_eq!(increment_field(table, "nope", "views", 1).unwrap(), None);
             let _ = drop_table(table);
+        });
+    }
+
+    /// Postgres reports the richest information of the three: SQLSTATE, DETAIL,
+    /// and the constraint name. Its driver's own `Display` is just "db error",
+    /// so this also pins the readable message.
+    #[test]
+    fn constraint_violations_are_classified_when_pg_available() {
+        use crate::db::error::{Constraint, ConstraintKind};
+
+        with_pg(|| {
+            if ensure_connected().is_err() {
+                return;
+            }
+            let table = "soli_pg_constraint_test";
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {table}"));
+            if execute_ddl(&format!(
+                "CREATE TABLE {table} (id BIGSERIAL PRIMARY KEY, code TEXT UNIQUE, \
+                 ref BIGINT REFERENCES {table}(id), needed TEXT NOT NULL)"
+            ))
+            .is_err()
+            {
+                return;
+            }
+            let raw = introspect_table(table).expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", table, raw, |t, _| {
+                    super::super::introspect::pg_coltype(t)
+                })
+                .expect("schema"),
+            );
+            col_insert(&schema, &serde_json::json!({ "code": "x", "needed": "y" }))
+                .expect("insert");
+
+            let err = col_insert(&schema, &serde_json::json!({ "code": "x", "needed": "y" }))
+                .expect_err("duplicate");
+            // The message is readable now — not the driver's literal "db error".
+            assert!(err.contains("duplicate key value"), "{err}");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::Unique);
+            assert_eq!(violation.field().as_deref(), Some("code"));
+
+            let err = col_insert(
+                &schema,
+                &serde_json::json!({ "code": "z", "ref": 999_999, "needed": "y" }),
+            )
+            .expect_err("dangling fk");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::ForeignKey);
+            assert_eq!(violation.field().as_deref(), Some("ref"));
+
+            let err = col_insert(&schema, &serde_json::json!({ "code": "w", "needed": null }))
+                .expect_err("null in a NOT NULL column");
+            let violation = Constraint::parse(&err).expect("classified");
+            assert_eq!(violation.kind, ConstraintKind::NotNull);
+            assert_eq!(violation.field().as_deref(), Some("needed"));
+
+            let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {table}"));
         });
     }
 
