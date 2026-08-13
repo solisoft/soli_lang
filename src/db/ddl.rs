@@ -1035,6 +1035,30 @@ mod tests {
     }
 
     #[test]
+    fn a_document_index_on_an_engine_table_is_refused_at_the_user_boundary() {
+        // `doc_index_sql` itself stays unguarded: the job engine indexes `_jobs`
+        // through it deliberately (see `jobs::store::ensure_sql_indexes`).
+        assert!(doc_index_sql(
+            Dialect::Sqlite,
+            "_jobs",
+            &["state".to_string()],
+            "idx__jobs_state",
+            false
+        )
+        .is_ok());
+
+        // The guard the migration DSL applies before it gets here is what stops
+        // a user pointing an index at an engine table.
+        for name in ["_migrations", "_jobs", "_cron_jobs", "sqlite_master"] {
+            assert!(
+                assert_user_table(name).is_err(),
+                "{name} must be refused for user DDL"
+            );
+        }
+        assert!(assert_user_table("posts").is_ok());
+    }
+
+    #[test]
     fn a_document_index_validates_its_names() {
         assert!(doc_index_sql(Dialect::Postgres, "posts", &[], "i", false).is_err());
         // A field name is interpolated into a JSON path, so it takes the same

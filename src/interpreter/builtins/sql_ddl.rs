@@ -218,6 +218,11 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
                 .filter_map(|c| c.strip_prefix("doc.").map(str::to_string))
                 .collect();
             if !doc_fields.is_empty() {
+                // Every sibling helper guards through `ddl::add_index_sql`; this
+                // branch never reaches it, so the engine's own tables have to be
+                // refused here. `ensure_doc_index` itself stays unguarded — the
+                // job engine indexes `_jobs` through it on purpose.
+                ddl::assert_user_table(&table)?;
                 if doc_fields.len() != columns.len() {
                     return Err(format!(
                         "{op}: mix of document fields (\"doc.status\") and real columns \
