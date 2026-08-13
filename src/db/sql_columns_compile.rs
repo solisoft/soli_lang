@@ -23,6 +23,11 @@ pub struct ColumnQuery {
     pub schema: Arc<TableSchema>,
     /// Equality filters, keyed by column name. A JSON null means `IS NULL`.
     pub eq_filters: BTreeMap<String, serde_json::Value>,
+    /// `column IN (…)` filters. This is what makes eager loading one query per
+    /// association instead of one per parent row.
+    pub in_filters: BTreeMap<String, Vec<serde_json::Value>>,
+    /// Columns that must be non-null (`only_deleted` on a soft-delete model).
+    pub not_null_filters: Vec<String>,
     pub order_field: Option<String>,
     pub order_desc: bool,
     pub limit: Option<usize>,
@@ -34,6 +39,8 @@ impl ColumnQuery {
         Self {
             schema,
             eq_filters: BTreeMap::new(),
+            in_filters: BTreeMap::new(),
+            not_null_filters: Vec::new(),
             order_field: None,
             order_desc: false,
             limit: None,
@@ -211,6 +218,46 @@ fn compile_where(d: Dialect, q: &ColumnQuery, params: &mut Vec<SqlBind>) -> Resu
             }
         }
     }
+    for (field, values) in &q.in_filters {
+        let col = resolve_col(&q.schema, field)?;
+        let quoted = d.quote_ident(&col.name)?;
+        // An empty IN list matches nothing. Emitting `IN ()` is a syntax error on
+        // every backend, so say so in SQL instead.
+        if values.is_empty() {
+            clauses.push("1 = 0".to_string());
+            continue;
+        }
+        let mut placeholders = Vec::with_capacity(values.len());
+        let mut has_null = false;
+        for value in values {
+            match bind_for_column(col, value)? {
+                // A JSON null in the list means "or IS NULL": SQL `IN` never
+                // matches NULL.
+                None => has_null = true,
+                Some(bind) => {
+                    params.push(bind);
+                    placeholders.push(placeholder(d, params.len(), col.ty));
+                }
+            }
+        }
+        let mut clause = if placeholders.is_empty() {
+            String::new()
+        } else {
+            format!("{quoted} IN ({})", placeholders.join(", "))
+        };
+        if has_null {
+            if clause.is_empty() {
+                clause = format!("{quoted} IS NULL");
+            } else {
+                clause = format!("({clause} OR {quoted} IS NULL)");
+            }
+        }
+        clauses.push(clause);
+    }
+    for field in &q.not_null_filters {
+        let col = resolve_col(&q.schema, field)?;
+        clauses.push(format!("{} IS NOT NULL", d.quote_ident(&col.name)?));
+    }
     if clauses.is_empty() {
         return Ok(String::new());
     }
@@ -288,6 +335,134 @@ fn append_order_limit(
         }
     }
     Ok(())
+}
+
+/// `SELECT <group cols>, <aggregates> FROM t [WHERE …] GROUP BY <group cols>`.
+///
+/// Aggregates come back as text for the same reason scalar ones do: the exact
+/// numeric width is not knowable from the schema, so Rust parses one canonical
+/// form.
+pub fn compile_group_by_cols(
+    d: Dialect,
+    q: &ColumnQuery,
+    group_fields: &[String],
+    aggs: &[super::sql_compile::GroupAgg],
+) -> Result<CompiledSql, String> {
+    if group_fields.is_empty() {
+        return Err("group_by needs at least one column".to_string());
+    }
+    let mut selected = Vec::with_capacity(group_fields.len() + aggs.len().max(1));
+    let mut grouped = Vec::with_capacity(group_fields.len());
+    for field in group_fields {
+        let col = resolve_col(&q.schema, field)?;
+        let quoted = d.quote_ident(&col.name)?;
+        // Group keys are read as text so every dialect returns one shape.
+        selected.push(match d {
+            Dialect::Postgres => format!("{quoted}::text"),
+            Dialect::Mysql => format!("CAST({quoted} AS CHAR)"),
+            Dialect::Sqlite => format!("CAST({quoted} AS TEXT)"),
+        });
+        grouped.push(quoted);
+    }
+    if aggs.is_empty() {
+        // The default aggregate is a row count, aliased `n` like the document path.
+        selected.push(match d {
+            Dialect::Postgres => "COUNT(*)::text".to_string(),
+            Dialect::Mysql => "CAST(COUNT(*) AS CHAR)".to_string(),
+            Dialect::Sqlite => "CAST(COUNT(*) AS TEXT)".to_string(),
+        });
+    } else {
+        for agg in aggs {
+            let expr = if matches!(agg.func, SqlAgg::Count) {
+                "COUNT(*)".to_string()
+            } else {
+                let col = resolve_col(&q.schema, &agg.field)?;
+                let name = match agg.func {
+                    SqlAgg::Sum => "SUM",
+                    SqlAgg::Avg => "AVG",
+                    SqlAgg::Min => "MIN",
+                    SqlAgg::Max => "MAX",
+                    SqlAgg::Count => "COUNT",
+                };
+                if !col.ty.is_numeric() {
+                    return Err(format!(
+                        "column {:?} is {} — {name} needs a numeric column",
+                        col.name,
+                        col.ty.as_str()
+                    ));
+                }
+                format!("{name}({})", d.quote_ident(&col.name)?)
+            };
+            selected.push(match d {
+                Dialect::Postgres => format!("({expr})::text"),
+                Dialect::Mysql => format!("CAST({expr} AS CHAR)"),
+                Dialect::Sqlite => format!("CAST({expr} AS TEXT)"),
+            });
+        }
+    }
+
+    let table = d.quote_ident(&q.schema.table)?;
+    let mut params = Vec::new();
+    let mut sql = format!("SELECT {} FROM {table}", selected.join(", "));
+    sql.push_str(&compile_where(d, q, &mut params)?);
+    sql.push_str(&format!(" GROUP BY {}", grouped.join(", ")));
+    Ok(CompiledSql { sql, params })
+}
+
+/// `DELETE FROM t [WHERE …]`.
+pub fn compile_delete_all_cols(d: Dialect, q: &ColumnQuery) -> Result<CompiledSql, String> {
+    let table = d.quote_ident(&q.schema.table)?;
+    let mut params = Vec::new();
+    let mut sql = format!("DELETE FROM {table}");
+    sql.push_str(&compile_where(d, q, &mut params)?);
+    Ok(CompiledSql { sql, params })
+}
+
+/// `UPDATE t SET col = ?, … [WHERE …]` — the bulk form, which skips validations
+/// and callbacks exactly like the document path's `update_all`.
+pub fn compile_update_all_cols(
+    d: Dialect,
+    q: &ColumnQuery,
+    patch: &serde_json::Value,
+) -> Result<CompiledSql, String> {
+    let obj = patch
+        .as_object()
+        .ok_or_else(|| "update_all expects a hash of fields".to_string())?;
+    let mut assignments = Vec::new();
+    let mut params = Vec::new();
+    for col in &q.schema.columns {
+        // The primary key identifies the row; a bulk write must not rewrite it.
+        if col.name == q.schema.pk {
+            continue;
+        }
+        let Some(value) = obj.get(&col.name) else {
+            continue;
+        };
+        let quoted = d.quote_ident(&col.name)?;
+        match bind_for_column(col, value)? {
+            None => assignments.push(format!("{quoted} = NULL")),
+            Some(bind) => {
+                params.push(bind);
+                assignments.push(format!(
+                    "{quoted} = {}",
+                    placeholder(d, params.len(), col.ty)
+                ));
+            }
+        }
+    }
+    if assignments.is_empty() {
+        return Err(format!(
+            "update_all on {:?} had no writable fields. Columns: {}",
+            q.schema.table,
+            q.schema.column_names().join(", ")
+        ));
+    }
+    let table = d.quote_ident(&q.schema.table)?;
+    let mut sql = format!("UPDATE {table} SET {}", assignments.join(", "));
+    // `compile_where` appends to the same params vec, so its placeholders
+    // continue after the SET binds — which is what Postgres's $n requires.
+    sql.push_str(&compile_where(d, q, &mut params)?);
+    Ok(CompiledSql { sql, params })
 }
 
 /// `UPDATE t SET col = COALESCE(col,0) + ? WHERE pk = ?`, returning the new
@@ -649,6 +824,50 @@ mod tests {
 
     fn query() -> ColumnQuery {
         ColumnQuery::new(orders_schema())
+    }
+
+    #[test]
+    fn in_filters_batch_and_handle_null() {
+        // `IN` is what makes eager loading one query per association instead of
+        // one per parent row.
+        let mut q = query();
+        q.in_filters.insert(
+            "qty".into(),
+            vec![serde_json::json!(1), serde_json::json!(2)],
+        );
+        let c = compile_select_cols(Dialect::Postgres, &q).unwrap();
+        assert!(
+            c.sql.contains("\"qty\" IN ($1::bigint, $2::bigint)"),
+            "{}",
+            c.sql
+        );
+        assert_eq!(c.params.len(), 2);
+
+        // A null in the list means "or IS NULL": SQL `IN` never matches NULL.
+        let mut q = query();
+        q.in_filters.insert(
+            "qty".into(),
+            vec![serde_json::json!(1), serde_json::Value::Null],
+        );
+        let c = compile_select_cols(Dialect::Sqlite, &q).unwrap();
+        assert!(
+            c.sql.contains("(\"qty\" IN (?) OR \"qty\" IS NULL)"),
+            "{}",
+            c.sql
+        );
+
+        // An empty list matches nothing — `IN ()` is a syntax error everywhere.
+        let mut q = query();
+        q.in_filters.insert("qty".into(), vec![]);
+        let c = compile_select_cols(Dialect::Mysql, &q).unwrap();
+        assert!(c.sql.contains("1 = 0"), "{}", c.sql);
+        assert!(c.params.is_empty());
+
+        // An unknown column is refused before any SQL is built.
+        let mut q = query();
+        q.in_filters
+            .insert("nope".into(), vec![serde_json::json!(1)]);
+        assert!(compile_select_cols(Dialect::Postgres, &q).is_err());
     }
 
     #[test]

@@ -1010,6 +1010,57 @@ pub fn col_increment(
     })
 }
 
+/// Grouped aggregation over real columns.
+pub fn col_group_by(
+    q: &cols::ColumnQuery,
+    group_fields: &[String],
+    aggs: &[GroupAgg],
+) -> Result<Vec<serde_json::Value>, String> {
+    let compiled = cols::compile_group_by_cols(Dialect::Mysql, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    let names = super::columns::group_result_names(group_fields, aggs);
+    with_conn(|conn| {
+        let rows: Vec<mysql::Row> = conn
+            .exec(&compiled.sql, to_mysql_params(&compiled.params))
+            .map_err(|e| my_error("mysql column group_by", &e))?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let texts: Vec<Option<String>> = (0..names.len())
+                    .map(|i| {
+                        row.get_opt::<Option<String>, usize>(i)
+                            .and_then(Result::ok)
+                            .flatten()
+                    })
+                    .collect();
+                super::columns::group_row_to_json(&names, &texts)
+            })
+            .collect())
+    })
+}
+
+pub fn col_delete_all(q: &cols::ColumnQuery) -> Result<u64, String> {
+    let compiled = cols::compile_delete_all_cols(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let result = conn
+            .exec_iter(&compiled.sql, to_mysql_params(&compiled.params))
+            .map_err(|e| my_error("mysql column delete_all", &e))?;
+        Ok(result.affected_rows())
+    })
+}
+
+pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Result<u64, String> {
+    let compiled = cols::compile_update_all_cols(Dialect::Mysql, q, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let result = conn
+            .exec_iter(&compiled.sql, to_mysql_params(&compiled.params))
+            .map_err(|e| my_error("mysql column update_all", &e))?;
+        Ok(result.affected_rows())
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Mysql, q)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);

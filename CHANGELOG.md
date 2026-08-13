@@ -4,6 +4,30 @@
 
 ### Added
 
+- **Column-aware models reached association parity.** A model bound to an
+  existing table with `table "…"` could only do single-row and scalar work; the
+  interesting half of the ORM refused to run. Now supported there:
+
+  - **Batched eager loading** for `belongs_to`, `has_many`, `has_one`, and
+    `includes_count` — one query per association whatever the parent count, using
+    `column IN (…)` over the real foreign-key columns. Measured in a live app:
+    3 parents with `includes("books")` costs **2 queries**, not 4. A parent with
+    no children gets `[]`, never null. Both sides must be column-aware; joining a
+    real column to a JSON field is refused with a message naming both models
+    instead of quietly returning nothing.
+  - **`group_by`** with sum/avg/min/max/count over real columns (a non-numeric
+    aggregate is refused by name), and **`delete_all` / `update_all`**, which
+    stamp `updated_at` when the table has it and never rewrite the primary key.
+  - **`soft_delete`**, when the table actually has a `deleted_at` column — the
+    scope becomes an ordinary `IS NULL` / `IS NOT NULL` filter. Declaring it on a
+    table without that column now fails at boot naming the missing column,
+    instead of the declaration being rejected outright.
+  - **Counter caches**, which follow from the atomic column increment above.
+
+  Still out: composite primary keys, `encrypts`, STI, `.having`, `.join`, and
+  `.includes` on `has_and_belongs_to_many`/`through:` (the join table would have
+  to be a column model too).
+
 - **The dev bar, `dev_queries()`, and N+1 detection now work on the SQL
   adapters.** Only the SoliDB path wrote to the per-request query log, so on
   Postgres/MySQL/SQLite the DB panel was empty, timings were missing, and the

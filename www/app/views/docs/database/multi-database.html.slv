@@ -454,6 +454,23 @@ Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
     </div>
     <p class="text-gray-400 mb-8"><code class="text-cyan-400">pluck</code> and <code class="text-cyan-400">select</code> work too (projection happens client-side, as on the document path).</p>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Also supported</h3>
+
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
+
+        <li><strong class="text-white">Batched eager loading</strong> &mdash; <code class="text-cyan-400">belongs_to</code>, <code class="text-cyan-400">has_many</code>, <code class="text-cyan-400">has_one</code> and <code class="text-cyan-400">includes_count</code>, one query per association whatever the parent count, over the real foreign-key columns. A parent with no children gets <code class="text-cyan-400">[]</code>, never null.</li>
+
+        <li><strong class="text-white"><code class="text-cyan-400">group_by</code></strong> with sum/avg/min/max/count over real columns.</li>
+
+        <li><strong class="text-white"><code class="text-cyan-400">delete_all</code> / <code class="text-cyan-400">update_all</code></strong> &mdash; bulk writes that skip validations and callbacks (as on the document path) but still stamp <code class="text-cyan-400">updated_at</code> when the table has it, and never rewrite the primary key.</li>
+
+        <li><strong class="text-white">Atomic <code class="text-cyan-400">increment</code> / <code class="text-cyan-400">decrement</code> and counter caches</strong> &mdash; one arithmetic <code>UPDATE</code> on the column.</li>
+
+        <li><strong class="text-white"><code class="text-cyan-400">soft_delete</code></strong>, provided the table has a <code class="text-cyan-400">deleted_at</code> column. Without one there is nowhere to record the deletion, so boot fails with that message rather than silently returning deleted rows.</li>
+
+    </ul>
+
+
     <h3 class="text-lg font-semibold text-white mb-4">Not supported on column-aware models</h3>
     <p class="text-gray-400 mb-4">Each of these raises an error naming the feature rather than returning wrong data:</p>
     <div class="overflow-x-auto mb-8">
@@ -466,10 +483,10 @@ Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr><td class="py-3 px-4">Raw/string <code>.where("doc…")</code></td><td class="py-3 px-4">SDBQL has no meaning against columns &mdash; use the hash form</td></tr>
-                <tr><td class="py-3 px-4">Associations, <code>.includes</code>, <code>.join</code></td><td class="py-3 px-4">Slice 2 &mdash; needs FK-aware batching over real columns</td></tr>
-                <tr><td class="py-3 px-4"><code>group_by</code>, <code>.having</code></td><td class="py-3 px-4">Slice 2</td></tr>
-                <tr><td class="py-3 px-4"><code>delete_all</code> / <code>update_all</code></td><td class="py-3 px-4">Slice 2</td></tr>
-                <tr><td class="py-3 px-4"><code>soft_delete</code>, <code>encrypts</code>, STI, <code>counter_cache</code></td><td class="py-3 px-4">Assume Soli-managed document storage; declaring one alongside <code>table</code> fails at boot</td></tr>
+                <tr><td class="py-3 px-4"><code>.includes</code> across storage shapes</td><td class="py-3 px-4">Both models must be column-aware &mdash; matching a real column against a JSON field is not a join Soli will guess at</td></tr>
+                <tr><td class="py-3 px-4"><code>.having</code>, <code>.join</code></td><td class="py-3 px-4">Planned</td></tr>
+                <tr><td class="py-3 px-4"><code>.includes</code> on <code>has_and_belongs_to_many</code>, <code>through:</code></td><td class="py-3 px-4">Needs the join table mapped as a column model too &mdash; planned</td></tr>
+                <tr><td class="py-3 px-4"><code>encrypts</code>, STI, composite primary keys</td><td class="py-3 px-4">Assume Soli-managed document storage (or single-column keys); refused at boot with the reason named</td></tr>
                 <tr><td class="py-3 px-4"><code>grouped {}</code>, graph, vector, columnar, timeseries</td><td class="py-3 px-4">SoliDB features</td></tr>
                 <tr><td class="py-3 px-4">Auto-create / index sync / implicit <code>ALTER</code></td><td class="py-3 px-4">A <strong class="text-white">model</strong> never issues DDL in column mode. A <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">migration</a> can create and alter column tables explicitly</td></tr>
             </tbody>

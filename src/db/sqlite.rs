@@ -1155,6 +1155,61 @@ pub fn col_increment(
     })
 }
 
+/// Grouped aggregation over real columns.
+pub fn col_group_by(
+    q: &cols::ColumnQuery,
+    group_fields: &[String],
+    aggs: &[GroupAgg],
+) -> Result<Vec<serde_json::Value>, String> {
+    let compiled = cols::compile_group_by_cols(Dialect::Sqlite, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    let names = super::columns::group_result_names(group_fields, aggs);
+    with_conn(|conn| {
+        let params = to_sqlite_params(&compiled.params);
+        let mut stmt = conn
+            .prepare(&compiled.sql)
+            .map_err(|e| lite_error("sqlite column group_by prepare", &e))?;
+        let mut rows = stmt
+            .query(params_from_iter(params.iter()))
+            .map_err(|e| lite_error("sqlite column group_by", &e))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| lite_error("sqlite column group_by row", &e))?
+        {
+            let texts: Vec<Option<String>> = (0..names.len())
+                .map(|i| row.get::<_, Option<String>>(i).ok().flatten())
+                .collect();
+            out.push(super::columns::group_row_to_json(&names, &texts));
+        }
+        Ok(out)
+    })
+}
+
+pub fn col_delete_all(q: &cols::ColumnQuery) -> Result<u64, String> {
+    let compiled = cols::compile_delete_all_cols(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let params = to_sqlite_params(&compiled.params);
+        let n = conn
+            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .map_err(|e| lite_error("sqlite column delete_all", &e))?;
+        Ok(n as u64)
+    })
+}
+
+pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Result<u64, String> {
+    let compiled = cols::compile_update_all_cols(Dialect::Sqlite, q, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let params = to_sqlite_params(&compiled.params);
+        let n = conn
+            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .map_err(|e| lite_error("sqlite column update_all", &e))?;
+        Ok(n as u64)
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Sqlite, q)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
@@ -2532,6 +2587,130 @@ mod tests {
             );
             let (_, count, _total_us) = &groups[0];
             assert!(*count >= 4, "expected at least 4 repeats, got {count}");
+        });
+    }
+
+    /// Column-mode parity: batched eager loading, grouping, and bulk writes over
+    /// real columns. These are compiler-level assertions on the SQL the column
+    /// path emits, plus the round trip through a real database.
+    #[test]
+    fn column_mode_groups_and_bulk_writes() {
+        with_sqlite("column-parity", || {
+            execute_ddl(
+                "CREATE TABLE items (id INTEGER PRIMARY KEY, kind TEXT, qty INTEGER, \
+                 note TEXT, updated_at DATETIME)",
+            )
+            .expect("ddl");
+            execute_ddl(
+                "INSERT INTO items (kind, qty) VALUES ('a', 1), ('a', 2), ('b', 5), ('b', 7)",
+            )
+            .expect("seed");
+            let raw = introspect_table("items").expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", "items", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema"),
+            );
+
+            // group_by with an explicit aggregate.
+            let query = cols::ColumnQuery::new(schema.clone());
+            let aggs = vec![super::super::sql_compile::GroupAgg {
+                alias: "total".into(),
+                func: SqlAgg::Sum,
+                field: "qty".into(),
+            }];
+            let rows = col_group_by(&query, &["kind".to_string()], &aggs).expect("group_by");
+            assert_eq!(rows.len(), 2);
+            let by_kind: std::collections::HashMap<String, f64> = rows
+                .iter()
+                .map(|row| {
+                    (
+                        row["kind"].as_str().unwrap_or_default().to_string(),
+                        row["total"].as_f64().unwrap_or_default(),
+                    )
+                })
+                .collect();
+            assert_eq!(by_kind["a"], 3.0);
+            assert_eq!(by_kind["b"], 12.0);
+
+            // No aggregate declared → a row count aliased `n`, as on the
+            // document path.
+            let counted = col_group_by(&query, &["kind".to_string()], &[]).expect("counts");
+            assert!(counted.iter().all(|row| row["n"].as_i64() == Some(2)));
+
+            // An aggregate over a text column is refused by name.
+            let bad = vec![super::super::sql_compile::GroupAgg {
+                alias: "x".into(),
+                func: SqlAgg::Sum,
+                field: "note".into(),
+            }];
+            let err = col_group_by(&query, &["kind".to_string()], &bad).expect_err("text sum");
+            assert!(err.contains("note") && err.contains("numeric"), "{err}");
+
+            // Bulk update touches only the matched rows, and never the key.
+            let mut only_a = cols::ColumnQuery::new(schema.clone());
+            only_a
+                .eq_filters
+                .insert("kind".into(), serde_json::json!("a"));
+            let changed =
+                col_update_all(&only_a, &serde_json::json!({ "note": "seen", "id": 999 }))
+                    .expect("update_all");
+            assert_eq!(changed, 2);
+            let rows = col_select(&only_a).expect("select");
+            assert!(rows.iter().all(|r| r["note"] == "seen"));
+            // The `id` in the patch was ignored rather than rewriting identities.
+            let mut ids: Vec<i64> = rows.iter().filter_map(|r| r["id"].as_i64()).collect();
+            ids.sort();
+            assert_eq!(ids, vec![1, 2]);
+
+            // Bulk delete is scoped the same way.
+            let deleted = col_delete_all(&only_a).expect("delete_all");
+            assert_eq!(deleted, 2);
+            let all = cols::ColumnQuery::new(schema.clone());
+            assert_eq!(col_count(&all).unwrap(), 2, "only kind 'b' remains");
+        });
+    }
+
+    /// Soft delete needs a real column; with one, the scope is an ordinary filter.
+    #[test]
+    fn column_mode_soft_delete_uses_the_real_column() {
+        with_sqlite("column-soft-delete", || {
+            execute_ddl(
+                "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT, deleted_at DATETIME)",
+            )
+            .expect("ddl");
+            execute_ddl(
+                "INSERT INTO notes (body, deleted_at) VALUES ('live', NULL), \
+                 ('gone', '2026-01-01T00:00:00Z')",
+            )
+            .expect("seed");
+            let raw = introspect_table("notes").expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", "notes", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema"),
+            );
+
+            // Default scope: deleted_at IS NULL.
+            let mut live = cols::ColumnQuery::new(schema.clone());
+            live.eq_filters
+                .insert("deleted_at".into(), serde_json::Value::Null);
+            let rows = col_select(&live).expect("select");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["body"], "live");
+
+            // only_deleted: deleted_at IS NOT NULL.
+            let mut deleted = cols::ColumnQuery::new(schema.clone());
+            deleted.not_null_filters.push("deleted_at".into());
+            let rows = col_select(&deleted).expect("select");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["body"], "gone");
+
+            // with_deleted: no scope at all.
+            let all = cols::ColumnQuery::new(schema);
+            assert_eq!(col_count(&all).unwrap(), 2);
         });
     }
 

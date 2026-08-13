@@ -1157,8 +1157,43 @@ fn execute_column_select(qb: &QueryBuilder, collection: &str) -> Result<Value, S
         return Ok(hydrate_or_project_rows(qb, rows));
     }
     let q = super::column_mode::column_query_from_qb(qb, schema.clone(), collection)?;
-    let rows = crate::db::columns::select_rows(&q)?;
+    let mut rows = crate::db::columns::select_rows(&q)?;
+    // Eager loads run on the raw rows, before hydration, exactly as on the
+    // document path — one batched query per association.
+    super::column_mode::include_relations(qb, &schema, &mut rows)?;
     Ok(super::column_mode::hydrate_column_rows(qb, &schema, rows))
+}
+
+/// Column-aware bulk delete. Returns the number of rows removed, like the
+/// document path's `delete_all`.
+fn execute_column_delete_all(qb: &QueryBuilder, collection: &str) -> Result<Value, String> {
+    let Some(schema) = super::column_mode::require_schema(collection)? else {
+        return Err(super::column_mode::unsupported("this query", collection));
+    };
+    let q = super::column_mode::column_query_from_qb(qb, schema, collection)?;
+    crate::db::columns::delete_all(&q)?;
+    Ok(Value::Null)
+}
+
+/// Column-aware bulk update. Skips validations and callbacks, exactly as the
+/// document path does, but does stamp `updated_at` when the table has it.
+fn execute_column_update_all(
+    qb: &QueryBuilder,
+    collection: &str,
+    patch: &serde_json::Value,
+) -> Result<Value, String> {
+    let Some(schema) = super::column_mode::require_schema(collection)? else {
+        return Err(super::column_mode::unsupported("this query", collection));
+    };
+    let mut prepared = super::column_mode::prepare_write(&schema, patch, false)?;
+    // `prepare_write` stamps updated_at; the primary key is dropped by the
+    // compiler, so a stray `id` in the patch cannot rewrite identities.
+    if let Some(obj) = prepared.as_object_mut() {
+        obj.remove(&schema.pk);
+    }
+    let q = super::column_mode::column_query_from_qb(qb, schema, collection)?;
+    crate::db::columns::update_all(&q, &prepared)?;
+    Ok(Value::Null)
 }
 
 /// Column-aware count / exists / scalar aggregate.
@@ -1587,9 +1622,26 @@ fn execute_sql_group_by(qb: &QueryBuilder, collection: &str) -> Value {
             (fields, aggs)
         };
 
-    match list_query_from_qb(qb, collection) {
-        Ok(lq) => match crate::db::sql::group_by(&lq, &group_fields, &aggs) {
-            Ok(rows) => {
+    // Column-aware models group over real columns; the rest of this function's
+    // row-shaping is identical, so only the query differs.
+    let grouped_rows = if super::column_mode::is_column_mode(collection) {
+        match super::column_mode::require_schema(collection).and_then(|schema| {
+            let schema =
+                schema.ok_or_else(|| super::column_mode::unsupported("group_by", collection))?;
+            let q = super::column_mode::column_query_from_qb(qb, schema, collection)?;
+            crate::db::columns::group_by(&q, &group_fields, &aggs)
+        }) {
+            Ok(rows) => Ok(rows),
+            Err(e) => return Value::String(format!("Error: {e}").into()),
+        }
+    } else {
+        list_query_from_qb(qb, collection)
+            .and_then(|lq| crate::db::sql::group_by(&lq, &group_fields, &aggs))
+    };
+
+    match grouped_rows {
+        Ok(rows) => {
+            {
                 // Legacy group_by returns {group, result}; multi-key returns field keys.
                 let values: Vec<Value> = if qb.group_by_info.is_some() {
                     rows.into_iter()
@@ -1615,8 +1667,7 @@ fn execute_sql_group_by(qb: &QueryBuilder, collection: &str) -> Value {
                 };
                 Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)))
             }
-            Err(e) => Value::String(format!("Error: {e}").into()),
-        },
+        }
         Err(e) => Value::String(format!("Error: {e}").into()),
     }
 }
@@ -2221,13 +2272,10 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
         .unwrap_or("unknown")
         .to_string();
     if super::column_mode::is_column_mode(&collection) {
-        return Value::String(
-            format!(
-                "Error: {}",
-                super::column_mode::unsupported("`delete_all`", &collection)
-            )
-            .into(),
-        );
+        return match execute_column_delete_all(qb, &collection) {
+            Ok(value) => value,
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
     }
     if crate::db::is_sql() {
         return match list_query_from_qb(qb, &collection) {
@@ -2307,13 +2355,10 @@ fn execute_query_builder_update_all_inner(
         .unwrap_or("unknown")
         .to_string();
     if super::column_mode::is_column_mode(&collection) {
-        return Value::String(
-            format!(
-                "Error: {}",
-                super::column_mode::unsupported("`update_all`", &collection)
-            )
-            .into(),
-        );
+        return match execute_column_update_all(qb, &collection, &update_data) {
+            Ok(value) => value,
+            Err(e) => Value::String(format!("Error: {e}").into()),
+        };
     }
     if crate::db::is_sql() {
         return match list_query_from_qb(qb, &collection) {

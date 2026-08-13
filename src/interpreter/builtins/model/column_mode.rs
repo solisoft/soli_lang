@@ -11,6 +11,11 @@ use crate::db::introspect::{ColType, TableSchema};
 use crate::db::sql_columns_compile::{resolve_col, ColumnQuery};
 use crate::interpreter::value::Value;
 
+/// Does this table have the `deleted_at` column soft delete needs?
+fn q_schema_has_deleted_at(schema: &TableSchema) -> bool {
+    schema.has_column("deleted_at")
+}
+
 /// Schema for `collection` when its model is column-mode, else `None`.
 ///
 /// Introspection runs under the collection's connection, so a model bound to a
@@ -132,18 +137,16 @@ pub fn column_query_from_qb(
 ) -> Result<ColumnQuery, String> {
     // Everything below is either SoliDB-specific or a slice-2 item; each must
     // say so rather than quietly returning wrong rows.
-    if !qb.includes.is_empty() || !qb.includes_counts.is_empty() {
-        return Err(unsupported("`.includes` eager loading", collection));
-    }
+    // `.includes` is handled after the rows come back (see
+    // `include_relations`), so it is not a reason to reject the query here.
     if !qb.joins.is_empty() {
         return Err(unsupported("`.join`", collection));
     }
     if qb.traversal.is_some() || qb.through.is_some() {
         return Err(unsupported("graph / through queries", collection));
     }
-    if qb.group_by_info.is_some() || !qb.group_fields.is_empty() {
-        return Err(unsupported("`group_by`", collection));
-    }
+    // `group_by` compiles over real columns (see `compile_group_by_cols`); the
+    // grouping itself is applied by the caller, not by this filter builder.
     if qb.having.is_some() {
         return Err(unsupported("`.having`", collection));
     }
@@ -153,13 +156,31 @@ pub fn column_query_from_qb(
     if qb.sti_types.is_some() {
         return Err(unsupported("single-table inheritance", collection));
     }
-    if !matches!(qb.soft_delete_mode, super::query::SoftDeleteMode::Default)
-        || qb.is_soft_delete_model
-    {
-        return Err(unsupported("soft delete", collection));
+    // Soft delete needs a real `deleted_at` column. When the schema has one, the
+    // scope is a normal filter; when it does not, there is nowhere to record the
+    // deletion, so say that rather than silently returning every row.
+    if qb.is_soft_delete_model && !q_schema_has_deleted_at(&schema) {
+        return Err(format!(
+            "model for table {collection:?} declares `soft_delete`, but the table has no \
+             `deleted_at` column. Add one (a nullable timestamp), or drop the declaration \
+             — column mode never alters your schema."
+        ));
     }
 
-    let mut q = ColumnQuery::new(schema);
+    let mut q = ColumnQuery::new(schema.clone());
+    // The soft-delete scope, expressed as an ordinary filter on the column.
+    if qb.is_soft_delete_model {
+        match qb.soft_delete_mode {
+            super::query::SoftDeleteMode::Default => {
+                q.eq_filters
+                    .insert("deleted_at".to_string(), serde_json::Value::Null);
+            }
+            super::query::SoftDeleteMode::OnlyDeleted => {
+                q.not_null_filters.push("deleted_at".to_string());
+            }
+            super::query::SoftDeleteMode::WithDeleted => {}
+        }
+    }
     for (key, value) in &qb.bind_vars {
         let field = crate::interpreter::symbol_string(*key)
             .unwrap_or("")
@@ -215,6 +236,233 @@ pub fn adopt_row_fields(
         inst.set(key.clone(), super::crud::json_to_value_owned(value.clone()));
     }
     true
+}
+
+/// Eager-load declared associations onto column rows.
+///
+/// One batched query per association, whatever the parent count — the same
+/// guarantee the document path gives, using `column IN (…)` over the real
+/// foreign-key columns instead of a JSON extract.
+///
+/// Both sides must be column-mode: eager loading between a column table and a
+/// document collection would have to join a real column to a JSON field, so it
+/// is refused with a message naming both models rather than silently returning
+/// nothing.
+pub fn include_relations(
+    qb: &super::query::QueryBuilder,
+    schema: &TableSchema,
+    rows: &mut [serde_json::Value],
+) -> Result<(), String> {
+    for inc in &qb.includes {
+        if inc.filter.is_some() {
+            return Err(unsupported(
+                "a filtered `.includes(…, where: …)`",
+                &schema.table,
+            ));
+        }
+        let related = require_related_schema(&inc.relation.collection, &inc.relation_name)?;
+        match inc.relation.relation_type {
+            super::relations::RelationType::BelongsTo
+            | super::relations::RelationType::Polymorphic => {
+                include_belongs_to(rows, inc, schema, &related)?
+            }
+            super::relations::RelationType::HasMany | super::relations::RelationType::HasOne => {
+                include_has_many(rows, inc, schema, &related)?
+            }
+            super::relations::RelationType::HasAndBelongsToMany => {
+                return Err(unsupported(
+                    "`.includes` on has_and_belongs_to_many",
+                    &schema.table,
+                ))
+            }
+        }
+    }
+    for inc in &qb.includes_counts {
+        let related = require_related_schema(&inc.relation.collection, &inc.relation_name)?;
+        include_count(rows, inc, schema, &related)?;
+    }
+    Ok(())
+}
+
+/// The related model's schema, or an error naming why it cannot be joined.
+fn require_related_schema(
+    collection: &str,
+    relation_name: &str,
+) -> Result<Arc<TableSchema>, String> {
+    schema_for_collection(collection).ok_or_else(|| {
+        format!(
+            "`.includes(\"{relation_name}\")`: {collection:?} is not a column-aware model. \
+             Eager loading between a column table and a document collection would have to \
+             match a real column against a JSON field — give both models a `table \"…\"`, \
+             or load the two sides separately."
+        )
+    })
+}
+
+/// Value of `column` on a row, as the text used to key the lookup map.
+fn row_text(row: &serde_json::Value, column: &str) -> Option<String> {
+    match row.get(column) {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(other) => Some(other.to_string()),
+    }
+}
+
+/// Distinct non-null values of `column` across `rows`, in first-seen order.
+fn distinct_values(rows: &[serde_json::Value], column: &str) -> Vec<serde_json::Value> {
+    let mut seen: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+    for row in rows {
+        let Some(text) = row_text(row, column) else {
+            continue;
+        };
+        if seen.iter().any(|s| s == &text) {
+            continue;
+        }
+        seen.push(text);
+        out.push(row.get(column).cloned().unwrap_or(serde_json::Value::Null));
+    }
+    out
+}
+
+/// Rows of `schema` where `column` is one of `values` — one query.
+fn fetch_in(
+    schema: &Arc<TableSchema>,
+    column: &str,
+    values: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, String> {
+    if values.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut query = ColumnQuery::new(schema.clone());
+    query.in_filters.insert(column.to_string(), values);
+    crate::db::columns::select_rows(&query)
+}
+
+fn project(row: serde_json::Value, fields: &Option<Vec<String>>) -> serde_json::Value {
+    let Some(fields) = fields else {
+        return row;
+    };
+    let Some(obj) = row.as_object() else {
+        return row;
+    };
+    let mut out = serde_json::Map::new();
+    for field in fields {
+        if let Some(value) = obj.get(field) {
+            out.insert(field.clone(), value.clone());
+        }
+    }
+    // The key stays available so the caller can still identify the record.
+    if let Some(key) = obj.get("_key") {
+        out.insert("_key".to_string(), key.clone());
+    }
+    serde_json::Value::Object(out)
+}
+
+/// `belongs_to`: the parent holds the FK, the target is found by primary key.
+fn include_belongs_to(
+    rows: &mut [serde_json::Value],
+    inc: &super::query::IncludeClause,
+    schema: &TableSchema,
+    related: &Arc<TableSchema>,
+) -> Result<(), String> {
+    let fk = resolve_col(schema, &inc.relation.foreign_key)?.name.clone();
+    let keys = distinct_values(rows, &fk);
+    let fetched = fetch_in(related, &related.pk.clone(), keys)?;
+
+    let mut by_key: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
+    for row in fetched {
+        if let Some(key) = row_text(&row, &related.pk) {
+            by_key.insert(key, project(row, &inc.fields));
+        }
+    }
+    for row in rows.iter_mut() {
+        let attached = row_text(row, &fk)
+            .and_then(|key| by_key.get(&key).cloned())
+            .unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = row.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), attached);
+        }
+    }
+    Ok(())
+}
+
+/// `has_many` / `has_one`: the child holds the FK pointing at the parent key.
+fn include_has_many(
+    rows: &mut [serde_json::Value],
+    inc: &super::query::IncludeClause,
+    schema: &TableSchema,
+    related: &Arc<TableSchema>,
+) -> Result<(), String> {
+    let fk = resolve_col(related, &inc.relation.foreign_key)?
+        .name
+        .clone();
+    let parent_keys = distinct_values(rows, &schema.pk);
+    let fetched = fetch_in(related, &fk, parent_keys)?;
+
+    let mut by_fk: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for row in fetched {
+        if let Some(key) = row_text(&row, &fk) {
+            by_fk
+                .entry(key)
+                .or_default()
+                .push(project(row, &inc.fields));
+        }
+    }
+    let singular = matches!(
+        inc.relation.relation_type,
+        super::relations::RelationType::HasOne
+    );
+    for row in rows.iter_mut() {
+        let children = row_text(row, &schema.pk)
+            .and_then(|key| by_fk.remove(&key))
+            .unwrap_or_default();
+        // A parent with no children gets `[]`, never null — callers iterate it.
+        let attached = if singular {
+            children
+                .into_iter()
+                .next()
+                .unwrap_or(serde_json::Value::Null)
+        } else {
+            serde_json::Value::Array(children)
+        };
+        if let Some(obj) = row.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), attached);
+        }
+    }
+    Ok(())
+}
+
+/// `includes_count`: the number of children per parent, in one query.
+fn include_count(
+    rows: &mut [serde_json::Value],
+    inc: &super::query::IncludeCountClause,
+    schema: &TableSchema,
+    related: &Arc<TableSchema>,
+) -> Result<(), String> {
+    let fk = resolve_col(related, &inc.relation.foreign_key)?
+        .name
+        .clone();
+    let parent_keys = distinct_values(rows, &schema.pk);
+    let fetched = fetch_in(related, &fk, parent_keys)?;
+
+    let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for row in fetched {
+        if let Some(key) = row_text(&row, &fk) {
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    for row in rows.iter_mut() {
+        let count = row_text(row, &schema.pk)
+            .and_then(|key| counts.get(&key).copied())
+            .unwrap_or(0);
+        if let Some(obj) = row.as_object_mut() {
+            obj.insert(inc.alias.clone(), serde_json::json!(count));
+        }
+    }
+    Ok(())
 }
 
 /// Hydrate column rows into instances (or plain hashes), converting temporal
@@ -309,10 +557,11 @@ fn parse_datetime(raw: &str) -> Option<Value> {
 pub fn validate_declared_models() -> Vec<String> {
     let mut problems = Vec::new();
     for model in super::registry::all_column_models() {
-        // Declarations that assume Soli-managed document storage cannot work
-        // against a schema Soli does not own.
+        // `soft_delete` is allowed now, provided the table actually has a
+        // `deleted_at` column — checked below, once the schema is known.
+        // Declarations that assume Soli-managed document storage still cannot
+        // work against a schema Soli does not own.
         for (decl, present) in [
-            ("soft_delete", model.soft_delete),
             ("encrypts", model.has_encrypted_fields),
             (
                 "edge / timeseries / columnar",
@@ -330,10 +579,23 @@ pub fn validate_declared_models() -> Vec<String> {
 
         // Introspect now, so a missing table, a composite primary key, or a
         // non-SQL connection is reported at boot instead of mid-request.
-        if let Err(e) = super::registry::run_on_collection_connection(&model.collection, || {
+        match super::registry::run_on_collection_connection(&model.collection, || {
             crate::db::introspect::get_schema(&model.table)
         }) {
-            problems.push(e);
+            Err(e) => problems.push(e),
+            Ok(schema) => {
+                // Soft delete records the deletion in a column; without it there
+                // is nowhere to write, and every scoped read would silently
+                // return deleted rows.
+                if model.soft_delete && !schema.has_column("deleted_at") {
+                    problems.push(format!(
+                        "{} declares `soft_delete` and maps to table {:?}, which has no \
+                         `deleted_at` column. Add a nullable timestamp column, or drop the \
+                         declaration — column mode never alters your schema.",
+                        model.class_name, model.table
+                    ));
+                }
+            }
         }
     }
     problems

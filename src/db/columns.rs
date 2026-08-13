@@ -171,6 +171,78 @@ pub fn increment_column(
     )
 }
 
+/// Grouped aggregation over real columns.
+pub fn group_by(
+    q: &ColumnQuery,
+    group_fields: &[String],
+    aggs: &[super::sql_compile::GroupAgg],
+) -> Result<Vec<serde_json::Value>, String> {
+    route_cols!(
+        super::postgres::col_group_by(q, group_fields, aggs),
+        super::mysql::col_group_by(q, group_fields, aggs),
+        super::sqlite::col_group_by(q, group_fields, aggs)
+    )
+}
+
+/// Bulk delete. Returns the number of rows removed.
+pub fn delete_all(q: &ColumnQuery) -> Result<u64, String> {
+    route_cols!(
+        super::postgres::col_delete_all(q),
+        super::mysql::col_delete_all(q),
+        super::sqlite::col_delete_all(q)
+    )
+}
+
+/// Bulk update. Returns the number of rows changed.
+pub fn update_all(q: &ColumnQuery, patch: &serde_json::Value) -> Result<u64, String> {
+    route_cols!(
+        super::postgres::col_update_all(q, patch),
+        super::mysql::col_update_all(q, patch),
+        super::sqlite::col_update_all(q, patch)
+    )
+}
+
+/// Result column names for a grouped query: the group columns, then each
+/// aggregate's alias (or `n` for the implicit count).
+pub fn group_result_names(
+    group_fields: &[String],
+    aggs: &[super::sql_compile::GroupAgg],
+) -> Vec<String> {
+    let mut names: Vec<String> = group_fields.to_vec();
+    if aggs.is_empty() {
+        names.push("n".to_string());
+    } else {
+        for agg in aggs {
+            names.push(agg.alias.clone());
+        }
+    }
+    names
+}
+
+/// One grouped row: group keys stay text, aggregates parse to numbers.
+pub fn group_row_to_json(names: &[String], texts: &[Option<String>]) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for (index, name) in names.iter().enumerate() {
+        let raw = texts.get(index).cloned().flatten();
+        // The group keys are the first `names.len() - aggregates` entries; an
+        // aggregate is always numeric, a key is whatever the column held.
+        let value = match raw {
+            None => serde_json::Value::Null,
+            Some(text) => {
+                if let Ok(n) = text.trim().parse::<i64>() {
+                    serde_json::json!(n)
+                } else if let Ok(f) = text.trim().parse::<f64>() {
+                    serde_json::json!(f)
+                } else {
+                    serde_json::Value::String(text)
+                }
+            }
+        };
+        out.insert(name.clone(), value);
+    }
+    serde_json::Value::Object(out)
+}
+
 /// Stamp `created_at` / `updated_at` when the table has them and the caller
 /// didn't set them. Column mode never invents columns, so this is a no-op on a
 /// table without those names.

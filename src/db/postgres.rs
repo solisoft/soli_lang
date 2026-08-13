@@ -985,6 +985,56 @@ pub fn col_increment(
     })
 }
 
+/// Grouped aggregation over real columns. Values come back as text and are
+/// parsed in Rust, as elsewhere on the column path.
+pub fn col_group_by(
+    q: &cols::ColumnQuery,
+    group_fields: &[String],
+    aggs: &[GroupAgg],
+) -> Result<Vec<serde_json::Value>, String> {
+    let compiled = cols::compile_group_by_cols(Dialect::Postgres, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    let names = super::columns::group_result_names(group_fields, aggs);
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&compiled.sql, &refs)
+            .map_err(|e| pg_error("postgres column group_by", &e))?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let texts: Vec<Option<String>> = (0..names.len()).map(|i| row.get(i)).collect();
+                super::columns::group_row_to_json(&names, &texts)
+            })
+            .collect())
+    })
+}
+
+pub fn col_delete_all(q: &cols::ColumnQuery) -> Result<u64, String> {
+    let compiled = cols::compile_delete_all_cols(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        client
+            .execute(&compiled.sql, &refs)
+            .map_err(|e| pg_error("postgres column delete_all", &e))
+    })
+}
+
+pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Result<u64, String> {
+    let compiled = cols::compile_update_all_cols(Dialect::Postgres, q, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        client
+            .execute(&compiled.sql, &refs)
+            .map_err(|e| pg_error("postgres column update_all", &e))
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Postgres, q)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);

@@ -284,6 +284,21 @@ Order.transaction(fn() { ... })              # real SQL transaction
 
 `pluck` and `select` work too (projection happens client-side, as on the document path).
 
+### Also supported
+
+- **Batched eager loading** — `belongs_to`, `has_many`, `has_one`, and
+  `includes_count`, one query per association whatever the parent count, over the
+  real foreign-key columns. A parent with no children gets `[]`, never null.
+- **`group_by`** with `sum`/`avg`/`min`/`max`/`count` over real columns.
+- **`delete_all` / `update_all`** — bulk writes that skip validations and
+  callbacks (as on the document path) but still stamp `updated_at` when the table
+  has it, and never rewrite the primary key.
+- **Atomic `increment` / `decrement` and counter caches** — one arithmetic
+  `UPDATE` on the column.
+- **`soft_delete`**, provided the table has a `deleted_at` column. Without one
+  there is nowhere to record the deletion, so boot fails with that message rather
+  than silently returning deleted rows.
+
 ### Not supported on column-aware models
 
 Each of these raises an error naming the feature rather than returning wrong data:
@@ -291,10 +306,11 @@ Each of these raises an error naming the feature rather than returning wrong dat
 | Feature | Why |
 |---|---|
 | Raw/string `.where("doc…")` | SDBQL has no meaning against columns; use the hash form |
-| Associations, `.includes`, `.join` | Slice 2 — needs FK-aware batching over real columns |
-| `group_by`, `.having` | Slice 2 |
-| `delete_all` / `update_all` | Slice 2 |
-| `soft_delete`, `encrypts`, STI, `counter_cache` | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
+| `.includes` across storage shapes | Both models must be column-aware — matching a real column against a JSON field is not a join Soli will guess at |
+| `.includes` on `has_and_belongs_to_many`, `through:` | Needs the join table mapped as a column model too — planned |
+| `.having`, `.join` | Planned |
+| `encrypts`, STI | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
+| Composite primary keys | Key handling is single-column throughout; refused at boot with the columns named |
 | `grouped {}` coalescing, graph, vector, columnar, timeseries | SoliDB features |
 | Auto-create / index sync / implicit `ALTER` | The schema is Soli's only where you wrote it: **models** never issue DDL in column mode. A [migration](migrations.md#on-the-sql-adapters) can create and alter column tables explicitly |
 

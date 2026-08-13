@@ -157,3 +157,4 @@ Optional Postgres vector search was listed for Phase 3 but is **not implemented*
 | **4d** `through:` includes on SQL | planned |
 | **5** SQLite adapter (document + column mode, jobs, migrations) | **done** |
 | **6** Portable column DDL in migrations + per-migration `connection` | **done** |
+| **7** SQL indexes, atomic counters, classified errors, query log, column-mode parity | **done** |
