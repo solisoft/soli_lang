@@ -605,6 +605,36 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Index names on `table`.
+pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
+    with_conn(|client| {
+        let rows = client
+            .query(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = ANY (current_schemas(false)) \
+                 AND tablename = $1",
+                &[&table],
+            )
+            .map_err(|e| format!("postgres list indexes: {e}"))?;
+        Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
+    })
+}
+
+/// Create a JSON-field index on a document table if it is absent.
+pub fn ensure_doc_index(
+    table: &str,
+    fields: &[String],
+    name: &str,
+    unique: bool,
+) -> Result<bool, String> {
+    if list_index_names(table)?.iter().any(|n| n == name) {
+        return Ok(false);
+    }
+    for sql in super::ddl::doc_index_sql(Dialect::Postgres, table, fields, name, unique)? {
+        execute_ddl(&sql)?;
+    }
+    Ok(true)
+}
+
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|client| {
         client

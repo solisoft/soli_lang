@@ -4,7 +4,8 @@
 //! document facade (`db::sql`), SoliDB through the model CRUD helpers. Both
 //! store the same JSON shape, so [`JobDoc`] is the single source of truth.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 
 use super::{JobDoc, JobState, CRON_COLLECTION, JOBS_COLLECTION};
 use crate::db;
@@ -47,11 +48,44 @@ fn list_query(
     }
 }
 
+/// Collections whose SQL indexes this process has already ensured, keyed by
+/// `connection/collection`.
+fn indexed() -> &'static Mutex<HashSet<String>> {
+    static INDEXED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    INDEXED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Index the queue tables on a SQL connection, once per process.
+///
+/// The claim query filters on `state`/`run_at` and orders by `priority`, and it
+/// runs every poll tick — unindexed, that is a full scan of every job ever
+/// enqueued (failed and dead rows are kept deliberately). Index creation is
+/// idempotent, but the *check* costs a round trip, so it happens once.
+fn ensure_sql_indexes(collection: &str, fields: &[&str]) {
+    let key = format!("{}/{collection}", db::active_connection_name());
+    {
+        let mut seen = indexed().lock().unwrap_or_else(|e| e.into_inner());
+        if !seen.insert(key) {
+            return;
+        }
+    }
+    for field in fields {
+        let name = format!("idx_{collection}_{field}");
+        // A failure here is a performance problem, not a correctness one: the
+        // queue still works on a table scan, so warn and carry on.
+        if let Err(e) = db::sql::ensure_doc_index(collection, &[(*field).to_string()], &name, false)
+        {
+            eprintln!("[jobs] could not index {collection}.{field}: {e}");
+        }
+    }
+}
+
 /// Insert a job row. Returns the job id.
 pub fn enqueue(doc: &JobDoc) -> Result<String, String> {
     let json = doc.to_json()?;
     if db::is_sql() {
         db::sql::ensure_table(JOBS_COLLECTION)?;
+        ensure_sql_indexes(JOBS_COLLECTION, &["state", "run_at", "priority"]);
         db::sql::insert(JOBS_COLLECTION, Some(&doc.key), json)?;
     } else {
         crud::exec_insert(JOBS_COLLECTION, Some(&doc.key), json)?;
@@ -274,6 +308,7 @@ pub fn upsert_cron(
         }
     } else if db::is_sql() {
         db::sql::ensure_table(CRON_COLLECTION)?;
+        ensure_sql_indexes(CRON_COLLECTION, &["next_run_at", "enabled"]);
         db::sql::insert(CRON_COLLECTION, Some(name), doc)?;
     } else {
         crud::exec_insert(CRON_COLLECTION, Some(name), doc)?;

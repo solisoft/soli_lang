@@ -237,6 +237,10 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">(two queries: the join table, then the targets)</span></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code>index</code> declarations / <code>soli db:indexes</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">expression index on the JSON field (generated column on MySQL)</span></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code>through:</code> includes, <code>.having</code>, <code>.join</code></td>
                     <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
                 </tr>

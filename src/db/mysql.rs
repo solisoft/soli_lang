@@ -579,6 +579,65 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     })
 }
 
+/// Index names on `table`.
+pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
+    with_conn(|conn| {
+        let rows: Vec<String> = conn
+            .exec(
+                "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                (table,),
+            )
+            .map_err(|e| format!("mysql list indexes: {e}"))?;
+        Ok(rows)
+    })
+}
+
+/// Column names on `table` — used to skip a generated column that already
+/// exists, since MySQL has no `ADD COLUMN IF NOT EXISTS`.
+fn list_column_names(table: &str) -> Result<Vec<String>, String> {
+    with_conn(|conn| {
+        let rows: Vec<String> = conn
+            .exec(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                (table,),
+            )
+            .map_err(|e| format!("mysql list columns: {e}"))?;
+        Ok(rows)
+    })
+}
+
+/// Create a JSON-field index on a document table if it is absent.
+///
+/// MySQL cannot index a JSON extract, so each field first gets a generated
+/// `STORED` column. Both steps are skipped individually when they already
+/// exist — MySQL supports `IF NOT EXISTS` on neither.
+pub fn ensure_doc_index(
+    table: &str,
+    fields: &[String],
+    name: &str,
+    unique: bool,
+) -> Result<bool, String> {
+    if list_index_names(table)?.iter().any(|n| n == name) {
+        return Ok(false);
+    }
+    let existing_columns = list_column_names(table)?;
+    let statements = super::ddl::doc_index_sql(Dialect::Mysql, table, fields, name, unique)?;
+    for (field, sql) in fields.iter().zip(statements.iter()) {
+        let generated = super::ddl::generated_column_name(field);
+        if existing_columns.contains(&generated) {
+            continue;
+        }
+        execute_ddl(sql)?;
+    }
+    // The last statement is the index itself.
+    if let Some(create_index) = statements.last() {
+        execute_ddl(create_index)?;
+    }
+    Ok(true)
+}
+
 /// Run compiled DDL (migrations' column-table helpers).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| conn.query_drop(sql).map_err(|e| format!("mysql ddl: {e}")))

@@ -209,6 +209,27 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
             let columns = string_list(args.get(1), op)?;
             let unique = option_bool(args, 2, "unique")?;
             let name = option_string(args, 2, "name");
+
+            // A `doc.` prefix indexes a JSON field of a DOCUMENT table
+            // (`_key` + `doc`) rather than a real column. Mixing the two in one
+            // index cannot work — they live in different places.
+            let doc_fields: Vec<String> = columns
+                .iter()
+                .filter_map(|c| c.strip_prefix("doc.").map(str::to_string))
+                .collect();
+            if !doc_fields.is_empty() {
+                if doc_fields.len() != columns.len() {
+                    return Err(format!(
+                        "{op}: mix of document fields (\"doc.status\") and real columns \
+                         (\"status\") in one index. A document table keeps its fields inside \
+                         `doc`; a column table keeps them as columns."
+                    ));
+                }
+                let index = name.unwrap_or_else(|| ddl::doc_index_name(&table, &doc_fields));
+                crate::db::sql::ensure_doc_index(&table, &doc_fields, &index, unique)?;
+                return Ok(Value::Bool(true));
+            }
+
             let sql = ddl::add_index_sql(dialect, &table, &columns, name.as_deref(), unique)?;
             crate::db::sql::execute_ddl(&sql)?;
             Ok(Value::Bool(true))

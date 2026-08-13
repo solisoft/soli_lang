@@ -27,6 +27,25 @@ pub fn sync_declared_indexes() -> Vec<String> {
             ));
             continue;
         }
+        // SQL document tables index a JSON extract, not a SoliDB index API —
+        // and the vector/fulltext/geo families have no SQL equivalent at all.
+        if crate::db::is_sql() {
+            report.extend(sync_sql_indexes(&collection, &secondary));
+            for (kind, count) in [
+                ("vector", vector.len()),
+                ("fulltext", fulltext.len()),
+                ("geo", geo.len()),
+            ] {
+                if count > 0 {
+                    report.push(format!(
+                        "skipped {count} {kind} index(es) on {collection}: {kind} search is \
+                         SoliDB-only"
+                    ));
+                }
+            }
+            continue;
+        }
+
         // --- secondary + fulltext (same route family)
         let existing = list_names(&format!("/index/{}", collection), "indexes");
         for def in &secondary {
@@ -119,6 +138,52 @@ pub fn sync_declared_indexes() -> Vec<String> {
         }
     }
 
+    report
+}
+
+/// Reconcile secondary index declarations against a SQL document table.
+///
+/// The declared fields are JSON fields of `doc`, so each index is an expression
+/// index on the same extract the query compiler emits for a string filter (see
+/// [`crate::db::ddl::doc_index_sql`]). Idempotent by name, like the SoliDB path.
+fn sync_sql_indexes(
+    collection: &str,
+    secondary: &[super::registry::SecondaryIndexDef],
+) -> Vec<String> {
+    let mut report = Vec::new();
+    if secondary.is_empty() {
+        return report;
+    }
+    // A document table must exist before it can be indexed. First deploys and
+    // empty dev databases hit this.
+    if let Err(e) = crate::db::sql::ensure_table(collection) {
+        report.push(format!(
+            "WARNING: could not ensure table {collection} before indexing: {e}"
+        ));
+        return report;
+    }
+    for def in secondary {
+        if def.index_type != "persistent" && def.index_type != "hash" && !def.index_type.is_empty()
+        {
+            report.push(format!(
+                "skipped index {} on {collection}: index type {:?} is SoliDB-only",
+                def.name, def.index_type
+            ));
+            continue;
+        }
+        match crate::db::sql::ensure_doc_index(collection, &def.fields, &def.name, def.unique) {
+            Ok(true) => report.push(format!(
+                "created index {} on {collection} ({})",
+                def.name,
+                def.fields.join(", ")
+            )),
+            Ok(false) => report.push(format!("index {} on {collection} already exists", def.name)),
+            Err(e) => report.push(format!(
+                "WARNING: could not create index {} on {collection}: {e}",
+                def.name
+            )),
+        }
+    }
     report
 }
 

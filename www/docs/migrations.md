@@ -468,6 +468,7 @@ MySQL parses an inline `REFERENCES` and then ignores it.
 | `db.rename_column(table, old, new)` | MySQL 8+ |
 | `db.rename_table(old, new)` | |
 | `db.add_index(table, columns, options?)` | `{ "unique": true, "name": "…" }`; the name defaults to `idx_<table>_<columns>` |
+| `db.add_index(table, ["doc.status"])` | A `doc.` prefix indexes a **JSON field of a document table** (expression index; a generated column on MySQL) |
 | `db.drop_index(table, name)` | |
 | `db.create_index(table, name, fields, options?)` | The SoliDB-shaped call, so a shared migration keeps working |
 | `db.execute(sql)` | Escape hatch — engine-specific by definition. Migration-only (not callable from controllers, jobs, or templates). Runs on a dedicated connection so `SET` / `ATTACH` / `PRAGMA` cannot leak into the request pool. |

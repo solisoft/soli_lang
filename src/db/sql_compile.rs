@@ -188,8 +188,13 @@ impl Dialect {
         }
     }
 
-    /// Text extract of a JSON field (for IN-lists and GROUP BY keys).
-    fn json_text(self, field: &str) -> String {
+    /// Text extract of a JSON field (for IN-lists, GROUP BY keys, string
+    /// equality, and the expression indexes in [`super::ddl`]).
+    ///
+    /// Public because an index is only used when its expression is *identical*
+    /// to the one in the predicate — `ddl::doc_index_sql` and `compile_where`
+    /// must render it from the same place, or the index is dead weight.
+    pub fn json_text(self, field: &str) -> String {
         match self {
             Dialect::Postgres => format!("(doc->>'{field}')"),
             Dialect::Mysql => format!("JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}'))"),
@@ -581,6 +586,14 @@ fn compile_where_offset(
             };
             params.push(SqlBind::Text(text));
             parts.push(format!("_key = {ph}"));
+        } else if let serde_json::Value::String(text) = value {
+            // Strings compare on the TEXT extract, which is what
+            // `ddl::doc_index_sql` indexes — so `.where({ status: "open" })` can
+            // use an index instead of scanning and extracting every row.
+            // Numbers and booleans stay on the JSON comparison below, where
+            // numeric equality (`10` matching a stored `10.0`) is preserved.
+            params.push(SqlBind::Text(text.clone()));
+            parts.push(format!("{} = {ph}", d.json_text(field)));
         } else {
             params.push(SqlBind::Json(value.clone()));
             parts.push(d.json_eq(field, &ph));
@@ -693,17 +706,47 @@ mod tests {
     fn compiles_hash_equality_select_pg() {
         let c = compile_select_d(Dialect::Postgres, &sample_list()).unwrap();
         assert!(c.sql.contains("SELECT doc FROM \"users\""));
-        assert!(c.sql.contains("(doc->'status')"));
+        // A string filter compares on the TEXT extract, byte-for-byte the
+        // expression `ddl::doc_index_sql` indexes — otherwise the index built
+        // for `status` would never be used.
+        assert!(c.sql.contains("(doc->>'status') = $1"), "{}", c.sql);
         assert!(c.sql.contains("ORDER BY doc->>'name' ASC"));
-        assert!(c.sql.contains("$1"));
-        assert_eq!(c.params[0], SqlBind::Json(serde_json::json!("up")));
+        assert_eq!(c.params[0], SqlBind::Text("up".into()));
+    }
+
+    #[test]
+    fn non_string_equality_keeps_json_semantics() {
+        // Numbers stay on the JSON comparison so `10` still matches a stored
+        // `10.0`, which a text comparison would miss.
+        let mut q = sample_list();
+        q.eq_filters.clear();
+        q.filter_sdbql = Some("doc.age == @age".into());
+        q.eq_filters.insert("age".into(), serde_json::json!(10));
+        let c = compile_select_d(Dialect::Postgres, &q).unwrap();
+        assert!(c.sql.contains("(doc->'age')"), "{}", c.sql);
+        assert_eq!(c.params[0], SqlBind::Json(serde_json::json!(10)));
+
+        // A JSON null must still match through the JSON path: `->>` flattens it
+        // to SQL NULL, which never compares equal.
+        let mut q = sample_list();
+        q.eq_filters.clear();
+        q.filter_sdbql = Some("doc.deleted_at == @deleted_at".into());
+        q.eq_filters
+            .insert("deleted_at".into(), serde_json::Value::Null);
+        let c = compile_select_d(Dialect::Postgres, &q).unwrap();
+        assert!(c.sql.contains("(doc->'deleted_at')"), "{}", c.sql);
     }
 
     #[test]
     fn compiles_hash_equality_select_mysql() {
         let c = compile_select_d(Dialect::Mysql, &sample_list()).unwrap();
         assert!(c.sql.contains("SELECT doc FROM `users`"));
-        assert!(c.sql.contains("JSON_EXTRACT"));
+        assert!(
+            c.sql
+                .contains("JSON_UNQUOTE(JSON_EXTRACT(doc, '$.status'))"),
+            "{}",
+            c.sql
+        );
         assert!(c.sql.contains('?'));
         // Placeholders are `?` (JSON paths may still contain `$.field`).
         assert!(!c.sql.contains("$1"));

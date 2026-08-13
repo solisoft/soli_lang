@@ -359,6 +359,30 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
     )
 }
 
+/// Index names on `table` for the active connection.
+pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
+    route_sql!(
+        super::postgres::list_index_names(table),
+        super::mysql::list_index_names(table),
+        super::sqlite::list_index_names(table)
+    )
+}
+
+/// Create a JSON-field index on a document table if it is absent. Returns true
+/// when this call created it.
+pub fn ensure_doc_index(
+    table: &str,
+    fields: &[String],
+    name: &str,
+    unique: bool,
+) -> Result<bool, String> {
+    route_sql!(
+        super::postgres::ensure_doc_index(table, fields, name, unique),
+        super::mysql::ensure_doc_index(table, fields, name, unique),
+        super::sqlite::ensure_doc_index(table, fields, name, unique)
+    )
+}
+
 /// Dialect of the active connection — for compiling DDL before executing it.
 pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
     use super::sql_compile::Dialect;

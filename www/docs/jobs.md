@@ -2,7 +2,7 @@
 
 Soli ships a background-job and cron system that runs **inside the Soli process**. Define a handler class in `app/jobs/`, enqueue it from your controllers or models, and Soli's job engine stores it, claims it, runs it on a worker thread, retries it on failure, and fires your cron schedules.
 
-> **Storage.** Jobs are ordinary documents in a `_jobs` collection (and `_cron_jobs` for schedules) on your default database connection, so the engine works the same on SolidB, PostgreSQL, MySQL, and SQLite. Nothing calls back into your app over HTTP — no callback URL, no inbound route, no shared secret required.
+> **Storage.** Jobs are ordinary documents in a `_jobs` collection (and `_cron_jobs` for schedules) on your default database connection, so the engine works the same on SolidB, PostgreSQL, MySQL, and SQLite. On a SQL connection the queue indexes itself on first enqueue (`state`, `run_at`, `priority`), so the claim query does not scan the table on every poll tick. Nothing calls back into your app over HTTP — no callback URL, no inbound route, no shared secret required.
 
 ## Defining a Job
 

@@ -30,7 +30,7 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
             <p class="text-gray-400 mb-3">Soli owns the whole lifecycle — storage, claiming, execution, retries, and cron:</p>
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
-                <li><strong class="text-white">Enqueue</strong> writes a row to the <code class="text-amber-400">_jobs</code> collection on your default connection (works on SolidB, PostgreSQL, and MySQL).</li>
+                <li><strong class="text-white">Enqueue</strong> writes a row to the <code class="text-amber-400">_jobs</code> collection on your default connection (works on SolidB, PostgreSQL, MySQL, and SQLite). On a SQL connection the queue indexes itself on first enqueue (<code class="text-amber-400">state</code>, <code class="text-amber-400">run_at</code>, <code class="text-amber-400">priority</code>), so the claim query does not scan the table every poll tick.</li>
                 <li><strong class="text-white">Claim</strong> is atomic — Postgres <code class="text-amber-400">FOR UPDATE SKIP LOCKED</code>, MySQL a token claim, SQLite the database write lock (<code class="text-amber-400">BEGIN IMMEDIATE</code>), SolidB an <code class="text-amber-400">If-Match</code> compare-and-swap — so several app processes can share one queue without double-running a job.</li>
                 <li><strong class="text-white">Execute</strong> happens on a worker pool thread with its own loaded interpreter, never on a web worker, so a slow job can't delay requests.</li>
                 <li><strong class="text-white">Retry</strong> is exponential backoff with a lease; a job whose process dies is reclaimed once its lease expires.</li>

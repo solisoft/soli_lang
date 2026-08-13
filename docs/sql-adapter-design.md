@@ -76,6 +76,7 @@ Model API → QueryBuilder IR
 | `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ | ✓ |
 | Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ | ✗ |
 | Auto-create table on first write | collections | ✓ | ✓ | ✓ |
+| `index` declarations (`soli db:indexes`) | ✓ | ✓ (expression) | ✓ (generated column) | ✓ (expression) |
 | Portable column DDL (`create_table` with columns, `add_column`, `add_index`) | n/a (schemaless) | ✓ | ✓ | ✓ |
 | Per-migration `connection "name"` | ✓ | ✓ | ✓ | ✓ |
 | `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ | ✓ |

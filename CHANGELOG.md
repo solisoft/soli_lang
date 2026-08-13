@@ -4,6 +4,31 @@
 
 ### Added
 
+- **`index` declarations now work on the SQL adapters, and the planner uses
+  them.** A document table had no indexes at all: `index_sync` reconciled
+  declarations through SoliDB's HTTP index API, which *refuses* on a SQL
+  connection, and nothing else issued index DDL. Every `.where({ status: … })`
+  was a sequential scan plus a per-row JSON extract.
+
+  - `index "status"` now creates an expression index on the JSON field —
+    `((doc->>'status'))` on Postgres, `((doc ->> '$.status'))` on SQLite, and on
+    MySQL a generated `STORED` column plus an index on that, since MySQL cannot
+    index a JSON extract directly. Multi-field and `unique:` declarations work
+    the same way; reconciliation stays idempotent by name.
+  - **String equality now compiles to the same expression the index holds**, so
+    the index is actually used. Numbers and booleans keep exact JSON comparison
+    (`10` still matches a stored `10.0`), which no expression index covers — the
+    trade-off is documented rather than silently chosen.
+  - Migrations can create one directly with a `doc.` prefix:
+    `db.add_index("posts", ["doc.status"], { "unique": true })`.
+  - **The job queue indexes itself** on first enqueue (`state`, `run_at`,
+    `priority`, plus `next_run_at`/`enabled` for cron). The claim query runs
+    every poll tick and previously scanned every job ever enqueued — failed and
+    dead rows are kept deliberately, so that table only grows.
+  - `fulltext`/`bloom`/`cuckoo` index types and `vector_index`/`geo_index` are
+    SoliDB engine features; on SQL they are now reported as skipped instead of
+    failing with a confusing adapter error.
+
 - **Migrations can build real column tables, portably.** Column-aware models
   could read and write an existing relational schema, but nothing in Soli could
   *create* one — migrations only produced `_key` + `doc` document tables, so a

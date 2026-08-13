@@ -294,6 +294,39 @@ Index declarations are metadata-only at load: dev ensures them at server
 boot; in production run `soli db:indexes` or create them in migrations. See
 [Search — sync strategy](search.md#how-indexes-get-created-sync-strategy).
 
+### `index` on the SQL adapters
+
+`index` works on `postgres`, `mysql`, and `sqlite` too. A document table stores
+fields inside `doc`, so Soli creates an **expression index on the JSON field**:
+
+```soli
+class Post < Model
+  index "status"
+  index "slug", unique: true
+  index ["author", "status"]
+end
+```
+
+| Adapter | What is created |
+|---------|-----------------|
+| Postgres | `CREATE INDEX ON posts ((doc->>'status'))` |
+| SQLite | `CREATE INDEX ON posts ((doc ->> '$.status'))` |
+| MySQL | a generated `STORED` column per field, then an index on it — MySQL cannot index a JSON extract directly |
+
+Two things follow from how SQL planners work:
+
+- **String filters use these indexes; numeric ones do not.** `.where({ "status": "open" })`
+  compiles to the same JSON-text expression the index holds. A number or boolean
+  filter keeps exact JSON comparison instead (so `10` still matches a stored
+  `10.0`), which no expression index covers.
+- `type:` values beyond the default (`"fulltext"`, `"bloom"`, `"cuckoo"`) and
+  `vector_index` / `geo_index` are SoliDB engine features; on SQL they are
+  reported as skipped rather than silently ignored.
+
+Migrations can create the same thing with a `doc.` prefix —
+`db.add_index("posts", ["doc.status"], { "unique": true })` — see
+[Migrations](migrations.md#on-the-sql-adapters).
+
 ## QueryBuilder Methods
 
 | Method | Description |

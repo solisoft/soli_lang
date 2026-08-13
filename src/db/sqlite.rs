@@ -696,6 +696,36 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Index names on `table`.
+pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
+    with_conn(|conn| {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?")
+            .map_err(|e| format!("sqlite list indexes: {e}"))?;
+        let rows = stmt
+            .query_map([table], |r| r.get::<_, String>(0))
+            .map_err(|e| format!("sqlite list indexes: {e}"))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| format!("sqlite list indexes row: {e}"))
+    })
+}
+
+/// Create a JSON-field index on a document table if it is absent.
+pub fn ensure_doc_index(
+    table: &str,
+    fields: &[String],
+    name: &str,
+    unique: bool,
+) -> Result<bool, String> {
+    if list_index_names(table)?.iter().any(|n| n == name) {
+        return Ok(false);
+    }
+    for sql in super::ddl::doc_index_sql(Dialect::Sqlite, table, fields, name, unique)? {
+        execute_ddl(&sql)?;
+    }
+    Ok(true)
+}
+
 /// Run compiled DDL (used by migrations and by the column-mode test harness).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| {
@@ -1950,6 +1980,124 @@ mod tests {
             })
             .unwrap();
             let _ = std::fs::remove_file(&extra);
+        });
+    }
+
+    /// Run `EXPLAIN QUERY PLAN` and return its joined detail column.
+    fn query_plan(sql: &str, params: &[SqlBind]) -> String {
+        with_conn(|conn| {
+            let params = to_sqlite_params(params);
+            let mut stmt = conn
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .map_err(|e| format!("explain prepare: {e}"))?;
+            let rows = stmt
+                .query_map(params_from_iter(params.iter()), |r| r.get::<_, String>(3))
+                .map_err(|e| format!("explain: {e}"))?;
+            Ok(rows
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| format!("explain row: {e}"))?
+                .join(" | "))
+        })
+        .expect("explain")
+    }
+
+    /// An index the planner never uses is dead weight, so assert on the plan —
+    /// not just on the index existing.
+    #[test]
+    fn a_document_index_is_created_once_and_actually_used() {
+        with_sqlite("doc-index", || {
+            let table = "posts";
+            ensure_table(table).expect("table");
+            for (key, status) in [("a", "open"), ("b", "open"), ("c", "closed")] {
+                insert(table, Some(key), serde_json::json!({ "status": status })).expect("insert");
+            }
+
+            let filter = list_query(table, &[("status", serde_json::json!("open"))]);
+            let compiled = compile_select_d(Dialect::Sqlite, &filter).expect("compile");
+
+            // Before: a full scan of the table.
+            let before = query_plan(&compiled.sql, &compiled.params);
+            assert!(
+                before.contains("SCAN"),
+                "expected a scan before indexing, got: {before}"
+            );
+
+            assert!(
+                ensure_doc_index(table, &["status".to_string()], "idx_posts_status", false)
+                    .expect("create index"),
+                "the first call creates the index"
+            );
+            // Idempotent: a second boot must not fail or duplicate.
+            assert!(
+                !ensure_doc_index(table, &["status".to_string()], "idx_posts_status", false)
+                    .expect("second call"),
+                "the index already existed"
+            );
+            assert!(list_index_names(table)
+                .unwrap()
+                .contains(&"idx_posts_status".to_string()));
+
+            // After: the planner uses it. This is what makes the expression in
+            // `ddl::doc_index_sql` match `compile_where`'s string equality.
+            let after = query_plan(&compiled.sql, &compiled.params);
+            assert!(
+                after.contains("USING INDEX idx_posts_status"),
+                "expected the index to be used, got: {after}"
+            );
+
+            // …and the rows are still correct.
+            assert_eq!(select(&filter).unwrap().len(), 2);
+            assert_eq!(count(&filter).unwrap(), 2);
+        });
+    }
+
+    /// The queue's own bootstrap must index itself: the claim query runs every
+    /// poll tick, and unindexed it scans every job ever enqueued.
+    #[test]
+    fn enqueuing_a_job_indexes_the_queue_table() {
+        with_sqlite("jobs-index", || {
+            let job = crate::jobs::JobDoc::new(
+                "TestJob",
+                serde_json::json!({}),
+                "default",
+                crate::jobs::now_iso(),
+            );
+            crate::jobs::store::enqueue(&job).expect("enqueue");
+
+            let indexes = list_index_names("_jobs").expect("indexes");
+            for field in ["state", "run_at", "priority"] {
+                let expected = format!("idx__jobs_{field}");
+                assert!(
+                    indexes.contains(&expected),
+                    "the claim query filters/orders on {field}; indexes: {indexes:?}"
+                );
+            }
+
+            // The claim predicate itself must reach an index rather than scan.
+            let plan = query_plan(
+                "SELECT _key FROM \"_jobs\" WHERE (doc ->> '$.state') = 'pending' \
+                 ORDER BY (doc ->> '$.run_at') ASC",
+                &[],
+            );
+            assert!(plan.contains("USING INDEX"), "plan was: {plan}");
+        });
+    }
+
+    #[test]
+    fn a_unique_document_index_rejects_a_duplicate() {
+        with_sqlite("doc-index-unique", || {
+            let table = "accounts";
+            ensure_table(table).expect("table");
+            insert(table, Some("a"), serde_json::json!({ "email": "a@b.c" })).expect("insert");
+            ensure_doc_index(table, &["email".to_string()], "idx_accounts_email", true)
+                .expect("index");
+
+            let err = insert(table, Some("b"), serde_json::json!({ "email": "a@b.c" }))
+                .expect_err("a duplicate must be refused by the database");
+            assert!(err.to_lowercase().contains("unique"), "{err}");
+
+            // A different value still inserts.
+            insert(table, Some("c"), serde_json::json!({ "email": "c@b.c" })).expect("insert");
         });
     }
 

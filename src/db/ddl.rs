@@ -632,6 +632,82 @@ pub fn drop_index_sql(d: Dialect, table: &str, name: &str) -> Result<String, Str
     })
 }
 
+/// A JSON-field index on a **document table** (`_key` + `doc`).
+///
+/// Document tables carry no indexes beyond the primary key, so every hash
+/// filter is a sequential scan plus a per-row JSON extract. This builds an index
+/// on the extract itself.
+///
+/// The expression must be **identical** to the one the query emits
+/// ([`Dialect::json_text`], which `compile_where` uses for string equality) or
+/// the planner will not use it. MySQL is the exception: it cannot index a JSON
+/// extract directly, so a generated `STORED` column carries the value and the
+/// index sits on that — hence a `Vec` of statements rather than one.
+pub fn doc_index_sql(
+    d: Dialect,
+    table: &str,
+    fields: &[String],
+    name: &str,
+    unique: bool,
+) -> Result<Vec<String>, String> {
+    if fields.is_empty() {
+        return Err(format!("index {name:?} on {table:?} names no fields"));
+    }
+    for field in fields {
+        // Field names reach SQL inside a quoted JSON path, so they get the same
+        // identifier rules rather than a looser check.
+        d.quote_ident(field)?;
+    }
+    let table_q = d.quote_ident(table)?;
+    let index_q = d.quote_ident(name)?;
+    let unique_sql = if unique { "UNIQUE " } else { "" };
+
+    match d {
+        Dialect::Postgres | Dialect::Sqlite => {
+            let exprs = fields
+                .iter()
+                .map(|f| d.json_text(f))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(vec![format!(
+                "CREATE {unique_sql}INDEX IF NOT EXISTS {index_q} ON {table_q} ({exprs})"
+            )])
+        }
+        Dialect::Mysql => {
+            let mut statements = Vec::with_capacity(fields.len() + 1);
+            let mut columns = Vec::with_capacity(fields.len());
+            for field in fields {
+                let generated = generated_column_name(field);
+                let column_q = d.quote_ident(&generated)?;
+                // 191 chars keeps the index inside InnoDB's key limit on
+                // utf8mb4; longer values still store fine in `doc`.
+                statements.push(format!(
+                    "ALTER TABLE {table_q} ADD COLUMN {column_q} VARCHAR(191) \
+                     AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}'))) STORED"
+                ));
+                columns.push(column_q);
+            }
+            // No IF NOT EXISTS for CREATE INDEX on MySQL: the caller checks
+            // first (see `sql::ensure_doc_index`).
+            statements.push(format!(
+                "CREATE {unique_sql}INDEX {index_q} ON {table_q} ({})",
+                columns.join(", ")
+            ));
+            Ok(statements)
+        }
+    }
+}
+
+/// Name of the generated column MySQL indexes for `field`.
+pub fn generated_column_name(field: &str) -> String {
+    format!("_idx_{field}")
+}
+
+/// Default name for a document-field index.
+pub fn doc_index_name(table: &str, fields: &[String]) -> String {
+    format!("idx_{}_{}", table, fields.join("_"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -898,6 +974,78 @@ mod tests {
             "DROP INDEX IF EXISTS \"idx_orders_code\""
         );
         assert!(add_index_sql(Dialect::Postgres, "orders", &[], None, false).is_err());
+    }
+
+    #[test]
+    fn document_field_indexes_match_the_query_expression() {
+        let fields = vec!["status".to_string()];
+
+        // The index expression must be byte-identical to what `compile_where`
+        // emits for a string filter, or the planner ignores the index.
+        let pg = doc_index_sql(
+            Dialect::Postgres,
+            "posts",
+            &fields,
+            "idx_posts_status",
+            false,
+        )
+        .unwrap();
+        assert_eq!(pg.len(), 1);
+        assert_eq!(
+            pg[0],
+            "CREATE INDEX IF NOT EXISTS \"idx_posts_status\" ON \"posts\" ((doc->>'status'))"
+        );
+        assert!(pg[0].contains(&Dialect::Postgres.json_text("status")));
+
+        let lite =
+            doc_index_sql(Dialect::Sqlite, "posts", &fields, "idx_posts_status", true).unwrap();
+        assert_eq!(
+            lite[0],
+            "CREATE UNIQUE INDEX IF NOT EXISTS \"idx_posts_status\" ON \"posts\" ((doc ->> '$.status'))"
+        );
+        assert!(lite[0].contains(&Dialect::Sqlite.json_text("status")));
+    }
+
+    #[test]
+    fn mysql_indexes_a_generated_column_because_it_cannot_index_json() {
+        let fields = vec!["status".to_string(), "author".to_string()];
+        let sql = doc_index_sql(
+            Dialect::Mysql,
+            "posts",
+            &fields,
+            "idx_posts_status_author",
+            false,
+        )
+        .unwrap();
+        // One generated column per field, then the index over them.
+        assert_eq!(sql.len(), 3);
+        assert!(
+            sql[0].contains("ADD COLUMN `_idx_status` VARCHAR(191)"),
+            "{}",
+            sql[0]
+        );
+        assert!(sql[0].contains("STORED"), "{}", sql[0]);
+        assert!(sql[1].contains("`_idx_author`"), "{}", sql[1]);
+        assert_eq!(
+            sql[2],
+            "CREATE INDEX `idx_posts_status_author` ON `posts` (`_idx_status`, `_idx_author`)"
+        );
+        // MySQL has no IF NOT EXISTS here — existence is checked by the caller.
+        assert!(!sql[2].contains("IF NOT EXISTS"));
+    }
+
+    #[test]
+    fn a_document_index_validates_its_names() {
+        assert!(doc_index_sql(Dialect::Postgres, "posts", &[], "i", false).is_err());
+        // A field name is interpolated into a JSON path, so it takes the same
+        // identifier rules rather than a looser check.
+        let bad = vec!["status'); DROP TABLE users; --".to_string()];
+        assert!(doc_index_sql(Dialect::Postgres, "posts", &bad, "i", false).is_err());
+        assert!(doc_index_sql(Dialect::Sqlite, "posts", &bad, "i", false).is_err());
+        assert_eq!(
+            doc_index_name("posts", &["status".into(), "author".into()]),
+            "idx_posts_status_author"
+        );
     }
 
     #[test]
