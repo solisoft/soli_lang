@@ -5,9 +5,9 @@
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
-    compile_group_by_d, compile_select_by_keys_d, compile_select_d, compile_select_json_text_in_d,
-    compile_update_all_d, create_table_sql_d, drop_table_sql_d, migrations_table_sql_d, Dialect,
-    GroupAgg, ListQuery, SqlAgg, SqlBind,
+    compile_group_by_d, compile_insert_many_d, compile_select_by_keys_d, compile_select_d,
+    compile_select_json_text_in_d, compile_update_all_d, create_table_sql_d, drop_table_sql_d,
+    migrations_table_sql_d, Dialect, GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
 use mysql::prelude::*;
 use mysql::{Opts, OptsBuilder, Value as MysqlValue};
@@ -339,6 +339,19 @@ pub fn insert(
         conn.exec_drop(&sql, (&key, &doc_str))
             .map_err(|e| my_error("mysql insert", &e))?;
         get_on(conn, table, &key)?.ok_or_else(|| "mysql insert: row missing after write".into())
+    })
+}
+
+/// Insert many documents in one statement per chunk.
+pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
+    ensure_table(table)?;
+    let compiled = compile_insert_many_d(Dialect::Mysql, table, rows)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let result = conn
+            .exec_iter(&compiled.sql, to_mysql_params(&compiled.params))
+            .map_err(|e| my_error("mysql insert_many", &e))?;
+        Ok(result.affected_rows())
     })
 }
 
@@ -827,14 +840,15 @@ use super::sql_columns_compile as cols;
 
 /// Convert one driver row into a JSON object keyed by column name, so
 /// downstream hydration matches the document path.
-fn row_to_json(schema: &TableSchema, row: &mysql::Row) -> serde_json::Value {
+fn row_to_json(schema: &TableSchema, columns: &[String], row: &mysql::Row) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     let mut idx = 0usize;
-    for col in &schema.columns {
-        // Unreadable columns are never selected, so they hold no position.
-        if col.ty == ColType::Unknown {
+    // Walk the columns the SELECT actually returned, in that order — the schema's
+    // own order would misalign a projected row.
+    for name in columns {
+        let Some(col) = schema.column(name) else {
             continue;
-        }
+        };
         let value = match col.ty {
             // Numbers arrive as text (see ColType::reads_as_text) so neither
             // backend has to match an exact SQL width.
@@ -917,7 +931,8 @@ fn read_back(
     let row: Option<mysql::Row> = conn
         .exec_first(&compiled.sql, params)
         .map_err(|e| my_error("mysql column read-back", &e))?;
-    Ok(row.map(|r| row_to_json(schema, &r)))
+    let columns = cols::selected_columns(schema, &None)?;
+    Ok(row.map(|r| row_to_json(schema, &columns, &r)))
 }
 
 pub fn col_get(
@@ -1061,15 +1076,59 @@ pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Resul
     })
 }
 
+/// Run a caller-supplied `SELECT` and return its rows as JSON. See the Postgres
+/// twin for the single-`doc`-column convention.
+pub fn query_raw(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
+    let _trace = super::trace::start(sql, params);
+    with_conn(|conn| {
+        let rows: Vec<mysql::Row> = conn
+            .exec(sql, to_mysql_params(params))
+            .map_err(|e| my_error("mysql raw query", &e))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let names: Vec<String> = row
+                .columns_ref()
+                .iter()
+                .map(|c| c.name_str().to_string())
+                .collect();
+            if names.len() == 1 && names[0] == "doc" {
+                let text: Option<String> = row
+                    .get_opt::<Option<String>, usize>(0)
+                    .and_then(Result::ok)
+                    .flatten();
+                out.push(match text {
+                    Some(t) => serde_json::from_str(&t).unwrap_or(serde_json::Value::Null),
+                    None => serde_json::Value::Null,
+                });
+                continue;
+            }
+            let mut map = serde_json::Map::new();
+            for (index, name) in names.iter().enumerate() {
+                let text: Option<String> = row
+                    .get_opt::<Option<String>, usize>(index)
+                    .and_then(Result::ok)
+                    .flatten();
+                map.insert(name.clone(), super::raw_cell(text));
+            }
+            out.push(serde_json::Value::Object(map));
+        }
+        Ok(out)
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Mysql, q)?;
+    let columns = cols::selected_columns(&q.schema, &q.select_fields)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let rows: Vec<mysql::Row> = conn
             .exec(&compiled.sql, params)
             .map_err(|e| my_error("mysql column select", &e))?;
-        Ok(rows.iter().map(|r| row_to_json(&q.schema, r)).collect())
+        Ok(rows
+            .iter()
+            .map(|r| row_to_json(&q.schema, &columns, r))
+            .collect())
     })
 }
 

@@ -2849,6 +2849,60 @@ impl Model {
             })),
         );
 
+        // Model.find_by_sql(sql, binds?) — the escape hatch for a query the
+        // portable surface cannot express.
+        native_static_methods.insert(
+            "find_by_sql".to_string(),
+            Rc::new(NativeFunction::new("Model.find_by_sql", None, |args| {
+                let class = get_class_rc_from_args(args)?;
+                if !crate::db::caps().raw_sql {
+                    return Err(format!(
+                        "Model.find_by_sql is only available on a SQL connection \
+                         ({} does not speak SQL). On SoliDB use `Model.query(...)` \
+                         with SDBQL instead.",
+                        crate::db::adapter_label()
+                    ));
+                }
+                let sql = match args.get(1) {
+                    Some(Value::String(s)) => s.to_string(),
+                    _ => return Err("Model.find_by_sql(sql, binds?) expects a SQL string".into()),
+                };
+                // Binds are positional: $1/$2 on Postgres, ? elsewhere. Passing
+                // values rather than interpolating them is the whole point.
+                let binds = match args.get(2) {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(Value::Array(items)) => {
+                        let mut out = Vec::new();
+                        for item in items.borrow().iter() {
+                            out.push(super::column_mode::bind_from_value(item)?);
+                        }
+                        out
+                    }
+                    Some(other) => {
+                        return Err(format!(
+                            "Model.find_by_sql binds must be an array, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                let rows = crate::db::sql::query_raw(&sql, &binds)
+                    .map_err(|e| format!("find_by_sql failed: {e}"))?;
+                let values: Vec<Value> = rows
+                    .into_iter()
+                    .map(|row| {
+                        // An object hydrates as an instance of this model; a
+                        // scalar projection stays a plain value.
+                        if row.is_object() {
+                            super::crud::json_doc_to_instance_owned(&class, row)
+                        } else {
+                            super::crud::json_to_value_owned(row)
+                        }
+                    })
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            })),
+        );
+
         // Model.find_by(field, value) - Find first record matching field=value
         native_static_methods.insert(
             "find_by".to_string(),
@@ -3172,6 +3226,14 @@ impl Model {
                 };
 
                 let mut created = 0;
+                // On a SQL document connection the whole batch goes in one
+                // statement per chunk instead of one round trip per row. The
+                // per-item strong-params filter still runs — bulk insert is
+                // otherwise a perfect bypass for `attr_accessible`.
+                let bulk_sql =
+                    crate::db::is_sql() && !super::column_mode::is_column_mode(&collection);
+                let mut bulk_rows: Vec<(String, serde_json::Value)> = Vec::new();
+
                 for item in &items {
                     let doc = match item {
                         hash_val @ Value::Hash(_) => {
@@ -3197,8 +3259,48 @@ impl Model {
                         }
                         _ => continue,
                     };
+                    if bulk_sql {
+                        // The key the document already carries, else a fresh one
+                        // — the same rule single-row insert applies.
+                        let key = doc
+                            .get("_key")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| doc.get("id").and_then(|v| v.as_str()))
+                            .map(str::to_string)
+                            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                        let mut doc = doc;
+                        if let Some(obj) = doc.as_object_mut() {
+                            obj.insert("_key".to_string(), serde_json::json!(key));
+                        }
+                        bulk_rows.push((key, doc));
+                        continue;
+                    }
                     if super::crud::exec_insert(&collection, None, doc).is_ok() {
                         created += 1;
+                    }
+                }
+
+                if bulk_sql && !bulk_rows.is_empty() {
+                    match super::registry::run_on_collection_connection(&collection, || {
+                        crate::db::sql::insert_many(&collection, &bulk_rows)
+                    }) {
+                        Ok(_) => created += bulk_rows.len() as i64,
+                        // A batch failure is reported rather than silently
+                        // counted as zero: the caller reads `created`.
+                        Err(e) => {
+                            let mut result = crate::interpreter::value::HashPairs::default();
+                            result.insert(
+                                crate::interpreter::value::HashKey::String("created".into()),
+                                Value::Int(0),
+                            );
+                            result.insert(
+                                crate::interpreter::value::HashKey::String("errors".into()),
+                                Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                    format!("create_many failed: {e}").into(),
+                                )]))),
+                            );
+                            return Ok(Value::Hash(Rc::new(RefCell::new(result))));
+                        }
                     }
                 }
 

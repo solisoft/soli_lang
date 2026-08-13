@@ -13,6 +13,7 @@ rather than returning wrong rows.
 
 | Area | SoliDB | Postgres / MySQL / SQLite |
 |------|--------|---------------------------|
+| `Model.find_by_sql(sql, binds?)` | ✗ (use `Model.query` with SDBQL) | ✓ |
 | CRUD, validations, callbacks, scopes, soft delete | ✓ | ✓ |
 | Hash `.where`, order/limit/offset, count, exists | ✓ | ✓ |
 | Aggregations (`sum`/`avg`/`min`/`max`/`count`), multi-row `group_by` | ✓ | ✓ |

@@ -359,6 +359,57 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
     )
 }
 
+/// Insert many documents. Chunked so no backend's bind limit is exceeded, and
+/// wrapped in one transaction so a partial failure does not leave half a batch.
+pub fn insert_many(rows_table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
+    // Postgres allows 65535 binds per statement and each row takes two, so 500
+    // rows per statement stays far inside every backend's limit.
+    const CHUNK: usize = 500;
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    let single_chunk = rows.len() <= CHUNK;
+    // One transaction for the whole batch — unless the caller already opened one,
+    // in which case joining it is both correct and what they asked for.
+    let joined = has_active_tx();
+    if !joined && !single_chunk {
+        begin_transaction(None)?;
+    }
+    let mut total = 0u64;
+    for chunk in rows.chunks(CHUNK) {
+        let inserted = route_sql!(
+            super::postgres::insert_many(rows_table, chunk),
+            super::mysql::insert_many(rows_table, chunk),
+            super::sqlite::insert_many(rows_table, chunk)
+        );
+        match inserted {
+            Ok(n) => total += n,
+            Err(e) => {
+                if !joined && !single_chunk {
+                    let _ = rollback_transaction();
+                }
+                return Err(e);
+            }
+        }
+    }
+    if !joined && !single_chunk {
+        commit_transaction()?;
+    }
+    Ok(total)
+}
+
+/// Run a caller-supplied `SELECT` (the `Model.find_by_sql` escape hatch).
+pub fn query_raw(
+    sql: &str,
+    params: &[super::sql_compile::SqlBind],
+) -> Result<Vec<serde_json::Value>, String> {
+    route_sql!(
+        super::postgres::query_raw(sql, params),
+        super::mysql::query_raw(sql, params),
+        super::sqlite::query_raw(sql, params)
+    )
+}
+
 /// Create or drop the database the active SQL connection points at. Returns a
 /// human-readable summary of what happened.
 pub fn create_or_drop_database(drop: bool) -> Result<String, String> {

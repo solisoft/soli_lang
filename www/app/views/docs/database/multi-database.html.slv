@@ -245,6 +245,18 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">one arithmetic UPDATE (no <code>_rev</code>, no retry loop)</span></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code>Model.find_by_sql(sql, binds?)</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">raw SELECT escape hatch, positional binds</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>create_many</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">one multi-row INSERT per 500-row chunk, in one transaction</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>pluck</code> / <code>select</code> on column models</td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">pushed into the SELECT list</span></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code>through:</code> includes, <code>.having</code>, <code>.join</code></td>
                     <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
                 </tr>

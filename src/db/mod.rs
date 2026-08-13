@@ -42,6 +42,24 @@ pub use sql_compile::{
 
 use std::sync::OnceLock;
 
+/// One cell of a raw query result, read as text and re-parsed.
+///
+/// A raw `SELECT` can name any expression, so there is no schema to consult:
+/// numbers become numbers, everything else stays a string, and NULL is null.
+pub fn raw_cell(text: Option<String>) -> serde_json::Value {
+    let Some(text) = text else {
+        return serde_json::Value::Null;
+    };
+    let trimmed = text.trim();
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return serde_json::json!(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>() {
+        return serde_json::json!(f);
+    }
+    serde_json::Value::String(text)
+}
+
 /// Read a counter value the database rendered as text.
 ///
 /// A JSON number can come back as `7`, `7.0`, or (on an exact-numeric cast)

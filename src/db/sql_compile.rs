@@ -623,6 +623,49 @@ pub fn create_table_sql(table: &str) -> Result<String, String> {
     create_table_sql_d(Dialect::Postgres, table)
 }
 
+/// `INSERT INTO t (_key, doc) VALUES (…), (…), …` — one statement for many rows.
+///
+/// `create_many` issued one statement (and one round trip) per row; on SQLite it
+/// also meant one transaction each. Chunking is the caller's job: every backend
+/// has a bind limit, and Postgres's is the tightest at 65535.
+pub fn compile_insert_many_d(
+    d: Dialect,
+    table: &str,
+    rows: &[(String, serde_json::Value)],
+) -> Result<CompiledSql, String> {
+    if rows.is_empty() {
+        return Err("insert_many with no rows".to_string());
+    }
+    let table_q = d.quote_ident(table)?;
+    let mut params = Vec::with_capacity(rows.len() * 2);
+    let mut tuples = Vec::with_capacity(rows.len());
+    for (key, doc) in rows {
+        params.push(SqlBind::Text(key.clone()));
+        let key_ph = d.ph(params.len());
+        params.push(SqlBind::Json(doc.clone()));
+        let doc_ph = d.ph(params.len());
+        let doc_expr = match d {
+            Dialect::Postgres => format!("{doc_ph}::jsonb"),
+            Dialect::Mysql => format!("CAST({doc_ph} AS JSON)"),
+            Dialect::Sqlite => format!("json({doc_ph})"),
+        };
+        tuples.push(format!("({key_ph}, {doc_expr})"));
+    }
+    // Upsert, matching single-row `insert`: re-running a seed must not fail.
+    let conflict = match d {
+        Dialect::Postgres => " ON CONFLICT (_key) DO UPDATE SET doc = EXCLUDED.doc",
+        Dialect::Mysql => " ON DUPLICATE KEY UPDATE doc = VALUES(doc)",
+        Dialect::Sqlite => " ON CONFLICT(_key) DO UPDATE SET doc = excluded.doc",
+    };
+    Ok(CompiledSql {
+        sql: format!(
+            "INSERT INTO {table_q} (_key, doc) VALUES {}{conflict}",
+            tuples.join(", ")
+        ),
+        params,
+    })
+}
+
 pub fn create_table_sql_d(d: Dialect, table: &str) -> Result<String, String> {
     let t = d.quote_ident(table)?;
     let json_ty = match d {

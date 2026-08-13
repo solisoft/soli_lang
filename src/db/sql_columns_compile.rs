@@ -26,6 +26,9 @@ pub struct ColumnQuery {
     /// `column IN (…)` filters. This is what makes eager loading one query per
     /// association instead of one per parent row.
     pub in_filters: BTreeMap<String, Vec<serde_json::Value>>,
+    /// Project only these columns (`pluck` / `select`), plus the primary key.
+    /// `None` selects the whole row.
+    pub select_fields: Option<Vec<String>>,
     /// Columns that must be non-null (`only_deleted` on a soft-delete model).
     pub not_null_filters: Vec<String>,
     pub order_field: Option<String>,
@@ -40,6 +43,7 @@ impl ColumnQuery {
             schema,
             eq_filters: BTreeMap::new(),
             in_filters: BTreeMap::new(),
+            select_fields: None,
             not_null_filters: Vec::new(),
             order_field: None,
             order_desc: false,
@@ -180,6 +184,65 @@ fn select_expr(d: Dialect, col: &ColumnDef) -> Result<String, String> {
         });
     }
     Ok(quoted)
+}
+
+/// The columns a `SELECT` for this query actually returns, **in order**.
+///
+/// The reader walks results positionally, so it must derive its column list from
+/// the same function the select list does. Deriving them independently is how a
+/// projection ends up writing column 0's value into the schema's first field.
+pub fn selected_columns(
+    schema: &TableSchema,
+    select_fields: &Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    let Some(fields) = select_fields else {
+        // The whole row, minus columns Soli cannot read (they are not selected).
+        return Ok(schema
+            .columns
+            .iter()
+            .filter(|c| c.ty != ColType::Unknown)
+            .map(|c| c.name.clone())
+            .collect());
+    };
+    let mut out: Vec<String> = Vec::with_capacity(fields.len() + 1);
+    for field in fields {
+        let col = resolve_col(schema, field)?;
+        if col.ty == ColType::Unknown {
+            return Err(format!(
+                "column {:?} has a type Soli cannot read, so it cannot be projected",
+                col.name
+            ));
+        }
+        if !out.contains(&col.name) {
+            out.push(col.name.clone());
+        }
+    }
+    // The key keeps `_key` / `id` available on the projected row.
+    if !out.contains(&schema.pk) && schema.column(&schema.pk).is_some() {
+        out.push(schema.pk.clone());
+    }
+    if out.is_empty() {
+        return Err("a projection must name at least one column".to_string());
+    }
+    Ok(out)
+}
+
+/// Select list for the columns [`selected_columns`] returned.
+fn select_list_for(d: Dialect, schema: &TableSchema, columns: &[String]) -> Result<String, String> {
+    let mut parts = Vec::with_capacity(columns.len());
+    for name in columns {
+        let col = schema
+            .column(name)
+            .ok_or_else(|| format!("table {:?} has no column {name:?}", schema.table))?;
+        parts.push(select_expr(d, col)?);
+    }
+    if parts.is_empty() {
+        return Err(format!(
+            "table {:?} has no columns Soli can read",
+            schema.table
+        ));
+    }
+    Ok(parts.join(", "))
 }
 
 /// Comma-separated select list in schema order.
@@ -554,7 +617,13 @@ pub fn compile_read_column(
 /// `SELECT <columns> FROM t [WHERE …] [ORDER BY …] [LIMIT …]`
 pub fn compile_select_cols(d: Dialect, q: &ColumnQuery) -> Result<CompiledSql, String> {
     let table = d.quote_ident(&q.schema.table)?;
-    let cols = select_list(d, &q.schema)?;
+    // A projection fetches only what was asked for: on a wide table that is the
+    // difference between reading two columns and reading fifty.
+    let cols = select_list_for(
+        d,
+        &q.schema,
+        &selected_columns(&q.schema, &q.select_fields)?,
+    )?;
     let mut params = Vec::new();
     let mut sql = format!("SELECT {cols} FROM {table}");
     sql.push_str(&compile_where(d, q, &mut params)?);

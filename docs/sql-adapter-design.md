@@ -80,6 +80,9 @@ Model API → QueryBuilder IR
 | Portable column DDL (`create_table` with columns, `add_column`, `add_index`) | n/a (schemaless) | ✓ | ✓ | ✓ |
 | Per-migration `connection "name"` | ✓ | ✓ | ✓ | ✓ |
 | `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ | ✓ |
+| `Model.find_by_sql` (raw SELECT) | ✗ (SDBQL) | ✓ | ✓ | ✓ |
+| Bulk insert (`create_many`) | per-row | ✓ chunked multi-row | ✓ | ✓ |
+| Server-side `pluck` / `select` (column mode) | ✓ | ✓ | ✓ | ✓ |
 
 ## Includes batching (SQL)
 

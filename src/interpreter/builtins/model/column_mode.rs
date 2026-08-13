@@ -11,9 +11,72 @@ use crate::db::introspect::{ColType, TableSchema};
 use crate::db::sql_columns_compile::{resolve_col, ColumnQuery};
 use crate::interpreter::value::Value;
 
+/// A Soli value as a positional SQL bind, for `Model.find_by_sql`.
+///
+/// There is no column to consult here, so the value's own type decides — which is
+/// also why a hash or array is refused rather than guessed at.
+pub fn bind_from_value(value: &Value) -> Result<crate::db::sql_compile::SqlBind, String> {
+    use crate::db::sql_compile::SqlBind;
+    Ok(match value {
+        Value::String(s) => SqlBind::Text(s.to_string()),
+        Value::Int(n) => SqlBind::I64(*n),
+        Value::Float(f) => SqlBind::F64(*f),
+        Value::Bool(b) => SqlBind::Bool(*b),
+        Value::Decimal(d) => SqlBind::Text(d.to_string()),
+        Value::DateTime(_) => SqlBind::Text(
+            crate::interpreter::value::value_to_json(value)
+                .ok()
+                .and_then(|j| j.as_str().map(str::to_string))
+                .unwrap_or_default(),
+        ),
+        Value::Null => SqlBind::Text(String::new()),
+        other => {
+            return Err(format!(
+                "a SQL bind must be a string, number, boolean, or datetime — got {}. \
+                 Pass a hash or array as JSON text if the column is JSON.",
+                other.type_name()
+            ))
+        }
+    })
+}
+
 /// Does this table have the `deleted_at` column soft delete needs?
 fn q_schema_has_deleted_at(schema: &TableSchema) -> bool {
     schema.has_column("deleted_at")
+}
+
+/// Was this failure "that column does not exist"?
+///
+/// `resolve_col` produces exactly this shape, so the test is on our own message
+/// rather than on driver prose.
+pub fn is_unknown_field_error(err: &str) -> bool {
+    err.starts_with("unknown field ") && err.contains(" on table ")
+}
+
+/// Retry `f` once against a freshly introspected schema when it failed because a
+/// column was unknown.
+///
+/// An `ALTER TABLE` applied while the server runs otherwise stays invisible: the
+/// cached schema is authoritative and would keep rejecting the new column until
+/// restart.
+pub fn retry_after_alter<T>(
+    collection: &str,
+    mut f: impl FnMut() -> Result<T, String>,
+) -> Result<T, String> {
+    match f() {
+        Err(e) if is_unknown_field_error(&e) => {
+            let Some(table) = super::registry::get_table_mapping(collection) else {
+                return Err(e);
+            };
+            super::registry::run_on_collection_connection(collection, || {
+                crate::db::introspect::invalidate_schema(&table);
+            });
+            // One retry only: if the column is still unknown it really is a typo,
+            // and the original message is the useful one.
+            f().map_err(|_| e)
+        }
+        other => other,
+    }
 }
 
 /// Schema for `collection` when its model is column-mode, else `None`.
@@ -197,6 +260,17 @@ pub fn column_query_from_qb(
     if crate::db::sql_compile::assert_portable_filter(qb.filter.as_deref(), &q.eq_filters).is_err()
     {
         return Err(unsupported("raw/string `.where(\"…\")`", collection));
+    }
+    // Push `pluck` / `select` into the SELECT list when every field is a real
+    // column. A field that is not (a nested path, a computed alias) falls back to
+    // the client-side projection rather than failing the query.
+    if let Some(fields) = qb.pluck_fields.as_ref().or(qb.select_fields.as_ref()) {
+        if fields
+            .iter()
+            .all(|field| resolve_col(&schema, field).is_ok())
+        {
+            q.select_fields = Some(fields.clone());
+        }
     }
     if let Some((field, dir)) = &qb.order_by {
         let field = crate::interpreter::symbol_string(*field)

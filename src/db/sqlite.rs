@@ -18,9 +18,9 @@
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
-    compile_group_by_d, compile_select_by_keys_d, compile_select_d, compile_select_json_text_in_d,
-    compile_update_all_d, create_table_sql_d, drop_table_sql_d, migrations_table_sql_d, Dialect,
-    GroupAgg, ListQuery, SqlAgg, SqlBind,
+    compile_group_by_d, compile_insert_many_d, compile_select_by_keys_d, compile_select_d,
+    compile_select_json_text_in_d, compile_update_all_d, create_table_sql_d, drop_table_sql_d,
+    migrations_table_sql_d, Dialect, GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -460,6 +460,20 @@ pub fn insert(
         conn.execute(&sql, rusqlite::params![&key, &doc_str])
             .map_err(|e| lite_error("sqlite insert", &e))?;
         get_on(conn, table, &key)?.ok_or_else(|| "sqlite insert: row missing after write".into())
+    })
+}
+
+/// Insert many documents in one statement per chunk.
+pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
+    ensure_table(table)?;
+    let compiled = compile_insert_many_d(Dialect::Sqlite, table, rows)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|conn| {
+        let params = to_sqlite_params(&compiled.params);
+        let n = conn
+            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .map_err(|e| lite_error("sqlite insert_many", &e))?;
+        Ok(n as u64)
     })
 }
 
@@ -930,14 +944,15 @@ use super::sql_columns_compile as cols;
 
 /// Read one row into a JSON object keyed by column name, so downstream
 /// hydration is identical to the document path.
-fn row_to_json(schema: &TableSchema, row: &rusqlite::Row) -> serde_json::Value {
+fn row_to_json(schema: &TableSchema, columns: &[String], row: &rusqlite::Row) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     let mut idx = 0usize;
-    for col in &schema.columns {
-        // Unreadable columns are not selected, so they hold no position.
-        if col.ty == ColType::Unknown {
+    // Walk the columns the SELECT actually returned, in that order — the schema's
+    // own order would misalign a projected row.
+    for name in columns {
+        let Some(col) = schema.column(name) else {
             continue;
-        }
+        };
         let raw = row.get_ref(idx).unwrap_or(ValueRef::Null);
         let value = match col.ty {
             ColType::Int => match raw {
@@ -1052,6 +1067,7 @@ fn unix_to_iso(value: i64) -> String {
 fn col_rows(
     conn: &mut SqConn,
     schema: &TableSchema,
+    columns: &[String],
     sql: &str,
     params: &[SqlBind],
     what: &str,
@@ -1068,7 +1084,7 @@ fn col_rows(
         .next()
         .map_err(|e| lite_error(&format!("sqlite column {what} row"), &e))?
     {
-        out.push(row_to_json(schema, row));
+        out.push(row_to_json(schema, columns, row));
     }
     Ok(out)
 }
@@ -1080,7 +1096,15 @@ pub fn col_get(
     let compiled = cols::compile_get_cols(Dialect::Sqlite, schema, pk)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
-        let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "get")?;
+        let columns = cols::selected_columns(schema, &None)?;
+        let rows = col_rows(
+            conn,
+            schema,
+            &columns,
+            &compiled.sql,
+            &compiled.params,
+            "get",
+        )?;
         Ok(rows.into_iter().next())
     })
 }
@@ -1095,7 +1119,15 @@ pub fn col_insert(
     let compiled = cols::compile_insert_cols(Dialect::Sqlite, schema, doc)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
-        let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "insert")?;
+        let columns = cols::selected_columns(schema, &None)?;
+        let rows = col_rows(
+            conn,
+            schema,
+            &columns,
+            &compiled.sql,
+            &compiled.params,
+            "insert",
+        )?;
         rows.into_iter().next().ok_or_else(|| {
             format!(
                 "sqlite column insert: row missing after write in {:?}",
@@ -1113,7 +1145,15 @@ pub fn col_update(
     let compiled = cols::compile_update_cols(Dialect::Sqlite, schema, pk, patch)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
-        let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "update")?;
+        let columns = cols::selected_columns(schema, &None)?;
+        let rows = col_rows(
+            conn,
+            schema,
+            &columns,
+            &compiled.sql,
+            &compiled.params,
+            "update",
+        )?;
         rows.into_iter()
             .next()
             .ok_or_else(|| format!("no row in {:?} with {} = {}", schema.table, schema.pk, pk))
@@ -1210,10 +1250,61 @@ pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Resul
     })
 }
 
+/// Run a caller-supplied `SELECT` and return its rows as JSON. See the Postgres
+/// twin for the single-`doc`-column convention.
+pub fn query_raw(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
+    let _trace = super::trace::start(sql, params);
+    with_conn(|conn| {
+        let bound = to_sqlite_params(params);
+        let mut stmt = conn
+            .prepare(sql)
+            .map_err(|e| lite_error("sqlite raw query prepare", &e))?;
+        let names: Vec<String> = stmt
+            .column_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let mut rows = stmt
+            .query(params_from_iter(bound.iter()))
+            .map_err(|e| lite_error("sqlite raw query", &e))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| lite_error("sqlite raw query row", &e))?
+        {
+            if names.len() == 1 && names[0] == "doc" {
+                let text: Option<String> = row.get(0).ok();
+                out.push(match text {
+                    Some(t) => serde_json::from_str(&t).unwrap_or(serde_json::Value::Null),
+                    None => serde_json::Value::Null,
+                });
+                continue;
+            }
+            let mut map = serde_json::Map::new();
+            for (index, name) in names.iter().enumerate() {
+                let value = row.get_ref(index).map(value_to_json).unwrap_or_default();
+                map.insert(name.clone(), value);
+            }
+            out.push(serde_json::Value::Object(map));
+        }
+        Ok(out)
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Sqlite, q)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| col_rows(conn, &q.schema, &compiled.sql, &compiled.params, "select"))
+    let columns = cols::selected_columns(&q.schema, &q.select_fields)?;
+    with_conn(|conn| {
+        col_rows(
+            conn,
+            &q.schema,
+            &columns,
+            &compiled.sql,
+            &compiled.params,
+            "select",
+        )
+    })
 }
 
 pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
@@ -2711,6 +2802,134 @@ mod tests {
             // with_deleted: no scope at all.
             let all = cols::ColumnQuery::new(schema);
             assert_eq!(col_count(&all).unwrap(), 2);
+        });
+    }
+
+    /// `create_many` used to cost one statement (and on SQLite one transaction)
+    /// per row. The query log makes the improvement checkable rather than
+    /// assumed.
+    #[test]
+    fn bulk_insert_is_one_statement_and_upserts() {
+        use crate::interpreter::builtins::model::query_log;
+
+        with_sqlite("insert-many", || {
+            let table = "widgets";
+            ensure_table(table).expect("table");
+            let rows: Vec<(String, serde_json::Value)> = (0..25)
+                .map(|i| {
+                    (
+                        format!("k{i}"),
+                        serde_json::json!({ "_key": format!("k{i}"), "n": i }),
+                    )
+                })
+                .collect();
+
+            query_log::set_enabled(true);
+            query_log::clear();
+            let inserted = crate::db::sql::insert_many(table, &rows).expect("insert_many");
+            let logged = query_log::snapshot();
+            query_log::set_enabled(false);
+
+            assert_eq!(inserted, 25);
+            let inserts = logged
+                .iter()
+                .filter(|entry| entry.query.starts_with("INSERT INTO"))
+                .count();
+            assert_eq!(
+                inserts,
+                1,
+                "25 rows must be one statement, not 25; logged: {}",
+                logged.len()
+            );
+            assert_eq!(count(&list_query(table, &[])).unwrap(), 25);
+
+            // Re-running upserts rather than failing, like single-row insert.
+            let again = crate::db::sql::insert_many(table, &rows).expect("re-run");
+            assert_eq!(again, 25);
+            assert_eq!(count(&list_query(table, &[])).unwrap(), 25);
+
+            // An empty batch is a no-op, not an error.
+            assert_eq!(crate::db::sql::insert_many(table, &[]).unwrap(), 0);
+        });
+    }
+
+    /// `find_by_sql` is the escape hatch for what the portable surface cannot
+    /// express. A single `doc` column hydrates as a document; anything else
+    /// becomes a hash keyed by column name.
+    #[test]
+    fn raw_queries_return_documents_or_projections() {
+        with_sqlite("find-by-sql", || {
+            let table = "widgets";
+            ensure_table(table).expect("table");
+            for (key, n) in [("a", 1), ("b", 5), ("c", 9)] {
+                insert(table, Some(key), serde_json::json!({ "n": n })).expect("insert");
+            }
+
+            // One `doc` column → the documents themselves.
+            let docs = crate::db::sql::query_raw(
+                "SELECT doc FROM widgets WHERE (doc ->> '$.n') > ? ORDER BY (doc ->> '$.n')",
+                &[SqlBind::I64(1)],
+            )
+            .expect("raw select");
+            assert_eq!(docs.len(), 2);
+            assert_eq!(docs[0]["n"], serde_json::json!(5));
+
+            // Any other shape → a hash per row, numbers parsed as numbers.
+            let rows = crate::db::sql::query_raw(
+                "SELECT _key AS id, (doc ->> '$.n') AS n FROM widgets ORDER BY n DESC LIMIT 1",
+                &[],
+            )
+            .expect("projection");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["id"], "c");
+            assert_eq!(rows[0]["n"], serde_json::json!(9));
+
+            // Binds are passed, never interpolated: a value that looks like SQL
+            // stays a value.
+            let none = crate::db::sql::query_raw(
+                "SELECT doc FROM widgets WHERE _key = ?",
+                &[SqlBind::Text("a' OR 1=1 --".into())],
+            )
+            .expect("bound");
+            assert!(none.is_empty(), "the injection attempt matched nothing");
+        });
+    }
+
+    /// A projection fetches only the named columns — on a wide table that is the
+    /// difference between reading two columns and reading all of them.
+    #[test]
+    fn a_projection_selects_only_what_was_asked_for() {
+        with_sqlite("projection", || {
+            execute_ddl("CREATE TABLE wide (id INTEGER PRIMARY KEY, a TEXT, b TEXT, c TEXT)")
+                .expect("ddl");
+            execute_ddl("INSERT INTO wide (a, b, c) VALUES ('1', '2', '3')").expect("seed");
+            let raw = introspect_table("wide").expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", "wide", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema"),
+            );
+
+            let mut q = cols::ColumnQuery::new(schema.clone());
+            q.select_fields = Some(vec!["a".to_string()]);
+            let compiled = cols::compile_select_cols(Dialect::Sqlite, &q).expect("compile");
+            // Only `a` and the key, not b/c.
+            assert!(compiled.sql.contains("\"a\""), "{}", compiled.sql);
+            assert!(!compiled.sql.contains("\"b\""), "{}", compiled.sql);
+            assert!(compiled.sql.contains("\"id\""), "the key stays available");
+
+            let rows = col_select(&q).expect("select");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["a"], "1");
+            // The unprojected columns are absent rather than null.
+            assert!(rows[0].get("b").is_none(), "{:?}", rows[0]);
+            assert_eq!(rows[0]["id"], serde_json::json!(1));
+
+            // An unknown field is still refused before any SQL is built.
+            let mut bad = cols::ColumnQuery::new(schema);
+            bad.select_fields = Some(vec!["nope".to_string()]);
+            assert!(cols::compile_select_cols(Dialect::Sqlite, &bad).is_err());
         });
     }
 

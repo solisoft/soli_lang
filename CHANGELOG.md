@@ -4,6 +4,32 @@
 
 ### Added
 
+- **`Model.find_by_sql(sql, binds?)`** — the escape hatch for a query the
+  portable surface cannot express. `BackendCaps.raw_sql` had been set to true on
+  the SQL adapters since they shipped while nothing exposed raw SQL at all; the
+  flag finally means something. Binds are positional and always bound, never
+  interpolated. A single `doc` column hydrates as documents, so instances come
+  back as usual; any other shape becomes a hash per row. Raises on SoliDB,
+  pointing at `Model.query` with SDBQL.
+
+- **`create_many` is one statement per chunk on SQL**, instead of one statement
+  (and on SQLite one transaction) per row. Chunked at 500 rows — each row takes
+  two binds and Postgres allows 65535 per statement — and wrapped in a single
+  transaction so a partial failure cannot leave half a batch behind. Re-running
+  upserts, matching single-row `insert`. The per-item `attr_accessible` filter
+  still runs on every row: bulk insert would otherwise be a perfect mass-
+  assignment bypass.
+
+- **`pluck` / `select` push their projection into the `SELECT` list** on
+  column-aware models, so a projection on a wide table reads two columns instead
+  of fifty. The primary key is always included so the row stays identifiable, and
+  a field that is not a real column falls back to the client-side projection.
+
+- **A column added by `ALTER TABLE` no longer needs a restart.** When a query
+  names a column the cached schema does not have, the column path re-introspects
+  that one table and retries once; a genuine typo still reports the original
+  "unknown field" error with the real column list.
+
 - **Column-aware models reached association parity.** A model bound to an
   existing table with `table "…"` could only do single-row and scalar work; the
   interesting half of the ORM refused to run. Now supported there:

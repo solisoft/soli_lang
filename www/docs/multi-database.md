@@ -156,6 +156,9 @@ Portable surface (hash filters, not raw SDBQL):
 | Batched HABTM `.includes` + `includes_count` | ✓ (two queries: the join table, then the targets) |
 | `index` declarations / `soli db:indexes` | ✓ expression index on the JSON field (generated column on MySQL) |
 | Atomic `increment` / `decrement` / counter caches | ✓ one arithmetic `UPDATE` (no `_rev`, no retry loop) |
+| `Model.find_by_sql(sql, binds?)` | ✓ raw `SELECT` escape hatch, positional binds |
+| `create_many` | ✓ one multi-row `INSERT` per 500-row chunk, in one transaction |
+| `pluck` / `select` on column models | ✓ pushed into the `SELECT` list |
 | Dev bar / `dev_queries()` / N+1 detection | ✓ the SQL, its binds, and its duration are logged per request |
 | `soli db:create` / `soli db:drop` | ✓ (SoliDB creates its database on first use instead) |
 | `through:` includes, `.having`, `.join` | ✗ SoliDB-only (`through:` on SQL planned) |
@@ -282,7 +285,28 @@ order.delete
 Order.transaction(fn() { ... })              # real SQL transaction
 ```
 
-`pluck` and `select` work too (projection happens client-side, as on the document path).
+`pluck` and `select` are **pushed into the `SELECT` list** on column models, so a
+projection reads two columns instead of fifty on a wide table; the primary key is
+always included so the row stays identifiable. A field that is not a real column
+(a nested path, a computed alias) falls back to the client-side projection rather
+than failing.
+
+### Raw SQL escape hatch
+
+For a query the portable surface cannot express:
+
+```soli
+# Positional binds: $1/$2 on Postgres, ? on MySQL and SQLite.
+Order.find_by_sql("SELECT * FROM orders WHERE total > ? AND status = ?", [100, "open"])
+
+# A single `doc` column hydrates as documents (document tables);
+# any other shape becomes a hash per row.
+Post.find_by_sql("SELECT doc FROM posts WHERE doc->>'slug' = $1", ["hello"])
+```
+
+Values are **bound**, never interpolated, so a value that looks like SQL stays a
+value. `find_by_sql` is SQL-only; on SoliDB it raises and points at `Model.query`
+with SDBQL.
 
 ### Also supported
 

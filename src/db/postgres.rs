@@ -6,9 +6,9 @@
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
-    compile_group_by_d, compile_select_by_keys_d, compile_select_d, compile_select_json_text_in_d,
-    compile_update_all_d, create_table_sql_d, drop_table_sql_d, migrations_table_sql_d, Dialect,
-    GroupAgg, ListQuery, SqlAgg, SqlBind,
+    compile_group_by_d, compile_insert_many_d, compile_select_by_keys_d, compile_select_d,
+    compile_select_json_text_in_d, compile_update_all_d, create_table_sql_d, drop_table_sql_d,
+    migrations_table_sql_d, Dialect, GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
 use postgres::types::{ToSql, Type};
 use r2d2::Pool;
@@ -318,6 +318,20 @@ pub fn insert(
             .map_err(|e| pg_error("postgres insert", &e))?;
         let doc: serde_json::Value = row.get(0);
         Ok(doc)
+    })
+}
+
+/// Insert many documents in one statement per chunk.
+pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
+    ensure_table(table)?;
+    let compiled = compile_insert_many_d(Dialect::Postgres, table, rows)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    with_conn(|client| {
+        let owned = bind_owned(&compiled.params);
+        let refs = bind_refs(&owned);
+        client
+            .execute(&compiled.sql, &refs)
+            .map_err(|e| pg_error("postgres insert_many", &e))
     })
 }
 
@@ -819,14 +833,15 @@ use super::sql_columns_compile as cols;
 
 /// Read one row into a JSON object keyed by column name, so downstream
 /// hydration is identical to the document path.
-fn row_to_json(schema: &TableSchema, row: &postgres::Row) -> serde_json::Value {
+fn row_to_json(schema: &TableSchema, columns: &[String], row: &postgres::Row) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     let mut idx = 0usize;
-    for col in &schema.columns {
-        // Unreadable columns are not selected, so they hold no position.
-        if col.ty == ColType::Unknown {
+    // Walk the columns the SELECT actually returned, in that order — the schema's
+    // own order would misalign a projected row.
+    for name in columns {
+        let Some(col) = schema.column(name) else {
             continue;
-        }
+        };
         let value = match col.ty {
             // Numbers arrive as text (see ColType::reads_as_text) so the
             // driver never has to match an exact SQL width.
@@ -886,8 +901,14 @@ fn normalize_text(ty: ColType, raw: &str) -> String {
     out
 }
 
-fn rows_to_json(schema: &TableSchema, rows: &[postgres::Row]) -> Vec<serde_json::Value> {
-    rows.iter().map(|r| row_to_json(schema, r)).collect()
+fn rows_to_json(
+    schema: &TableSchema,
+    columns: &[String],
+    rows: &[postgres::Row],
+) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|r| row_to_json(schema, columns, r))
+        .collect()
 }
 
 pub fn col_get(
@@ -902,7 +923,8 @@ pub fn col_get(
         let rows = client
             .query(&compiled.sql, &refs)
             .map_err(|e| pg_error("postgres column get", &e))?;
-        Ok(rows.first().map(|r| row_to_json(schema, r)))
+        let columns = cols::selected_columns(schema, &None)?;
+        Ok(rows.first().map(|r| row_to_json(schema, &columns, r)))
     })
 }
 
@@ -911,6 +933,8 @@ pub fn col_insert(
     doc: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_insert_cols(Dialect::Postgres, schema, doc)?;
+    // The insert's RETURNING list is the full row, so read it that way.
+    let columns = cols::selected_columns(schema, &None)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
@@ -918,7 +942,7 @@ pub fn col_insert(
         let row = client
             .query_one(&compiled.sql, &refs)
             .map_err(|e| pg_error("postgres column insert", &e))?;
-        Ok(row_to_json(schema, &row))
+        Ok(row_to_json(schema, &columns, &row))
     })
 }
 
@@ -928,6 +952,7 @@ pub fn col_update(
     patch: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_update_cols(Dialect::Postgres, schema, pk, patch)?;
+    let columns = cols::selected_columns(schema, &None)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
@@ -936,7 +961,7 @@ pub fn col_update(
             .query(&compiled.sql, &refs)
             .map_err(|e| pg_error("postgres column update", &e))?;
         match rows.first() {
-            Some(row) => Ok(row_to_json(schema, row)),
+            Some(row) => Ok(row_to_json(schema, &columns, row)),
             None => Err(format!(
                 "no row in {:?} with {} = {}",
                 schema.table, schema.pk, pk
@@ -1035,8 +1060,42 @@ pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Resul
     })
 }
 
+/// Run a caller-supplied `SELECT` and return its rows as JSON.
+///
+/// A single `doc` column comes back as the document itself, so
+/// `Model.find_by_sql` hydrates instances the same way the compiled path does;
+/// any other shape becomes a hash keyed by column name.
+pub fn query_raw(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
+    let _trace = super::trace::start(sql, params);
+    with_conn(|client| {
+        let owned = bind_owned(params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(sql, &refs)
+            .map_err(|e| pg_error("postgres raw query", &e))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let columns = row.columns();
+            if columns.len() == 1 && columns[0].name() == "doc" {
+                out.push(row.get::<_, serde_json::Value>(0));
+                continue;
+            }
+            let mut map = serde_json::Map::new();
+            for (index, column) in columns.iter().enumerate() {
+                // Read every column as text and re-parse: a raw query can select
+                // any type, and the driver refuses a mismatched target.
+                let text: Option<String> = row.try_get(index).ok().flatten();
+                map.insert(column.name().to_string(), super::raw_cell(text));
+            }
+            out.push(serde_json::Value::Object(map));
+        }
+        Ok(out)
+    })
+}
+
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Postgres, q)?;
+    let columns = cols::selected_columns(&q.schema, &q.select_fields)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
@@ -1044,7 +1103,7 @@ pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, Strin
         let rows = client
             .query(&compiled.sql, &refs)
             .map_err(|e| pg_error("postgres column select", &e))?;
-        Ok(rows_to_json(&q.schema, &rows))
+        Ok(rows_to_json(&q.schema, &columns, &rows))
     })
 }
 

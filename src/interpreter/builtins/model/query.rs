@@ -1147,6 +1147,12 @@ fn execute_query_builder_postgres(qb: &QueryBuilder, collection: &str) -> Value 
 /// Column-aware `.all()` / `.first()`: compile against the real columns, then
 /// hydrate (with temporal columns converted to native DateTime values).
 fn execute_column_select(qb: &QueryBuilder, collection: &str) -> Result<Value, String> {
+    // An ALTER TABLE while the server runs would otherwise stay invisible: the
+    // cached schema keeps rejecting the new column until restart.
+    super::column_mode::retry_after_alter(collection, || execute_column_select_once(qb, collection))
+}
+
+fn execute_column_select_once(qb: &QueryBuilder, collection: &str) -> Result<Value, String> {
     let Some(schema) = super::column_mode::require_schema(collection)? else {
         return Err(super::column_mode::unsupported("this query", collection));
     };

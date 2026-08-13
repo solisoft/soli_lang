@@ -271,6 +271,19 @@ pub fn get_schema(table: &str) -> Result<Arc<TableSchema>, String> {
     Ok(schema)
 }
 
+/// Drop one table's cached schema, so the next use re-introspects it.
+///
+/// The escape hatch for an `ALTER TABLE` applied while the server runs: the
+/// column path calls this when a query mentions a column the cached schema does
+/// not have, then retries once. Without it, a newly added column stayed invisible
+/// until restart.
+pub fn invalidate_schema(table: &str) {
+    let connection = super::registry::active_connection_name();
+    if let Ok(mut map) = cache().write() {
+        map.remove(&(connection, table.to_string()));
+    }
+}
+
 /// Drop every cached schema. Called on hot reload and when tests swap the
 /// connection registry, so a changed table (or a different database) is
 /// re-introspected rather than answered from a stale entry.
