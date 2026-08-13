@@ -509,6 +509,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
                     "__soli_sql_create_table requires SOLI_DB_ADAPTER=postgres|mysql|sqlite".into(),
                 );
             }
+            crate::db::ddl::assert_user_table(&name)?;
             crate::db::sql::ensure_table(&name)?;
             Ok(Value::Bool(true))
         },
@@ -526,6 +527,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
                     "__soli_sql_drop_table requires SOLI_DB_ADAPTER=postgres|mysql|sqlite".into(),
                 );
             }
+            crate::db::ddl::assert_user_table(&name)?;
             crate::db::sql::drop_table(&name)?;
             Ok(Value::Bool(true))
         },
@@ -533,8 +535,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     env.define("__soli_sql_create_table".to_string(), sql_create.clone());
     env.define("__soli_sql_drop_table".to_string(), sql_drop.clone());
     // Column-table schema helpers (create_table with columns, add_column,
-    // add_index, …) for the same migrations.
-    sql_ddl::register_sql_ddl_builtins(env);
+    // add_index, execute, …) are registered only on the migration interpreter
+    // — see `Interpreter::new_for_migrations`. They must not be callable from
+    // request handlers, jobs, or templates.
     // Back-compat aliases from Phase 1.
     env.define("__soli_pg_create_table".to_string(), sql_create);
     env.define("__soli_pg_drop_table".to_string(), sql_drop);

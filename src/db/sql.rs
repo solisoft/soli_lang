@@ -346,6 +346,19 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     )
 }
 
+/// Run caller-supplied SQL (`db.execute`) off the request pool.
+///
+/// Compiled helpers use [`execute_ddl`] on a pooled connection — their SQL is
+/// ours. This path is the escape hatch, so it must not leave `SET` / `ATTACH`
+/// / `PRAGMA` sitting on a connection the next request will check out.
+pub fn execute_raw(sql: &str) -> Result<(), String> {
+    route_sql!(
+        super::postgres::execute_raw(sql),
+        super::mysql::execute_raw(sql),
+        super::sqlite::execute_raw(sql)
+    )
+}
+
 /// Dialect of the active connection — for compiling DDL before executing it.
 pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
     use super::sql_compile::Dialect;

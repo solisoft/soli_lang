@@ -696,12 +696,61 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
-/// Run raw DDL (used by migrations and by the column-mode test harness).
+/// Run compiled DDL (used by migrations and by the column-mode test harness).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| {
         conn.execute_batch(sql)
             .map_err(|e| format!("sqlite ddl: {e}"))
     })
+}
+
+/// Undo session-level changes a raw `execute` may have left (ATTACH, pragma).
+fn reset_sqlite_session(conn: &rusqlite::Connection) {
+    let _ = conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA writable_schema=OFF;");
+    let attached: Vec<String> = conn
+        .prepare("PRAGMA database_list")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .ok()
+                .map(|rows| rows.filter_map(|n| n.ok()).collect())
+        })
+        .unwrap_or_default();
+    for name in attached {
+        if name == "main" || name == "temp" {
+            continue;
+        }
+        if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            let _ = conn.execute_batch(&format!("DETACH DATABASE \"{name}\""));
+        }
+    }
+}
+
+/// `db.execute`: a dedicated file connection so ATTACH / PRAGMA cannot poison
+/// the pool. `:memory:` *is* the pool (a second connection is a second empty
+/// database), so that path resets the session afterwards instead.
+pub fn execute_raw(sql: &str) -> Result<(), String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .as_deref()
+        .ok_or_else(|| format!("connection {:?}: url required for sqlite", spec.name))?;
+    match parse_target(url) {
+        Target::Memory => with_conn(|conn| {
+            let result = conn
+                .execute_batch(sql)
+                .map_err(|e| format!("sqlite execute: {e}"));
+            reset_sqlite_session(conn);
+            result
+        }),
+        Target::File(path) => {
+            let mut conn = rusqlite::Connection::open(&path)
+                .map_err(|e| format!("sqlite execute open: {e}"))?;
+            init_conn(&mut conn).map_err(|e| format!("sqlite execute init: {e}"))?;
+            conn.execute_batch(sql)
+                .map_err(|e| format!("sqlite execute: {e}"))
+        }
+    }
 }
 
 // ---------- column-aware model execution ----------
@@ -1871,6 +1920,36 @@ mod tests {
                 .expect("schema");
             assert_eq!(schema.column("note").unwrap().ty, ColType::Text);
             assert!(schema.column("note").unwrap().nullable);
+        });
+    }
+
+    #[test]
+    fn execute_raw_does_not_leave_an_attachment_on_the_pool() {
+        with_sqlite("raw-attach", || {
+            let extra = std::env::temp_dir().join(format!(
+                "soli-attach-{}-{}.db",
+                std::process::id(),
+                "stolen"
+            ));
+            let _ = std::fs::remove_file(&extra);
+            execute_raw(&format!("ATTACH DATABASE '{}' AS stolen", extra.display()))
+                .expect("attach");
+            with_conn(|conn| {
+                let names: Vec<String> = conn
+                    .prepare("PRAGMA database_list")
+                    .unwrap()
+                    .query_map([], |row| row.get(1))
+                    .unwrap()
+                    .filter_map(|n| n.ok())
+                    .collect();
+                assert!(
+                    !names.iter().any(|n| n == "stolen"),
+                    "ATTACH must not leak onto the pool: {names:?}"
+                );
+                Ok(())
+            })
+            .unwrap();
+            let _ = std::fs::remove_file(&extra);
         });
     }
 

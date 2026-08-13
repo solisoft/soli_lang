@@ -241,8 +241,42 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
             let op = "execute(sql)";
             require_sql(op)?;
             let sql = arg_string(args, 0, op, "the statement")?;
-            crate::db::sql::execute_ddl(&sql)?;
+            // Dedicated connection (or a reset afterwards on sqlite::memory:)
+            // so SET / ATTACH / PRAGMA cannot poison the request pool.
+            crate::db::sql::execute_raw(&sql)?;
             Ok(Value::Bool(true))
         })),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::interpreter::value::Value;
+    use crate::interpreter::Interpreter;
+
+    #[test]
+    fn schema_helpers_are_not_on_the_default_interpreter() {
+        let interp = Interpreter::new();
+        let env = interp.environment.borrow();
+        assert!(
+            env.get("__soli_sql_execute").is_none(),
+            "db.execute must not be callable from request handlers or templates"
+        );
+        assert!(env.get("__soli_sql_create_columns").is_none());
+        assert!(env.get("__soli_sql_add_column").is_none());
+    }
+
+    #[test]
+    fn schema_helpers_are_on_the_migration_interpreter() {
+        let interp = Interpreter::new_for_migrations();
+        let env = interp.environment.borrow();
+        assert!(matches!(
+            env.get("__soli_sql_execute"),
+            Some(Value::NativeFunction(_))
+        ));
+        assert!(matches!(
+            env.get("__soli_sql_create_columns"),
+            Some(Value::NativeFunction(_))
+        ));
+    }
 }

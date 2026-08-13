@@ -337,6 +337,63 @@ pub fn parse_column(name: &str, value: &serde_json::Value) -> Result<ColumnSpec,
     }
 }
 
+/// Tables the engine owns. A migration must not create, drop, or rename them —
+/// wiping `_migrations` would re-run every file, and `_jobs` / `_cron_jobs`
+/// are the job engine's store. SQLite's catalog names are listed too so a
+/// `drop_table` cannot point at them.
+pub fn is_reserved_table(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "_migrations"
+            | "_jobs"
+            | "_cron_jobs"
+            | "sqlite_master"
+            | "sqlite_temp_master"
+            | "sqlite_sequence"
+    )
+}
+
+/// Refuse a table name the engine owns. Called from every user-facing DDL
+/// helper; internal `ensure_table("_jobs")` does not go through here.
+pub fn assert_user_table(name: &str) -> Result<(), String> {
+    if is_reserved_table(name) {
+        return Err(format!(
+            "{name:?} is reserved by Soli (_migrations, _jobs, _cron_jobs). \
+             Pick another table name."
+        ));
+    }
+    Ok(())
+}
+
+/// Render a string as a SQL literal for `DEFAULT`.
+///
+/// Quote-doubling is enough on Postgres and SQLite. MySQL treats `\` as an
+/// escape unless `NO_BACKSLASH_ESCAPES` is on, so `'x\', extra INT --'` would
+/// close the string early and become a second column. Backslash, quote, NUL,
+/// newline, CR, and SUB are escaped the way `mysql_real_escape_string` does.
+fn escape_sql_string(d: Dialect, s: &str) -> String {
+    match d {
+        Dialect::Mysql => {
+            let mut out = String::with_capacity(s.len() + 2);
+            out.push('\'');
+            for c in s.chars() {
+                match c {
+                    '\0' => out.push_str("\\0"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\\' => out.push_str("\\\\"),
+                    '\'' => out.push_str("\\'"),
+                    '\u{001a}' => out.push_str("\\Z"),
+                    other => out.push(other),
+                }
+            }
+            out.push('\'');
+            out
+        }
+        Dialect::Postgres | Dialect::Sqlite => format!("'{}'", s.replace('\'', "''")),
+    }
+}
+
 /// Render a default value as a SQL literal.
 fn default_literal(d: Dialect, col: &ColumnSpec) -> Result<String, String> {
     let Some(value) = &col.default else {
@@ -350,7 +407,7 @@ fn default_literal(d: Dialect, col: &ColumnSpec) -> Result<String, String> {
             _ => i64::from(*b).to_string(),
         },
         serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+        serde_json::Value::String(s) => escape_sql_string(d, s),
         // A JSON/array default differs per dialect (and MySQL needs an
         // expression default), so say so rather than emit something that only
         // works on one backend.
@@ -426,6 +483,7 @@ fn timestamp_columns() -> Vec<ColumnSpec> {
 
 /// `CREATE TABLE IF NOT EXISTS` for a column table.
 pub fn create_table_sql(d: Dialect, spec: &TableSpec) -> Result<String, String> {
+    assert_user_table(&spec.table)?;
     let table = d.quote_ident(&spec.table)?;
     let mut parts = Vec::with_capacity(spec.columns.len() + 2);
     let inline_fk = d != Dialect::Mysql;
@@ -461,11 +519,13 @@ pub fn create_table_sql(d: Dialect, spec: &TableSpec) -> Result<String, String> 
 
 /// `DROP TABLE IF EXISTS`.
 pub fn drop_table_sql(d: Dialect, table: &str) -> Result<String, String> {
+    assert_user_table(table)?;
     Ok(format!("DROP TABLE IF EXISTS {}", d.quote_ident(table)?))
 }
 
 /// `ALTER TABLE … ADD COLUMN`.
 pub fn add_column_sql(d: Dialect, table: &str, col: &ColumnSpec) -> Result<String, String> {
+    assert_user_table(table)?;
     // SQLite's ALTER TABLE is narrow, and the failures are confusing after the
     // fact — name them now, with the way around each.
     if d == Dialect::Sqlite {
@@ -495,6 +555,7 @@ pub fn add_column_sql(d: Dialect, table: &str, col: &ColumnSpec) -> Result<Strin
 
 /// `ALTER TABLE … DROP COLUMN`.
 pub fn drop_column_sql(d: Dialect, table: &str, column: &str) -> Result<String, String> {
+    assert_user_table(table)?;
     Ok(format!(
         "ALTER TABLE {} DROP COLUMN {}",
         d.quote_ident(table)?,
@@ -504,6 +565,7 @@ pub fn drop_column_sql(d: Dialect, table: &str, column: &str) -> Result<String, 
 
 /// `ALTER TABLE … RENAME COLUMN … TO …` (MySQL 8+).
 pub fn rename_column_sql(d: Dialect, table: &str, from: &str, to: &str) -> Result<String, String> {
+    assert_user_table(table)?;
     Ok(format!(
         "ALTER TABLE {} RENAME COLUMN {} TO {}",
         d.quote_ident(table)?,
@@ -514,6 +576,8 @@ pub fn rename_column_sql(d: Dialect, table: &str, from: &str, to: &str) -> Resul
 
 /// `ALTER TABLE … RENAME TO …`.
 pub fn rename_table_sql(d: Dialect, from: &str, to: &str) -> Result<String, String> {
+    assert_user_table(from)?;
+    assert_user_table(to)?;
     Ok(format!(
         "ALTER TABLE {} RENAME TO {}",
         d.quote_ident(from)?,
@@ -534,6 +598,7 @@ pub fn add_index_sql(
     name: Option<&str>,
     unique: bool,
 ) -> Result<String, String> {
+    assert_user_table(table)?;
     if columns.is_empty() {
         return Err(format!("add_index({table:?}, …) needs at least one column"));
     }
@@ -559,6 +624,7 @@ pub fn add_index_sql(
 
 /// `DROP INDEX` — MySQL needs the table, the others do not.
 pub fn drop_index_sql(d: Dialect, table: &str, name: &str) -> Result<String, String> {
+    assert_user_table(table)?;
     let index = d.quote_ident(name)?;
     Ok(match d {
         Dialect::Mysql => format!("DROP INDEX {index} ON {}", d.quote_ident(table)?),
@@ -844,5 +910,82 @@ mod tests {
         assert!(create_table_sql(Dialect::Postgres, &spec).is_err());
         let col = ColumnSpec::new("a b".into(), DdlType::Text);
         assert!(add_column_sql(Dialect::Postgres, "orders", &col).is_err());
+    }
+
+    #[test]
+    fn mysql_string_default_cannot_break_out_of_the_literal() {
+        // Classic MySQL breakout: quote-doubling alone turns
+        // `x\', extra INT --` into DEFAULT 'x\', extra INT --' which MySQL
+        // reads as string `x` plus a second column. Escaping `\` first
+        // keeps it one literal.
+        let col = parse_column(
+            "note",
+            &serde_json::json!({ "type": "string", "default": "x', extra INT --" }),
+        )
+        .unwrap();
+        // A backslash before the quote is the actual attack.
+        let attack = parse_column(
+            "note",
+            &serde_json::json!({ "type": "string", "default": "x\\', extra INT --" }),
+        )
+        .unwrap();
+
+        let mysql = add_column_sql(Dialect::Mysql, "orders", &attack).unwrap();
+        assert!(
+            mysql.contains(r"DEFAULT 'x\\\', extra INT --'"),
+            "backslash and quote must both be escaped: {mysql}"
+        );
+        assert!(
+            !mysql.contains(", extra INT --'") || mysql.contains(r"\', extra INT --'"),
+            "the payload must stay inside the literal: {mysql}"
+        );
+
+        // Postgres / SQLite: quote-doubling is enough; backslash is ordinary.
+        let pg = default_literal(Dialect::Postgres, &col).unwrap();
+        assert_eq!(pg, " DEFAULT 'x'', extra INT --'");
+        let lite = default_literal(Dialect::Sqlite, &attack).unwrap();
+        assert_eq!(lite, " DEFAULT 'x\\'', extra INT --'");
+
+        // The breakout must not become a second column of CREATE TABLE.
+        let spec = parse_table_spec(
+            "orders",
+            &pairs(vec![
+                ("id", serde_json::json!("pk")),
+                (
+                    "note",
+                    serde_json::json!({ "type": "string", "default": "x\\', extra INT --" }),
+                ),
+            ]),
+        )
+        .unwrap();
+        let create = create_table_sql(Dialect::Mysql, &spec).unwrap();
+        assert!(
+            !create.to_ascii_lowercase().contains("\n\textra "),
+            "injected column must not appear: {create}"
+        );
+    }
+
+    #[test]
+    fn reserved_table_names_are_refused() {
+        for name in [
+            "_migrations",
+            "_jobs",
+            "_cron_jobs",
+            "_JOBS",
+            "sqlite_master",
+        ] {
+            let spec = TableSpec {
+                table: name.into(),
+                columns: vec![ColumnSpec::new("id".into(), DdlType::Pk)],
+                timestamps: false,
+            };
+            let err = create_table_sql(Dialect::Postgres, &spec).unwrap_err();
+            assert!(err.contains("reserved"), "{name}: {err}");
+            assert!(drop_table_sql(Dialect::Sqlite, name).is_err());
+            assert!(rename_table_sql(Dialect::Mysql, name, "ok").is_err());
+            assert!(rename_table_sql(Dialect::Mysql, "ok", name).is_err());
+        }
+        // A normal table still works.
+        assert!(drop_table_sql(Dialect::Postgres, "orders").is_ok());
     }
 }

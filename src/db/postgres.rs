@@ -613,6 +613,21 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     })
 }
 
+/// `db.execute`: a dedicated connection, dropped afterwards, so `SET ROLE` /
+/// `SET search_path` cannot leak into the pool.
+pub fn execute_raw(sql: &str) -> Result<(), String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .as_deref()
+        .ok_or_else(|| format!("connection {:?}: url required for postgres", spec.name))?;
+    let mut client =
+        postgres::Client::connect(url, NoTls).map_err(|e| format!("postgres execute: {e}"))?;
+    client
+        .batch_execute(sql)
+        .map_err(|e| format!("postgres execute: {e}"))
+}
+
 // ---------- column-aware model execution ----------
 
 use super::introspect::{ColType, TableSchema};

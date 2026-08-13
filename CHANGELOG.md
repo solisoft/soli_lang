@@ -58,7 +58,9 @@
     connection.
   - The declaration is metadata, not a statement — it is neutralized before the
     file executes (at top level it would otherwise call the model DSL's
-    `connection` builtin with the wrong arity).
+    `connection` builtin with the wrong arity). It must be the first
+    non-comment statement; a line inside a string or after `def` is ignored,
+    and a second declaration is an error.
 
 - **SQLite adapter.** `SOLI_DB_ADAPTER=sqlite` with
   `DATABASE_URL=sqlite://db/app.sqlite3` (or `adapter = "sqlite"` on a named
@@ -172,6 +174,19 @@
     also having to create the directory the engine looks for.
 
 ### Fixed
+
+- **SQL migration DDL is no longer a global builtin.** `__soli_sql_execute`
+  (and the column-table helpers) were registered on every interpreter, so a
+  controller or template could run arbitrary SQL and leave `SET` / `ATTACH` /
+  `PRAGMA` on a pooled connection. They are registered only on the migration
+  interpreter now. `db.execute` opens a dedicated connection (and resets the
+  session afterwards on `sqlite::memory:`).
+- **MySQL `DEFAULT` strings escaped for MySQL.** Quote-doubling alone let a
+  default of `x\', extra INT --` close the literal and become a second column.
+  Backslash, quote, NUL, newline, CR, and SUB are now escaped the way
+  `mysql_real_escape_string` does.
+- **Reserved table names refused.** A migration cannot create, drop, or rename
+  `_migrations`, `_jobs`, or `_cron_jobs`.
 
 - **Column-mode timestamps read as 1970, and saving a record rewrote them.**
   `Value::DateTime` is nanoseconds throughout the runtime, but the column-mode

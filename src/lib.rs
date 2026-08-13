@@ -68,6 +68,17 @@ pub fn run_with_options(source: &str, type_check: bool) -> Result<(), SolilangEr
     run_with_path(source, None, type_check)
 }
 
+/// Run a migration file. Same pipeline as [`run_with_options`], but the
+/// interpreter also has the SQL schema helpers (`db.execute`, `add_column`, …).
+pub(crate) fn run_migration_source(source: &str) -> Result<(), SolilangError> {
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+    let program = parser::Parser::new(tokens).parse()?;
+    let mut interpreter = interpreter::Interpreter::new_for_migrations();
+    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
+    interpreter.interpret(&program)?;
+    Ok(())
+}
+
 /// Run a Solilang program from a file path with module resolution.
 pub fn run_file(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {

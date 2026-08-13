@@ -46,8 +46,12 @@ def down(db)
 end
 ```
 
-- The declaration must be a top-level line; the runner reads it before running
-  anything, and it never executes as a statement.
+- The declaration must be the **first non-comment statement** in the file
+  (blank lines and `#` / `//` comments may precede it). A `connection "…"`
+  line inside a string, or after `def up`, is ignored — it cannot pick the
+  target. A second declaration is an error, not a silent first-wins.
+- The runner reads it before running anything, and it never executes as a
+  statement.
 - **Each connection tracks its own versions.** A migration applied to
   `analytics` is not marked applied on the default connection.
 - Without a declaration, a migration runs on `--connection` if given, else the
@@ -466,7 +470,7 @@ MySQL parses an inline `REFERENCES` and then ignores it.
 | `db.add_index(table, columns, options?)` | `{ "unique": true, "name": "…" }`; the name defaults to `idx_<table>_<columns>` |
 | `db.drop_index(table, name)` | |
 | `db.create_index(table, name, fields, options?)` | The SoliDB-shaped call, so a shared migration keeps working |
-| `db.execute(sql)` | Escape hatch — engine-specific by definition |
+| `db.execute(sql)` | Escape hatch — engine-specific by definition. Migration-only (not callable from controllers, jobs, or templates). Runs on a dedicated connection so `SET` / `ATTACH` / `PRAGMA` cannot leak into the request pool. |
 | `db.create_collection(name)` / `db.drop_collection(name)` | Aliases for document tables |
 | `db.create_collection(name, "edge"/"timeseries"/…)` | ✗ raises — typed collections are SoliDB-only |
 | `db.query(sdbql)` | ✗ raises — SDBQL has no meaning on SQL |
@@ -484,6 +488,9 @@ Two limits worth knowing before you hit them:
 **Models never issue DDL.** A column-aware model maps to a table it does not
 own: no auto-create, no index sync, no implicit `ALTER`. Migrations are the one
 place Soli changes a column table, and only where you wrote it.
+
+`_migrations`, `_jobs`, and `_cron_jobs` are reserved. A migration that
+creates, drops, or renames them is refused.
 
 ## Environment Configuration
 

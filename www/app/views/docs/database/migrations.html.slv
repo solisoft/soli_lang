@@ -398,7 +398,7 @@ print("Seeded users")</code></pre>
     </div>
 
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
-        <li>The declaration is a top-level line. The runner reads it before running anything, and it never executes as a statement.</li>
+        <li>The declaration must be the <strong class="text-white">first non-comment statement</strong> (blank lines and <code class="text-cyan-400">#</code> / <code class="text-cyan-400">//</code> comments may precede it). A <code class="text-cyan-400">connection "…"</code> line inside a string, or after <code class="text-cyan-400">def up</code>, is ignored. A second declaration is an error, not a silent first-wins. The runner reads it before running anything, and it never executes as a statement.</li>
         <li><strong class="text-white">Each connection tracks its own versions</strong> &mdash; a migration applied to <code class="text-cyan-400">analytics</code> is not marked applied on the default connection.</li>
         <li>Without a declaration, a migration runs on <code class="text-cyan-400">--connection</code> if given, else the default connection.</li>
         <li><code class="text-cyan-400">--connection NAME</code> is a <strong class="text-white">filter</strong>: a migration declaring another database is held back (and reported as skipped) rather than applied to the wrong schema.</li>
@@ -498,7 +498,7 @@ print("Seeded users")</code></pre>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.add_index(table, columns, options?)</code></td><td class="py-3 px-4"><code>{ "unique": true, "name": "…" }</code>; name defaults to <code>idx_&lt;table&gt;_&lt;columns&gt;</code></td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.drop_index(table, name)</code></td><td class="py-3 px-4"></td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_index(table, name, fields, options?)</code></td><td class="py-3 px-4">The SoliDB-shaped call, so a shared migration keeps working</td></tr>
-                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.execute(sql)</code></td><td class="py-3 px-4">Escape hatch &mdash; engine-specific by definition</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.execute(sql)</code></td><td class="py-3 px-4">Escape hatch &mdash; engine-specific by definition. Migration-only (not callable from controllers, jobs, or templates). Runs on a dedicated connection so <code>SET</code> / <code>ATTACH</code> / <code>PRAGMA</code> cannot leak into the request pool.</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_collection</code> / <code class="text-cyan-300">db.drop_collection</code></td><td class="py-3 px-4">Aliases for document tables</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name, "edge"|…)</code></td><td class="py-3 px-4 text-red-400">✗ raises &mdash; typed collections are SoliDB-only</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql)</code></td><td class="py-3 px-4 text-red-400">✗ raises &mdash; SDBQL has no meaning on SQL</td></tr>
@@ -517,6 +517,9 @@ print("Seeded users")</code></pre>
             around them. And <strong class="text-white">changing a column's type is not portable</strong>, so
             there is no <code class="text-cyan-400">change_column</code>: use
             <code class="text-cyan-400">db.execute</code>, or add-copy-drop.
+            <code class="text-cyan-400">_migrations</code>, <code class="text-cyan-400">_jobs</code>, and
+            <code class="text-cyan-400">_cron_jobs</code> are reserved &mdash; a migration that creates,
+            drops, or renames them is refused.
             <br><br>
             <strong class="text-white">Models never issue DDL.</strong> A column-aware model maps to a table
             it does not own: no auto-create, no index sync, no implicit <code>ALTER</code>. Migrations are the

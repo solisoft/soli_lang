@@ -579,9 +579,23 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     })
 }
 
-/// Run raw DDL (migrations' column-table helpers, and `db.execute`).
+/// Run compiled DDL (migrations' column-table helpers).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| conn.query_drop(sql).map_err(|e| format!("mysql ddl: {e}")))
+}
+
+/// `db.execute`: a dedicated connection, dropped afterwards, so
+/// `SET FOREIGN_KEY_CHECKS=0` cannot leak into the pool.
+pub fn execute_raw(sql: &str) -> Result<(), String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .as_deref()
+        .ok_or_else(|| format!("connection {:?}: url required for mysql", spec.name))?;
+    let opts = Opts::from_url(url).map_err(|e| format!("mysql execute: {e}"))?;
+    let mut conn = mysql::Conn::new(opts).map_err(|e| format!("mysql execute: {e}"))?;
+    conn.query_drop(sql)
+        .map_err(|e| format!("mysql execute: {e}"))
 }
 
 pub fn ensure_migrations_table() -> Result<(), String> {

@@ -74,6 +74,17 @@ impl Interpreter {
         }
     }
 
+    /// Interpreter used by `soli db:migrate`. Registers the column-table
+    /// schema helpers (`__soli_sql_create_columns`, `__soli_sql_execute`, …)
+    /// that request handlers, jobs, and templates must not see.
+    pub fn new_for_migrations() -> Self {
+        let interp = Self::new();
+        crate::interpreter::builtins::sql_ddl::register_sql_ddl_builtins(
+            &mut interp.environment.borrow_mut(),
+        );
+        interp
+    }
+
     /// Create an interpreter for serve mode (skips test builtins to save memory).
     pub fn new_for_serve() -> Self {
         let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));

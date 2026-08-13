@@ -157,6 +157,10 @@ pub struct Migration {
     /// migration knows which database it belongs to, so `soli db:migrate up`
     /// needs no `--connection` flag to place it correctly.
     pub connection: Option<String>,
+    /// Set when the file's `connection` declaration is malformed (a duplicate,
+    /// or one that is not the first non-comment statement). Discovery fails
+    /// the run rather than guessing a target.
+    pub connection_error: Option<String>,
 }
 
 impl Migration {
@@ -180,16 +184,20 @@ impl Migration {
 
         // Read the declaration now: the runner must know the target before it
         // can look up which migrations that database has already applied.
-        let connection = fs::read_to_string(path)
-            .ok()
-            .as_deref()
-            .and_then(scan_connection);
+        let (connection, connection_error) = match fs::read_to_string(path) {
+            Ok(src) => match scan_connection(&src) {
+                Ok(name) => (name, None),
+                Err(e) => (None, Some(e)),
+            },
+            Err(_) => (None, None),
+        };
 
         Some(Self {
             version,
             name,
             path: path.to_path_buf(),
             connection,
+            connection_error,
         })
     }
 
@@ -199,33 +207,53 @@ impl Migration {
     }
 }
 
+fn is_comment_line(line: &str) -> bool {
+    line.starts_with('#') || line.starts_with("//")
+}
+
+/// Parse `connection "name"` / `connection("name")` on a single trimmed line.
+fn parse_connection_line(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("connection")?;
+    // `connection "x"` and `connection("x")` both read naturally.
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix('(').unwrap_or(rest).trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let (name, _) = rest.split_once('"')?;
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.to_string())
+}
+
 /// Find a top-level `connection "name"` declaration in a migration's source.
 ///
-/// This is a lexical scan rather than a parse: the runner needs the target
-/// before it runs anything (to pick the right `_migrations` table), and the file
-/// itself only executes later. Comment lines are ignored so a commented-out
-/// declaration does not count.
-pub fn scan_connection(source: &str) -> Option<String> {
+/// Only the first non-comment statement is considered. A line inside a
+/// `"""…"""` / `[[…]]` string, or after `def up`, therefore cannot pick the
+/// target. A second declaration is an error, not a silent first-wins.
+pub fn scan_connection(source: &str) -> Result<Option<String>, String> {
+    let mut found: Option<String> = None;
     for line in source.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+        if line.is_empty() || is_comment_line(line) {
             continue;
         }
-        let Some(rest) = line.strip_prefix("connection") else {
+        if let Some(name) = parse_connection_line(line) {
+            if found.is_some() {
+                return Err(
+                    "a migration may declare connection only once, as its first \
+                     non-comment statement"
+                        .into(),
+                );
+            }
+            found = Some(name);
             continue;
-        };
-        // `connection "x"` and `connection("x")` both read naturally.
-        let rest = rest.trim_start();
-        let rest = rest.strip_prefix('(').unwrap_or(rest).trim_start();
-        let rest = rest.strip_prefix('"')?;
-        let (name, _) = rest.split_once('"')?;
-        let name = name.trim();
-        if name.is_empty() {
-            return None;
         }
-        return Some(name.to_string());
+        // First real statement that is not `connection`: stop. A later
+        // `connection "warehouse"` inside a string or after `def` is ignored.
+        break;
     }
-    None
+    Ok(found)
 }
 
 /// Comment out the `connection "name"` line before the file is executed.
@@ -233,23 +261,24 @@ pub fn scan_connection(source: &str) -> Option<String> {
 /// The declaration is metadata for the runner, not a statement: at top level it
 /// would call the model DSL's `connection` builtin with the wrong arity. The
 /// line is replaced rather than removed so error messages keep their line
-/// numbers.
+/// numbers. Only the first-statement declaration is stripped — the same one
+/// [`scan_connection`] accepted.
 pub fn strip_connection_declaration(source: &str) -> String {
     let mut out = Vec::with_capacity(source.lines().count());
-    let mut done = false;
+    let mut seen_statement = false;
     for line in source.lines() {
         let trimmed = line.trim();
-        let is_declaration = !done
-            && !trimmed.starts_with('#')
-            && !trimmed.starts_with("//")
-            && trimmed.starts_with("connection")
-            && scan_connection(trimmed).is_some();
-        if is_declaration {
-            done = true;
-            out.push(format!("# {line}   (target read by the migration runner)"));
-        } else {
+        if !seen_statement && (trimmed.is_empty() || is_comment_line(trimmed)) {
             out.push(line.to_string());
+            continue;
         }
+        if !seen_statement && parse_connection_line(trimmed).is_some() {
+            seen_statement = true;
+            out.push(format!("# {line}   (target read by the migration runner)"));
+            continue;
+        }
+        seen_statement = true;
+        out.push(line.to_string());
     }
     out.join("\n")
 }
@@ -364,18 +393,25 @@ impl MigrationRunner {
             return Ok(vec![]);
         }
 
-        let mut migrations: Vec<Migration> = fs::read_dir(&self.migrations_path)
+        let mut migrations: Vec<Migration> = Vec::new();
+        for entry in fs::read_dir(&self.migrations_path)
             .map_err(|e| format!("Failed to read migrations directory: {}", e))?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .map(|ext| ext == "sl")
-                    .unwrap_or(false)
-            })
-            .filter_map(|entry| Migration::from_path(&entry.path()))
-            .collect();
+        {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if entry.path().extension().and_then(|e| e.to_str()) != Some("sl") {
+                continue;
+            }
+            let Some(migration) = Migration::from_path(&entry.path()) else {
+                continue;
+            };
+            if let Some(err) = &migration.connection_error {
+                return Err(format!("{}: {err}", migration.path.display()));
+            }
+            migrations.push(migration);
+        }
 
         migrations.sort_by(|a, b| a.version.cmp(&b.version));
 
@@ -727,7 +763,7 @@ let db = MigrationDb();
 "#
         );
 
-        crate::run_with_options(&full_source, false)
+        crate::run_migration_source(&full_source)
             .map_err(|e| format!("Migration {direction} failed: {e}"))?;
         Ok(())
     }
@@ -1040,17 +1076,23 @@ mod tests {
     #[test]
     fn scans_a_declared_connection() {
         assert_eq!(
-            scan_connection("connection \"legacy\"\n\ndef up(db)\nend\n").as_deref(),
+            scan_connection("connection \"legacy\"\n\ndef up(db)\nend\n")
+                .unwrap()
+                .as_deref(),
             Some("legacy")
         );
         // Both spellings read naturally.
         assert_eq!(
-            scan_connection("connection(\"warehouse\")").as_deref(),
+            scan_connection("connection(\"warehouse\")")
+                .unwrap()
+                .as_deref(),
             Some("warehouse")
         );
         // Leading comments and blank lines do not hide it.
         assert_eq!(
-            scan_connection("# Migration: create orders\n\nconnection \"analytics\"\n").as_deref(),
+            scan_connection("# Migration: create orders\n\nconnection \"analytics\"\n")
+                .unwrap()
+                .as_deref(),
             Some("analytics")
         );
     }
@@ -1058,21 +1100,40 @@ mod tests {
     #[test]
     fn a_file_without_a_declaration_targets_the_default() {
         assert_eq!(
-            scan_connection("def up(db)\n  db.create_table(\"posts\")\nend"),
+            scan_connection("def up(db)\n  db.create_table(\"posts\")\nend").unwrap(),
             None
         );
         // A commented-out declaration must not count.
         assert_eq!(
-            scan_connection("# connection \"legacy\"\ndef up(db)\nend"),
+            scan_connection("# connection \"legacy\"\ndef up(db)\nend").unwrap(),
             None
         );
-        assert_eq!(scan_connection("// connection \"legacy\""), None);
+        assert_eq!(scan_connection("// connection \"legacy\"").unwrap(), None);
         // Neither does a mention inside other code.
         assert_eq!(
-            scan_connection("def up(db)\n  print(\"connection \\\"legacy\\\"\")\nend"),
+            scan_connection("def up(db)\n  print(\"connection \\\"legacy\\\"\")\nend").unwrap(),
             None
         );
-        assert_eq!(scan_connection("connection \"\""), None);
+        assert_eq!(scan_connection("connection \"\"").unwrap(), None);
+    }
+
+    #[test]
+    fn connection_inside_a_string_or_after_def_does_not_count() {
+        // The first non-comment statement is the triple-quoted string, so the
+        // `connection` line inside it is not a declaration.
+        let source = "\"\"\"\nTo run against warehouse:\nconnection \"warehouse\"\n\"\"\"\n\ndef up(db)\nend\n";
+        assert_eq!(scan_connection(source).unwrap(), None);
+        // After `def` is too late.
+        assert_eq!(
+            scan_connection("def up(db)\nconnection \"legacy\"\nend").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_second_connection_declaration_is_an_error() {
+        let err = scan_connection("connection \"legacy\"\nconnection \"warehouse\"\n").unwrap_err();
+        assert!(err.contains("only once"), "{err}");
     }
 
     #[test]
@@ -1087,6 +1148,9 @@ mod tests {
         // A file without a declaration is untouched.
         let plain = "def up(db)\nend";
         assert_eq!(strip_connection_declaration(plain), plain);
+        // A connection line inside a string is not the declaration — leave it.
+        let quoted = "\"\"\"\nconnection \"warehouse\"\n\"\"\"\ndef up(db)\nend";
+        assert_eq!(strip_connection_declaration(quoted), quoted);
     }
 
     #[test]
@@ -1096,6 +1160,7 @@ mod tests {
             name: "create_orders".into(),
             path: PathBuf::from("db/migrations/20260812000001_create_orders.sl"),
             connection: connection.map(str::to_string),
+            connection_error: None,
         };
         let runner = |filter: Option<&str>| {
             MigrationRunner::new(
