@@ -1113,7 +1113,8 @@ Semantics:
 - `counter_cache: true` derives the column from the child collection
   (`comments` → `comments_count`); a string picks a custom column. The parent
   needs no schema preparation — a missing column reads as 0.
-- Bumps ride the same If-Match CAS loop as `increment`/`decrement` and fire on
+- Bumps ride the same atomic path as `increment`/`decrement` — an If-Match CAS
+  loop on SoliDB, a single arithmetic `UPDATE` on the SQL adapters — and fire on
   child `create`/`save`, hard `delete` (instance and class form),
   FK reassignment on `update`/`save`/`Model.update(id, ...)` (−1 old parent,
   +1 new), and — for soft-deleting children — soft `delete` (−1) and
@@ -1591,7 +1592,7 @@ user = User.find("user_id");
 user.name = "New Name";
 user.update();
 
-# Atomic increment/decrement (CAS via `_rev` with bounded retry)
+# Atomic increment/decrement (CAS via `_rev` on SoliDB; one UPDATE on SQL)
 user.increment("view_count");      # +1
 user.increment("view_count", 5);   # +5
 user.decrement("stock");           # -1
@@ -1645,7 +1646,18 @@ Semantics worth knowing:
 ### How `increment` / `decrement` stay atomic under concurrency
 
 `increment` and `decrement` are **not** plain read-modify-writes on the in-memory
-instance — each call drives an optimistic compare-and-swap loop against SoliDB:
+instance. How atomicity is achieved depends on the backend:
+
+- **SoliDB** drives an optimistic compare-and-swap loop (below).
+- **Postgres, MySQL, and SQLite** do the arithmetic **inside one `UPDATE`**
+  (`jsonb_set` / `JSON_SET` / `json_set` over the current value), so the row's own
+  lock serializes concurrent bumps. There is no retry loop and no contention
+  error on these adapters — and no `_rev`, which SQL document tables do not have.
+  A column-aware model increments the real column the same way
+  (`SET col = COALESCE(col, 0) + ?`), and a non-numeric column is refused by name.
+  A missing field (or a `NULL` column) counts as 0, so nothing needs backfilling.
+
+On SoliDB each call:
 
 1. Re-fetch the document to read the current field value and its `_rev`.
 2. Compute `current + delta` (or `current - delta`).

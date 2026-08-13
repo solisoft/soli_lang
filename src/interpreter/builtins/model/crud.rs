@@ -1459,24 +1459,20 @@ pub fn cas_field_delta(
     field: &str,
     delta: i64,
 ) -> Result<(i64, String), String> {
-    // SQL document tables have no `_rev` / If-Match. Use a merge update —
-    // not multi-writer atomic like SoliDB CAS, but correct for the common
-    // single-writer increment/decrement path.
+    // SQL has no `_rev` / If-Match, so atomicity comes from doing the
+    // arithmetic inside one statement rather than from a CAS loop: a
+    // read-modify-write here let two concurrent bumps both read 5 and both
+    // write 6. There is no `_rev` to report on this path.
     if crate::db::is_sql() {
-        let current_doc = exec_get(collection, key)?;
-        let current_value = current_doc
-            .get(field)
-            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
-            .unwrap_or(0);
-        let new_value = current_value + delta;
-        let patch = serde_json::json!({ field: new_value });
-        let resp = exec_update(collection, key, patch, true)?;
-        let rev = resp
-            .get("_rev")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        return Ok((new_value, rev));
+        if let Some(schema) = super::column_mode::schema_for_collection(collection) {
+            let pk = super::column_mode::pk_value(&schema, key)?;
+            let value = crate::db::columns::increment_column(&schema, &pk, field, delta)?
+                .ok_or_else(|| format!("no row in {:?} with key {key}", schema.table))?;
+            return Ok((value, String::new()));
+        }
+        let value = crate::db::sql::increment_field(collection, key, field, delta)?
+            .ok_or_else(|| format!("Document '{collection}/{key}' not found"))?;
+        return Ok((value, String::new()));
     }
 
     const MAX_ATTEMPTS: usize = 10;

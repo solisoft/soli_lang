@@ -290,6 +290,92 @@ fn append_order_limit(
     Ok(())
 }
 
+/// `UPDATE t SET col = COALESCE(col,0) + ? WHERE pk = ?`, returning the new
+/// value where the dialect supports `RETURNING`.
+///
+/// Doing the arithmetic in SQL is what makes a counter safe under concurrency:
+/// the row lock serializes the increments instead of two readers both seeing the
+/// old value.
+pub fn compile_increment_col(
+    d: Dialect,
+    schema: &TableSchema,
+    pk_value: &serde_json::Value,
+    column: &str,
+    delta: i64,
+) -> Result<(String, Vec<SqlBind>), String> {
+    let col = resolve_col(schema, column)?;
+    if !col.ty.is_numeric() {
+        return Err(format!(
+            "column {:?} is {} — increment/decrement (and counter caches) need a \
+             numeric column",
+            col.name,
+            col.ty.as_str()
+        ));
+    }
+    let pk_col = schema
+        .column(&schema.pk)
+        .ok_or_else(|| format!("table {:?} lost its primary key column", schema.table))?;
+    let pk_bind = bind_for_column(pk_col, pk_value)?
+        .ok_or_else(|| "increment requires a primary-key value".to_string())?;
+
+    let mut params = vec![SqlBind::I64(delta)];
+    let delta_ph = placeholder(d, 1, ColType::Int);
+    params.push(pk_bind);
+    let pk_ph = placeholder(d, 2, pk_col.ty);
+
+    let table = d.quote_ident(&schema.table)?;
+    let quoted = d.quote_ident(&col.name)?;
+    let pk_quoted = d.quote_ident(&schema.pk)?;
+    let mut sql = format!(
+        "UPDATE {table} SET {quoted} = COALESCE({quoted}, 0) + {delta_ph} \
+         WHERE {pk_quoted} = {pk_ph}"
+    );
+    if matches!(d, Dialect::Postgres | Dialect::Sqlite) {
+        // Cast to text for the same reason reads do: the driver never has to
+        // match the column's exact numeric width.
+        sql.push_str(&format!(
+            " RETURNING {}",
+            match d {
+                Dialect::Postgres => format!("{quoted}::text"),
+                _ => format!("CAST({quoted} AS TEXT)"),
+            }
+        ));
+    }
+    Ok((sql, params))
+}
+
+/// `SELECT col FROM t WHERE pk = ?` as text — the read-back MySQL needs after an
+/// increment, since it has no `RETURNING`.
+pub fn compile_read_column(
+    d: Dialect,
+    schema: &TableSchema,
+    pk_value: &serde_json::Value,
+    column: &str,
+) -> Result<CompiledSql, String> {
+    let col = resolve_col(schema, column)?;
+    let pk_col = schema
+        .column(&schema.pk)
+        .ok_or_else(|| format!("table {:?} lost its primary key column", schema.table))?;
+    let pk_bind = bind_for_column(pk_col, pk_value)?
+        .ok_or_else(|| "reading a column requires a primary-key value".to_string())?;
+    let params = vec![pk_bind];
+    let pk_ph = placeholder(d, 1, pk_col.ty);
+    let quoted = d.quote_ident(&col.name)?;
+    let expr = match d {
+        Dialect::Postgres => format!("{quoted}::text"),
+        Dialect::Mysql => format!("CAST({quoted} AS CHAR)"),
+        Dialect::Sqlite => format!("CAST({quoted} AS TEXT)"),
+    };
+    Ok(CompiledSql {
+        sql: format!(
+            "SELECT {expr} FROM {} WHERE {} = {pk_ph}",
+            d.quote_ident(&schema.table)?,
+            d.quote_ident(&schema.pk)?
+        ),
+        params,
+    })
+}
+
 /// `SELECT <columns> FROM t [WHERE …] [ORDER BY …] [LIMIT …]`
 pub fn compile_select_cols(d: Dialect, q: &ColumnQuery) -> Result<CompiledSql, String> {
     let table = d.quote_ident(&q.schema.table)?;

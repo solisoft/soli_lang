@@ -155,6 +155,7 @@ Portable surface (hash filters, not raw SDBQL):
 | Multi-row `group_by` + multi-agg | ✓ |
 | Batched HABTM `.includes` + `includes_count` | ✓ (two queries: the join table, then the targets) |
 | `index` declarations / `soli db:indexes` | ✓ expression index on the JSON field (generated column on MySQL) |
+| Atomic `increment` / `decrement` / counter caches | ✓ one arithmetic `UPDATE` (no `_rev`, no retry loop) |
 | `through:` includes, `.having`, `.join` | ✗ SoliDB-only (`through:` on SQL planned) |
 | Graph, vector, columnar, timeseries | ✗ SoliDB-only |
 | `Model.transaction` | ✓ (holds one SQL pool connection for the block) |

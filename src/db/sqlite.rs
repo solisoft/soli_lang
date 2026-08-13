@@ -696,6 +696,33 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Add `delta` to a numeric JSON field **in one statement**, returning the new
+/// value. See the Postgres twin for why this is not read-modify-write.
+pub fn increment_field(
+    table: &str,
+    key: &str,
+    field: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    if !table_exists(table)? {
+        return Ok(None);
+    }
+    Dialect::Sqlite.quote_ident(field)?;
+    let table_q = Dialect::Sqlite.quote_ident(table)?;
+    let sql = format!(
+        "UPDATE {table_q} SET doc = json_set(doc, '$.{field}', \
+             COALESCE(doc ->> '$.{field}', 0) + ?1) \
+         WHERE _key = ?2 RETURNING CAST((doc ->> '$.{field}') AS TEXT)"
+    );
+    with_conn(|conn| {
+        let value: Option<Option<String>> = conn
+            .query_row(&sql, rusqlite::params![delta, key], |r| r.get(0))
+            .optional()
+            .map_err(|e| format!("sqlite increment: {e}"))?;
+        Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
+    })
+}
+
 /// Index names on `table`.
 pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     with_conn(|conn| {
@@ -987,6 +1014,27 @@ pub fn col_delete(
         conn.execute(&compiled.sql, params_from_iter(params.iter()))
             .map_err(|e| format!("sqlite column delete: {e}"))?;
         Ok(())
+    })
+}
+
+/// Add `delta` to a numeric **column** of one row, atomically.
+///
+/// Column mode owns no schema, so the column must already be numeric; a
+/// non-numeric one is refused by name rather than by a driver error.
+pub fn col_increment(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+    column: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    let (sql, params) = cols::compile_increment_col(Dialect::Sqlite, schema, pk, column, delta)?;
+    with_conn(|conn| {
+        let params = to_sqlite_params(&params);
+        let value: Option<Option<String>> = conn
+            .query_row(&sql, params_from_iter(params.iter()), |r| r.get(0))
+            .optional()
+            .map_err(|e| format!("sqlite column increment: {e}"))?;
+        Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
 
@@ -2098,6 +2146,111 @@ mod tests {
 
             // A different value still inserts.
             insert(table, Some("c"), serde_json::json!({ "email": "c@b.c" })).expect("insert");
+        });
+    }
+
+    /// Concurrency is the whole point of doing the arithmetic in SQL, so the
+    /// test has to be concurrent: with the old read-modify-write, threads read
+    /// the same value and overwrite each other's bumps.
+    #[test]
+    fn concurrent_increments_do_not_lose_counts() {
+        const THREADS: i64 = 8;
+        const PER_THREAD: i64 = 25;
+
+        with_sqlite("increment", || {
+            let table = "counters";
+            ensure_table(table).expect("table");
+            insert(table, Some("hits"), serde_json::json!({ "views": 0 })).expect("seed");
+
+            // Through the model-level entry point, which is what
+            // `instance.increment`, `decrement`, and counter caches all call.
+            use crate::interpreter::builtins::model::crud::cas_field_delta;
+            std::thread::scope(|scope| {
+                for _ in 0..THREADS {
+                    scope.spawn(|| {
+                        for _ in 0..PER_THREAD {
+                            cas_field_delta(table, "hits", "views", 1).expect("increment");
+                        }
+                    });
+                }
+            });
+
+            let doc = get(table, "hits").unwrap().expect("row");
+            assert_eq!(
+                doc["views"].as_i64().unwrap(),
+                THREADS * PER_THREAD,
+                "every increment must survive"
+            );
+        });
+    }
+
+    #[test]
+    fn increment_creates_a_missing_field_and_counts_down() {
+        with_sqlite("increment-edges", || {
+            let table = "counters";
+            ensure_table(table).expect("table");
+            insert(table, Some("k"), serde_json::json!({ "name": "x" })).expect("seed");
+
+            // A missing field starts at 0, so a parent needs no schema prep.
+            assert_eq!(increment_field(table, "k", "views", 1).unwrap(), Some(1));
+            assert_eq!(increment_field(table, "k", "views", 5).unwrap(), Some(6));
+            // Decrement is the same call with a negative delta, and may go below 0.
+            assert_eq!(increment_field(table, "k", "views", -7).unwrap(), Some(-1));
+            // The rest of the document is untouched.
+            let doc = get(table, "k").unwrap().expect("row");
+            assert_eq!(doc["name"], "x");
+            assert_eq!(doc["views"].as_i64().unwrap(), -1);
+
+            // A missing row reports nothing rather than inventing one.
+            assert_eq!(increment_field(table, "nope", "views", 1).unwrap(), None);
+            // A missing table is not an error either (nothing to count yet).
+            assert_eq!(increment_field("absent", "k", "views", 1).unwrap(), None);
+        });
+    }
+
+    #[test]
+    fn a_column_counter_increments_atomically_too() {
+        with_sqlite("increment-column", || {
+            execute_ddl("CREATE TABLE meters (id INTEGER PRIMARY KEY, hits INTEGER, label TEXT)")
+                .expect("ddl");
+            execute_ddl("INSERT INTO meters (id, hits, label) VALUES (1, 0, 'a'), (2, NULL, 'b')")
+                .expect("seed");
+            let raw = introspect_table("meters").expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", "meters", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema"),
+            );
+
+            let one = serde_json::json!(1);
+            std::thread::scope(|scope| {
+                for _ in 0..4 {
+                    scope.spawn(|| {
+                        for _ in 0..25 {
+                            col_increment(&schema, &one, "hits", 1).expect("increment");
+                        }
+                    });
+                }
+            });
+            assert_eq!(
+                col_get(&schema, &one).unwrap().unwrap()["hits"],
+                serde_json::json!(100)
+            );
+
+            // NULL counts as 0, so a fresh row needs no backfill.
+            assert_eq!(
+                col_increment(&schema, &serde_json::json!(2), "hits", 3).unwrap(),
+                Some(3)
+            );
+            // A non-numeric column is refused by name, not by a driver error.
+            let err = col_increment(&schema, &one, "label", 1).expect_err("text column");
+            assert!(err.contains("label") && err.contains("numeric"), "{err}");
+            // A missing row reports nothing.
+            assert_eq!(
+                col_increment(&schema, &serde_json::json!(99), "hits", 1).unwrap(),
+                None
+            );
         });
     }
 

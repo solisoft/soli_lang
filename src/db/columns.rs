@@ -156,6 +156,21 @@ pub fn aggregate(q: &ColumnQuery, func: SqlAgg, field: &str) -> Result<serde_jso
     )
 }
 
+/// Add `delta` to a numeric column of one row, atomically, returning the new
+/// value (`None` when the row is absent).
+pub fn increment_column(
+    schema: &Arc<TableSchema>,
+    pk: &serde_json::Value,
+    column: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    route_cols!(
+        super::postgres::col_increment(schema, pk, column, delta),
+        super::mysql::col_increment(schema, pk, column, delta),
+        super::sqlite::col_increment(schema, pk, column, delta)
+    )
+}
+
 /// Stamp `created_at` / `updated_at` when the table has them and the caller
 /// didn't set them. Column mode never invents columns, so this is a no-op on a
 /// table without those names.

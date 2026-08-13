@@ -359,6 +359,21 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
     )
 }
 
+/// Add `delta` to a numeric JSON field of one row, atomically, returning the new
+/// value (`None` when the table or row is absent).
+pub fn increment_field(
+    table: &str,
+    key: &str,
+    field: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    route_sql!(
+        super::postgres::increment_field(table, key, field, delta),
+        super::mysql::increment_field(table, key, field, delta),
+        super::sqlite::increment_field(table, key, field, delta)
+    )
+}
+
 /// Index names on `table` for the active connection.
 pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     route_sql!(

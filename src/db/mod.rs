@@ -41,6 +41,18 @@ pub use sql_compile::{
 
 use std::sync::OnceLock;
 
+/// Read a counter value the database rendered as text.
+///
+/// A JSON number can come back as `7`, `7.0`, or (on an exact-numeric cast)
+/// `7.000`; a counter is an integer either way.
+pub fn parse_counter(raw: &str) -> Option<i64> {
+    let trimmed = raw.trim();
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Some(n);
+    }
+    trimmed.parse::<f64>().ok().map(|f| f.round() as i64)
+}
+
 /// Whether this binary was built with the given SQL adapter's client code.
 pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
     match adapter {

@@ -605,6 +605,40 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Add `delta` to a numeric JSON field **in one statement**, returning the new
+/// value.
+///
+/// The read-modify-write this replaces lost concurrent bumps: two requests both
+/// read 5, both write 6. One `UPDATE` leaves the arithmetic to the database, so
+/// the row's own lock serializes the increments.
+pub fn increment_field(
+    table: &str,
+    key: &str,
+    field: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    if !table_exists(table)? {
+        return Ok(None);
+    }
+    // Validated as an identifier before it reaches a JSON path literal.
+    Dialect::Postgres.quote_ident(field)?;
+    let table_q = Dialect::Postgres.quote_ident(table)?;
+    let sql = format!(
+        "UPDATE {table_q} SET doc = jsonb_set(doc, '{{{field}}}', \
+             to_jsonb(COALESCE((doc->>'{field}')::numeric, 0) + $1::bigint)) \
+         WHERE _key = $2 RETURNING (doc->>'{field}')"
+    );
+    with_conn(|client| {
+        let rows = client
+            .query(&sql, &[&delta, &key])
+            .map_err(|e| format!("postgres increment: {e}"))?;
+        Ok(rows
+            .first()
+            .and_then(|r| r.get::<_, Option<String>>(0))
+            .and_then(|text| super::parse_counter(&text)))
+    })
+}
+
 /// Index names on `table`.
 pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     with_conn(|client| {
@@ -800,6 +834,30 @@ pub fn col_delete(
             .execute(&compiled.sql, &refs)
             .map_err(|e| format!("postgres column delete: {e}"))?;
         Ok(())
+    })
+}
+
+/// Add `delta` to a numeric **column** of one row, atomically.
+///
+/// Column mode owns no schema, so the column must already be numeric; a
+/// non-numeric one is refused by name rather than by a driver error.
+pub fn col_increment(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+    column: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    let (sql, params) = cols::compile_increment_col(Dialect::Postgres, schema, pk, column, delta)?;
+    with_conn(|client| {
+        let owned = bind_owned(&params);
+        let refs = bind_refs(&owned);
+        let rows = client
+            .query(&sql, &refs)
+            .map_err(|e| format!("postgres column increment: {e}"))?;
+        Ok(rows
+            .first()
+            .and_then(|r| r.get::<_, Option<String>>(0))
+            .and_then(|text| super::parse_counter(&text)))
     })
 }
 
@@ -1134,6 +1192,49 @@ mod integration_tests {
         }
         let _clear = ClearOnDrop;
         f();
+    }
+
+    /// The Postgres twin of the SQLite concurrency test: one statement per bump,
+    /// so parallel increments cannot overwrite each other.
+    #[test]
+    fn concurrent_increments_do_not_lose_counts_when_pg_available() {
+        const THREADS: i64 = 8;
+        const PER_THREAD: i64 = 25;
+
+        with_pg(|| {
+            if ensure_connected().is_err() {
+                return;
+            }
+            let table = "soli_pg_increment_test";
+            let _ = drop_table(table);
+            if ensure_table(table).is_err() {
+                return;
+            }
+            insert(table, Some("hits"), serde_json::json!({ "views": 0 })).expect("seed");
+
+            use crate::interpreter::builtins::model::crud::cas_field_delta;
+            std::thread::scope(|scope| {
+                for _ in 0..THREADS {
+                    scope.spawn(|| {
+                        for _ in 0..PER_THREAD {
+                            cas_field_delta(table, "hits", "views", 1).expect("increment");
+                        }
+                    });
+                }
+            });
+
+            let doc = get(table, "hits").unwrap().expect("row");
+            assert_eq!(doc["views"].as_i64().unwrap(), THREADS * PER_THREAD);
+
+            // A missing field starts at 0; a decrement is a negative delta.
+            assert_eq!(increment_field(table, "hits", "other", 2).unwrap(), Some(2));
+            assert_eq!(
+                increment_field(table, "hits", "other", -5).unwrap(),
+                Some(-3)
+            );
+            assert_eq!(increment_field(table, "nope", "views", 1).unwrap(), None);
+            let _ = drop_table(table);
+        });
     }
 
     #[test]

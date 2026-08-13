@@ -200,6 +200,18 @@
 
 ### Fixed
 
+- **Concurrent `increment` / `decrement` and counter caches lost counts on the
+  SQL adapters.** `cas_field_delta` fell back to a read-modify-write there — its
+  own comment admitted it was "not multi-writer atomic" — so two requests both
+  read 5 and both wrote 6. Measured with 8 threads x 25 bumps on SQLite: **53 of
+  200 increments survived**. The arithmetic now happens inside one statement
+  (`jsonb_set` / `JSON_SET` / `json_set`, and `SET col = COALESCE(col,0) + ?` for
+  a column-aware model), so the row's own lock serializes the bumps: 200 of 200.
+  Counter caches ride the same path, so parent counts stop drifting. A missing
+  field or `NULL` column still counts as 0, and a non-numeric column is refused
+  by name rather than by a driver error. Verified concurrently on both SQLite and
+  live Postgres.
+
 - **SQL migration DDL is no longer a global builtin.** `__soli_sql_execute`
   (and the column-table helpers) were registered on every interpreter, so a
   controller or template could run arbitrary SQL and leave `SET` / `ATTACH` /

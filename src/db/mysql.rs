@@ -579,6 +579,38 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     })
 }
 
+/// Add `delta` to a numeric JSON field **in one statement**, returning the new
+/// value. See the Postgres twin for why this is not read-modify-write.
+pub fn increment_field(
+    table: &str,
+    key: &str,
+    field: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    if !table_exists(table)? {
+        return Ok(None);
+    }
+    Dialect::Mysql.quote_ident(field)?;
+    let table_q = Dialect::Mysql.quote_ident(table)?;
+    let update = format!(
+        "UPDATE {table_q} SET doc = JSON_SET(doc, '$.{field}', \
+             COALESCE(JSON_EXTRACT(doc, '$.{field}'), 0) + ?) WHERE _key = ?"
+    );
+    // MySQL has no RETURNING, so the read-back rides the same connection —
+    // still inside the statement's own atomicity for the write itself.
+    let select = format!(
+        "SELECT JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) FROM {table_q} WHERE _key = ?"
+    );
+    with_conn(|conn| {
+        conn.exec_drop(&update, (delta, key))
+            .map_err(|e| format!("mysql increment: {e}"))?;
+        let text: Option<Option<String>> = conn
+            .exec_first(&select, (key,))
+            .map_err(|e| format!("mysql increment read-back: {e}"))?;
+        Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
+    })
+}
+
 /// Index names on `table`.
 pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     with_conn(|conn| {
@@ -854,6 +886,29 @@ pub fn col_delete(
         conn.exec_drop(&compiled.sql, params)
             .map_err(|e| format!("mysql column delete: {e}"))?;
         Ok(())
+    })
+}
+
+/// Add `delta` to a numeric **column** of one row, atomically.
+///
+/// Column mode owns no schema, so the column must already be numeric; a
+/// non-numeric one is refused by name rather than by a driver error.
+pub fn col_increment(
+    schema: &std::sync::Arc<TableSchema>,
+    pk: &serde_json::Value,
+    column: &str,
+    delta: i64,
+) -> Result<Option<i64>, String> {
+    let (sql, params) = cols::compile_increment_col(Dialect::Mysql, schema, pk, column, delta)?;
+    // No RETURNING on MySQL: read back on the same connection.
+    let read_back = cols::compile_read_column(Dialect::Mysql, schema, pk, column)?;
+    with_conn(|conn| {
+        conn.exec_drop(&sql, to_mysql_params(&params))
+            .map_err(|e| format!("mysql column increment: {e}"))?;
+        let text: Option<Option<String>> = conn
+            .exec_first(&read_back.sql, to_mysql_params(&read_back.params))
+            .map_err(|e| format!("mysql column increment read-back: {e}"))?;
+        Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
     })
 }
 

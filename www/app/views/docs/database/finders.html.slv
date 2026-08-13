@@ -230,13 +230,25 @@ q = User.where("role = @r", { "r": "admin" }).exists.to_query
             </p>
             <pre><code class="language-soli text-sm">user = User.find("user_id")
 
-# Atomic increment/decrement (CAS via `_rev` with bounded retry)
+# Atomic increment/decrement (CAS via `_rev` on SoliDB; one UPDATE on SQL)
 user.increment("view_count")       # +1
 user.increment("view_count", 5)    # +5
 user.decrement("stock")            # -1</code></pre>
 
             <p class="text-gray-400 mt-4 mb-2">
-                Each call drives an optimistic compare-and-swap loop against SoliDB rather than a plain read-modify-write on the in-memory instance:
+                Neither form is a plain read-modify-write on the in-memory instance. How atomicity
+                is reached depends on the backend &mdash; on the SQL adapters
+                (<code>postgres</code>, <code>mysql</code>, <code>sqlite</code>) the arithmetic
+                happens <strong class="text-white">inside one <code>UPDATE</code></strong>
+                (<code>jsonb_set</code> / <code>JSON_SET</code> / <code>json_set</code> over the
+                current value), so the row's own lock serializes concurrent bumps: no retry loop, no
+                contention error, and no <code>_rev</code>, which SQL document tables do not have.
+                A column-aware model increments the real column the same way
+                (<code>SET col = COALESCE(col, 0) + ?</code>), and a non-numeric column is refused by
+                name. A missing field or <code>NULL</code> column counts as 0.
+            </p>
+            <p class="text-gray-400 mb-2">
+                On SoliDB each call drives an optimistic compare-and-swap loop instead:
             </p>
             <ol class="list-decimal list-inside text-gray-400 mb-4 space-y-1">
                 <li>Re-fetch the document to read the current field value and its <code>_rev</code>.</li>
