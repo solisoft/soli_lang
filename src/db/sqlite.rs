@@ -1771,6 +1771,109 @@ mod tests {
         });
     }
 
+    /// A table created by the portable DDL compiler must be one column mode can
+    /// map — that is the contract that makes migrations and column-aware models
+    /// two halves of the same feature.
+    #[test]
+    fn a_migration_created_table_round_trips_through_column_mode() {
+        use super::super::ddl;
+
+        with_sqlite("ddl-roundtrip", || {
+            let spec = ddl::parse_table_spec(
+                "invoices",
+                &[
+                    ("id".to_string(), serde_json::json!("pk")),
+                    (
+                        "code".to_string(),
+                        serde_json::json!({ "type": "string", "limit": 32, "null": false }),
+                    ),
+                    ("total".to_string(), serde_json::json!("decimal(10,2)")),
+                    ("qty".to_string(), serde_json::json!("integer")),
+                    (
+                        "paid".to_string(),
+                        serde_json::json!({ "type": "boolean", "default": false }),
+                    ),
+                    ("meta".to_string(), serde_json::json!("json")),
+                    ("due_on".to_string(), serde_json::json!("date")),
+                    ("timestamps".to_string(), serde_json::json!(true)),
+                ],
+            )
+            .expect("spec");
+            let sql = ddl::create_table_sql(Dialect::Sqlite, &spec).expect("ddl");
+            execute_ddl(&sql).expect("create");
+            // Creating twice is a no-op, so a re-run cannot fail a migration.
+            execute_ddl(&sql).expect("idempotent");
+
+            let raw = introspect_table("invoices").expect("introspect");
+            let schema = std::sync::Arc::new(
+                super::super::introspect::build_schema("primary", "invoices", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema"),
+            );
+
+            // Every declared type came back as the Soli type it was written as.
+            assert_eq!(schema.pk, "id");
+            assert!(schema.pk_auto, "an INTEGER PRIMARY KEY is generated");
+            assert_eq!(schema.column("code").unwrap().ty, ColType::Text);
+            assert!(!schema.column("code").unwrap().nullable);
+            assert_eq!(schema.column("total").unwrap().ty, ColType::Decimal);
+            assert_eq!(schema.column("qty").unwrap().ty, ColType::Int);
+            assert_eq!(schema.column("paid").unwrap().ty, ColType::Bool);
+            assert_eq!(schema.column("meta").unwrap().ty, ColType::Json);
+            assert_eq!(schema.column("due_on").unwrap().ty, ColType::Date);
+            assert!(schema.has_created_at && schema.has_updated_at);
+
+            // And the table is writable through the column path.
+            let row = col_insert(
+                &schema,
+                &serde_json::json!({
+                    "code": "INV-1", "total": "99.90", "qty": 2,
+                    "paid": true, "meta": {"po": "A"}, "due_on": "2026-09-01"
+                }),
+            )
+            .expect("insert");
+            assert_eq!(row["id"], serde_json::json!(1));
+            // "99.90" comes back as "99.9": a SQLite DECIMAL column has NUMERIC
+            // *affinity*, not an exact numeric type, so the value is stored as a
+            // REAL and the trailing zero is not part of it. Postgres `numeric`
+            // and MySQL `decimal` do keep the scale. Declare the column TEXT if
+            // exact decimal text matters on SQLite.
+            assert_eq!(row["total"], "99.9");
+            assert_eq!(row["paid"], serde_json::json!(true));
+            assert_eq!(row["meta"]["po"], "A");
+            // The database default filled the timestamps the migration declared.
+            assert!(row["created_at"].is_string(), "{row}");
+
+            // A column added later is visible after the cache is dropped, the
+            // way a re-boot or a dev reload picks up an altered table.
+            let note = ddl::parse_column("note", &serde_json::json!({ "type": "text" })).unwrap();
+            execute_ddl(&ddl::add_column_sql(Dialect::Sqlite, "invoices", &note).unwrap())
+                .expect("add column");
+            execute_ddl(
+                &ddl::add_index_sql(
+                    Dialect::Sqlite,
+                    "invoices",
+                    &["code".to_string()],
+                    None,
+                    true,
+                )
+                .unwrap(),
+            )
+            .expect("add index");
+            super::super::introspect::clear_schema_cache();
+
+            let raw = introspect_table("invoices").expect("introspect");
+            let schema =
+                super::super::introspect::build_schema("primary", "invoices", raw, |t, _| {
+                    sqlite_coltype(t)
+                })
+                .expect("schema");
+            assert_eq!(schema.column("note").unwrap().ty, ColType::Text);
+            assert!(schema.column("note").unwrap().nullable);
+        });
+    }
+
     // ---------- job engine ----------
 
     fn enqueue_job(

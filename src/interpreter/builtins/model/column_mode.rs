@@ -192,6 +192,31 @@ pub fn column_query_from_qb(
     Ok(q)
 }
 
+/// Adopt a stored row onto an instance after a column-mode write.
+///
+/// A SQL write returns the row as the database now holds it, which is the only
+/// way a generated key, a column `DEFAULT`, or a database-side trigger becomes
+/// visible without a second query. The document path has no equivalent problem:
+/// there the document written *is* the document stored.
+///
+/// Framework metadata (`_key`, `_rev`, …) is left to the caller, which handles
+/// it identically for both paths. Returns true when the row was adopted.
+pub fn adopt_row_fields(
+    inst: &mut crate::interpreter::value::Instance,
+    row: &serde_json::Value,
+) -> bool {
+    let Some(map) = row.as_object() else {
+        return false;
+    };
+    for (key, value) in map {
+        if key.starts_with('_') {
+            continue;
+        }
+        inst.set(key.clone(), super::crud::json_to_value_owned(value.clone()));
+    }
+    true
+}
+
 /// Hydrate column rows into instances (or plain hashes), converting temporal
 /// columns to native DateTime values.
 pub fn hydrate_column_rows(
@@ -266,7 +291,13 @@ pub fn convert_temporal_fields(schema: &TableSchema, value: Value) -> Value {
 /// `Value::DateTime` is a Unix timestamp, so this reuses the same parser the
 /// `DateTime` builtins use.
 fn parse_datetime(raw: &str) -> Option<Value> {
-    crate::interpreter::builtins::datetime::helpers::datetime_parse(raw).map(Value::DateTime)
+    // `datetime_parse` answers in SECONDS; `Value::DateTime` is NANOSECONDS
+    // everywhere else in the runtime (see `Value::datetime_to_rfc3339`). Storing
+    // the seconds directly made every column-mode timestamp read as 1970 — and
+    // writing such a value back rewrote the row with that wrong date.
+    crate::interpreter::builtins::datetime::helpers::datetime_parse(raw)
+        .and_then(|secs| secs.checked_mul(1_000_000_000))
+        .map(Value::DateTime)
 }
 
 /// Introspect every declared column-aware model and validate the combination of

@@ -24,8 +24,39 @@ end
 ## Which backends run migrations
 
 Everything below is written for **SoliDB**, the default backend. Migrations also
-run on the SQL adapters (`postgres`, `mysql`, `sqlite`), with a smaller helper
-set — see [On the SQL adapters](#on-the-sql-adapters).
+run on the SQL adapters (`postgres`, `mysql`, `sqlite`), where they manage
+document tables *and* tables with **real columns** — see
+[On the SQL adapters](#on-the-sql-adapters).
+
+## Targeting a connection
+
+A migration can name the database it belongs to, so `soli db:migrate up` places
+it correctly with no CLI flag:
+
+```soli
+# db/migrations/20260813120000_create_events.sl
+connection "analytics"
+
+def up(db)
+  db.create_table("events", { "id": "pk", "name": "string" })
+end
+
+def down(db)
+  db.drop_table("events")
+end
+```
+
+- The declaration must be a top-level line; the runner reads it before running
+  anything, and it never executes as a statement.
+- **Each connection tracks its own versions.** A migration applied to
+  `analytics` is not marked applied on the default connection.
+- Without a declaration, a migration runs on `--connection` if given, else the
+  default connection.
+- `--connection NAME` acts as a **filter**: a migration that declares a
+  different database is held back (reported as skipped) rather than applied to
+  the wrong schema.
+- `soli db:migrate status` shows a Connection column as soon as one migration
+  declares one.
 
 ## CLI Commands
 
@@ -357,49 +388,102 @@ end
 
 ## On the SQL adapters
 
-On a `postgres`, `mysql`, or `sqlite` connection, a migration manages **document
-tables** (`_key` + `doc`). The helper set is deliberately small, and anything
-SoliDB-specific raises rather than being silently skipped:
+On a `postgres`, `mysql`, or `sqlite` connection a migration can build either
+kind of table:
 
-| Helper | On SQL |
-|--------|--------|
-| `db.create_table(name)` | ✓ creates the document table if absent |
-| `db.drop_table(name)` | ✓ |
-| `db.create_collection(name)` | ✓ alias of `create_table` (no type, or `"document"`) |
-| `db.drop_collection(name)` | ✓ alias of `drop_table` |
+- a **document table** (`_key` + `doc`) — `create_table("posts")` with no column
+  hash. Document tables are also auto-created on first write, so this is only
+  needed when you want the table up front or want an explicit rollback path.
+- a **column table** — `create_table("orders", { … })` with a column hash. These
+  are the tables [column-aware models](multi-database.md#column-aware-models-existing-databases)
+  map onto.
+
+Anything SoliDB-specific raises rather than being silently skipped.
+
+### Column tables
+
+```soli
+def up(db)
+  db.create_table("orders", {
+    "id":         "pk",
+    "code":       { "type": "string", "limit": 32, "null": false },
+    "amount":     "decimal(10,2)",
+    "qty":        "integer",
+    "paid":       { "type": "boolean", "default": false },
+    "meta":       "json",
+    "user_id":    { "type": "bigint", "references": "users" },
+    "timestamps": true
+  })
+  db.add_index("orders", ["code"], { "unique": true })
+end
+
+def down(db)
+  db.drop_table("orders")
+end
+```
+
+One migration, three backends: the types below are Soli's, and each adapter
+renders its own SQL. The rendered names are chosen so introspection reads the
+table back as the same Soli types — a table created this way is always one a
+column-aware model can map.
+
+| Soli type | Postgres | MySQL | SQLite |
+|---|---|---|---|
+| `pk` | `BIGSERIAL PRIMARY KEY` | `BIGINT AUTO_INCREMENT PRIMARY KEY` | `INTEGER PRIMARY KEY AUTOINCREMENT` |
+| `uuid_pk` | `UUID PRIMARY KEY` | `CHAR(36) PRIMARY KEY` | `UUID PRIMARY KEY` |
+| `string` / `string(n)` | `VARCHAR(255)` / `VARCHAR(n)` | same | same |
+| `text` | `TEXT` | `TEXT` | `TEXT` |
+| `integer` | `INTEGER` | `INT` | `INTEGER` |
+| `bigint` | `BIGINT` | `BIGINT` | `BIGINT` |
+| `float` | `DOUBLE PRECISION` | `DOUBLE` | `REAL` |
+| `decimal(p,s)` | `NUMERIC(p,s)` | `DECIMAL(p,s)` | `DECIMAL(p,s)` |
+| `boolean` | `BOOLEAN` | `TINYINT(1)` | `BOOLEAN` |
+| `date` | `DATE` | `DATE` | `DATE` |
+| `datetime` | `TIMESTAMPTZ` | `DATETIME` | `DATETIME` |
+| `json` | `JSONB` | `JSON` | `JSON` |
+| `uuid` | `UUID` | `CHAR(36)` | `UUID` |
+| `binary` | `BYTEA` | `BLOB` | `BLOB` |
+
+Column options (the hash form): `type`, `limit` (string only), `null`, `unique`,
+`primary_key`, `default`, `references`. Plus the table-level `"timestamps": true`,
+which adds `created_at` / `updated_at` as `NOT NULL DEFAULT CURRENT_TIMESTAMP`.
+
+`"references": "users"` points at that table's `id`; write `"users(uuid)"` to
+name another column. On MySQL the constraint is emitted at table level, because
+MySQL parses an inline `REFERENCES` and then ignores it.
+
+### Schema helpers
+
+| Helper | Notes |
+|--------|-------|
+| `db.create_table(name)` | Document table (`_key` + `doc`) |
+| `db.create_table(name, columns)` | Column table, as above |
+| `db.drop_table(name)` | Either kind |
+| `db.add_column(table, name, type)` | Type string or options hash |
+| `db.drop_column(table, name)` | |
+| `db.rename_column(table, old, new)` | MySQL 8+ |
+| `db.rename_table(old, new)` | |
+| `db.add_index(table, columns, options?)` | `{ "unique": true, "name": "…" }`; the name defaults to `idx_<table>_<columns>` |
+| `db.drop_index(table, name)` | |
+| `db.create_index(table, name, fields, options?)` | The SoliDB-shaped call, so a shared migration keeps working |
+| `db.execute(sql)` | Escape hatch — engine-specific by definition |
+| `db.create_collection(name)` / `db.drop_collection(name)` | Aliases for document tables |
 | `db.create_collection(name, "edge"/"timeseries"/…)` | ✗ raises — typed collections are SoliDB-only |
-| `db.create_index` / index helpers | ✗ raises — use your own DDL tooling |
 | `db.query(sdbql)` | ✗ raises — SDBQL has no meaning on SQL |
 | `db.create_columnar`, `db.create_vector_index` | ✗ raise — SoliDB-only |
 
-```soli
-# Runs on SoliDB and on every SQL adapter
-def up(db: Any)
-  db.create_table("posts")
-end
+Two limits worth knowing before you hit them:
 
-def down(db: Any)
-  db.drop_table("posts")
-end
-```
+- **SQLite's `ALTER TABLE` is narrow.** It cannot add a `UNIQUE` or primary-key
+  column to an existing table (add the column, then `add_index`), and it cannot
+  add a `NOT NULL` column without a `default`. Both are reported as errors that
+  name the way around them.
+- **Changing a column's type is not portable**, so there is no
+  `change_column`. Use `db.execute` for that, or add-copy-drop.
 
-Target a named connection from `config/database.toml`:
-
-```bash
-soli db:migrate up --connection legacy
-soli db:migrate status -c legacy
-soli db:migrate down --connection legacy
-```
-
-Two things to know:
-
-- **Column-aware models are never migrated.** A model that declares
-  `table "orders"` maps to a schema Soli does not own, so Soli issues no DDL
-  against it — manage that schema with your own tooling. See
-  [Column-aware models](multi-database.md#column-aware-models-existing-databases).
-- **Document tables are auto-created on first write**, so a migration is only
-  needed when you want the table to exist ahead of time (or want an explicit
-  rollback path).
+**Models never issue DDL.** A column-aware model maps to a table it does not
+own: no auto-create, no index sync, no implicit `ALTER`. Migrations are the one
+place Soli changes a column table, and only where you wrote it.
 
 ## Environment Configuration
 

@@ -44,6 +44,7 @@
 //! ### Raw queries
 //! - `db.query(sdbql)` - Execute a raw SDBQL query
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -152,6 +153,10 @@ pub struct Migration {
     pub version: String,
     pub name: String,
     pub path: PathBuf,
+    /// Connection declared inside the file with `connection "name"`. A
+    /// migration knows which database it belongs to, so `soli db:migrate up`
+    /// needs no `--connection` flag to place it correctly.
+    pub connection: Option<String>,
 }
 
 impl Migration {
@@ -173,10 +178,18 @@ impl Migration {
             return None;
         }
 
+        // Read the declaration now: the runner must know the target before it
+        // can look up which migrations that database has already applied.
+        let connection = fs::read_to_string(path)
+            .ok()
+            .as_deref()
+            .and_then(scan_connection);
+
         Some(Self {
             version,
             name,
             path: path.to_path_buf(),
+            connection,
         })
     }
 
@@ -186,10 +199,67 @@ impl Migration {
     }
 }
 
+/// Find a top-level `connection "name"` declaration in a migration's source.
+///
+/// This is a lexical scan rather than a parse: the runner needs the target
+/// before it runs anything (to pick the right `_migrations` table), and the file
+/// itself only executes later. Comment lines are ignored so a commented-out
+/// declaration does not count.
+pub fn scan_connection(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("connection") else {
+            continue;
+        };
+        // `connection "x"` and `connection("x")` both read naturally.
+        let rest = rest.trim_start();
+        let rest = rest.strip_prefix('(').unwrap_or(rest).trim_start();
+        let rest = rest.strip_prefix('"')?;
+        let (name, _) = rest.split_once('"')?;
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        return Some(name.to_string());
+    }
+    None
+}
+
+/// Comment out the `connection "name"` line before the file is executed.
+///
+/// The declaration is metadata for the runner, not a statement: at top level it
+/// would call the model DSL's `connection` builtin with the wrong arity. The
+/// line is replaced rather than removed so error messages keep their line
+/// numbers.
+pub fn strip_connection_declaration(source: &str) -> String {
+    let mut out = Vec::with_capacity(source.lines().count());
+    let mut done = false;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let is_declaration = !done
+            && !trimmed.starts_with('#')
+            && !trimmed.starts_with("//")
+            && trimmed.starts_with("connection")
+            && scan_connection(trimmed).is_some();
+        if is_declaration {
+            done = true;
+            out.push(format!("# {line}   (target read by the migration runner)"));
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    out.join("\n")
+}
+
 /// Migration runner that handles up/down/status operations
 pub struct MigrationRunner {
     config: DbConfig,
     migrations_path: PathBuf,
+    /// `--connection NAME` from the CLI: restricts the run to that database.
+    connection_filter: Option<String>,
 }
 
 impl MigrationRunner {
@@ -197,7 +267,60 @@ impl MigrationRunner {
         Self {
             config,
             migrations_path: app_path.join("db/migrations"),
+            connection_filter: None,
         }
+    }
+
+    /// Restrict the run to one named connection (`db:migrate up -c legacy`).
+    pub fn with_connection_filter(mut self, name: Option<&str>) -> Self {
+        self.connection_filter = name.map(str::to_string);
+        self
+    }
+
+    /// Which connection a migration runs on: its own declaration first, then
+    /// the CLI flag, then the default connection.
+    fn target_of(&self, migration: &Migration) -> Option<String> {
+        migration
+            .connection
+            .clone()
+            .or_else(|| self.connection_filter.clone())
+    }
+
+    /// True when `--connection` was given and this migration belongs elsewhere.
+    fn filtered_out(&self, migration: &Migration) -> bool {
+        match (&self.connection_filter, &migration.connection) {
+            (Some(filter), Some(declared)) => filter != declared,
+            _ => false,
+        }
+    }
+
+    /// Run `f` against `target`, or the ambient connection when there is none.
+    fn run_on<T>(
+        &self,
+        target: Option<&str>,
+        f: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        match target {
+            Some(name) => crate::db::with_connection(name, f),
+            None => f(),
+        }
+    }
+
+    /// Applied versions for `target`, bootstrapping its `_migrations` table.
+    /// Cached because several migrations usually share one connection.
+    fn applied_for<'a>(
+        &self,
+        cache: &'a mut HashMap<Option<String>, Vec<String>>,
+        target: Option<String>,
+    ) -> Result<&'a Vec<String>, String> {
+        if !cache.contains_key(&target) {
+            let applied = self.run_on(target.as_deref(), || {
+                self.ensure_database()?;
+                self.get_applied_migrations()
+            })?;
+            cache.insert(target.clone(), applied);
+        }
+        Ok(cache.get(&target).expect("just inserted"))
     }
 
     /// Ensure the selected adapter is ready (SoliDB default, or SQL pool).
@@ -383,9 +506,11 @@ impl MigrationRunner {
 
     /// Execute a migration's up() or down() function
     fn execute_migration(&self, migration: &Migration, direction: &str) -> Result<(), String> {
-        // Read migration file
+        // Read migration file. The connection declaration was already read at
+        // discovery time; neutralize it so it is not executed as a statement.
         let source = fs::read_to_string(&migration.path)
             .map_err(|e| format!("Failed to read migration file: {}", e))?;
+        let source = strip_connection_declaration(&source);
 
         if crate::db::is_sql() {
             return self.execute_migration_sql(&source, direction);
@@ -521,12 +646,55 @@ let db = MigrationDb();
 {source}
 
 class MigrationDb {{
-    fn create_table(name: String) -> Any {{
-        return __soli_sql_create_table(name);
+    # No column hash -> a document table (_key + doc). With one -> real columns.
+    fn create_table(name: String, columns: Any = null) -> Any {{
+        if (columns == null) {{
+            return __soli_sql_create_table(name);
+        }}
+        return __soli_sql_create_columns(name, columns);
     }}
 
     fn drop_table(name: String) -> Any {{
         return __soli_sql_drop_table(name);
+    }}
+
+    fn add_column(table: String, name: String, column_type: Any) -> Any {{
+        return __soli_sql_add_column(table, name, column_type);
+    }}
+
+    fn drop_column(table: String, name: String) -> Any {{
+        return __soli_sql_drop_column(table, name);
+    }}
+
+    # `from` is a reserved word in Soli, hence the explicit parameter names.
+    fn rename_column(table: String, old_name: String, new_name: String) -> Any {{
+        return __soli_sql_rename_column(table, old_name, new_name);
+    }}
+
+    fn rename_table(old_name: String, new_name: String) -> Any {{
+        return __soli_sql_rename_table(old_name, new_name);
+    }}
+
+    fn add_index(table: String, columns: Any, options: Any = null) -> Any {{
+        return __soli_sql_add_index(table, columns, options);
+    }}
+
+    fn drop_index(table: String, name: String) -> Any {{
+        return __soli_sql_drop_index(table, name);
+    }}
+
+    # SoliDB-shaped index call, so a shared migration keeps working on SQL.
+    fn create_index(table: String, name: String, fields: Any, options: Any = null) -> Any {{
+        let opts = {{ "name": name }};
+        if (options != null && options["unique"] == true) {{
+            opts["unique"] = true;
+        }}
+        return __soli_sql_add_index(table, fields, opts);
+    }}
+
+    # Anything the portable DSL cannot express. Engine-specific by definition.
+    fn execute(sql: String) -> Any {{
+        return __soli_sql_execute(sql);
     }}
 
     # Document-collection alias — same as create_table on SQL adapters.
@@ -566,65 +734,107 @@ let db = MigrationDb();
 
     /// Run all pending migrations
     pub fn migrate_up(&self) -> Result<MigrationResult, String> {
-        self.ensure_database()?;
         let migrations = self.get_migrations()?;
-        let applied = self.get_applied_migrations()?;
-
-        let pending: Vec<&Migration> = migrations
-            .iter()
-            .filter(|m| !applied.contains(&m.version))
-            .collect();
-
-        if pending.is_empty() {
-            return Ok(MigrationResult {
-                applied: vec![],
-                message: "No pending migrations".to_string(),
-            });
-        }
-
+        let mut cache: HashMap<Option<String>, Vec<String>> = HashMap::new();
         let mut applied_migrations = Vec::new();
+        let mut skipped = 0usize;
 
-        for migration in pending {
-            println!("  \x1b[33mMigrating\x1b[0m {}", migration.full_name());
+        for migration in &migrations {
+            if self.filtered_out(migration) {
+                skipped += 1;
+                continue;
+            }
+            let target = self.target_of(migration);
+            if self
+                .applied_for(&mut cache, target.clone())?
+                .contains(&migration.version)
+            {
+                continue;
+            }
 
-            self.execute_migration(migration, "up")?;
-            self.record_migration(migration)?;
+            match &migration.connection {
+                Some(name) => println!(
+                    "  \x1b[33mMigrating\x1b[0m {} \x1b[90m[{}]\x1b[0m",
+                    migration.full_name(),
+                    name
+                ),
+                None => println!("  \x1b[33mMigrating\x1b[0m {}", migration.full_name()),
+            }
+
+            self.run_on(target.as_deref(), || {
+                self.execute_migration(migration, "up")?;
+                self.record_migration(migration)
+            })?;
+            // The version table for this connection just changed.
+            if let Some(applied) = cache.get_mut(&target) {
+                applied.push(migration.version.clone());
+            }
 
             println!("  \x1b[32m   Applied\x1b[0m {}", migration.full_name());
-
             applied_migrations.push(migration.full_name());
         }
 
+        if applied_migrations.is_empty() {
+            return Ok(MigrationResult {
+                applied: vec![],
+                message: skip_note("No pending migrations", skipped),
+            });
+        }
+
         Ok(MigrationResult {
-            message: format!("Applied {} migration(s)", applied_migrations.len()),
+            message: skip_note(
+                &format!("Applied {} migration(s)", applied_migrations.len()),
+                skipped,
+            ),
             applied: applied_migrations,
         })
     }
 
     /// Rollback the last migration
     pub fn migrate_down(&self) -> Result<MigrationResult, String> {
-        self.ensure_database()?;
         let migrations = self.get_migrations()?;
-        let applied = self.get_applied_migrations()?;
+        let mut cache: HashMap<Option<String>, Vec<String>> = HashMap::new();
 
-        if applied.is_empty() {
+        // The newest applied migration wins, checked against the version table
+        // of whichever connection each one targets.
+        let mut newest: Option<&Migration> = None;
+        for migration in &migrations {
+            if self.filtered_out(migration) {
+                continue;
+            }
+            let target = self.target_of(migration);
+            if !self
+                .applied_for(&mut cache, target)?
+                .contains(&migration.version)
+            {
+                continue;
+            }
+            if newest.is_none_or(|current| migration.version > current.version) {
+                newest = Some(migration);
+            }
+        }
+
+        let Some(migration) = newest else {
             return Ok(MigrationResult {
                 applied: vec![],
                 message: "No migrations to rollback".to_string(),
             });
+        };
+
+        match &migration.connection {
+            Some(name) => println!(
+                "  \x1b[33mRolling back\x1b[0m {} \x1b[90m[{}]\x1b[0m",
+                migration.full_name(),
+                name
+            ),
+            None => println!("  \x1b[33mRolling back\x1b[0m {}", migration.full_name()),
         }
 
-        // Get the last applied migration
-        let last_version = applied.last().unwrap();
-        let migration = migrations
-            .iter()
-            .find(|m| &m.version == last_version)
-            .ok_or_else(|| format!("Migration {} not found in files", last_version))?;
-
-        println!("  \x1b[33mRolling back\x1b[0m {}", migration.full_name());
-
-        self.execute_migration(migration, "down")?;
-        self.remove_migration_record(migration)?;
+        let target = self.target_of(migration);
+        self.run_on(target.as_deref(), || {
+            self.execute_migration(migration, "down")?;
+            self.remove_migration_record(migration)
+        })?;
 
         println!("  \x1b[32m   Reverted\x1b[0m {}", migration.full_name());
 
@@ -636,18 +846,23 @@ let db = MigrationDb();
 
     /// Show migration status
     pub fn status(&self) -> Result<MigrationStatus, String> {
-        self.ensure_database()?;
         let migrations = self.get_migrations()?;
-        let applied = self.get_applied_migrations()?;
+        let mut cache: HashMap<Option<String>, Vec<String>> = HashMap::new();
 
-        let statuses: Vec<MigrationStatusEntry> = migrations
-            .iter()
-            .map(|m| MigrationStatusEntry {
+        let mut statuses: Vec<MigrationStatusEntry> = Vec::with_capacity(migrations.len());
+        for m in &migrations {
+            if self.filtered_out(m) {
+                continue;
+            }
+            let target = self.target_of(m);
+            let applied = self.applied_for(&mut cache, target)?.contains(&m.version);
+            statuses.push(MigrationStatusEntry {
                 version: m.version.clone(),
                 name: m.name.clone(),
-                applied: applied.contains(&m.version),
-            })
-            .collect();
+                applied,
+                connection: m.connection.clone(),
+            });
+        }
 
         let pending_count = statuses.iter().filter(|s| !s.applied).count();
         let applied_count = statuses.iter().filter(|s| s.applied).count();
@@ -678,6 +893,16 @@ pub struct MigrationStatusEntry {
     pub version: String,
     pub name: String,
     pub applied: bool,
+    /// Connection declared in the file, when it declares one.
+    pub connection: Option<String>,
+}
+
+/// Append "(N skipped …)" when `--connection` held migrations back.
+fn skip_note(message: &str, skipped: usize) -> String {
+    if skipped == 0 {
+        return message.to_string();
+    }
+    format!("{message} ({skipped} skipped — declared another connection)")
 }
 
 /// Generate a new migration file
@@ -702,29 +927,44 @@ pub fn generate_migration(app_path: &Path, name: &str) -> Result<PathBuf, String
 
     // Generate migration template
     let template = format!(
-        r#"// Migration: {}
-// Created: {}
+        r#"# Migration: {}
+# Created: {}
+#
+# Runs on the default connection. To target another one, uncomment this —
+# then `soli db:migrate up` places it correctly with no --connection flag:
+#
+# connection "legacy"
 
 fn up(db: Any) -> Any {{
-    // Collection helpers:
-    //   db.create_collection("users")
-    //   db.drop_collection("users")
-    //   db.list_collections()
-    //   db.collection_stats("users")
-    //
-    // Index helpers:
-    //   db.create_index("users", "idx_email", ["email"], {{ "unique": true }})
-    //   db.create_index("users", "idx_name", ["first_name", "last_name"], {{ "sparse": true }})
-    //   db.drop_index("users", "idx_email")
-    //   db.list_indexes("users")
-    //
-    // Raw SDBQL queries:
-    //   db.query("FOR doc IN users RETURN doc")
-    //   db.query("INSERT {{ name: 'value' }} INTO users")
+    # SoliDB collection helpers:
+    #   db.create_collection("users")
+    #   db.drop_collection("users")
+    #   db.create_index("users", "idx_email", ["email"], {{ "unique": true }})
+    #   db.query("FOR doc IN users RETURN doc")
+    #
+    # SQL adapters (postgres / mysql / sqlite) — a document table:
+    #   db.create_table("users")
+    #
+    # SQL adapters — a table with real columns, portable across all three:
+    #   db.create_table("users", {{
+    #     "id":         "pk",
+    #     "email":      {{ "type": "string", "limit": 255, "null": false }},
+    #     "age":        "integer",
+    #     "balance":    "decimal(10,2)",
+    #     "active":     {{ "type": "boolean", "default": true }},
+    #     "settings":   "json",
+    #     "team_id":    {{ "type": "bigint", "references": "teams" }},
+    #     "timestamps": true
+    #   }})
+    #   db.add_index("users", ["email"], {{ "unique": true }})
+    #   db.add_column("users", "nickname", "string")
+    #   db.rename_column("users", "nickname", "handle")
+    #   db.drop_column("users", "handle")
+    #   db.execute("…")   # engine-specific escape hatch
 }}
 
 fn down(db: Any) -> Any {{
-    // Rollback the changes made in up()
+    # Rollback the changes made in up()
 }}
 "#,
         name,
@@ -750,8 +990,20 @@ pub fn print_status(status: &MigrationStatus) {
         return;
     }
 
-    println!("  {:14}  {:30}  {:10}", "Version", "Name", "Status");
-    println!("  {:-<14}  {:-<30}  {:-<10}", "", "", "");
+    // Only show the connection column when a migration actually declares one,
+    // so single-database apps see the same table as before.
+    let show_connection = status.entries.iter().any(|e| e.connection.is_some());
+
+    if show_connection {
+        println!(
+            "  {:14}  {:30}  {:12}  {:10}",
+            "Version", "Name", "Connection", "Status"
+        );
+        println!("  {:-<14}  {:-<30}  {:-<12}  {:-<10}", "", "", "", "");
+    } else {
+        println!("  {:14}  {:30}  {:10}", "Version", "Name", "Status");
+        println!("  {:-<14}  {:-<30}  {:-<10}", "", "", "");
+    }
 
     for entry in &status.entries {
         let status_str = if entry.applied {
@@ -760,7 +1012,17 @@ pub fn print_status(status: &MigrationStatus) {
             "\x1b[33m  down  \x1b[0m"
         };
 
-        println!("  {:14}  {:30}  {}", entry.version, entry.name, status_str);
+        if show_connection {
+            println!(
+                "  {:14}  {:30}  {:12}  {}",
+                entry.version,
+                entry.name,
+                entry.connection.as_deref().unwrap_or("(default)"),
+                status_str
+            );
+        } else {
+            println!("  {:14}  {:30}  {}", entry.version, entry.name, status_str);
+        }
     }
 
     println!();
@@ -769,4 +1031,116 @@ pub fn print_status(status: &MigrationStatus) {
         status.applied_count, status.pending_count
     );
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scans_a_declared_connection() {
+        assert_eq!(
+            scan_connection("connection \"legacy\"\n\ndef up(db)\nend\n").as_deref(),
+            Some("legacy")
+        );
+        // Both spellings read naturally.
+        assert_eq!(
+            scan_connection("connection(\"warehouse\")").as_deref(),
+            Some("warehouse")
+        );
+        // Leading comments and blank lines do not hide it.
+        assert_eq!(
+            scan_connection("# Migration: create orders\n\nconnection \"analytics\"\n").as_deref(),
+            Some("analytics")
+        );
+    }
+
+    #[test]
+    fn a_file_without_a_declaration_targets_the_default() {
+        assert_eq!(
+            scan_connection("def up(db)\n  db.create_table(\"posts\")\nend"),
+            None
+        );
+        // A commented-out declaration must not count.
+        assert_eq!(
+            scan_connection("# connection \"legacy\"\ndef up(db)\nend"),
+            None
+        );
+        assert_eq!(scan_connection("// connection \"legacy\""), None);
+        // Neither does a mention inside other code.
+        assert_eq!(
+            scan_connection("def up(db)\n  print(\"connection \\\"legacy\\\"\")\nend"),
+            None
+        );
+        assert_eq!(scan_connection("connection \"\""), None);
+    }
+
+    #[test]
+    fn the_declaration_is_neutralized_before_execution() {
+        let source = "connection \"analytics\"\n\ndef up(db)\n  db.create_table(\"events\")\nend\n";
+        let stripped = strip_connection_declaration(source);
+        // Commented out, so it is not executed as a call…
+        assert!(stripped.lines().next().unwrap().starts_with("# connection"));
+        // …with the line count preserved, so error line numbers still match.
+        assert_eq!(stripped.lines().count(), source.trim_end().lines().count());
+        assert!(stripped.contains("db.create_table(\"events\")"));
+        // A file without a declaration is untouched.
+        let plain = "def up(db)\nend";
+        assert_eq!(strip_connection_declaration(plain), plain);
+    }
+
+    #[test]
+    fn the_cli_flag_is_a_filter_not_an_override() {
+        let migration = |connection: Option<&str>| Migration {
+            version: "20260812000001".into(),
+            name: "create_orders".into(),
+            path: PathBuf::from("db/migrations/20260812000001_create_orders.sl"),
+            connection: connection.map(str::to_string),
+        };
+        let runner = |filter: Option<&str>| {
+            MigrationRunner::new(
+                DbConfig::new("http://localhost:6745", "test"),
+                Path::new("."),
+            )
+            .with_connection_filter(filter)
+        };
+
+        // No flag: the file's own declaration decides, else the default.
+        assert_eq!(
+            runner(None)
+                .target_of(&migration(Some("legacy")))
+                .as_deref(),
+            Some("legacy")
+        );
+        assert_eq!(runner(None).target_of(&migration(None)), None);
+
+        // With a flag: undeclared migrations follow it…
+        assert_eq!(
+            runner(Some("legacy"))
+                .target_of(&migration(None))
+                .as_deref(),
+            Some("legacy")
+        );
+        // …a declared migration keeps its own target…
+        assert_eq!(
+            runner(Some("legacy"))
+                .target_of(&migration(Some("legacy")))
+                .as_deref(),
+            Some("legacy")
+        );
+        // …and one belonging to another database is held back rather than
+        // being run against the wrong schema.
+        assert!(runner(Some("legacy")).filtered_out(&migration(Some("warehouse"))));
+        assert!(!runner(Some("legacy")).filtered_out(&migration(Some("legacy"))));
+        assert!(!runner(None).filtered_out(&migration(Some("warehouse"))));
+    }
+
+    #[test]
+    fn skip_note_only_appears_when_something_was_skipped() {
+        assert_eq!(
+            skip_note("Applied 2 migration(s)", 0),
+            "Applied 2 migration(s)"
+        );
+        assert!(skip_note("No pending migrations", 3).contains("3 skipped"));
+    }
 }

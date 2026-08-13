@@ -337,6 +337,26 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     )
 }
 
+/// Run raw DDL on the active SQL connection.
+pub fn execute_ddl(sql: &str) -> Result<(), String> {
+    route_sql!(
+        super::postgres::execute_ddl(sql),
+        super::mysql::execute_ddl(sql),
+        super::sqlite::execute_ddl(sql)
+    )
+}
+
+/// Dialect of the active connection — for compiling DDL before executing it.
+pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
+    use super::sql_compile::Dialect;
+    match active_spec()?.adapter {
+        Adapter::Postgres => Ok(Dialect::Postgres),
+        Adapter::Mysql => Ok(Dialect::Mysql),
+        Adapter::Sqlite => Ok(Dialect::Sqlite),
+        Adapter::Solidb => Err("SQL dialect requested on a solidb connection".into()),
+    }
+}
+
 pub fn ensure_migrations_table() -> Result<(), String> {
     route_sql!(
         super::postgres::ensure_migrations_table(),

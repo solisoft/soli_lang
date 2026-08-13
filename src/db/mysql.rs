@@ -579,6 +579,11 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     })
 }
 
+/// Run raw DDL (migrations' column-table helpers, and `db.execute`).
+pub fn execute_ddl(sql: &str) -> Result<(), String> {
+    with_conn(|conn| conn.query_drop(sql).map_err(|e| format!("mysql ddl: {e}")))
+}
+
 pub fn ensure_migrations_table() -> Result<(), String> {
     with_conn(|conn| {
         conn.query_drop(migrations_table_sql_d(Dialect::Mysql))

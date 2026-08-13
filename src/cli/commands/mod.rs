@@ -2311,7 +2311,8 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option
                 println!("  \x1b[1mRunning migrations...\x1b[0m");
                 println!();
 
-                let runner = MigrationRunner::new(config, app_path);
+                let runner =
+                    MigrationRunner::new(config, app_path).with_connection_filter(connection);
                 match runner.migrate_up() {
                     Ok(result) => {
                         println!();
@@ -2329,7 +2330,8 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option
                 println!("  \x1b[1mRolling back migration...\x1b[0m");
                 println!();
 
-                let runner = MigrationRunner::new(config, app_path);
+                let runner =
+                    MigrationRunner::new(config, app_path).with_connection_filter(connection);
                 match runner.migrate_down() {
                     Ok(result) => {
                         println!();
@@ -2343,7 +2345,8 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option
                 }
             }
             DbMigrateAction::Status => {
-                let runner = MigrationRunner::new(config, app_path);
+                let runner =
+                    MigrationRunner::new(config, app_path).with_connection_filter(connection);
                 match runner.status() {
                     Ok(status) => {
                         solilang::migration::print_status(&status);
@@ -2370,11 +2373,10 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option
         }
     };
 
-    if let Some(name) = connection {
-        solilang::db::with_connection(name, run);
-    } else {
-        run();
-    }
+    // Each migration picks its own connection (its own `connection "name"`, or
+    // the --connection flag as the fallback), so the runner does the routing
+    // rather than the whole command running inside one connection.
+    run();
 }
 
 /// `soli db:indexes [folder]` — load the app's models (so the class-body

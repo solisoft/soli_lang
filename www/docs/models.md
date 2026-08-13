@@ -24,8 +24,10 @@ rather than returning wrong rows.
 | Graph/edge models, vector search, timeseries, columnar, `grouped {}` | ✓ | ✗ |
 | Encrypted attributes, STI, counter caches | ✓ | ✓ on document tables, ✗ in column mode |
 
-A model that declares `table "orders"` runs in **column mode** against an
-existing relational schema; its narrower support line is documented under
+A model that declares `table "orders"` runs in **column mode** against a real
+relational schema — one you already have, or one a
+[migration](migrations.md#on-the-sql-adapters) creates with a column hash. Its
+narrower support line is documented under
 [Column-aware models](multi-database.md#column-aware-models-existing-databases).
 
 ## Defining Models

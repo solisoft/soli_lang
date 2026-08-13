@@ -196,9 +196,12 @@ foreign keys on.
 
 - **One writer at a time.** WAL lets readers run during a write, but writers
   serialize. A busy write path across many processes belongs on Postgres.
-- **No exact numeric type.** `DECIMAL`/`NUMERIC` is affinity only. Values are
-  written as text so the stored scale is kept, and aggregates come back through
-  `REAL` — the same precision caveat as the other adapters, one step earlier.
+- **No exact numeric type.** A `DECIMAL`/`NUMERIC` column has NUMERIC
+  *affinity*, not an exact type: SQLite converts the value to a `REAL`, so a
+  stored `19.90` reads back as `19.9` and a value beyond f64's exact range loses
+  precision on write, not just on read. Postgres `numeric` and MySQL `decimal`
+  keep the scale. If exact decimal text matters on SQLite, declare the column
+  `TEXT` and treat it as a string in Soli.
 - **Backups are file copies** — use `.backup` / `VACUUM INTO`, not a `cp` of a
   live WAL database.
 - **`:memory:` is one connection.** The pool is forced to a single connection,
@@ -223,7 +226,9 @@ class Order < Model
 end
 ```
 
-`table "…"` is what switches the model into **column mode**. Soli then reads and writes the table's real columns, and never creates or alters it.
+`table "…"` is what switches the model into **column mode**. The model then reads and writes the table's real columns, and never creates or alters it.
+
+The table can be one you already have, or one a **migration** builds: `create_table("orders", { … })` declares real columns portably across Postgres, MySQL, and SQLite, and the types it emits are the ones introspection reads back — see [Migrations → On the SQL adapters](migrations.md#on-the-sql-adapters).
 
 ### What Soli learns, and when
 
@@ -287,13 +292,15 @@ Each of these raises an error naming the feature rather than returning wrong dat
 | `delete_all` / `update_all` | Slice 2 |
 | `soft_delete`, `encrypts`, STI, `counter_cache` | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
 | `grouped {}` coalescing, graph, vector, columnar, timeseries | SoliDB features |
-| Migrations against a column table | The schema is yours — manage it with your own tooling; Soli issues no DDL in column mode |
+| Auto-create / index sync / implicit `ALTER` | The schema is Soli's only where you wrote it: **models** never issue DDL in column mode. A [migration](migrations.md#on-the-sql-adapters) can create and alter column tables explicitly |
 
 Doc-store models on the same connection keep working exactly as before; column mode is per model.
 
 ### Getting data in
 
-If you would rather migrate a SoliDB collection into a table Soli manages, use `soli db:import` (below) and skip column mode entirely. Column mode is for schemas you cannot or do not want to change.
+If you would rather migrate a SoliDB collection into a table Soli manages, use `soli db:import` (below) and skip column mode entirely.
+
+For a **new** schema, write a migration with a column hash: you get real columns without leaving Soli. Column mode also still does what it was built for — adopting a schema you cannot or do not want to change.
 
 ## Cross-connection rules
 

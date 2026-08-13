@@ -42,8 +42,9 @@ end</code></pre>
 
             <strong class="text-white">Which backends?</strong> Everything on this page is written for
             <strong class="text-white">SoliDB</strong>, the default. Migrations also run on the SQL
-            adapters (<code>postgres</code>, <code>mysql</code>, <code>sqlite</code>) with a smaller
-            helper set &mdash; see <a href="#sql-adapters" class="text-amber-400 hover:underline">On the SQL adapters</a>.
+            adapters (<code>postgres</code>, <code>mysql</code>, <code>sqlite</code>), where they build
+            document tables <em>and</em> tables with real columns &mdash; see
+            <a href="#sql-adapters" class="text-amber-400 hover:underline">On the SQL adapters</a>.
         </p>
     </div>
 
@@ -375,87 +376,153 @@ print("Seeded users")</code></pre>
         </div>
     </div>
 
+    <h2 id="connection" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Targeting a connection</h2>
+    <p class="text-gray-400 mb-6">
+        A migration can name the database it belongs to, so <code class="text-cyan-400">soli db:migrate up</code>
+        places it correctly with no CLI flag.
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260813120000_create_events.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">connection "analytics"
+
+<span class="text-orange-300">def</span> up(db)
+  db.create_table("events", { "id": "pk", "name": "string" })
+<span class="text-orange-300">end</span>
+
+<span class="text-orange-300">def</span> down(db)
+  db.drop_table("events")
+<span class="text-orange-300">end</span></code></pre>
+        </div>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li>The declaration is a top-level line. The runner reads it before running anything, and it never executes as a statement.</li>
+        <li><strong class="text-white">Each connection tracks its own versions</strong> &mdash; a migration applied to <code class="text-cyan-400">analytics</code> is not marked applied on the default connection.</li>
+        <li>Without a declaration, a migration runs on <code class="text-cyan-400">--connection</code> if given, else the default connection.</li>
+        <li><code class="text-cyan-400">--connection NAME</code> is a <strong class="text-white">filter</strong>: a migration declaring another database is held back (and reported as skipped) rather than applied to the wrong schema.</li>
+        <li><code class="text-cyan-400">soli db:migrate status</code> grows a Connection column as soon as one migration declares one.</li>
+    </ul>
+
     <h2 id="sql-adapters" class="text-2xl font-bold text-white mb-6 scroll-mt-24">On the SQL adapters</h2>
     <p class="text-gray-400 mb-6">
         On a <code class="text-cyan-400">postgres</code>, <code class="text-cyan-400">mysql</code>, or
-        <code class="text-cyan-400">sqlite</code> connection, a migration manages
-        <strong class="text-white">document tables</strong> (<code class="text-cyan-400">_key</code> +
-        <code class="text-cyan-400">doc</code>). The helper set is deliberately small, and anything
-        SoliDB-specific raises rather than being silently skipped.
+        <code class="text-cyan-400">sqlite</code> connection a migration can build either kind of table:
+        a <strong class="text-white">document table</strong> (<code class="text-cyan-400">_key</code> +
+        <code class="text-cyan-400">doc</code>) from <code class="text-cyan-400">create_table("posts")</code>
+        with no column hash, or a <strong class="text-white">column table</strong> from
+        <code class="text-cyan-400">create_table("orders", { … })</code> &mdash; the tables
+        <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">column-aware models</a>
+        map onto. Anything SoliDB-specific raises rather than being silently skipped.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Column tables</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"><span class="text-orange-300">def</span> up(db)
+  db.create_table("orders", {
+    "id":         "pk",
+    "code":       { "type": "string", "limit": 32, "null": false },
+    "amount":     "decimal(10,2)",
+    "qty":        "integer",
+    "paid":       { "type": "boolean", "default": false },
+    "meta":       "json",
+    "user_id":    { "type": "bigint", "references": "users" },
+    "timestamps": true
+  })
+  db.add_index("orders", ["code"], { "unique": true })
+<span class="text-orange-300">end</span>
+
+<span class="text-orange-300">def</span> down(db)
+  db.drop_table("orders")
+<span class="text-orange-300">end</span></code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        One migration, three backends: the types are Soli's and each adapter renders its own SQL. The
+        rendered names are chosen so introspection reads the table back as the same Soli types &mdash; a
+        table created this way is always one a column-aware model can map.
     </p>
 
     <div class="overflow-x-auto mb-8">
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b border-white/10">
-                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Helper</th>
-                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">On SQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli type</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Postgres</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">MySQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">SQLite</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_table(name)</code></td>
-                    <td class="py-3 px-4 text-green-400">✓ creates the document table if absent</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_table(name)</code></td>
-                    <td class="py-3 px-4 text-green-400">✓</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name)</code></td>
-                    <td class="py-3 px-4 text-green-400">✓ alias of <code>create_table</code> (no type, or <code>"document"</code>)</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_collection(name)</code></td>
-                    <td class="py-3 px-4 text-green-400">✓ alias of <code>drop_table</code></td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name, "edge"|"timeseries"|…)</code></td>
-                    <td class="py-3 px-4 text-red-400">✗ raises &mdash; typed collections are SoliDB-only</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4">Index helpers (<code class="text-cyan-300">db.create_index</code>, …)</td>
-                    <td class="py-3 px-4 text-red-400">✗ raise &mdash; use your own DDL tooling</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql)</code></td>
-                    <td class="py-3 px-4 text-red-400">✗ raises &mdash; SDBQL has no meaning on SQL</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_columnar</code>, <code class="text-cyan-300">db.create_vector_index</code></td>
-                    <td class="py-3 px-4 text-red-400">✗ raise &mdash; SoliDB-only</td>
-                </tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">pk</code></td><td class="py-3 px-4"><code>BIGSERIAL PRIMARY KEY</code></td><td class="py-3 px-4"><code>BIGINT AUTO_INCREMENT PRIMARY KEY</code></td><td class="py-3 px-4"><code>INTEGER PRIMARY KEY AUTOINCREMENT</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">uuid_pk</code></td><td class="py-3 px-4"><code>UUID PRIMARY KEY</code></td><td class="py-3 px-4"><code>CHAR(36) PRIMARY KEY</code></td><td class="py-3 px-4"><code>UUID PRIMARY KEY</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">string</code> / <code class="text-cyan-300">string(n)</code></td><td class="py-3 px-4"><code>VARCHAR(255)</code> / <code>VARCHAR(n)</code></td><td class="py-3 px-4">same</td><td class="py-3 px-4">same</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">text</code></td><td class="py-3 px-4"><code>TEXT</code></td><td class="py-3 px-4"><code>TEXT</code></td><td class="py-3 px-4"><code>TEXT</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">integer</code> / <code class="text-cyan-300">bigint</code></td><td class="py-3 px-4"><code>INTEGER</code> / <code>BIGINT</code></td><td class="py-3 px-4"><code>INT</code> / <code>BIGINT</code></td><td class="py-3 px-4"><code>INTEGER</code> / <code>BIGINT</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">float</code></td><td class="py-3 px-4"><code>DOUBLE PRECISION</code></td><td class="py-3 px-4"><code>DOUBLE</code></td><td class="py-3 px-4"><code>REAL</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">decimal(p,s)</code></td><td class="py-3 px-4"><code>NUMERIC(p,s)</code></td><td class="py-3 px-4"><code>DECIMAL(p,s)</code></td><td class="py-3 px-4"><code>DECIMAL(p,s)</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">boolean</code></td><td class="py-3 px-4"><code>BOOLEAN</code></td><td class="py-3 px-4"><code>TINYINT(1)</code></td><td class="py-3 px-4"><code>BOOLEAN</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">date</code> / <code class="text-cyan-300">datetime</code></td><td class="py-3 px-4"><code>DATE</code> / <code>TIMESTAMPTZ</code></td><td class="py-3 px-4"><code>DATE</code> / <code>DATETIME</code></td><td class="py-3 px-4"><code>DATE</code> / <code>DATETIME</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">json</code></td><td class="py-3 px-4"><code>JSONB</code></td><td class="py-3 px-4"><code>JSON</code></td><td class="py-3 px-4"><code>JSON</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">uuid</code> / <code class="text-cyan-300">binary</code></td><td class="py-3 px-4"><code>UUID</code> / <code>BYTEA</code></td><td class="py-3 px-4"><code>CHAR(36)</code> / <code>BLOB</code></td><td class="py-3 px-4"><code>UUID</code> / <code>BLOB</code></td></tr>
             </tbody>
         </table>
     </div>
 
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260812120000_create_posts.sl</label>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Runs on SoliDB and on every SQL adapter
-<span class="text-orange-300">def</span> up(db: Any)
-  db.create_table("posts")
-<span class="text-orange-300">end</span>
-
-<span class="text-orange-300">def</span> down(db: Any)
-  db.drop_table("posts")
-<span class="text-orange-300">end</span></code></pre>
-        </div>
-    </div>
-
-    <p class="text-gray-400 mb-4">Target a named connection from <code class="text-cyan-400">config/database.toml</code>:</p>
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm">soli db:migrate up --connection legacy
-soli db:migrate status -c legacy
-soli db:migrate down --connection legacy</code></pre>
-        </div>
-    </div>
-
-    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
-        <li><strong class="text-white">Column-aware models are never migrated.</strong> A model declaring <code class="text-cyan-400">table "orders"</code> maps to a schema Soli does not own, so Soli issues no DDL against it &mdash; manage that schema with your own tooling. See <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">Column-aware models</a>.</li>
-        <li><strong class="text-white">Document tables are auto-created on first write</strong>, so a migration is only needed when you want the table to exist ahead of time (or want an explicit rollback path).</li>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
+        <li>Column options: <code class="text-cyan-400">type</code>, <code class="text-cyan-400">limit</code> (string only), <code class="text-cyan-400">null</code>, <code class="text-cyan-400">unique</code>, <code class="text-cyan-400">primary_key</code>, <code class="text-cyan-400">default</code>, <code class="text-cyan-400">references</code>.</li>
+        <li><code class="text-cyan-400">"timestamps": true</code> adds <code class="text-cyan-400">created_at</code> / <code class="text-cyan-400">updated_at</code> as <code>NOT NULL DEFAULT CURRENT_TIMESTAMP</code>.</li>
+        <li><code class="text-cyan-400">"references": "users"</code> points at that table's <code class="text-cyan-400">id</code>; write <code class="text-cyan-400">"users(uuid)"</code> to name another column. On MySQL the constraint is emitted at table level, because MySQL parses an inline <code>REFERENCES</code> and then ignores it.</li>
     </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Schema helpers</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Helper</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Notes</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_table(name)</code></td><td class="py-3 px-4">Document table (<code>_key</code> + <code>doc</code>)</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_table(name, columns)</code></td><td class="py-3 px-4">Column table, as above</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.drop_table(name)</code></td><td class="py-3 px-4">Either kind</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.add_column(table, name, type)</code></td><td class="py-3 px-4">Type string or options hash</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.drop_column(table, name)</code></td><td class="py-3 px-4"></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.rename_column(table, old, new)</code></td><td class="py-3 px-4">MySQL 8+</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.rename_table(old, new)</code></td><td class="py-3 px-4"></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.add_index(table, columns, options?)</code></td><td class="py-3 px-4"><code>{ "unique": true, "name": "…" }</code>; name defaults to <code>idx_&lt;table&gt;_&lt;columns&gt;</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.drop_index(table, name)</code></td><td class="py-3 px-4"></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_index(table, name, fields, options?)</code></td><td class="py-3 px-4">The SoliDB-shaped call, so a shared migration keeps working</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.execute(sql)</code></td><td class="py-3 px-4">Escape hatch &mdash; engine-specific by definition</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_collection</code> / <code class="text-cyan-300">db.drop_collection</code></td><td class="py-3 px-4">Aliases for document tables</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_collection(name, "edge"|…)</code></td><td class="py-3 px-4 text-red-400">✗ raises &mdash; typed collections are SoliDB-only</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql)</code></td><td class="py-3 px-4 text-red-400">✗ raises &mdash; SDBQL has no meaning on SQL</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-300">db.create_columnar</code>, <code class="text-cyan-300">db.create_vector_index</code></td><td class="py-3 px-4 text-red-400">✗ raise &mdash; SoliDB-only</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 mb-12">
+        <p class="text-gray-400 text-sm leading-relaxed">
+            <strong class="text-amber-300">Two limits worth knowing before you hit them.</strong>
+            <strong class="text-white">SQLite's <code>ALTER TABLE</code> is narrow</strong> &mdash; it cannot
+            add a <code>UNIQUE</code> or primary-key column to an existing table (add the column, then
+            <code class="text-cyan-400">add_index</code>), and it cannot add a <code>NOT NULL</code> column
+            without a <code class="text-cyan-400">default</code>; both are reported as errors naming the way
+            around them. And <strong class="text-white">changing a column's type is not portable</strong>, so
+            there is no <code class="text-cyan-400">change_column</code>: use
+            <code class="text-cyan-400">db.execute</code>, or add-copy-drop.
+            <br><br>
+            <strong class="text-white">Models never issue DDL.</strong> A column-aware model maps to a table
+            it does not own: no auto-create, no index sync, no implicit <code>ALTER</code>. Migrations are the
+            one place Soli changes a column table, and only where you wrote it.
+        </p>
+    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Environment Configuration</h2>
     <p class="text-gray-400 mb-6">Configure database connection via <code>.env</code> file:</p>

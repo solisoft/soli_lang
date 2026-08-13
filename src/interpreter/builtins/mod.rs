@@ -115,6 +115,7 @@ pub mod soap;
 pub mod solidb;
 pub mod solikv;
 pub mod spreadsheet;
+pub mod sql_ddl;
 pub mod streaming;
 pub mod strings;
 pub mod system;
@@ -531,6 +532,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     ));
     env.define("__soli_sql_create_table".to_string(), sql_create.clone());
     env.define("__soli_sql_drop_table".to_string(), sql_drop.clone());
+    // Column-table schema helpers (create_table with columns, add_column,
+    // add_index, …) for the same migrations.
+    sql_ddl::register_sql_ddl_builtins(env);
     // Back-compat aliases from Phase 1.
     env.define("__soli_pg_create_table".to_string(), sql_create);
     env.define("__soli_pg_drop_table".to_string(), sql_drop);

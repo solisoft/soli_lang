@@ -1876,6 +1876,14 @@ impl Model {
                                 }
                             }
                         }
+                        // A column-aware insert answers with the stored row, so
+                        // adopt it: column defaults and the stamped
+                        // created_at/updated_at are otherwise invisible until
+                        // the record is read back.
+                        let column_schema = super::column_mode::schema_for_collection(&collection);
+                        if column_schema.is_some() {
+                            super::column_mode::adopt_row_fields(&mut inst_mut, &id);
+                        }
                         // `id` is the row's identifier, not the whole response.
                         // The response shape differs per backend — SoliDB
                         // returns `{_key, _id, _rev}`, while a column-aware
@@ -1896,6 +1904,14 @@ impl Model {
                         super::dirty::finalize_persist(&mut inst_mut);
                         super::counter_cache::bump_for_instance(&inst_mut, 1);
                         drop(inst_mut);
+                        // Same conversion the read path applies, so a timestamp
+                        // is a DateTime whether the record was created or found.
+                        if let Some(schema) = column_schema {
+                            super::column_mode::convert_temporal_fields(
+                                &schema,
+                                Value::Instance(instance.clone()),
+                            );
+                        }
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => {
@@ -4454,9 +4470,24 @@ impl Model {
                                     inst_mut.set("_rev", json_to_value(rev));
                                 }
                             }
+                            // A column-aware update answers with the stored row
+                            // (see `adopt_row_fields`): adopting it refreshes
+                            // the database's own `updated_at`.
+                            let column_schema =
+                                super::column_mode::schema_for_collection(&collection);
+                            if column_schema.is_some() {
+                                super::column_mode::adopt_row_fields(&mut inst_mut, &result);
+                            }
                             inst_mut.set("_errors", Value::Array(Rc::new(RefCell::new(vec![]))));
                             let changes = super::dirty::finalize_persist(&mut inst_mut);
                             super::counter_cache::bump_for_changes(&inst_mut, &changes);
+                            drop(inst_mut);
+                            if let Some(schema) = column_schema {
+                                super::column_mode::convert_temporal_fields(
+                                    &schema,
+                                    Value::Instance(instance.clone()),
+                                );
+                            }
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {

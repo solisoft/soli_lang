@@ -76,6 +76,8 @@ Model API → QueryBuilder IR
 | `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ | ✓ |
 | Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ | ✗ |
 | Auto-create table on first write | collections | ✓ | ✓ | ✓ |
+| Portable column DDL (`create_table` with columns, `add_column`, `add_index`) | n/a (schemaless) | ✓ | ✓ | ✓ |
+| Per-migration `connection "name"` | ✓ | ✓ | ✓ | ✓ |
 | `soli db:import` SoliDB → SQL | n/a | ✓ | ✓ | ✓ |
 
 ## Includes batching (SQL)
@@ -153,3 +155,4 @@ Optional Postgres vector search was listed for Phase 3 but is **not implemented*
 | **4c** HABTM includes on SQL | done |
 | **4d** `through:` includes on SQL | planned |
 | **5** SQLite adapter (document + column mode, jobs, migrations) | **done** |
+| **6** Portable column DDL in migrations + per-migration `connection` | **done** |

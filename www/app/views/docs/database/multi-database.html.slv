@@ -307,7 +307,7 @@ soli db:import posts users  # named only</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">What to know before you choose it</h3>
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
         <li><strong class="text-white">One writer at a time.</strong> WAL lets readers run during a write, but writers serialize. A busy write path across many processes belongs on Postgres.</li>
-        <li><strong class="text-white">No exact numeric type.</strong> <code class="text-cyan-400">DECIMAL</code>/<code class="text-cyan-400">NUMERIC</code> is affinity only. Values are written as text so the stored scale is kept, and aggregates come back through <code class="text-cyan-400">REAL</code>.</li>
+        <li><strong class="text-white">No exact numeric type.</strong> A <code class="text-cyan-400">DECIMAL</code>/<code class="text-cyan-400">NUMERIC</code> column has NUMERIC <em>affinity</em>, not an exact type: SQLite converts the value to a <code class="text-cyan-400">REAL</code>, so a stored <code class="text-cyan-400">19.90</code> reads back as <code class="text-cyan-400">19.9</code>, and a value beyond f64's exact range loses precision on write. Postgres <code class="text-cyan-400">numeric</code> and MySQL <code class="text-cyan-400">decimal</code> keep the scale. Declare the column <code class="text-cyan-400">TEXT</code> if exact decimal text matters.</li>
         <li><strong class="text-white">Backups are file copies</strong> &mdash; use <code class="text-cyan-400">.backup</code> or <code class="text-cyan-400">VACUUM INTO</code>, never a <code class="text-cyan-400">cp</code> of a live WAL database.</li>
         <li><strong class="text-white"><code class="text-cyan-400">:memory:</code> is one connection.</strong> The pool is forced to a single connection, because a second one would be a second, empty database.</li>
     </ul>
@@ -374,7 +374,13 @@ end</code></pre>
     </div>
 
     <p class="text-gray-400 mb-6">
-        <code class="text-cyan-400">table "…"</code> is what switches the model into <strong class="text-white">column mode</strong>: Soli reads and writes the table's real columns, and never creates or alters it.
+        <code class="text-cyan-400">table "…"</code> is what switches the model into <strong class="text-white">column mode</strong>: the model reads and writes the table's real columns, and never creates or alters it.
+    </p>
+    <p class="text-gray-400 mb-6">
+        The table can be one you already have, or one a <strong class="text-white">migration</strong> builds:
+        <code class="text-cyan-400">create_table("orders", { … })</code> declares real columns portably across
+        Postgres, MySQL, and SQLite, and the types it emits are the ones introspection reads back &mdash; see
+        <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">Migrations &rarr; On the SQL adapters</a>.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">What Soli learns, and when</h3>
@@ -457,7 +463,7 @@ Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
                 <tr><td class="py-3 px-4"><code>delete_all</code> / <code>update_all</code></td><td class="py-3 px-4">Slice 2</td></tr>
                 <tr><td class="py-3 px-4"><code>soft_delete</code>, <code>encrypts</code>, STI, <code>counter_cache</code></td><td class="py-3 px-4">Assume Soli-managed document storage; declaring one alongside <code>table</code> fails at boot</td></tr>
                 <tr><td class="py-3 px-4"><code>grouped {}</code>, graph, vector, columnar, timeseries</td><td class="py-3 px-4">SoliDB features</td></tr>
-                <tr><td class="py-3 px-4">Migrations against a column table</td><td class="py-3 px-4">The schema is yours &mdash; Soli issues no DDL in column mode</td></tr>
+                <tr><td class="py-3 px-4">Auto-create / index sync / implicit <code>ALTER</code></td><td class="py-3 px-4">A <strong class="text-white">model</strong> never issues DDL in column mode. A <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">migration</a> can create and alter column tables explicitly</td></tr>
             </tbody>
         </table>
     </div>

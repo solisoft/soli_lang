@@ -4,6 +4,62 @@
 
 ### Added
 
+- **Migrations can build real column tables, portably.** Column-aware models
+  could read and write an existing relational schema, but nothing in Soli could
+  *create* one — migrations only produced `_key` + `doc` document tables, so a
+  greenfield column schema had to be built with psql, the `sqlite3` CLI, or
+  another framework's tooling. Migrations now speak columns:
+
+  ```soli
+  def up(db)
+    db.create_table("orders", {
+      "id":         "pk",
+      "code":       { "type": "string", "limit": 32, "null": false },
+      "amount":     "decimal(10,2)",
+      "paid":       { "type": "boolean", "default": false },
+      "meta":       "json",
+      "user_id":    { "type": "bigint", "references": "users" },
+      "timestamps": true
+    })
+    db.add_index("orders", ["code"], { "unique": true })
+  end
+  ```
+
+  - **One migration, three backends.** The types are Soli's (`pk`, `uuid_pk`,
+    `string(n)`, `text`, `integer`, `bigint`, `float`, `decimal(p,s)`,
+    `boolean`, `date`, `datetime`, `json`, `uuid`, `binary`) and each adapter
+    renders its own SQL. The rendered names are chosen so introspection reads
+    the table back as the same Soli types — a table created this way is always
+    one a column-aware model can map, which a test pins for all three dialects.
+  - New helpers: `add_column`, `drop_column`, `rename_column`, `rename_table`,
+    `add_index`, `drop_index`, the SoliDB-shaped `create_index`, and
+    `execute(sql)` as the engine-specific escape hatch. `create_table(name)`
+    with no column hash still means a document table, unchanged.
+  - **Portability details handled rather than papered over**: MySQL parses an
+    inline `REFERENCES` and then ignores it, so foreign keys are emitted at
+    table level there; MySQL takes no `IF NOT EXISTS` on `CREATE INDEX` and
+    needs the table on `DROP INDEX`; SQLite cannot add a `UNIQUE`/primary-key
+    column or a `NOT NULL` column without a default to an existing table, and
+    says so with the way around it. A composite primary key is refused at
+    parse time, because column mode could not map the result.
+  - `db:migrate generate` now shows the column DSL in its template.
+
+- **A migration can declare which database it belongs to.** Put
+  `connection "analytics"` at the top of the file and `soli db:migrate up`
+  places it correctly — no `--connection` flag, no chance of running it against
+  the wrong schema.
+
+  - **Each connection tracks its own versions**, so a migration applied to one
+    database is not marked applied on another.
+  - `--connection NAME` becomes a *filter*: migrations that declare a different
+    database are held back and reported as skipped.
+  - `db:migrate status` grows a Connection column as soon as one migration
+    declares one; `down` rolls back the newest applied migration on its own
+    connection.
+  - The declaration is metadata, not a statement — it is neutralized before the
+    file executes (at top level it would otherwise call the model DSL's
+    `connection` builtin with the wrong arity).
+
 - **SQLite adapter.** `SOLI_DB_ADAPTER=sqlite` with
   `DATABASE_URL=sqlite://db/app.sqlite3` (or `adapter = "sqlite"` on a named
   connection) runs the **same Model surface as Postgres and MySQL**: document
@@ -30,8 +86,10 @@
     directory created if missing.
   - **Caveats are SQLite's own**: one writer at a time (a write-heavy
     multi-process app belongs on Postgres), and no exact numeric type —
-    `DECIMAL` values are written as text so the stored scale is kept, and
-    aggregates come back through `REAL`.
+    a `DECIMAL` column has NUMERIC *affinity*, so SQLite stores the value as a
+    `REAL` and `19.90` reads back as `19.9`. Postgres `numeric` and MySQL
+    `decimal` keep the scale; declare the column `TEXT` if the exact text
+    matters.
   - New Cargo feature `sqlite` (on by default, included in the `sql` alias).
     Tests need no server, so the adapter is covered on every CI run.
 
@@ -114,6 +172,20 @@
     also having to create the directory the engine looks for.
 
 ### Fixed
+
+- **Column-mode timestamps read as 1970, and saving a record rewrote them.**
+  `Value::DateTime` is nanoseconds throughout the runtime, but the column-mode
+  reader wrapped the *seconds* value `datetime_parse` returns. A `datetime`
+  column therefore hydrated as 1970-01-01 plus a fraction, and writing the
+  record back stored that wrong date. Both directions are correct now, with a
+  test that pins the unit by round-tripping through the runtime's own formatter.
+
+- **`create` and `save` on a column-aware model ignored the stored row.** The
+  SQL write returns the row as the database holds it, but only the key was
+  taken from it — so a column `DEFAULT`, a database-side trigger, and the
+  stamped `created_at`/`updated_at` were invisible until the record was read
+  back. Both now adopt the returned row (and convert its temporal columns the
+  same way the read path does).
 
 - **`connection "name"` never parsed in a class body.** The multi-database
   binding shipped documented but unusable: the parser recognizes class-body DSL
