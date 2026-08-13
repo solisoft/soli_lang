@@ -51,7 +51,11 @@ fn generate_migration_writes_template_and_returns_path() {
     let contents = std::fs::read_to_string(&path).unwrap();
     assert!(contents.contains("fn up(db: Any)"));
     assert!(contents.contains("fn down(db: Any)"));
-    assert!(contents.contains("// Migration: create_users"));
+    assert!(contents.contains("# Migration: create_users"));
+    assert!(
+        contents.contains("db.create_table"),
+        "template should show the SQL column DSL"
+    );
 }
 
 #[test]
