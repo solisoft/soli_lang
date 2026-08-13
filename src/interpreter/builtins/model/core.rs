@@ -260,6 +260,8 @@ fn sql_find_first_by(
         table: collection.to_string(),
         eq_filters,
         filter_sdbql: None,
+        having: None,
+        exists_filters: Vec::new(),
         // Mirrors the SoliDB form, which applies no deleted_at scope here.
         soft_delete: crate::db::SqlSoftDeleteMode::Default,
         is_soft_delete_model: false,
@@ -1489,7 +1491,7 @@ impl Model {
                             let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                                 format!("No relation '{}' defined on {}", rel_name, class_name)
                             })?;
-                            super::relations::reject_through_relation("includes", &rel)?;
+                            super::relations::reject_through_on_solidb("includes", &rel)?;
                             super::relations::reject_polymorphic_relation("includes", &rel)?;
                             let fields = match v {
                                 Value::Array(arr) => {
@@ -1535,7 +1537,7 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
-                    super::relations::reject_through_relation("includes", &rel)?;
+                    super::relations::reject_through_on_solidb("includes", &rel)?;
                     super::relations::reject_polymorphic_relation("includes", &rel)?;
 
                     let filter = if arguments.len() >= 3 {
@@ -1599,7 +1601,7 @@ impl Model {
                         let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                             format!("No relation '{}' defined on {}", rel_name, class_name)
                         })?;
-                        super::relations::reject_through_relation("includes", &rel)?;
+                        super::relations::reject_through_on_solidb("includes", &rel)?;
                         super::relations::reject_polymorphic_relation("includes", &rel)?;
                         qb.add_include(
                             rel_name.to_string(),
@@ -1645,7 +1647,7 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
-                    super::relations::reject_through_relation("includes", &rel)?;
+                    super::relations::reject_through_on_solidb("includes", &rel)?;
                     super::relations::reject_polymorphic_relation("includes", &rel)?;
                     qb.add_include_count(rel_name.to_string(), rel)?;
                 }
@@ -1704,7 +1706,7 @@ impl Model {
                 let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                     format!("No relation '{}' defined on {}", rel_name, class_name)
                 })?;
-                super::relations::reject_through_relation("join", &rel)?;
+                super::relations::reject_through_on_solidb("join", &rel)?;
                 super::relations::reject_polymorphic_relation("join", &rel)?;
 
                 let filter = match args.get(2) {

@@ -4,6 +4,25 @@
 
 ### Added
 
+- **`through:` includes, `.join`, and `.having` now run on the SQL adapters.**
+
+  - **`.includes` on a `has_many through:`** batches into three queries whatever
+    the parent count: the intermediate rows for these parents, the targets those
+    rows point at, then grouping in Rust. It turns out `through:` eager loading
+    was refused at the *builder*, so it had never worked on SoliDB either; the
+    check moved to execution, where the AQL shape still declines it and the SQL
+    path serves it.
+  - **`.join("comments")`** compiles to a correlated `EXISTS` subquery rather than
+    a real join, so parents are not duplicated when a child matches twice and the
+    `SELECT doc` shape is untouched. A child-side filter rides inside the
+    subquery, in the portable hash-equality shape.
+  - **`.having("n > 5")`** compiles to a `HAVING` clause. The supported shape is
+    one comparison of a group key or aggregate alias against a number; the
+    aggregate expression is repeated rather than its alias, because Postgres does
+    not accept an alias there. An unknown alias is refused listing the ones the
+    query emits, and anything richer is refused naming the supported shape rather
+    than being passed through as SQL.
+
 - **`Model.find_by_sql(sql, binds?)`** — the escape hatch for a query the
   portable surface cannot express. `BackendCaps.raw_sql` had been set to true on
   the SQL adapters since they shipped while nothing exposed raw SQL at all; the

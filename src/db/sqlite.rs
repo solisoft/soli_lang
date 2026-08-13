@@ -1738,6 +1738,8 @@ mod tests {
             } else {
                 Some(clauses.join(" AND "))
             },
+            having: None,
+            exists_filters: Vec::new(),
             soft_delete: SoftDeleteMode::Default,
             is_soft_delete_model: false,
             order_field: None,
@@ -2930,6 +2932,77 @@ mod tests {
             let mut bad = cols::ColumnQuery::new(schema);
             bad.select_fields = Some(vec!["nope".to_string()]);
             assert!(cols::compile_select_cols(Dialect::Sqlite, &bad).is_err());
+        });
+    }
+
+    /// `.join` keeps parents that have a matching child, without duplicating them
+    /// the way a real join would.
+    #[test]
+    fn an_exists_filter_selects_parents_with_children() {
+        use super::super::sql_compile::ExistsFilter;
+
+        with_sqlite("exists-filter", || {
+            ensure_table("posts").expect("table");
+            ensure_table("comments").expect("table");
+            insert("posts", Some("p1"), serde_json::json!({ "title": "one" })).expect("insert");
+            insert("posts", Some("p2"), serde_json::json!({ "title": "two" })).expect("insert");
+            // Two comments on p1, so a real join would return p1 twice.
+            insert(
+                "comments",
+                Some("c1"),
+                serde_json::json!({ "post_id": "p1", "approved": "yes" }),
+            )
+            .expect("insert");
+            insert(
+                "comments",
+                Some("c2"),
+                serde_json::json!({ "post_id": "p1", "approved": "no" }),
+            )
+            .expect("insert");
+
+            let mut q = list_query("posts", &[]);
+            q.exists_filters = vec![ExistsFilter {
+                table: "comments".into(),
+                foreign_key: "post_id".into(),
+                eq_filters: std::collections::BTreeMap::new(),
+            }];
+            let rows = select(&q).expect("select");
+            assert_eq!(rows.len(), 1, "p1 once, not twice");
+            assert_eq!(rows[0]["_key"], "p1");
+            assert_eq!(count(&q).unwrap(), 1);
+
+            // A filter on the child narrows which parents qualify.
+            q.exists_filters[0]
+                .eq_filters
+                .insert("approved".into(), serde_json::json!("no"));
+            assert_eq!(count(&q).unwrap(), 1);
+            q.exists_filters[0]
+                .eq_filters
+                .insert("approved".into(), serde_json::json!("maybe"));
+            assert_eq!(count(&q).unwrap(), 0);
+        });
+    }
+
+    /// `.having` filters groups after aggregation.
+    #[test]
+    fn having_filters_groups() {
+        with_sqlite("having", || {
+            let table = "orders";
+            ensure_table(table).expect("table");
+            for (key, status) in [("a", "open"), ("b", "open"), ("c", "closed")] {
+                insert(table, Some(key), serde_json::json!({ "status": status })).expect("insert");
+            }
+
+            let mut q = list_query(table, &[]);
+            q.having = Some("n > 1".into());
+            let rows = group_by(&q, &["status".to_string()], &[]).expect("group_by");
+            assert_eq!(rows.len(), 1, "only the group of two survives");
+            assert_eq!(rows[0]["status"], "open");
+            assert_eq!(rows[0]["n"], serde_json::json!(2));
+
+            // Without it, both groups come back.
+            q.having = None;
+            assert_eq!(group_by(&q, &["status".to_string()], &[]).unwrap().len(), 2);
         });
     }
 

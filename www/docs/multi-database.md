@@ -161,7 +161,9 @@ Portable surface (hash filters, not raw SDBQL):
 | `pluck` / `select` on column models | ✓ pushed into the `SELECT` list |
 | Dev bar / `dev_queries()` / N+1 detection | ✓ the SQL, its binds, and its duration are logged per request |
 | `soli db:create` / `soli db:drop` | ✓ (SoliDB creates its database on first use instead) |
-| `through:` includes, `.having`, `.join` | ✗ SoliDB-only (`through:` on SQL planned) |
+| `through:` includes | ✓ three batched queries via the intermediate model |
+| `.join` (relation existence filter) | ✓ correlated `EXISTS`, so parents are not duplicated |
+| `.having` | ✓ one comparison of a group key or aggregate alias against a number |
 | Graph, vector, columnar, timeseries | ✗ SoliDB-only |
 | `Model.transaction` | ✓ (holds one SQL pool connection for the block) |
 | Raw SDBQL / string `.where("doc…")` | ✗ SoliDB-only |

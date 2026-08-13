@@ -13,6 +13,21 @@ pub enum Dialect {
     Sqlite,
 }
 
+/// A relation existence filter — `.join("comments")` keeps only parents that have
+/// at least one matching child.
+///
+/// Compiled as a correlated `EXISTS` subquery rather than a real join, so the
+/// parent rows stay unduplicated and the existing `SELECT doc` shape is untouched.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExistsFilter {
+    /// The child collection to look in.
+    pub table: String,
+    /// The child's JSON field holding the parent key.
+    pub foreign_key: String,
+    /// Equality filters on the child, in the portable hash shape.
+    pub eq_filters: BTreeMap<String, serde_json::Value>,
+}
+
 /// Soft-delete handling for SQL emission (mirrors model SoftDeleteMode).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SoftDeleteMode {
@@ -27,6 +42,10 @@ pub struct ListQuery {
     pub table: String,
     pub eq_filters: BTreeMap<String, serde_json::Value>,
     pub filter_sdbql: Option<String>,
+    /// Post-`GROUP BY` comparison, in the portable `alias op number` shape.
+    pub having: Option<String>,
+    /// Relation existence filters (`.join`), compiled as `EXISTS (…)`.
+    pub exists_filters: Vec<ExistsFilter>,
     pub soft_delete: SoftDeleteMode,
     pub is_soft_delete_model: bool,
     pub order_field: Option<String>,
@@ -66,6 +85,8 @@ pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<
         table: parts.table,
         eq_filters,
         filter_sdbql: parts.filter_sdbql,
+        having: None,
+        exists_filters: Vec::new(),
         soft_delete: parts.soft_delete,
         is_soft_delete_model: parts.is_soft_delete_model,
         order_field: parts.order_field,
@@ -185,6 +206,16 @@ impl Dialect {
             }
             // SQLite has no exact numeric type; REAL is the widest it offers.
             Dialect::Sqlite => format!("CAST((doc ->> '$.{field}') AS REAL)"),
+        }
+    }
+
+    /// Text extract of a JSON field on a **qualified** table, for a correlated
+    /// subquery where a bare `doc` would resolve to the wrong row.
+    pub fn json_text_on(self, table: &str, field: &str) -> String {
+        match self {
+            Dialect::Postgres => format!("({table}.doc ->> '{field}')"),
+            Dialect::Mysql => format!("JSON_UNQUOTE(JSON_EXTRACT({table}.doc, '$.{field}'))"),
+            Dialect::Sqlite => format!("({table}.doc ->> '$.{field}')"),
         }
     }
 
@@ -420,6 +451,77 @@ pub struct GroupAgg {
 }
 
 /// `SELECT group_cols…, aggregates… FROM t WHERE … GROUP BY group_cols`.
+/// A `HAVING` comparison in the portable shape: `<alias> <op> <number>`.
+///
+/// The alias must be one the query already emits, so a typo cannot become SQL.
+/// Anything richer (arithmetic, several conditions, a string comparison) is
+/// refused with the supported shape named, rather than passed through — the
+/// clause is developer-authored on SoliDB, where it is AQL, not SQL.
+fn compile_having(
+    d: Dialect,
+    having: &str,
+    group_fields: &[String],
+    aggs: &[GroupAgg],
+) -> Result<String, String> {
+    let refuse = || {
+        format!(
+            "`.having({having:?})` on a SQL adapter supports one comparison of a \
+             group key or aggregate alias against a number, e.g. \
+             \"n > 5\" or \"total >= 100\". Filter in Soli after `.all` for anything else."
+        )
+    };
+    let text = having.trim();
+    // Longest operators first, or `>=` would match `>`.
+    let (alias, op, value) = ["!=", ">=", "<=", "==", ">", "<", "="]
+        .iter()
+        .find_map(|op| {
+            text.split_once(op)
+                .map(|(left, right)| (left.trim(), *op, right.trim()))
+        })
+        .ok_or_else(refuse)?;
+
+    let known = group_fields.iter().any(|f| f == alias)
+        || aggs.iter().any(|a| a.alias == alias)
+        || (aggs.is_empty() && alias == "n");
+    if !known {
+        return Err(format!(
+            "`.having({having:?})`: {alias:?} is not one of this query's group keys \
+             or aggregate aliases ({}).",
+            group_fields
+                .iter()
+                .cloned()
+                .chain(aggs.iter().map(|a| a.alias.clone()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // Only a numeric literal: no bind placeholder can appear in HAVING without
+    // renumbering every parameter after it.
+    if value.parse::<f64>().is_err() {
+        return Err(refuse());
+    }
+    let sql_op = match op {
+        "==" | "=" => "=",
+        other => other,
+    };
+    // Repeat the aggregate expression rather than its alias: MySQL allows the
+    // alias, Postgres does not.
+    let left = if let Some(agg) = aggs.iter().find(|a| a.alias == alias) {
+        match agg.func {
+            SqlAgg::Count => d.count_expr().to_string(),
+            SqlAgg::Sum => format!("SUM({})", d.json_num(&agg.field)),
+            SqlAgg::Avg => format!("AVG({})", d.json_num(&agg.field)),
+            SqlAgg::Min => format!("MIN({})", d.json_num(&agg.field)),
+            SqlAgg::Max => format!("MAX({})", d.json_num(&agg.field)),
+        }
+    } else if aggs.is_empty() && alias == "n" {
+        d.count_expr().to_string()
+    } else {
+        d.json_text(alias)
+    };
+    Ok(format!(" HAVING {left} {sql_op} {value}"))
+}
+
 pub fn compile_group_by_d(
     d: Dialect,
     q: &ListQuery,
@@ -480,6 +582,9 @@ pub fn compile_group_by_d(
         sql.push_str(&where_sql);
     }
     sql.push_str(&format!(" GROUP BY {}", group_parts.join(", ")));
+    if let Some(having) = &q.having {
+        sql.push_str(&compile_having(d, having, group_fields, aggs)?);
+    }
     // Optional ORDER BY first group field for stable output.
     if let Some(field) = &q.order_field {
         validate_field(field)?;
@@ -605,6 +710,50 @@ fn compile_where_offset(
             SoftDeleteMode::OnlyDeleted => parts.push(d.soft_delete_not_null().to_string()),
             SoftDeleteMode::WithDeleted => {}
         }
+    }
+    for exists in &q.exists_filters {
+        let child = d.quote_ident(&exists.table)?;
+        let parent = d.quote_ident(&q.table)?;
+        validate_field(&exists.foreign_key)?;
+        // Correlate on the parent's `_key`, qualified so the subquery cannot
+        // resolve `_key` to its own row.
+        let mut inner = vec![format!(
+            "{} = {parent}._key",
+            d.json_text_on(&child, &exists.foreign_key)
+        )];
+        for (field, value) in &exists.eq_filters {
+            validate_field(field)?;
+            let n = param_offset + params.len() + 1;
+            let ph = d.ph(n);
+            match value {
+                serde_json::Value::String(text) => {
+                    params.push(SqlBind::Text(text.clone()));
+                    inner.push(format!("{} = {ph}", d.json_text_on(&child, field)));
+                }
+                other => {
+                    // A non-string keeps JSON comparison semantics, qualified the
+                    // same way.
+                    params.push(SqlBind::Json(other.clone()));
+                    inner.push(format!(
+                        "{} = {}",
+                        match d {
+                            Dialect::Postgres => format!("({child}.doc->'{field}')"),
+                            Dialect::Mysql => format!("JSON_EXTRACT({child}.doc, '$.{field}')"),
+                            Dialect::Sqlite => format!("({child}.doc -> '$.{field}')"),
+                        },
+                        match d {
+                            Dialect::Mysql => format!("CAST({ph} AS JSON)"),
+                            Dialect::Sqlite => format!("json({ph})"),
+                            Dialect::Postgres => ph.clone(),
+                        }
+                    ));
+                }
+            }
+        }
+        parts.push(format!(
+            "EXISTS (SELECT 1 FROM {child} WHERE {})",
+            inner.join(" AND ")
+        ));
     }
     Ok((parts.join(" AND "), params))
 }
@@ -736,6 +885,8 @@ mod tests {
             table: "users".into(),
             eq_filters: eq,
             filter_sdbql: Some("doc.status == @status".into()),
+            having: None,
+            exists_filters: Vec::new(),
             soft_delete: SoftDeleteMode::Default,
             is_soft_delete_model: false,
             order_field: Some("name".into()),
@@ -743,6 +894,90 @@ mod tests {
             limit: Some(10),
             offset: Some(5),
         }
+    }
+
+    #[test]
+    fn having_compiles_the_portable_comparison_shape() {
+        let mut q = sample_list();
+        q.eq_filters.clear();
+        q.filter_sdbql = None;
+        q.order_field = None;
+        q.having = Some("n > 5".into());
+        let c = compile_group_by_d(Dialect::Postgres, &q, &["status".to_string()], &[]).unwrap();
+        // The aggregate expression is repeated rather than its alias: MySQL
+        // accepts the alias in HAVING, Postgres does not.
+        assert!(c.sql.contains("HAVING COUNT(*)::bigint > 5"), "{}", c.sql);
+
+        let aggs = vec![GroupAgg {
+            alias: "total".into(),
+            func: SqlAgg::Sum,
+            field: "amount".into(),
+        }];
+        let mut q2 = q.clone();
+        q2.having = Some("total >= 100".into());
+        let c = compile_group_by_d(Dialect::Sqlite, &q2, &["status".to_string()], &aggs).unwrap();
+        assert!(
+            c.sql
+                .contains("HAVING SUM(CAST((doc ->> '$.amount') AS REAL)) >= 100"),
+            "{}",
+            c.sql
+        );
+
+        // An alias the query does not emit is refused, listing what it does.
+        let mut q3 = q.clone();
+        q3.having = Some("nope > 1".into());
+        let err =
+            compile_group_by_d(Dialect::Postgres, &q3, &["status".to_string()], &aggs).unwrap_err();
+        assert!(err.contains("nope") && err.contains("total"), "{err}");
+
+        // Anything richer than one comparison against a number is refused with
+        // the supported shape named, rather than passed through as SQL.
+        for having in ["n > 5 AND total < 2", "n > total", "status = 'open'", "n"] {
+            let mut q4 = q.clone();
+            q4.having = Some(having.to_string());
+            assert!(
+                compile_group_by_d(Dialect::Postgres, &q4, &["status".to_string()], &aggs).is_err(),
+                "{having:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn join_compiles_a_correlated_exists() {
+        let mut q = sample_list();
+        q.eq_filters.clear();
+        q.filter_sdbql = None;
+        q.order_field = None;
+        q.exists_filters = vec![ExistsFilter {
+            table: "comments".into(),
+            foreign_key: "post_id".into(),
+            eq_filters: BTreeMap::new(),
+        }];
+        let c = compile_select_d(Dialect::Postgres, &q).unwrap();
+        // Correlated on the parent's key, and qualified: an unqualified `doc`
+        // inside the subquery would resolve to the child's own row.
+        assert!(
+            c.sql.contains(
+                "EXISTS (SELECT 1 FROM \"comments\" WHERE (\"comments\".doc ->> 'post_id') = \"users\"._key)"
+            ),
+            "{}",
+            c.sql
+        );
+        // No join means no duplicated parents, so `SELECT doc` is unchanged.
+        assert!(c.sql.starts_with("SELECT doc FROM \"users\""));
+
+        // A filter on the child rides inside the subquery.
+        let mut with_filter = q.clone();
+        with_filter.exists_filters[0]
+            .eq_filters
+            .insert("approved".into(), serde_json::json!("yes"));
+        let c = compile_select_d(Dialect::Sqlite, &with_filter).unwrap();
+        assert!(
+            c.sql.contains("(\"comments\".doc ->> '$.approved') = ?"),
+            "{}",
+            c.sql
+        );
+        assert_eq!(c.params[0], SqlBind::Text("yes".into()));
     }
 
     #[test]
@@ -875,6 +1110,8 @@ mod tests {
             table: "posts".into(),
             eq_filters: eq,
             filter_sdbql: Some("doc.status == @status AND doc._key == @_key".into()),
+            having: None,
+            exists_filters: Vec::new(),
             soft_delete: SoftDeleteMode::Default,
             is_soft_delete_model: false,
             order_field: Some("_key".into()),

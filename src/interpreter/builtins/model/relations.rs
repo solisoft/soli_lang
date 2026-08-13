@@ -475,6 +475,21 @@ pub fn resolve_through(
 /// v1: `through:` relations are read-only accessors — they can't be
 /// eager-loaded or join-filtered (the LET/join SQL shapes assume a direct
 /// FK). Call at every relation-resolution site that feeds includes/join.
+/// Refuse a `through:` relation only where it is genuinely unimplemented.
+///
+/// The SQL adapters batch it (`query::sql_include_through`); the AQL LET shape
+/// assumes a direct foreign key and does not. `.join` through an intermediate is
+/// unimplemented on both.
+pub fn reject_through_on_solidb(op: &str, relation: &RelationDef) -> Result<(), String> {
+    if relation.through.is_none() {
+        return Ok(());
+    }
+    if op == "includes" && crate::db::is_sql() {
+        return Ok(());
+    }
+    reject_through_relation(op, relation)
+}
+
 pub fn reject_through_relation(op: &str, relation: &RelationDef) -> Result<(), String> {
     if relation.through.is_some() {
         return Err(format!(

@@ -37,7 +37,7 @@ pub use registry::{
     set_registry_for_tests, with_connection, ConnectionRegistry, ConnectionSpec,
 };
 pub use sql_compile::{
-    GroupAgg, ListQuery, ListQueryParts, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg,
+    ExistsFilter, GroupAgg, ListQuery, ListQueryParts, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg,
 };
 
 use std::sync::OnceLock;

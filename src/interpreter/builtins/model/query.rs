@@ -487,6 +487,17 @@ impl QueryBuilder {
     pub fn build_query(&self) -> (String, HashMap<String, serde_json::Value>) {
         let mut query = self.for_head();
 
+        // `through:` eager loads are implemented on the SQL adapters
+        // (`sql_include_through`) but not in this AQL shape, which assumes a
+        // direct foreign key. The check lives here rather than at the builder, so
+        // the SQL path can serve what it supports.
+        debug_assert!(
+            self.includes
+                .iter()
+                .all(|inc| inc.relation.through.is_none()),
+            "through: includes reach the AQL builder only if the SQL guard was skipped"
+        );
+
         // Join filters (existence checks) — before user filters
         for join in &self.joins {
             query.push_str(&Self::build_join_existence_filter(
@@ -1106,20 +1117,9 @@ fn execute_query_builder_postgres(qb: &QueryBuilder, collection: &str) -> Value 
                 .into(),
         );
     }
-    if !qb.joins.is_empty() {
-        return Value::String(
-            "`.join` is SoliDB-only on SQL adapters \
-             (use `.includes` for eager loads). See docs/sql-adapter-design.md."
-                .into(),
-        );
-    }
-    if qb.having.is_some() {
-        return Value::String(
-            "`.having` is SoliDB-only on SQL adapters. \
-             See docs/sql-adapter-design.md."
-                .into(),
-        );
-    }
+    // `.join` compiles to an EXISTS subquery (see `exists_filters_from_qb`).
+    // `.having` compiles to a HAVING clause in the portable
+    // `<alias> <op> <number>` shape (see `sql_compile::compile_having`).
     // Multi-row group_by (legacy 3-arg or multi-key + aggregate specs).
     if qb.group_by_info.is_some() || !qb.group_fields.is_empty() || !qb.aggregate_specs.is_empty() {
         return execute_sql_group_by(qb, collection);
@@ -1261,11 +1261,8 @@ fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> 
             ));
         }
         if inc.relation.through.is_some() {
-            return Err(format!(
-                "`.includes(\"{}\")` through: relations are SoliDB-only on SQL adapters. \
-                 See docs/sql-adapter-design.md.",
-                inc.relation_name
-            ));
+            sql_include_through(qb, parents, inc)?;
+            continue;
         }
         match inc.relation.relation_type {
             RelationType::BelongsTo => sql_include_belongs_to(parents, inc)?,
@@ -1289,6 +1286,155 @@ fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> 
             ));
         }
         sql_include_count(parents, inc)?;
+    }
+    Ok(())
+}
+
+/// Eager-load a `has_many through:` association on a SQL adapter.
+///
+/// Three batched queries, whatever the number of parents:
+///   1. the intermediate rows whose FK is one of the parent keys;
+///   2. the targets those rows point at (`source` FK on the intermediate);
+///   3. nothing else — the grouping is done in Rust from (1).
+///
+/// The parent order is preserved and a parent with no matches gets `[]`, matching
+/// the other include paths.
+fn sql_include_through(
+    qb: &QueryBuilder,
+    parents: &mut [serde_json::Value],
+    inc: &IncludeClause,
+) -> Result<(), String> {
+    // The owner's class name, needed to look up the intermediate relation.
+    let owner_class = qb
+        .hydration_class()
+        .map(|class| class.name.clone())
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: a through: relation needs the owning model class, \
+                 which this query does not carry.",
+                inc.relation_name
+            )
+        })?;
+    let through_name = inc.relation.through.clone().unwrap_or_default();
+    let through_rel =
+        super::relations::get_relation(&owner_class, &through_name).ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: the intermediate relation {through_name:?} is not declared \
+             on {owner_class}.",
+                inc.relation_name
+            )
+        })?;
+    // The step from the intermediate to the target: `source:` names it, else the
+    // target relation's own name on the intermediate model.
+    let source_name = inc
+        .relation
+        .source
+        .clone()
+        .unwrap_or_else(|| inc.relation.name.clone());
+    let source_rel = super::relations::get_relation(&through_rel.class_name, &source_name)
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: {:?} has no relation {source_name:?} to reach the \
+                 target through. Declare it, or pass `source:`.",
+                inc.relation_name, through_rel.class_name
+            )
+        })?;
+    if !matches!(
+        source_rel.relation_type,
+        RelationType::BelongsTo | RelationType::HasOne | RelationType::HasMany
+    ) {
+        return Err(format!(
+            "`.includes(\"{}\")`: reaching the target through a {:?} relation is not \
+             supported on SQL adapters.",
+            inc.relation_name, source_rel.relation_type
+        ));
+    }
+
+    // (1) intermediate rows for these parents.
+    let mut parent_keys: Vec<String> = Vec::new();
+    for parent in parents.iter() {
+        if let Some(key) = parent_key(parent) {
+            if !parent_keys.iter().any(|k| k == &key) {
+                parent_keys.push(key);
+            }
+        }
+    }
+    let middles = crate::db::sql::select_json_text_in(
+        &through_rel.collection,
+        &through_rel.foreign_key,
+        &parent_keys,
+    )?;
+
+    // (2) the targets those rows point at.
+    let target_is_child = matches!(
+        source_rel.relation_type,
+        RelationType::HasMany | RelationType::HasOne
+    );
+    let mut target_keys: Vec<String> = Vec::new();
+    for middle in &middles {
+        let key = if target_is_child {
+            // The target holds the FK back to the intermediate.
+            parent_key(middle)
+        } else {
+            json_text_field(middle, &source_rel.foreign_key)
+        };
+        if let Some(key) = key {
+            if !target_keys.iter().any(|k| k == &key) {
+                target_keys.push(key);
+            }
+        }
+    }
+    let targets = if target_is_child {
+        crate::db::sql::select_json_text_in(
+            &source_rel.collection,
+            &source_rel.foreign_key,
+            &target_keys,
+        )?
+    } else {
+        crate::db::sql::select_by_keys(&source_rel.collection, &target_keys)?
+    };
+
+    // Index the targets by whichever key links them to an intermediate row.
+    let mut targets_by_link: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for target in targets {
+        let link = if target_is_child {
+            json_text_field(&target, &source_rel.foreign_key)
+        } else {
+            parent_key(&target)
+        };
+        if let Some(link) = link {
+            targets_by_link
+                .entry(link)
+                .or_default()
+                .push(project_include_fields(target, &inc.fields));
+        }
+    }
+
+    // (3) group by parent, in the order the intermediate rows came back.
+    let mut by_parent: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for middle in &middles {
+        let Some(owner) = json_text_field(middle, &through_rel.foreign_key) else {
+            continue;
+        };
+        let link = if target_is_child {
+            parent_key(middle)
+        } else {
+            json_text_field(middle, &source_rel.foreign_key)
+        };
+        let Some(link) = link else { continue };
+        if let Some(found) = targets_by_link.get(&link) {
+            by_parent.entry(owner).or_default().extend(found.clone());
+        }
+    }
+    for parent in parents.iter_mut() {
+        let key = parent_key(parent).unwrap_or_default();
+        let attached = by_parent.remove(&key).unwrap_or_default();
+        if let Some(obj) = parent.as_object_mut() {
+            obj.insert(
+                inc.relation_name.clone(),
+                serde_json::Value::Array(attached),
+            );
+        }
     }
     Ok(())
 }
@@ -1787,7 +1933,7 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         SoftDeleteMode::WithDeleted => crate::db::SqlSoftDeleteMode::WithDeleted,
         SoftDeleteMode::OnlyDeleted => crate::db::SqlSoftDeleteMode::OnlyDeleted,
     };
-    crate::db::sql::list_query_from_parts(crate::db::ListQueryParts {
+    let mut lq = crate::db::sql::list_query_from_parts(crate::db::ListQueryParts {
         table: collection.to_string(),
         filter_sdbql: qb.filter.clone(),
         bind_vars,
@@ -1797,7 +1943,62 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         order_desc,
         limit: qb.limit_val,
         offset: qb.offset_val,
-    })
+    })?;
+    lq.having = qb.having.clone();
+    lq.exists_filters = exists_filters_from_qb(qb)?;
+    Ok(lq)
+}
+
+/// Turn `.join(relation, filter?)` clauses into `EXISTS` filters.
+///
+/// Only the hash-equality filter shape is portable — a raw SDBQL filter on the
+/// child would have to be translated, and translating it wrongly would silently
+/// change which parents match.
+fn exists_filters_from_qb(qb: &QueryBuilder) -> Result<Vec<crate::db::ExistsFilter>, String> {
+    let mut out = Vec::with_capacity(qb.joins.len());
+    for join in &qb.joins {
+        // The child holds the FK for has_many/has_one; belongs_to points the
+        // other way, which is not an existence filter on this table.
+        if matches!(
+            join.relation.relation_type,
+            super::relations::RelationType::BelongsTo
+                | super::relations::RelationType::HasAndBelongsToMany
+        ) {
+            return Err(format!(
+                "`.join(\"{}\")` on a SQL adapter supports has_many / has_one relations \
+                 (the child holds the foreign key). For belongs_to, filter on the \
+                 foreign-key column directly; for has_and_belongs_to_many, use \
+                 `.includes` and filter in Soli.",
+                join.relation_name
+            ));
+        }
+        if join.relation.through.is_some() {
+            return Err(format!(
+                "`.join(\"{}\")` through an intermediate relation is not supported. \
+                 Join the intermediate itself, or use `.includes` and filter in Soli.",
+                join.relation_name
+            ));
+        }
+        let mut eq_filters = std::collections::BTreeMap::new();
+        for (name, value) in &join.bind_vars {
+            eq_filters.insert(name.clone(), value.clone());
+        }
+        if crate::db::sql_compile::assert_portable_filter(join.filter.as_deref(), &eq_filters)
+            .is_err()
+        {
+            return Err(format!(
+                "`.join(\"{}\", …)` on a SQL adapter takes a hash-equality filter \
+                 (`{{ \"approved\": true }}`); a raw SDBQL filter cannot be translated.",
+                join.relation_name
+            ));
+        }
+        out.push(crate::db::ExistsFilter {
+            table: join.relation.collection.clone(),
+            foreign_key: join.relation.foreign_key.clone(),
+            eq_filters,
+        });
+    }
+    Ok(out)
 }
 
 /// Apply pluck/select projection (client-side on SQL) then hydrate instances.
@@ -3144,12 +3345,8 @@ impl QueryBuilder {
 /// raw hash rows — one per group, keyed by group fields + aliases.
 pub fn execute_query_builder_grouped(qb: &QueryBuilder) -> Result<Value, String> {
     if crate::db::is_sql() {
-        if qb.having.is_some() {
-            return Err(
-                "`.having` is SoliDB-only on SQL adapters. See docs/sql-adapter-design.md."
-                    .to_string(),
-            );
-        }
+        // `.having` is compiled into the GROUP BY statement (see
+        // `sql_compile::compile_having`), in the portable comparison shape.
         let collection = crate::interpreter::symbol_string(qb.collection)
             .unwrap_or("unknown")
             .to_string();

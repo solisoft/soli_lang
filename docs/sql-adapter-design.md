@@ -67,11 +67,12 @@ Model API → QueryBuilder IR
 | `increment` / `decrement` | ✓ (CAS) | ✓ (one UPDATE) | ✓ (one UPDATE) | ✓ (one UPDATE) |
 | `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) | ✓ (batch) |
 | `.includes` HABTM | ✓ | ✓ | ✓ | ✓ |
-| `.includes` through / filtered | ✓ | ✗ (planned) | ✗ (planned) | ✗ (planned) |
+| `.includes` through: | ✓ | ✓ (3 batched queries) | ✓ | ✓ |
+| `.includes` filtered (`where:`) | ✓ | ✗ | ✗ | ✗ |
 | multi-row `group_by` + multi-agg | ✓ | ✓ | ✓ | ✓ |
-| `.having` on groups | ✓ | ✗ | ✗ | ✗ |
+| `.having` on groups | ✓ | ✓ (portable comparison) | ✓ | ✓ |
 | String SDBQL `where` | ✓ | ✗ | ✗ | ✗ |
-| `.join` existence filter | ✓ | ✗ | ✗ | ✗ |
+| `.join` existence filter | ✓ | ✓ (EXISTS) | ✓ | ✓ |
 | Transactions (`Model.transaction`) | ✓ | ✓ | ✓ | ✓ (serializable only) |
 | `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ | ✓ |
 | Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ | ✗ |

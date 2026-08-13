@@ -39,6 +39,8 @@ fn list_query(
         table: table.to_string(),
         eq_filters,
         filter_sdbql,
+        having: None,
+        exists_filters: Vec::new(),
         soft_delete: db::SqlSoftDeleteMode::WithDeleted,
         is_soft_delete_model: false,
         order_field: order_field.map(str::to_string),

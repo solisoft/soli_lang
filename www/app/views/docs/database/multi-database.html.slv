@@ -257,8 +257,16 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">pushed into the SELECT list</span></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code>through:</code> includes, <code>.having</code>, <code>.join</code></td>
-                    <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
+                    <td class="py-3 px-4"><code>through:</code> includes</td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">three batched queries via the intermediate model</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>.join</code> (relation existence filter)</td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">correlated EXISTS, so parents are not duplicated</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>.having</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">one comparison of a group key or aggregate alias against a number</span></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code>Model.transaction</code></td>

@@ -407,6 +407,8 @@ fn unique_taken_on_sql(
         table: collection.to_string(),
         eq_filters,
         filter_sdbql: Some(format!("doc.{field} == @{field}")),
+        having: None,
+        exists_filters: Vec::new(),
         soft_delete: crate::db::SqlSoftDeleteMode::Default,
         is_soft_delete_model: false,
         order_field: None,

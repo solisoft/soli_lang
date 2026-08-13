@@ -1435,6 +1435,8 @@ mod integration_tests {
                 table: table.into(),
                 eq_filters: eq,
                 filter_sdbql: Some("doc.status == @status".into()),
+                having: None,
+                exists_filters: Vec::new(),
                 soft_delete: SoftDeleteMode::Default,
                 is_soft_delete_model: false,
                 order_field: None,
