@@ -2465,9 +2465,16 @@ describe("User model", fn()
 end)
 ```
 
-## Inspecting AQL Queries (Dev Tool)
+## Inspecting Queries (Dev Tool)
 
-When the server runs with `--dev`, every AQL query a request executes through the Model layer is captured into a per-request stack. Read it with the `dev_queries()` builtin and render it however you like — typically as a debug bar at the bottom of the page.
+When the server runs with `--dev`, every query a request executes through the Model layer is captured into a per-request stack. Read it with the `dev_queries()` builtin and render it however you like — typically as a debug bar at the bottom of the page.
+
+**This covers every backend.** On SoliDB the entries are AQL; on the SQL adapters
+they are the SQL actually sent, with the bind values numbered as `$1` / `?`
+appear in the statement. That means the dev bar's DB panel and timings, the
+N+1 badge, `assert_no_n_plus_one`, and `soli test --fail-on-n1` work the same on
+Postgres, MySQL, and SQLite. Bind values longer than 200 characters are truncated
+(with their real length noted) so a large document cannot flood the panel.
 
 ### `dev_queries()`
 
@@ -2475,7 +2482,7 @@ Returns an `Array<Hash>` of queries executed during the **current request**. The
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `query` | `String` | The AQL sent to SoliDB |
+| `query` | `String` | The statement sent to the database (AQL on SoliDB, SQL on the SQL adapters) |
 | `bind_vars` | `Hash` or `null` | The bind variables, or `null` if the query had none |
 | `duration_ms` | `Float` | Wall-clock time the query took, in milliseconds |
 

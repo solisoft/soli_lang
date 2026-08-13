@@ -512,6 +512,17 @@ SOLI_DB_ADAPTER=sqlite
 DATABASE_URL=sqlite://db/app.sqlite3
 ```
 
+**The database itself** is not created by a migration. SoliDB makes its database
+on first use, but a SQL server does not, so a fresh target needs one command
+first:
+
+```bash
+soli db:create              # CREATE DATABASE (or the SQLite file + its directory)
+soli db:create -c legacy    # a named connection
+soli db:migrate up
+soli db:drop                # removes it — WAL sidecars included on SQLite
+```
+
 Or set them directly:
 
 ```bash

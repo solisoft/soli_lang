@@ -424,6 +424,9 @@ fn value_to_json(v: ValueRef<'_>) -> serde_json::Value {
 fn get_on(conn: &mut SqConn, table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
     let table_q = Dialect::Sqlite.quote_ident(table)?;
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
+    // Traced here rather than in `get`: this is the per-key lookup a loop turns
+    // into an N+1, and write paths read back through it too.
+    let _trace = super::trace::start(&sql, &[SqlBind::Text(key.to_string())]);
     let row: Option<String> = conn
         .query_row(&sql, [key], |r| r.get(0))
         .optional()
@@ -452,6 +455,7 @@ pub fn insert(
          ON CONFLICT(_key) DO UPDATE SET doc = excluded.doc"
     );
     let doc_str = document.to_string();
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.execute(&sql, rusqlite::params![&key, &doc_str])
             .map_err(|e| lite_error("sqlite insert", &e))?;
@@ -490,6 +494,7 @@ pub fn update(
         "INSERT INTO {table_q} (_key, doc) VALUES (?, json(?)) \
          ON CONFLICT(_key) DO UPDATE SET {set}"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.execute(&sql, rusqlite::params![key, &doc_str])
             .map_err(|e| lite_error("sqlite update", &e))?;
@@ -503,6 +508,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     }
     let table_q = Dialect::Sqlite.quote_ident(table)?;
     let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.execute(&sql, [key])
             .map_err(|e| lite_error("sqlite delete", &e))?;
@@ -515,6 +521,7 @@ pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
         return Ok(Vec::new());
     }
     let compiled = compile_select_d(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -523,6 +530,7 @@ pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Va
         return Ok(Vec::new());
     }
     let compiled = compile_select_by_keys_d(Dialect::Sqlite, table, keys)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -535,6 +543,7 @@ pub fn select_json_text_in(
         return Ok(Vec::new());
     }
     let compiled = compile_select_json_text_in_d(Dialect::Sqlite, table, field, values)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -547,6 +556,7 @@ pub fn group_by(
         return Ok(Vec::new());
     }
     let compiled = compile_group_by_d(Dialect::Sqlite, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     // Column order: group fields, then agg aliases (or "n" when there are none).
     let mut col_names: Vec<String> = group_fields.to_vec();
     if aggs.is_empty() {
@@ -585,6 +595,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         return Ok(0);
     }
     let compiled = compile_count_d(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n: Option<i64> = conn
@@ -600,6 +611,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         return Ok(false);
     }
     let compiled = compile_exists_d(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let hit: Option<i64> = conn
@@ -615,6 +627,7 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
         return Ok(serde_json::Value::Null);
     }
     let compiled = compile_aggregate_d(Dialect::Sqlite, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let value: Option<serde_json::Value> = conn
@@ -638,6 +651,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         return Ok(0);
     }
     let compiled = compile_delete_all_d(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
@@ -652,6 +666,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         return Ok(0);
     }
     let compiled = compile_update_all_d(Dialect::Sqlite, q, &patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
@@ -739,6 +754,60 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Create or drop the database file the connection URL names.
+///
+/// A SQLite database is a file, so "create" is touching it (the pool would do
+/// that anyway) and "drop" is deleting it — along with the `-wal` and `-shm`
+/// sidecars, which would otherwise resurrect committed data into the next file
+/// of the same name.
+pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .clone()
+        .ok_or_else(|| "connection has no url".to_string())?;
+    let Target::File(path) = parse_target(&url) else {
+        return Ok("sqlite::memory: needs no file — nothing to do".to_string());
+    };
+
+    if drop {
+        // Drop the pool first: deleting a file out from under open connections
+        // leaves them writing to an unlinked inode.
+        if let Ok(mut map) = pools().lock() {
+            map.remove(&active_connection_name());
+        }
+        let mut removed = false;
+        for suffix in ["", "-wal", "-shm"] {
+            let target = if suffix.is_empty() {
+                path.clone()
+            } else {
+                std::path::PathBuf::from(format!("{}{suffix}", path.display()))
+            };
+            if target.exists() {
+                std::fs::remove_file(&target)
+                    .map_err(|e| format!("could not remove {}: {e}", target.display()))?;
+                removed |= suffix.is_empty();
+            }
+        }
+        return Ok(if removed {
+            format!("dropped sqlite database {}", path.display())
+        } else {
+            format!("sqlite database {} did not exist", path.display())
+        });
+    }
+
+    if path.exists() {
+        return Ok(format!("sqlite database {} already exists", path.display()));
+    }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+    }
+    // Opening through the pool creates the file with the right pragmas.
+    ensure_connected()?;
+    Ok(format!("created sqlite database {}", path.display()))
+}
+
 /// Add `delta` to a numeric JSON field **in one statement**, returning the new
 /// value. See the Postgres twin for why this is not read-modify-write.
 pub fn increment_field(
@@ -757,6 +826,7 @@ pub fn increment_field(
              COALESCE(doc ->> '$.{field}', 0) + ?1) \
          WHERE _key = ?2 RETURNING CAST((doc ->> '$.{field}') AS TEXT)"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         let value: Option<Option<String>> = conn
             .query_row(&sql, rusqlite::params![delta, key], |r| r.get(0))
@@ -1008,6 +1078,7 @@ pub fn col_get(
     pk: &serde_json::Value,
 ) -> Result<Option<serde_json::Value>, String> {
     let compiled = cols::compile_get_cols(Dialect::Sqlite, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "get")?;
         Ok(rows.into_iter().next())
@@ -1022,6 +1093,7 @@ pub fn col_insert(
     // so the stored row — generated keys and defaults included — comes back
     // from the insert itself.
     let compiled = cols::compile_insert_cols(Dialect::Sqlite, schema, doc)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "insert")?;
         rows.into_iter().next().ok_or_else(|| {
@@ -1039,6 +1111,7 @@ pub fn col_update(
     patch: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_update_cols(Dialect::Sqlite, schema, pk, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let rows = col_rows(conn, schema, &compiled.sql, &compiled.params, "update")?;
         rows.into_iter()
@@ -1052,6 +1125,7 @@ pub fn col_delete(
     pk: &serde_json::Value,
 ) -> Result<(), String> {
     let compiled = cols::compile_delete_cols(Dialect::Sqlite, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         conn.execute(&compiled.sql, params_from_iter(params.iter()))
@@ -1083,11 +1157,13 @@ pub fn col_increment(
 
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| col_rows(conn, &q.schema, &compiled.sql, &compiled.params, "select"))
 }
 
 pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
     let compiled = cols::compile_count_cols(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n: Option<i64> = conn
@@ -1100,6 +1176,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
 
 pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
     let compiled = cols::compile_exists_cols(Dialect::Sqlite, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let hit: Option<i64> = conn
@@ -1116,6 +1193,7 @@ pub fn col_aggregate(
     field: &str,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_aggregate_cols(Dialect::Sqlite, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         if func == SqlAgg::Count {
@@ -2375,6 +2453,85 @@ mod tests {
             // recovered when the database names only the index.
             assert_eq!(errors[0].field, "email");
             assert_eq!(errors[0].message, "has already been taken");
+        });
+    }
+
+    /// The dev bar, `dev_queries()`, the N+1 detector and `--fail-on-n1` all read
+    /// the query log, which no SQL adapter wrote to. This asserts the whole chain
+    /// from a Model-level query down to a logged statement with its binds.
+    #[test]
+    fn queries_reach_the_dev_query_log() {
+        use crate::interpreter::builtins::model::query_log;
+
+        with_sqlite("query-log", || {
+            let table = "posts";
+            ensure_table(table).expect("table");
+            insert(table, Some("a"), serde_json::json!({ "status": "open" })).expect("insert");
+
+            query_log::set_enabled(true);
+            query_log::clear();
+
+            let filter = list_query(table, &[("status", serde_json::json!("open"))]);
+            select(&filter).expect("select");
+            count(&filter).expect("count");
+
+            let logged = query_log::snapshot();
+            query_log::set_enabled(false);
+
+            assert!(
+                logged.len() >= 2,
+                "both statements should be logged, got {}",
+                logged.len()
+            );
+            let select_entry = logged
+                .iter()
+                .find(|entry| entry.query.starts_with("SELECT doc"))
+                .expect("the SELECT is logged with its real SQL");
+            // The panel shows the SQL a developer can paste into a client…
+            assert!(
+                select_entry.query.contains("(doc ->> '$.status')"),
+                "{}",
+                select_entry.query
+            );
+            // …with the binds numbered like the placeholders…
+            let binds = select_entry.bind_vars.as_ref().expect("binds are captured");
+            assert_eq!(binds["1"], serde_json::json!("open"));
+            // …and a duration, which is what the dev bar sorts by.
+            assert!(select_entry.duration_ms >= 0.0);
+            assert!(logged.iter().any(|e| e.query.contains("COUNT(*)")));
+        });
+    }
+
+    /// An N+1 is a repeated statement shape. With the log fed, the detector the
+    /// dev bar and `soli test --fail-on-n1` share can finally see one on SQL.
+    #[test]
+    fn a_repeated_query_is_detectable_as_an_n_plus_one() {
+        use crate::interpreter::builtins::model::query_log;
+
+        with_sqlite("query-log-n1", || {
+            let table = "posts";
+            ensure_table(table).expect("table");
+            for key in ["a", "b", "c", "d"] {
+                insert(table, Some(key), serde_json::json!({ "status": "open" })).expect("insert");
+            }
+
+            query_log::set_enabled(true);
+            query_log::clear();
+            // The shape of an N+1: one lookup per parent.
+            for key in ["a", "b", "c", "d"] {
+                get(table, key).expect("get");
+            }
+            let logged = query_log::snapshot();
+            query_log::set_enabled(false);
+
+            let groups = crate::serve::dev_bar::detect_n_plus_one(&logged, 3);
+            assert!(
+                !groups.is_empty(),
+                "four identical lookups must register as an N+1; logged: {:?}",
+                logged.iter().map(|e| &e.query).collect::<Vec<_>>()
+            );
+            let (_, count, _total_us) = &groups[0];
+            assert!(*count >= 4, "expected at least 4 repeats, got {count}");
         });
     }
 

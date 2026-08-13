@@ -20,7 +20,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `APP_ENV` | Selects `.env.{APP_ENV}` and marks test mode for features that need it. | unset |
 | `SOLI_PROTECT_ENV` | Comma-separated variable names that `.env.{APP_ENV}` must not override. Mostly used by the test runner. | unset |
 | `SOLI_DB_ADAPTER` | Single-connection backend when `config/database.toml` is absent: `solidb` (default), `postgres`, `mysql`, or `sqlite`. SQL adapters are a document subset (CRUD, hash filters, aggregates, includes batching, migrations). Multi-DB apps use `config/database.toml` instead — see [Multiple Databases](multi-database.md). | `solidb` |
-| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`, or a path such as `sqlite://db/app.sqlite3`). Required when `SOLI_DB_ADAPTER` is `postgres`, `mysql`, or `sqlite`. Ignored for SoliDB. Named SQL connections in TOML use `url =` per connection. | unset |
+| `DATABASE_URL` | Connection URL for SQL adapters (e.g. `postgres://user:pass@localhost:5432/myapp`, or a path such as `sqlite://db/app.sqlite3`). Required when `SOLI_DB_ADAPTER` is `postgres`, `mysql`, or `sqlite`. Ignored for SoliDB. Named SQL connections in TOML use `url =` per connection. Create the database itself with `soli db:create`. | unset |
 | `SOLI_DB_POOL_SIZE` | Default SQL pool size (single-connection mode). TOML `pool = N` overrides per connection. | `10` |
 
 ## Server And Development

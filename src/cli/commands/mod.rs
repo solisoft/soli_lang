@@ -2260,6 +2260,75 @@ fn create_tarball(project_dir: &Path, dest: &std::path::Path) -> Result<(), Stri
     Ok(())
 }
 
+/// `soli db:create` / `soli db:drop` — create or drop the target database.
+///
+/// SoliDB creates its database on first use, but a SQL server does not: pointing
+/// `DATABASE_URL` at a database nobody has created yet fails at boot with a
+/// driver error. This is the missing step.
+pub fn run_db_create_or_drop(folder: &str, connection: Option<&str>, drop: bool) {
+    let app_path = Path::new(folder);
+    if !app_path.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+    solilang::serve::env_loader::load_env_files(app_path);
+    if let Err(e) = solilang::db::init_from_app_path(app_path) {
+        eprintln!("  \x1b[31mError:\x1b[0m {}", e.message());
+        process::exit(1);
+    }
+    if let Some(name) = connection {
+        let reg = solilang::db::registry();
+        if !reg.connections.contains_key(name) {
+            let known: Vec<_> = reg.connections.keys().cloned().collect();
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m Unknown database connection {name:?}. Known: {}.",
+                if known.is_empty() {
+                    "(none — no database.toml?)".into()
+                } else {
+                    known.join(", ")
+                }
+            );
+            process::exit(1);
+        }
+    }
+
+    let run = || {
+        if drop {
+            // Dropping a database is not recoverable, so say which one.
+            println!();
+            println!(
+                "  \x1b[1mDropping\x1b[0m {} ({})",
+                solilang::db::active_connection_name(),
+                solilang::db::adapter_label()
+            );
+        }
+        if !solilang::db::is_sql() {
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m db:{} needs a SQL connection. SoliDB creates its \
+                 database on first use.",
+                if drop { "drop" } else { "create" }
+            );
+            process::exit(1);
+        }
+        match solilang::db::sql::create_or_drop_database(drop) {
+            Ok(summary) => {
+                println!();
+                println!("  \x1b[32m{summary}\x1b[0m");
+                println!();
+            }
+            Err(e) => {
+                eprintln!("  \x1b[31mError:\x1b[0m {e}");
+                process::exit(1);
+            }
+        }
+    };
+
+    match connection {
+        Some(name) => solilang::db::with_connection(name, run),
+        None => run(),
+    }
+}
+
 pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option<&str>) {
     use solilang::migration::{DbConfig, MigrationRunner};
 

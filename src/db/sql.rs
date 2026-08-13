@@ -359,6 +359,16 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
     )
 }
 
+/// Create or drop the database the active SQL connection points at. Returns a
+/// human-readable summary of what happened.
+pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    route_sql!(
+        super::postgres::create_or_drop_database(drop),
+        super::mysql::create_or_drop_database(drop),
+        super::sqlite::create_or_drop_database(drop)
+    )
+}
+
 /// Add `delta` to a numeric JSON field of one row, atomically, returning the new
 /// value (`None` when the table or row is absent).
 pub fn increment_field(

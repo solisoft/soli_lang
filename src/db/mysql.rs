@@ -304,6 +304,9 @@ fn to_mysql_params(params: &[SqlBind]) -> Vec<MysqlValue> {
 fn get_on(conn: &mut MyConn, table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
     let table_q = Dialect::Mysql.quote_ident(table)?;
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
+    // Traced here rather than in `get`: this is the per-key lookup a loop turns
+    // into an N+1, and write paths read back through it too.
+    let _trace = super::trace::start(&sql, &[SqlBind::Text(key.to_string())]);
     let row: Option<String> = conn
         .exec_first(&sql, (key,))
         .map_err(|e| my_error("mysql get", &e))?;
@@ -331,6 +334,7 @@ pub fn insert(
          ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
     );
     let doc_str = document.to_string();
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.exec_drop(&sql, (&key, &doc_str))
             .map_err(|e| my_error("mysql insert", &e))?;
@@ -386,6 +390,7 @@ pub fn update(
         "INSERT INTO {table_q} (_key, doc) VALUES (?, CAST(? AS JSON)) \
          ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.exec_drop(&sql, (key, &doc_str))
             .map_err(|e| my_error("mysql update", &e))?;
@@ -399,6 +404,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     }
     let table_q = Dialect::Mysql.quote_ident(table)?;
     let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
         conn.exec_drop(&sql, (key,))
             .map_err(|e| my_error("mysql delete", &e))?;
@@ -411,6 +417,7 @@ pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
         return Ok(Vec::new());
     }
     let compiled = compile_select_d(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -419,6 +426,7 @@ pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Va
         return Ok(Vec::new());
     }
     let compiled = compile_select_by_keys_d(Dialect::Mysql, table, keys)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -431,6 +439,7 @@ pub fn select_json_text_in(
         return Ok(Vec::new());
     }
     let compiled = compile_select_json_text_in_d(Dialect::Mysql, table, field, values)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -443,6 +452,7 @@ pub fn group_by(
         return Ok(Vec::new());
     }
     let compiled = compile_group_by_d(Dialect::Mysql, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     // Build expected column order: group fields then agg aliases (or "n").
     let mut col_names: Vec<String> = group_fields.to_vec();
     if aggs.is_empty() {
@@ -496,6 +506,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         return Ok(0);
     }
     let compiled = compile_count_d(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let n: Option<i64> = conn
@@ -510,6 +521,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         return Ok(false);
     }
     let compiled = compile_exists_d(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let row: Option<i64> = conn
@@ -524,6 +536,7 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
         return Ok(serde_json::Value::Null);
     }
     let compiled = compile_aggregate_d(Dialect::Mysql, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         if matches!(func, SqlAgg::Count) {
@@ -562,6 +575,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         return Ok(0);
     }
     let compiled = compile_delete_all_d(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let result = conn
@@ -576,6 +590,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         return Ok(0);
     }
     let compiled = compile_update_all_d(Dialect::Mysql, q, &patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let result = conn
@@ -613,6 +628,48 @@ pub fn drop_table(table: &str) -> Result<(), String> {
         conn.query_drop(&ddl)
             .map_err(|e| my_error("mysql drop_table", &e))
     })
+}
+
+/// Create or drop the database the connection URL names.
+///
+/// Connects without a database selected, since the target may not exist yet.
+pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .clone()
+        .ok_or_else(|| "connection has no url".to_string())?;
+    let opts = Opts::from_url(&url).map_err(|e| format!("invalid DATABASE_URL: {e}"))?;
+    let database = opts
+        .get_db_name()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "connection URL names no database".to_string())?
+        .to_string();
+    let quoted = Dialect::Mysql.quote_ident(&database)?;
+
+    // Same server, no database selected.
+    let server = OptsBuilder::from_opts(opts).db_name(None::<String>);
+    let mut conn = mysql::Conn::new(server)
+        .map_err(|e| format!("could not connect to the mysql server: {e}"))?;
+    let sql = if drop {
+        format!("DROP DATABASE IF EXISTS {quoted}")
+    } else {
+        format!("CREATE DATABASE IF NOT EXISTS {quoted}")
+    };
+    conn.query_drop(&sql).map_err(|e| {
+        format!(
+            "{} database {database:?}: {e}",
+            if drop { "drop" } else { "create" }
+        )
+    })?;
+    Ok(format!(
+        "{} mysql database {database:?}",
+        if drop {
+            "dropped"
+        } else {
+            "created (or it already existed)"
+        }
+    ))
 }
 
 /// Add `delta` to a numeric JSON field **in one statement**, returning the new
@@ -854,6 +911,8 @@ fn read_back(
     pk: &serde_json::Value,
 ) -> Result<Option<serde_json::Value>, String> {
     let compiled = cols::compile_get_cols(Dialect::Mysql, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let params = to_mysql_params(&compiled.params);
     let row: Option<mysql::Row> = conn
         .exec_first(&compiled.sql, params)
@@ -873,6 +932,7 @@ pub fn col_insert(
     doc: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_insert_cols(Dialect::Mysql, schema, doc)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
@@ -901,6 +961,7 @@ pub fn col_update(
     patch: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_update_cols(Dialect::Mysql, schema, pk, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
@@ -917,6 +978,7 @@ pub fn col_delete(
     pk: &serde_json::Value,
 ) -> Result<(), String> {
     let compiled = cols::compile_delete_cols(Dialect::Mysql, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         conn.exec_drop(&compiled.sql, params)
@@ -950,6 +1012,7 @@ pub fn col_increment(
 
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let rows: Vec<mysql::Row> = conn
@@ -961,6 +1024,7 @@ pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, Strin
 
 pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
     let compiled = cols::compile_count_cols(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let n: Option<i64> = conn
@@ -972,6 +1036,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
 
 pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
     let compiled = cols::compile_exists_cols(Dialect::Mysql, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         let hit: Option<i64> = conn
@@ -987,6 +1052,7 @@ pub fn col_aggregate(
     field: &str,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_aggregate_cols(Dialect::Mysql, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_mysql_params(&compiled.params);
         if func == SqlAgg::Count {

@@ -170,6 +170,18 @@ pub enum Command {
     DbImport {
         collections: Vec<String>,
     },
+    /// `soli db:create [folder]` / `soli db:drop [folder]` — create or drop the
+    /// database the active connection points at. SoliDB creates its database on
+    /// first use, but a SQL server does not: without this, a fresh Postgres or
+    /// MySQL target fails at boot with a driver error.
+    DbCreate {
+        folder: String,
+        connection: Option<String>,
+    },
+    DbDrop {
+        folder: String,
+        connection: Option<String>,
+    },
     /// `soli db:indexes [folder]` — create any missing indexes declared with
     /// the class-body DSL (`index`, `vector_index`, `fulltext_index`,
     /// `geo_index`). Idempotent; the production counterpart of the dev-boot
@@ -443,6 +455,8 @@ pub fn print_usage() {
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
     eprintln!("  soli db:seed generate <name> [folder]");
+    eprintln!("  soli db:create [folder] [--connection NAME]");
+    eprintln!("  soli db:drop [folder] [--connection NAME]");
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
@@ -1019,6 +1033,31 @@ pub fn parse_args() -> Options {
                     action,
                     folder,
                     connection,
+                };
+                return options;
+            }
+            "db:create" | "db:drop" => {
+                let dropping = args[i] == "db:drop";
+                i += 1;
+                let mut folder = ".".to_string();
+                let mut connection = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--connection" | "-c" if i + 1 < args.len() => {
+                            connection = Some(args[i + 1].clone());
+                            i += 2;
+                        }
+                        other if !other.starts_with('-') => {
+                            folder = other.to_string();
+                            i += 1;
+                        }
+                        _ => i += 1,
+                    }
+                }
+                options.command = if dropping {
+                    Command::DbDrop { folder, connection }
+                } else {
+                    Command::DbCreate { folder, connection }
                 };
                 return options;
             }

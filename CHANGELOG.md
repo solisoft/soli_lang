@@ -4,6 +4,28 @@
 
 ### Added
 
+- **The dev bar, `dev_queries()`, and N+1 detection now work on the SQL
+  adapters.** Only the SoliDB path wrote to the per-request query log, so on
+  Postgres/MySQL/SQLite the DB panel was empty, timings were missing, and the
+  N+1 badge, `assert_no_n_plus_one`, and `soli test --fail-on-n1` could never
+  fire — the framework's own N+1 guard was blind on three of four backends.
+  Every statement now records its SQL, its binds (numbered as `$1` / `?` appear
+  in the statement) and its duration, plus a `Db` span so the flamegraph shows
+  database time. Verified in a live `--dev` app: the badge reads `5q`, the panel
+  lists the real SQL, and a deliberate per-row lookup reports
+  "N+1 DETECTED · 2 TEMPLATES". Bind values over 200 characters are truncated
+  with their real length noted. The Prometheus DB-time counter is fed on this
+  path too, so production gains SQL timings even with the dev log off.
+
+- **`soli db:create` / `soli db:drop`.** SoliDB creates its database on first
+  use; a SQL server does not, so pointing `DATABASE_URL` at a database nobody
+  created failed at boot with a driver error. `db:create` runs `CREATE DATABASE`
+  (through the `postgres` maintenance database on Postgres, a db-less connection
+  on MySQL) or creates the SQLite file and its parent directory; `db:drop`
+  removes it, including the `-wal`/`-shm` sidecars on SQLite, which would
+  otherwise resurrect committed data into the next file of the same name. Both
+  take `--connection NAME`.
+
 - **`index` declarations now work on the SQL adapters, and the planner uses
   them.** A document table had no indexes at all: `index_sync` reconciled
   declarations through SoliDB's HTTP index API, which *refuses* on a SQL

@@ -311,6 +311,7 @@ pub fn insert(
          ON CONFLICT (_key) DO UPDATE SET doc = EXCLUDED.doc \
          RETURNING doc"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|client| {
         let row = client
             .query_one(&sql, &[&key, &document])
@@ -326,6 +327,7 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
     }
     let table_q = Dialect::Postgres.quote_ident(table)?;
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = $1");
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|client| {
         let rows = client
             .query(&sql, &[&key])
@@ -376,6 +378,7 @@ pub fn update(
          ON CONFLICT (_key) DO UPDATE SET doc = EXCLUDED.doc \
          RETURNING doc"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|client| {
         let row = client
             .query_one(&sql, &[&key, &document])
@@ -390,6 +393,7 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     }
     let table_q = Dialect::Postgres.quote_ident(table)?;
     let sql = format!("DELETE FROM {table_q} WHERE _key = $1");
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|client| {
         client
             .execute(&sql, &[&key])
@@ -403,6 +407,7 @@ pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
         return Ok(Vec::new());
     }
     let compiled = compile_select_d(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -412,6 +417,7 @@ pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Va
         return Ok(Vec::new());
     }
     let compiled = compile_select_by_keys_d(Dialect::Postgres, table, keys)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -425,6 +431,7 @@ pub fn select_json_text_in(
         return Ok(Vec::new());
     }
     let compiled = compile_select_json_text_in_d(Dialect::Postgres, table, field, values)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     query_docs(&compiled.sql, &compiled.params)
 }
 
@@ -438,6 +445,7 @@ pub fn group_by(
         return Ok(Vec::new());
     }
     let compiled = compile_group_by_d(Dialect::Postgres, q, group_fields, aggs)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -486,6 +494,7 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
         return Ok(0);
     }
     let compiled = compile_count_d(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -502,6 +511,7 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
         return Ok(false);
     }
     let compiled = compile_exists_d(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -517,6 +527,7 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
         return Ok(serde_json::Value::Null);
     }
     let compiled = compile_aggregate_d(Dialect::Postgres, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -539,6 +550,7 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
         return Ok(0);
     }
     let compiled = compile_delete_all_d(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -554,6 +566,7 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
         return Ok(0);
     }
     let compiled = compile_update_all_d(Dialect::Postgres, q, &patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -643,6 +656,74 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     })
 }
 
+/// Create or drop the database the connection URL names.
+///
+/// `CREATE DATABASE` cannot run inside the database being created, so this
+/// connects to the `postgres` maintenance database on the same server. The name
+/// is quoted as an identifier, never interpolated raw.
+pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    let spec = active_spec()?;
+    let url = spec
+        .url
+        .clone()
+        .ok_or_else(|| "connection has no url".to_string())?;
+    let (maintenance_url, database) = split_database(&url)?;
+    let quoted = Dialect::Postgres.quote_ident(&database)?;
+
+    let mut client = postgres::Client::connect(&maintenance_url, NoTls).map_err(|e| {
+        format!(
+            "could not connect to the postgres maintenance database ({}): {e}",
+            redact(&maintenance_url)
+        )
+    })?;
+    if drop {
+        client
+            .batch_execute(&format!("DROP DATABASE IF EXISTS {quoted}"))
+            .map_err(|e| format!("drop database {database:?}: {e}"))?;
+        return Ok(format!("dropped postgres database {database:?}"));
+    }
+    // Postgres has no IF NOT EXISTS for CREATE DATABASE; 42P04 means it is
+    // already there, which is the outcome the caller asked for.
+    match client.batch_execute(&format!("CREATE DATABASE {quoted}")) {
+        Ok(()) => Ok(format!("created postgres database {database:?}")),
+        Err(e) if e.code().map(|c| c.code()) == Some("42P04") => {
+            Ok(format!("postgres database {database:?} already exists"))
+        }
+        Err(e) => Err(format!("create database {database:?}: {e}")),
+    }
+}
+
+/// Split a connection URL into (url pointing at `postgres`, database name).
+fn split_database(url: &str) -> Result<(String, String), String> {
+    let (head, tail) = url
+        .rsplit_once('/')
+        .ok_or_else(|| format!("could not read a database name from {}", redact(url)))?;
+    // Strip any query string: `…/app?sslmode=require`.
+    let (database, query) = match tail.split_once('?') {
+        Some((db, q)) => (db, Some(q)),
+        None => (tail, None),
+    };
+    if database.is_empty() {
+        return Err(format!("connection URL {} names no database", redact(url)));
+    }
+    let mut maintenance = format!("{head}/postgres");
+    if let Some(query) = query {
+        maintenance.push('?');
+        maintenance.push_str(query);
+    }
+    Ok((maintenance, database.to_string()))
+}
+
+/// Hide the password before a URL reaches a log or an error message.
+fn redact(url: &str) -> String {
+    match (url.find("://"), url.rfind('@')) {
+        (Some(scheme_end), Some(at)) if at > scheme_end => {
+            format!("{}://***{}", &url[..scheme_end], &url[at..])
+        }
+        _ => url.to_string(),
+    }
+}
+
 /// Add `delta` to a numeric JSON field **in one statement**, returning the new
 /// value.
 ///
@@ -666,6 +747,7 @@ pub fn increment_field(
              to_jsonb(COALESCE((doc->>'{field}')::numeric, 0) + $1::bigint)) \
          WHERE _key = $2 RETURNING (doc->>'{field}')"
     );
+    let _trace = super::trace::start_plain(&sql);
     with_conn(|client| {
         let rows = client
             .query(&sql, &[&delta, &key])
@@ -813,6 +895,7 @@ pub fn col_get(
     pk: &serde_json::Value,
 ) -> Result<Option<serde_json::Value>, String> {
     let compiled = cols::compile_get_cols(Dialect::Postgres, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -828,6 +911,7 @@ pub fn col_insert(
     doc: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_insert_cols(Dialect::Postgres, schema, doc)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -844,6 +928,7 @@ pub fn col_update(
     patch: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_update_cols(Dialect::Postgres, schema, pk, patch)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -865,6 +950,7 @@ pub fn col_delete(
     pk: &serde_json::Value,
 ) -> Result<(), String> {
     let compiled = cols::compile_delete_cols(Dialect::Postgres, schema, pk)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -901,6 +987,7 @@ pub fn col_increment(
 
 pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     let compiled = cols::compile_select_cols(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -913,6 +1000,7 @@ pub fn col_select(q: &cols::ColumnQuery) -> Result<Vec<serde_json::Value>, Strin
 
 pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
     let compiled = cols::compile_count_cols(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -925,6 +1013,7 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
 
 pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
     let compiled = cols::compile_exists_cols(Dialect::Postgres, q)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -941,6 +1030,7 @@ pub fn col_aggregate(
     field: &str,
 ) -> Result<serde_json::Value, String> {
     let compiled = cols::compile_aggregate_cols(Dialect::Postgres, q, func, field)?;
+    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -1035,6 +1125,7 @@ pub fn claim_jobs(
                    ORDER BY COALESCE((doc->>'priority')::bigint, 0) DESC, (doc->>'run_at') ASC \
                    LIMIT $4 FOR UPDATE SKIP LOCKED) \
                RETURNING doc";
+    let _trace = super::trace::start_plain(sql);
     with_conn(|client| {
         let rows = client
             .query(

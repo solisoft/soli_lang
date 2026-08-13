@@ -258,8 +258,20 @@ headers    # View HTTP headers</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-6">
-            When the server runs with <code class="text-cyan-400">--dev</code>, every AQL query a request executes through the Model layer is captured into a per-request stack. The <code class="text-cyan-400">dev_queries()</code> builtin returns that stack, so you can render a debug bar showing every query, its bind variables, and how long it took.
+            When the server runs with <code class="text-cyan-400">--dev</code>, every query a request executes through the Model layer is captured into a per-request stack. The <code class="text-cyan-400">dev_queries()</code> builtin returns that stack, so you can render a debug bar showing every query, its bind variables, and how long it took.
         </p>
+        <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-6">
+            <p class="text-cyan-200 text-sm leading-relaxed">
+                <strong class="text-white">Every backend is covered.</strong> On SoliDB the entries
+                are AQL; on the SQL adapters (<code>postgres</code>, <code>mysql</code>,
+                <code>sqlite</code>) they are the SQL actually sent, with binds numbered the way
+                <code>$1</code> / <code>?</code> appear in the statement. The dev bar's DB panel and
+                timings, the N+1 badge, <code class="text-cyan-400">assert_no_n_plus_one</code>, and
+                <code class="text-cyan-400">soli test --fail-on-n1</code> therefore behave the same on
+                all of them. Bind values over 200 characters are truncated (with their real length
+                noted) so a large document cannot flood the panel.
+            </p>
+        </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Return Shape</h3>
         <p class="text-gray-400 mb-4">

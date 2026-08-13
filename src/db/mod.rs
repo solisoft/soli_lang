@@ -27,6 +27,7 @@ pub mod sql_columns_compile;
 pub mod sql_compile;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+pub mod trace;
 
 pub use adapter::{parse_adapter, Adapter, AdapterConfig};
 pub use caps::BackendCaps;

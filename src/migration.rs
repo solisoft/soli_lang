@@ -1208,4 +1208,283 @@ mod tests {
         );
         assert!(skip_note("No pending migrations", 3).contains("3 skipped"));
     }
+
+    /// Private SQLite file(s) + registry override. Same lock as the adapter
+    /// tests so we never race another module's override.
+    fn with_sqlite_app(names: &[&str], f: impl FnOnce(&Path)) {
+        use crate::db::registry::{
+            clear_registry_override, registry_test_lock, set_registry_for_tests,
+            ConnectionRegistry, ConnectionSpec,
+        };
+        use crate::db::Adapter;
+        use std::collections::HashMap;
+
+        let _lock = registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let root = std::env::temp_dir().join(format!(
+            "soli-mig-e2e-{}-{}",
+            std::process::id(),
+            names.join("-")
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("db/migrations")).expect("app dir");
+
+        let mut connections = HashMap::new();
+        for name in names {
+            let db_path = root.join(format!("{name}.sqlite3"));
+            connections.insert(
+                (*name).to_string(),
+                ConnectionSpec {
+                    name: (*name).to_string(),
+                    adapter: Adapter::Sqlite,
+                    url: Some(format!("sqlite://{}", db_path.display())),
+                    solidb_host: None,
+                    solidb_database: None,
+                    solidb_username: None,
+                    solidb_password: None,
+                    solidb_api_key: None,
+                    pool_size: Some(2),
+                },
+            );
+        }
+        set_registry_for_tests(ConnectionRegistry {
+            default: names[0].to_string(),
+            connections,
+            from_file: false,
+        });
+
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                crate::interpreter::builtins::model::clear_all_model_registries();
+                crate::db::introspect::clear_schema_cache();
+                clear_registry_override();
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        f(&root);
+    }
+
+    fn write_migration(app: &Path, filename: &str, source: &str) {
+        fs::write(app.join("db/migrations").join(filename), source).expect("write migration");
+    }
+
+    fn runner(app: &Path) -> MigrationRunner {
+        MigrationRunner::new(DbConfig::new("unused", "unused"), app)
+    }
+
+    #[test]
+    fn migrate_up_and_down_create_and_drop_a_column_table() {
+        with_sqlite_app(&["primary"], |app| {
+            write_migration(
+                app,
+                "20260813000001_create_invoices.sl",
+                r#"
+def up(db)
+  db.create_table("invoices", {
+    "id": "pk",
+    "code": { "type": "string", "limit": 32, "null": false },
+    "total": "decimal(10,2)",
+    "timestamps": true
+  })
+  db.add_index("invoices", ["code"], { "unique": true })
+end
+
+def down(db)
+  db.drop_table("invoices")
+end
+"#,
+            );
+
+            let up = runner(app).migrate_up().expect("up");
+            assert_eq!(up.applied, vec!["20260813000001_create_invoices"]);
+            crate::db::introspect::get_schema("invoices").expect("table exists after up");
+
+            let again = runner(app).migrate_up().expect("second up");
+            assert!(
+                again.applied.is_empty(),
+                "a second up must be a no-op: {}",
+                again.message
+            );
+
+            let down = runner(app).migrate_down().expect("down");
+            assert_eq!(down.applied, vec!["20260813000001_create_invoices"]);
+            crate::db::introspect::clear_schema_cache();
+            assert!(
+                crate::db::introspect::get_schema("invoices").is_err(),
+                "table must be gone after down"
+            );
+        });
+    }
+
+    #[test]
+    fn run_migration_source_executes_create_table_and_execute() {
+        with_sqlite_app(&["interp"], |app| {
+            write_migration(
+                app,
+                "20260813000002_notes.sl",
+                r#"
+def up(db)
+  db.create_table("notes", {
+    "id": "pk",
+    "body": "text"
+  })
+  db.add_column("notes", "author", "string")
+  db.execute("CREATE INDEX IF NOT EXISTS idx_notes_body ON notes (body)")
+end
+
+def down(db)
+  db.drop_table("notes")
+end
+"#,
+            );
+            runner(app).migrate_up().expect("up");
+            let raw = crate::db::sqlite::introspect_table("notes").expect("introspect");
+            let names: Vec<&str> = raw.columns.iter().map(|(name, ..)| name.as_str()).collect();
+            assert!(names.contains(&"body"), "{names:?}");
+            assert!(
+                names.contains(&"author"),
+                "add_column must have run: {names:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn a_reserved_table_name_fails_the_migration() {
+        with_sqlite_app(&["reserved"], |app| {
+            write_migration(
+                app,
+                "20260813000003_drop_jobs.sl",
+                r#"
+def up(db)
+  db.create_table("_jobs", { "id": "pk" })
+end
+
+def down(db)
+end
+"#,
+            );
+            let err = match runner(app).migrate_up() {
+                Ok(ok) => panic!(
+                    "reserved create_table should fail, applied {:?}",
+                    ok.applied
+                ),
+                Err(e) => e,
+            };
+            assert!(err.contains("reserved") || err.contains("_jobs"), "{err}");
+        });
+    }
+
+    #[test]
+    fn a_duplicate_connection_declaration_fails_discovery() {
+        with_sqlite_app(&["dup"], |app| {
+            write_migration(
+                app,
+                "20260813000004_dup.sl",
+                "connection \"legacy\"\nconnection \"warehouse\"\ndef up(db)\nend\n",
+            );
+            let err = runner(app).get_migrations().unwrap_err();
+            assert!(err.contains("only once"), "{err}");
+        });
+    }
+
+    #[test]
+    fn connection_filter_skips_a_file_that_declared_another_database() {
+        with_sqlite_app(&["primary", "warehouse"], |app| {
+            write_migration(
+                app,
+                "20260813000005_warehouse_events.sl",
+                r#"
+connection "warehouse"
+
+def up(db)
+  db.create_table("wh_events", { "id": "pk", "name": "string" })
+end
+
+def down(db)
+  db.drop_table("wh_events")
+end
+"#,
+            );
+            write_migration(
+                app,
+                "20260813000006_default_posts.sl",
+                r#"
+def up(db)
+  db.create_table("def_posts", { "id": "pk", "title": "string" })
+end
+
+def down(db)
+  db.drop_table("def_posts")
+end
+"#,
+            );
+
+            let result = runner(app)
+                .with_connection_filter(Some("primary"))
+                .migrate_up()
+                .expect("filtered up");
+            assert!(
+                result.message.contains("skipped") || result.applied.len() == 1,
+                "{}",
+                result.message
+            );
+            assert_eq!(result.applied, vec!["20260813000006_default_posts"]);
+
+            crate::db::introspect::get_schema("def_posts").expect("default table");
+            crate::db::with_connection("warehouse", || {
+                crate::db::introspect::clear_schema_cache();
+                assert!(
+                    crate::db::introspect::get_schema("wh_events").is_err(),
+                    "warehouse migration must not have run"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn a_migration_then_the_soli_column_model_spec() {
+        with_sqlite_app(&["spec"], |app| {
+            write_migration(
+                app,
+                "20260813000007_sql_invoices.sl",
+                r#"
+def up(db)
+  db.create_table("sql_invoices", {
+    "id": "pk",
+    "code": { "type": "string", "limit": 32, "null": false },
+    "qty": "integer",
+    "paid": { "type": "boolean", "default": false },
+    "timestamps": true
+  })
+end
+
+def down(db)
+  db.drop_table("sql_invoices")
+end
+"#,
+            );
+            runner(app).migrate_up().expect("up");
+
+            let spec = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/builtins/sql_column_model_spec.sl");
+            let source = fs::read_to_string(&spec).expect("read spec");
+            let (assertions, result) = crate::run_with_path_and_coverage(
+                &source,
+                Some(&spec),
+                false,
+                None,
+                Some(&spec),
+                &[],
+            );
+            result.unwrap_or_else(|e| panic!("sql_column_model_spec.sl failed: {e}"));
+            assert!(
+                assertions >= 8,
+                "the spec must have run its assertions, got {assertions}"
+            );
+        });
+    }
 }
