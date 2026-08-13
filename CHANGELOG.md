@@ -219,7 +219,8 @@
   back, a parent with no links gets `[]` rather than null, and a dangling join
   row (a link to a deleted target) contributes nothing instead of a null hole.
   `includes_count` follows the same path, so it counts join rows for HABTM.
-  `through:` includes, `.having`, and `.join` remain SoliDB-only.
+  `through:` includes, `.having`, and `.join` now run on SQL as well — see the
+  entry above.
 
 - **Column-aware models — use Soli against an existing relational database.**
   Until now the SQL adapters were a document store *on top of* SQL: every table

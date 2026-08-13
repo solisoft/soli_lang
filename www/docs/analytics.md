@@ -1,9 +1,12 @@
 # Analytics & Columnar Stores
 
-> **Backends.** Multi-row `group_by` with multiple aggregates also runs on the
-> SQL adapters (`postgres`, `mysql`, `sqlite`); `having`, the statistical
-> terminals, and columnar stores are SoliDB-only and raise a message naming the
-> feature there. See [SQL document backends](multi-database.md#sql-document-backends).
+> **Backends.** Multi-row `group_by` with multiple aggregates runs on the SQL
+> adapters (`postgres`, `mysql`, `sqlite`) too, and so does `having` — there in
+> the portable shape "one comparison of a group key or aggregate alias against a
+> number" (`"n > 5"`), which covers the common case and refuses anything it would
+> have to translate. The statistical terminals (median, stddev, …) and columnar
+> stores remain SoliDB-only and raise a message naming the feature.
+> See [SQL document backends](multi-database.md#sql-document-backends).
 
 Soli gives you two complementary tools for analytical workloads, both backed
 by SolidB:
@@ -103,6 +106,20 @@ Order
 > **Security:** like the string form of `where`, the `having` string is
 > **developer-trusted** — it is spliced into the query. Never build it from
 > user input; user-supplied values belong in the bind-vars hash.
+
+**On the SQL adapters** `having` compiles to a real `HAVING` clause, but only in
+the portable shape **one comparison of a group key or aggregate alias against a
+number**:
+
+```soli
+Order.group_by(["country"]).aggregate({ "n": ["count"] }).having("n > 5").all
+```
+
+Two conditions, arithmetic, or a string comparison are refused there, naming the
+supported shape — the clause is AQL on SoliDB, and passing it through as SQL is
+how a filter silently changes meaning. Compare in Soli after `.all` for anything
+richer. The aggregate expression is repeated rather than its alias, because
+Postgres does not accept an alias in `HAVING`.
 
 ### Soft delete
 

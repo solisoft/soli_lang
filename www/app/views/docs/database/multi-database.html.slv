@@ -472,7 +472,31 @@ order.delete
 Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
         </div>
     </div>
-    <p class="text-gray-400 mb-8"><code class="text-cyan-400">pluck</code> and <code class="text-cyan-400">select</code> work too (projection happens client-side, as on the document path).</p>
+    <p class="text-gray-400 mb-6">
+        <code class="text-cyan-400">pluck</code> and <code class="text-cyan-400">select</code> are
+        <strong class="text-white">pushed into the SELECT list</strong> on column models, so a
+        projection reads two columns instead of fifty on a wide table; the primary key is always
+        included so the row stays identifiable. A field that is not a real column (a nested path, a
+        computed alias) falls back to the client-side projection rather than failing.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Raw SQL escape hatch</h3>
+    <p class="text-gray-400 mb-4">For a query the portable surface cannot express:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Positional binds: $1/$2 on Postgres, ? on MySQL and SQLite.
+Order.find_by_sql("SELECT * FROM orders WHERE total &gt; ? AND status = ?", [100, "open"])
+
+# A single `doc` column hydrates as documents (document tables);
+# any other shape becomes a hash per row.
+Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"])</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8">
+        Values are <strong class="text-white">bound</strong>, never interpolated, so a value that
+        looks like SQL stays a value. <code class="text-cyan-400">find_by_sql</code> is SQL-only; on
+        SoliDB it raises and points at <code class="text-cyan-400">Model.query</code> with SDBQL.
+    </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Also supported</h3>
 

@@ -20,8 +20,9 @@ rather than returning wrong rows.
 | `pluck` / `select`, `delete_all` / `update_all`, batch ops | ✓ | ✓ |
 | `.includes` for `belongs_to` / `has_many` / `has_one` / HABTM | ✓ | ✓ (batched) |
 | `Transactions` (`Model.transaction`) | ✓ | ✓ |
-| Raw SDBQL string `.where("doc…")`, `.join`, `.having` | ✓ | ✗ |
-| `.includes` with `through:` | ✓ | ✗ (planned) |
+| Raw SDBQL string `.where("doc…")` | ✓ | ✗ (use `Model.find_by_sql`) |
+| `.join` (relation existence filter), `.having` | ✓ | ✓ on document tables |
+| `.includes` with `through:` | ✓ (accessor only) | ✓ on document tables (three batched queries) |
 | Graph/edge models, vector search, timeseries, columnar, `grouped {}` | ✓ | ✗ |
 | Encrypted attributes, STI, counter caches | ✓ | ✓ on document tables, ✗ in column mode |
 

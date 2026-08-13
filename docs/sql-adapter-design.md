@@ -63,7 +63,7 @@ Model API → QueryBuilder IR
 | sum / avg / min / max / count | ✓ | ✓ | ✓ | ✓ |
 | `delete_all` / `update_all` (merge patch) | ✓ | ✓ | ✓ | ✓ |
 | Soft-delete scope (`with_deleted` / `only_deleted`) | ✓ | ✓ | ✓ | ✓ |
-| `pluck` / `select` projection | ✓ (server) | ✓ (client) | ✓ (client) | ✓ (client) |
+| `pluck` / `select` projection | ✓ (server) | ✓ (server in column mode, else client) | ✓ | ✓ |
 | `increment` / `decrement` | ✓ (CAS) | ✓ (one UPDATE) | ✓ (one UPDATE) | ✓ (one UPDATE) |
 | `.includes` belongs_to / has_many / has_one | ✓ | ✓ (batch) | ✓ (batch) | ✓ (batch) |
 | `.includes` HABTM | ✓ | ✓ | ✓ | ✓ |

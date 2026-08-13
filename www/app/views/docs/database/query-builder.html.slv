@@ -15,8 +15,11 @@
             order/limit/offset, count, exists, aggregates, and <code>group_by</code> compile on
             <strong class="text-white">SoliDB and every SQL adapter</strong> (<code>postgres</code>,
             <code>mysql</code>, <code>sqlite</code>). The string/raw SDBQL form
-            <code>.where("doc.age &gt;= @age")</code>, <code>.join</code>, and <code>.having</code> are
-            SoliDB-only &mdash; on a SQL connection they raise rather than guess. See
+            <code>.where("doc.age &gt;= @age")</code> is SoliDB-only &mdash; on a SQL connection it
+            raises rather than guessing (use <code>Model.find_by_sql</code> for a raw query there).
+            <code>.join</code> and <code>.having</code> now compile on SQL document tables too:
+            <code>.join</code> as a correlated <code>EXISTS</code>, <code>.having</code> as one
+            comparison of a group key or aggregate alias against a number. See
             <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.</p>
     </div>
     <h2 id="query-builder-chaining" class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>

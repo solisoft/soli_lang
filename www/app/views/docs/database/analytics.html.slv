@@ -14,7 +14,9 @@
         <p class="text-cyan-200 text-sm leading-relaxed">
             <strong class="text-white">Backends.</strong> Multi-row <code>group_by</code> with
             multiple aggregates runs on <strong class="text-white">SoliDB and every SQL adapter</strong>;
-            <code>having</code> and columnar stores are SoliDB-only. On SQL a rejected feature raises a
+            <code>having</code> works there too, in the portable shape "one comparison of a group key
+            or aggregate alias against a number" (<code>"n &gt; 5"</code>). The statistical terminals
+            (median, stddev, …) and columnar stores are SoliDB-only. On SQL a rejected feature raises a
             message naming it. See
             <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.</p>
     </div>
@@ -101,6 +103,29 @@ User.group_by("country", "sum", "balance").all</code></pre>
     </div>
 
     <h3 id="having" class="text-lg font-semibold text-white mb-3">Filtering groups with <code>having</code></h3>
+
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-6">
+
+        <p class="text-cyan-200 text-sm leading-relaxed">
+
+            <strong class="text-white">On the SQL adapters</strong> <code>having</code> compiles to a real
+
+            <code>HAVING</code> clause, but only in the portable shape <strong class="text-white">one
+
+            comparison of a group key or aggregate alias against a number</strong> &mdash;
+
+            <code class="text-cyan-400">.having("n &gt; 5")</code>. Two conditions, arithmetic, or a
+
+            string comparison are refused there, naming the supported shape: the clause is AQL on
+
+            SoliDB, and passing it through as SQL is how a filter silently changes meaning. Compare in
+
+            Soli after <code class="text-cyan-400">.all</code> for anything richer.
+
+        </p>
+
+    </div>
+
     <p class="text-gray-400 mb-4">
         <code>having(expr, binds?)</code> filters <strong class="text-white">after</strong> the COLLECT, over the bare aggregate aliases and group fields (no <code>doc.</code> prefix):
     </p>
