@@ -866,6 +866,7 @@ fn build_uploader_config_from_args(
     let mut quality: Option<u8> = None;
     let mut max_width: Option<u32> = None;
     let mut max_height: Option<u32> = None;
+    let mut service: Option<String> = None;
 
     for (k, v) in options {
         if let HashKey::String(key) = k {
@@ -943,6 +944,18 @@ fn build_uploader_config_from_args(
                     }
                     _ => {}
                 },
+                "service" => {
+                    if let Value::String(s) = v {
+                        let normalized = s.to_lowercase();
+                        if !matches!(normalized.as_str(), "solidb" | "disk" | "s3") {
+                            return Err(format!(
+                                "uploader(\"{}\") service must be \"solidb\", \"disk\", or \"s3\", got {:?}",
+                                name, s
+                            ));
+                        }
+                        service = Some(normalized.to_string());
+                    }
+                }
                 _ => {}
             }
         }
@@ -957,6 +970,7 @@ fn build_uploader_config_from_args(
     let max_size =
         max_size.ok_or_else(|| format!("uploader(\"{}\") requires a max_size (bytes)", name))?;
     let collection = collection.unwrap_or_else(|| default_collection(class_name, &name));
+    let service = service.unwrap_or_else(|| "solidb".to_string());
 
     Ok(UploaderConfig {
         name: name.to_string(),
@@ -968,6 +982,127 @@ fn build_uploader_config_from_args(
         quality,
         max_width,
         max_height,
+        service,
+    })
+}
+
+/// `has_one_attached("avatar")` / `has_many_attached("photos", { ... })`.
+/// Options are optional. Defaults: disk service, 10 MiB cap, any content type.
+fn build_attached_config_from_args(
+    class_name: &str,
+    args: &[Value],
+    multiple: bool,
+) -> Result<UploaderConfig, String> {
+    use crate::interpreter::value::HashKey;
+    let name = match args.get(1) {
+        Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
+        Some(other) => {
+            return Err(format!(
+                "has_*_attached() expects a field name (string or symbol), got {}",
+                other.type_name()
+            ))
+        }
+        None => return Err("has_*_attached() requires a field name".to_string()),
+    };
+
+    let options = match args.get(2) {
+        Some(Value::Hash(hash)) => Some(hash.borrow().clone()),
+        Some(Value::Null) | None => None,
+        Some(other) => {
+            return Err(format!(
+                "has_*_attached() expects an options hash, got {}",
+                other.type_name()
+            ))
+        }
+    };
+
+    let mut content_types: Vec<String> = Vec::new();
+    let mut max_size: Option<u64> = None;
+    let mut collection: Option<String> = None;
+    let mut format: Option<String> = None;
+    let mut quality: Option<u8> = None;
+    let mut max_width: Option<u32> = None;
+    let mut max_height: Option<u32> = None;
+    let mut service: Option<String> = None;
+
+    if let Some(options) = options {
+        for (k, v) in options {
+            if let HashKey::String(key) = k {
+                match key.as_ref() {
+                    "content_types" => {
+                        if let Value::Array(arr) = v {
+                            for item in arr.borrow().iter() {
+                                if let Value::String(s) = item {
+                                    content_types.push(s.clone().to_string());
+                                }
+                            }
+                        }
+                    }
+                    "max_size" => match v {
+                        Value::Int(n) if n >= 0 => max_size = Some(n as u64),
+                        _ => {}
+                    },
+                    "collection" => {
+                        if let Value::String(s) = v {
+                            collection = Some(s.to_string());
+                        }
+                    }
+                    "format" => {
+                        if let Value::String(s) = v {
+                            format = Some(s.to_lowercase().to_string());
+                        }
+                    }
+                    "quality" => match v {
+                        Value::Int(n) if (1..=100).contains(&n) => quality = Some(n as u8),
+                        _ => {}
+                    },
+                    "max_width" => match v {
+                        Value::Int(n) if n > 0 => max_width = Some(n as u32),
+                        _ => {}
+                    },
+                    "max_height" => match v {
+                        Value::Int(n) if n > 0 => max_height = Some(n as u32),
+                        _ => {}
+                    },
+                    "service" => {
+                        if let Value::String(s) = v {
+                            let normalized = s.to_lowercase();
+                            if !matches!(normalized.as_str(), "solidb" | "disk" | "s3") {
+                                return Err(format!(
+                                    "has_*_attached(\"{}\") service must be \"solidb\", \"disk\", or \"s3\"",
+                                    name
+                                ));
+                            }
+                            service = Some(normalized.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let env_service = std::env::var("SOLI_ATTACHMENTS_SERVICE")
+        .ok()
+        .map(|s| s.to_lowercase())
+        .filter(|s| matches!(s.as_str(), "solidb" | "disk" | "s3"));
+    let service = service
+        .or(env_service)
+        .unwrap_or_else(|| "disk".to_string());
+    let max_size = max_size.unwrap_or(10 * 1024 * 1024);
+    let collection = collection.unwrap_or_else(|| default_collection(class_name, &name));
+
+    Ok(UploaderConfig {
+        name: name.to_string(),
+        multiple,
+        content_types,
+        max_size,
+        collection,
+        format,
+        quality,
+        max_width,
+        max_height,
+        service,
     })
 }
 
@@ -1022,6 +1157,10 @@ fn uploader_config_to_value(config: Option<UploaderConfig>) -> Value {
         c.max_height
             .map(|h| Value::Int(h as i64))
             .unwrap_or(Value::Null),
+    );
+    pairs.insert(
+        HashKey::String("service".into()),
+        Value::String(c.service.into()),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
@@ -1492,6 +1631,33 @@ impl Model {
                 register_uploader(&class_name, config);
                 Ok(Value::Null)
             })),
+        );
+
+        native_static_methods.insert(
+            "has_one_attached".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.has_one_attached",
+                None,
+                |args| {
+                    let class_name = get_class_name_from_class(args)?;
+                    let config = build_attached_config_from_args(&class_name, args, false)?;
+                    register_uploader(&class_name, config);
+                    Ok(Value::Null)
+                },
+            )),
+        );
+        native_static_methods.insert(
+            "has_many_attached".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.has_many_attached",
+                None,
+                |args| {
+                    let class_name = get_class_name_from_class(args)?;
+                    let config = build_attached_config_from_args(&class_name, args, true)?;
+                    register_uploader(&class_name, config);
+                    Ok(Value::Null)
+                },
+            )),
         );
 
         // ====================================================================
@@ -6436,6 +6602,24 @@ pub fn register_model_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("uploader", Some(3), |args| {
             let class_name = get_class_name_from_class(args)?;
             let config = build_uploader_config_from_args(&class_name, args)?;
+            register_uploader(&class_name, config);
+            Ok(Value::Null)
+        })),
+    );
+    env.define(
+        "has_one_attached".to_string(),
+        Value::NativeFunction(NativeFunction::new("has_one_attached", None, |args| {
+            let class_name = get_class_name_from_class(args)?;
+            let config = build_attached_config_from_args(&class_name, args, false)?;
+            register_uploader(&class_name, config);
+            Ok(Value::Null)
+        })),
+    );
+    env.define(
+        "has_many_attached".to_string(),
+        Value::NativeFunction(NativeFunction::new("has_many_attached", None, |args| {
+            let class_name = get_class_name_from_class(args)?;
+            let config = build_attached_config_from_args(&class_name, args, true)?;
             register_uploader(&class_name, config);
             Ok(Value::Null)
         })),

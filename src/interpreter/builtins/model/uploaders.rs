@@ -42,6 +42,9 @@ pub struct UploaderConfig {
     /// `(max_width, max_height)` preserving aspect ratio; never upscaled.
     pub max_width: Option<u32>,
     pub max_height: Option<u32>,
+    /// Storage backend: `"solidb"` (default for `uploader`), `"disk"`, or `"s3"`.
+    /// `has_one_attached` / `has_many_attached` default to `"disk"`.
+    pub service: String,
 }
 
 /// Register an uploader on a class. Called from the `uploader(...)` native

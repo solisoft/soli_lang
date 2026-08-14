@@ -11833,20 +11833,82 @@
       ]
     },
     {
+      "title": "has_one_attached",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "has_one_attached(\"avatar\", { service, max_size, content_types })",
+      "description": "First-class single file attachment. Defaults to disk (./storage/attachments or SOLI_ATTACHMENTS_PATH); service: \"s3\" or \"solidb\". Generates attach_avatar / detach_avatar / avatar_url. Delete purges the blob.",
+      "keywords": [
+        "has_one_attached",
+        "attachment",
+        "avatar",
+        "upload",
+        "file",
+        "disk",
+        "s3",
+        "solidb",
+        "active storage",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "has_many_attached",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "has_many_attached(\"photos\", { service, max_size, content_types })",
+      "description": "First-class multi-file attachments. Defaults to disk; service: \"s3\" or \"solidb\". Generates attach_photos / detach_photos / photos_urls. Delete purges blobs.",
+      "keywords": [
+        "has_many_attached",
+        "attachments",
+        "photos",
+        "upload",
+        "file",
+        "disk",
+        "s3",
+        "solidb",
+        "active storage",
+        "model",
+        "orm"
+      ]
+    },
+    {
       "title": "uploader",
       "type": "method",
       "category": "Database",
       "path": "/docs/database/models#uploaders",
       "signature": "uploader(name, options)",
-      "description": "Declare a blob attachment field with validation rules",
+      "description": "Declare a blob attachment with required content_types and max_size. Defaults to SoliDB blobs (service: \"solidb\"); can use disk or s3. Same attach_/detach_/_url methods as has_*_attached.",
       "keywords": [
         "uploader",
         "upload",
         "file",
         "attachment",
         "blob",
+        "solidb",
+        "disk",
+        "s3",
         "model",
         "orm"
+      ]
+    },
+    {
+      "title": "store_attachment",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "store_attachment(config, file) · read_attachment(config, id) · delete_attachment(config, id)",
+      "description": "Low-level disk/S3 blob store used by has_*_attached. file is a LiveView or multipart hash (filename, content_type, size, base64 data).",
+      "keywords": [
+        "store_attachment",
+        "read_attachment",
+        "delete_attachment",
+        "disk",
+        "s3",
+        "blob",
+        "attachment"
       ]
     },
     {
@@ -11855,11 +11917,12 @@
       "category": "Database",
       "path": "/docs/database/models#uploaders",
       "signature": "instance.attach_<field>(file)",
-      "description": "Attach a file to an uploader field",
+      "description": "Attach a file (multipart or LiveView soli-upload hash) to a has_*_attached / uploader field",
       "keywords": [
         "attach",
         "upload",
         "file",
+        "soli-upload",
         "model",
         "orm"
       ]
@@ -11870,7 +11933,7 @@
       "category": "Database",
       "path": "/docs/database/models#uploaders",
       "signature": "instance.detach_<field>(blob_id?)",
-      "description": "Detach a file from an uploader field",
+      "description": "Detach a file from a has_*_attached / uploader field and delete the blob",
       "keywords": [
         "detach",
         "remove",
@@ -11885,7 +11948,7 @@
       "category": "Database",
       "path": "/docs/database/models#uploaders",
       "signature": "instance.<field>_url()",
-      "description": "Return proxy URL for an uploader field (single)",
+      "description": "Return proxy URL for a single attachment field",
       "keywords": [
         "url",
         "upload",
@@ -11900,13 +11963,29 @@
       "category": "Database",
       "path": "/docs/database/models#uploaders",
       "signature": "instance.<field>_urls()",
-      "description": "Return one URL per stored blob (multiple)",
+      "description": "Return one URL per stored blob (has_many_attached / multiple uploader)",
       "keywords": [
         "urls",
         "upload",
         "file",
         "model",
         "orm"
+      ]
+    },
+    {
+      "title": "detach_all_uploads",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "detach_all_uploads(record)",
+      "description": "Purge every attachment on a record. Called automatically by record.delete() and Model.delete(id).",
+      "keywords": [
+        "detach_all_uploads",
+        "purge",
+        "destroy",
+        "cleanup",
+        "attachment",
+        "delete"
       ]
     },
     {
@@ -14354,6 +14433,87 @@
         "soli-loading",
         "soli-click-away",
         "pushEvent"
+      ]
+    },
+    {
+      "title": "Live View",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview",
+      "signature": "router_live(\"desk\", \"live#desk\")",
+      "description": "Server-rendered interactive UI over a WebSocket: DOM morphing, streams, live queries, hooks, JS commands, nested live_component, soli-upload, send_update, rooms.",
+      "keywords": [
+        "liveview",
+        "live view",
+        "websocket",
+        "realtime",
+        "phoenix",
+        "morph",
+        "router_live"
+      ]
+    },
+    {
+      "title": "send_update",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview",
+      "signature": "send_update(\"child\", { \"focus\": 3 }) \u00b7 { \"update\": { ... } }",
+      "description": "Merge assigns onto the current LiveView after the handler returns so nested live_component templates re-render. Phoenix update/2 is not a child callback.",
+      "keywords": [
+        "send_update",
+        "update",
+        "live_component",
+        "assigns",
+        "liveview",
+        "phoenix"
+      ]
+    },
+    {
+      "title": "data-live-room",
+      "type": "feature",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview",
+      "signature": "data-live-room=\"field-desk\"",
+      "description": "Public LiveView board: client sends ?room=name and the server keys room:name:component so every tab and visitor shares one instance instead of session:component.",
+      "keywords": [
+        "data-live-room",
+        "room",
+        "shared session",
+        "tabs",
+        "liveview",
+        "field-desk"
+      ]
+    },
+    {
+      "title": "soli-upload",
+      "type": "feature",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview",
+      "signature": "soli-upload=\"attached\" \u00b7 POST /live/upload",
+      "description": "LiveView file input: POST /live/upload then hydrate params.file. Files over 256 KiB are chunked (X-Soli-Upload-Id / chunk index / count). Attach with record.attach_avatar(params[\"file\"]).",
+      "keywords": [
+        "soli-upload",
+        "upload",
+        "chunked",
+        "resumable",
+        "liveview",
+        "attachment",
+        "progress"
+      ]
+    },
+    {
+      "title": "live_component",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview",
+      "signature": "live_component(\"desk_focus\", { \"focus\": true })",
+      "description": "Nested LiveView template that shares parent assigns. Child events can soli-assign-* or send_update; isolated data-liveview-url sockets stay separate.",
+      "keywords": [
+        "live_component",
+        "nested",
+        "assigns",
+        "soli-assign",
+        "liveview"
       ]
     },
     {

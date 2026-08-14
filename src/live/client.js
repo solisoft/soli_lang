@@ -1321,25 +1321,21 @@
             this.markLoading(input, 'upload');
             paintUploadProgress(input, 0, list[0] || null);
 
-            const sendOne = (file) => new Promise((resolve, reject) => {
-                if (file.size > max) {
-                    reject(new Error('file exceeds soli-upload-max (' + max + ' bytes)'));
-                    return;
-                }
+            const CHUNK = 256 * 1024;
+            const postPart = (blob, file, extraHeaders, onProgress) => new Promise((resolve, reject) => {
                 const body = new FormData();
-                body.append(field, file, file.name);
+                body.append(field, blob, file.name);
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/live/upload');
                 const token = csrfToken();
                 if (token) xhr.setRequestHeader('X-CSRF-Token', token);
+                Object.keys(extraHeaders || {}).forEach((k) => xhr.setRequestHeader(k, extraHeaders[k]));
                 xhr.upload.onprogress = (ev) => {
-                    if (!ev.lengthComputable) return;
-                    const pct = Math.round((ev.loaded / ev.total) * 100);
-                    paintUploadProgress(input, pct, file);
+                    if (!ev.lengthComputable || !onProgress) return;
+                    onProgress(ev.loaded, ev.total);
                 };
                 xhr.onload = () => {
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        paintUploadProgress(input, 100, file);
                         try { resolve(JSON.parse(xhr.responseText)); }
                         catch (err) { reject(err); }
                     } else {
@@ -1354,6 +1350,41 @@
                 xhr.onerror = () => reject(new Error('upload network error'));
                 xhr.send(body);
             });
+            const sendOne = (file) => {
+                if (file.size > max) {
+                    return Promise.reject(new Error('file exceeds soli-upload-max (' + max + ' bytes)'));
+                }
+                if (file.size <= CHUNK) {
+                    return postPart(file, file, {}, (loaded, total) => {
+                        paintUploadProgress(input, Math.round((loaded / total) * 100), file);
+                    }).then((meta) => {
+                        paintUploadProgress(input, 100, file);
+                        return meta;
+                    });
+                }
+                const total = Math.ceil(file.size / CHUNK);
+                const uploadId = (crypto.randomUUID && crypto.randomUUID()) ||
+                    (Date.now().toString(36) + Math.random().toString(36).slice(2));
+                let chain = Promise.resolve(null);
+                for (let i = 0; i < total; i++) {
+                    chain = chain.then(() => {
+                        const start = i * CHUNK;
+                        const end = Math.min(file.size, start + CHUNK);
+                        return postPart(file.slice(start, end), file, {
+                            'X-Soli-Upload-Id': uploadId,
+                            'X-Soli-Chunk-Index': String(i),
+                            'X-Soli-Chunk-Count': String(total)
+                        }, (loaded, partTotal) => {
+                            const done = start + loaded;
+                            paintUploadProgress(input, Math.round((done / file.size) * 100), file);
+                        });
+                    });
+                }
+                return chain.then((meta) => {
+                    paintUploadProgress(input, 100, file);
+                    return meta;
+                });
+            };
 
             Promise.all(list.map(sendOne)).then((files) => {
                 input.classList.remove('soli-upload-loading');

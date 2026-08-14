@@ -417,6 +417,8 @@ impl Parser {
                 "belongs_to",
                 "has_and_belongs_to_many",
                 "uploader",
+                "has_one_attached",
+                "has_many_attached",
                 "scope",
                 "attr_accessible",
                 "encrypts",

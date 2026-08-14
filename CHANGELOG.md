@@ -4,6 +4,17 @@
 
 ### Added
 
+- **First-class attachments.** `has_one_attached("avatar")` /
+  `has_many_attached("photos")` default to disk (`./storage/attachments`,
+  `SOLI_ATTACHMENTS_PATH`) or `service: "s3"` / `"solidb"`. Same
+  `attach_` / `detach_` / `_url` methods as `uploader(...)`. Destroy
+  purges blobs. LiveView `soli-upload` hashes attach directly.
+
+- **LiveView chunked uploads and `send_update`.** Files over 256 KiB
+  POST to `/live/upload` in chunks (`X-Soli-Upload-Id` / chunk index /
+  count). `send_update(component, assigns)` (or handler `update:`)
+  merges onto parent state after the handler returns.
+
 - **LiveView rooms share one instance across tabs and visitors.**
   `data-live-room="name"` on the mount sends `?room=name`; the server keys
   `room:name:component` instead of `session:component`. A public demo no

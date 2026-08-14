@@ -4538,15 +4538,36 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
             body: br#"{"error":"no file"}"#.to_vec(),
         };
     }
+    let chunk_id = header_str(&data.headers, "x-soli-upload-id").map(|s| s.to_string());
+    let chunk_index =
+        header_str(&data.headers, "x-soli-chunk-index").and_then(|s| s.parse::<usize>().ok());
+    let chunk_total =
+        header_str(&data.headers, "x-soli-chunk-count").and_then(|s| s.parse::<usize>().ok());
     let mut out = Vec::new();
     for file in files {
-        match crate::live::upload::put(
-            owner.as_deref(),
-            &file.name,
-            &file.filename,
-            &file.content_type,
-            file.data.clone(),
-        ) {
+        let result = if let (Some(id), Some(index), Some(total)) =
+            (chunk_id.as_deref(), chunk_index, chunk_total)
+        {
+            crate::live::upload::put_chunk(
+                owner.as_deref(),
+                id,
+                index,
+                total,
+                &file.name,
+                &file.filename,
+                &file.content_type,
+                file.data.clone(),
+            )
+        } else {
+            crate::live::upload::put(
+                owner.as_deref(),
+                &file.name,
+                &file.filename,
+                &file.content_type,
+                file.data.clone(),
+            )
+        };
+        match result {
             Ok(meta) => out.push(meta),
             Err(e) => {
                 return ResponseData {
@@ -4712,7 +4733,9 @@ fn handle_liveview_event(
                     // No return value means "no state change" — re-render and
                     // let the (usually empty) diff speak. It must not run the
                     // built-in demo state machine.
-                    Value::Null => {}
+                    Value::Null => {
+                        crate::live::update::apply_to(&mut instance.state, None);
+                    }
                     Value::Hash(_) => {
                         let json = value_to_json(&result);
                         let unwrapped = unwrap_handler_return(json);
@@ -4730,6 +4753,7 @@ fn handle_liveview_event(
                             if let Some(state) = unwrapped.state {
                                 instance.state = state;
                             }
+                            crate::live::update::apply_to(&mut instance.state, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
                             LIVE_REGISTRY.commit(&instance);
@@ -4757,6 +4781,7 @@ fn handle_liveview_event(
                             if let Some(state) = unwrapped.state {
                                 instance.state = state;
                             }
+                            crate::live::update::apply_to(&mut instance.state, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
                             LIVE_REGISTRY.commit(&instance);
@@ -4778,6 +4803,7 @@ fn handle_liveview_event(
                             }
                             instance.state = state;
                         }
+                        crate::live::update::apply_to(&mut instance.state, unwrapped.update);
 
                         // Apply tick scheduling change (if any)
                         apply_tick_interval(&mut instance, unwrapped.tick);
@@ -4845,6 +4871,8 @@ struct LiveHandlerReturn {
     patch: Option<(String, bool)>,
     /// Swap the page-root LiveView to another `/live/socket/<component>`.
     live: Option<String>,
+    /// Phoenix-style `update:` hash merged onto state after the handler.
+    update: Option<serde_json::Value>,
 }
 
 /// Unwrap the handler return value. The wrapped form
@@ -4871,6 +4899,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
                 js: None,
                 patch: None,
                 live: None,
+                update: None,
             }
         }
     };
@@ -4881,9 +4910,17 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
     let has_redirect = map.contains_key("redirect");
     let has_patch = map.contains_key("patch");
     let has_live = map.contains_key("live");
+    let has_update = map.get("update").is_some_and(|v| v.is_object());
 
     // Bare shape: the whole hash is the new state.
-    if !has_state_obj && !has_stream && !has_js && !has_redirect && !has_patch && !has_live {
+    if !has_state_obj
+        && !has_stream
+        && !has_js
+        && !has_redirect
+        && !has_patch
+        && !has_live
+        && !has_update
+    {
         return LiveHandlerReturn {
             state: Some(serde_json::Value::Object(map)),
             tick: None,
@@ -4892,6 +4929,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
             js: None,
             patch: None,
             live: None,
+            update: None,
         };
     }
 
@@ -4911,6 +4949,11 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
         .remove("live")
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .filter(|s| !s.is_empty());
+    let update = if has_update {
+        map.remove("update")
+    } else {
+        None
+    };
     LiveHandlerReturn {
         state,
         tick,
@@ -4919,6 +4962,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
         js,
         patch,
         live,
+        update,
     }
 }
 

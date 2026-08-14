@@ -63,7 +63,8 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         return false
     end
 
-    if !config["content_types"].contains(file["content_type"])
+    types = config["content_types"] ?? []
+    if types.length() > 0 && !types.contains(file["content_type"])
         model._errors = [{ "message": "Unsupported file type for #{field_name}." }]
         return false
     end
@@ -84,9 +85,15 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     # declared, so e.g. a PNG photo can be stored as a smaller lossy WebP.
     file = apply_uploader_transform(file, config)
 
-    client = __soli_resolve_solidb_client()
-    blob_id = solidb_store_blob(client, config["collection"], file["data"],
-                                file["filename"], file["content_type"])
+    service = config["service"] || "solidb"
+    blob_id = null
+    if service == "disk" || service == "s3"
+        blob_id = store_attachment(config, file)
+    else
+        client = __soli_resolve_solidb_client()
+        blob_id = solidb_store_blob(client, config["collection"], file["data"],
+                                    file["filename"], file["content_type"])
+    end
     if blob_id.nil?
         model._errors = [{ "message": "Failed to store #{field_name}." }]
         return false
@@ -102,7 +109,12 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     previous = model["#{field_name}_blob_id"]
     model.update({ "#{field_name}_blob_id": blob_id })
     if !previous.nil?
-        solidb_delete_blob(client, config["collection"], previous)
+        if service == "disk" || service == "s3"
+            delete_attachment(config, previous)
+        else
+            client = __soli_resolve_solidb_client()
+            solidb_delete_blob(client, config["collection"], previous)
+        end
     end
     true
 end
@@ -111,12 +123,18 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
     config = model_uploader_config(model.class, field_name)
     return false if config.nil?
 
-    client = __soli_resolve_solidb_client()
+    service = config["service"] || "solidb"
+    client = null
+    client = __soli_resolve_solidb_client() if service == "solidb"
     if config["multiple"]
         return false if blob_id.nil?
         ids = model["#{field_name}_blob_ids"] ?? []
         return false if !ids.contains(blob_id)
-        solidb_delete_blob(client, config["collection"], blob_id)
+        if service == "disk" || service == "s3"
+            delete_attachment(config, blob_id)
+        else
+            solidb_delete_blob(client, config["collection"], blob_id)
+        end
         kept = ids.filter(fn(id) id != blob_id)
         model.update({ "#{field_name}_blob_ids": kept })
         return true
@@ -124,7 +142,11 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
 
     current = model["#{field_name}_blob_id"]
     return false if current.nil?
-    solidb_delete_blob(client, config["collection"], current)
+    if service == "disk" || service == "s3"
+        delete_attachment(config, current)
+    else
+        solidb_delete_blob(client, config["collection"], current)
+    end
     model.update({ "#{field_name}_blob_id": null })
     true
 end
@@ -154,9 +176,19 @@ class AttachmentsController < Controller
         blob_id  = this._target_blob_id(record, field, config, params["blob_id"])
         return halt(404, "Not found") if blob_id.nil?
 
-        client = __soli_resolve_solidb_client()
-        meta   = solidb_get_blob_metadata(client, config["collection"], blob_id)
-        b64    = solidb_get_blob(client, config["collection"], blob_id)
+        service = config["service"] || "solidb"
+        meta = null
+        b64 = null
+        if service == "disk" || service == "s3"
+            stored = read_attachment(config, blob_id)
+            return halt(404, "Not found") if stored.nil?
+            meta = stored
+            b64 = stored["data"]
+        else
+            client = __soli_resolve_solidb_client()
+            meta   = solidb_get_blob_metadata(client, config["collection"], blob_id)
+            b64    = solidb_get_blob(client, config["collection"], blob_id)
+        end
 
         # Apply image transforms if any are present in the query string. The
         # browser caches each (URL, query) combo separately, so subsequent

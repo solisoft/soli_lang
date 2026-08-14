@@ -984,12 +984,15 @@ impl Interpreter {
         let after_events: &[&str] = &["after_delete"];
 
         let has_dependents = super::cascade::class_declares_dependents(&class.name);
+        let has_attachments =
+            !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
 
         if before_names.is_empty()
             && after_names.is_empty()
             && !has_closure_callbacks(&class.name, before_events)
             && !has_closure_callbacks(&class.name, after_events)
             && !has_dependents
+            && !has_attachments
         {
             return Ok(None);
         }
@@ -1033,6 +1036,13 @@ impl Interpreter {
             self.run_dependent_cascades(&instance, span)?;
         }
 
+        if has_attachments {
+            let helper = self.environment.borrow().get("detach_all_uploads");
+            if let Some(helper) = helper {
+                let _ = self.call_value(helper, vec![Value::Instance(instance.clone())], span)?;
+            }
+        }
+
         let callee_val =
             self.evaluate_member_on_value(Value::Instance(instance.clone()), method_name, span)?;
         let result = self.call_value(callee_val, Vec::new(), span)?;
@@ -1069,7 +1079,10 @@ impl Interpreter {
             Value::Class(c) if c.is_model_subclass() => c.clone(),
             _ => return Ok(None),
         };
-        if !super::cascade::class_declares_dependents(&class.name) {
+        let has_dependents = super::cascade::class_declares_dependents(&class.name);
+        let has_attachments =
+            !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
+        if !has_dependents && !has_attachments {
             return Ok(None);
         }
         // From here on we own the call: arguments are evaluated exactly once.

@@ -760,9 +760,29 @@ end
 
 The veto fires at the first `false` — subsequent before-callbacks in the chain don't run. Use this for authorization gates, integrity checks, or any "deny by default" pattern. Mutating-only callbacks (the common case) just don't return `false` and run end-to-end as before.
 
-## Uploaders
+## Attachments
 
-Declare a blob attachment with `uploader(name, options)`. Soli registers the field, validates incoming files against the rules, stores the blob in SoliDB, and auto-generates instance methods so the controller stays a one-liner.
+First-class file attachments use `has_one_attached` / `has_many_attached`. They default to the **disk** service (`./storage/attachments`, or `SOLI_ATTACHMENTS_PATH`) so a Postgres/SQLite app does not need SoliDB to keep files. Set `service: "s3"` (bucket `SOLI_ATTACHMENTS_BUCKET` or `S3_BUCKET`) or `service: "solidb"` to store elsewhere. `SOLI_ATTACHMENTS_SERVICE` changes the default for every `has_*_attached` declaration.
+
+```soli
+class User < Model
+  has_one_attached("avatar")   # disk, 10 MiB, any content type
+  has_many_attached("photos", {
+    "service": "s3",
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size": 5_000_000
+  })
+end
+
+user.attach_avatar(file)       # multipart hash from find_uploaded_file / LiveView upload
+user.avatar_url()
+user.detach_avatar()
+# destroy / User.delete(id) purges the blobs automatically
+```
+
+The older `uploader(name, options)` form still works and still defaults to SoliDB blobs (`service: "solidb"`). Same generated methods: `attach_<field>`, `detach_<field>`, `<field>_url` / `<field>_urls`.
+
+**Single attachment (`uploader`):**
 
 **Single attachment:**
 
@@ -827,7 +847,8 @@ end
 | `multiple` | `false` | `true` keeps an array of blob ids (`<field>_blob_ids`); `false` keeps one (`<field>_blob_id`). |
 | `content_types` | — (required) | Allow-list of MIME types. Anything else is rejected before storage. |
 | `max_size` | — (required) | Hard cap in bytes. Above this → `_errors` populated, no blob stored. |
-| `collection` | `<snake>_<field>s` | SoliDB collection that holds the blobs. |
+| `service` | `solidb` for `uploader`; `disk` for `has_*_attached` | `"disk"`, `"s3"`, or `"solidb"`. |
+| `collection` | `<snake>_<field>s` | SoliDB collection (solidb) or key prefix (disk/s3). |
 | `format` | — | Convert image uploads to `"jpeg"`, `"png"`, or `"webp"` **before storage**. Non-image uploads (PDF, csv, …) are never converted. |
 | `quality` | `82` | Encoder quality (1–100) for lossy formats (`jpeg`, `webp`). |
 | `max_width` / `max_height` | — | Downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales. |
@@ -864,7 +885,7 @@ stored unchanged so an upload is never blocked by a transform failure.
 
 For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete.
 
-**Cleanup on destroy** — `before_delete` callbacks aren't yet dispatched by `Model.delete(id)`; call `detach_all_uploads(record)` explicitly until that lands. The helper walks every `uploader(...)` field on the class.
+**Cleanup on destroy** — `record.delete()` and `Model.delete(id)` purge every attachment (disk, S3, and SoliDB) before the row is removed. `detach_all_uploads(record)` remains if you need to clear files without deleting the record.
 
 ```soli
 def destroy

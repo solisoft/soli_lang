@@ -40,6 +40,7 @@ pub mod apns;
 pub mod app_links;
 pub mod assertions;
 pub mod assigns_helpers;
+pub mod attachments;
 pub mod body_limit;
 pub mod browser;
 pub mod cache;
@@ -657,6 +658,8 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register upload builtins
     uploads::register_upload_builtins(env);
+    attachments::register_attachment_builtins(env);
+    crate::live::update::register(env);
 
     // Register clock builtins (sleep, microtime)
     clock::register_clock_builtins(env);

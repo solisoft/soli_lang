@@ -8,6 +8,7 @@ pub mod live_query;
 pub mod nested;
 pub mod parser;
 pub mod socket;
+pub mod update;
 pub mod upload;
 pub mod view;
 

@@ -490,7 +490,7 @@ Independent child sockets still do not share state. For **shared parent assigns*
 
 A click inside the wrapper sends `_component: "score"` and `_assigns: { "score": N }`. The runtime merges `_assigns` onto the parent state (coercing types to match) before the handler runs, then the parent re-render fans the new values back into the child. The parent handler can also branch on `params["_component"]`.
 
-This is not Phoenix `live_component` (no `update/2` / `send_update`). Independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
+This is not Phoenix `live_component` (no `update/2` callback). Use `send_update(assigns)` to merge keys onto the parent; independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
 
 ## File uploads
 
@@ -513,7 +513,9 @@ if event == "attached" {
 }
 ```
 
-`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. Files larger than 256 KiB are sent as **chunks** (`X-Soli-Upload-Id` / `X-Soli-Chunk-Index` / `X-Soli-Chunk-Count`); the server assembles them and the handler still sees one hydrated file. A refresh mid-upload starts over (chunks live 10 minutes). While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+
+Persist the file on a model with `has_one_attached` / `attach_<field>(params["file"])` — the LiveView upload hash is the same shape as `find_uploaded_file`.
 
 There is no chunked/resumable protocol — one POST per file, 8 MiB default cap.
 
@@ -527,7 +529,7 @@ fill the server's upload store or lock other users out.
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:
 
 - **The wire format is line-granular, not node-granular.** The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed *values*, is not implemented. Fine in practice — renders are compared server-side and only the delta travels.
-- **Uploads are not chunked or resumable.** `soli-upload` POSTs each file to `/live/upload` (8 MiB default) and then hydrates `params["file"]` for the handler. There is no pause/resume, no multi-part chunk protocol, and no Phoenix `allow_upload` consume pipeline.
+- **`send_update` patches parent assigns.** Nested `live_component`s share the parent socket. From a handler call `send_update("desk_focus", { "focus": 3 })` (or `send_update({ "focus": 3 })`) — or return `{ "state": packed, "update": { "focus": 3 } }`. The hash is merged after the handler returns and the usual render/diff fans out to every attached tab. There is no Phoenix `update/2` callback on the child; the child template re-renders from the new parent keys.
 - **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` on the parent socket — there is no Phoenix `update/2` / `send_update`.
 - **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
 - **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.

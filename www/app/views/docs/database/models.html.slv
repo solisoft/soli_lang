@@ -816,9 +816,25 @@ end</code></pre>
         The paginate method runs <code>count</code> first to get the total, computes <code>total_pages</code>, clamps <code>page</code> to the valid range, sets <code>offset</code> and <code>limit</code>, fetches records, and returns the result hash. If <code>total</code> is 0, <code>total_pages</code> is set to 1 and <code>page</code> is clamped to 1.
     </p>
 
-    <h2 id="uploaders" class="text-2xl font-bold text-white mb-6">Uploaders</h2>
+    <h2 id="uploaders" class="text-2xl font-bold text-white mb-6">Attachments</h2>
     <p class="text-gray-400 mb-4">
-        Declare a blob attachment on a model with <code>uploader(name, options)</code>. Soli registers the field, validates incoming files against the rules you supply, and stores the blob in SoliDB. The DSL also auto-generates instance methods so the controller is a one-liner.
+        First-class attachments use <code>has_one_attached("avatar")</code> / <code>has_many_attached("photos")</code>. They default to the <strong class="text-white">disk</strong> service (<code>./storage/attachments</code>, or <code>SOLI_ATTACHMENTS_PATH</code>) so a SQL app does not need SoliDB for files. Pass <code>service: "s3"</code> (<code>SOLI_ATTACHMENTS_BUCKET</code>) or <code>service: "solidb"</code>. Destroy / <code>Model.delete(id)</code> purges the blobs. The older <code>uploader(name, options)</code> form still works and still defaults to SoliDB.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User &lt; Model
+  has_one_attached("avatar")
+  has_many_attached("photos", { "service": "s3", "max_size": 5_000_000 })
+end
+
+user.attach_avatar(file)
+user.avatar_url()
+user.detach_avatar()</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        <code>uploader(name, options)</code> is the explicit form (required <code>content_types</code> / <code>max_size</code>, SoliDB by default). Same generated methods.
     </p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
@@ -840,7 +856,8 @@ end</code></pre>
         <li><code>multiple</code> &mdash; <code>false</code> stores one blob in <code>&lt;name&gt;_blob_id</code>; <code>true</code> stores an array of ids in <code>&lt;name&gt;_blob_ids</code>.</li>
         <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip.</li>
         <li><code>max_size</code> &mdash; hard cap in bytes. Same fast-fail.</li>
-        <li><code>collection</code> &mdash; SoliDB collection name. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>
+        <li><code>service</code> &mdash; <code>disk</code>, <code>s3</code>, or <code>solidb</code>. <code>has_*_attached</code> defaults to disk; <code>uploader</code> defaults to solidb.</li>
+        <li><code>collection</code> &mdash; SoliDB collection or disk/S3 key prefix. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>
         <li><code>format</code> &mdash; convert image uploads to <code>"jpeg"</code>, <code>"png"</code>, or <code>"webp"</code> <strong>before storage</strong>. Non-image uploads (PDF, csv, &hellip;) are never converted.</li>
         <li><code>quality</code> &mdash; encoder quality (1&ndash;100) for lossy formats (<code>jpeg</code>, <code>webp</code>). Defaults to <code>82</code>.</li>
         <li><code>max_width</code> / <code>max_height</code> &mdash; downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales.</li>
@@ -1135,7 +1152,7 @@ end</code></pre>
 
     <h3 class="text-lg font-semibold text-white mb-3">Cleanup on destroy</h3>
     <p class="text-gray-400 mb-4">
-        <code>before_delete</code> callbacks aren't yet dispatched by <code>Model.delete(id)</code>, so call <code>detach_all_uploads(record)</code> explicitly before deleting until that lands. The helper iterates every uploader declared on the class.
+        <code>record.delete()</code> and <code>Model.delete(id)</code> now purge every attachment (disk, S3, SoliDB) before the row is removed. <code>detach_all_uploads(record)</code> remains when you want to clear files without deleting the record.
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">

@@ -116,6 +116,98 @@ fn prune_locked(map: &mut HashMap<String, Stored>) {
     map.retain(|_, v| now.duration_since(v.created) < TTL);
 }
 
+/// In-progress chunked upload. Assembled into [`put`] when the last chunk lands.
+struct PartialUpload {
+    owner: Option<String>,
+    name: String,
+    filename: String,
+    content_type: String,
+    total: usize,
+    received: Vec<Option<Vec<u8>>>,
+    created: Instant,
+}
+
+fn chunks() -> &'static Mutex<HashMap<String, PartialUpload>> {
+    static CHUNKS: std::sync::OnceLock<Mutex<HashMap<String, PartialUpload>>> =
+        std::sync::OnceLock::new();
+    CHUNKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Accept one chunk of a resumable upload. `index` is 0-based. When every
+/// slot is filled the file is stored with [`put`] and the usual metadata
+/// (including `id`) is returned. Incomplete uploads return `{ "id", "pending": true, "received" }`.
+#[allow(clippy::too_many_arguments)]
+pub fn put_chunk(
+    owner: Option<&str>,
+    upload_id: &str,
+    index: usize,
+    total: usize,
+    name: &str,
+    filename: &str,
+    content_type: &str,
+    data: Vec<u8>,
+) -> Result<serde_json::Value, String> {
+    if total == 0 || total > 512 {
+        return Err("invalid chunk count".to_string());
+    }
+    if index >= total {
+        return Err("chunk index out of range".to_string());
+    }
+    let mut map = chunks().lock().unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    map.retain(|_, v| now.duration_since(v.created) < TTL);
+    let entry = map
+        .entry(upload_id.to_string())
+        .or_insert_with(|| PartialUpload {
+            owner: owner.map(|s| s.to_string()),
+            name: name.to_string(),
+            filename: filename.to_string(),
+            content_type: content_type.to_string(),
+            total,
+            received: vec![None; total],
+            created: Instant::now(),
+        });
+    if entry.total != total {
+        return Err("chunk count changed mid-upload".to_string());
+    }
+    if let Some(owner_id) = &entry.owner {
+        if owner != Some(owner_id.as_str()) {
+            return Err("upload belongs to another session".to_string());
+        }
+    }
+    let so_far: usize = entry
+        .received
+        .iter()
+        .filter_map(|c| c.as_ref().map(|b| b.len()))
+        .sum();
+    if so_far + data.len() > DEFAULT_MAX_BYTES {
+        return Err(format!(
+            "file exceeds {} byte LiveView upload limit",
+            DEFAULT_MAX_BYTES
+        ));
+    }
+    entry.received[index] = Some(data);
+    let got = entry.received.iter().filter(|c| c.is_some()).count();
+    if got < total {
+        return Ok(serde_json::json!({
+            "id": upload_id,
+            "pending": true,
+            "received": got,
+            "total": total,
+        }));
+    }
+    let mut assembled = Vec::new();
+    for part in &entry.received {
+        assembled.extend_from_slice(part.as_ref().unwrap());
+    }
+    let name = entry.name.clone();
+    let filename = entry.filename.clone();
+    let content_type = entry.content_type.clone();
+    map.remove(upload_id);
+    drop(map);
+    put(owner, &name, &filename, &content_type, assembled)
+}
+
 /// Replace `{ "id": "…" }` file hashes in a LiveView event's params with
 /// the stored multipart shape (`filename`, `content_type`, `size`, `data`).
 pub fn hydrate_event_params(params: &mut serde_json::Value, session_id: Option<&str>) {
@@ -190,6 +282,41 @@ mod tests {
         assert_eq!(params["file"]["filename"], "note.txt");
         assert_eq!(params["file"]["content_type"], "text/plain");
         assert_eq!(params["file"]["size"], bytes.len() as i64);
+    }
+
+    #[test]
+    fn chunks_assemble_in_order() {
+        let id = format!("up-{}", uuid::Uuid::new_v4());
+        let a = put_chunk(
+            Some("sess"),
+            &id,
+            0,
+            2,
+            "doc",
+            "note.txt",
+            "text/plain",
+            b"hel".to_vec(),
+        )
+        .unwrap();
+        assert_eq!(a["pending"], true);
+        let b = put_chunk(
+            Some("sess"),
+            &id,
+            1,
+            2,
+            "doc",
+            "note.txt",
+            "text/plain",
+            b"lo".to_vec(),
+        )
+        .unwrap();
+        assert!(b.get("pending").is_none());
+        let mut params = serde_json::json!({ "file": { "id": b["id"] } });
+        hydrate_event_params(&mut params, Some("sess"));
+        let data = general_purpose::STANDARD
+            .decode(params["file"]["data"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(data, b"hello");
     }
 
     #[test]
