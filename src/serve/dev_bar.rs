@@ -736,6 +736,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
                 "preview view components",
                 ""
             ),
+            ("/__soli/jobs", "jobs", "queue, cancel, retry", ""),
         ]
         .iter()
         .map(|(href, name, note, badge)| format!(
@@ -1323,18 +1324,56 @@ fn fmt_duration_us(us: u64) -> String {
     }
 }
 
-fn read_rss_str() -> String {
-    // Linux-only; on other platforms the file won't exist and we return "?".
-    let status = match std::fs::read_to_string("/proc/self/status") {
-        Ok(s) => s,
-        Err(_) => return "?".to_string(),
+/// Resident memory of this worker, in kilobytes.
+///
+/// Linux publishes it in `/proc/self/status`; macOS has no procfs, so the dev bar
+/// read `?` there. `proc_pidinfo` is the macOS equivalent and needs no child
+/// process — a `ps` fork per request would be visible in the very render time the
+/// bar is measuring.
+fn read_rss_kb() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        return status
+            .lines()
+            .find_map(|line| line.strip_prefix("VmRSS:"))
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|n| n.parse().ok());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: `proc_pidinfo` fills `info` with at most the size we pass and
+        // reports how many bytes it wrote; the struct is plain data.
+        let mut info: libc::proc_taskinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_taskinfo>() as libc::c_int;
+        let written = unsafe {
+            libc::proc_pidinfo(
+                std::process::id() as libc::c_int,
+                libc::PROC_PIDTASKINFO,
+                0,
+                &mut info as *mut _ as *mut libc::c_void,
+                size,
+            )
+        };
+        // A short write means the kernel's struct is not the one we declared, so
+        // the resident size would be read from the wrong offset.
+        if written < size {
+            return None;
+        }
+        return Some(info.pti_resident_size / 1024);
+    }
+
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Format kilobytes the way the dev bar shows them.
+fn format_rss(kb: Option<u64>) -> String {
+    let Some(kb) = kb else {
+        // Not "0": the number is unknown on this platform, not zero.
+        return "?".to_string();
     };
-    let kb: u64 = status
-        .lines()
-        .find_map(|line| line.strip_prefix("VmRSS:"))
-        .and_then(|rest| rest.split_whitespace().next())
-        .and_then(|n| n.parse().ok())
-        .unwrap_or(0);
     if kb < 1024 {
         format!("{}kB", kb)
     } else {
@@ -1342,6 +1381,10 @@ fn read_rss_str() -> String {
         let mb_tenth = ((kb - mb_whole * 1024) * 10) / 1024;
         format!("{}.{}MB", mb_whole, mb_tenth)
     }
+}
+
+fn read_rss_str() -> String {
+    format_rss(read_rss_kb())
 }
 
 fn embed_binds(
@@ -1564,6 +1607,28 @@ mod tests {
     }
 
     #[test]
+    fn rss_is_readable_on_this_platform() {
+        // The dev bar showed "?" on macOS because it only read /proc. Whatever
+        // platform the suite runs on, the number must be there and be plausible
+        // for a live test process.
+        let kb = read_rss_kb().expect("this platform must report resident memory");
+        assert!(
+            (1_000..50_000_000).contains(&kb),
+            "implausible RSS: {kb} kB"
+        );
+    }
+
+    #[test]
+    fn rss_formats_kilobytes_and_reports_unknown_honestly() {
+        assert_eq!(format_rss(Some(512)), "512kB");
+        assert_eq!(format_rss(Some(1024)), "1.0MB");
+        assert_eq!(format_rss(Some(1536)), "1.5MB");
+        assert_eq!(format_rss(Some(53_248)), "52.0MB");
+        // Unknown is "?" rather than 0 — a real zero would be a lie.
+        assert_eq!(format_rss(None), "?");
+    }
+
+    #[test]
     fn detect_n_plus_one_groups_by_template() {
         let queries = vec![
             q("FOR doc IN users FILTER doc._key == @key RETURN doc", 0.5),
@@ -1672,7 +1737,12 @@ mod tests {
     fn tools_panel_links_every_dev_gallery() {
         let out = inject_dev_bar("<html><body></body></html>", &ctx("GET", "/"));
         assert!(out.contains("__solidev_tb"), "tools button present");
-        for href in ["/__soli/inbox", "/__soli/mailers", "/__soli/components"] {
+        for href in [
+            "/__soli/inbox",
+            "/__soli/mailers",
+            "/__soli/components",
+            "/__soli/jobs",
+        ] {
             assert!(
                 out.contains(&format!("href=\"{href}\" target=\"_blank\"")),
                 "tools panel should link {href} in a new tab"
