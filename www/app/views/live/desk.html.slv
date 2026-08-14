@@ -1,0 +1,183 @@
+<% notes = notes rescue [] %>
+<% visible = visible rescue [] %>
+<% tab = tab rescue "all" %>
+<% q = q rescue "" %>
+<% counts = counts rescue { "all": 0, "open": 0, "doing": 0, "done": 0 } %>
+<% selected = selected rescue null %>
+<% selected_id = selected_id rescue null %>
+<% composer_open = composer_open rescue false %>
+<% menu_id = menu_id rescue null %>
+<% focus = focus rescue 3 %>
+<% flash = flash rescue "" %>
+<% draft_title = draft_title rescue "" %>
+<% draft_body = draft_body rescue "" %>
+<div class="desk" data-liveview-id="<%= id %>">
+  <style>
+    .desk { --desk-ink: #e7e5e4; --desk-dim: #a8a29e; --desk-line: rgba(255,255,255,.08); --desk-amber: #f59e0b; font-family: Inter, system-ui, sans-serif; color: var(--desk-ink); background: linear-gradient(180deg, #14120f 0%, #0c0a09 100%); border: 1px solid var(--desk-line); border-radius: 1.1rem; overflow: hidden; box-shadow: 0 24px 60px -28px rgba(0,0,0,.8); }
+    .desk-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .85rem 1rem; border-bottom: 1px solid var(--desk-line); background: rgba(255,255,255,.02); }
+    .desk-brand { display: flex; align-items: center; gap: .55rem; font-weight: 650; letter-spacing: -.02em; }
+    .desk-dot { width: .5rem; height: .5rem; border-radius: 999px; background: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,.12); }
+    .desk-tabs { display: flex; gap: .25rem; flex-wrap: wrap; }
+    .desk-tab { appearance: none; border: 1px solid transparent; background: transparent; color: var(--desk-dim); font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: .3rem .55rem; border-radius: .55rem; cursor: pointer; }
+    .desk-tab.is-on { color: #fff; background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.35); }
+    .desk-search { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--desk-line); }
+    .desk-search input { flex: 1; min-width: 0; background: #0b0a09; border: 1px solid var(--desk-line); border-radius: .65rem; color: #fff; padding: .5rem .7rem; font-size: .85rem; }
+    .desk-search input:focus { outline: none; border-color: rgba(245,158,11,.5); }
+    .desk-new { appearance: none; border: 0; border-radius: .65rem; background: var(--desk-amber); color: #1c1410; font-weight: 700; font-size: .8rem; padding: .5rem .8rem; cursor: pointer; }
+    .desk-new.soli-click-loading { opacity: .65; }
+    .desk-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); min-height: 22rem; }
+    @media (max-width: 720px) { .desk-grid { grid-template-columns: 1fr; } }
+    .desk-list { border-right: 1px solid var(--desk-line); max-height: 24rem; overflow: auto; }
+    .desk-card { width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--desk-line); color: inherit; padding: .75rem 1rem; cursor: pointer; display: block; }
+    .desk-card .desk-title { flex: 1; min-width: 0; }
+    .desk-card.is-on { background: rgba(245,158,11,.07); }
+    .desk-card-h { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+    .desk-title { font-weight: 600; font-size: .92rem; }
+    .desk-meta { display: flex; gap: .35rem; margin-top: .35rem; flex-wrap: wrap; }
+    .desk-chip { font-size: .65rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .15rem .4rem; border-radius: 999px; border: 1px solid var(--desk-line); color: var(--desk-dim); }
+    .desk-chip.open { color: #fbbf24; border-color: rgba(251,191,36,.3); }
+    .desk-chip.doing { color: #38bdf8; border-color: rgba(56,189,248,.3); }
+    .desk-chip.done { color: #34d399; border-color: rgba(52,211,153,.3); }
+    .desk-chip.pin { color: #f472b6; }
+    .desk-empty { padding: 2rem 1rem; text-align: center; color: var(--desk-dim); font-size: .85rem; }
+    .desk-detail { padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+    .desk-detail h3 { margin: 0; font-size: 1.05rem; letter-spacing: -.02em; }
+    .desk-detail p { margin: 0; color: var(--desk-dim); font-size: .88rem; line-height: 1.45; }
+    .desk-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .desk-btn { appearance: none; background: rgba(255,255,255,.04); border: 1px solid var(--desk-line); color: var(--desk-ink); border-radius: .55rem; padding: .35rem .6rem; font-size: .75rem; cursor: pointer; }
+    .desk-btn.soli-click-loading { opacity: .6; }
+    .desk-file { font-size: .75rem; color: var(--desk-dim); padding: .55rem .65rem; border: 1px dashed var(--desk-line); border-radius: .65rem; display: flex; flex-direction: column; gap: .45rem; }
+    .desk-file strong { color: #fff; }
+    .desk-preview { display: block; width: 100%; max-height: 11rem; object-fit: cover; border-radius: .55rem; background: #0b0a09; }
+    .desk-card-thumb { width: 1.6rem; height: 1.6rem; border-radius: .35rem; object-fit: cover; flex-shrink: 0; }
+    .desk-upload { font-size: .75rem; color: var(--desk-dim); display: flex; flex-direction: column; gap: .4rem; }
+    .desk-upload input { font-size: .75rem; color: var(--desk-dim); }
+    .desk-upload-track { height: .35rem; background: rgba(255,255,255,.08); border-radius: 99px; overflow: hidden; opacity: 0; transition: opacity .15s ease; }
+    .desk-upload:has(input.soli-upload-loading) .desk-upload-track,
+    .desk-upload.soli-uploading .desk-upload-track { opacity: 1; }
+    .desk-upload-bar { display: block; height: 100%; width: var(--soli-progress, 0%); background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 99px; transition: width .12s linear; }
+    .desk-upload-pct { font-size: .65rem; font-variant-numeric: tabular-nums; color: #fbbf24; opacity: 0; }
+    .desk-upload:has(input.soli-upload-loading) .desk-upload-pct { opacity: 1; }
+    .soli-upload-loading { outline: 1px dashed var(--desk-amber); }
+    .desk-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 1rem; border-top: 1px solid var(--desk-line); background: rgba(0,0,0,.25); }
+    .desk-menu { position: relative; }
+    .desk-menu-pop { position: absolute; right: 0; top: 1.4rem; z-index: 3; min-width: 8.5rem; background: #1c1917; border: 1px solid var(--desk-line); border-radius: .6rem; padding: .3rem; box-shadow: 0 12px 30px -16px #000; }
+    .desk-menu-pop button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--desk-ink); font-size: .75rem; padding: .35rem .5rem; border-radius: .4rem; cursor: pointer; }
+    .desk-menu-pop button:hover { background: rgba(255,255,255,.06); }
+    #desk-toast { opacity: 0; transform: translateY(4px); transition: all .25s ease; font-size: .75rem; color: #fde68a; pointer-events: none; }
+    #desk-toast.desk-toast-on { opacity: 1; transform: none; }
+  </style>
+
+  <div class="desk-top">
+    <div class="desk-brand">
+      <span class="desk-dot"></span>
+      Field Desk
+    </div>
+    <div class="desk-tabs">
+      <button type="button" class="desk-tab <%= tab == "all" ? "is-on" : "" %>" soli-click="tab" soli-value-tab="all">All <%= counts["all"] %></button>
+      <button type="button" class="desk-tab <%= tab == "open" ? "is-on" : "" %>" soli-click="tab" soli-value-tab="open">Open <%= counts["open"] %></button>
+      <button type="button" class="desk-tab <%= tab == "doing" ? "is-on" : "" %>" soli-click="tab" soli-value-tab="doing">Doing <%= counts["doing"] %></button>
+      <button type="button" class="desk-tab <%= tab == "done" ? "is-on" : "" %>" soli-click="tab" soli-value-tab="done">Done <%= counts["done"] %></button>
+    </div>
+  </div>
+
+  <div class="desk-search">
+    <input type="search" name="q" value="<%= q %>" placeholder="Search notes — debounced"
+           soli-change="search" soli-debounce="280">
+    <button type="button" class="desk-new" soli-click="toggle_composer" soli-disable-with="…">
+      <%= composer_open ? "Close" : "New note" %>
+    </button>
+  </div>
+
+  <%- live_component("desk_composer", { "draft_title": true, "draft_body": true, "composer_open": true, "flash": true }) %>
+
+  <div class="desk-grid">
+    <div class="desk-list">
+      <% if visible.length() == 0 %>
+        <div class="desk-empty">Nothing matches this filter.</div>
+      <% else %>
+        <% for note in visible %>
+          <div class="desk-card <%= selected_id == note["id"] ? "is-on" : "" %>"
+               soli-key="<%= note["id"] %>"
+               soli-click="select" soli-value-id="<%= note["id"] %>">
+            <div class="desk-card-h">
+              <% if note["file"] && note["file"]["preview"] %>
+                <img class="desk-card-thumb" src="<%= note["file"]["preview"] %>" alt="">
+              <% end %>
+              <div class="desk-title"><%= h(note["title"]) %></div>
+              <div class="desk-menu" <% if menu_id == note["id"] %>soli-click-away="close_menu"<% end %>>
+                <button type="button" class="desk-chip" soli-click="open_menu" soli-value-id="<%= note["id"] %>">···</button>
+                <% if menu_id == note["id"] %>
+                  <div class="desk-menu-pop">
+                    <button type="button" soli-click="pin" soli-value-id="<%= note["id"] %>" soli-disable-with="Pinning…">
+                      <%= note["pinned"] ? "Unpin" : "Pin" %>
+                    </button>
+                    <button type="button" soli-click="cycle" soli-value-id="<%= note["id"] %>" soli-disable-with="…">
+                      Advance status
+                    </button>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+            <div class="desk-meta">
+              <span class="desk-chip <%= note["status"] %>"><%= note["status"] %></span>
+              <span class="desk-chip">P<%= note["priority"] %></span>
+              <% if note["pinned"] %><span class="desk-chip pin">pinned</span><% end %>
+              <% if note["file"] %><span class="desk-chip"><%= note["file"]["processed"] ? "file" : "…" %></span><% end %>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+
+    <div class="desk-detail">
+      <% if selected == null %>
+        <p>Pick a note, or file a new one.</p>
+      <% else %>
+        <h3><%= h(selected["title"]) %></h3>
+        <p><%= h(selected["body"]) %></p>
+        <div class="desk-actions">
+          <button type="button" class="desk-btn" soli-click="cycle" soli-value-id="<%= selected["id"] %>" soli-disable-with="Updating…">
+            Advance · <%= selected["status"] %>
+          </button>
+          <button type="button" class="desk-btn" soli-click="pin" soli-value-id="<%= selected["id"] %>">
+            <%= selected["pinned"] ? "Unpin" : "Pin" %>
+          </button>
+        </div>
+        <%- live_component("desk_focus", { "focus": true }) %>
+        <% if selected["file"] && selected["file"]["preview"] %>
+          <div class="desk-file">
+            <img class="desk-preview" src="<%= selected["file"]["preview"] %>" alt="<%= h(selected["file"]["name"]) %>">
+            <div>
+              <strong><%= h(selected["file"]["name"]) %></strong>
+              · <%= selected["file"]["size"] %> bytes
+              · <%= selected["file"]["processed"] ? "ready" : "processing…" %>
+            </div>
+          </div>
+        <% elsif selected["file"] %>
+          <div class="desk-file">
+            <strong><%= h(selected["file"]["name"]) %></strong>
+            · <%= selected["file"]["size"] %> bytes
+            · <%= selected["file"]["processed"] ? "ready" : "processing…" %>
+          </div>
+        <% end %>
+        <label class="desk-upload">
+          Attach a photo
+          <input type="file" name="photo" accept="image/*"
+                 soli-upload="attached" soli-upload-max="2000000">
+          <img soli-upload-preview class="desk-preview" alt="" hidden
+               style="<% if selected["file"] && selected["file"]["preview"] %>display:none<% end %>">
+          <div class="desk-upload-track" aria-hidden="true">
+            <span soli-upload-bar class="desk-upload-bar"></span>
+          </div>
+          <span class="desk-upload-pct"></span>
+        </label>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="desk-foot">
+    <div data-liveview-url="/live/socket/desk_pulse" data-live-root></div>
+    <div id="desk-toast"><%= h(flash) %></div>
+  </div>
+</div>

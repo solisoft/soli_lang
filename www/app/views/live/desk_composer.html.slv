@@ -1,0 +1,28 @@
+<% composer_open = composer_open rescue false %>
+<% draft_title = draft_title rescue "" %>
+<% draft_body = draft_body rescue "" %>
+<% flash = flash rescue "" %>
+<% if composer_open %>
+  <form class="desk-composer" soli-submit="create" soli-click-away="close_composer"
+        style="display:grid;gap:.5rem;padding:.85rem 1rem;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(245,158,11,.05);">
+    <input type="text" name="title" value="<%= draft_title %>" placeholder="Title"
+           soli-change="draft"
+           style="background:#0b0a09;border:1px solid rgba(255,255,255,.08);border-radius:.6rem;color:#fff;padding:.45rem .65rem;font-size:.85rem;">
+    <textarea name="body" rows="2" placeholder="What needs doing?"
+              soli-change="draft"
+              style="background:#0b0a09;border:1px solid rgba(255,255,255,.08);border-radius:.6rem;color:#fff;padding:.45rem .65rem;font-size:.85rem;resize:vertical;"><%= draft_body %></textarea>
+    <% if flash != null && flash != "" && composer_open %>
+      <div style="font-size:.75rem;color:#fbbf24;"><%= h(flash) %></div>
+    <% end %>
+    <div style="display:flex;gap:.4rem;justify-content:flex-end;">
+      <button type="button" soli-click="close_composer" soli-assign-composer_open="false"
+              style="appearance:none;background:transparent;border:1px solid rgba(255,255,255,.08);color:#a8a29e;border-radius:.55rem;padding:.35rem .65rem;font-size:.75rem;cursor:pointer;">
+        Cancel
+      </button>
+      <button type="submit" soli-disable-with="Filing…"
+              style="appearance:none;background:#f59e0b;border:0;color:#1c1410;font-weight:700;border-radius:.55rem;padding:.35rem .75rem;font-size:.75rem;cursor:pointer;">
+        File note
+      </button>
+    </div>
+  </form>
+<% end %>

@@ -1,0 +1,9 @@
+<% focus = focus rescue 3 %>
+<div class="desk-focus" style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:#a8a29e;">
+  <span>Focus</span>
+  <% for n in [1, 2, 3, 4, 5] %>
+    <button type="button" soli-click="set_focus" soli-value-focus="<%= n %>"
+            title="Priority <%= n %>"
+            style="width:1.15rem;height:1.15rem;border-radius:.3rem;border:1px solid <%= n <= focus ? "rgba(245,158,11,.6)" : "rgba(255,255,255,.1)" %>;background:<%= n <= focus ? "#f59e0b" : "transparent" %>;cursor:pointer;"></button>
+  <% end %>
+</div>

@@ -1,0 +1,15 @@
+<% series = series rescue [4, 6, 5, 8] %>
+<% series_json = series_json rescue "[4,6,5,8]" %>
+<% stamp = stamp rescue "--:--:--" %>
+<% peak = peak rescue 8 %>
+<div class="desk-pulse" style="display:flex;align-items:center;gap:.75rem;min-height:1.6rem;">
+  <div soli-hook="Spark" soli-ignore data-series='<%= series_json %>'
+       style="display:flex;align-items:flex-end;gap:2px;height:18px;">
+    <% for n in series %>
+      <span style="display:block;width:3px;height:<%= 4 + n %>px;border-radius:1px;background:#f59e0b;opacity:.85;"></span>
+    <% end %>
+  </div>
+  <span style="font-size:.7rem;color:#a8a29e;font-variant-numeric:tabular-nums;">
+    pulse <%= stamp %> · peak <%= peak %>
+  </span>
+</div>

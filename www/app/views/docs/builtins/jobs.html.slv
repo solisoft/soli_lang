@@ -478,7 +478,7 @@ soli worker ./myapp        # alias
 soli jobs list --queue mailers --state failed
 soli jobs retry &lt;id&gt;
 soli jobs cancel &lt;id&gt;</code></pre>
-            <p class="text-gray-400 mt-3 text-sm">The worker loads models, services, mailers, and <code class="text-amber-400">app/jobs/</code>, registers <code class="text-amber-400">static cron</code>, then claims and runs work until Ctrl-C / SIGTERM. No HTTP port. In <code class="text-amber-400">--dev</code>, the same operations are a page at <a href="/__soli/jobs" class="text-amber-400 hover:underline">/__soli/jobs</a> (dev-bar tools panel).</p>
+            <p class="text-gray-400 mt-3 text-sm">The worker loads models, services, mailers, and <code class="text-amber-400">app/jobs/</code>, registers <code class="text-amber-400">static cron</code>, then claims and runs work until Ctrl-C / SIGTERM. No HTTP port. In <code class="text-amber-400">--dev</code>, the same operations are a page at <a href="/__soli/jobs" class="text-amber-400 hover:underline">/__soli/jobs</a> (dev-bar tools panel). A LiveView that enqueues an upload job is walked through in <a href="/docs/blog/liveview-desk" class="text-amber-400 hover:underline">A Live Field Desk</a>.</p>
         </div>
     </section>
 

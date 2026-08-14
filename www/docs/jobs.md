@@ -248,6 +248,8 @@ soli jobs cancel <id>
 
 In `--dev`, the same operations are a page: `/__soli/jobs` (linked from the dev-bar tools panel). Cancel pending/scheduled/failed rows; retry failed/dead ones. Production operators use the CLI (or `Job.list` / `Job.retry` / `Job.cancel` from app code) — the dashboard is dev-only.
 
+A LiveView that enqueues an upload job and refreshes when it finishes is walked through in [A Live Field Desk](/docs/blog/liveview-desk).
+
 ## Long-Running Jobs
 
 Nothing special is required: every job already runs on the worker pool, off the request path, with no timeout and with retries. Size the pool with `SOLI_JOB_WORKERS` — each worker holds its own loaded interpreter (models, services, mailers, jobs), so it costs memory as well as concurrency.

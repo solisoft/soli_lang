@@ -11,6 +11,9 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="<%= og_image %>">
   <% end %>
+  <% if slug == "liveview-desk" %>
+  <%- csrf_meta_tag() %>
+  <% end %>
 <% end %>
 
 <div>
@@ -27,3 +30,52 @@
         <%- content %>
     </div>
 </div>
+
+<% if slug == "liveview-desk" %>
+<script>
+(function () {
+    function startDesk() {
+        const root = document.getElementById('desk-widget');
+        if (!root || root.dataset.lvConnected) return;
+        root.dataset.lvConnected = '1';
+
+        const hooks = {
+            Spark: {
+                mounted() { this.paint(); },
+                updated() { this.paint(); },
+                paint() {
+                    const raw = this.el.getAttribute('data-series') || '[]';
+                    let series = [];
+                    try { series = JSON.parse(raw); } catch (e) { series = []; }
+                    this.el.innerHTML = series.map(function (n) {
+                        const h = 4 + Number(n || 0);
+                        return '<span style="display:block;width:3px;height:' + h + 'px;border-radius:1px;background:#f59e0b;opacity:.85;"></span>';
+                    }).join('');
+                }
+            }
+        };
+        if (window.SoliLiveView) window.SoliLiveView.hooks = Object.assign({}, window.SoliLiveView.hooks || {}, hooks);
+
+        let url = root.getAttribute('data-liveview-url');
+        if (url && url.charAt(0) === '/') {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            url = protocol + '//' + location.host + url;
+        }
+        window.live(url, { rootElement: root, hooks: hooks });
+    }
+
+    if (window.live) {
+        startDesk();
+        return;
+    }
+    let loader = document.getElementById('__livejs-loader');
+    if (!loader) {
+        loader = document.createElement('script');
+        loader.id = '__livejs-loader';
+        loader.src = '/live/client.js?v=desk-upload';
+        document.head.appendChild(loader);
+    }
+    loader.addEventListener('load', startDesk, { once: true });
+})();
+</script>
+<% end %>

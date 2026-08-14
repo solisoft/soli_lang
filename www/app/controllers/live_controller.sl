@@ -176,3 +176,324 @@ def metrics(event_data)
         "ms4": ms4, "ms3": ms3, "ms2": ms2, "ms1": ms1, "ms0": ms0
     }
 end
+
+# ---------------------------------------------------------------------------
+# Field Desk — interactive sample for the LiveView tutorial blog post.
+# State is in-memory (this page has to run on the docs site with no extra
+# database). The post shows the Model / Job code you would ship instead.
+# ---------------------------------------------------------------------------
+
+def desk_seed
+    [
+        {"id": "n1", "title": "Inspect north hatch", "body": "Seal weeps after last storm. Photo the gasket before you pull it.", "status": "open", "priority": 2, "pinned": true, "file": null},
+        {"id": "n2", "title": "Swap radio battery", "body": "Unit 4 is under 20%. Spare pack is in the van, second drawer.", "status": "doing", "priority": 3, "pinned": false, "file": null},
+        {"id": "n3", "title": "Log pump hours", "body": "Write the hour-meter before you leave the pad.", "status": "open", "priority": 1, "pinned": false, "file": null},
+        {"id": "n4", "title": "Close the east gate", "body": "Latch checked, chain on, photo filed.", "status": "done", "priority": 1, "pinned": false, "file": {"name": "gate.jpg", "size": 184320, "processed": true}}
+    ]
+end
+
+def desk_filter(notes, tab, q)
+    filtered = notes
+    if tab != "all" && !tab.blank?
+        filtered = filtered.filter(fn(note) note["status"] == tab)
+    end
+    if !q.blank?
+        needle = q.downcase()
+        filtered = filtered.filter(fn(note) {
+            title = (note["title"] || "").downcase()
+            body = (note["body"] || "").downcase()
+            title.contains(needle) || body.contains(needle)
+        })
+    end
+    filtered
+end
+
+def desk_counts(notes)
+    {
+        "all": notes.length(),
+        "open": notes.filter(fn(note) note["status"] == "open").length(),
+        "doing": notes.filter(fn(note) note["status"] == "doing").length(),
+        "done": notes.filter(fn(note) note["status"] == "done").length()
+    }
+end
+
+def desk_find(notes, id)
+    for note in notes
+        return note if note["id"] == id
+    end
+    null
+end
+
+def desk_pack(state)
+    notes = state["notes"] || desk_seed()
+    tab = state["tab"] || "all"
+    q = state["q"] || ""
+    selected_id = state["selected_id"]
+    visible = desk_filter(notes, tab, q)
+    selected = desk_find(visible, selected_id)
+    selected = visible[0] if selected == null && visible.length() > 0
+    selected_id = selected["id"] if selected != null
+    pending = 0
+    for note in notes
+        file = note["file"]
+        pending = pending + 1 if file != null && file["processed"] != true
+    end
+    {
+        "notes": notes,
+        "visible": visible,
+        "tab": tab,
+        "q": q,
+        "selected_id": selected_id,
+        "selected": selected,
+        "counts": desk_counts(notes),
+        "draft_title": state["draft_title"] || "",
+        "draft_body": state["draft_body"] || "",
+        "composer_open": state["composer_open"] == true,
+        "menu_id": state["menu_id"],
+        "focus": state["focus"] || 3,
+        "flash": state["flash"] || "",
+        "pending": pending
+    }
+end
+
+def desk(event_data)
+    event = event_data["event"]
+    state = event_data["state"] || {}
+    params = event_data["params"] || {}
+    packed = desk_pack(state)
+
+    if event == "connect" || event == null || event == ""
+        if packed["notes"].length() > 0 && packed["notes"][0]["id"] != null
+            return desk_pack(packed)
+        end
+        return desk_pack({ "notes": desk_seed(), "tab": "all", "focus": 3 })
+    end
+
+    if event == "search"
+        packed["q"] = params["value"] || params["q"] || ""
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "tab" || event == "patch"
+        next_tab = params["tab"]
+        if next_tab.blank?
+            query = params["query"] || {}
+            next_tab = query["tab"] || "all"
+        end
+        next_tab = "all" unless ["all", "open", "doing", "done"].includes?(next_tab)
+        packed["tab"] = next_tab
+        packed["menu_id"] = null
+        return {
+            "state": desk_pack(packed),
+            "patch": "/docs/blog/liveview-desk?tab=#{next_tab}"
+        }
+    end
+
+    if event == "select"
+        packed["selected_id"] = params["id"]
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "toggle_composer"
+        packed["composer_open"] = packed["composer_open"] != true
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "close_composer"
+        packed["composer_open"] = false
+        return desk_pack(packed)
+    end
+
+    if event == "draft"
+        packed["draft_title"] = params["title"] || packed["draft_title"]
+        packed["draft_body"] = params["body"] || packed["draft_body"]
+        packed["draft_title"] = params["value"] if params["name"] == "title"
+        packed["draft_body"] = params["value"] if params["name"] == "body"
+        return desk_pack(packed)
+    end
+
+    if event == "create"
+        title = (params["title"] || packed["draft_title"] || "").trim()
+        body = (params["body"] || packed["draft_body"] || "").trim()
+        if title.blank?
+            packed["flash"] = "A note needs a title."
+            packed["composer_open"] = true
+            return {
+                "state": desk_pack(packed),
+                "js": [{ "op": "add_class", "to": "#desk-toast", "class": "desk-toast-on" }]
+            }
+        end
+        notes = packed["notes"] || []
+        note = {
+            "id": "n#{str(datetime_now())}-#{str(notes.length())}",
+            "title": title,
+            "body": body,
+            "status": "open",
+            "priority": packed["focus"] || 2,
+            "pinned": false,
+            "file": null
+        }
+        notes = [note] + notes
+        packed["notes"] = notes
+        packed["selected_id"] = note["id"]
+        packed["draft_title"] = ""
+        packed["draft_body"] = ""
+        packed["composer_open"] = false
+        packed["flash"] = "Filed “#{title}”."
+        packed["tab"] = "all" if packed["tab"] == "done"
+        return {
+            "state": desk_pack(packed),
+            "js": [{ "op": "add_class", "to": "#desk-toast", "class": "desk-toast-on" }]
+        }
+    end
+
+    if event == "pin"
+        notes = packed["notes"]
+        for note in notes
+            if note["id"] == params["id"]
+                note["pinned"] = note["pinned"] != true
+            end
+        end
+        packed["notes"] = notes
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "cycle"
+        order = ["open", "doing", "done"]
+        notes = packed["notes"]
+        for note in notes
+            if note["id"] == params["id"]
+                idx = order.index_of(note["status"]) || 0
+                next_idx = (idx + 1) % order.length()
+                note["status"] = order[next_idx]
+            end
+        end
+        packed["notes"] = notes
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "open_menu"
+        packed["menu_id"] = params["id"]
+        return desk_pack(packed)
+    end
+
+    if event == "close_menu"
+        packed["menu_id"] = null
+        return desk_pack(packed)
+    end
+
+    if event == "set_focus"
+        next_focus = params["focus"] || packed["focus"] || 3
+        next_focus = next_focus.to_i() if next_focus != null
+        next_focus = 3 unless [1, 2, 3, 4, 5].includes?(next_focus)
+        packed["focus"] = next_focus
+        selected = packed["selected"]
+        if selected != null
+            notes = packed["notes"]
+            for note in notes
+                if note["id"] == selected["id"]
+                    note["priority"] = next_focus
+                end
+            end
+            packed["notes"] = notes
+        end
+        return desk_pack(packed)
+    end
+
+    if event == "attached"
+        file = params["file"] || {}
+        err = params["error"] || file["error"]
+        if err.present?
+            packed["flash"] = "Upload failed: #{err}"
+            return {
+                "state": desk_pack(packed),
+                "js": [{ "op": "add_class", "to": "#desk-toast", "class": "desk-toast-on" }]
+            }
+        end
+        selected = packed["selected"]
+        if selected == null
+            packed["flash"] = "Pick a note before attaching a file."
+            return {
+                "state": desk_pack(packed),
+                "js": [{ "op": "add_class", "to": "#desk-toast", "class": "desk-toast-on" }]
+            }
+        end
+        notes = packed["notes"]
+        preview = null
+        payload = file["data"]
+        content_type = file["content_type"] || ""
+        if !payload.blank? && content_type.starts_with?("image/")
+            preview = "data:#{content_type};base64,#{payload}"
+        end
+        for note in notes
+            if note["id"] == selected["id"]
+                note["file"] = {
+                    "name": file["filename"] || file["name"] || "upload",
+                    "size": file["size"] || 0,
+                    "content_type": content_type,
+                    "preview": preview,
+                    "processed": false
+                }
+            end
+        end
+        packed["notes"] = notes
+        packed["flash"] = "Queued #{file["filename"] || "file"} — processing…"
+        return {
+            "state": desk_pack(packed),
+            "tick_interval": 900,
+            "js": [{ "op": "add_class", "to": "#desk-toast", "class": "desk-toast-on" }]
+        }
+    end
+
+    if event == "tick"
+        notes = packed["notes"]
+        still = false
+        for note in notes
+            file = note["file"]
+            if file != null && file["processed"] != true
+                file["processed"] = true
+                note["file"] = file
+            end
+        end
+        packed["notes"] = notes
+        packed["flash"] = "Attachment ready." if packed["pending"] > 0
+        next_state = desk_pack(packed)
+        return {
+            "state": next_state,
+            "tick_interval": 0
+        }
+    end
+
+    desk_pack(packed)
+end
+
+def desk_pulse(event_data)
+    event = event_data["event"]
+    state = event_data["state"] || {}
+    series = state["series"] || [4, 6, 5, 8, 7, 9, 6, 10]
+
+    if event == "connect" || event == "tick" || event == null || event == ""
+        next_val = 4 + (datetime_now() % 8)
+        series = series + [next_val]
+        series = series.slice(-12) if series.length() > 12
+        now = DateTime.utc()
+        stamp = now.format("%H:%M:%S")
+        wrapped = {
+            "state": {
+                "series": series,
+                "series_json": json_stringify(series),
+                "stamp": stamp,
+                "peak": series.max()
+            }
+        }
+        wrapped["tick_interval"] = 2000 if event == "connect" || event == null || event == ""
+        return wrapped
+    end
+
+    state
+end

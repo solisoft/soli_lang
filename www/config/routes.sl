@@ -250,6 +250,8 @@ post("/demos/api/users", "demos#user_create")
 # Register LiveView components with their controller handlers
 router_live("counter", "live#counter")
 router_live("metrics", "live#metrics")
+router_live("desk", "live#desk")
+router_live("desk_pulse", "live#desk_pulse")
 
 # ============================================================================
 # Wildcard Route Examples
