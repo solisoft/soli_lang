@@ -166,15 +166,22 @@ users = User.all
 users.first.name  # => "Alice"
 
 # Find with filter — Hash form (recommended for user input).
-# Each key is validated as an AQL identifier and values flow through
-# bind parameters; equality semantics, all pairs joined with AND.
+# Each key is validated as an identifier and values flow through
+# bind parameters. Top-level keys join with AND. Comparisons, IN,
+# LIKE, and OR are portable (SoliDB and every SQL adapter).
 admins = User.where({ "role": "admin", "active": true }).all
 alice  = User.where({ "email": "alice@example.com" }).first
+adults = User.where({ "age": { "gte": 18 } }).all
+open   = Order.where({
+  "status": ["open", "draft"],
+  "total": { "gt": 100 },
+  "email": { "ilike": "%@example.com" },
+  "or": [{ "state": "draft" }, { "state": "open" }]
+}).all
 
 # Find with filter — string form (developer-trusted only). Use this when
-# you need operators (>=, IN, etc.). The filter string MUST NOT come
-# from untrusted input — see the Security note below.
-adults = User.where("age >= @age", { "age": 18 }).all
+# you need an expression the hash vocabulary cannot express. The filter
+# string MUST NOT come from untrusted input — see the Security note below.
 results = User.where("age >= @min AND role == @role", {
   "min": 21,
   "role": "admin"
@@ -187,7 +194,7 @@ user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
             <div class="my-6 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20">
                 <p class="text-rose-200/80 text-sm">
                     <strong>Security &mdash; <code>where(...)</code> filter forms.</strong>
-                    The Hash form (<code>where({field: value, ...})</code>) is safe for user input: keys are validated as <code>[A-Za-z_][A-Za-z0-9_]*</code> identifiers and values are bound, so nothing from <code>req["params"]</code> can become AQL syntax. The string form (<code>where("doc.foo == @foo", {...})</code>) splices the filter argument verbatim into the AQL FILTER clause &mdash; treat it as <strong>developer-trusted only</strong>, like a <code>format!()</code> template. Building a filter string from request data <strong>will leak full AQL injection</strong>. When the operators you need go beyond equality, prefer composing small string-form clauses around literal strings rather than concatenating user input into them.
+                    The Hash form (<code>where({field: value, ...})</code>) is safe for user input: keys are validated as <code>[A-Za-z_][A-Za-z0-9_]*</code> identifiers, operators are a fixed vocabulary (<code>gt</code>/<code>gte</code>/<code>lt</code>/<code>lte</code>/<code>eq</code>/<code>ne</code>/<code>like</code>/<code>ilike</code>/<code>in</code>/<code>or</code>/<code>and</code>), and values are bound, so nothing from <code>req["params"]</code> can become AQL or SQL syntax. The string form (<code>where("doc.foo == @foo", {...})</code>) splices the filter argument verbatim into the query &mdash; treat it as <strong>developer-trusted only</strong>, like a <code>format!()</code> template. Building a filter string from request data <strong>will leak injection</strong>. Prefer the hash form whenever it can express the predicate, including on the SQL adapters.
                 </p>
             </div>
         </div>
@@ -678,7 +685,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         </table>
     </div>
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
-        <li><strong class="text-white">String filters use these indexes; numeric ones do not.</strong> <code class="text-cyan-400">.where({ "status": "open" })</code> compiles to the same JSON-text expression the index holds. A number or boolean filter keeps exact JSON comparison instead (so <code class="text-cyan-400">10</code> still matches a stored <code class="text-cyan-400">10.0</code>), which no expression index covers.</li>
+        <li><strong class="text-white">String filters use these indexes; numeric ones do not.</strong> <code class="text-cyan-400">.where({ "status": "open" })</code> compiles to the same JSON-text expression the index holds. A number or boolean filter keeps JSON comparison instead, which no expression index covers. What that comparison means differs by backend: Postgres compares <code>jsonb</code> numerically, so <code class="text-cyan-400">10</code> matches a stored <code class="text-cyan-400">10.0</code>; MySQL and SQLite compare the JSON representation, where it does not. Store numbers consistently if you filter on them.</li>
         <li><code class="text-cyan-400">type:</code> values beyond the default (<code>"fulltext"</code>, <code>"bloom"</code>, <code>"cuckoo"</code>) and <code class="text-cyan-400">vector_index</code> / <code class="text-cyan-400">geo_index</code> are SoliDB engine features; on SQL they are reported as skipped rather than silently ignored.</li>
         <li>Migrations create the same thing with a <code class="text-cyan-400">doc.</code> prefix &mdash; <code class="text-cyan-400">db.add_index("posts", ["doc.status"], { "unique": true })</code>. See <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">Migrations</a>.</li>
     </ul>

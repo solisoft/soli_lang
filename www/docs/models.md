@@ -110,33 +110,49 @@ user = User.find("user123");
 users = User.all;
 
 # Find with where clause — Hash form (recommended for user input)
-# Each key is validated as an AQL identifier and values flow through
+# Each key is validated as an identifier and values flow through
 # bind parameters, so attacker-controlled values can never reach the
-# query template. Equality semantics: every pair joins with AND.
+# query template. Top-level keys join with AND.
 admins = User.where({ "role": "admin", "active": true }).all;
 alice  = User.where({ "email": "alice@example.com" }).first;
 
+# Comparisons, IN, LIKE, and OR are portable — they compile on SoliDB
+# and on every SQL adapter (document tables and column-aware models):
+adults = User.where({ "age": { "gte": 18 } }).all;
+open   = Order.where({
+  "status": ["open", "draft"],
+  "total": { "gt": 100 },
+  "email": { "ilike": "%@example.com" },
+  "or": [{ "state": "draft" }, { "state": "open" }]
+}).all;
+
 # Find with where clause — string form (developer-trusted only)
-# Use this when you need operators (>=, IN, etc.) or boolean expressions.
-# The string MUST NOT come from untrusted input — see Security note below.
-adults = User.where("doc.age >= @age", { "age": 18 }).all;
+# Use this when you need an expression the hash vocabulary cannot
+# express. The string MUST NOT come from untrusted input.
 results = User.where("doc.age >= @min_age AND doc.role == @role", {
   "min_age": 21,
   "role": "admin"
 }).all;
 ```
 
+| Hash value | Meaning |
+|------------|---------|
+| scalar (`"open"`, `18`, `true`, `null`) | equality (`==`) |
+| `{ "gt" }` / `{ "gte" }` / `{ "lt" }` / `{ "lte" }` | comparison (`>`, `>=`, `<`, `<=`); `eq` / `ne` also accepted |
+| `[1, 2, 3]` or `{ "in": [1, 2, 3] }` | `IN` (an empty list matches nothing) |
+| `{ "like": "INV%" }` / `{ "ilike": "%@x.com" }` | SQL `LIKE` / case-insensitive `LIKE` (`%` any run, `_` one character) |
+| `"or": [ {…}, {…} ]` / `"and": [ {…}, {…} ]` | boolean grouping |
+
 > **Security — `where(...)` filter forms.** The Hash form
 > (`where({field: value, ...})`) is safe for user input: keys are
-> validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers and values are
-> bound, so nothing from `req["params"]` can become AQL syntax. The
-> string form (`where("doc.foo == @foo", {...})`) splices the filter
-> argument verbatim into the AQL FILTER clause — treat it as
-> developer-trusted only, like a `format!()` template. Building a
-> filter string from request data **will leak full AQL injection**.
-> When the operators you need go beyond equality, prefer composing
-> small string-form clauses around literal strings rather than
-> concatenating user input into them.
+> validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers, operators are a
+> fixed vocabulary, and values are bound, so nothing from `req["params"]`
+> can become AQL or SQL syntax. The string form
+> (`where("doc.foo == @foo", {...})`) splices the filter argument
+> verbatim into the query — treat it as developer-trusted only, like a
+> `format!()` template. Building a filter string from request data
+> **will leak injection**. Prefer the hash form whenever it can express
+> the predicate, including on the SQL adapters.
 
 ### Updating Records
 
@@ -319,8 +335,11 @@ Two things follow from how SQL planners work:
 
 - **String filters use these indexes; numeric ones do not.** `.where({ "status": "open" })`
   compiles to the same JSON-text expression the index holds. A number or boolean
-  filter keeps exact JSON comparison instead (so `10` still matches a stored
-  `10.0`), which no expression index covers.
+  filter keeps JSON comparison instead, which no expression index covers — and
+  which means different things per backend: Postgres compares `jsonb` numerically,
+  so `10` matches a stored `10.0`; MySQL and SQLite compare the JSON
+  representation, where it does not. Store numbers consistently if you filter on
+  them.
 - `type:` values beyond the default (`"fulltext"`, `"bloom"`, `"cuckoo"`) and
   `vector_index` / `geo_index` are SoliDB engine features; on SQL they are
   reported as skipped rather than silently ignored.
@@ -858,6 +877,10 @@ users_with_posts = User.join("posts").all
 # Find users who have published posts
 count = User.join("posts", "published = @p", { "p": true }).count
 
+# Hash form — portable on SoliDB and every SQL adapter
+count = User.join("posts", { "published": true }).count
+count = User.join("posts", { "views": { "gt": 10 } }).count
+
 # Chain with other query methods
 recent = User.join("posts").order("created_at", "desc").limit(10).all
 ```
@@ -871,6 +894,10 @@ Filter included relations to load only matching related records:
 ```soli
 # Only load published posts for each user
 users = User.includes("posts", "published = @p", { "p": true }).all
+
+# Hash form — portable on SoliDB and every SQL adapter (document + column)
+visible = User.includes("posts", { "published": true }).all
+recent  = User.includes("posts", { "where": { "views": { "gt": 10 } } }).all
 
 # Inspect the generated query
 print(User.includes("posts", "published = @p", { "p": true }).to_query)
