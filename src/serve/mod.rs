@@ -4647,6 +4647,90 @@ fn start_liveview_reaper() {
 }
 
 /// Handle a LiveView event by calling the controller handler.
+fn adopt_live_state(
+    instance: &mut crate::live::view::LiveViewInstance,
+    mut state: serde_json::Value,
+) {
+    if let (serde_json::Value::Object(old), serde_json::Value::Object(new_obj)) =
+        (&instance.state, &mut state)
+    {
+        if let Some(id) = old.get("id") {
+            new_obj.insert("id".to_string(), id.clone());
+        }
+        let key = crate::live::nested::COMPONENTS_KEY;
+        if let Some(comps) = old.get(key) {
+            if !new_obj.contains_key(key) {
+                new_obj.insert(key.to_string(), comps.clone());
+            }
+        }
+    }
+    instance.state = state;
+}
+
+fn lookup_live_handler(interpreter: &Interpreter, component: &str) -> Option<Value> {
+    let handler_name = crate::live::socket::get_liveview_handler(component)?;
+    match crate::interpreter::builtins::router::resolve_handler(&handler_name, None) {
+        Ok(h) => Some(h),
+        Err(_) => {
+            let action = handler_name.split('#').next_back().unwrap_or(&handler_name);
+            interpreter.environment.borrow().get(action)
+        }
+    }
+}
+
+fn invoke_component_handler(
+    interpreter: &mut Interpreter,
+    handler: Value,
+    event: &str,
+    state: &serde_json::Value,
+    params: &serde_json::Value,
+    assigns: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, String> {
+    let mut event_map: HashPairs = HashPairs::default();
+    event_map.insert(
+        HashKey::String("event".into()),
+        Value::String(event.to_string().into()),
+    );
+    event_map.insert(HashKey::String("params".into()), json_to_value(params));
+    event_map.insert(HashKey::String("state".into()), json_to_value(state));
+    event_map.insert(HashKey::String("assigns".into()), json_to_value(assigns));
+    let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
+    match interpreter.call_value(handler, vec![event_value], Span::default()) {
+        Ok(Value::Null) => Ok(None),
+        Ok(ref result @ Value::Hash(_)) => {
+            let unwrapped = unwrap_handler_return(value_to_json(result));
+            Ok(unwrapped.state)
+        }
+        Ok(_) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn apply_live_updates(
+    interpreter: &mut Interpreter,
+    instance: &mut crate::live::view::LiveViewInstance,
+    extra: Option<serde_json::Value>,
+) {
+    let named = crate::live::update::apply_to(&mut instance.state, extra);
+    for (name, cid, assigns) in named {
+        let Some(handler) = lookup_live_handler(interpreter, &name) else {
+            continue;
+        };
+        let child = crate::live::nested::get_component_state(&instance.state, &cid)
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        match invoke_component_handler(interpreter, handler, "update", &child, &assigns, &assigns) {
+            Ok(Some(new_state)) => {
+                crate::live::nested::put_component_state(&mut instance.state, &cid, new_state);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("[LiveView] child update {name} failed: {e}");
+            }
+        }
+    }
+}
+
 fn handle_liveview_event(
     interpreter: &mut Interpreter,
     data: &LiveViewEventData,
@@ -4692,6 +4776,55 @@ fn handle_liveview_event(
     event_map.insert(HashKey::String("state".into()), state_value);
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
+    // Child event with its own router_live handler: run update-style
+    // dispatch on the child bag and skip the parent handler.
+    if let Some(child_name) = event_params
+        .get("_component")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+    {
+        if child_name != component {
+            if let Some(handler) = lookup_live_handler(interpreter, &child_name) {
+                let cid = event_params
+                    .get("_component_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(child_name.as_str())
+                    .to_string();
+                let mut child = crate::live::nested::get_component_state(&instance.state, &cid)
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(assigns) = event_params.get("_assigns") {
+                    crate::live::nested::merge_child_assigns(&mut child, assigns);
+                }
+                match invoke_component_handler(
+                    interpreter,
+                    handler,
+                    &data.event,
+                    &child,
+                    &event_params,
+                    &child,
+                ) {
+                    Ok(Some(new_state)) => {
+                        crate::live::nested::put_component_state(
+                            &mut instance.state,
+                            &cid,
+                            new_state,
+                        );
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        return report_liveview_handler_error(
+                            &instance.id,
+                            &format!("live#{child_name}"),
+                            &e,
+                        );
+                    }
+                }
+                return render_and_send_patch(&component, &mut instance);
+            }
+        }
+    }
+
     // If we have a registered handler, call it
     if let Some(handler_name) = handler_name {
         // Try to resolve the handler from the controller registry
@@ -4734,7 +4867,7 @@ fn handle_liveview_event(
                     // let the (usually empty) diff speak. It must not run the
                     // built-in demo state machine.
                     Value::Null => {
-                        crate::live::update::apply_to(&mut instance.state, None);
+                        apply_live_updates(interpreter, &mut instance, None);
                     }
                     Value::Hash(_) => {
                         let json = value_to_json(&result);
@@ -4751,9 +4884,9 @@ fn handle_liveview_event(
                             // Persist any state change, then leave — the
                             // client is navigating away.
                             if let Some(state) = unwrapped.state {
-                                instance.state = state;
+                                adopt_live_state(&mut instance, state);
                             }
-                            crate::live::update::apply_to(&mut instance.state, unwrapped.update);
+                            apply_live_updates(interpreter, &mut instance, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
                             LIVE_REGISTRY.commit(&instance);
@@ -4779,9 +4912,9 @@ fn handle_liveview_event(
                             let _ = LIVE_REGISTRY
                                 .send(&instance.id, crate::live::view::ServerMessage::Live { url });
                             if let Some(state) = unwrapped.state {
-                                instance.state = state;
+                                adopt_live_state(&mut instance, state);
                             }
-                            crate::live::update::apply_to(&mut instance.state, unwrapped.update);
+                            apply_live_updates(interpreter, &mut instance, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
                             LIVE_REGISTRY.commit(&instance);
@@ -4790,20 +4923,10 @@ fn handle_liveview_event(
 
                         // Replace state only when the handler supplied one (a
                         // stream-only emission leaves the current state intact).
-                        if let Some(mut state) = unwrapped.state {
-                            // Preserve the id across state replacement
-                            if let (
-                                serde_json::Value::Object(old),
-                                serde_json::Value::Object(new_obj),
-                            ) = (&instance.state, &mut state)
-                            {
-                                if let Some(id) = old.get("id") {
-                                    new_obj.insert("id".to_string(), id.clone());
-                                }
-                            }
-                            instance.state = state;
+                        if let Some(state) = unwrapped.state {
+                            adopt_live_state(&mut instance, state);
                         }
-                        crate::live::update::apply_to(&mut instance.state, unwrapped.update);
+                        apply_live_updates(interpreter, &mut instance, unwrapped.update);
 
                         // Apply tick scheduling change (if any)
                         apply_tick_interval(&mut instance, unwrapped.tick);

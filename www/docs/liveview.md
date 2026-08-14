@@ -490,7 +490,26 @@ Independent child sockets still do not share state. For **shared parent assigns*
 
 A click inside the wrapper sends `_component: "score"` and `_assigns: { "score": N }`. The runtime merges `_assigns` onto the parent state (coercing types to match) before the handler runs, then the parent re-render fans the new values back into the child. The parent handler can also branch on `params["_component"]`.
 
-This is not Phoenix `live_component` (no `update/2` callback). Use `send_update(assigns)` to merge keys onto the parent; independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
+When the child also has `router_live("score", "live#score")`, it owns state under `_components` and its handler is Soli's `update/2`:
+
+```soli
+def score(event_data) {
+  if event_data["event"] == "update" {
+    assigns = event_data["assigns"] || {}
+    state = event_data["state"] || {}
+    return { "score": assigns["score"] ?? state["score"] ?? 0 }
+  }
+  # clicks inside the child land here too
+  event_data["state"]
+}
+
+# from the parent handler (or any code in that frame):
+send_update("score", { "id": "main", "score": 5 })
+```
+
+`event == "update"` receives `assigns` (what `send_update` sent) and `state` (the child's previous bag). The return value *is* the child's state — it does not replace the parent. Clicks inside `soli-component="score"` go to `live#score` when that handler exists; otherwise they stay on the parent.
+
+A child without `router_live` still shares parent assigns (`soli-assign-*` / a bare `send_update({ ... })`). Independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
 
 ## File uploads
 
@@ -517,7 +536,7 @@ if event == "attached" {
 
 Persist the file on a model with `has_one_attached` / `attach_<field>(params["file"])` — the LiveView upload hash is the same shape as `find_uploaded_file`.
 
-There is no chunked/resumable protocol — one POST per file, 8 MiB default cap.
+The default cap is still 8 MiB (`soli-upload-max` / `DEFAULT_MAX_BYTES`). A refresh mid-upload starts over — chunks are not paused/resumed across a new page load.
 
 An upload belongs to the session that posted it: the id is only redeemable by that
 session's LiveView, and each session holds at most **8** pending uploads (they also
@@ -529,8 +548,9 @@ fill the server's upload store or lock other users out.
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:
 
 - **The wire format is line-granular, not node-granular.** The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed *values*, is not implemented. Fine in practice — renders are compared server-side and only the delta travels.
-- **`send_update` patches parent assigns.** Nested `live_component`s share the parent socket. From a handler call `send_update("desk_focus", { "focus": 3 })` (or `send_update({ "focus": 3 })`) — or return `{ "state": packed, "update": { "focus": 3 } }`. The hash is merged after the handler returns and the usual render/diff fans out to every attached tab. There is no Phoenix `update/2` callback on the child; the child template re-renders from the new parent keys.
-- **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` on the parent socket — there is no Phoenix `update/2` / `send_update`.
+- **`update` is a child handler event, not a separate process.** `send_update("score", assigns)` writes `_components` and, when `router_live("score")` exists, runs that handler with `event == "update"`. The child is not its own socket or OTP process — it cannot be targeted from another OS process. A child without a handler still shares parent assigns.
+- **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` / `send_update` on the parent socket.
+- **Uploads are chunked, not resumable.** Files over 256 KiB POST to `/live/upload` in chunks and hydrate as one `params["file"]`. A refresh mid-upload starts over; there is no pause/resume and no Phoenix `allow_upload` consume pipeline. Default cap is 8 MiB.
 - **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
 - **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.
 - **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id, or `room:name:component` when `data-live-room` is set) so the connect handler sees in-flight values. Every open tab of that instance is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket for an instance closes, its state is held for **two minutes** so a refresh or a network blip reclaims it, then reaped — a ticking view re-arms its timer on reconnect, and the instance's `live_where` subscriptions stop firing as soon as no socket is attached.

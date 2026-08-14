@@ -14458,7 +14458,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/liveview",
       "signature": "send_update(\"child\", { \"focus\": 3 }) \u00b7 { \"update\": { ... } }",
-      "description": "Merge assigns onto the current LiveView after the handler returns so nested live_component templates re-render. Phoenix update/2 is not a child callback.",
+      "description": "Target a nested live_component. Writes _components and, when router_live exists for that name, runs the child handler with event == update (Soli's update/2). Bare send_update({ ... }) still merges onto the parent.",
       "keywords": [
         "send_update",
         "update",

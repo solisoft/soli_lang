@@ -12,8 +12,10 @@
 
 - **LiveView chunked uploads and `send_update`.** Files over 256 KiB
   POST to `/live/upload` in chunks (`X-Soli-Upload-Id` / chunk index /
-  count). `send_update(component, assigns)` (or handler `update:`)
-  merges onto parent state after the handler returns.
+  count). `send_update(component, assigns)` stores child state under
+  `_components` and, when the child has `router_live`, runs that handler
+  with `event == "update"` (Soli's `update/2`). A bare hash still merges
+  onto the parent.
 
 - **LiveView rooms share one instance across tabs and visitors.**
   `data-live-room="name"` on the mount sends `?room=name`; the server keys

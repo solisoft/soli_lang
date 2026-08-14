@@ -8,6 +8,50 @@
 
 use serde_json::{json, Map, Value as JsonValue};
 
+/// Parent-state bag for nested component instances (`update/2` state).
+pub const COMPONENTS_KEY: &str = "_components";
+
+/// Instance key: `name` or `name:id` when the spec/assigns include `id`.
+pub fn component_cid(name: &str, spec: &JsonValue) -> String {
+    match spec
+        .get("id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        Some(id) => format!("{name}:{id}"),
+        None => name.to_string(),
+    }
+}
+
+pub fn get_component_state<'a>(parent: &'a JsonValue, cid: &str) -> Option<&'a JsonValue> {
+    parent.get(COMPONENTS_KEY)?.get(cid)
+}
+
+pub fn put_component_state(parent: &mut JsonValue, cid: &str, child: JsonValue) {
+    let JsonValue::Object(map) = parent else {
+        return;
+    };
+    let bag = map
+        .entry(COMPONENTS_KEY.to_string())
+        .or_insert_with(|| json!({}));
+    if let JsonValue::Object(bag) = bag {
+        bag.insert(cid.to_string(), child);
+    }
+}
+
+/// Child render data: parent-resolved assigns, then the child's stored
+/// state on top (so `update` / `send_update` wins over a stale parent copy).
+pub fn resolve_child_render_state(name: &str, parent: &JsonValue, spec: &JsonValue) -> JsonValue {
+    let incoming = resolve_child_assigns(parent, spec);
+    let cid = component_cid(name, spec);
+    let Some(stored) = get_component_state(parent, &cid) else {
+        return incoming;
+    };
+    let mut out = incoming;
+    merge_child_assigns(&mut out, stored);
+    out
+}
+
 /// Resolve a child's assign hash from parent state and a spec.
 ///
 /// Each spec entry is either:
@@ -117,18 +161,27 @@ fn parse_number(s: &str) -> Option<JsonValue> {
 
 /// Wrap child markup so the client stamps events with `_component`.
 pub fn wrap_component(name: &str, inner: &str) -> String {
-    format!("<div soli-component=\"{}\">{}</div>", name, inner)
+    wrap_component_cid(name, name, inner)
 }
 
-/// Render a nested component: resolve assigns from the parent, render the
-/// child's LiveView template, wrap with `soli-component`.
+pub fn wrap_component_cid(name: &str, cid: &str, inner: &str) -> String {
+    if cid == name {
+        format!("<div soli-component=\"{name}\">{inner}</div>")
+    } else {
+        format!("<div soli-component=\"{name}\" soli-component-id=\"{cid}\">{inner}</div>")
+    }
+}
+
+/// Render a nested component: resolve assigns from the parent, overlay
+/// stored child state, render the child's template, wrap with `soli-component`.
 pub fn render_nested(name: &str, parent: &JsonValue, spec: &JsonValue) -> Result<String, String> {
     if !crate::template::is_safe_template_name(name) {
         return Err(format!("Invalid component name: {name}"));
     }
-    let assigns = resolve_child_assigns(parent, spec);
+    let assigns = resolve_child_render_state(name, parent, spec);
+    let cid = component_cid(name, spec);
     let inner = crate::live::component::render_component(name, &assigns)?;
-    Ok(wrap_component(name, &inner))
+    Ok(wrap_component_cid(name, &cid, &inner))
 }
 
 #[cfg(test)]
@@ -221,5 +274,16 @@ mod tests {
             // Sibling render path still works.
             assert!(render_component("score", &json!({ "score": 1 })).is_ok());
         });
+    }
+
+    #[test]
+    fn stored_child_state_wins_over_parent_assigns() {
+        let mut parent = json!({ "score": 1 });
+        put_component_state(&mut parent, "score", json!({ "score": 9, "label": "own" }));
+        let spec = json!({ "score": true });
+        let child = resolve_child_render_state("score", &parent, &spec);
+        assert_eq!(child["score"], 9);
+        assert_eq!(child["label"], "own");
+        assert_eq!(component_cid("score", &json!({ "id": "a" })), "score:a");
     }
 }

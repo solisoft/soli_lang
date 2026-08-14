@@ -90,6 +90,9 @@
         const component = host
             ? (host.getAttribute('soli-component') || host.getAttribute('data-soli-component'))
             : null;
+        const componentId = host
+            ? (host.getAttribute('soli-component-id') || host.getAttribute('data-soli-component-id'))
+            : null;
         const assigns = {};
         if (element && element.attributes) {
             for (const attr of element.attributes) {
@@ -99,7 +102,7 @@
                 }
             }
         }
-        return { component: component, assigns: assigns };
+        return { component: component, componentId: componentId, assigns: assigns };
     }
 
     function hookName(el) {
@@ -1124,6 +1127,7 @@
                     ...(name && { name }),
                     ...(value !== null && { value }),
                     ...(nested.component && { _component: nested.component }),
+                    ...(nested.componentId && { _component_id: nested.componentId }),
                     ...(Object.keys(nested.assigns).length && { _assigns: nested.assigns })
                 },
                 target: target
