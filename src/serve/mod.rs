@@ -2931,13 +2931,13 @@ async fn handle_hyper_request(
                 .get("cookie")
                 .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
-            let mount_id = req
+            let room = req
                 .uri()
                 .query()
                 .and_then(|q| {
                     q.split('&').find_map(|pair| {
                         let (key, value) = pair.split_once('=')?;
-                        (key == "mid").then_some(value)
+                        (key == "room").then_some(value)
                     })
                 })
                 .and_then(sanitize_mount_id);
@@ -2961,7 +2961,7 @@ async fn handle_hyper_request(
             // Spawn a task to handle the LiveView WebSocket connection
             let component = component.clone();
             let session_id = session_id.clone();
-            let mount_id = mount_id.clone();
+            let room = room.clone();
             let lv_event_tx = lv_event_tx.clone();
 
             tokio::spawn(async move {
@@ -2979,9 +2979,8 @@ async fn handle_hyper_request(
                 let tx_arc = Arc::new(tx);
 
                 // Initialize the LiveView connection
-                let liveview_id =
-                    liveview_instance_id(&session_id, &component, mount_id.as_deref());
-                handle_live_connection(component.clone(), session_id, tx_arc.clone(), mount_id);
+                let liveview_id = liveview_instance_id(&session_id, &component, room.as_deref());
+                handle_live_connection(component.clone(), session_id, tx_arc.clone(), room);
 
                 // Fire a synthetic `connect` event so user handlers can seed
                 // initial state and request a tick interval. We fire-and-forget

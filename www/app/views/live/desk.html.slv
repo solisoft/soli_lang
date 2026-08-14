@@ -177,7 +177,7 @@
   </div>
 
   <div class="desk-foot">
-    <div data-liveview-url="/live/socket/desk_pulse" data-live-root></div>
+    <div data-liveview-url="/live/socket/desk_pulse" data-live-root data-live-room="field-desk"></div>
     <div id="desk-toast"><%= h(flash) %></div>
   </div>
 </div>

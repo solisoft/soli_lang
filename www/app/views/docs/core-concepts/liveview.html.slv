@@ -245,6 +245,14 @@ def counter(event_data: Any) -> Any {
         </div>
     </div>
 
+    <p class="text-gray-400 mb-6">By default the instance key is <code class="text-cyan-400">session:component</code>. Two tabs of the same browser session share that instance; a click in one patches the others. Put <code class="text-cyan-400">data-live-room="name"</code> on the mount for a public board that every visitor joins &mdash; the client sends <code class="text-cyan-400">?room=name</code> and the server keys <code class="text-cyan-400">room:name:component</code> instead of the session cookie. That also covers WebSocket upgrades that arrive with no <code>Cookie</code> header (each would otherwise mint a unique <code>sess-</code> id and look like a different session).</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-html text-sm">&lt;div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"&gt;&lt;/div&gt;</code></pre>
+        </div>
+    </div>
+
     <p class="text-gray-400 mb-6">To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire <code>DOMContentLoaded</code>), add <code>data-liveview-manual</code> to skip auto-connect and call <code>live()</code> by hand:</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
@@ -594,7 +602,7 @@ SoliLiveView.hooks = {
             <li><strong class="text-white">Independent child sockets still isolate state.</strong> <code>data-liveview-url</code> mounts remain their own sockets. Shared assigns use <code class="text-cyan-400">live_component</code> + <code class="text-cyan-400">soli-assign-*</code> on the parent socket &mdash; there is no Phoenix <code>update/2</code> / <code>send_update</code>.</li>
             <li><strong class="text-white">Leaving for a regular page is still a full load.</strong> <code>soli-href</code>, handler <code>redirect</code>, and JS <code>navigate</code> drop the socket. Same-app LiveView changes use <code>soli-patch</code> (this component) or <code>soli-live</code> (another <code>/live/socket/&lt;name&gt;</code>).</li>
             <li><strong class="text-white">Scripts don't run on patch.</strong> <code>&lt;script&gt;</code> tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under <code>soli-ignore</code>.</li>
-            <li><strong class="text-white">Reconnects restore server state, not the client shadow.</strong> A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same <code>session:component</code> id) so the connect handler sees in-flight values. Every open tab of that session is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket closes, the instance's state is held for <strong class="text-white">two minutes</strong> so a refresh or a blip reclaims it, then reaped &mdash; a ticking view re-arms its timer on reconnect, and <code>live_where</code> subscriptions stop firing as soon as no socket is attached.</li>
+            <li><strong class="text-white">Reconnects restore server state, not the client shadow.</strong> A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same <code>session:component</code> id, or <code>room:name:component</code> when <code>data-live-room</code> is set) so the connect handler sees in-flight values. Every open tab of that instance is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket closes, the instance's state is held for <strong class="text-white">two minutes</strong> so a refresh or a blip reclaims it, then reaped &mdash; a ticking view re-arms its timer on reconnect, and <code>live_where</code> subscriptions stop firing as soon as no socket is attached.</li>
             <li><strong class="text-white">Per-process.</strong> Instances and <code>live_where</code> subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.</li>
         </ul>
     </div>

@@ -72,7 +72,7 @@
     if (!loader) {
         loader = document.createElement('script');
         loader.id = '__livejs-loader';
-        loader.src = '/live/client.js?v=desk-upload';
+        loader.src = '/live/client.js?v=desk-room';
         document.head.appendChild(loader);
     }
     loader.addEventListener('load', startDesk, { once: true });

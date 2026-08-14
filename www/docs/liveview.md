@@ -125,6 +125,12 @@ The client is served by the soli binary itself at `/live/client.js` — no file 
 <div data-live-root data-liveview-url="/live/socket/counter"></div>
 ```
 
+By default the instance key is `session:component`. Two tabs of the same browser session share that instance; a click in one patches the others. Put `data-live-room="name"` on the mount when you want a **public board** (a demo, a shared desk) that every visitor joins — the client sends `?room=name` and the server keys `room:name:component` instead of the session cookie. That also covers WebSocket upgrades that arrive with no `Cookie` header (each would otherwise mint a unique `sess-<uuid>` and look like a different session).
+
+```html
+<div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"></div>
+```
+
 To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire `DOMContentLoaded`), add `data-liveview-manual` to skip auto-connect and call `live()` by hand:
 
 ```html
@@ -525,7 +531,7 @@ Live View is young. Server-pushed re-renders and DOM-aware patching work well; s
 - **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` on the parent socket — there is no Phoenix `update/2` / `send_update`.
 - **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
 - **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.
-- **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id) so the connect handler sees in-flight values. Every open tab of that session is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket for an instance closes, its state is held for **two minutes** so a refresh or a network blip reclaims it, then reaped — a ticking view re-arms its timer on reconnect, and the instance's `live_where` subscriptions stop firing as soon as no socket is attached.
+- **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id, or `room:name:component` when `data-live-room` is set) so the connect handler sees in-flight values. Every open tab of that instance is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket for an instance closes, its state is held for **two minutes** so a refresh or a network blip reclaims it, then reaped — a ticking view re-arms its timer on reconnect, and the instance's `live_where` subscriptions stop firing as soon as no socket is attached.
 - **Per-process.** Instances and `live_where` subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.
 
 ## Why Live View?

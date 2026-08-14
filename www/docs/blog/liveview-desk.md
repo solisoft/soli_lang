@@ -9,11 +9,11 @@ This post is the walkthrough. The widget under the figure is the same code, runn
   <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">One parent socket, shared-assign children, an isolated pulse, and an upload that never touches the WebSocket frame cap.</figcaption>
 </figure>
 
-<div id="desk-widget" class="not-prose" data-live-root data-liveview-manual data-liveview-url="/live/socket/desk" style="margin:2rem 0 2.5rem;">
+<div id="desk-widget" class="not-prose" data-live-root data-live-room="field-desk" data-liveview-manual data-liveview-url="/live/socket/desk" style="margin:2rem 0 2.5rem;">
   <div style="padding:2.5rem 1rem;text-align:center;color:#a8a29e;border:1px solid rgba(255,255,255,.08);border-radius:1rem;background:#0c0a09;">Connecting the desk…</div>
 </div>
 
-Try the obvious things: search (it waits 280ms), switch **Open / Doing / Done** (watch the address bar), file a note, open `···` and click away, attach a small image, click the focus boxes. The pulse in the footer is a second socket — a parent patch does not wipe it.
+Try the obvious things: search (it waits 280ms), switch **Open / Doing / Done** (watch the address bar), file a note, open `···` and click away, attach a small image, click the focus boxes. Open a second tab of this post — both sit in `data-live-room="field-desk"`, so a click in one patches the other. The pulse in the footer is a second socket — a parent patch does not wipe it.
 
 What you are driving:
 
@@ -44,7 +44,7 @@ router_live("desk_pulse", "live#desk_pulse")
 ```html
 <!-- any page, including this blog post -->
 <script src="/live/client.js"></script>
-<div data-live-root data-liveview-url="/live/socket/desk"></div>
+<div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"></div>
 ```
 
 ```soli

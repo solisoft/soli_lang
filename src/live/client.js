@@ -557,6 +557,19 @@
         }
 
         /**
+         * Append `?room=` from `data-live-room` so every tab joins one
+         * instance. Without a room the server keys by session cookie —
+         * and a WebSocket with no Cookie header gets a fresh sess-uuid.
+         */
+        socketUrlWithRoom() {
+            const url = this.socketUrl;
+            const root = this.getRoot();
+            const room = root && root.getAttribute && root.getAttribute('data-live-room');
+            if (!room || /[?&]room=/.test(url)) return url;
+            return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'room=' + encodeURIComponent(room);
+        }
+
+        /**
          * Connect to the LiveSocket
          */
         connect() {
@@ -569,7 +582,7 @@
             this.emit('stateChanged', State.CONNECTING);
 
             try {
-                this.socket = new WebSocket(this.socketUrl);
+                this.socket = new WebSocket(this.socketUrlWithRoom());
 
                 this.socket.onopen = this.handleOpen;
                 this.socket.onclose = this.handleClose;

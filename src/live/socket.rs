@@ -122,18 +122,19 @@ fn desk_initial_state(component: &str) -> serde_json::Value {
 
 /// Build the registry key for a LiveView instance.
 ///
-/// Without a mount id this is `session:component` (one instance per
-/// browser session). A per-tab `mid` query param becomes
-/// `session:component:mid` so two tabs do not share state, while a
-/// refresh in the same tab (same `sessionStorage` mid) still restores.
-pub fn liveview_instance_id(session_id: &str, component: &str, mount_id: Option<&str>) -> String {
-    match mount_id {
-        Some(mid) if !mid.is_empty() => format!("{session_id}:{component}:{mid}"),
+/// Default is `session:component` (one board per browser session). A
+/// `room` query param / `data-live-room` becomes `room:{room}:{component}`
+/// so every tab and every visitor on that room shares one instance —
+/// needed for public demos when the WebSocket upgrade has no cookie
+/// (each socket would otherwise mint a unique `sess-<uuid>`).
+pub fn liveview_instance_id(session_id: &str, component: &str, room: Option<&str>) -> String {
+    match room {
+        Some(name) if !name.is_empty() => format!("room:{name}:{component}"),
         _ => format!("{session_id}:{component}"),
     }
 }
 
-/// Accept a client `mid` only when it is a short token (UUID / slug).
+/// Accept a client `mid` / `room` only when it is a short token (UUID / slug).
 pub fn sanitize_mount_id(raw: &str) -> Option<String> {
     let cleaned: String = raw
         .chars()
@@ -152,7 +153,7 @@ pub fn handle_live_connection(
     component: String,
     session_id: String,
     sender: Arc<async_channel::Sender<Result<tungstenite::Message, tungstenite::Error>>>,
-    mount_id: Option<String>,
+    room: Option<String>,
 ) {
     let template_path = format!("app/views/live/{}.sliv", component);
 
@@ -194,10 +195,9 @@ pub fn handle_live_connection(
         session_id.clone(),
         sender.clone(),
     );
-    // Tabs of the same session share `session:component` so they see one
-    // board. A `mid` is ignored for the key (it used to isolate tabs).
-    instance.id = liveview_instance_id(&session_id, &component, None);
-    let _ = mount_id;
+    // Same session shares `session:component`. A room overrides that so
+    // every socket on the room sees one board.
+    instance.id = liveview_instance_id(&session_id, &component, room.as_deref());
 
     let liveview_id = instance.id.clone();
 
@@ -416,6 +416,21 @@ mod tests {
         handle_live_connection("counter".into(), session, Arc::new(tx_b), None);
         let inst = LIVE_REGISTRY.get(&id).expect("shared instance");
         assert_eq!(inst.senders.len(), 2, "both tabs stay attached");
+        drop(rx_a);
+        drop(rx_b);
+    }
+
+    #[test]
+    fn room_joins_the_same_instance_across_sessions() {
+        let room = Some("field-desk".to_string());
+        let (tx_a, rx_a) = async_channel::bounded(8);
+        let (tx_b, rx_b) = async_channel::bounded(8);
+        handle_live_connection("desk".into(), "sess-a".into(), Arc::new(tx_a), room.clone());
+        handle_live_connection("desk".into(), "sess-b".into(), Arc::new(tx_b), room);
+        let id = liveview_instance_id("sess-a", "desk", Some("field-desk"));
+        assert_eq!(id, "room:field-desk:desk");
+        let inst = LIVE_REGISTRY.get(&id).expect("shared room");
+        assert_eq!(inst.senders.len(), 2, "both sessions stay attached");
         drop(rx_a);
         drop(rx_b);
     }
