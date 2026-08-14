@@ -6,8 +6,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use serde_json::json;
+use tungstenite::Message;
 
-use crate::live::component::render_component;
+use crate::live::component::{render_component, render_error_html};
 use crate::live::view::{LiveViewInstance, ServerMessage, LIVE_REGISTRY};
 
 /// A LiveView route with its handler reference.
@@ -90,11 +91,68 @@ fn _extract_component_from_path(path: &str) -> String {
         .to_string()
 }
 
+/// First-paint state for the Field Desk sample. The connect handler reseeds
+/// the same shape; this exists so the initial Render is not an error page
+/// (unknown components only get `{ id }` before `connect` runs).
+fn desk_initial_state(component: &str) -> serde_json::Value {
+    let notes = json!([
+        {"id": "n1", "title": "Inspect north hatch", "body": "Seal weeps after last storm. Photo the gasket before you pull it.", "status": "open", "priority": 2, "pinned": true, "file": null},
+        {"id": "n2", "title": "Swap radio battery", "body": "Unit 4 is under 20%. Spare pack is in the van, second drawer.", "status": "doing", "priority": 3, "pinned": false, "file": null},
+        {"id": "n3", "title": "Log pump hours", "body": "Write the hour-meter before you leave the pad.", "status": "open", "priority": 1, "pinned": false, "file": null},
+        {"id": "n4", "title": "Close the east gate", "body": "Latch checked, chain on, photo filed.", "status": "done", "priority": 1, "pinned": false, "file": {"name": "gate.jpg", "size": 184320, "processed": true}}
+    ]);
+    json!({
+        "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap()),
+        "notes": notes,
+        "visible": notes,
+        "tab": "all",
+        "q": "",
+        "selected_id": "n1",
+        "selected": notes[0],
+        "counts": {"all": 4, "open": 2, "doing": 1, "done": 1},
+        "draft_title": "",
+        "draft_body": "",
+        "composer_open": false,
+        "menu_id": null,
+        "focus": 3,
+        "flash": "",
+        "pending": 0
+    })
+}
+
+/// Build the registry key for a LiveView instance.
+///
+/// Without a mount id this is `session:component` (one instance per
+/// browser session). A per-tab `mid` query param becomes
+/// `session:component:mid` so two tabs do not share state, while a
+/// refresh in the same tab (same `sessionStorage` mid) still restores.
+pub fn liveview_instance_id(session_id: &str, component: &str, mount_id: Option<&str>) -> String {
+    match mount_id {
+        Some(mid) if !mid.is_empty() => format!("{session_id}:{component}:{mid}"),
+        _ => format!("{session_id}:{component}"),
+    }
+}
+
+/// Accept a client `mid` only when it is a short token (UUID / slug).
+pub fn sanitize_mount_id(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(64)
+        .collect();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    }
+}
+
 /// Handle a LiveView connection.
 pub fn handle_live_connection(
     component: String,
     session_id: String,
     sender: Arc<async_channel::Sender<Result<tungstenite::Message, tungstenite::Error>>>,
+    mount_id: Option<String>,
 ) {
     let template_path = format!("app/views/live/{}.sliv", component);
 
@@ -116,6 +174,14 @@ pub fn handle_live_connection(
             "ms9": 0, "ms8": 0, "ms7": 0, "ms6": 0, "ms5": 0,
             "ms4": 0, "ms3": 0, "ms2": 0, "ms1": 0, "ms0": 0,
         }),
+        "desk" => desk_initial_state(&component),
+        "desk_pulse" => json!({
+            "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap()),
+            "series": [4, 6, 5, 8, 7, 9, 6, 10],
+            "series_json": "[4,6,5,8,7,9,6,10]",
+            "stamp": "--:--:--",
+            "peak": 10
+        }),
         _ => json!({
             "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap())
         }),
@@ -126,25 +192,38 @@ pub fn handle_live_connection(
         PathBuf::from(template_path),
         initial_state,
         session_id.clone(),
-        sender,
+        sender.clone(),
     );
+    // Tabs of the same session share `session:component` so they see one
+    // board. A `mid` is ignored for the key (it used to isolate tabs).
+    instance.id = liveview_instance_id(&session_id, &component, None);
+    let _ = mount_id;
 
     let liveview_id = instance.id.clone();
 
-    // Reconnect: reuse the previous instance's state so a dropped socket
-    // does not reset the component to its seed hash. The connect handler
-    // still runs and sees the restored state.
+    // Already mounted (second tab, or a reconnect): keep state, attach this
+    // socket, and send the current HTML only to the new connection.
     if let Some(prev) = LIVE_REGISTRY.get(&liveview_id) {
         if !prev.is_expired(std::time::Duration::from_secs(3600)) {
-            instance.state = prev.state;
-            instance.tick_interval_ms = prev.tick_interval_ms;
-            instance.channels = prev.channels;
+            LIVE_REGISTRY.add_sender(&liveview_id, sender.clone());
+            let html = if prev.last_html.is_empty() {
+                render_component(&component, &prev.state).unwrap_or_else(|e| render_error_html(&e))
+            } else {
+                prev.last_html
+            };
+            if let Ok(payload) = serde_json::to_string(&ServerMessage::Render {
+                html,
+                liveview_id: liveview_id.clone(),
+            }) {
+                let _ = sender.try_send(Ok(Message::text(payload)));
+            }
+            return;
         }
     }
 
     // Render initial HTML
-    let initial_html = render_component(&component, &instance.state)
-        .unwrap_or_else(|e| format!("<div class='error'>{}</div>", e));
+    let initial_html =
+        render_component(&component, &instance.state).unwrap_or_else(|e| render_error_html(&e));
 
     // Save last_html for future diffs
     instance.last_html = initial_html.clone();
@@ -314,16 +393,30 @@ mod tests {
         let session = format!("sess-restore-{}", uuid::Uuid::new_v4());
         let (tx, _rx) = async_channel::bounded(8);
         let sender = Arc::new(tx);
-        handle_live_connection("counter".into(), session.clone(), sender.clone());
+        handle_live_connection("counter".into(), session.clone(), sender.clone(), None);
         let id = format!("{session}:counter");
         let mut inst = LIVE_REGISTRY.get(&id).expect("first connect");
         inst.state["count"] = json!(7);
         inst.state["typed"] = json!("kept");
         LIVE_REGISTRY.update(inst);
 
-        handle_live_connection("counter".into(), session, sender);
+        handle_live_connection("counter".into(), session, sender, None);
         let again = LIVE_REGISTRY.get(&id).expect("reconnect");
         assert_eq!(again.state["count"], 7);
         assert_eq!(again.state["typed"], "kept");
+    }
+
+    #[test]
+    fn second_tab_attaches_to_the_same_instance() {
+        let session = format!("sess-tabs-{}", uuid::Uuid::new_v4());
+        let (tx_a, rx_a) = async_channel::bounded(8);
+        let (tx_b, rx_b) = async_channel::bounded(8);
+        handle_live_connection("counter".into(), session.clone(), Arc::new(tx_a), None);
+        let id = liveview_instance_id(&session, "counter", None);
+        handle_live_connection("counter".into(), session, Arc::new(tx_b), None);
+        let inst = LIVE_REGISTRY.get(&id).expect("shared instance");
+        assert_eq!(inst.senders.len(), 2, "both tabs stay attached");
+        drop(rx_a);
+        drop(rx_b);
     }
 }

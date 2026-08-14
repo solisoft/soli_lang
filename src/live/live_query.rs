@@ -145,7 +145,10 @@ fn matcher_wakes(matcher: &Matcher, changed: Option<&Json>) -> bool {
 
 /// The `(liveview_id, component)` subscribers of `collection` that should wake
 /// for `changed`. Empty when nothing is subscribed (the common case).
-fn subscribers_to_wake(collection: &str, changed: Option<&Json>) -> Vec<(String, String)> {
+pub(crate) fn subscribers_to_wake(
+    collection: &str,
+    changed: Option<&Json>,
+) -> Vec<(String, String)> {
     let subs = SUBSCRIPTIONS.lock().unwrap();
     let Some(members) = subs.get(collection) else {
         return Vec::new();

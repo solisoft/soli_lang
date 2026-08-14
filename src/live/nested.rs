@@ -48,8 +48,12 @@ pub fn apply_event_assigns(parent: &mut JsonValue, params: &JsonValue) {
 /// return the state snapshot the handler receives as `event["state"]`.
 /// Snapshotting *before* the merge would let a handler that returns that
 /// hash wipe the child's patch.
-pub fn prepare_handler_state(state: &mut JsonValue, params: &mut JsonValue) -> JsonValue {
-    crate::live::upload::hydrate_event_params(params);
+pub fn prepare_handler_state(
+    state: &mut JsonValue,
+    params: &mut JsonValue,
+    session_id: Option<&str>,
+) -> JsonValue {
+    crate::live::upload::hydrate_event_params(params, session_id);
     apply_event_assigns(state, params);
     state.clone()
 }
@@ -173,7 +177,7 @@ mod tests {
             "_assigns": { "score": "9" },
             "file": { "id": "missing-upload-id" }
         });
-        let snapshot = prepare_handler_state(&mut state, &mut params);
+        let snapshot = prepare_handler_state(&mut state, &mut params, None);
         assert_eq!(
             snapshot["score"], 9,
             "handler event[\"state\"] must see merged child assigns"

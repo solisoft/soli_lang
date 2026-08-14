@@ -128,6 +128,17 @@ pub fn get_counter_component() -> Result<ComponentInstance, String> {
     ))
 }
 
+/// Wrap a render/mount failure as the markup the client morphs into the DOM.
+///
+/// The text is escaped: it can carry a component name taken from the socket URL,
+/// and unescaped it would be injected into the page verbatim.
+pub fn render_error_html(error: &str) -> String {
+    format!(
+        "<div class=\"error\">{}</div>",
+        crate::interpreter::builtins::html::html_escape(error)
+    )
+}
+
 /// Render a component and return its HTML.
 /// Supports .slv and .html.slv extensions (new), with backward compat for .sliv and .html.erb.
 pub fn render_component(component_name: &str, state: &JsonValue) -> Result<String, String> {
@@ -152,12 +163,20 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     } else if sliv_path.exists() {
         sliv_path
     } else {
-        return Err(format!(
-            "Template not found: {}, {}, {}, or {}",
+        // The paths stay on the server log; the returned message is shown in the
+        // browser (see `render_error_html`) and must not disclose the filesystem
+        // layout of the host.
+        eprintln!(
+            "[LiveView] template not found for component {}: tried {}, {}, {}, {}",
+            component_name,
             html_slv_path.display(),
             slv_path.display(),
             html_erb_path.display(),
             sliv_path.display()
+        );
+        return Err(format!(
+            "Template not found for live component '{}'",
+            component_name
         ));
     };
 
@@ -249,6 +268,28 @@ pub(crate) fn with_app_root_lock<T>(f: impl FnOnce() -> T) -> T {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The browser-visible error must not disclose server paths, and must not
+    /// carry markup through from the component name.
+    #[test]
+    fn render_errors_are_escaped_and_path_free() {
+        with_app_root_lock(|| {
+            let dir = tempdir().unwrap();
+            fs::create_dir_all(dir.path().join("app/views/live")).unwrap();
+            set_app_root(dir.path().to_path_buf());
+
+            let missing = render_component("no_such_component", &json!({})).unwrap_err();
+            assert!(
+                !missing.contains(dir.path().to_str().unwrap()) && !missing.contains(".slv"),
+                "message leaks the filesystem: {missing}"
+            );
+            assert!(missing.contains("no_such_component"));
+
+            let html = render_error_html("Invalid component name: <img src=x onerror=alert(1)>");
+            assert!(!html.contains("<img"), "markup survived escaping: {html}");
+            assert!(html.contains("&lt;img"));
+        });
+    }
     use std::fs;
     use tempfile::tempdir;
 

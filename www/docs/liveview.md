@@ -2,6 +2,8 @@
 
 Live View renders components on the server and pushes updates over a WebSocket. Build interactive UIs without writing JavaScript: state lives on the server, events flow over the wire, and the client **morphs the DOM in place** to match the new render — nodes are updated, not replaced, so focus, caret position, and client-side widget state survive updates (see [How patches reach the DOM](#how-patches-reach-the-dom)).
 
+**Try it.** [A Live Field Desk](/docs/blog/liveview-desk) is a tutorial with the widget on the page — nested `live_component` assigns, uploads, in-socket tabs, debounce, click-away, hooks, and JS commands.
+
 ## How It Works
 
 1. The browser opens a WebSocket to `/live/socket/<component>`.
@@ -62,7 +64,7 @@ def counter(event_data: Any) -> Any {
 | Directive | Triggers on |
 |-----------|------------|
 | `soli-click` | Element click |
-| `soli-submit` | Form submission |
+| `soli-submit` | Form submission (named fields are sent as `params`) |
 | `soli-change` | Input value change |
 | `soli-keydown` | Key press |
 | `soli-keyup` | Key release |
@@ -151,6 +153,24 @@ Two synthetic events are dispatched by the server in addition to user-driven dir
 
 - `connect` — fired once, immediately after the WebSocket is established and before any client events. Use it to seed initial state and (optionally) start a tick timer.
 - `tick` — fired on a recurring interval requested by the handler (see below). Use it for server-pushed updates like dashboards or live charts.
+
+## When a handler fails
+
+A handler that raises does **not** silently fall back to some other behaviour: the
+server logs the failure and pushes an error to the client, leaving the view's state
+untouched. The client sees the message itself only when the server runs with
+`--dev`; in production it gets a generic `LiveView handler error` so an exception's
+text (which may carry paths or query fragments) stays server-side.
+
+Returning nothing at all is legal and means *no state change* — the view re-renders
+from the current state, which normally produces an empty patch:
+
+```soli
+def toggled(event) {
+  Audit.create({ "action": event["event"] })
+  # no return — state is unchanged, nothing is patched
+}
+```
 
 ## High-Rate Updates with Ticks
 
@@ -487,9 +507,14 @@ if event == "attached" {
 }
 ```
 
-`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
 
 There is no chunked/resumable protocol — one POST per file, 8 MiB default cap.
+
+An upload belongs to the session that posted it: the id is only redeemable by that
+session's LiveView, and each session holds at most **8** pending uploads (they also
+expire after 10 minutes). A handler that never consumes its files therefore cannot
+fill the server's upload store or lock other users out.
 
 ## Current limitations
 
@@ -500,7 +525,7 @@ Live View is young. Server-pushed re-renders and DOM-aware patching work well; s
 - **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` on the parent socket — there is no Phoenix `update/2` / `send_update`.
 - **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
 - **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.
-- **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id) so the connect handler sees in-flight values. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently.
+- **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id) so the connect handler sees in-flight values. Every open tab of that session is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket for an instance closes, its state is held for **two minutes** so a refresh or a network blip reclaims it, then reaped — a ticking view re-arms its timer on reconnect, and the instance's `live_where` subscriptions stop firing as soon as no socket is attached.
 - **Per-process.** Instances and `live_where` subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.
 
 ## Why Live View?

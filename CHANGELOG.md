@@ -2,7 +2,64 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **LiveView instances are released when their last socket closes.** Nothing
+  ever unregistered one, so every `session:component` pair kept its state, its
+  full last render, and its live-query subscriptions for the process lifetime —
+  and writes kept waking views whose browser was gone (a handler run, a render
+  and a diff per wake). Subscriptions are dropped at close, state is held for
+  two minutes so a refresh or blip reclaims it, then reaped by a sweep.
+
+- **LiveView frames no longer lose each other's state.** A tick and a client
+  event each cloned the instance, mutated the clone and wrote it back
+  (last-writer-wins), and the loser's stale render became the next diff base —
+  so the client's shadow was diffed against markup it never received. Frames of
+  one instance are serialized, and a frame finishing after its socket closed no
+  longer re-creates the instance.
+
+- **LiveView events are scoped to the sending socket.** Dispatch used the
+  `liveview_id` in the client's message, so a client could drive another
+  component of its own session — or, with a known session id, another user's
+  view, which then received the patch.
+
+- **A raising LiveView handler no longer runs the built-in demo state machine.**
+  A handler error or unexpected return fell through to the counter/metrics
+  fallback, so an app bug looked like "the counter incremented". It now pushes
+  an error to the client (message only under `--dev`) and leaves state intact;
+  returning nothing means "no state change".
+
+- **LiveView uploads are bound to the uploading session**, with 8 pending slots
+  per session. A stored id was redeemable by anyone holding it, and one client
+  could fill the 64-slot × 8 MiB global store (≈512 MiB) and lock everyone else
+  out of uploads.
+
+- **A reconnected LiveView keeps ticking.** The tick task was aborted at
+  disconnect while the instance still remembered its interval, so the handler's
+  request looked unchanged and was skipped — a ticking view stopped for good
+  after any blip.
+
+- **LiveView render errors no longer leak server paths and are escaped.** A
+  missing template sent the four absolute paths it tried to the browser, and the
+  error markup was interpolated, so a component name could carry markup into the
+  page.
+
+- **The LiveView heartbeat ack is actually sent**, and one type owns its wire
+  shape (the hand-written JSON had drifted from it). The ack and the event
+  enqueue no longer block the socket's read loop — the enqueue used a blocking
+  send that parked a runtime thread when the worker pool was saturated.
+
 ### Added
+
+- **LiveView patches every tab of the same session.** A second tab
+  attaches another sender to `session:component` instead of replacing
+  the first. A click in one tab patches the others; closing one tab
+  does not detach the rest.
+
+- **Field Desk LiveView tutorial.** A blog post at `/docs/blog/liveview-desk`
+  with the widget on the page: nested `live_component` assigns, `soli-upload`,
+  in-socket tabs, debounce, click-away, hooks, and JS commands — plus the hash
+  `.where` / jobs snippets you would ship next to it.
 
 - **LiveView debounce/throttle, JS commands, and navigation.**
   `soli-debounce` / `soli-throttle` (ms) on any event element; window-level

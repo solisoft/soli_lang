@@ -307,7 +307,10 @@ use crate::interpreter::builtins::session::{
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs};
 use crate::interpreter::{Interpreter, Value};
-use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
+use crate::live::socket::{
+    extract_session_id as extract_live_session_id, handle_live_connection, liveview_instance_id,
+    sanitize_mount_id,
+};
 use crate::span::Span;
 
 /// Uploaded file information
@@ -2928,6 +2931,18 @@ async fn handle_hyper_request(
                 .get("cookie")
                 .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
+            let mount_id = req
+                .uri()
+                .query()
+                .and_then(|q| {
+                    q.split('&').find_map(|pair| {
+                        let (key, value) = pair.split_once('=')?;
+                        (key == "mid").then_some(value)
+                    })
+                })
+                .and_then(sanitize_mount_id);
+
+            start_liveview_reaper();
 
             // Perform the WebSocket upgrade
             let ws_config = default_websocket_config();
@@ -2946,6 +2961,7 @@ async fn handle_hyper_request(
             // Spawn a task to handle the LiveView WebSocket connection
             let component = component.clone();
             let session_id = session_id.clone();
+            let mount_id = mount_id.clone();
             let lv_event_tx = lv_event_tx.clone();
 
             tokio::spawn(async move {
@@ -2963,8 +2979,9 @@ async fn handle_hyper_request(
                 let tx_arc = Arc::new(tx);
 
                 // Initialize the LiveView connection
-                let liveview_id = format!("{}:{}", session_id, component);
-                handle_live_connection(component.clone(), session_id, tx_arc.clone());
+                let liveview_id =
+                    liveview_instance_id(&session_id, &component, mount_id.as_deref());
+                handle_live_connection(component.clone(), session_id, tx_arc.clone(), mount_id);
 
                 // Fire a synthetic `connect` event so user handlers can seed
                 // initial state and request a tick interval. We fire-and-forget
@@ -2999,6 +3016,7 @@ async fn handle_hyper_request(
                 });
 
                 // Handle incoming messages (events from client)
+                let liveview_id_owned = liveview_id.clone();
                 while let Some(msg_result) = ws_read.next().await {
                     match msg_result {
                         Ok(msg) => {
@@ -3029,7 +3047,19 @@ async fn handle_hyper_request(
                                             .unwrap_or(serde_json::json!({}));
 
                                         if event_type == "event" {
-                                            if let Some(id) = liveview_id {
+                                            // Dispatch against *this* socket's
+                                            // instance. A client naming another id
+                                            // would otherwise drive a component
+                                            // whose `connect` never ran — or, with a
+                                            // known session id, another user's view.
+                                            if !addressed_to_this_socket(
+                                                liveview_id.as_deref(),
+                                                &liveview_id_owned,
+                                            ) {
+                                                continue;
+                                            }
+                                            {
+                                                let id = liveview_id_owned.clone();
                                                 if let Some(event) = event_name {
                                                     // Send event to worker thread for controller dispatch
                                                     let (response_tx, response_rx) =
@@ -3042,7 +3072,11 @@ async fn handle_hyper_request(
                                                         response_tx,
                                                     };
 
-                                                    if lv_event_tx.send(event_data).is_ok() {
+                                                    // try_send, like every other
+                                                    // enqueue site: a blocking send
+                                                    // parks a tokio worker thread
+                                                    // when the pool is saturated.
+                                                    if lv_event_tx.try_send(event_data).is_ok() {
                                                         // Wait for response (with timeout)
                                                         match tokio::time::timeout(
                                                             std::time::Duration::from_secs(server_constants::HEARTBEAT_TIMEOUT_SECS),
@@ -3070,22 +3104,28 @@ async fn handle_hyper_request(
                                                 }
                                             }
                                         } else if event_type == "heartbeat" {
-                                            // Send heartbeat acknowledgment (fire-and-forget)
-                                            let ack = serde_json::json!({
-                                                "type": "heartbeat_ack"
-                                            });
-                                            #[allow(clippy::let_underscore_future)]
-                                            let _ = tx_arc.send(Ok(tungstenite::Message::Text(
-                                                ack.to_string(),
-                                            )));
+                                            // `send` here returns a future that was
+                                            // dropped, so the ack was never actually
+                                            // written. `try_send` is non-blocking and
+                                            // the enum owns the wire shape.
+                                            if let Ok(ack) = serde_json::to_string(
+                                                &crate::live::view::ServerMessage::HeartbeatAck,
+                                            ) {
+                                                let _ = tx_arc
+                                                    .try_send(Ok(tungstenite::Message::text(ack)));
+                                            }
                                         } else if event_type == "resync" {
                                             // The client lost its shadow copy (or a splice
                                             // failed to apply): replay the last full render
                                             // so it can rebuild without resetting server state.
-                                            if let Some(id) = liveview_id {
+                                            if addressed_to_this_socket(
+                                                liveview_id.as_deref(),
+                                                &liveview_id_owned,
+                                            ) {
                                                 use crate::live::view::{
                                                     ServerMessage, LIVE_REGISTRY,
                                                 };
+                                                let id = liveview_id_owned.clone();
                                                 if let Some(instance) = LIVE_REGISTRY.get(&id) {
                                                     let _ = LIVE_REGISTRY.send(
                                                         &id,
@@ -3108,7 +3148,11 @@ async fn handle_hyper_request(
                 }
 
                 write_task.abort();
-                crate::live::socket::cancel_tick_task(&liveview_id);
+                // Other tabs may still be attached to this instance.
+                if crate::live::view::LIVE_REGISTRY.drop_sender(&liveview_id, &tx_arc) {
+                    crate::live::socket::cancel_tick_task(&liveview_id);
+                    crate::live::view::LIVE_REGISTRY.detach(&liveview_id);
+                }
             });
 
             return Ok(box_full(response));
@@ -4482,6 +4526,11 @@ fn handle_websocket_event(
 
 /// `POST /live/upload` — stash multipart files and return their ids.
 fn handle_live_upload(data: &RequestData) -> ResponseData {
+    // Bind each file to the uploading session so only that session's LiveView
+    // can hydrate it, and so the per-session slot cap applies.
+    let owner = crate::interpreter::builtins::session::extract_session_id_from_cookie(
+        data.headers.get("cookie").and_then(|v| v.to_str().ok()),
+    );
     let files = data.multipart_files.as_deref().unwrap_or(&[]);
     if files.is_empty() {
         return ResponseData {
@@ -4493,6 +4542,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
     let mut out = Vec::new();
     for file in files {
         match crate::live::upload::put(
+            owner.as_deref(),
             &file.name,
             &file.filename,
             &file.content_type,
@@ -4520,6 +4570,62 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
     }
 }
 
+/// Report a LiveView handler failure to the client and the log.
+///
+/// The browser gets the message only in dev; production gets a generic string so
+/// a handler's error text (which can carry paths or query fragments) stays
+/// server-side.
+fn report_liveview_handler_error(
+    liveview_id: &str,
+    handler_name: &str,
+    error: &str,
+) -> Result<(), String> {
+    eprintln!("[LiveView] {handler_name} failed: {error}");
+    let message = if live_reload::is_live_reload_enabled() {
+        format!("{handler_name}: {error}")
+    } else {
+        "LiveView handler error".to_string()
+    };
+    let _ = crate::live::view::LIVE_REGISTRY.send(
+        liveview_id,
+        crate::live::view::ServerMessage::Error { message },
+    );
+    Err(error.to_string())
+}
+
+/// Is a client message addressed to the instance this socket owns?
+///
+/// A message with no `liveview_id` is accepted (it can only mean "mine"); one
+/// naming a different instance is dropped — the client has no legitimate reason
+/// to address another view, and honouring it would let it drive a component of
+/// another session.
+fn addressed_to_this_socket(claimed: Option<&str>, own: &str) -> bool {
+    match claimed {
+        None => true,
+        Some(id) if id == own => true,
+        Some(id) => {
+            eprintln!("[LiveView] ignoring event addressed to {id} from the socket owning {own}");
+            false
+        }
+    }
+}
+
+/// Reap LiveView instances whose socket closed (or that idled out). Started on
+/// the first LiveView upgrade; `cleanup` is cheap and runs off the hot path.
+fn start_liveview_reaper() {
+    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if STARTED.set(()).is_err() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            ticker.tick().await;
+            crate::live::view::LIVE_REGISTRY.cleanup();
+        }
+    });
+}
+
 /// Handle a LiveView event by calling the controller handler.
 fn handle_liveview_event(
     interpreter: &mut Interpreter,
@@ -4527,6 +4633,13 @@ fn handle_liveview_event(
 ) -> Result<(), String> {
     use crate::interpreter::value::Value;
     use crate::live::view::LIVE_REGISTRY;
+
+    // One frame at a time for this LiveView. A tick and a client event land on
+    // different workers; without this they both read the same state, both render
+    // from it, and the slower one overwrites the other's state and regresses
+    // `last_html` — the client then gets a diff against markup it never saw.
+    let frame_lock = LIVE_REGISTRY.frame_lock(&data.liveview_id);
+    let _frame = frame_lock.lock().unwrap_or_else(|e| e.into_inner());
 
     // Get the LiveView instance
     let mut instance = LIVE_REGISTRY
@@ -4546,6 +4659,7 @@ fn handle_liveview_event(
     let state_value = json_to_value(&crate::live::nested::prepare_handler_state(
         &mut instance.state,
         &mut event_params,
+        Some(instance.session_id.as_str()),
     ));
     let params_value = json_to_value(&event_params);
 
@@ -4596,9 +4710,10 @@ fn handle_liveview_event(
                 //      the client away, `patch` updates the URL without leaving
                 //      the socket, and `js` is an eval-free command list.
                 match &result {
-                    Value::Null => {
-                        return handle_liveview_event_fallback(data, &mut instance);
-                    }
+                    // No return value means "no state change" — re-render and
+                    // let the (usually empty) diff speak. It must not run the
+                    // built-in demo state machine.
+                    Value::Null => {}
                     Value::Hash(_) => {
                         let json = value_to_json(&result);
                         let unwrapped = unwrap_handler_return(json);
@@ -4618,10 +4733,7 @@ fn handle_liveview_event(
                             }
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
-                            {
-                                use crate::live::view::LIVE_REGISTRY;
-                                LIVE_REGISTRY.update(instance);
-                            }
+                            LIVE_REGISTRY.commit(&instance);
                             return Ok(());
                         }
 
@@ -4648,7 +4760,7 @@ fn handle_liveview_event(
                             }
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
-                            LIVE_REGISTRY.update(instance);
+                            LIVE_REGISTRY.commit(&instance);
                             return Ok(());
                         }
 
@@ -4688,16 +4800,23 @@ fn handle_liveview_event(
                             }
                         }
                     }
-                    _ => {
-                        // Unexpected return type, fall back
-                        return handle_liveview_event_fallback(data, &mut instance);
+                    other => {
+                        // A handler that returns something else is a bug in the
+                        // app; say so instead of silently running unrelated
+                        // built-in logic.
+                        return report_liveview_handler_error(
+                            &instance.id,
+                            &handler_name,
+                            &format!(
+                                "handler must return a hash or nothing, got {}",
+                                other.type_name()
+                            ),
+                        );
                     }
                 }
             }
             Err(e) => {
-                eprintln!("[LiveView] Handler error: {}", e);
-                // Fall back to hardcoded handler
-                return handle_liveview_event_fallback(data, &mut instance);
+                return report_liveview_handler_error(&instance.id, &handler_name, &e.to_string());
             }
         }
     } else {
@@ -4901,8 +5020,15 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
         return;
     }
 
-    // No-op if the interval hasn't changed.
-    if instance.tick_interval_ms == Some(requested) {
+    // No-op only if the interval is unchanged *and* a task is actually running.
+    // After a reconnect the instance still remembers its interval while the task
+    // was aborted at disconnect — treating that as unchanged silently stops a
+    // ticking view for good.
+    let tick_running = crate::live::socket::LIVEVIEW_TICK_TASKS
+        .lock()
+        .map(|tasks| tasks.contains_key(&instance.id))
+        .unwrap_or(false);
+    if instance.tick_interval_ms == Some(requested) && tick_running {
         return;
     }
 
@@ -5020,11 +5146,14 @@ fn render_and_send_patch(
     // Compute patch
     let patch = crate::live::diff::compute_patch(&old_html, &new_html);
 
-    // Update last_html and save instance back to registry
+    // Save the frame back onto the registered instance. `commit` reports a
+    // closed socket instead of re-inserting a dead view.
     let liveview_id = instance.id.clone();
     instance.last_html = new_html;
     instance.touch();
-    LIVE_REGISTRY.update(instance.clone());
+    if !LIVE_REGISTRY.commit(instance) {
+        return Ok(());
+    }
 
     // Send patch to client
     let _ = LIVE_REGISTRY.send(

@@ -142,6 +142,19 @@
     /**
      * Split an href into `{ href, path, query, hash }` relative to the page.
      */
+    function collectFormFields(element) {
+        if (!element || element.tagName !== 'FORM' || !element.elements) return {};
+        const out = {};
+        for (const field of Array.from(element.elements)) {
+            if (!field.name || field.disabled) continue;
+            const type = (field.type || '').toLowerCase();
+            if (type === 'submit' || type === 'button' || type === 'file' || type === 'reset') continue;
+            if ((type === 'checkbox' || type === 'radio') && !field.checked) continue;
+            out[field.name] = field.value;
+        }
+        return out;
+    }
+
     function hrefParts(href) {
         try {
             const url = new URL(href, typeof location !== 'undefined' ? location.href : 'http://local/');
@@ -168,6 +181,43 @@
         const raw = el.getAttribute('soli-upload-max') || el.getAttribute('data-soli-upload-max');
         const n = parseInt(raw, 10);
         return Number.isFinite(n) && n > 0 ? n : 8 * 1024 * 1024;
+    }
+
+    function uploadWrap(input) {
+        return input.closest('[soli-upload-wrap], .soli-upload-wrap, label') ||
+            input.parentElement;
+    }
+
+    /**
+     * Paint in-flight upload UI: `data-soli-progress` on the input,
+     * `--soli-progress` on the wrapping label, width on `[soli-upload-bar]`,
+     * and a local object-URL preview on `img[soli-upload-preview]`.
+     */
+    function paintUploadProgress(input, pct, file) {
+        const n = Math.max(0, Math.min(100, Number(pct) || 0));
+        input.setAttribute('data-soli-progress', String(n));
+        const wrap = uploadWrap(input);
+        if (wrap && wrap.style) wrap.style.setProperty('--soli-progress', n + '%');
+        const bar = wrap && wrap.querySelector('[soli-upload-bar], .soli-upload-bar');
+        if (bar) {
+            bar.style.width = n + '%';
+            if (bar.tagName === 'PROGRESS') {
+                bar.value = n;
+                if (!bar.max) bar.max = 100;
+            }
+        }
+        const label = wrap && wrap.querySelector('[soli-upload-pct], .soli-upload-pct');
+        if (label) label.textContent = n + '%';
+        if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
+        const img = wrap && wrap.querySelector('[soli-upload-preview], img.soli-upload-preview');
+        if (!img) return;
+        if (img._soliObjUrl) {
+            try { URL.revokeObjectURL(img._soliObjUrl); } catch (_) { /* ignore */ }
+        }
+        img._soliObjUrl = URL.createObjectURL(file);
+        img.src = img._soliObjUrl;
+        img.removeAttribute('hidden');
+        img.alt = file.name || 'upload preview';
     }
 
     function toWsUrl(url) {
@@ -1035,6 +1085,7 @@
                     values[key] = attr.value;
                 }
             }
+            const formFields = collectFormFields(element);
 
             // Get target (both with and without data- prefix)
             const target = element.getAttribute('soli-target') ||
@@ -1055,6 +1106,7 @@
                 liveview_id: this.liveviewId,
                 params: {
                     ...values,
+                    ...formFields,
                     ...extraData,
                     ...(name && { name }),
                     ...(value !== null && { value }),
@@ -1254,6 +1306,7 @@
             input.classList.remove('soli-upload-error');
             input.classList.add('soli-upload-loading');
             this.markLoading(input, 'upload');
+            paintUploadProgress(input, 0, list[0] || null);
 
             const sendOne = (file) => new Promise((resolve, reject) => {
                 if (file.size > max) {
@@ -1269,10 +1322,11 @@
                 xhr.upload.onprogress = (ev) => {
                     if (!ev.lengthComputable) return;
                     const pct = Math.round((ev.loaded / ev.total) * 100);
-                    input.setAttribute('data-soli-progress', String(pct));
+                    paintUploadProgress(input, pct, file);
                 };
                 xhr.onload = () => {
                     if (xhr.status >= 200 && xhr.status < 300) {
+                        paintUploadProgress(input, 100, file);
                         try { resolve(JSON.parse(xhr.responseText)); }
                         catch (err) { reject(err); }
                     } else {

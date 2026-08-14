@@ -13,7 +13,9 @@ pub mod view;
 
 pub use diff::compute_patch;
 pub use parser::{parse_live_directives, LiveDirective};
-pub use socket::{cleanup, handle_event, handle_live_connection};
+pub use socket::{
+    cleanup, handle_event, handle_live_connection, liveview_instance_id, sanitize_mount_id,
+};
 pub use view::{LiveRegistry, LiveViewId, LiveViewInstance, ServerMessage};
 
 /// LiveView socket path
