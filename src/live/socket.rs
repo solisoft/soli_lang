@@ -131,6 +131,17 @@ pub fn handle_live_connection(
 
     let liveview_id = instance.id.clone();
 
+    // Reconnect: reuse the previous instance's state so a dropped socket
+    // does not reset the component to its seed hash. The connect handler
+    // still runs and sees the restored state.
+    if let Some(prev) = LIVE_REGISTRY.get(&liveview_id) {
+        if !prev.is_expired(std::time::Duration::from_secs(3600)) {
+            instance.state = prev.state;
+            instance.tick_interval_ms = prev.tick_interval_ms;
+            instance.channels = prev.channels;
+        }
+    }
+
     // Render initial HTML
     let initial_html = render_component(&component, &instance.state)
         .unwrap_or_else(|e| format!("<div class='error'>{}</div>", e));
@@ -291,4 +302,28 @@ pub fn handle_event(
 /// Clean up expired LiveViews.
 pub fn cleanup() {
     LIVE_REGISTRY.cleanup();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::live::view::LIVE_REGISTRY;
+
+    #[test]
+    fn reconnect_reuses_in_flight_state() {
+        let session = format!("sess-restore-{}", uuid::Uuid::new_v4());
+        let (tx, _rx) = async_channel::bounded(8);
+        let sender = Arc::new(tx);
+        handle_live_connection("counter".into(), session.clone(), sender.clone());
+        let id = format!("{session}:counter");
+        let mut inst = LIVE_REGISTRY.get(&id).expect("first connect");
+        inst.state["count"] = json!(7);
+        inst.state["typed"] = json!("kept");
+        LIVE_REGISTRY.update(inst);
+
+        handle_live_connection("counter".into(), session, sender);
+        let again = LIVE_REGISTRY.get(&id).expect("reconnect");
+        assert_eq!(again.state["count"], 7);
+        assert_eq!(again.state["typed"], "kept");
+    }
 }

@@ -6,7 +6,11 @@
         <p class="text-xl text-gray-300 leading-8">
             Soli uses SoliDB as the default full-featured backend. Configure a single connection with environment variables.
             For the Postgres, MySQL, and SQLite adapters and named multi-DB setups, see
-            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.
+            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>
+            &mdash; or the adapter pages:
+            <a href="/docs/database/postgres" class="text-amber-400 hover:underline">PostgreSQL</a>,
+            <a href="/docs/database/mysql" class="text-amber-400 hover:underline">MySQL</a>,
+            <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>.
         </p>
     </div>
 

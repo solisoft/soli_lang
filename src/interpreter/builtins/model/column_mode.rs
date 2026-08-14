@@ -202,16 +202,8 @@ pub fn column_query_from_qb(
     // say so rather than quietly returning wrong rows.
     // `.includes` is handled after the rows come back (see
     // `include_relations`), so it is not a reason to reject the query here.
-    if !qb.joins.is_empty() {
-        return Err(unsupported("`.join`", collection));
-    }
     if qb.traversal.is_some() || qb.through.is_some() {
         return Err(unsupported("graph / through queries", collection));
-    }
-    // `group_by` compiles over real columns (see `compile_group_by_cols`); the
-    // grouping itself is applied by the caller, not by this filter builder.
-    if qb.having.is_some() {
-        return Err(unsupported("`.having`", collection));
     }
     if qb.similar_query.is_some() || qb.time_bucket_info.is_some() {
         return Err(unsupported("vector / time-bucket queries", collection));
@@ -231,6 +223,9 @@ pub fn column_query_from_qb(
     }
 
     let mut q = ColumnQuery::new(schema.clone());
+    q.hash_filter = qb.hash_filter.clone();
+    q.having = qb.having.clone();
+    q.exists_filters = col_exists_from_qb(qb, &schema)?;
     // The soft-delete scope, expressed as an ordinary filter on the column.
     if qb.is_soft_delete_model {
         match qb.soft_delete_mode {
@@ -244,22 +239,25 @@ pub fn column_query_from_qb(
             super::query::SoftDeleteMode::WithDeleted => {}
         }
     }
-    for (key, value) in &qb.bind_vars {
-        let field = crate::interpreter::symbol_string(*key)
-            .unwrap_or("")
-            .to_string();
-        if field.starts_with("__soli_") {
-            continue;
+    if q.hash_filter.is_none() {
+        for (key, value) in &qb.bind_vars {
+            let field = crate::interpreter::symbol_string(*key)
+                .unwrap_or("")
+                .to_string();
+            if field.starts_with("__soli_") {
+                continue;
+            }
+            q.eq_filters.insert(field, value.clone());
         }
-        q.eq_filters.insert(field, value.clone());
-    }
-    // A raw filter carries binds too (`.where("doc.age >= @age", {age: 18})`),
-    // so its presence alone cannot distinguish it from the hash form. Validate
-    // that the filter text really is the hash-equality shape matching these
-    // binds — otherwise `age >= 18` would silently become `age = 18`.
-    if crate::db::sql_compile::assert_portable_filter(qb.filter.as_deref(), &q.eq_filters).is_err()
-    {
-        return Err(unsupported("raw/string `.where(\"…\")`", collection));
+        // A raw filter carries binds too (`.where("doc.age >= @age", {age: 18})`),
+        // so its presence alone cannot distinguish it from the hash form. Validate
+        // that the filter text really is the hash-equality shape matching these
+        // binds — otherwise `age >= 18` would silently become `age = 18`.
+        if crate::db::sql_compile::assert_portable_filter(qb.filter.as_deref(), &q.eq_filters)
+            .is_err()
+        {
+            return Err(unsupported("raw/string `.where(\"…\")`", collection));
+        }
     }
     // Push `pluck` / `select` into the SELECT list when every field is a real
     // column. A field that is not (a nested path, a computed alias) falls back to
@@ -328,11 +326,15 @@ pub fn include_relations(
     rows: &mut [serde_json::Value],
 ) -> Result<(), String> {
     for inc in &qb.includes {
-        if inc.filter.is_some() {
+        if inc.filter.is_some() && inc.hash_filter.is_none() {
             return Err(unsupported(
-                "a filtered `.includes(…, where: …)`",
+                "a string-filtered `.includes(…)` (use a hash: `.includes(\"rel\", { \"visible\": true })`)",
                 &schema.table,
             ));
+        }
+        if inc.relation.through.is_some() {
+            include_through(rows, inc, schema, qb)?;
+            continue;
         }
         let related = require_related_schema(&inc.relation.collection, &inc.relation_name)?;
         match inc.relation.relation_type {
@@ -344,10 +346,7 @@ pub fn include_relations(
                 include_has_many(rows, inc, schema, &related)?
             }
             super::relations::RelationType::HasAndBelongsToMany => {
-                return Err(unsupported(
-                    "`.includes` on has_and_belongs_to_many",
-                    &schema.table,
-                ))
+                include_habtm(rows, inc, schema)?
             }
         }
     }
@@ -405,11 +404,21 @@ fn fetch_in(
     column: &str,
     values: Vec<serde_json::Value>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    fetch_in_filtered(schema, column, values, None)
+}
+
+fn fetch_in_filtered(
+    schema: &Arc<TableSchema>,
+    column: &str,
+    values: Vec<serde_json::Value>,
+    extra: Option<&crate::db::hash_filter::HashFilter>,
+) -> Result<Vec<serde_json::Value>, String> {
     if values.is_empty() {
         return Ok(Vec::new());
     }
     let mut query = ColumnQuery::new(schema.clone());
     query.in_filters.insert(column.to_string(), values);
+    query.hash_filter = extra.cloned();
     crate::db::columns::select_rows(&query)
 }
 
@@ -442,7 +451,7 @@ fn include_belongs_to(
 ) -> Result<(), String> {
     let fk = resolve_col(schema, &inc.relation.foreign_key)?.name.clone();
     let keys = distinct_values(rows, &fk);
-    let fetched = fetch_in(related, &related.pk.clone(), keys)?;
+    let fetched = fetch_in_filtered(related, &related.pk.clone(), keys, inc.hash_filter.as_ref())?;
 
     let mut by_key: std::collections::HashMap<String, serde_json::Value> =
         std::collections::HashMap::new();
@@ -473,7 +482,7 @@ fn include_has_many(
         .name
         .clone();
     let parent_keys = distinct_values(rows, &schema.pk);
-    let fetched = fetch_in(related, &fk, parent_keys)?;
+    let fetched = fetch_in_filtered(related, &fk, parent_keys, inc.hash_filter.as_ref())?;
 
     let mut by_fk: std::collections::HashMap<String, Vec<serde_json::Value>> =
         std::collections::HashMap::new();
@@ -534,6 +543,218 @@ fn include_count(
             .unwrap_or(0);
         if let Some(obj) = row.as_object_mut() {
             obj.insert(inc.alias.clone(), serde_json::json!(count));
+        }
+    }
+    Ok(())
+}
+
+fn col_exists_from_qb(
+    qb: &super::query::QueryBuilder,
+    parent: &TableSchema,
+) -> Result<Vec<crate::db::sql_columns_compile::ColExistsFilter>, String> {
+    let mut out = Vec::new();
+    for join in &qb.joins {
+        if matches!(
+            join.relation.relation_type,
+            super::relations::RelationType::BelongsTo
+                | super::relations::RelationType::HasAndBelongsToMany
+        ) {
+            return Err(unsupported("`.join` on belongs_to / HABTM", &parent.table));
+        }
+        if join.relation.through.is_some() {
+            return Err(unsupported("`.join` through:", &parent.table));
+        }
+        let child = require_related_schema(&join.relation.collection, &join.relation_name)?;
+        let mut eq = std::collections::BTreeMap::new();
+        let hash_filter = join.hash_filter.clone().or_else(|| {
+            if join.filter.is_none() && !join.bind_vars.is_empty() {
+                // Bind-only join options were treated as equalities.
+                for (k, v) in &join.bind_vars {
+                    eq.insert(k.clone(), v.clone());
+                }
+            }
+            None
+        });
+        out.push(crate::db::sql_columns_compile::ColExistsFilter {
+            table: child.table.clone(),
+            foreign_key: join.relation.foreign_key.clone(),
+            parent_pk: parent.pk.clone(),
+            hash_filter,
+            eq_filters: eq,
+            child_schema: child,
+        });
+    }
+    Ok(out)
+}
+
+/// HABTM: join table rows, then targets. Both must be column-aware.
+fn include_habtm(
+    rows: &mut [serde_json::Value],
+    inc: &super::query::IncludeClause,
+    schema: &TableSchema,
+) -> Result<(), String> {
+    let join_table = inc.relation.join_table.as_deref().ok_or_else(|| {
+        format!(
+            "`.includes(\"{}\")`: has_and_belongs_to_many needs a join table",
+            inc.relation_name
+        )
+    })?;
+    let join_schema = crate::db::introspect::get_schema(join_table)?;
+    let assoc_fk = inc
+        .relation
+        .association_foreign_key
+        .as_deref()
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: has_and_belongs_to_many needs association_foreign_key",
+                inc.relation_name
+            )
+        })?;
+    let owner_fk = &inc.relation.foreign_key;
+    let parent_keys = distinct_values(rows, &schema.pk);
+    let links = fetch_in(&join_schema, owner_fk, parent_keys)?;
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    let mut target_keys = Vec::new();
+    for link in &links {
+        let (Some(owner), Some(target)) = (row_text(link, owner_fk), row_text(link, assoc_fk))
+        else {
+            continue;
+        };
+        if !target_keys.iter().any(|k| k == &target) {
+            target_keys.push(serde_json::Value::String(target.clone()));
+        }
+        pairs.push((owner, target));
+    }
+    let related = require_related_schema(&inc.relation.collection, &inc.relation_name)?;
+    let targets = fetch_in_filtered(&related, &related.pk, target_keys, inc.hash_filter.as_ref())?;
+    let mut by_key = std::collections::HashMap::new();
+    for row in targets {
+        if let Some(k) = row_text(&row, &related.pk) {
+            by_key.insert(k, project(row, &inc.fields));
+        }
+    }
+    let mut by_parent: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for (owner, target) in pairs {
+        if let Some(doc) = by_key.get(&target) {
+            by_parent.entry(owner).or_default().push(doc.clone());
+        }
+    }
+    for row in rows.iter_mut() {
+        let kids = row_text(row, &schema.pk)
+            .and_then(|k| by_parent.remove(&k))
+            .unwrap_or_default();
+        if let Some(obj) = row.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), serde_json::Value::Array(kids));
+        }
+    }
+    Ok(())
+}
+
+fn include_through(
+    rows: &mut [serde_json::Value],
+    inc: &super::query::IncludeClause,
+    schema: &TableSchema,
+    qb: &super::query::QueryBuilder,
+) -> Result<(), String> {
+    let owner_class = qb
+        .hydration_class()
+        .map(|c| c.name.clone())
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: a through: relation needs the owning model class",
+                inc.relation_name
+            )
+        })?;
+    let through_name = inc.relation.through.clone().unwrap_or_default();
+    let through_rel = super::relations::get_relation(&owner_class, &through_name).ok_or_else(
+        || {
+            format!(
+                "`.includes(\"{}\")`: intermediate {through_name:?} is not declared on {owner_class}",
+                inc.relation_name
+            )
+        },
+    )?;
+    let middle = require_related_schema(&through_rel.collection, &through_name)?;
+    let source_name = inc
+        .relation
+        .source
+        .clone()
+        .unwrap_or_else(|| inc.relation.name.clone());
+    let source_rel = super::relations::get_relation(&through_rel.class_name, &source_name)
+        .ok_or_else(|| {
+            format!(
+                "`.includes(\"{}\")`: {:?} has no relation {source_name:?}",
+                inc.relation_name, through_rel.class_name
+            )
+        })?;
+    let parent_keys = distinct_values(rows, &schema.pk);
+    let middles = fetch_in(&middle, &through_rel.foreign_key, parent_keys)?;
+    let related = require_related_schema(&source_rel.collection, &inc.relation_name)?;
+    let target_is_child = matches!(
+        source_rel.relation_type,
+        super::relations::RelationType::HasMany | super::relations::RelationType::HasOne
+    );
+    let mut target_keys = Vec::new();
+    for mid in &middles {
+        let key = if target_is_child {
+            row_text(mid, &middle.pk)
+        } else {
+            row_text(mid, &source_rel.foreign_key)
+        };
+        if let Some(key) = key {
+            if !target_keys.iter().any(|k| k == &key) {
+                target_keys.push(serde_json::Value::String(key));
+            }
+        }
+    }
+    let targets = if target_is_child {
+        fetch_in_filtered(
+            &related,
+            &source_rel.foreign_key,
+            target_keys,
+            inc.hash_filter.as_ref(),
+        )?
+    } else {
+        fetch_in_filtered(&related, &related.pk, target_keys, inc.hash_filter.as_ref())?
+    };
+    let mut by_link: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for target in targets {
+        let link = if target_is_child {
+            row_text(&target, &source_rel.foreign_key)
+        } else {
+            row_text(&target, &related.pk)
+        };
+        if let Some(link) = link {
+            by_link
+                .entry(link)
+                .or_default()
+                .push(project(target, &inc.fields));
+        }
+    }
+    let mut by_parent: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for mid in &middles {
+        let Some(owner) = row_text(mid, &through_rel.foreign_key) else {
+            continue;
+        };
+        let link = if target_is_child {
+            row_text(mid, &middle.pk)
+        } else {
+            row_text(mid, &source_rel.foreign_key)
+        };
+        let Some(link) = link else { continue };
+        if let Some(found) = by_link.get(&link) {
+            by_parent.entry(owner).or_default().extend(found.clone());
+        }
+    }
+    for row in rows.iter_mut() {
+        let kids = row_text(row, &schema.pk)
+            .and_then(|k| by_parent.remove(&k))
+            .unwrap_or_default();
+        if let Some(obj) = row.as_object_mut() {
+            obj.insert(inc.relation_name.clone(), serde_json::Value::Array(kids));
         }
     }
     Ok(())

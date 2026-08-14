@@ -146,6 +146,16 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
             </div>
         </section>
 
+        <section id="def-job-retry" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-retry" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Job.retry(job_id)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Re-queue a <code class="text-amber-400">failed</code> or <code class="text-amber-400">dead</code> job. Keeps <code>attempts</code> and <code>last_error</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Job.retry(job_id)</code></pre>
+            </div>
+        </section>
+
         <section id="def-job-list" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-list" class="group flex items-center gap-2 mb-3">
@@ -452,7 +462,23 @@ end</code></pre>
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-3 text-sm">The engine starts with <code class="text-amber-400">soli serve</code> when the app has jobs — <code class="text-amber-400">app/jobs/</code> exists, or a mailer is configured. <code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code>, <code class="text-amber-400">SOLI_JOBS_SECRET</code>, and <code class="text-amber-400">SOLI_JOBS_DATABASE</code> are no longer read.</p>
+            <p class="text-gray-400 mt-3 text-sm">The engine starts with <code class="text-amber-400">soli serve</code> when the app has jobs — <code class="text-amber-400">app/jobs/</code> exists, or a mailer is configured. <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> leaves work for <code class="text-amber-400">soli jobs</code>. <code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code>, <code class="text-amber-400">SOLI_JOBS_SECRET</code>, and <code class="text-amber-400">SOLI_JOBS_DATABASE</code> are no longer read.</p>
+        </div>
+    </section>
+
+    <!-- Standalone worker -->
+    <section id="section-standalone-worker" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Standalone Worker</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-amber-400">soli serve</code> can run the poller next to HTTP. To scale job capacity separately, set <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> on the web process and run a dedicated worker:</p>
+            <pre data-filename="shell"><code class="language-bash text-sm">soli jobs                  # current directory, SOLI_JOB_WORKERS or 1 slot
+soli jobs ./myapp --workers 4
+soli worker ./myapp        # alias
+
+soli jobs list --queue mailers --state failed
+soli jobs retry &lt;id&gt;
+soli jobs cancel &lt;id&gt;</code></pre>
+            <p class="text-gray-400 mt-3 text-sm">The worker loads models, services, mailers, and <code class="text-amber-400">app/jobs/</code>, registers <code class="text-amber-400">static cron</code>, then claims and runs work until Ctrl-C / SIGTERM. No HTTP port. In <code class="text-amber-400">--dev</code>, the same operations are a page at <a href="/__soli/jobs" class="text-amber-400 hover:underline">/__soli/jobs</a> (dev-bar tools panel).</p>
         </div>
     </section>
 

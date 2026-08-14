@@ -13,6 +13,7 @@ mod csrf;
 pub mod dev_bar;
 mod dev_catalog;
 mod dev_inbox;
+mod dev_jobs;
 pub mod dev_store;
 pub mod files;
 mod hot_reload;
@@ -49,6 +50,7 @@ mod error_logging;
 mod error_pages;
 mod file_tracker;
 pub(crate) mod file_upload;
+pub mod job_worker;
 mod json;
 mod repl_session;
 mod tailwind;
@@ -1988,7 +1990,7 @@ fn run_hyper_server_worker_pool(
     // — `app/jobs` exists (handlers to run) or a mailer is configured
     // (`deliver_later` enqueues the built-in delivery job). `SOLI_JOB_WORKERS`
     // sizes the pool (default 1); 0 disables the engine entirely, leaving
-    // enqueued rows for another process (or a later run) to pick up.
+    // enqueued rows for `soli jobs` (or another serve process) to pick up.
     {
         let mailer_configured = std::env::var("SOLI_SMTP_HOST")
             .ok()
@@ -3534,6 +3536,20 @@ async fn handle_hyper_request(
                 return Ok(dev_inbox::handle_message(rest));
             }
         }
+        // Background-job dashboard: inspect queues, cancel, retry.
+        if method == "GET" && path == "/__soli/jobs" {
+            return Ok(dev_jobs::handle_index(req.uri().query()));
+        }
+        if method == "POST" {
+            if let Some(rest) = path.strip_prefix("/__soli/jobs/") {
+                return Ok(dev_jobs::handle_action(rest));
+            }
+        }
+        if method == "GET" {
+            if let Some(id) = path.strip_prefix("/__soli/jobs/") {
+                return Ok(dev_jobs::handle_show(id));
+            }
+        }
     }
 
     // Coverage dump endpoint: only active when the parent process asked us
@@ -4464,6 +4480,46 @@ fn handle_websocket_event(
     }
 }
 
+/// `POST /live/upload` — stash multipart files and return their ids.
+fn handle_live_upload(data: &RequestData) -> ResponseData {
+    let files = data.multipart_files.as_deref().unwrap_or(&[]);
+    if files.is_empty() {
+        return ResponseData {
+            status: 400,
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            body: br#"{"error":"no file"}"#.to_vec(),
+        };
+    }
+    let mut out = Vec::new();
+    for file in files {
+        match crate::live::upload::put(
+            &file.name,
+            &file.filename,
+            &file.content_type,
+            file.data.clone(),
+        ) {
+            Ok(meta) => out.push(meta),
+            Err(e) => {
+                return ResponseData {
+                    status: 413,
+                    headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+                    body: serde_json::json!({ "error": e }).to_string().into_bytes(),
+                };
+            }
+        }
+    }
+    let payload = if out.len() == 1 {
+        out.remove(0)
+    } else {
+        serde_json::Value::Array(out)
+    };
+    ResponseData {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+        body: payload.to_string().into_bytes(),
+    }
+}
+
 /// Handle a LiveView event by calling the controller handler.
 fn handle_liveview_event(
     interpreter: &mut Interpreter,
@@ -4482,9 +4538,16 @@ fn handle_liveview_event(
     // Try to find a registered handler for this component
     let handler_name = crate::live::socket::get_liveview_handler(&component);
 
-    // Build event hash for the controller: {event, params, state}
-    let state_value = json_to_value(&instance.state);
-    let params_value = json_to_value(&data.params);
+    // Build event hash for the controller: {event, params, state}.
+    // Hydrate uploads and merge child `_assigns` *before* snapshotting
+    // state — a typical handler returns that hash, so a pre-merge
+    // snapshot would drop the child's patch.
+    let mut event_params = data.params.clone();
+    let state_value = json_to_value(&crate::live::nested::prepare_handler_state(
+        &mut instance.state,
+        &mut event_params,
+    ));
+    let params_value = json_to_value(&event_params);
 
     let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
@@ -4525,21 +4588,73 @@ fn handle_liveview_event(
             Ok(result) => {
                 // The handler may return either of two shapes:
                 //   1. `{ ...state }`        — used directly as the new state
-                //   2. `{ "state": {...}, "tick_interval": N, "stream": {...} }`
+                //   2. `{ "state": {...}, "tick_interval": N, "stream": {...},
+                //          "redirect": "/x", "js": [...] }`
                 //      — wrapped form; `state` (optional) is the new state,
-                //      `tick_interval` (ms) controls the tick timer, and `stream`
-                //      carries targeted container ops pushed as a Stream message.
+                //      `tick_interval` (ms) controls the tick timer, `stream`
+                //      carries targeted container ops, `redirect` navigates
+                //      the client away, `patch` updates the URL without leaving
+                //      the socket, and `js` is an eval-free command list.
                 match &result {
                     Value::Null => {
                         return handle_liveview_event_fallback(data, &mut instance);
                     }
                     Value::Hash(_) => {
                         let json = value_to_json(&result);
-                        let (new_state_json, tick_interval, stream) = unwrap_handler_return(json);
+                        let unwrapped = unwrap_handler_return(json);
+
+                        if let Some(url) = unwrapped.redirect.as_deref() {
+                            use crate::live::view::LIVE_REGISTRY;
+                            let _ = LIVE_REGISTRY.send(
+                                &instance.id,
+                                crate::live::view::ServerMessage::Redirect {
+                                    url: url.to_string(),
+                                },
+                            );
+                            // Persist any state change, then leave — the
+                            // client is navigating away.
+                            if let Some(state) = unwrapped.state {
+                                instance.state = state;
+                            }
+                            apply_tick_interval(&mut instance, unwrapped.tick);
+                            instance.touch();
+                            {
+                                use crate::live::view::LIVE_REGISTRY;
+                                LIVE_REGISTRY.update(instance);
+                            }
+                            return Ok(());
+                        }
+
+                        if let Some(cmds) = unwrapped.js {
+                            use crate::live::view::LIVE_REGISTRY;
+                            let _ = LIVE_REGISTRY
+                                .send(&instance.id, crate::live::view::ServerMessage::Js { cmds });
+                        }
+
+                        if let Some((url, replace)) = unwrapped.patch {
+                            use crate::live::view::LIVE_REGISTRY;
+                            let _ = LIVE_REGISTRY.send(
+                                &instance.id,
+                                crate::live::view::ServerMessage::Url { url, replace },
+                            );
+                        }
+
+                        if let Some(url) = unwrapped.live {
+                            use crate::live::view::LIVE_REGISTRY;
+                            let _ = LIVE_REGISTRY
+                                .send(&instance.id, crate::live::view::ServerMessage::Live { url });
+                            if let Some(state) = unwrapped.state {
+                                instance.state = state;
+                            }
+                            apply_tick_interval(&mut instance, unwrapped.tick);
+                            instance.touch();
+                            LIVE_REGISTRY.update(instance);
+                            return Ok(());
+                        }
 
                         // Replace state only when the handler supplied one (a
                         // stream-only emission leaves the current state intact).
-                        if let Some(mut state) = new_state_json {
+                        if let Some(mut state) = unwrapped.state {
                             // Preserve the id across state replacement
                             if let (
                                 serde_json::Value::Object(old),
@@ -4554,12 +4669,12 @@ fn handle_liveview_event(
                         }
 
                         // Apply tick scheduling change (if any)
-                        apply_tick_interval(&mut instance, tick_interval);
+                        apply_tick_interval(&mut instance, unwrapped.tick);
 
                         // Push targeted collection ops straight to the client
                         // (append/prepend/remove/…). Streamed rows live outside
                         // the diff shadow, so this never fights render patches.
-                        if let Some(stream_val) = stream {
+                        if let Some(stream_val) = unwrapped.stream {
                             let ops = build_stream_ops(&stream_val);
                             if !ops.is_empty() {
                                 use crate::live::view::LIVE_REGISTRY;
@@ -4601,49 +4716,111 @@ fn handle_liveview_event(
     render_and_send_patch(&component, &mut instance)
 }
 
+/// Unpacked LiveView handler return.
+struct LiveHandlerReturn {
+    state: Option<serde_json::Value>,
+    tick: Option<u64>,
+    stream: Option<serde_json::Value>,
+    redirect: Option<String>,
+    js: Option<serde_json::Value>,
+    /// In-socket URL update: `(url, replace)`.
+    patch: Option<(String, bool)>,
+    /// Swap the page-root LiveView to another `/live/socket/<component>`.
+    live: Option<String>,
+}
+
 /// Unwrap the handler return value. The wrapped form
-/// `{ "state": {...}, "tick_interval": N, "stream": {...} }` yields the inner
-/// state (or `None` to keep the current state, for a stream-only emission), the
-/// tick interval, and the raw stream sub-hash. The bare form (no `state` object
-/// and no `stream` key) is the new state itself.
+/// `{ "state": {...}, "tick_interval": N, "stream": {...}, "redirect": "/x",
+///    "patch": "/y", "js": [...] }` yields the inner state (or `None` to keep
+/// the current state), the tick interval, stream ops, a client redirect, an
+/// in-socket URL update, and JS commands.
+/// The bare form (no wrapper keys) is the new state itself.
 ///
 /// `tick_interval` interpretation:
 ///   * key absent → `None`     (don't touch the running timer)
 ///   * value 0    → `Some(0)`  (stop the timer)
 ///   * value > 0  → `Some(ms)` (start or replace the timer)
-#[allow(clippy::type_complexity)]
-fn unwrap_handler_return(
-    json: serde_json::Value,
-) -> (
-    Option<serde_json::Value>,
-    Option<u64>,
-    Option<serde_json::Value>,
-) {
+fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
     // Caller only invokes this with a hash result, but be defensive.
     let mut map = match json {
         serde_json::Value::Object(m) => m,
-        other => return (Some(other), None, None),
+        other => {
+            return LiveHandlerReturn {
+                state: Some(other),
+                tick: None,
+                stream: None,
+                redirect: None,
+                js: None,
+                patch: None,
+                live: None,
+            }
+        }
     };
 
     let has_state_obj = map.get("state").is_some_and(|v| v.is_object());
     let has_stream = map.contains_key("stream");
+    let has_js = map.contains_key("js");
+    let has_redirect = map.contains_key("redirect");
+    let has_patch = map.contains_key("patch");
+    let has_live = map.contains_key("live");
 
-    // Bare shape (no `state` object and no `stream`): the whole hash is the new
-    // state, no tick change, no stream.
-    if !has_state_obj && !has_stream {
-        return (Some(serde_json::Value::Object(map)), None, None);
+    // Bare shape: the whole hash is the new state.
+    if !has_state_obj && !has_stream && !has_js && !has_redirect && !has_patch && !has_live {
+        return LiveHandlerReturn {
+            state: Some(serde_json::Value::Object(map)),
+            tick: None,
+            stream: None,
+            redirect: None,
+            js: None,
+            patch: None,
+            live: None,
+        };
     }
 
-    // Wrapped shape. A missing `state` (stream-only emission) leaves the current
-    // state untouched (`None`), rather than wiping it to `{}`.
     let state = if has_state_obj {
         map.remove("state")
     } else {
         None
     };
-    let tick_interval = map.get("tick_interval").and_then(|v| v.as_u64());
+    let tick = map.get("tick_interval").and_then(|v| v.as_u64());
     let stream = map.remove("stream");
-    (state, tick_interval, stream)
+    let redirect = map
+        .remove("redirect")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    let js = map.remove("js");
+    let patch = parse_patch_url(map.remove("patch"));
+    let live = map
+        .remove("live")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .filter(|s| !s.is_empty());
+    LiveHandlerReturn {
+        state,
+        tick,
+        stream,
+        redirect,
+        js,
+        patch,
+        live,
+    }
+}
+
+/// `patch: "/path"` or `patch: { "url": "/path", "replace": true }`.
+fn parse_patch_url(value: Option<serde_json::Value>) -> Option<(String, bool)> {
+    match value? {
+        serde_json::Value::String(url) if !url.is_empty() => Some((url, false)),
+        serde_json::Value::Object(map) => {
+            let url = map.get("url").and_then(|v| v.as_str())?.to_string();
+            if url.is_empty() {
+                return None;
+            }
+            let replace = map
+                .get("replace")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Some((url, replace))
+        }
+        _ => None,
+    }
 }
 
 /// Build the typed `StreamOp`s from a handler's `stream` sub-hash, of shape
@@ -6656,6 +6833,12 @@ fn handle_request(
         }
     }
 
+    // LiveView file bytes travel over HTTP (WS is capped at 1 MiB). The
+    // client then sends only the returned id over the socket.
+    if method == "POST" && path == "/live/upload" {
+        return handle_live_upload(data);
+    }
+
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
         Some(found) => found,
@@ -8281,10 +8464,12 @@ mod tests {
     #[test]
     fn unwrap_bare_state_shape_returns_whole_hash() {
         let json = serde_json::json!({ "count": 7, "name": "alice" });
-        let (state, tick, stream) = unwrap_handler_return(json.clone());
-        assert_eq!(state, Some(json));
-        assert_eq!(tick, None);
-        assert!(stream.is_none());
+        let got = unwrap_handler_return(json.clone());
+        assert_eq!(got.state, Some(json));
+        assert_eq!(got.tick, None);
+        assert!(got.stream.is_none());
+        assert!(got.redirect.is_none());
+        assert!(got.js.is_none());
     }
 
     /// SEC-044: an appending proxy chain reaches the app as
@@ -8316,17 +8501,17 @@ mod tests {
             "state": { "count": 3 },
             "tick_interval": 50,
         });
-        let (state, tick, _) = unwrap_handler_return(json);
-        assert_eq!(state, Some(serde_json::json!({ "count": 3 })));
-        assert_eq!(tick, Some(50));
+        let got = unwrap_handler_return(json);
+        assert_eq!(got.state, Some(serde_json::json!({ "count": 3 })));
+        assert_eq!(got.tick, Some(50));
     }
 
     #[test]
     fn unwrap_wrapped_shape_without_tick_interval_returns_none() {
         let json = serde_json::json!({ "state": { "x": 1 } });
-        let (state, tick, _) = unwrap_handler_return(json);
-        assert_eq!(state, Some(serde_json::json!({ "x": 1 })));
-        assert_eq!(tick, None);
+        let got = unwrap_handler_return(json);
+        assert_eq!(got.state, Some(serde_json::json!({ "x": 1 })));
+        assert_eq!(got.tick, None);
     }
 
     #[test]
@@ -8334,9 +8519,9 @@ mod tests {
         // A user setting `"state": 42` doesn't look like the wrapped form — we
         // treat the whole hash as the new state to avoid silently dropping it.
         let json = serde_json::json!({ "state": 42, "tick_interval": 50 });
-        let (state, tick, _) = unwrap_handler_return(json.clone());
-        assert_eq!(state, Some(json));
-        assert_eq!(tick, None);
+        let got = unwrap_handler_return(json.clone());
+        assert_eq!(got.state, Some(json));
+        assert_eq!(got.tick, None);
     }
 
     #[test]
@@ -8345,8 +8530,8 @@ mod tests {
             "state": { "x": 1 },
             "tick_interval": 0,
         });
-        let (_, tick, _) = unwrap_handler_return(json);
-        assert_eq!(tick, Some(0));
+        let got = unwrap_handler_return(json);
+        assert_eq!(got.tick, Some(0));
     }
 
     #[test]
@@ -8357,10 +8542,54 @@ mod tests {
                 { "op": "append", "id": "post-7", "html": "<li>hi</li>" }
             ] }
         });
-        let (state, tick, stream) = unwrap_handler_return(json);
-        assert_eq!(state, None); // keep current state
-        assert_eq!(tick, None);
-        assert!(stream.is_some());
+        let got = unwrap_handler_return(json);
+        assert_eq!(got.state, None); // keep current state
+        assert_eq!(got.tick, None);
+        assert!(got.stream.is_some());
+    }
+
+    #[test]
+    fn unwrap_extracts_redirect_and_js_commands() {
+        let json = serde_json::json!({
+            "state": { "ok": true },
+            "redirect": "/done",
+            "js": [{ "op": "add_class", "to": "#flash", "class": "show" }]
+        });
+        let got = unwrap_handler_return(json);
+        assert_eq!(got.state, Some(serde_json::json!({ "ok": true })));
+        assert_eq!(got.redirect.as_deref(), Some("/done"));
+        let cmds = got.js.expect("js");
+        assert_eq!(cmds[0]["op"], "add_class");
+        assert_eq!(cmds[0]["to"], "#flash");
+    }
+
+    #[test]
+    fn unwrap_extracts_patch_url() {
+        let got = unwrap_handler_return(serde_json::json!({
+            "state": { "tab": "comments" },
+            "patch": "/posts/1?tab=comments"
+        }));
+        assert_eq!(got.state, Some(serde_json::json!({ "tab": "comments" })));
+        assert_eq!(
+            got.patch,
+            Some(("/posts/1?tab=comments".to_string(), false))
+        );
+
+        let replace = unwrap_handler_return(serde_json::json!({
+            "patch": { "url": "/x", "replace": true }
+        }));
+        assert_eq!(replace.patch, Some(("/x".to_string(), true)));
+        assert!(replace.state.is_none());
+    }
+
+    #[test]
+    fn unwrap_extracts_live_socket_url() {
+        let got = unwrap_handler_return(serde_json::json!({
+            "state": { "ok": true },
+            "live": "/live/socket/about"
+        }));
+        assert_eq!(got.live.as_deref(), Some("/live/socket/about"));
+        assert_eq!(got.state, Some(serde_json::json!({ "ok": true })));
     }
 
     #[test]

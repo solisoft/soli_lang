@@ -78,6 +78,12 @@ pub fn run() {
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
         Command::DbImport { collections } => commands::run_db_import(collections),
         Command::DbIndexes { folder } => commands::run_db_indexes(folder),
+        Command::DbSchemaDump { folder, connection } => {
+            commands::run_db_schema(folder, connection.as_deref(), false)
+        }
+        Command::DbSchemaLoad { folder, connection } => {
+            commands::run_db_schema(folder, connection.as_deref(), true)
+        }
         Command::DbCreate { folder, connection } => {
             commands::run_db_create_or_drop(folder, connection.as_deref(), false)
         }
@@ -126,6 +132,7 @@ pub fn run() {
             *json,
         ),
         Command::Serve(serve) => commands::run_serve(serve),
+        Command::Jobs(cmd) => commands::run_jobs(cmd),
         Command::Lint { paths } => commands::run_lint(paths),
         Command::Check { paths } => commands::run_check(paths),
         Command::Fmt {

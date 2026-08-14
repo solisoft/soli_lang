@@ -803,6 +803,51 @@ pub fn ensure_doc_index(
     Ok(true)
 }
 
+pub fn dump_schema() -> Result<String, String> {
+    let versions = list_applied_migrations().unwrap_or_default();
+    let tables: Vec<String> = with_conn(|client| {
+        let rows = client
+            .query(
+                "SELECT tablename FROM pg_tables \
+                 WHERE schemaname = current_schema() AND tablename NOT LIKE 'pg_%'",
+                &[],
+            )
+            .map_err(|e| pg_error("postgres dump tables", &e))?;
+        Ok(rows.into_iter().map(|r| r.get::<_, String>(0)).collect())
+    })?;
+    let mut stmts = Vec::new();
+    for table in &tables {
+        let raw = introspect_table(table)?;
+        let mut cols = Vec::new();
+        for (name, ty, _, nullable, _) in &raw.columns {
+            let q = Dialect::Postgres.quote_ident(name)?;
+            let null = if *nullable { "" } else { " NOT NULL" };
+            cols.push(format!("{q} {ty}{null}"));
+        }
+        if !cols.is_empty() {
+            let q = Dialect::Postgres.quote_ident(table)?;
+            stmts.push(format!(
+                "CREATE TABLE IF NOT EXISTS {q} (\n  {}\n)",
+                cols.join(",\n  ")
+            ));
+        }
+    }
+    let indexes: Vec<String> = with_conn(|client| {
+        let rows = client
+            .query(
+                "SELECT indexdef FROM pg_indexes \
+                 WHERE schemaname = current_schema() AND indexname NOT LIKE '%_pkey'",
+                &[],
+            )
+            .map_err(|e| pg_error("postgres dump indexes", &e))?;
+        Ok(rows.into_iter().map(|r| r.get::<_, String>(0)).collect())
+    })?;
+    stmts.extend(indexes);
+    Ok(super::schema_dump::format_dump(
+        "postgres", &versions, &stmts,
+    ))
+}
+
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|client| {
         client
@@ -1568,6 +1613,7 @@ mod integration_tests {
             let q = ListQuery {
                 table: table.into(),
                 eq_filters: eq,
+                hash_filter: None,
                 filter_sdbql: Some("doc.status == @status".into()),
                 having: None,
                 exists_filters: Vec::new(),
@@ -1619,6 +1665,7 @@ mod integration_tests {
             let q = ListQuery {
                 table: table.into(),
                 eq_filters: eq,
+                hash_filter: None,
                 filter_sdbql: Some("doc.assignee_id == @assignee_id".into()),
                 having: None,
                 exists_filters: Vec::new(),
@@ -1721,6 +1768,7 @@ mod integration_tests {
             let q = ListQuery {
                 table: table.into(),
                 eq_filters: BTreeMap::new(),
+                hash_filter: None,
                 filter_sdbql: None,
                 having: None,
                 exists_filters: Vec::new(),
@@ -1883,6 +1931,7 @@ mod integration_tests {
             let q = ListQuery {
                 table: table.into(),
                 eq_filters: BTreeMap::new(),
+                hash_filter: None,
                 filter_sdbql: None,
                 having: None,
                 exists_filters: Vec::new(),

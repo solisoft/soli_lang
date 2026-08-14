@@ -3,8 +3,19 @@
        whose timings contain digits, so waiting on "2" would match immediately
        and the spec would race the very patch it means to observe. -->
   <span id="count">count=<%= count %></span>
-  <button id="inc" soli-click="increment" soli-value-count="<%= count %>">+</button>
+  <button id="inc" soli-click="increment" soli-disable-with="wait" soli-value-count="<%= count %>">+</button>
   <button id="dec" soli-click="decrement" soli-value-count="<%= count %>">-</button>
+
+  <div id="panel" soli-click-away="away">
+    <span id="open-state">open=<%= open %></span>
+  </div>
+  <button type="button" id="outside">outside</button>
+  <span id="hook-probe" soli-hook="Probe"></span>
+
+  <a id="go-about" href="/live?v=about" soli-live="/live/socket/about">about</a>
+  <a id="tab-a" href="/live?tab=a" soli-patch="/live?tab=a">tab-a</a>
+  <span id="path-state">path=<%= path %></span>
+  <div id="badge-slot" data-liveview-url="/live/socket/badge" data-live-root></div>
 
   <input type="text" id="echo" soli-change="set_text">
   <span id="typed">typed=<%= typed %></span>

@@ -52,6 +52,10 @@ describe("column-aware SqlInvoice on SQL", fn() {
     assert_eq(again.paid, false)
 
     assert_eq(SqlInvoice.where({ "paid": false }).count(), 1)
+    assert_eq(SqlInvoice.where({ "qty": { "gte": 5 } }).count(), 1)
+    assert_eq(SqlInvoice.where({ "code": { "like": "INV%" } }).count(), 1)
+    assert_eq(SqlInvoice.where({ "qty": [5, 99] }).count(), 1)
+    assert_eq(SqlInvoice.where({ "or": [{ "qty": 5 }, { "qty": 0 }] }).count(), 1)
 
     again.delete()
     assert_null(SqlInvoice.find_by("code", "INV-1"))

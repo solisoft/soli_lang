@@ -1,0 +1,254 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-lime-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">SQLite</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            A file, not a server: nothing to install, start, or credential.
+            Same Model surface as
+            <a href="/docs/database/postgres" class="text-amber-400 hover:underline">Postgres</a> and
+            <a href="/docs/database/mysql" class="text-amber-400 hover:underline">MySQL</a>
+            &mdash; hash <code class="text-cyan-400">.where</code>, associations, aggregates,
+            migrations, jobs. The client is <strong class="text-white">bundled</strong>
+            (no system <code class="text-cyan-400">libsqlite3</code>), new enough for
+            <code class="text-cyan-400">-&gt;&gt;</code> (3.38+) and <code>RETURNING</code> (3.35+).
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-10">
+        <p class="text-emerald-200 text-sm leading-relaxed">
+            Shortest path from <code class="text-cyan-400">soli new</code> to persistent data.
+            A good fit for single-node apps, embedded/desktop builds, CI, and tests.
+            A write-heavy multi-process app belongs on
+            <a href="/docs/database/postgres" class="text-amber-400 hover:underline">Postgres</a>.
+        </p>
+    </div>
+
+    <h2 id="connect" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Connect</h2>
+    <p class="text-gray-400 mb-4">Whole app on a file:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_DB_ADAPTER=sqlite
+DATABASE_URL=sqlite://db/app.sqlite3
+# optional; default 5, forced to 1 for :memory:
+SOLI_DB_POOL_SIZE=5</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">Aliases: <code class="text-cyan-400">sqlite</code>, <code class="text-cyan-400">sqlite3</code>.</p>
+    <p class="text-gray-400 mb-4">A named connection:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/database.toml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">[connections.analytics]
+adapter = "sqlite"
+url = "sqlite://db/analytics.sqlite3"</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Event &lt; Model
+  connection "analytics"
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 id="url" class="text-2xl font-bold text-white mb-6 scroll-mt-24">URL forms</h2>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">URL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>sqlite://db/app.sqlite3</code></td><td class="py-3 px-4">Relative path (the directory is created if missing)</td></tr>
+                <tr><td class="py-3 px-4"><code>sqlite:///var/lib/app/app.db</code></td><td class="py-3 px-4">Absolute path</td></tr>
+                <tr><td class="py-3 px-4"><code>sqlite:app.db</code></td><td class="py-3 px-4">Path, short form</td></tr>
+                <tr><td class="py-3 px-4"><code>sqlite::memory:</code> or <code>:memory:</code></td><td class="py-3 px-4">Private in-memory database, gone at exit</td></tr>
+                <tr><td class="py-3 px-4"><code>./app.db</code></td><td class="py-3 px-4">A bare path works too</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        A query suffix (<code class="text-cyan-400">?mode=rwc</code>) is stripped from the path.
+        Every connection opens in <strong class="text-white">WAL</strong> mode with a 10-second busy timeout
+        and foreign keys on. A transaction is <code class="text-cyan-400">BEGIN IMMEDIATE</code>
+        so it cannot fail to upgrade a read into a write.
+        <code class="text-cyan-400">:memory:</code> pins the pool to <strong class="text-white">one</strong>
+        connection &mdash; a second one would be a second, empty database.
+    </p>
+
+    <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:create              # create the file and its parent directory
+soli db:migrate up
+soli db:schema:dump
+soli db:drop                # delete the file plus -wal / -shm sidecars</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">db:drop</code> removes the <code>-wal</code> and <code>-shm</code>
+        files too: leaving them would resurrect committed data into the next file of the same name.
+        <code class="text-cyan-400">:memory:</code> needs no file &mdash; create/drop is a no-op.
+        Both accept <code class="text-cyan-400">--connection NAME</code>.
+    </p>
+
+    <h2 id="documents" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Document tables</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">table &lt;collection&gt;
+  _key  TEXT PRIMARY KEY
+  doc   TEXT NOT NULL        # JSON, read with json1</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        SQLite has no JSON <em>type</em>. Soli stores JSON as text and reads it with json1
+        (<code class="text-cyan-400">-&gt;&gt;</code>, <code class="text-cyan-400">json_patch</code>,
+        <code class="text-cyan-400">json_set</code>), which every write goes through.
+        String equality in <code class="text-cyan-400">.where({ "status": "open" })</code>
+        compares on the text extract, which is what a document index holds.
+        Placeholders in raw SQL are <code class="text-cyan-400">?</code>.
+    </p>
+
+    <h2 id="indexes" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Indexes</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">index "status"</code> (or <code class="text-cyan-400">soli db:indexes</code>)
+        creates an expression index:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-sql text-sm">CREATE INDEX IF NOT EXISTS idx_posts_status ON posts ((doc -&gt;&gt; '$.status'))</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The planner uses that index when the predicate is the same expression.
+        Multi-field and <code class="text-cyan-400">unique:</code> work the same way.
+        Numbers and booleans keep JSON comparison and are not covered by that index.
+    </p>
+
+    <h2 id="jobs" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Background jobs</h2>
+    <p class="text-gray-400 mb-12">
+        The queue lives in <code class="text-cyan-400">_jobs</code> in the same file.
+        SQLite has no <code class="text-cyan-400">SKIP LOCKED</code>, so a claim takes the database
+        write lock (<code class="text-cyan-400">BEGIN IMMEDIATE</code>) for the length of the claim
+        &mdash; exclusive by construction. Leases, retries, backoff, and single-winner cron firing
+        behave like the other adapters.
+        See <a href="/docs/builtins/jobs" class="text-amber-400 hover:underline">Jobs</a>.
+        A busy write path across <strong class="text-white">many processes</strong> belongs on Postgres:
+        WAL lets readers run during a write, but writers serialize.
+    </p>
+
+    <h2 id="schema" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Schema dump</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:schema:dump         # writes db/schema.sql
+soli db:schema:load         # recreate a fresh database from that file</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The dump is <code class="text-cyan-400">sqlite_master</code>
+        (<code>CREATE TABLE</code> / <code>CREATE INDEX</code> as originally executed), plus a
+        <code class="text-cyan-400">-- versions:</code> header so load records applied migrations
+        without replaying every file.
+    </p>
+
+    <h2 id="columns" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Column-aware models</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Order &lt; Model
+  table "orders"
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Introspection uses <code class="text-cyan-400">PRAGMA table_info</code>.
+        An <code class="text-cyan-400">INTEGER PRIMARY KEY</code> is generated
+        (it aliases the rowid, with or without <code class="text-cyan-400">AUTOINCREMENT</code>);
+        a key of any other type must be supplied.
+    </p>
+    <p class="text-gray-400 mb-4">
+        SQLite <strong class="text-white">enforces no types</strong>. It applies <em>affinity</em>
+        to the declared type, and any column can hold any value. Soli reads the declared type
+        to decide how to convert, and reads each value by what it actually is &mdash; so an
+        <code class="text-cyan-400">INTEGER</code> stored in a <code class="text-cyan-400">TEXT</code>
+        column still comes back as a number. A <code class="text-cyan-400">DATETIME</code> column
+        holding a unix timestamp (seconds or milliseconds) is converted to RFC 3339.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Declared type</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4">anything containing <code>INT</code></td><td class="py-3 px-4">Int</td></tr>
+                <tr><td class="py-3 px-4"><code>REAL</code>, <code>FLOAT</code>, <code>DOUBLE</code></td><td class="py-3 px-4">Float</td></tr>
+                <tr><td class="py-3 px-4"><code>DECIMAL</code>, <code>NUMERIC</code>, <code>MONEY</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(see caveat)</span></td></tr>
+                <tr><td class="py-3 px-4"><code>BOOLEAN</code></td><td class="py-3 px-4">Bool</td></tr>
+                <tr><td class="py-3 px-4"><code>TEXT</code>, <code>VARCHAR</code>, no type</td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>UUID</code>, <code>GUID</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>DATE</code>, <code>DATETIME</code>, <code>TIMESTAMP</code></td><td class="py-3 px-4">DateTime</td></tr>
+                <tr><td class="py-3 px-4"><code>JSON</code></td><td class="py-3 px-4">Hash / Array</td></tr>
+                <tr><td class="py-3 px-4"><code>BLOB</code></td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-6">
+        <p class="text-yellow-200 text-sm">
+            <strong class="text-white">No exact numeric type.</strong>
+            A <code class="text-cyan-400">DECIMAL</code> column has NUMERIC <em>affinity</em>:
+            SQLite stores the value as a <code class="text-cyan-400">REAL</code>, so
+            <code class="text-cyan-400">19.90</code> reads back as <code class="text-cyan-400">19.9</code>
+            and a value beyond f64's exact range loses precision on write.
+            Postgres <code>numeric</code> and MySQL <code>decimal</code> keep the scale.
+            If exact decimal text matters, declare the column <code class="text-cyan-400">TEXT</code>.
+        </p>
+    </div>
+    <p class="text-gray-400 mb-12">
+        There is no native <code class="text-cyan-400">ILIKE</code>.
+        Hash <code class="text-cyan-400">.where({ "email": { "ilike": "%@x.com" } })</code>
+        compiles to <code class="text-cyan-400">LOWER("email") LIKE LOWER(?)</code>.
+        Migrations cannot add a <code>UNIQUE</code> or <code>NOT NULL</code>-without-default
+        column to an existing table &mdash; SQLite says so, with the way around it.
+    </p>
+
+    <h2 id="backups" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Backups</h2>
+    <p class="text-gray-400 mb-12">
+        Copy a <strong class="text-white">live</strong> WAL database with
+        <code class="text-cyan-400">.backup</code> or <code class="text-cyan-400">VACUUM INTO</code>,
+        not <code>cp</code>. A plain copy can miss frames still in the WAL.
+    </p>
+
+    <h2 id="caveats" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Honest limits</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white">One writer at a time.</strong> Fine for a single node; not a substitute for Postgres under multi-process write load.</li>
+        <li><strong class="text-white">No exact numeric type.</strong> See above.</li>
+        <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
+        <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
+        <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        The shared portable surface is documented under
+        <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.
+    </p>
+
+    <h2 id="next" class="text-2xl font-bold text-white mb-6 scroll-mt-24">See also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/database/postgres" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">PostgreSQL &rarr;</h3>
+            <p class="text-sm text-gray-400">JSONB, SKIP LOCKED, native ILIKE.</p>
+        </a>
+        <a href="/docs/database/mysql" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">MySQL &rarr;</h3>
+            <p class="text-sm text-gray-400">Generated-column indexes, claim-token jobs.</p>
+        </a>
+        <a href="/docs/database/multi-database" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Multiple Databases &rarr;</h3>
+            <p class="text-sm text-gray-400">Named connections and the capability matrix.</p>
+        </a>
+    </div>
+</div>

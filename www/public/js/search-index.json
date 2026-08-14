@@ -86,6 +86,59 @@
       ]
     },
     {
+      "title": "PostgreSQL",
+      "type": "page",
+      "category": "Database",
+      "path": "/docs/database/postgres",
+      "signature": "SOLI_DB_ADAPTER=postgres \u00b7 DATABASE_URL=postgres://\u2026",
+      "description": "Postgres adapter: JSONB document tables, SKIP LOCKED jobs, expression indexes, schema dump, column-aware models. Client is currently NoTls.",
+      "keywords": [
+        "postgres",
+        "postgresql",
+        "pg",
+        "jsonb",
+        "skip locked",
+        "ILIKE",
+        "schema dump",
+        "DATABASE_URL"
+      ]
+    },
+    {
+      "title": "MySQL",
+      "type": "page",
+      "category": "Database",
+      "path": "/docs/database/mysql",
+      "signature": "SOLI_DB_ADAPTER=mysql \u00b7 DATABASE_URL=mysql://\u2026",
+      "description": "MySQL/MariaDB adapter: JSON document tables, generated STORED columns for indexes, claim-token jobs, SHOW CREATE schema dump, UTC timestamps.",
+      "keywords": [
+        "mysql",
+        "mariadb",
+        "json_extract",
+        "generated column",
+        "claim token",
+        "schema dump",
+        "DATABASE_URL"
+      ]
+    },
+    {
+      "title": "SQLite",
+      "type": "page",
+      "category": "Database",
+      "path": "/docs/database/sqlite",
+      "signature": "SOLI_DB_ADAPTER=sqlite \u00b7 DATABASE_URL=sqlite://db/app.sqlite3",
+      "description": "SQLite adapter: a file, no server, bundled client. WAL, one writer, json1 document tables, BEGIN IMMEDIATE jobs, numeric affinity caveat.",
+      "keywords": [
+        "sqlite",
+        "sqlite3",
+        "wal",
+        "json1",
+        "memory",
+        "schema dump",
+        "affinity",
+        "DATABASE_URL"
+      ]
+    },
+    {
       "title": "content_for / Named Yield",
       "type": "guide",
       "category": "Views",
@@ -9964,7 +10017,42 @@
         "job",
         "background",
         "queue",
-        "worker"
+        "worker",
+        "soli jobs",
+        "soli worker",
+        "retry",
+        "dashboard"
+      ]
+    },
+    {
+      "title": "Job.retry",
+      "type": "method",
+      "category": "Jobs",
+      "path": "/docs/builtins/jobs#def-job-retry",
+      "signature": "Job.retry(job_id)",
+      "description": "Re-queue a failed or dead job so a worker will pick it up again. Keeps attempts and last_error.",
+      "keywords": [
+        "Job.retry",
+        "retry job",
+        "failed",
+        "dead",
+        "requeue"
+      ]
+    },
+    {
+      "title": "soli jobs",
+      "type": "page",
+      "category": "Jobs",
+      "path": "/docs/builtins/jobs#section-standalone-worker",
+      "signature": "soli jobs [folder] [--workers N] · soli jobs list|retry|cancel",
+      "description": "Standalone job worker with no HTTP listener. Pair with SOLI_JOB_WORKERS=0 on soli serve. list/retry/cancel inspect the queue; --dev adds /__soli/jobs.",
+      "keywords": [
+        "soli jobs",
+        "soli worker",
+        "standalone worker",
+        "job dashboard",
+        "/__soli/jobs",
+        "SOLI_JOB_WORKERS"
       ]
     },
     {
@@ -14345,6 +14433,58 @@
         "realtime",
         "subscribe",
         "notify"
+      ]
+    },
+    {
+      "title": "LiveView JS commands",
+      "type": "feature",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview#js-commands",
+      "signature": "{ \"js\": [{ \"op\": \"focus\", \"to\": \"#q\" }], \"redirect\": \"/path\" }",
+      "description": "Eval-free client commands from a LiveView handler (add/remove/toggle class, set/remove attr, focus, dispatch, navigate, patch) plus redirect and soli-href navigation. soli-debounce / soli-throttle on any event element.",
+      "keywords": [
+        "liveview",
+        "js commands",
+        "soli-debounce",
+        "soli-throttle",
+        "soli-href",
+        "redirect",
+        "add_class",
+        "focus",
+        "navigate"
+      ]
+    },
+    {
+      "title": "LiveView soli-patch",
+      "type": "feature",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview#in-socket-nav",
+      "signature": "soli-patch=\"/path\" · { \"patch\": \"/path\" }",
+      "description": "In-socket LiveView navigation: pushState plus event == patch with path/query. Nested data-liveview-url mounts are child sockets.",
+      "keywords": [
+        "liveview",
+        "soli-patch",
+        "live_patch",
+        "navigation",
+        "nested liveview",
+        "data-liveview-url"
+      ]
+    },
+    {
+      "title": "LiveView hooks",
+      "type": "feature",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/liveview#hooks",
+      "signature": "soli-hook=\"Chart\" · SoliLiveView.hooks · soli-disable-with · soli-click-away",
+      "description": "Client hooks (mounted/updated/destroyed) for charts and widgets, in-flight loading classes and disable-with, and click-away for dropdowns.",
+      "keywords": [
+        "liveview",
+        "soli-hook",
+        "hooks",
+        "soli-disable-with",
+        "soli-loading",
+        "soli-click-away",
+        "pushEvent"
       ]
     },
     {

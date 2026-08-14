@@ -63,6 +63,11 @@ impl JobState {
             JobState::Scheduled | JobState::Pending | JobState::Failed
         )
     }
+
+    /// Whether a failed or dead row can be put back on the queue.
+    pub fn is_retryable(self) -> bool {
+        matches!(self, JobState::Failed | JobState::Dead)
+    }
 }
 
 /// Outbound-HTTP payload of a `__WebhookDelivery` job.
@@ -302,6 +307,16 @@ mod tests {
         assert!(!JobState::Running.is_cancellable());
         assert!(!JobState::Dead.is_cancellable());
         assert!(!JobState::Done.is_cancellable());
+    }
+
+    #[test]
+    fn only_failed_and_dead_are_retryable() {
+        assert!(JobState::Failed.is_retryable());
+        assert!(JobState::Dead.is_retryable());
+        assert!(!JobState::Pending.is_retryable());
+        assert!(!JobState::Scheduled.is_retryable());
+        assert!(!JobState::Running.is_retryable());
+        assert!(!JobState::Done.is_retryable());
     }
 
     #[test]

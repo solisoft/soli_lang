@@ -34,6 +34,24 @@ pub enum ServerMessage {
     Redirect {
         url: String,
     },
+    /// Swap this page-root LiveView to a different component socket
+    /// (`/live/socket/<name>`) without a full page load.
+    Live {
+        url: String,
+    },
+    /// Update the address bar without leaving the socket (`history.pushState`
+    /// or `replaceState`). Distinct from [`Redirect`], which does a full load.
+    Url {
+        url: String,
+        #[serde(default)]
+        replace: bool,
+    },
+    /// Safe client-side commands (no eval): add/remove/toggle class, set/remove
+    /// attributes, focus, dispatch a DOM event, navigate, or push a history
+    /// entry. The payload is the handler's `js` array, forwarded as-is.
+    Js {
+        cmds: serde_json::Value,
+    },
     Error {
         message: String,
     },
@@ -241,5 +259,40 @@ mod tests {
         assert_eq!(json["ops"][1]["id"], "post-1");
         // Remove carries no container/html.
         assert!(json["ops"][1].get("container").is_none());
+    }
+
+    #[test]
+    fn js_message_serializes_as_js_type() {
+        let msg = ServerMessage::Js {
+            cmds: serde_json::json!([{ "op": "focus", "to": "#q" }]),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "Js");
+        assert_eq!(json["cmds"][0]["op"], "focus");
+    }
+
+    #[test]
+    fn url_message_serializes_as_url_type() {
+        let msg = ServerMessage::Url {
+            url: "/items?q=1".to_string(),
+            replace: true,
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "Url");
+        assert_eq!(json["url"], "/items?q=1");
+        assert_eq!(json["replace"], true);
+    }
+
+    #[test]
+    fn live_message_serializes_as_live_type() {
+        let msg = ServerMessage::Live {
+            url: "/live/socket/about".to_string(),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(json["type"], "Live");
+        assert_eq!(json["url"], "/live/socket/about");
     }
 }

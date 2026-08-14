@@ -4,6 +4,103 @@
 
 ### Added
 
+- **LiveView debounce/throttle, JS commands, and navigation.**
+  `soli-debounce` / `soli-throttle` (ms) on any event element; window-level
+  `soli-window-keydown` / `soli-window-keyup`; `soli-href` for a full-page
+  leave. A handler may return `redirect: "/path"` (client navigates, no
+  further patch) or `js: [{ op, to, ... }]` — eval-free commands
+  (`add_class` / `remove_class` / `toggle_class`, `set_attr` /
+  `remove_attr`, `focus`, `dispatch`, `navigate`, `patch`). Uploads and
+  nested live components remain out of scope.
+
+- **LiveView hooks, loading states, and click-away.** `soli-hook="Name"`
+  binds a client hook (`mounted` / `updated` / `destroyed` /
+  `disconnected` / `reconnected`, plus `this.pushEvent`). Register on
+  `SoliLiveView.hooks` before connect, or pass `{ hooks }` to `live()`.
+  In-flight events add `soli-loading` / `soli-<event>-loading`;
+  `soli-disable-with` swaps the label and disables the control until the
+  next patch. `soli-click-away` fires when a click lands outside the
+  element.
+
+- **LiveView in-socket navigation and nested child sockets.**
+  `soli-patch="/path?q=1"` updates the address bar and sends
+  `event == "patch"` with `href` / `path` / `query` / `hash` (browser
+  back/forward too). A handler may return `patch: "/path"` or
+  `patch: { "url": "/path", "replace": true }`. Nested
+  `[data-liveview-url]` mounts inside a parent become their own sockets
+  after each render (implicit `soli-ignore` so a parent patch does not
+  wipe them). Phoenix-style `live_component` assigns remain out of scope.
+
+- **LiveView file uploads.** `soli-upload="handler"` on a file input
+  POSTs each file to `/live/upload` (multipart + CSRF; 8 MiB default,
+  override with `soli-upload-max`) and then sends the handler
+  `params["file"]` / `params["files"]` in the same shape as
+  `find_uploaded_file` (`data` is base64). Progress is
+  `soli-upload-loading` + `data-soli-progress`. Not chunked or
+  resumable.
+
+- **LiveView nested components share parent assigns.**
+  `live_component("score", { "score": true })` renders the child template
+  with parent-owned keys and wraps it in `soli-component`. A child event
+  may send `soli-assign-*`; the runtime merges `_assigns` onto the parent
+  (typed) before the handler runs, then the next render fans values back
+  down. Independent `[data-liveview-url]` sockets stay isolated.
+
+- **LiveView root swap and reconnect restore.** `soli-live="/live/socket/name"`
+  (or handler `{ "live": "/live/socket/name" }`) disconnects this socket
+  and connects another component on the same root, optionally updating
+  the URL via `href` / `soli-patch`. A dropped socket reconnects with
+  the previous instance state (same `session:component` id) so the
+  connect handler sees in-flight values.
+
+- **Standalone job worker and queue dashboard.** `soli jobs` (alias
+  `soli worker`) loads the app, claims `_jobs`, and runs them with no
+  HTTP listener — pair with `SOLI_JOB_WORKERS=0` on `soli serve` to scale
+  workers separately. `soli jobs list [--queue] [--state]`, `retry <id>`,
+  and `cancel <id>` inspect the queue. `--dev` adds `/__soli/jobs` (dev-bar
+  tools panel) for the same cancel/retry. `Job.retry(id)` re-queues a
+  `failed` or `dead` row and keeps `attempts` / `last_error`.
+
+- **Dedicated Postgres, MySQL, and SQLite docs pages.** Adapter-specific notes
+  (URL, create/drop, JSON storage, indexes, jobs, schema dump, column-mode
+  types, honest limits) now live at `/docs/database/postgres`,
+  `/docs/database/mysql`, and `/docs/database/sqlite` — markdown and the docs
+  site, linked from Multiple Databases and the sidebar.
+
+- **Portable hash `.where` comparisons, `IN`, `LIKE`, and `OR`.** The hash form
+  used to be equality-only (`{ "status": "open" }`); anything richer had to be
+  raw SDBQL, which SQL adapters refuse — and a `{ "gt": 10 }` silently became
+  `==`. The hash now compiles through a structured IR on SoliDB, SQL document
+  tables, and column-aware models:
+
+  - comparisons: `{ "total": { "gt": 100, "lte": 999 } }` (`gt`/`gte`/`lt`/`lte`/`eq`/`ne`, plus `>`/`>=`/…)
+  - `IN`: `{ "id": [1, 2, 3] }` or `{ "id": { "in": [1, 2, 3] } }` (an empty list matches nothing)
+  - `LIKE` / `ILIKE`: `{ "email": { "like": "%@x.com" } }`
+  - grouping: `{ "or": [{ "state": "draft" }, { "state": "open" }] }`
+
+  The string form remains for expressions the vocabulary cannot express.
+
+- **Filtered `.includes` on SQL.** `.includes("comments", { "visible": true })`
+  and `.includes("comments", { "where": { "n": { "gt": 1 } } })` apply the same
+  hash vocabulary to the related rows — on document tables (after the batched
+  fetch) and on column-aware models (pushed into the `IN` query). A raw string
+  filter on `.includes` stays SoliDB-only and is refused with the hash shape
+  named.
+
+- **`soli db:schema:dump` / `soli db:schema:load`.** Dump writes `db/schema.sql`
+  — dialect SQL for every user table and index, plus the applied migration
+  versions in a header — so a fresh database can be built without replaying
+  every file. Load runs that SQL and records the versions in `_migrations`.
+  Both accept `--connection NAME`. SQLite dumps `sqlite_master`; MySQL uses
+  `SHOW CREATE TABLE`; Postgres reconstructs `CREATE TABLE` from introspection
+  plus `pg_indexes`.
+
+- **Column-mode `through:` / HABTM includes, `.join`, and `.having`.** A
+  `table "…"` model can now eager-load `has_and_belongs_to_many` and
+  `has_many through:` (the join / intermediate table must also be
+  column-aware), filter parents with `.join("comments")` (correlated
+  `EXISTS`), and filter groups with `.having("n > 5")`.
+
 - **`through:` includes, `.join`, and `.having` now run on the SQL adapters.**
 
   - **`.includes` on a `has_many through:`** batches into three queries whatever
@@ -69,9 +166,7 @@
     instead of the declaration being rejected outright.
   - **Counter caches**, which follow from the atomic column increment above.
 
-  Still out: composite primary keys, `encrypts`, STI, `.having`, `.join`, and
-  `.includes` on `has_and_belongs_to_many`/`through:` (the join table would have
-  to be a column model too).
+  Still out: composite primary keys, `encrypts`, and STI.
 
 - **The dev bar, `dev_queries()`, and N+1 detection now work on the SQL
   adapters.** Only the SoliDB path wrote to the per-request query log, so on

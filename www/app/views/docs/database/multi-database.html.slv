@@ -19,6 +19,10 @@
             (3) multi-DB via <code>config/database.toml</code> + per-model binding.
             Design matrix: <code>docs/sql-adapter-design.md</code>.
             Narrative: <a href="/docs/blog/multi-database" class="text-amber-400 hover:underline">blog post</a>.
+            Per-adapter notes:
+            <a href="/docs/database/postgres" class="text-amber-400 hover:underline">PostgreSQL</a>,
+            <a href="/docs/database/mysql" class="text-amber-400 hover:underline">MySQL</a>,
+            <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>.
         </p>
     </div>
 
@@ -217,7 +221,7 @@ end</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr>
-                    <td class="py-3 px-4">CRUD, hash <code>.where</code>, order/limit/count</td>
+                    <td class="py-3 px-4">CRUD, hash <code>.where</code> (equality, comparisons, IN, LIKE, OR), order/limit/count</td>
                     <td class="py-3 px-4 text-green-400">✓</td>
                 </tr>
                 <tr>
@@ -269,6 +273,10 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">one comparison of a group key or aggregate alias against a number</span></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code>soli db:schema:dump</code> / <code>db:schema:load</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">writes / applies db/schema.sql plus applied migration versions</span></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code>Model.transaction</code></td>
                     <td class="py-3 px-4 text-green-400">✓ (holds one pool connection for the block)</td>
                 </tr>
@@ -292,10 +300,11 @@ soli db:import posts users  # named only</code></pre>
 
     <h2 id="sqlite" class="text-2xl font-bold text-white mb-6 scroll-mt-24">SQLite specifics</h2>
     <p class="text-gray-400 mb-6">
-        SQLite is a file, not a server: there is nothing to install, start, or
-        credential. That makes it the shortest path from <code class="text-cyan-400">soli new</code>
-        to persistent data, and a good fit for single-node apps, embedded and desktop
-        builds, CI, and tests.
+        The dedicated <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>
+        page covers URL forms, WAL, jobs, backups, and the numeric-affinity caveat.
+        The short version: SQLite is a file, not a server &mdash; the shortest path from
+        <code class="text-cyan-400">soli new</code> to persistent data, and a good fit for
+        single-node apps, embedded and desktop builds, CI, and tests.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">URL forms</h3>
@@ -502,9 +511,9 @@ Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"
 
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
 
-        <li><strong class="text-white">Batched eager loading</strong> &mdash; <code class="text-cyan-400">belongs_to</code>, <code class="text-cyan-400">has_many</code>, <code class="text-cyan-400">has_one</code> and <code class="text-cyan-400">includes_count</code>, one query per association whatever the parent count, over the real foreign-key columns. A parent with no children gets <code class="text-cyan-400">[]</code>, never null.</li>
+        <li><strong class="text-white">Batched eager loading</strong> &mdash; <code class="text-cyan-400">belongs_to</code>, <code class="text-cyan-400">has_many</code>, <code class="text-cyan-400">has_one</code>, HABTM, <code class="text-cyan-400">through:</code> and <code class="text-cyan-400">includes_count</code>, over the real foreign-key columns. A hash filter on <code class="text-cyan-400">.includes("rel", { "visible": true })</code> applies to the related rows. A parent with no children gets <code class="text-cyan-400">[]</code>, never null.</li>
 
-        <li><strong class="text-white"><code class="text-cyan-400">group_by</code></strong> with sum/avg/min/max/count over real columns.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">group_by</code></strong> with sum/avg/min/max/count over real columns, plus <code class="text-cyan-400">.having("n &gt; 5")</code> and <code class="text-cyan-400">.join("comments")</code> (a correlated <code>EXISTS</code>).</li>
 
         <li><strong class="text-white"><code class="text-cyan-400">delete_all</code> / <code class="text-cyan-400">update_all</code></strong> &mdash; bulk writes that skip validations and callbacks (as on the document path) but still stamp <code class="text-cyan-400">updated_at</code> when the table has it, and never rewrite the primary key.</li>
 
@@ -528,8 +537,7 @@ Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr><td class="py-3 px-4">Raw/string <code>.where("doc…")</code></td><td class="py-3 px-4">SDBQL has no meaning against columns &mdash; use the hash form</td></tr>
                 <tr><td class="py-3 px-4"><code>.includes</code> across storage shapes</td><td class="py-3 px-4">Both models must be column-aware &mdash; matching a real column against a JSON field is not a join Soli will guess at</td></tr>
-                <tr><td class="py-3 px-4"><code>.having</code>, <code>.join</code></td><td class="py-3 px-4">Planned</td></tr>
-                <tr><td class="py-3 px-4"><code>.includes</code> on <code>has_and_belongs_to_many</code>, <code>through:</code></td><td class="py-3 px-4">Needs the join table mapped as a column model too &mdash; planned</td></tr>
+                <tr><td class="py-3 px-4"><code>.join</code> on <code>belongs_to</code> / HABTM / <code>through:</code></td><td class="py-3 px-4">Existence filter needs the child to hold the FK; use <code>.includes</code> and filter the related rows</td></tr>
                 <tr><td class="py-3 px-4"><code>encrypts</code>, STI, composite primary keys</td><td class="py-3 px-4">Assume Soli-managed document storage (or single-column keys); refused at boot with the reason named</td></tr>
                 <tr><td class="py-3 px-4"><code>grouped {}</code>, graph, vector, columnar, timeseries</td><td class="py-3 px-4">SoliDB features</td></tr>
                 <tr><td class="py-3 px-4">Auto-create / index sync / implicit <code>ALTER</code></td><td class="py-3 px-4">A <strong class="text-white">model</strong> never issues DDL in column mode. A <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">migration</a> can create and alter column tables explicitly</td></tr>
@@ -573,7 +581,7 @@ soli db:migrate down --connection legacy</code></pre>
     <h2 id="limits" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limitations</h2>
     <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
         <li>Per-connection SoliDB hosts: registry stores fields; prefer one SoliDB endpoint + SQL secondaries for now</li>
-        <li><code>through:</code> includes on SQL are not yet supported (<code>belongs_to</code>, <code>has_many</code>, <code>has_one</code> and HABTM are)</li>
+        <li>A string-form <code>.includes("rel", "…")</code> filter is SoliDB-only; use a hash on SQL</li>
         <li>Read-replica / request-scoped roles are not v1</li>
         <li>pgvector on document tables remains SoliDB-only</li>
     </ul>
@@ -642,6 +650,20 @@ cargo install --path . --locked --no-default-features \
         <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Models &rarr;</h3>
             <p class="text-sm text-gray-400">ORM surface shared across connections.</p>
+        </a>
+        <a href="/docs/database/postgres" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">PostgreSQL &rarr;</h3>
+            <p class="text-sm text-gray-400">JSONB, SKIP LOCKED, schema dump, TLS caveat.</p>
+        </a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+        <a href="/docs/database/mysql" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">MySQL &rarr;</h3>
+            <p class="text-sm text-gray-400">Generated-column indexes and claim-token jobs.</p>
+        </a>
+        <a href="/docs/database/sqlite" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">SQLite &rarr;</h3>
+            <p class="text-sm text-gray-400">A file, no server, same Model surface.</p>
         </a>
         <a href="/docs/blog/multi-database" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Blog post &rarr;</h3>

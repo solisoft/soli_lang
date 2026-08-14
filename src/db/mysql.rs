@@ -776,6 +776,30 @@ pub fn ensure_doc_index(
     Ok(true)
 }
 
+pub fn dump_schema() -> Result<String, String> {
+    let versions = list_applied_migrations().unwrap_or_default();
+    let tables: Vec<String> = with_conn(|conn| {
+        let names: Vec<String> = conn
+            .query("SHOW TABLES")
+            .map_err(|e| my_error("mysql dump tables", &e))?;
+        Ok(names)
+    })?;
+    let mut stmts = Vec::new();
+    for table in tables {
+        let create = with_conn(|conn| {
+            let q = format!("SHOW CREATE TABLE `{}`", table.replace('`', "``"));
+            let row: Option<(String, String)> = conn
+                .query_first(q)
+                .map_err(|e| my_error("mysql show create", &e))?;
+            Ok(row.map(|(_, sql)| sql).unwrap_or_default())
+        })?;
+        if !create.is_empty() {
+            stmts.push(create);
+        }
+    }
+    Ok(super::schema_dump::format_dump("mysql", &versions, &stmts))
+}
+
 /// Run compiled DDL (migrations' column-table helpers).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| conn.query_drop(sql).map_err(|e| my_error("mysql ddl", &e)))
@@ -1434,6 +1458,7 @@ mod integration_tests {
             let q = ListQuery {
                 table: table.into(),
                 eq_filters: eq,
+                hash_filter: None,
                 filter_sdbql: Some("doc.status == @status".into()),
                 having: None,
                 exists_filters: Vec::new(),

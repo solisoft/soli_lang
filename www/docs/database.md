@@ -2,7 +2,7 @@
 
 Soli uses **SoliDB** as the default full-featured backend. This guide covers the single-connection setup via environment variables.
 
-For the **Postgres / MySQL / SQLite document adapters**, named connections, and per-model `connection "name"`, see **[Multiple Databases](multi-database.md)** (`/docs/database/multi-database`).
+For the **Postgres / MySQL / SQLite document adapters**, named connections, and per-model `connection "name"`, see **[Multiple Databases](multi-database.md)** (`/docs/database/multi-database`). Per-adapter notes: [PostgreSQL](postgres.md), [MySQL](mysql.md), [SQLite](sqlite.md).
 
 ## Environment Variables
 

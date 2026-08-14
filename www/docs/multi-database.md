@@ -127,6 +127,8 @@ end
 - Stored on model metadata and on the collection so CRUD routes correctly.
 - STI subclasses **inherit** the parent connection unless they redeclare `connection`.
 
+Adapter-specific notes: [PostgreSQL](postgres.md) · [MySQL](mysql.md) · [SQLite](sqlite.md).
+
 ## SQL document backends
 
 When a connection uses `adapter = "postgres"`, `"mysql"`, or `"sqlite"`, Model data is stored as:
@@ -146,7 +148,7 @@ Portable surface (hash filters, not raw SDBQL):
 | Capability | Support |
 |------------|---------|
 | CRUD, validations, callbacks | ✓ |
-| Hash `.where` / order / limit / count / exists | ✓ |
+| Hash `.where` (equality, comparisons, IN, LIKE, OR) / order / limit / count / exists | ✓ |
 | sum / avg / min / max / count | ✓ |
 | `delete_all` / `update_all` | ✓ |
 | Soft-delete scope | ✓ |
@@ -161,6 +163,7 @@ Portable surface (hash filters, not raw SDBQL):
 | `pluck` / `select` on column models | ✓ pushed into the `SELECT` list |
 | Dev bar / `dev_queries()` / N+1 detection | ✓ the SQL, its binds, and its duration are logged per request |
 | `soli db:create` / `soli db:drop` | ✓ (SoliDB creates its database on first use instead) |
+| `soli db:schema:dump` / `soli db:schema:load` | ✓ writes / applies `db/schema.sql` plus applied migration versions |
 | `through:` includes | ✓ three batched queries via the intermediate model |
 | `.join` (relation existence filter) | ✓ correlated `EXISTS`, so parents are not duplicated |
 | `.having` | ✓ one comparison of a group key or aggregate alias against a number |
@@ -184,9 +187,8 @@ Each document is upserted as `_key` + `doc`.
 
 ## SQLite specifics
 
-SQLite is a file, not a server: there is nothing to install, start, or
-credential. That makes it the shortest path from `soli new` to persistent data,
-and a good fit for single-node apps, embedded/desktop builds, CI, and tests.
+The dedicated [SQLite](sqlite.md) page covers URL forms, WAL, jobs, backups,
+and the numeric-affinity caveat. The short version:
 
 ### URL forms
 
@@ -312,10 +314,14 @@ with SDBQL.
 
 ### Also supported
 
-- **Batched eager loading** — `belongs_to`, `has_many`, `has_one`, and
-  `includes_count`, one query per association whatever the parent count, over the
-  real foreign-key columns. A parent with no children gets `[]`, never null.
-- **`group_by`** with `sum`/`avg`/`min`/`max`/`count` over real columns.
+- **Batched eager loading** — `belongs_to`, `has_many`, `has_one`,
+  `has_and_belongs_to_many`, `through:`, and `includes_count`, one query per
+  association (or two/three hops for HABTM/`through:`) whatever the parent
+  count, over the real foreign-key columns. A parent with no children gets
+  `[]`, never null. A hash filter on `.includes("rel", { "visible": true })`
+  (or `{ "where": { "n": { "gt": 1 } } }`) is applied to the related rows.
+- **`group_by`** with `sum`/`avg`/`min`/`max`/`count` over real columns, plus
+  **`.having("n > 5")`** and **`.join("comments")`** (a correlated `EXISTS`).
 - **`delete_all` / `update_all`** — bulk writes that skip validations and
   callbacks (as on the document path) but still stamp `updated_at` when the table
   has it, and never rewrite the primary key.
@@ -333,8 +339,7 @@ Each of these raises an error naming the feature rather than returning wrong dat
 |---|---|
 | Raw/string `.where("doc…")` | SDBQL has no meaning against columns; use the hash form |
 | `.includes` across storage shapes | Both models must be column-aware — matching a real column against a JSON field is not a join Soli will guess at |
-| `.includes` on `has_and_belongs_to_many`, `through:` | Needs the join table mapped as a column model too — planned |
-| `.having`, `.join` | Planned |
+| `.join` on `belongs_to` / HABTM / `through:` | Existence filter needs the child to hold the FK; use `.includes` and filter the related rows |
 | `encrypts`, STI | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
 | Composite primary keys | Key handling is single-column throughout; refused at boot with the columns named |
 | `grouped {}` coalescing, graph, vector, columnar, timeseries | SoliDB features |

@@ -350,4 +350,37 @@ mod integration_tests {
             let _ = db::sql::drop_table(JOBS_COLLECTION);
         });
     }
+
+    #[test]
+    fn retry_requeues_dead_and_refuses_pending() {
+        with_pg(|| {
+            if !pg_ready() {
+                return;
+            }
+
+            let mut dead = JobDoc::new("D", serde_json::json!({}), "default", now_iso());
+            dead.max_retries = 0;
+            store::enqueue(&dead).expect("enqueue");
+            let claimed = claim(1).expect("claim");
+            assert!(!store::fail(&claimed[0], "nope").expect("bury"));
+            assert_eq!(
+                store::get(&dead.key).expect("get").expect("row").state,
+                JobState::Dead
+            );
+
+            assert!(store::retry(&dead.key).expect("retry dead"));
+            let again = store::get(&dead.key).expect("get").expect("row");
+            assert_eq!(again.state, JobState::Pending);
+            assert_eq!(again.last_error.as_deref(), Some("nope"));
+            assert!(again.finished_at.is_none());
+
+            let pending = JobDoc::new("P", serde_json::json!({}), "default", now_iso());
+            store::enqueue(&pending).expect("enqueue pending");
+            let err = store::retry(&pending.key).expect_err("pending must not retry");
+            assert!(err.contains("pending"), "{err}");
+            assert!(!store::retry("no-such-job").expect("retry missing"));
+
+            let _ = db::sql::drop_table(JOBS_COLLECTION);
+        });
+    }
 }

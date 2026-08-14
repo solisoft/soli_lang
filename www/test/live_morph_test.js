@@ -333,3 +333,87 @@ test('an unchanged script node is left untouched on morph', () => {
 
     assert.equal(root.querySelector('script'), script);
 });
+
+// ---------------------------------------------------------------------
+// loading / disable-with
+// ---------------------------------------------------------------------
+
+test('markLoading adds classes and swaps disable-with text', () => {
+    const { window, root } = setup('<button id="go" soli-disable-with="wait">Save</button>');
+    const lv = new window.SoliLiveView('ws://example.test', { rootElement: root });
+    const btn = root.querySelector('#go');
+    lv.markLoading(btn, 'click');
+    assert.ok(btn.classList.contains('soli-loading'));
+    assert.ok(btn.classList.contains('soli-click-loading'));
+    assert.equal(btn.textContent, 'wait');
+    assert.equal(btn.disabled, true);
+    lv.clearLoading();
+    assert.equal(btn.textContent, 'Save');
+    assert.equal(btn.disabled, false);
+    assert.ok(!btn.classList.contains('soli-loading'));
+});
+
+// ---------------------------------------------------------------------
+// hooks
+// ---------------------------------------------------------------------
+
+test('collectComponentParams stamps _component and typed _assigns', () => {
+    const { window, root } = setup(
+        '<div soli-component="score"><button id="inc" soli-click="inc" soli-assign-score="5" soli-assign-open="false">+</button></div>'
+    );
+    const btn = root.querySelector('#inc');
+    const got = window.SoliLiveView.collectComponentParams(btn);
+    assert.equal(got.component, 'score');
+    assert.equal(got.assigns.score, 5);
+    assert.equal(got.assigns.open, false);
+});
+
+test('uploadMaxBytes defaults to 8 MiB and honors soli-upload-max', () => {
+    const { window, root } = setup('<input id="f" type="file" soli-upload="go">');
+    const input = root.querySelector('#f');
+    assert.equal(window.SoliLiveView.uploadMaxBytes(input), 8 * 1024 * 1024);
+    input.setAttribute('soli-upload-max', '2000');
+    assert.equal(window.SoliLiveView.uploadMaxBytes(input), 2000);
+});
+
+test('hrefParts splits path, query, and hash', () => {
+    const { window } = setup('');
+    const parts = window.SoliLiveView.hrefParts('/posts/1?tab=comments#x');
+    assert.equal(parts.path, '/posts/1');
+    assert.equal(parts.query.tab, 'comments');
+    assert.equal(parts.hash, '#x');
+    assert.equal(parts.href, '/posts/1?tab=comments#x');
+});
+
+test('nested data-liveview-url mount is treated as an ignore island', () => {
+    const { root, morph } = setup(
+        '<div id="slot" data-liveview-url="/live/socket/child" data-liveview-manual><span id="inner">child</span></div>'
+    );
+    const inner = root.querySelector('#inner');
+    morph(root, '<div id="slot" data-liveview-url="/live/socket/child" data-liveview-manual><span id="inner">wiped</span></div>');
+    assert.equal(root.querySelector('#inner'), inner);
+    assert.equal(inner.textContent, 'child');
+});
+
+test('soli-hook mounted, updated, and destroyed', () => {
+    const { window, root, morph } = setup('<div id="h" soli-hook="Probe"></div>');
+    const log = [];
+    const lv = new window.SoliLiveView('ws://example.test', {
+        rootElement: root,
+        hooks: {
+            Probe: {
+                mounted() { log.push('mounted'); },
+                updated() { log.push('updated'); },
+                destroyed() { log.push('destroyed'); }
+            }
+        }
+    });
+    lv.syncHooks();
+    assert.deepEqual(log, ['mounted']);
+    morph(root, '<div id="h" soli-hook="Probe" class="x"></div>');
+    lv.syncHooks();
+    assert.deepEqual(log, ['mounted', 'updated']);
+    morph(root, '<div id="gone"></div>');
+    lv.syncHooks();
+    assert.deepEqual(log, ['mounted', 'updated', 'destroyed']);
+});

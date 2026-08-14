@@ -143,6 +143,76 @@ results = User.where("doc.age >= @min_age AND doc.role == @role", {
 | `{ "like": "INV%" }` / `{ "ilike": "%@x.com" }` | SQL `LIKE` / case-insensitive `LIKE` (`%` any run, `_` one character) |
 | `"or": [ {…}, {…} ]` / `"and": [ {…}, {…} ]` | boolean grouping |
 
+#### Operator reference
+
+All of this is verified behaviour, not intent — the surprises are per-backend and
+worth knowing before you rely on one.
+
+**The three value forms.** A scalar means equality, an array means `IN`, and a
+hash means comparisons. Several operators on one field are ANDed, and several
+fields are ANDed:
+
+```soli
+Order.where({
+  "status": "open",                       # equality
+  "total":  { "gte": 100, "lt": 500 },    # both, ANDed
+  "region": ["eu", "us"],                 # IN
+  "or": [{ "rush": true }, { "vip": true } ]
+})
+```
+
+`or` and `and` take an **array of hashes** (an empty array is an error) and may
+nest. Any hash inside them is a full filter again.
+
+**Ordering comparisons follow the value's type.** A number compares numerically;
+a **string compares as text**, which is what makes ISO-8601 dates and timestamps
+work — they sort correctly as strings:
+
+```soli
+Invoice.where({ "issued_at": { "gte": "2026-01-01", "lt": "2026-07-01" } })
+```
+
+**`null` and missing keys.** `{ "field": null }` is `IS NULL` and
+`{ "field": { "ne": null } }` is `IS NOT NULL`; any other operator against `null`
+is an error rather than a clause that silently never matches. A document that
+never had the key reads as `NULL`, so `{ "nope": null }` matches **every** row.
+
+**`IN` details.** An empty list matches nothing (it compiles to a false
+predicate, not a syntax error). A `null` inside the list adds `IS NULL`, because
+SQL `IN` never matches `NULL`. Each element keeps the type semantics equality
+would give it, so a list may mix strings and numbers.
+
+**`like` / `ilike`** need a string pattern (`%` = any run, `_` = one character).
+Case sensitivity is where the backends genuinely differ:
+
+| | `like` | `ilike` |
+|---|---|---|
+| Postgres | case-**sensitive** | `ILIKE` |
+| SQLite | case-**insensitive** for ASCII (its `LIKE` is) | `LOWER(x) LIKE LOWER(?)` |
+| MySQL | depends on the column/collation | `LOWER(x) LIKE LOWER(?)` |
+| SoliDB | SDBQL `LIKE` | also `LIKE` — no separate case-folding |
+
+If case behaviour matters, use `ilike` and get the same answer everywhere.
+
+**Numbers compare differently per backend on document tables.** Postgres compares
+`jsonb` numerically, so `{ "v": 10 }` matches a stored `10.0`; MySQL and SQLite
+compare the JSON representation, where it does not. Store numbers consistently if
+you filter on them.
+
+**Index interaction.** String equality and string `IN` compile to the JSON *text*
+extract — the expression an `index` declaration creates — so they can use it.
+Numeric comparisons use a numeric cast, which an expression index on the text
+form does not cover. See [`index` on the SQL adapters](#index-on-the-sql-adapters).
+
+**On column-aware models** (`table "orders"`) the same hash compiles against the
+real columns with typed binds, so each comparison is the column's own type and
+ordering on a text column follows the database's collation. A field that is not a
+column is refused by name, listing the columns that exist.
+
+**Errors name the vocabulary.** An unknown operator reports
+`gt, gte, lt, lte, eq, ne, like, ilike, in`; a field name that is not an
+identifier is refused before anything is compiled.
+
 > **Security — `where(...)` filter forms.** The Hash form
 > (`where({field: value, ...})`) is safe for user input: keys are
 > validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers, operators are a

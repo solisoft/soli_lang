@@ -146,6 +146,54 @@ def counter(event_data: Any) -> Any {
             <code class="text-orange-300 font-bold">soli-target</code>
             <p class="text-sm text-gray-400 mt-2">Specifies target component for updates. <code>&lt;div soli-target="results"&gt;</code></p>
         </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-window-keydown</code>
+            <p class="text-sm text-gray-400 mt-2">Window-level key press. Put on any element in the view. <code>&lt;div soli-window-keydown="hotkey"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-window-keyup</code>
+            <p class="text-sm text-gray-400 mt-2">Window-level key release. <code>&lt;div soli-window-keyup="hotkey_up"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-href</code>
+            <p class="text-sm text-gray-400 mt-2">Full-page navigation (leaves the socket). Meta/ctrl-click still opens a new tab. <code>&lt;a soli-href="/posts"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-patch</code>
+            <p class="text-sm text-gray-400 mt-2">In-socket navigation: updates the URL and sends <code>event == "patch"</code> with <code>path</code>/<code>query</code>. <code>&lt;a soli-patch="/posts/1?tab=comments"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-live</code>
+            <p class="text-sm text-gray-400 mt-2">Swap the page-root LiveView to another component socket without a full load. Optional <code>href</code> updates the URL. <code>&lt;a soli-live="/live/socket/comments" href="/comments"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-debounce</code>
+            <p class="text-sm text-gray-400 mt-2">Delay the event by N milliseconds; only the last fire is sent. <code>&lt;input soli-change="search" soli-debounce="300"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-throttle</code>
+            <p class="text-sm text-gray-400 mt-2">Send at most once every N milliseconds. <code>&lt;input type="range" soli-change="volume" soli-throttle="100"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-click-away</code>
+            <p class="text-sm text-gray-400 mt-2">Fires when a click lands outside this element. <code>&lt;div soli-click-away="close"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-disable-with</code>
+            <p class="text-sm text-gray-400 mt-2">Swap the label and disable the control while the event is in flight. Also adds <code>soli-loading</code> / <code>soli-click-loading</code>. <code>&lt;button soli-click="save" soli-disable-with="Saving&hellip;"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-hook</code>
+            <p class="text-sm text-gray-400 mt-2">Attach a named client hook. Register it on <code>SoliLiveView.hooks</code> before connect. <code>&lt;div soli-hook="Chart" soli-ignore&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-upload</code>
+            <p class="text-sm text-gray-400 mt-2">File input: POST <code>/live/upload</code>, then fire the handler with <code>file</code>/<code>files</code> (base64 <code>data</code>, same shape as <code>attach_upload</code>). <code>&lt;input type="file" soli-upload="attached"&gt;</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">soli-upload-max</code>
+            <p class="text-sm text-gray-400 mt-2">Per-file size cap in bytes (default 8&nbsp;MiB). <code>&lt;input soli-upload="attached" soli-upload-max="2000000"&gt;</code></p>
+        </div>
     </div>
 
     <p class="text-gray-400 mb-4">Two more attributes control how the DOM morph treats an element (they trigger nothing on the server):</p>
@@ -418,6 +466,93 @@ def posts_board(event_data: Any) -&gt; Any {
 }</code></pre>
     <p class="text-gray-400 my-6">The returned hash may carry <code class="text-cyan-400">state</code> <strong class="text-white">and</strong> <code class="text-cyan-400">stream</code> together, or <code class="text-cyan-400">stream</code> alone (state untouched). Ops: <code class="text-cyan-400">append</code>/<code class="text-cyan-400">prepend</code> (<code>id</code>, <code>html</code>), <code class="text-cyan-400">insert</code> (<code>id</code>, <code>html</code>, <code>before?</code>), <code class="text-cyan-400">remove</code> (<code>id</code>), <code class="text-cyan-400">reset</code>. <code class="text-cyan-400">container</code> is hoisted on the <code class="text-cyan-400">stream</code> hash and applies to every op. Rows should carry a stable <code>id</code> so re-adds de-dupe and <code>remove</code> can find them. Streamed nodes live outside the diff shadow, so a reconnect re-mounts from the empty render &mdash; re-drive the stream on <code class="text-cyan-400">connect</code> if the list must survive one.</p>
 
+    <h2 id="js-commands" class="text-2xl font-bold text-white mb-6 scroll-mt-24">JS Commands and Navigation</h2>
+    <p class="text-gray-400 mb-4">A handler can push a small, <strong class="text-white">eval-free</strong> list of client commands alongside (or instead of) a re-render. Unknown ops are skipped. There is no <code class="text-cyan-400">eval</code> path.</p>
+    <pre data-filename="app/controllers/live_controller.sl"><code class="language-soli text-sm">if event == "flash" {
+  {
+    "state": { "ok": true },
+    "js": [
+      { "op": "add_class", "to": "#flash", "class": "show" },
+      { "op": "focus", "to": "#q" }
+    ]
+  }
+}
+
+if event == "saved" {
+  { "redirect": "/posts/#{post.id}" }
+}</code></pre>
+    <div class="overflow-x-auto my-6">
+        <table class="w-full text-sm border border-white/10 rounded-lg">
+            <thead class="bg-white/5 text-gray-300">
+                <tr>
+                    <th class="text-left p-3 border-b border-white/10"><code>op</code></th>
+                    <th class="text-left p-3 border-b border-white/10">Fields</th>
+                    <th class="text-left p-3 border-b border-white/10">Effect</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr><td class="p-3 border-b border-white/10"><code>add_class</code> / <code>remove_class</code> / <code>toggle_class</code></td><td class="p-3 border-b border-white/10"><code>to</code>, <code>class</code></td><td class="p-3 border-b border-white/10">Space-separated class names</td></tr>
+                <tr><td class="p-3 border-b border-white/10"><code>set_attr</code> / <code>remove_attr</code></td><td class="p-3 border-b border-white/10"><code>to</code>, <code>name</code>, <code>value?</code></td><td class="p-3 border-b border-white/10">Attribute write / delete</td></tr>
+                <tr><td class="p-3 border-b border-white/10"><code>focus</code></td><td class="p-3 border-b border-white/10"><code>to</code></td><td class="p-3 border-b border-white/10">Focus the element</td></tr>
+                <tr><td class="p-3 border-b border-white/10"><code>dispatch</code></td><td class="p-3 border-b border-white/10"><code>to</code>, <code>event</code>, <code>detail?</code></td><td class="p-3 border-b border-white/10"><code>CustomEvent</code> on the target</td></tr>
+                <tr><td class="p-3 border-b border-white/10"><code>navigate</code></td><td class="p-3 border-b border-white/10"><code>url</code></td><td class="p-3 border-b border-white/10"><code>window.location</code> (full load)</td></tr>
+                <tr><td class="p-3"><code>patch</code></td><td class="p-3"><code>url</code></td><td class="p-3"><code>history.pushState</code> + <code>popstate</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">to</code> is a CSS selector, or <code>window</code> / <code>document</code> / <code>body</code>. The wrapped handler return may carry any combination of <code class="text-cyan-400">state</code>, <code class="text-cyan-400">tick_interval</code>, <code class="text-cyan-400">stream</code>, <code class="text-cyan-400">redirect</code>, and <code class="text-cyan-400">js</code>. <code class="text-cyan-400">redirect</code> is handled first and skips the subsequent patch. A click on <code class="text-cyan-400">soli-href</code> does the same navigation without a round-trip.</p>
+
+    <h2 id="hooks" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Loading, Click-Away, and Hooks</h2>
+    <p class="text-gray-400 mb-4">While an event is in flight the triggering element gets <code class="text-cyan-400">soli-loading</code> and <code class="text-cyan-400">soli-&lt;event&gt;-loading</code>. <code class="text-cyan-400">soli-disable-with</code> also swaps the label and sets <code>disabled</code> until the next patch restores the server-rendered markup.</p>
+    <pre data-filename="app/views/live/form.html.slv"><code class="language-html text-sm">&lt;button soli-click="save" soli-disable-with="Saving&hellip;"&gt;Save&lt;/button&gt;
+&lt;div class="menu" soli-click-away="close"&gt;&hellip;&lt;/div&gt;</code></pre>
+    <p class="text-gray-400 my-4">For a chart, map, or other widget that needs a JS constructor, put <code class="text-cyan-400">soli-hook="Name"</code> on the element and register the hook before the socket connects. Auto-connect runs on <code>DOMContentLoaded</code>, so a script after <code>/live/client.js</code> can set <code class="text-cyan-400">SoliLiveView.hooks</code> in time. Pair with <code class="text-cyan-400">soli-ignore</code> when the widget owns its children. <code>this.pushEvent("name", { &hellip; })</code> sends an event back over the socket.</p>
+    <pre data-filename="page"><code class="language-html text-sm">&lt;script src="/live/client.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+SoliLiveView.hooks = {
+  Chart: {
+    mounted() { this.chart = Chart.render(this.el); },
+    updated() { this.chart.refresh(); },
+    destroyed() { this.chart.teardown(); }
+  }
+};
+&lt;/script&gt;
+&lt;div soli-hook="Chart" soli-ignore&gt;&lt;/div&gt;</code></pre>
+    <p class="text-gray-400 mb-12">Callbacks: <code class="text-cyan-400">mounted</code> (first seen), <code class="text-cyan-400">updated</code> (same node survived a morph), <code class="text-cyan-400">destroyed</code> (removed), <code class="text-cyan-400">disconnected</code> / <code class="text-cyan-400">reconnected</code> (socket). <code class="text-cyan-400">live(url, { hooks: { &hellip; } })</code> merges on top of <code>SoliLiveView.hooks</code>.</p>
+
+    <h2 id="in-socket-nav" class="text-2xl font-bold text-white mb-6 scroll-mt-24">In-Socket Navigation</h2>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">soli-patch</code> changes the URL without dropping the socket (Phoenix <code>live_patch</code>). The client pushes history and sends <code class="text-cyan-400">event == "patch"</code> with <code>href</code>, <code>path</code>, <code>query</code>, and <code>hash</code>. Browser back/forward fires the same event. A handler may also return <code class="text-cyan-400">patch: "/path"</code> or <code class="text-cyan-400">patch: { "url": "/path", "replace": true }</code>.</p>
+    <pre data-filename="app/views/live/post.html.slv"><code class="language-html text-sm">&lt;a soli-patch="/posts/&lt;%= id %&gt;?tab=comments"&gt;Comments&lt;/a&gt;</code></pre>
+    <pre data-filename="app/controllers/live_controller.sl"><code class="language-soli text-sm">if event == "patch" {
+  { "state": { "tab": event_data["params"]["query"]["tab"] } }
+}</code></pre>
+    <p class="text-gray-400 mb-4">To swap the <strong class="text-white">page-root</strong> LiveView to a different component without a full load, use <code class="text-cyan-400">soli-live</code> (or return <code class="text-cyan-400">live: "/live/socket/&hellip;"</code> from the handler). The client closes this socket and connects the new one on the same root. Pair with <code>href</code> / <code>soli-patch</code> to update the address bar.</p>
+    <pre data-filename="app/views/live/post.html.slv"><code class="language-html text-sm">&lt;a soli-live="/live/socket/comments" href="/comments"&gt;Comments&lt;/a&gt;</code></pre>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">soli-href</code> / handler <code>redirect</code> / JS <code>navigate</code> still do a full page load &mdash; use those when the destination is a regular page. The JS <code>patch</code> command only updates the address bar (it no longer synthesizes <code>popstate</code>).</p>
+
+    <h2 id="nested-liveviews" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Nested LiveViews</h2>
+    <p class="text-gray-400 mb-4">A LiveView template may mount another component as a <strong class="text-white">child socket</strong>. After each parent render the client connects any new <code class="text-cyan-400">data-liveview-url</code> slots and disconnects any that disappeared. The child's DOM is treated as a <code class="text-cyan-400">soli-ignore</code> island automatically, so a parent patch does not wipe it. The two views do not share state.</p>
+    <pre data-filename="app/views/live/post.html.slv"><code class="language-html text-sm">&lt;article&gt;
+  &lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
+  &lt;div data-liveview-url="/live/socket/comments" data-live-root&gt;&lt;/div&gt;
+&lt;/article&gt;</code></pre>
+    <p class="text-gray-400 mb-4">Independent child sockets still isolate state. For <strong class="text-white">shared parent assigns</strong>, use a nested live component on the same socket:</p>
+    <pre data-filename="app/views/live/board.html.slv"><code class="language-html text-sm">&lt;%- live_component("score", { "score": true }) %&gt;</code></pre>
+    <p class="text-gray-400 mb-4"><code>true</code> / <code>from_parent</code> copies that key from the parent; any other value is a literal override. The helper renders <code>app/views/live/score.html.slv</code> and wraps it in <code class="text-cyan-400">soli-component="score"</code>. A click inside with <code class="text-cyan-400">soli-assign-score="&lt;%= score + 1 %&gt;"</code> sends <code>_assigns</code>; the runtime merges them onto the parent (typed) before the handler runs, then the parent re-render fans the new values back into the child.</p>
+    <p class="text-gray-400 mb-12">This is not Phoenix <code>live_component</code> (no <code>update/2</code> / <code>send_update</code>). <code class="text-cyan-400">data-liveview-manual</code> skips auto-connect on isolated sockets.</p>
+
+    <h2 id="uploads" class="text-2xl font-bold text-white mb-6 scroll-mt-24">File Uploads</h2>
+    <p class="text-gray-400 mb-4">WebSocket frames are capped at 1&nbsp;MiB, so bytes go over <strong class="text-white">HTTP</strong> and the socket only carries an id. Put <code class="text-cyan-400">soli-upload="handler"</code> on a file input. The layout should include <code class="text-cyan-400">csrf_meta_tag()</code>.</p>
+    <pre data-filename="app/views/live/profile.html.slv"><code class="language-html text-sm">&lt;input type="file" name="avatar" accept="image/*"
+       soli-upload="attached" soli-upload-max="2000000"&gt;</code></pre>
+    <pre data-filename="app/controllers/live_controller.sl"><code class="language-soli text-sm">if event == "attached" {
+  file = event_data["params"]["file"]
+  # { filename, content_type, size, data } — data is base64
+  attach_upload(user, "avatar", file)
+  { "state": { "name": file["filename"] } }
+}</code></pre>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">params["files"]</code> is the array (<code>multiple</code> on the input); <code class="text-cyan-400">params["file"]</code> is the first entry. While the POST is in flight the input gets <code class="text-cyan-400">soli-upload-loading</code> and <code class="text-cyan-400">data-soli-progress</code> (0&ndash;100). A failure adds <code class="text-cyan-400">soli-upload-error</code> and sends <code>{ "error": "&hellip;" }</code>. Not chunked or resumable &mdash; one POST per file, 8&nbsp;MiB default cap.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Performance</h2>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
@@ -439,10 +574,12 @@ def posts_board(event_data: Any) -&gt; Any {
     <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
         <ul class="text-gray-300 text-sm space-y-3">
             <li><strong class="text-white">The wire format is line-granular, not node-granular.</strong> The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed <em>values</em>, is not implemented. Fine in practice &mdash; renders are compared server-side and only the delta travels.</li>
-            <li><strong class="text-white">The directive set is a subset of Phoenix's.</strong> Click, submit, change, keydown/keyup, focus/blur, <code>soli-value-*</code>, and <code>soli-target</code> &mdash; there is no debounce/throttle, no window-level bindings, no JS commands, no uploads, streams, or nested live components.</li>
-            <li><strong class="text-white">Scripts don't run on patch.</strong> <code>&lt;script&gt;</code> tags inside a live region never execute when patched in; put behavior in external JS or an Alpine island under <code>soli-ignore</code>.</li>
-            <li><strong class="text-white">Reconnects re-mount.</strong> If the socket drops, the client reconnects with backoff, but the component restarts from its initial state &mdash; in-flight state is not restored.</li>
-            <li><strong class="text-white">Per-process.</strong> Instances live in server memory; multi-instance deployments need their own pub/sub layer to coordinate.</li>
+            <li><strong class="text-white">Uploads are not chunked or resumable.</strong> <code>soli-upload</code> POSTs each file to <code>/live/upload</code> (8&nbsp;MiB default) and then hydrates <code>params["file"]</code> for the handler. There is no pause/resume and no Phoenix <code>allow_upload</code> consume pipeline.</li>
+            <li><strong class="text-white">Independent child sockets still isolate state.</strong> <code>data-liveview-url</code> mounts remain their own sockets. Shared assigns use <code class="text-cyan-400">live_component</code> + <code class="text-cyan-400">soli-assign-*</code> on the parent socket &mdash; there is no Phoenix <code>update/2</code> / <code>send_update</code>.</li>
+            <li><strong class="text-white">Leaving for a regular page is still a full load.</strong> <code>soli-href</code>, handler <code>redirect</code>, and JS <code>navigate</code> drop the socket. Same-app LiveView changes use <code>soli-patch</code> (this component) or <code>soli-live</code> (another <code>/live/socket/&lt;name&gt;</code>).</li>
+            <li><strong class="text-white">Scripts don't run on patch.</strong> <code>&lt;script&gt;</code> tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under <code>soli-ignore</code>.</li>
+            <li><strong class="text-white">Reconnects restore server state, not the client shadow.</strong> A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same <code>session:component</code> id) so the connect handler sees in-flight values. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently.</li>
+            <li><strong class="text-white">Per-process.</strong> Instances and <code>live_where</code> subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.</li>
         </ul>
     </div>
 

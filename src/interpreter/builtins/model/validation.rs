@@ -406,6 +406,7 @@ fn unique_taken_on_sql(
     let query = crate::db::ListQuery {
         table: collection.to_string(),
         eq_filters,
+        hash_filter: None,
         filter_sdbql: Some(format!("doc.{field} == @{field}")),
         having: None,
         exists_filters: Vec::new(),

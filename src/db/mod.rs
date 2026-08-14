@@ -15,6 +15,7 @@ mod caps;
 pub mod columns;
 pub mod ddl;
 pub mod error;
+pub mod hash_filter;
 pub mod import;
 pub mod introspect;
 #[cfg(feature = "mysql")]
@@ -22,6 +23,7 @@ pub mod mysql;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod registry;
+pub mod schema_dump;
 pub mod sql;
 pub mod sql_columns_compile;
 pub mod sql_compile;

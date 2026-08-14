@@ -14,8 +14,20 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use super::hash_filter::HashFilter;
 use super::introspect::{ColType, ColumnDef, TableSchema};
-use super::sql_compile::{CompiledSql, Dialect, SqlAgg, SqlBind};
+use super::sql_compile::{CompiledSql, Dialect, GroupAgg, SqlAgg, SqlBind};
+
+/// A `.join` existence filter over real columns.
+#[derive(Clone, Debug)]
+pub struct ColExistsFilter {
+    pub table: String,
+    pub foreign_key: String,
+    pub parent_pk: String,
+    pub hash_filter: Option<HashFilter>,
+    pub eq_filters: BTreeMap<String, serde_json::Value>,
+    pub child_schema: Arc<TableSchema>,
+}
 
 /// A portable list query over real columns.
 #[derive(Clone, Debug)]
@@ -29,6 +41,12 @@ pub struct ColumnQuery {
     /// Project only these columns (`pluck` / `select`), plus the primary key.
     /// `None` selects the whole row.
     pub select_fields: Option<Vec<String>>,
+    /// Structured hash `.where` (comparisons, IN, LIKE, OR).
+    pub hash_filter: Option<super::hash_filter::HashFilter>,
+    /// `.join` existence filters, compiled as correlated `EXISTS`.
+    pub exists_filters: Vec<ColExistsFilter>,
+    /// Portable `.having` text (`n > 5`, `total >= 100`).
+    pub having: Option<String>,
     /// Columns that must be non-null (`only_deleted` on a soft-delete model).
     pub not_null_filters: Vec<String>,
     pub order_field: Option<String>,
@@ -44,6 +62,9 @@ impl ColumnQuery {
             eq_filters: BTreeMap::new(),
             in_filters: BTreeMap::new(),
             select_fields: None,
+            hash_filter: None,
+            exists_filters: Vec::new(),
+            having: None,
             not_null_filters: Vec::new(),
             order_field: None,
             order_desc: false,
@@ -268,6 +289,12 @@ fn select_list(d: Dialect, schema: &TableSchema) -> Result<String, String> {
 /// Build the WHERE clause for `eq_filters`, appending binds to `params`.
 fn compile_where(d: Dialect, q: &ColumnQuery, params: &mut Vec<SqlBind>) -> Result<String, String> {
     let mut clauses = Vec::new();
+    if let Some(pred) = &q.hash_filter {
+        let sql = super::hash_filter::compile_col_pred(d, &q.schema, pred, params)?;
+        if !sql.is_empty() {
+            clauses.push(sql);
+        }
+    }
     for (field, value) in &q.eq_filters {
         let col = resolve_col(&q.schema, field)?;
         let quoted = d.quote_ident(&col.name)?;
@@ -321,6 +348,37 @@ fn compile_where(d: Dialect, q: &ColumnQuery, params: &mut Vec<SqlBind>) -> Resu
         let col = resolve_col(&q.schema, field)?;
         clauses.push(format!("{} IS NOT NULL", d.quote_ident(&col.name)?));
     }
+    let parent = d.quote_ident(&q.schema.table)?;
+    let parent_pk = d.quote_ident(&q.schema.pk)?;
+    for exists in &q.exists_filters {
+        let child = d.quote_ident(&exists.table)?;
+        let fk = resolve_col(&exists.child_schema, &exists.foreign_key)?;
+        let fk_q = d.quote_ident(&fk.name)?;
+        let mut inner = vec![format!("{child}.{fk_q} = {parent}.{parent_pk}")];
+        if let Some(pred) = &exists.hash_filter {
+            let extra =
+                super::hash_filter::compile_col_pred(d, &exists.child_schema, pred, params)?;
+            if !extra.is_empty() {
+                inner.push(extra);
+            }
+        }
+        for (field, value) in &exists.eq_filters {
+            let col = resolve_col(&exists.child_schema, field)?;
+            let quoted = d.quote_ident(&col.name)?;
+            match bind_for_column(col, value)? {
+                None => inner.push(format!("{quoted} IS NULL")),
+                Some(bind) => {
+                    params.push(bind);
+                    let ph = placeholder(d, params.len(), col.ty);
+                    inner.push(format!("{quoted} = {ph}"));
+                }
+            }
+        }
+        clauses.push(format!(
+            "EXISTS (SELECT 1 FROM {child} WHERE {})",
+            inner.join(" AND ")
+        ));
+    }
     if clauses.is_empty() {
         return Ok(String::new());
     }
@@ -328,7 +386,7 @@ fn compile_where(d: Dialect, q: &ColumnQuery, params: &mut Vec<SqlBind>) -> Resu
 }
 
 /// Placeholder for bind `n`, with the cast Postgres needs for text-carried types.
-fn placeholder(d: Dialect, n: usize, ty: ColType) -> String {
+pub(crate) fn placeholder(d: Dialect, n: usize, ty: ColType) -> String {
     let base = match d {
         Dialect::Postgres => format!("${n}"),
         Dialect::Mysql | Dialect::Sqlite => "?".to_string(),
@@ -469,7 +527,76 @@ pub fn compile_group_by_cols(
     let mut sql = format!("SELECT {} FROM {table}", selected.join(", "));
     sql.push_str(&compile_where(d, q, &mut params)?);
     sql.push_str(&format!(" GROUP BY {}", grouped.join(", ")));
+    if let Some(having) = &q.having {
+        sql.push_str(&compile_having_cols(
+            d,
+            having,
+            group_fields,
+            aggs,
+            &q.schema,
+        )?);
+    }
     Ok(CompiledSql { sql, params })
+}
+
+fn compile_having_cols(
+    d: Dialect,
+    having: &str,
+    group_fields: &[String],
+    aggs: &[GroupAgg],
+    schema: &TableSchema,
+) -> Result<String, String> {
+    let refuse = || {
+        format!(
+            "`.having({having:?})` on a SQL adapter supports one comparison of a \
+             group key or aggregate alias against a number, e.g. \
+             \"n > 5\" or \"total >= 100\"."
+        )
+    };
+    let text = having.trim();
+    let (alias, op, value) = ["!=", ">=", "<=", "==", ">", "<", "="]
+        .iter()
+        .find_map(|op| {
+            text.split_once(op)
+                .map(|(left, right)| (left.trim(), *op, right.trim()))
+        })
+        .ok_or_else(refuse)?;
+    let known = group_fields.iter().any(|f| f == alias)
+        || aggs.iter().any(|a| a.alias == alias)
+        || (aggs.is_empty() && alias == "n");
+    if !known {
+        return Err(format!(
+            "`.having({having:?})`: {alias:?} is not one of this query's group keys \
+             or aggregate aliases."
+        ));
+    }
+    if value.parse::<f64>().is_err() {
+        return Err(refuse());
+    }
+    let sql_op = match op {
+        "==" | "=" => "=",
+        other => other,
+    };
+    let left = if let Some(agg) = aggs.iter().find(|a| a.alias == alias) {
+        if matches!(agg.func, SqlAgg::Count) {
+            "COUNT(*)".to_string()
+        } else {
+            let col = resolve_col(schema, &agg.field)?;
+            let name = match agg.func {
+                SqlAgg::Sum => "SUM",
+                SqlAgg::Avg => "AVG",
+                SqlAgg::Min => "MIN",
+                SqlAgg::Max => "MAX",
+                SqlAgg::Count => "COUNT",
+            };
+            format!("{name}({})", d.quote_ident(&col.name)?)
+        }
+    } else if aggs.is_empty() && alias == "n" {
+        "COUNT(*)".to_string()
+    } else {
+        d.quote_ident(alias)?
+    };
+    Ok(format!(" HAVING {left} {sql_op} {value}"))
 }
 
 /// `DELETE FROM t [WHERE …]`.
@@ -1060,6 +1187,59 @@ mod tests {
         let blob = schema.column("blob").unwrap();
         let err = bind_for_column(blob, &serde_json::json!("x")).expect_err("must error");
         assert!(err.contains("blob"), "{err}");
+    }
+
+    #[test]
+    fn hash_filter_compiles_comparisons_in_like_and_or() {
+        use crate::db::hash_filter::HashFilter;
+        let mut q = query();
+        q.hash_filter = Some(
+            HashFilter::from_json_map(
+                serde_json::json!({
+                    "qty": { "gte": 5 },
+                    "name": { "like": "INV%" },
+                    "or": [{ "active": true }, { "qty": 0 }]
+                })
+                .as_object()
+                .unwrap(),
+                "where",
+            )
+            .unwrap(),
+        );
+        let c = compile_select_cols(Dialect::Sqlite, &q).unwrap();
+        assert!(c.sql.contains("\"qty\" >= ?"), "{}", c.sql);
+        assert!(c.sql.contains("\"name\" LIKE ?"), "{}", c.sql);
+        assert!(c.sql.contains(" OR "), "{}", c.sql);
+        assert!(!c.params.is_empty());
+
+        let mut q = query();
+        q.hash_filter = Some(HashFilter::In {
+            field: "qty".into(),
+            values: vec![serde_json::json!(1), serde_json::json!(2)],
+        });
+        let c = compile_select_cols(Dialect::Postgres, &q).unwrap();
+        assert!(c.sql.contains("\"qty\" IN ("), "{}", c.sql);
+    }
+
+    #[test]
+    fn having_compiles_against_count_or_named_aggregate() {
+        let mut q = query();
+        q.having = Some("n > 5".into());
+        let c = compile_group_by_cols(Dialect::Sqlite, &q, &["name".into()], &[]).unwrap();
+        assert!(c.sql.contains("HAVING COUNT(*) > 5"), "{}", c.sql);
+
+        q.having = Some("total >= 100".into());
+        let aggs = [GroupAgg {
+            alias: "total".into(),
+            func: SqlAgg::Sum,
+            field: "qty".into(),
+        }];
+        let c = compile_group_by_cols(Dialect::Postgres, &q, &["name".into()], &aggs).unwrap();
+        assert!(c.sql.contains("HAVING SUM(\"qty\") >= 100"), "{}", c.sql);
+
+        q.having = Some("nope > 1".into());
+        let err = compile_group_by_cols(Dialect::Sqlite, &q, &["name".into()], &[]).unwrap_err();
+        assert!(err.contains("nope"), "{err}");
     }
 
     #[test]

@@ -5,8 +5,10 @@
 pub mod component;
 pub mod diff;
 pub mod live_query;
+pub mod nested;
 pub mod parser;
 pub mod socket;
+pub mod upload;
 pub mod view;
 
 pub use diff::compute_patch;

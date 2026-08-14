@@ -880,6 +880,32 @@ pub fn ensure_doc_index(
     Ok(true)
 }
 
+/// Full `CREATE` text for user tables and indexes, plus applied versions.
+pub fn dump_schema() -> Result<String, String> {
+    let versions = list_applied_migrations().unwrap_or_default();
+    let stmts = with_conn(|conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT sql FROM sqlite_master \
+                 WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
+                 ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name",
+            )
+            .map_err(|e| format!("sqlite dump: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("sqlite dump: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let sql = row.map_err(|e| format!("sqlite dump: {e}"))?;
+            if !sql.trim().is_empty() {
+                out.push(sql);
+            }
+        }
+        Ok(out)
+    })?;
+    Ok(super::schema_dump::format_dump("sqlite", &versions, &stmts))
+}
+
 /// Run compiled DDL (used by migrations and by the column-mode test harness).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
     with_conn(|conn| {
@@ -1733,6 +1759,7 @@ mod tests {
         ListQuery {
             table: table.into(),
             eq_filters,
+            hash_filter: None,
             filter_sdbql: if clauses.is_empty() {
                 None
             } else {
@@ -2965,6 +2992,7 @@ mod tests {
                 table: "comments".into(),
                 foreign_key: "post_id".into(),
                 eq_filters: std::collections::BTreeMap::new(),
+                hash_filter: None,
             }];
             let rows = select(&q).expect("select");
             assert_eq!(rows.len(), 1, "p1 once, not twice");
@@ -3003,6 +3031,104 @@ mod tests {
             // Without it, both groups come back.
             q.having = None;
             assert_eq!(group_by(&q, &["status".to_string()], &[]).unwrap().len(), 2);
+        });
+    }
+
+    #[test]
+    fn hash_where_compiles_comparisons_in_like_and_or() {
+        use crate::db::hash_filter::HashFilter;
+
+        with_sqlite("hash-where", || {
+            let table = "orders";
+            ensure_table(table).expect("table");
+            insert(
+                table,
+                Some("a"),
+                serde_json::json!({"status": "open", "total": 50, "email": "a@x.com"}),
+            )
+            .expect("insert");
+            insert(
+                table,
+                Some("b"),
+                serde_json::json!({"status": "draft", "total": 5, "email": "b@y.com"}),
+            )
+            .expect("insert");
+
+            let pred = HashFilter::from_json_map(
+                serde_json::json!({"total": {"gte": 10}})
+                    .as_object()
+                    .unwrap(),
+                "where",
+            )
+            .unwrap();
+            let mut q = list_query(table, &[]);
+            q.hash_filter = Some(pred);
+            q.filter_sdbql = None;
+            q.eq_filters.clear();
+            let rows = select(&q).expect("select");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["_key"], "a");
+
+            q.hash_filter = Some(
+                HashFilter::from_json_map(
+                    serde_json::json!({"email": {"like": "%@x.com"}})
+                        .as_object()
+                        .unwrap(),
+                    "where",
+                )
+                .unwrap(),
+            );
+            assert_eq!(count(&q).unwrap(), 1);
+
+            q.hash_filter = Some(
+                HashFilter::from_json_map(
+                    serde_json::json!({"status": ["open", "paid"]})
+                        .as_object()
+                        .unwrap(),
+                    "where",
+                )
+                .unwrap(),
+            );
+            assert_eq!(count(&q).unwrap(), 1);
+
+            q.hash_filter = Some(
+                HashFilter::from_json_map(
+                    serde_json::json!({"or": [{"status": "draft"}, {"status": "paid"}]})
+                        .as_object()
+                        .unwrap(),
+                    "where",
+                )
+                .unwrap(),
+            );
+            assert_eq!(count(&q).unwrap(), 1);
+        });
+    }
+
+    #[test]
+    fn schema_dump_round_trips_through_load() {
+        with_sqlite("schema-dump", || {
+            ensure_connected().expect("connect");
+            ensure_table("people").expect("table");
+            insert("people", Some("k1"), serde_json::json!({"name": "Ada"})).expect("insert");
+            ensure_migrations_table().expect("migrations");
+            record_migration("20260813000001", "create_people").expect("record");
+
+            let dump = dump_schema().expect("dump");
+            assert!(dump.contains("-- adapter: sqlite"), "{dump}");
+            assert!(dump.contains("20260813000001_create_people"), "{dump}");
+            assert!(dump.to_lowercase().contains("create table"), "{dump}");
+
+            execute_raw("DROP TABLE IF EXISTS people; DROP TABLE IF EXISTS `_migrations`;")
+                .expect("wipe");
+            crate::db::sql::load_schema(&dump).expect("load");
+            assert!(table_exists("people").expect("exists"));
+            let versions = list_applied_migrations().expect("versions");
+            assert!(
+                versions
+                    .iter()
+                    .any(|(v, n)| v == "20260813000001" && n == "create_people"),
+                "{versions:?}"
+            );
         });
     }
 

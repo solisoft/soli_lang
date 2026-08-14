@@ -3928,6 +3928,10 @@ Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 })
 
 Cancels an enqueued (not yet started) job. Returns Bool.
 
+#### Job.retry(job_id)
+
+Re-queues a `failed` or `dead` job so a worker will pick it up again. Keeps `attempts` and `last_error`. Returns Bool; raises for any other state.
+
 #### Job.list(queue?)
 
 Returns the list of jobs in a queue. Defaults to the configured default queue.

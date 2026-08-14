@@ -1,0 +1,226 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 bg-clip-text text-transparent">MySQL</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            MySQL and MariaDB. Same Model surface as
+            <a href="/docs/database/postgres" class="text-amber-400 hover:underline">Postgres</a> and
+            <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>
+            &mdash; hash <code class="text-cyan-400">.where</code>, associations, aggregates,
+            migrations, jobs &mdash; as <code class="text-cyan-400">_key</code> + JSON
+            <code class="text-cyan-400">doc</code> tables or a
+            <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">column-aware</a>
+            mapping onto a real schema.
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-10">
+        <p class="text-amber-200 text-sm leading-relaxed">
+            SoliDB remains the full stack (graph, vector, timeseries, raw SDBQL).
+            Use MySQL when the data already lives there, or as a secondary connection beside SoliDB via
+            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline"><code>config/database.toml</code></a>.
+        </p>
+    </div>
+
+    <h2 id="connect" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Connect</h2>
+    <p class="text-gray-400 mb-4">Whole app on MySQL:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_DB_ADAPTER=mysql
+DATABASE_URL=mysql://user:pass@localhost:3306/myapp
+# optional
+SOLI_DB_POOL_SIZE=10</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">Aliases: <code class="text-cyan-400">mysql</code>, <code class="text-cyan-400">mariadb</code>.</p>
+    <p class="text-gray-400 mb-4">A named connection:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/database.toml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">default = "primary"
+
+[connections.warehouse]
+adapter = "mysql"
+url = "${WAREHOUSE_DATABASE_URL}"
+pool = 5</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class FactSale &lt; Model
+  connection "warehouse"
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The <code class="text-cyan-400">mysql</code> Cargo feature is on by default.
+        A binary built without it refuses to open a MySQL connection at boot and tells you to rebuild.
+    </p>
+
+    <h2 id="url" class="text-2xl font-bold text-white mb-6 scroll-mt-24">URL</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">mysql://USER:PASSWORD@HOST:3306/DATABASE</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Placeholders in raw SQL are <code class="text-cyan-400">?</code>.
+        Identifiers are backtick-quoted.
+    </p>
+
+    <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>
+    <p class="text-gray-400 mb-4">A SQL server does not create the database on first use. On a fresh target:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:create              # CREATE DATABASE IF NOT EXISTS (db-less connection)
+soli db:migrate up
+soli db:schema:dump
+soli db:drop                # DROP DATABASE IF EXISTS</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">db:create</code> connects to the server
+        <strong class="text-white">without</strong> selecting a database (the target may not exist yet),
+        then <code>CREATE DATABASE IF NOT EXISTS</code>. Both accept
+        <code class="text-cyan-400">--connection NAME</code>.
+    </p>
+
+    <h2 id="documents" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Document tables</h2>
+    <p class="text-gray-400 mb-4">Each collection is:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">table &lt;collection&gt;
+  _key  VARCHAR(255) PRIMARY KEY
+  doc   JSON NOT NULL</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The table is created on first write. JSON operators are
+        <code class="text-cyan-400">JSON_EXTRACT</code> / <code class="text-cyan-400">JSON_UNQUOTE</code> /
+        <code class="text-cyan-400">JSON_SET</code> / <code class="text-cyan-400">JSON_MERGE_PATCH</code>.
+        String equality in <code class="text-cyan-400">.where({ "status": "open" })</code>
+        compares on the <strong class="text-white">text extract</strong>.
+        MySQL has <strong class="text-white">no <code>RETURNING</code></strong>:
+        an atomic increment writes with <code class="text-cyan-400">JSON_SET</code> then reads the new
+        value on the same connection.
+    </p>
+
+    <h2 id="indexes" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Indexes</h2>
+    <p class="text-gray-400 mb-4">
+        MySQL cannot index a JSON extract directly.
+        <code class="text-cyan-400">index "status"</code> (or <code class="text-cyan-400">soli db:indexes</code>) therefore:
+    </p>
+    <ol class="list-decimal list-inside text-gray-400 space-y-2 text-sm mb-6">
+        <li>Adds a generated <code class="text-cyan-400">STORED</code> column for the extract (skipped if it already exists &mdash; MySQL has no <code>IF NOT EXISTS</code> on <code>ALTER TABLE … ADD COLUMN</code>).</li>
+        <li>Creates an index on that column (skipped if the index name already exists).</li>
+    </ol>
+    <p class="text-gray-400 mb-12">
+        Multi-field and <code class="text-cyan-400">unique:</code> work the same way.
+        Numbers and booleans keep JSON comparison and are not covered by that generated-column index.
+        Migrations can index a document field with a <code class="text-cyan-400">doc.</code> prefix:
+        <code class="text-cyan-400">db.add_index("posts", ["doc.status"], { "unique": true })</code>.
+        <code class="text-cyan-400">fulltext</code> / <code class="text-cyan-400">vector_index</code> /
+        <code class="text-cyan-400">geo_index</code> are reported as skipped on SQL.
+    </p>
+
+    <h2 id="jobs" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Background jobs</h2>
+    <p class="text-gray-400 mb-12">
+        The queue lives in <code class="text-cyan-400">_jobs</code> on the same connection.
+        MySQL has no <code class="text-cyan-400">SKIP LOCKED</code> in the form Soli uses on Postgres,
+        so a claim writes a unique token into <code class="text-cyan-400">locked_by</code> and then
+        selects the rows that hold that token. Several workers can poll; a row belongs to whoever
+        wrote the token first. On first enqueue Soli indexes <code class="text-cyan-400">state</code>,
+        <code class="text-cyan-400">run_at</code>, and <code class="text-cyan-400">priority</code>.
+        See <a href="/docs/builtins/jobs" class="text-amber-400 hover:underline">Jobs</a>.
+    </p>
+
+    <h2 id="schema" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Schema dump</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:schema:dump         # writes db/schema.sql
+soli db:schema:load         # recreate a fresh database from that file</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The dump is <code class="text-cyan-400">SHOW TABLES</code> +
+        <code class="text-cyan-400">SHOW CREATE TABLE</code> for each, plus a
+        <code class="text-cyan-400">-- versions:</code> header so load records applied migrations
+        without replaying every file. <code>SHOW CREATE</code> is the server's own SQL, so defaults,
+        keys, and engine options come through.
+    </p>
+
+    <h2 id="columns" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Column-aware models</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Order &lt; Model
+  connection "warehouse"
+  table "orders"
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Introspection uses <code class="text-cyan-400">information_schema</code>.
+        <code class="text-cyan-400">AUTO_INCREMENT</code> keys are left to the database on insert.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">MySQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>smallint</code> / <code>mediumint</code> / <code>int</code> / <code>bigint</code></td><td class="py-3 px-4">Int</td></tr>
+                <tr><td class="py-3 px-4"><code>float</code> / <code>double</code></td><td class="py-3 px-4">Float</td></tr>
+                <tr><td class="py-3 px-4"><code>decimal</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(written as text; values beyond f64 lose precision on read)</span></td></tr>
+                <tr><td class="py-3 px-4"><code>tinyint(1)</code>, <code>boolean</code>, <code>bit(1)</code></td><td class="py-3 px-4">Bool</td></tr>
+                <tr><td class="py-3 px-4"><code>char</code> / <code>varchar</code> / <code>text</code> / <code>enum</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>date</code> / <code>datetime</code> / <code>timestamp</code></td><td class="py-3 px-4">DateTime, interpreted as <strong class="text-white">UTC</strong></td></tr>
+                <tr><td class="py-3 px-4"><code>json</code></td><td class="py-3 px-4">Hash / Array</td></tr>
+                <tr><td class="py-3 px-4"><code>blob</code>, geometry, unsigned <code>bigint</code></td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        There is no native <code class="text-cyan-400">ILIKE</code>.
+        Hash <code class="text-cyan-400">.where({ "email": { "ilike": "%@x.com" } })</code>
+        compiles to <code class="text-cyan-400">LOWER(email) LIKE LOWER(?)</code>.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Migrations emit foreign keys at <strong class="text-white">table</strong> level:
+        MySQL parses an inline <code>REFERENCES</code> and then ignores it.
+        <code>CREATE INDEX</code> has no <code>IF NOT EXISTS</code>;
+        <code>DROP INDEX</code> needs the table name.
+    </p>
+
+    <h2 id="caveats" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Honest limits</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white">No timezone-aware timestamp.</strong> <code class="text-cyan-400">datetime</code> / <code class="text-cyan-400">timestamp</code> values are UTC.</li>
+        <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
+        <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
+        <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>
+        <li>A reserved name (<code class="text-cyan-400">_migrations</code>, <code class="text-cyan-400">_jobs</code>, <code class="text-cyan-400">_cron_jobs</code>) cannot be created, dropped, or renamed by a migration.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        The shared portable surface is documented under
+        <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.
+    </p>
+
+    <h2 id="next" class="text-2xl font-bold text-white mb-6 scroll-mt-24">See also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/database/postgres" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">PostgreSQL &rarr;</h3>
+            <p class="text-sm text-gray-400">JSONB, SKIP LOCKED, native ILIKE.</p>
+        </a>
+        <a href="/docs/database/sqlite" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">SQLite &rarr;</h3>
+            <p class="text-sm text-gray-400">A file, no server, same Model surface.</p>
+        </a>
+        <a href="/docs/database/multi-database" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Multiple Databases &rarr;</h3>
+            <p class="text-sm text-gray-400">Named connections and the capability matrix.</p>
+        </a>
+    </div>
+</div>

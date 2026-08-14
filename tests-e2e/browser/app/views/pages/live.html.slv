@@ -1,3 +1,11 @@
 <h1 id="page-title">Live</h1>
 <script src="/live/client.js"></script>
+<script>
+SoliLiveView.hooks = {
+  Probe: {
+    mounted() { this.el.setAttribute("data-hook", "mounted"); },
+    updated() { this.el.setAttribute("data-hook", "updated"); }
+  }
+};
+</script>
 <div data-live-root data-liveview-url="/live/socket/counter"></div>

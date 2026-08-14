@@ -66,10 +66,22 @@ def counter(event_data: Any) -> Any {
 | `soli-change` | Input value change |
 | `soli-keydown` | Key press |
 | `soli-keyup` | Key release |
+| `soli-window-keydown` | Window-level key press (put on any element in the view) |
+| `soli-window-keyup` | Window-level key release |
 | `soli-focus` | Element gains focus |
 | `soli-blur` | Element loses focus |
 | `soli-value-*` | Binds input value into state |
 | `soli-target` | Specifies target component for updates |
+| `soli-href` | Full-page navigation to the given URL (leaves the socket) |
+| `soli-patch` | In-socket navigation: `history.pushState` + `event == "patch"` |
+| `soli-live` | Swap the page-root LiveView to `/live/socket/<name>` without a full load |
+| `soli-debounce` | Delay the event by N milliseconds; only the last fire is sent |
+| `soli-throttle` | Send at most once every N milliseconds |
+| `soli-click-away` | Click outside this element |
+| `soli-disable-with` | Swap the label and disable the control while the event is in flight |
+| `soli-hook` | Attach a named client hook (`mounted` / `updated` / `destroyed`) |
+| `soli-upload` | File input: POST `/live/upload`, then `event` with `file` / `files` |
+| `soli-upload-max` | Per-file size cap in bytes (default 8 MiB) |
 
 Two more attributes control how the DOM morph treats an element (they trigger nothing on the server):
 
@@ -268,15 +280,228 @@ The returned hash may carry `state` **and** `stream` together (update some state
 
 `container` is hoisted on the `stream` hash and applies to every op (an op may override it with its own `container`). Rows should carry a stable `id` so re-adds de-dupe and `remove` can find them. Because streamed nodes are outside the diff shadow, a reconnect re-mounts from the initial (empty) render — re-drive the stream on `connect` if the list must survive a reconnect.
 
+## Debounce, throttle, and navigation
+
+Search boxes and sliders should not fire an event on every keystroke. Put `soli-debounce` or `soli-throttle` (milliseconds) on the same element as the directive — `data-soli-debounce` works too:
+
+```html
+<input type="search" soli-change="search" soli-debounce="300" name="q">
+<input type="range" soli-change="volume" soli-throttle="100" name="vol">
+```
+
+Debounce waits until the user pauses; throttle sends at most once per window. They apply to every event type (click, change, keydown, …).
+
+For a full page leave, use `soli-href` on a link or button, or return a `redirect` from the handler:
+
+```html
+<a soli-href="/posts">Back to posts</a>
+```
+
+```soli
+if event == "saved" {
+  { "redirect": "/posts/#{post.id}" }
+}
+```
+
+`redirect` persists any `state` the handler also returned, then the client navigates away. A click on `soli-href` does the same navigation without a round-trip (meta/ctrl-click still opens a new tab).
+
+### In-socket navigation (`soli-patch`)
+
+To change the URL **without** dropping the socket, use `soli-patch` (Phoenix `live_patch`):
+
+```html
+<a soli-patch="/posts/<%= id %>?tab=comments">Comments</a>
+```
+
+The client pushes the URL and sends `event == "patch"` with:
+
+| Param | Value |
+|-------|--------|
+| `href` | `/posts/1?tab=comments` |
+| `path` | `/posts/1` |
+| `query` | `{ "tab": "comments" }` |
+| `hash` | `""` |
+
+```soli
+if event == "patch" {
+  { "state": { "tab": event_data["params"]["query"]["tab"] } }
+}
+```
+
+The handler can also push a URL itself:
+
+```soli
+{ "state": { "tab": "comments" }, "patch": "/posts/1?tab=comments" }
+# or replace the current history entry:
+{ "patch": { "url": "/posts/1", "replace": true } }
+```
+
+Browser back/forward fires the same `patch` event. The JS `patch` command only updates the address bar (it no longer synthesizes `popstate`, which would double-fire).
+
+To swap the **page-root** LiveView to a different component without a full load:
+
+```html
+<a soli-live="/live/socket/comments" href="/comments">Comments</a>
+```
+
+The client closes this socket, connects `/live/socket/comments` on the same root, and (if `href` or `soli-patch` is set) updates the address bar. A handler can do the same with `{ "live": "/live/socket/comments", "patch": "/comments" }`.
+
+`soli-href` / handler `redirect` / JS `navigate` still do a full page load — use those when the destination is a regular (non-LiveView) page.
+
+## JS commands
+
+A handler can push a small, **eval-free** list of client commands alongside (or instead of) a re-render. Unknown ops are skipped.
+
+```soli
+if event == "flash" {
+  {
+    "state": { "ok": true },
+    "js": [
+      { "op": "add_class", "to": "#flash", "class": "show" },
+      { "op": "focus", "to": "#q" }
+    ]
+  }
+}
+```
+
+| `op` | Fields | Effect |
+|------|--------|--------|
+| `add_class` / `remove_class` / `toggle_class` | `to`, `class` | Space-separated class names |
+| `set_attr` / `remove_attr` | `to`, `name`, `value?` | Attribute write / delete |
+| `focus` | `to` | Focus the element |
+| `dispatch` | `to`, `event`, `detail?` | `CustomEvent` on the target |
+| `navigate` | `url` | `window.location` (full load) |
+| `patch` | `url` | `history.pushState` + `popstate` |
+
+`to` is a CSS selector, or `window` / `document` / `body`. There is no `eval` path.
+
+The wrapped handler return may carry any combination of `state`, `tick_interval`, `stream`, `redirect`, and `js`. `redirect` is handled first and skips the subsequent patch.
+
+## Loading states
+
+While an event is in flight the triggering element gets `soli-loading` and `soli-<event>-loading` (e.g. `soli-click-loading`). `soli-disable-with` also swaps the label and sets `disabled` until the next patch (or an empty diff) restores the server-rendered markup:
+
+```html
+<button soli-click="save" soli-disable-with="Saving…">Save</button>
+```
+
+```css
+.soli-click-loading { opacity: 0.6; }
+```
+
+## Click away
+
+`soli-click-away` fires when a click lands outside the element — the usual pattern for closing a dropdown or popover:
+
+```html
+<div class="menu" soli-click-away="close">
+  …
+</div>
+```
+
+## Client hooks
+
+For a chart, map, or other widget that needs a JS constructor, put `soli-hook="Name"` on the element and register the hook before the socket connects. Auto-connect runs on `DOMContentLoaded`, so a script after `/live/client.js` can set `SoliLiveView.hooks` in time:
+
+```html
+<script src="/live/client.js"></script>
+<script>
+SoliLiveView.hooks = {
+  Chart: {
+    mounted() {
+      this.chart = Chart.render(this.el, JSON.parse(this.el.dataset.series));
+    },
+    updated() {
+      this.chart.refresh(JSON.parse(this.el.dataset.series));
+    },
+    destroyed() { this.chart.teardown(); },
+    disconnected() {},
+    reconnected() {}
+  }
+};
+</script>
+
+<div soli-hook="Chart" soli-ignore data-series='<%= json_stringify(series) %>'></div>
+```
+
+Pair hooks with `soli-ignore` when the widget owns its children. `this.el` is the bound element; `this.pushEvent("name", { … })` sends an event back over the socket (no debounce). `live(url, { hooks: { … } })` merges on top of `SoliLiveView.hooks`.
+
+Callbacks: `mounted` (first seen), `updated` (same node survived a morph), `destroyed` (removed), `disconnected` / `reconnected` (socket).
+
+## Nested LiveViews
+
+A LiveView template may mount another component as a child socket. Put `data-liveview-url` (and usually `data-live-root`) on the slot; after each parent render the client connects any new mounts and disconnects any that disappeared.
+
+```html
+<!-- parent: app/views/live/post.html.slv -->
+<article>
+  <h1><%= title %></h1>
+  <div data-liveview-url="/live/socket/comments" data-live-root></div>
+</article>
+```
+
+```soli
+# config/routes.sl
+router_live("post", "live#post");
+router_live("comments", "live#comments");
+```
+
+The child's DOM is treated as a `soli-ignore` island automatically (`data-liveview-url` on the slot), so a parent patch does not wipe the child's render. The two views do not share state — they are independent sockets. `data-liveview-manual` skips auto-connect, same as at the page root.
+
+Independent child sockets still do not share state. For **shared parent assigns**, use a nested live component (same socket, parent state is the source of truth):
+
+```erb
+<%- live_component("score", { "score": true }) %>
+```
+
+`true` / `from_parent` copies that key from the parent; any other value is a literal override. The helper renders `app/views/live/score.html.slv` and wraps it in `soli-component="score"`.
+
+```erb
+<!-- app/views/live/score.html.slv -->
+<span id="s"><%= score %></span>
+<button soli-click="inc" soli-assign-score="<%= score + 1 %>">+</button>
+```
+
+A click inside the wrapper sends `_component: "score"` and `_assigns: { "score": N }`. The runtime merges `_assigns` onto the parent state (coercing types to match) before the handler runs, then the parent re-render fans the new values back into the child. The parent handler can also branch on `params["_component"]`.
+
+This is not Phoenix `live_component` (no `update/2` / `send_update`). Independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
+
+## File uploads
+
+WebSocket frames are capped at 1 MiB, so bytes go over **HTTP** and the socket only carries an id. Put `soli-upload="handler"` on a file input (the page layout should include `csrf_meta_tag()`):
+
+```html
+<input type="file" name="avatar" accept="image/*"
+       soli-upload="attached" soli-upload-max="2000000">
+```
+
+On change the client `POST`s each file to `/live/upload` (multipart + `X-CSRF-Token`), then sends your handler with:
+
+```soli
+if event == "attached" {
+  file = event_data["params"]["file"]
+  # { "filename", "content_type", "size", "data" } — same shape as
+  # find_uploaded_file / attach_upload. `data` is base64.
+  attach_upload(user, "avatar", file)
+  { "state": { "name": file["filename"] } }
+}
+```
+
+`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+
+There is no chunked/resumable protocol — one POST per file, 8 MiB default cap.
+
 ## Current limitations
 
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:
 
 - **The wire format is line-granular, not node-granular.** The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed *values*, is not implemented. Fine in practice — renders are compared server-side and only the delta travels.
-- **The directive set is a subset of Phoenix's.** Click, submit, change, keydown/keyup, focus/blur, `soli-value-*`, and `soli-target` — there is no debounce/throttle, no window-level bindings, no JS commands, no uploads, streams, or nested live components.
-- **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS or an Alpine island under `soli-ignore`.
-- **Reconnects re-mount.** If the socket drops, the client reconnects with backoff, but the component restarts from its initial state — in-flight state is not restored.
-- **Per-process.** Instances live in server memory; multi-instance deployments need their own pub/sub layer to coordinate.
+- **Uploads are not chunked or resumable.** `soli-upload` POSTs each file to `/live/upload` (8 MiB default) and then hydrates `params["file"]` for the handler. There is no pause/resume, no multi-part chunk protocol, and no Phoenix `allow_upload` consume pipeline.
+- **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` on the parent socket — there is no Phoenix `update/2` / `send_update`.
+- **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
+- **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.
+- **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id) so the connect handler sees in-flight values. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently.
+- **Per-process.** Instances and `live_where` subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.
 
 ## Why Live View?
 

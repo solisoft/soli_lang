@@ -11,13 +11,18 @@
 
     <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
         <p class="text-cyan-200 text-sm leading-relaxed">
-            <strong class="text-white">Backends.</strong> Hash-style <code>.where({ "field": value })</code>,
-            order/limit/offset, count, exists, aggregates, and <code>group_by</code> compile on
+            <strong class="text-white">Backends.</strong> Hash-style
+            <code>.where({ "field": value })</code> &mdash; including comparisons
+            (<code>{ "gt": 10 }</code>), <code>IN</code>, <code>LIKE</code>, and
+            <code>OR</code> &mdash; plus order/limit/offset, count, exists, aggregates,
+            and <code>group_by</code> compile on
             <strong class="text-white">SoliDB and every SQL adapter</strong> (<code>postgres</code>,
-            <code>mysql</code>, <code>sqlite</code>). The string/raw SDBQL form
+            <code>mysql</code>, <code>sqlite</code>), in both document and column mode.
+            The string/raw SDBQL form
             <code>.where("doc.age &gt;= @age")</code> is SoliDB-only &mdash; on a SQL connection it
             raises rather than guessing (use <code>Model.find_by_sql</code> for a raw query there).
-            <code>.join</code> and <code>.having</code> now compile on SQL document tables too:
+            <code>.join</code> and <code>.having</code> compile on SQL document tables
+            and column-aware models:
             <code>.join</code> as a correlated <code>EXISTS</code>, <code>.having</code> as one
             comparison of a group key or aggregate alias against a number. See
             <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.</p>
@@ -287,6 +292,71 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
             <li><code>LET</code> subqueries + <code>MERGE</code> for eager loading</li>
         </ul>
     </div>
+
+    <h2 id="filter-operators" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Hash filter operators</h2>
+    <p class="text-gray-400 mb-6">
+        The hash form of <code class="text-cyan-400">.where</code> is not equality-only. All of the
+        behaviour below is verified per backend &mdash; the surprises are where the engines differ.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">The three value forms</h3>
+    <p class="text-gray-400 mb-4">
+        A scalar means equality, an array means <code>IN</code>, and a hash means comparisons.
+        Several operators on one field are ANDed, and several fields are ANDed.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">Order.where({
+  "status": "open",                       <span class="text-stone-500"># equality</span>
+  "total":  { "gte": 100, "lt": 500 },    <span class="text-stone-500"># both, ANDed</span>
+  "region": ["eu", "us"],                 <span class="text-stone-500"># IN</span>
+  "or": [{ "rush": true }, { "vip": true }]
+})</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8">
+        <code class="text-cyan-400">or</code> and <code class="text-cyan-400">and</code> take an
+        <strong class="text-white">array of hashes</strong> (an empty array is an error) and may nest;
+        any hash inside them is a full filter again.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Semantics worth knowing</h3>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-8">
+        <li><strong class="text-white">Ordering comparisons follow the value's type.</strong> A number compares numerically; a <strong class="text-white">string compares as text</strong>, which is what makes ISO-8601 dates work: <code class="text-cyan-400">{ "issued_at": { "gte": "2026-01-01" } }</code>.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">null</code> and missing keys.</strong> <code class="text-cyan-400">{ "f": null }</code> is <code>IS NULL</code>; <code class="text-cyan-400">{ "f": { "ne": null } }</code> is <code>IS NOT NULL</code>; any other operator against <code>null</code> is an error rather than a clause that silently never matches. A document that never had the key reads as <code>NULL</code>, so <code class="text-cyan-400">{ "nope": null }</code> matches <strong class="text-white">every</strong> row.</li>
+        <li><strong class="text-white"><code>IN</code> details.</strong> An empty list matches nothing (a false predicate, not a syntax error). A <code>null</code> element adds <code>IS NULL</code>, since SQL <code>IN</code> never matches <code>NULL</code>. Each element keeps the semantics equality would give it, so a list may mix strings and numbers.</li>
+        <li><strong class="text-white">Numbers compare differently per backend</strong> on document tables: Postgres compares <code>jsonb</code> numerically, so <code class="text-cyan-400">{ "v": 10 }</code> matches a stored <code class="text-cyan-400">10.0</code>; MySQL and SQLite compare the JSON representation, where it does not. Store numbers consistently if you filter on them.</li>
+        <li><strong class="text-white">Index interaction.</strong> String equality and string <code>IN</code> compile to the JSON <em>text</em> extract &mdash; the expression an <code class="text-cyan-400">index</code> declaration creates &mdash; so they can use it. Numeric comparisons use a numeric cast, which that index does not cover.</li>
+        <li><strong class="text-white">On column-aware models</strong> (<code class="text-cyan-400">table "orders"</code>) the same hash compiles against real columns with typed binds, so each comparison is the column's own type and ordering on a text column follows the database's collation. A field that is not a column is refused by name, listing the columns that exist.</li>
+        <li><strong class="text-white">Errors name the vocabulary.</strong> An unknown operator reports <code>gt, gte, lt, lte, eq, ne, like, ilike, in</code>; a field name that is not an identifier is refused before anything is compiled.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>like</code> / <code>ilike</code> case sensitivity</h3>
+    <p class="text-gray-400 mb-4">
+        Both need a string pattern (<code>%</code> = any run, <code>_</code> = one character). Case
+        behaviour is where the backends genuinely differ:
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Backend</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>like</code></th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>ilike</code></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4">Postgres</td><td class="py-3 px-4">case-<strong class="text-white">sensitive</strong></td><td class="py-3 px-4"><code>ILIKE</code></td></tr>
+                <tr><td class="py-3 px-4">SQLite</td><td class="py-3 px-4">case-<strong class="text-white">insensitive</strong> for ASCII (its <code>LIKE</code> is)</td><td class="py-3 px-4"><code>LOWER(x) LIKE LOWER(?)</code></td></tr>
+                <tr><td class="py-3 px-4">MySQL</td><td class="py-3 px-4">depends on the column/collation</td><td class="py-3 px-4"><code>LOWER(x) LIKE LOWER(?)</code></td></tr>
+                <tr><td class="py-3 px-4">SoliDB</td><td class="py-3 px-4">SDBQL <code>LIKE</code></td><td class="py-3 px-4">also <code>LIKE</code> &mdash; no separate case-folding</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        If case behaviour matters, use <code class="text-cyan-400">ilike</code> and get the same
+        answer everywhere.
+    </p>
 
     <h2 id="grouped" class="text-2xl font-bold text-white mb-6">Coalescing Reads (<code>grouped</code>)</h2>
     <p class="text-gray-400 mb-6">An action that reads several unrelated things pays one network round-trip per read. Wrap the reads in <code>grouped(fn() { ... })</code> and they are deferred and combined into a <strong>single</strong> request — one <code>LET … RETURN […]</code> statement that computes every subquery server-side and returns them together.</p>

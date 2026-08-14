@@ -22,6 +22,8 @@ pub struct IncludeClause {
     pub relation: RelationDef,
     pub filter: Option<String>,
     pub bind_vars: HashMap<String, serde_json::Value>,
+    /// Hash `.where` on the included relation (SQL-portable).
+    pub hash_filter: Option<crate::db::hash_filter::HashFilter>,
     pub fields: Option<Vec<String>>,
 }
 
@@ -42,6 +44,7 @@ pub struct JoinClause {
     pub relation: RelationDef,
     pub filter: Option<String>,
     pub bind_vars: HashMap<String, serde_json::Value>,
+    pub hash_filter: Option<crate::db::hash_filter::HashFilter>,
 }
 
 /// Controls how soft-deleted records are handled in queries.
@@ -99,6 +102,9 @@ pub struct QueryBuilder {
     pub collection: SymbolId,
     pub class: Option<Rc<Class>>,
     pub filter: Option<String>,
+    /// Structured hash `.where` (comparisons, IN, LIKE, OR). Set only for the
+    /// hash form; the string/SDBQL form leaves this `None`.
+    pub hash_filter: Option<crate::db::hash_filter::HashFilter>,
     pub bind_vars: HashMap<SymbolId, serde_json::Value>,
     pub order_by: Option<(SymbolId, SymbolId)>,
     pub limit_val: Option<usize>,
@@ -176,6 +182,7 @@ impl QueryBuilder {
             collection: collection_id,
             class: None,
             filter: None,
+            hash_filter: None,
             bind_vars: HashMap::new(),
             order_by: None,
             limit_val: None,
@@ -218,6 +225,7 @@ impl QueryBuilder {
             collection: collection_id,
             class: Some(class),
             filter: None,
+            hash_filter: None,
             bind_vars: HashMap::new(),
             order_by: None,
             limit_val: None,
@@ -422,6 +430,7 @@ impl QueryBuilder {
                 relation,
                 filter,
                 bind_vars,
+                hash_filter: None,
                 fields,
             };
             return;
@@ -435,6 +444,7 @@ impl QueryBuilder {
             relation,
             filter,
             bind_vars,
+            hash_filter: None,
             fields,
         });
     }
@@ -468,6 +478,7 @@ impl QueryBuilder {
                 relation,
                 filter,
                 bind_vars,
+                hash_filter: None,
             };
             return;
         }
@@ -480,6 +491,7 @@ impl QueryBuilder {
             relation,
             filter,
             bind_vars,
+            hash_filter: None,
         });
     }
 
@@ -1253,10 +1265,10 @@ fn sql_attach_includes(qb: &QueryBuilder, parents: &mut [serde_json::Value]) -> 
                 ));
             }
         }
-        if inc.filter.is_some() || !inc.bind_vars.is_empty() {
+        if inc.filter.is_some() && inc.hash_filter.is_none() {
             return Err(format!(
-                "`.includes(\"{}\", filter: …)` is SoliDB-only on SQL adapters. \
-                 See docs/sql-adapter-design.md.",
+                "`.includes(\"{}\", \"…\")` string filters are SoliDB-only. \
+                 Use a hash: `.includes(\"{0}\", {{ \"visible\": true }})`.",
                 inc.relation_name
             ));
         }
@@ -1384,7 +1396,7 @@ fn sql_include_through(
             }
         }
     }
-    let targets = if target_is_child {
+    let mut targets = if target_is_child {
         crate::db::sql::select_json_text_in(
             &source_rel.collection,
             &source_rel.foreign_key,
@@ -1393,6 +1405,9 @@ fn sql_include_through(
     } else {
         crate::db::sql::select_by_keys(&source_rel.collection, &target_keys)?
     };
+    if let Some(pred) = &inc.hash_filter {
+        targets.retain(|doc| pred.matches_json(doc));
+    }
 
     // Index the targets by whichever key links them to an intermediate row.
     let mut targets_by_link: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
@@ -1452,7 +1467,10 @@ fn sql_include_belongs_to(
             }
         }
     }
-    let related = crate::db::sql::select_by_keys(&inc.relation.collection, &keys)?;
+    let mut related = crate::db::sql::select_by_keys(&inc.relation.collection, &keys)?;
+    if let Some(pred) = &inc.hash_filter {
+        related.retain(|doc| pred.matches_json(doc));
+    }
     let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
     for doc in related {
         if let Some(k) = doc
@@ -1501,6 +1519,9 @@ fn sql_include_has_many(
                 .map(|s| s == type_val)
                 .unwrap_or(false)
         });
+    }
+    if let Some(pred) = &inc.hash_filter {
+        related.retain(|doc| pred.matches_json(doc));
     }
     let mut by_fk: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
     for doc in related {
@@ -1584,7 +1605,10 @@ fn sql_include_habtm(parents: &mut [serde_json::Value], inc: &IncludeClause) -> 
 
     // Hop 2: the targets. A target key with no row (a dangling join row) simply
     // contributes nothing, rather than a null hole in the array.
-    let targets = crate::db::sql::select_by_keys(&inc.relation.collection, &target_keys)?;
+    let mut targets = crate::db::sql::select_by_keys(&inc.relation.collection, &target_keys)?;
+    if let Some(pred) = &inc.hash_filter {
+        targets.retain(|doc| pred.matches_json(doc));
+    }
     let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
     for doc in targets {
         if let Some(k) = doc
@@ -1624,6 +1648,7 @@ fn sql_include_count(
         relation: inc.relation.clone(),
         filter: None,
         bind_vars: HashMap::new(),
+        hash_filter: None,
         fields: Some(vec!["_key".into()]),
     };
     // Temporarily attach under a private key then convert to counts.
@@ -1935,6 +1960,7 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
     };
     let mut lq = crate::db::sql::list_query_from_parts(crate::db::ListQueryParts {
         table: collection.to_string(),
+        hash_filter: qb.hash_filter.clone(),
         filter_sdbql: qb.filter.clone(),
         bind_vars,
         soft_delete: soft,
@@ -1945,6 +1971,8 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         offset: qb.offset_val,
     })?;
     lq.having = qb.having.clone();
+    // `hash_filter` rides in through `ListQueryParts` so the validation compile
+    // inside `list_query_from_parts` judges the real filter.
     lq.exists_filters = exists_filters_from_qb(qb)?;
     Ok(lq)
 }
@@ -1980,22 +2008,26 @@ fn exists_filters_from_qb(qb: &QueryBuilder) -> Result<Vec<crate::db::ExistsFilt
             ));
         }
         let mut eq_filters = std::collections::BTreeMap::new();
-        for (name, value) in &join.bind_vars {
-            eq_filters.insert(name.clone(), value.clone());
-        }
-        if crate::db::sql_compile::assert_portable_filter(join.filter.as_deref(), &eq_filters)
-            .is_err()
-        {
-            return Err(format!(
-                "`.join(\"{}\", …)` on a SQL adapter takes a hash-equality filter \
-                 (`{{ \"approved\": true }}`); a raw SDBQL filter cannot be translated.",
-                join.relation_name
-            ));
+        if join.hash_filter.is_none() {
+            for (name, value) in &join.bind_vars {
+                eq_filters.insert(name.clone(), value.clone());
+            }
+            if crate::db::sql_compile::assert_portable_filter(join.filter.as_deref(), &eq_filters)
+                .is_err()
+            {
+                return Err(format!(
+                    "`.join(\"{}\", …)` on a SQL adapter takes a hash filter \
+                     (`{{ \"approved\": true }}` or `{{ \"n\": {{ \"gt\": 1 }} }}`); \
+                     a raw SDBQL filter cannot be translated.",
+                    join.relation_name
+                ));
+            }
         }
         out.push(crate::db::ExistsFilter {
             table: join.relation.collection.clone(),
             foreign_key: join.relation.foreign_key.clone(),
             eq_filters,
+            hash_filter: join.hash_filter.clone(),
         });
     }
     Ok(out)
@@ -4266,6 +4298,7 @@ mod habtm_integration_tests {
             relation: habtm_relation(),
             filter: None,
             bind_vars: HashMap::new(),
+            hash_filter: None,
             fields,
         }
     }

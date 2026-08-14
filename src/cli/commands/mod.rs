@@ -11,8 +11,8 @@ use std::path::Path;
 use std::process;
 
 use crate::cli::args::{
-    print_usage, CloudAction, DbMigrateAction, DbSeedAction, EngineAction, EnvAction, Options,
-    VERSION,
+    print_usage, CloudAction, DbMigrateAction, DbSeedAction, EngineAction, EnvAction, JobsCommand,
+    Options, VERSION,
 };
 
 #[cfg(unix)]
@@ -367,6 +367,35 @@ fn fetch_bundle_key(url: &str, api_key: Option<&str>) -> Result<String, String> 
         return Err("key server returned an empty body".to_string());
     }
     Ok(key)
+}
+
+/// `soli jobs` / `soli worker` — standalone worker, or list/retry/cancel.
+pub fn run_jobs(cmd: &JobsCommand) {
+    use std::path::Path;
+    let result = match cmd {
+        JobsCommand::Work { folder, workers } => {
+            solilang::serve::job_worker::run_worker(Path::new(folder), *workers)
+        }
+        JobsCommand::List {
+            folder,
+            queue,
+            state,
+        } => solilang::serve::job_worker::run_list(
+            Path::new(folder),
+            queue.as_deref(),
+            state.as_deref(),
+        ),
+        JobsCommand::Retry { folder, id } => {
+            solilang::serve::job_worker::run_retry(Path::new(folder), id)
+        }
+        JobsCommand::Cancel { folder, id } => {
+            solilang::serve::job_worker::run_cancel(Path::new(folder), id)
+        }
+    };
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    }
 }
 
 pub fn run_serve(options: &crate::cli::args::ServeOptions) {
@@ -2258,6 +2287,61 @@ fn create_tarball(project_dir: &Path, dest: &std::path::Path) -> Result<(), Stri
         .map_err(|e| format!("Failed to finalize tarball: {}", e))?;
 
     Ok(())
+}
+
+/// `soli db:schema:dump` / `soli db:schema:load`.
+pub fn run_db_schema(folder: &str, connection: Option<&str>, load: bool) {
+    use std::path::PathBuf;
+    solilang::db::init_from_app_path(std::path::Path::new(folder)).ok();
+    let path = PathBuf::from(folder).join("db/schema.sql");
+    let run = || {
+        if !solilang::db::is_sql() {
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m db:schema:{} needs a SQL connection.",
+                if load { "load" } else { "dump" }
+            );
+            process::exit(1);
+        }
+        if load {
+            let dump = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m reading {}: {e}", path.display());
+                    process::exit(1);
+                }
+            };
+            match solilang::db::sql::load_schema(&dump) {
+                Ok(()) => {
+                    println!("  \x1b[32mLoaded\x1b[0m {}", path.display());
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {e}");
+                    process::exit(1);
+                }
+            }
+        } else {
+            match solilang::db::sql::dump_schema() {
+                Ok(dump) => {
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = std::fs::write(&path, dump) {
+                        eprintln!("  \x1b[31mError:\x1b[0m writing {}: {e}", path.display());
+                        process::exit(1);
+                    }
+                    println!("  \x1b[32mWrote\x1b[0m {}", path.display());
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {e}");
+                    process::exit(1);
+                }
+            }
+        }
+    };
+    match connection {
+        Some(name) => solilang::db::with_connection(name, run),
+        None => run(),
+    }
 }
 
 /// `soli db:create` / `soli db:drop` — create or drop the target database.

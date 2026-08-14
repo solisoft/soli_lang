@@ -54,6 +54,73 @@
     /**
      * Identity key for keyed reconciliation: soli-key attribute, else id.
      */
+    function parseMs(el, name) {
+        const raw = el.getAttribute(name) || el.getAttribute('data-' + name);
+        if (raw == null || raw === '') return 0;
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function resolveJsTarget(sel) {
+        if (!sel || sel === 'window') return window;
+        if (sel === 'document') return document;
+        if (sel === 'body') return document.body;
+        try {
+            return document.querySelector(sel);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function coerceAssign(raw) {
+        if (raw == null) return raw;
+        const s = String(raw);
+        if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+        if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
+        if (s === 'true') return true;
+        if (s === 'false') return false;
+        if (s === 'null') return null;
+        return s;
+    }
+
+    function collectComponentParams(element) {
+        const host = element && element.closest
+            ? element.closest('[soli-component], [data-soli-component]')
+            : null;
+        const component = host
+            ? (host.getAttribute('soli-component') || host.getAttribute('data-soli-component'))
+            : null;
+        const assigns = {};
+        if (element && element.attributes) {
+            for (const attr of element.attributes) {
+                const name = attr.name.replace(/^data-/, '');
+                if (name.startsWith('soli-assign-')) {
+                    assigns[name.slice('soli-assign-'.length)] = coerceAssign(attr.value);
+                }
+            }
+        }
+        return { component: component, assigns: assigns };
+    }
+
+    function hookName(el) {
+        return el.getAttribute('soli-hook') || el.getAttribute('data-soli-hook') || '';
+    }
+
+    function disableWithText(el) {
+        const raw = el.getAttribute('soli-disable-with');
+        if (raw != null) return raw;
+        return el.getAttribute('data-soli-disable-with');
+    }
+
+    function clearLoadingClasses(el) {
+        el.classList.remove('soli-loading');
+        const drop = [];
+        el.classList.forEach((name) => {
+            if (name.startsWith('soli-') && name.endsWith('-loading')) drop.push(name);
+        });
+        for (const name of drop) el.classList.remove(name);
+    }
+
     function nodeKey(el) {
         return el.getAttribute('soli-key') ||
                el.getAttribute('data-soli-key') ||
@@ -66,7 +133,50 @@
      * element's own attributes in sync but never touches its children.
      */
     function isIgnored(el) {
-        return el.hasAttribute('soli-ignore') || el.hasAttribute('data-soli-ignore');
+        return el.hasAttribute('soli-ignore') ||
+               el.hasAttribute('data-soli-ignore') ||
+               // Nested LiveView mount: the child socket owns this subtree.
+               el.hasAttribute('data-liveview-url');
+    }
+
+    /**
+     * Split an href into `{ href, path, query, hash }` relative to the page.
+     */
+    function hrefParts(href) {
+        try {
+            const url = new URL(href, typeof location !== 'undefined' ? location.href : 'http://local/');
+            const query = {};
+            url.searchParams.forEach((value, key) => { query[key] = value; });
+            return {
+                href: url.pathname + url.search + url.hash,
+                path: url.pathname,
+                query: query,
+                hash: url.hash || ''
+            };
+        } catch (_) {
+            return { href: String(href), path: String(href), query: {}, hash: '' };
+        }
+    }
+
+    function csrfToken() {
+        if (typeof document === 'undefined') return '';
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return (meta && meta.getAttribute('content')) || '';
+    }
+
+    function uploadMaxBytes(el) {
+        const raw = el.getAttribute('soli-upload-max') || el.getAttribute('data-soli-upload-max');
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) && n > 0 ? n : 8 * 1024 * 1024;
+    }
+
+    function toWsUrl(url) {
+        if (url && url.startsWith('/')) {
+            const protocol = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss:' : 'ws:';
+            const host = (typeof location !== 'undefined') ? location.host : 'localhost';
+            return protocol + '//' + host + url;
+        }
+        return url;
     }
 
     /**
@@ -366,6 +476,14 @@
             // Event handlers
             this.eventHandlers = {};
 
+            // Client hooks: `{ Name: { mounted, updated, destroyed, disconnected, reconnected } }`
+            // Class-level `SoliLiveView.hooks` are merged first so a page can
+            // register them before auto-connect.
+            this.hooks = Object.assign({}, SoliLiveView.hooks || {}, params.hooks || {});
+            this._hookInstances = new Map();
+            this._childViews = new Map();
+            this._onPopState = null;
+
             // Bind methods
             this.connect = this.connect.bind(this);
             this.disconnect = this.disconnect.bind(this);
@@ -417,6 +535,14 @@
          * Disconnect from the LiveSocket
          */
         disconnect() {
+            if (this._onPopState) {
+                window.removeEventListener('popstate', this._onPopState);
+                this._onPopState = null;
+            }
+            for (const child of this._childViews.values()) {
+                try { child.disconnect(); } catch (_) { /* ignore */ }
+            }
+            this._childViews.clear();
             if (this.socket) {
                 this.socket.close();
                 this.socket = null;
@@ -434,6 +560,7 @@
             this.reconnectAttempts = 0;
             this.startHeartbeat();
             this.emit('stateChanged', State.CONNECTED);
+            this._callHooks('reconnected');
 
             // Send connect message with params
             this.send({
@@ -450,6 +577,7 @@
             this.stopHeartbeat();
             // The shadow is only valid for the connection that produced it.
             this.lastHtml = null;
+            this._callHooks('disconnected');
             this.emit('stateChanged', State.DISCONNECTED);
             this.emit('close', event);
 
@@ -492,7 +620,23 @@
                     break;
 
                 case 'redirect':
+                    this.clearLoading();
                     window.location.href = msg.url;
+                    break;
+
+                case 'url':
+                    this.applyUrl(msg.url, !!msg.replace);
+                    this.emit('url', msg.url);
+                    break;
+
+                case 'live':
+                    this.clearLoading();
+                    this.swapLive(msg.url, msg.href || null);
+                    break;
+
+                case 'js':
+                    this.applyJs(msg.cmds || msg.commands || []);
+                    this.emit('js', msg.cmds || msg.commands);
                     break;
 
                 case 'error':
@@ -518,6 +662,9 @@
             const root = this.getRoot();
             if (!root) return;
             morph(root, html);
+            this.clearLoading();
+            this.syncHooks();
+            this.mountChildren();
             this.emit('morphed', root);
             this.bindEvents();
         }
@@ -573,6 +720,9 @@
                 }
             }
             // Bind soli-* handlers on freshly inserted nodes.
+            this.clearLoading();
+            this.syncHooks();
+            this.mountChildren();
             this.bindEvents();
         }
 
@@ -595,7 +745,10 @@
                 this.resync();
                 return;
             }
-            if (patches.length === 0) return;
+            if (patches.length === 0) {
+                this.clearLoading();
+                return;
+            }
 
             for (const patch of patches) {
                 if (patch.type === 'splice') {
@@ -626,6 +779,9 @@
                 morph(root, this.lastHtml);
                 this.emit('morphed', root);
             }
+            this.clearLoading();
+            this.syncHooks();
+            this.mountChildren();
             this.bindEvents();
         }
 
@@ -677,9 +833,18 @@
             // Input change handlers - support both soli-change and data-soli-change
             document.addEventListener('input', (e) => {
                 const input = e.target.closest('[soli-change], [data-soli-change]');
-                if (input && owns(input)) {
+                if (input && owns(input) &&
+                    !input.hasAttribute('soli-upload') &&
+                    !input.hasAttribute('data-soli-upload')) {
                     const handler = input.getAttribute('soli-change') || input.getAttribute('data-soli-change');
                     this.sendEvent('change', handler, input);
+                }
+            });
+
+            document.addEventListener('change', (e) => {
+                const input = e.target.closest('[soli-upload], [data-soli-upload]');
+                if (input && owns(input) && input.files && input.files.length) {
+                    this.handleUpload(input);
                 }
             });
 
@@ -725,12 +890,142 @@
                     });
                 }
             });
+
+            // Window-level bindings: put `soli-window-keydown` / `soli-window-keyup`
+            // on any element inside this LiveView (often the root).
+            window.addEventListener('keydown', (e) => {
+                const el = root.querySelector('[soli-window-keydown], [data-soli-window-keydown]');
+                if (!el || !owns(el)) return;
+                const handler = el.getAttribute('soli-window-keydown') ||
+                                el.getAttribute('data-soli-window-keydown');
+                this.sendEvent('keydown', handler, el, {
+                    key: e.key,
+                    code: e.code,
+                    shiftKey: e.shiftKey,
+                    ctrlKey: e.ctrlKey,
+                    altKey: e.altKey
+                });
+            });
+            window.addEventListener('keyup', (e) => {
+                const el = root.querySelector('[soli-window-keyup], [data-soli-window-keyup]');
+                if (!el || !owns(el)) return;
+                const handler = el.getAttribute('soli-window-keyup') ||
+                                el.getAttribute('data-soli-window-keyup');
+                this.sendEvent('keyup', handler, el, {
+                    key: e.key,
+                    code: e.code
+                });
+            });
+
+            // Live navigation: a click on [soli-href] does a full page load
+            // (the server-side `{ "redirect": url }` form is the same idea).
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('[soli-href], [data-soli-href]');
+                if (link && owns(link) && !e.metaKey && !e.ctrlKey && e.button === 0) {
+                    const href = link.getAttribute('soli-href') ||
+                                 link.getAttribute('data-soli-href');
+                    if (href) {
+                        e.preventDefault();
+                        window.location.href = href;
+                    }
+                }
+            });
+
+            // Swap the page-root LiveView to another component socket
+            // without a full load. Optional href/soli-patch updates the URL.
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('[soli-live], [data-soli-live]');
+                if (link && owns(link) && !e.metaKey && !e.ctrlKey && e.button === 0) {
+                    const liveUrl = link.getAttribute('soli-live') ||
+                                    link.getAttribute('data-soli-live');
+                    if (liveUrl) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const href = link.getAttribute('soli-patch') ||
+                                     link.getAttribute('data-soli-patch') ||
+                                     link.getAttribute('href');
+                        this.swapLive(liveUrl, href);
+                    }
+                }
+            });
+
+            // In-socket navigation: update the URL and tell the current
+            // LiveView (`event == "patch"`). Meta/ctrl-click still opens a tab.
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('[soli-patch], [data-soli-patch]');
+                if (link && owns(link) && !e.metaKey && !e.ctrlKey && e.button === 0) {
+                    if (link.hasAttribute('soli-live') || link.hasAttribute('data-soli-live')) {
+                        return;
+                    }
+                    const href = link.getAttribute('soli-patch') ||
+                                 link.getAttribute('data-soli-patch');
+                    if (href) {
+                        e.preventDefault();
+                        this.applyUrl(href, false);
+                        this.sendPatchEvent(href);
+                    }
+                }
+            });
+
+            if (!this._onPopState) {
+                this._onPopState = () => {
+                    this.sendPatchEvent(window.location.href);
+                };
+                window.addEventListener('popstate', this._onPopState);
+            }
+
+            // Click outside: any `[soli-click-away]` that does not contain
+            // the event target fires its handler (dropdowns, popovers).
+            document.addEventListener('click', (e) => {
+                const nodes = root.querySelectorAll('[soli-click-away], [data-soli-click-away]');
+                for (const el of nodes) {
+                    if (!owns(el) || el.contains(e.target)) continue;
+                    const handler = el.getAttribute('soli-click-away') ||
+                                    el.getAttribute('data-soli-click-away');
+                    if (handler) this.sendEvent('click-away', handler, el);
+                }
+            });
         }
 
         /**
-         * Send an event to the server
+         * Send an event to the server, honoring `soli-debounce` / `soli-throttle`
+         * (milliseconds) on the triggering element.
          */
         sendEvent(eventType, handlerName, element, extraData = {}) {
+            const debounceMs = parseMs(element, 'soli-debounce');
+            const throttleMs = parseMs(element, 'soli-throttle');
+            const key = eventType + '|' + handlerName;
+            if (!this._eventTimers) this._eventTimers = new WeakMap();
+
+            if (debounceMs > 0) {
+                let bag = this._eventTimers.get(element);
+                if (!bag) {
+                    bag = {};
+                    this._eventTimers.set(element, bag);
+                }
+                if (bag[key]) clearTimeout(bag[key]);
+                bag[key] = setTimeout(() => {
+                    bag[key] = null;
+                    this._sendEventNow(eventType, handlerName, element, extraData);
+                }, debounceMs);
+                return;
+            }
+
+            if (throttleMs > 0) {
+                let bag = this._eventTimers.get(element);
+                if (!bag) {
+                    bag = {};
+                    this._eventTimers.set(element, bag);
+                }
+                const now = Date.now();
+                if (bag[key + '|until'] && now < bag[key + '|until']) return;
+                bag[key + '|until'] = now + throttleMs;
+            }
+
+            this._sendEventNow(eventType, handlerName, element, extraData);
+        }
+
+        _sendEventNow(eventType, handlerName, element, extraData = {}) {
             // Collect soli-value-* attributes (both with and without data- prefix)
             const values = {};
             for (const attr of element.attributes) {
@@ -750,6 +1045,10 @@
             const name = element.getAttribute('name') || null;
             const value = element.value !== undefined ? element.value : null;
 
+            const nested = collectComponentParams(element);
+
+            this.markLoading(element, eventType);
+
             this.send({
                 type: 'event',
                 event: handlerName,
@@ -758,10 +1057,351 @@
                     ...values,
                     ...extraData,
                     ...(name && { name }),
-                    ...(value !== null && { value })
+                    ...(value !== null && { value }),
+                    ...(nested.component && { _component: nested.component }),
+                    ...(Object.keys(nested.assigns).length && { _assigns: nested.assigns })
                 },
                 target: target
             });
+        }
+
+        /**
+         * Mark an element as in-flight: `soli-loading` + `soli-<event>-loading`,
+         * and optionally swap its label via `soli-disable-with`.
+         */
+        markLoading(element, eventType) {
+            if (!element || !element.classList) return;
+            element.classList.add('soli-loading');
+            if (eventType) element.classList.add('soli-' + eventType + '-loading');
+            const text = disableWithText(element);
+            if (text == null) return;
+            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                if (element._soliOrigValue === undefined) element._soliOrigValue = element.value;
+                element.value = text;
+            } else {
+                if (element._soliOrigText === undefined) element._soliOrigText = element.textContent;
+                element.textContent = text;
+            }
+            element._soliDisabledByUs = true;
+            element.disabled = true;
+            element.setAttribute('disabled', '');
+        }
+
+        /**
+         * Undo in-flight loading after a patch, empty diff, or stream.
+         * A morph already restores server-rendered text; this covers the
+         * empty-patch path where the DOM is otherwise untouched.
+         */
+        clearLoading() {
+            const root = this.getRoot();
+            if (!root || !root.querySelectorAll) return;
+            const nodes = root.querySelectorAll('.soli-loading');
+            for (const el of nodes) {
+                clearLoadingClasses(el);
+                if (el._soliOrigText !== undefined) {
+                    el.textContent = el._soliOrigText;
+                    delete el._soliOrigText;
+                }
+                if (el._soliOrigValue !== undefined) {
+                    el.value = el._soliOrigValue;
+                    delete el._soliOrigValue;
+                }
+                if (el._soliDisabledByUs) {
+                    el.disabled = false;
+                    el.removeAttribute('disabled');
+                    delete el._soliDisabledByUs;
+                }
+            }
+        }
+
+        /**
+         * Mount / update / destroy `soli-hook` elements inside the live root.
+         */
+        syncHooks() {
+            const root = this.getRoot();
+            if (!root || !root.querySelectorAll) return;
+            const seen = new Set();
+            const nodes = root.querySelectorAll('[soli-hook], [data-soli-hook]');
+            for (const el of nodes) {
+                const name = hookName(el);
+                if (!name) continue;
+                const def = this.hooks[name];
+                if (!def) {
+                    console.warn('[LiveView] unknown hook:', name);
+                    continue;
+                }
+                seen.add(el);
+                let ctx = this._hookInstances.get(el);
+                if (!ctx) {
+                    ctx = this._makeHookContext(el, def);
+                    this._hookInstances.set(el, ctx);
+                    if (typeof def.mounted === 'function') {
+                        try { def.mounted.call(ctx); } catch (e) {
+                            console.error('[LiveView] hook mounted failed:', name, e);
+                        }
+                    }
+                } else if (typeof def.updated === 'function') {
+                    try { def.updated.call(ctx); } catch (e) {
+                        console.error('[LiveView] hook updated failed:', name, e);
+                    }
+                }
+            }
+            for (const [el, ctx] of Array.from(this._hookInstances.entries())) {
+                if (seen.has(el) && root.contains(el)) continue;
+                const def = ctx.__def;
+                if (def && typeof def.destroyed === 'function') {
+                    try { def.destroyed.call(ctx); } catch (e) {
+                        console.error('[LiveView] hook destroyed failed:', e);
+                    }
+                }
+                this._hookInstances.delete(el);
+            }
+        }
+
+        _makeHookContext(el, def) {
+            const lv = this;
+            return {
+                el: el,
+                liveView: lv,
+                __def: def,
+                pushEvent(event, payload) {
+                    lv.send({
+                        type: 'event',
+                        event: event,
+                        liveview_id: lv.liveviewId,
+                        params: payload || {},
+                        target: 'live'
+                    });
+                }
+            };
+        }
+
+        _callHooks(fnName) {
+            for (const ctx of this._hookInstances.values()) {
+                const fn = ctx.__def && ctx.__def[fnName];
+                if (typeof fn !== 'function') continue;
+                try { fn.call(ctx); } catch (e) {
+                    console.error('[LiveView] hook ' + fnName + ' failed:', e);
+                }
+            }
+        }
+
+        /**
+         * Update the address bar without leaving the socket. Does not fire
+         * `popstate` — the caller already told the server, or the server
+         * already has the new state.
+         */
+        /**
+         * Disconnect this socket and connect `url` (`/live/socket/<name>`)
+         * on the same root element. `href` optionally updates the address bar.
+         */
+        swapLive(url, href) {
+            if (!url) return;
+            for (const child of this._childViews.values()) {
+                try { child.disconnect(); } catch (_) { /* ignore */ }
+            }
+            this._childViews.clear();
+            for (const ctx of this._hookInstances.values()) {
+                const fn = ctx.__def && ctx.__def.destroyed;
+                if (typeof fn === 'function') {
+                    try { fn.call(ctx); } catch (e) {
+                        console.error('[LiveView] hook destroyed failed:', e);
+                    }
+                }
+            }
+            this._hookInstances.clear();
+            if (this.socket) {
+                this.socket.onclose = null;
+                this.socket.onerror = null;
+                try { this.socket.close(); } catch (_) { /* ignore */ }
+                this.socket = null;
+            }
+            this.stopHeartbeat();
+            this.lastHtml = null;
+            this.liveviewId = null;
+            this.state = State.DISCONNECTED;
+            this.socketUrl = toWsUrl(url);
+            const root = this.getRoot();
+            if (root) {
+                let path = String(url);
+                try {
+                    if (/^wss?:/i.test(path)) path = new URL(path).pathname;
+                } catch (_) { /* keep path */ }
+                root.setAttribute('data-liveview-url', path);
+            }
+            if (href) this.applyUrl(href, false);
+            this.connect();
+        }
+
+        applyUrl(href, replace) {
+            if (!href || typeof history === 'undefined') return;
+            const url = String(href);
+            try {
+                if (replace) history.replaceState({}, '', url);
+                else history.pushState({}, '', url);
+            } catch (e) {
+                console.warn('[LiveView] history update failed:', e);
+            }
+        }
+
+        handleUpload(input) {
+            const handler = input.getAttribute('soli-upload') ||
+                            input.getAttribute('data-soli-upload');
+            if (!handler) return;
+            const max = uploadMaxBytes(input);
+            const field = input.getAttribute('name') || 'file';
+            const list = Array.from(input.files || []);
+            input.classList.remove('soli-upload-error');
+            input.classList.add('soli-upload-loading');
+            this.markLoading(input, 'upload');
+
+            const sendOne = (file) => new Promise((resolve, reject) => {
+                if (file.size > max) {
+                    reject(new Error('file exceeds soli-upload-max (' + max + ' bytes)'));
+                    return;
+                }
+                const body = new FormData();
+                body.append(field, file, file.name);
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/live/upload');
+                const token = csrfToken();
+                if (token) xhr.setRequestHeader('X-CSRF-Token', token);
+                xhr.upload.onprogress = (ev) => {
+                    if (!ev.lengthComputable) return;
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    input.setAttribute('data-soli-progress', String(pct));
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try { resolve(JSON.parse(xhr.responseText)); }
+                        catch (err) { reject(err); }
+                    } else {
+                        let msg = 'upload failed: ' + xhr.status;
+                        try {
+                            const parsed = JSON.parse(xhr.responseText);
+                            if (parsed && parsed.error) msg = parsed.error;
+                        } catch (_) { /* keep msg */ }
+                        reject(new Error(msg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('upload network error'));
+                xhr.send(body);
+            });
+
+            Promise.all(list.map(sendOne)).then((files) => {
+                input.classList.remove('soli-upload-loading');
+                input.removeAttribute('data-soli-progress');
+                input.value = '';
+                this.sendEvent('upload', handler, input, {
+                    file: files[0] || null,
+                    files: files
+                });
+            }).catch((err) => {
+                input.classList.remove('soli-upload-loading');
+                input.classList.add('soli-upload-error');
+                this.sendEvent('upload', handler, input, {
+                    error: String(err && err.message ? err.message : err)
+                });
+            });
+        }
+
+        sendPatchEvent(href) {
+            const parts = hrefParts(href);
+            this.send({
+                type: 'event',
+                event: 'patch',
+                liveview_id: this.liveviewId,
+                params: parts,
+                target: 'live'
+            });
+        }
+
+        /**
+         * Connect nested `[data-liveview-url]` mounts inside this view, and
+         * disconnect any whose element was removed.
+         */
+        mountChildren() {
+            const root = this.getRoot();
+            if (!root || !root.querySelectorAll) return;
+            const nodes = root.querySelectorAll('[data-liveview-url]');
+            const seen = new Set();
+            for (const el of nodes) {
+                if (el === root) continue;
+                if (el.hasAttribute('data-liveview-manual')) continue;
+                seen.add(el);
+                if (this._childViews.has(el)) continue;
+                const already = SoliLiveView.instances.some((lv) => lv.rootElement === el);
+                if (already) continue;
+                const child = global.live(toWsUrl(el.getAttribute('data-liveview-url')), {
+                    rootElement: el,
+                    hooks: this.hooks
+                });
+                this._childViews.set(el, child);
+            }
+            for (const [el, child] of Array.from(this._childViews.entries())) {
+                if (seen.has(el) && root.contains(el)) continue;
+                try { child.disconnect(); } catch (_) { /* ignore */ }
+                this._childViews.delete(el);
+                const list = SoliLiveView.instances;
+                const idx = list.indexOf(child);
+                if (idx >= 0) list.splice(idx, 1);
+            }
+        }
+
+        /**
+         * Run a list of safe JS commands from the server. Unknown ops are
+         * skipped — there is no eval path.
+         */
+        applyJs(cmds) {
+            if (!Array.isArray(cmds)) return;
+            for (const cmd of cmds) {
+                if (!cmd || typeof cmd !== 'object') continue;
+                const op = (cmd.op || cmd.kind || '').toLowerCase();
+                const target = resolveJsTarget(cmd.to || cmd.target);
+                try {
+                    switch (op) {
+                        case 'add_class':
+                            if (target && cmd.class) target.classList.add(...String(cmd.class).split(/\s+/));
+                            break;
+                        case 'remove_class':
+                            if (target && cmd.class) target.classList.remove(...String(cmd.class).split(/\s+/));
+                            break;
+                        case 'toggle_class':
+                            if (target && cmd.class) {
+                                for (const c of String(cmd.class).split(/\s+/)) target.classList.toggle(c);
+                            }
+                            break;
+                        case 'set_attr':
+                            if (target && cmd.name) target.setAttribute(cmd.name, cmd.value == null ? '' : String(cmd.value));
+                            break;
+                        case 'remove_attr':
+                            if (target && cmd.name) target.removeAttribute(cmd.name);
+                            break;
+                        case 'focus':
+                            if (target && typeof target.focus === 'function') target.focus();
+                            break;
+                        case 'dispatch': {
+                            if (!target || !cmd.event) break;
+                            const ev = new CustomEvent(String(cmd.event), {
+                                bubbles: true,
+                                detail: cmd.detail == null ? null : cmd.detail
+                            });
+                            target.dispatchEvent(ev);
+                            break;
+                        }
+                        case 'navigate':
+                            if (cmd.url) window.location.href = String(cmd.url);
+                            break;
+                        case 'patch':
+                            if (cmd.url) this.applyUrl(cmd.url, !!cmd.replace);
+                            break;
+                        default:
+                            console.warn('[LiveView] unknown js op:', op);
+                    }
+                } catch (e) {
+                    console.error('[LiveView] js command failed:', e, cmd);
+                }
+            }
         }
 
         /**
@@ -855,10 +1495,19 @@
 
     // Export
     global.SoliLiveView = SoliLiveView;
+    SoliLiveView.hooks = SoliLiveView.hooks || {};
 
     // Expose the pure pieces for testing.
     global.SoliLiveView.morph = morph;
     global.SoliLiveView.spliceLines = spliceLines;
+    global.SoliLiveView.parseMs = parseMs;
+    global.SoliLiveView.resolveJsTarget = resolveJsTarget;
+    global.SoliLiveView.hookName = hookName;
+    global.SoliLiveView.hrefParts = hrefParts;
+    global.SoliLiveView.toWsUrl = toWsUrl;
+    global.SoliLiveView.uploadMaxBytes = uploadMaxBytes;
+    global.SoliLiveView.collectComponentParams = collectComponentParams;
+    global.SoliLiveView.coerceAssign = coerceAssign;
 
     // Track all LiveView instances
     global.SoliLiveView.instances = [];

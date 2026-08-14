@@ -14,4 +14,6 @@ get("/broken", "pages#broken")
 
 # LiveView: the socket endpoint plus the page that mounts it.
 router_live("counter", "live#counter")
+router_live("badge", "live#badge")
+router_live("about", "live#about")
 get("/live", "pages#live")

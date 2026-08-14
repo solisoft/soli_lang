@@ -69,11 +69,14 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, "mailers");
 Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 });
 
 Job.cancel(job_id);              # true when removed; raises if already running
+Job.retry(job_id);               # failed/dead → pending; keeps attempts + last_error
 jobs = Job.list("default");      # rows in the "default" queue (omit for all)
 queue_names = Job.queues();      # queues with non-terminal work
 ```
 
-`Job.cancel` only applies to work that hasn't started. A `running` job holds a worker and a lease, so cancelling it raises rather than pretending to stop it.
+`Job.cancel` only applies to work that hasn't started (`scheduled`, `pending`, `failed`). A `running` job holds a worker and a lease, so cancelling it raises rather than pretending to stop it.
+
+`Job.retry` puts a `failed` or `dead` row back on the queue immediately. It keeps `attempts` and `last_error` so the dashboard still shows why it died. Other states raise.
 
 ## Webhook Jobs (Arbitrary URLs)
 
@@ -198,7 +201,7 @@ Set these env vars (typically in `.env`):
 | `SOLI_WEBHOOK_SECRET`     | Default HMAC key for **outgoing** `Webhook.*` deliveries                      | unset     |
 | `SOLI_JOB_VIEW_HELPERS`   | Set `0` to skip loading view helpers/i18n into job interpreters (saves memory) | enabled   |
 
-The engine starts with `soli serve` when the app has jobs — `app/jobs/` exists, or a mailer is configured (so `deliver_later` works). `SOLI_JOB_WORKERS=0` disables it in that process; enqueued rows simply wait for a process that does run workers.
+The engine starts with `soli serve` when the app has jobs — `app/jobs/` exists, or a mailer is configured (so `deliver_later` works). `SOLI_JOB_WORKERS=0` disables it in that process; enqueued rows wait for a process that does run workers — typically `soli jobs` (see [Standalone worker](#standalone-worker)).
 
 There is **no** callback URL and **no** required secret any more. `SOLI_JOBS_CALLBACK_URL`, `SOLI_JOBS_SECRET`, and `SOLI_JOBS_DATABASE` are no longer read; `SOLI_WEBHOOK_SECRET` now only signs outgoing webhook deliveries.
 
@@ -209,7 +212,7 @@ There is **no** callback URL and **no** required secret any more. `SOLI_JOBS_CAL
 3. Claimed jobs go to the worker pool, where a fully-loaded interpreter (models, services, mailers, templates) calls `WelcomeEmailJob.perform(args)`.
 4. The worker reports the outcome: success marks the row `done`; a raised error, a panic, or a non-2xx webhook response marks it `failed` with the next retry time, or `dead` once the retry budget is spent.
 
-Because claiming is atomic, several `soli serve` processes can share one database and one queue without ever running the same job twice concurrently. Cron works the same way: the poller claims a due schedule with a compare-and-swap on its `next_run_at`, so exactly one process enqueues each occurrence.
+Because claiming is atomic, several `soli serve` **or** `soli jobs` processes can share one database and one queue without ever running the same job twice concurrently. Cron works the same way: the poller claims a due schedule with a compare-and-swap on its `next_run_at`, so exactly one process enqueues each occurrence.
 
 Job code never runs on a web-server worker, so a slow handler cannot delay request serving.
 
@@ -220,6 +223,30 @@ Job code never runs on a web-server worker, so a slow handler cannot delay reque
 - **Leases recover crashes.** A `running` row whose `locked_until` has passed is claimable again, so a job whose process was killed is picked up by the next poller instead of being stranded. The poller heartbeats the leases of in-flight jobs each tick, so a long job is not reclaimed while it is still running.
 - **At-least-once semantics.** A job that outlives its lease (longer than `SOLI_JOBS_LEASE_SECS` without a heartbeat, e.g. a hard-frozen process) can be picked up elsewhere. **Write handlers to be idempotent**, and raise `SOLI_JOBS_LEASE_SECS` if your jobs are long-running.
 - **Completed rows are pruned** after `SOLI_JOBS_RETENTION_SECS`; `failed` and `dead` rows are kept for inspection.
+
+## Standalone worker
+
+`soli serve` can run the poller next to HTTP. To scale job capacity separately — or to keep a long job from sharing a process with request serving — set `SOLI_JOB_WORKERS=0` on the web process and run a dedicated worker:
+
+```bash
+soli jobs                  # current directory, SOLI_JOB_WORKERS or 1 slot
+soli jobs ./myapp --workers 4
+soli worker ./myapp        # alias
+```
+
+The worker loads models, services, mailers, and `app/jobs/`, registers `static cron` schedules, then claims and runs work until Ctrl-C / SIGTERM. It opens no HTTP port. Several workers can share one queue; claiming is still atomic.
+
+Inspect and operate the queue without starting HTTP:
+
+```bash
+soli jobs list                        # every queue
+soli jobs list --queue mailers
+soli jobs list --state failed
+soli jobs retry <id>
+soli jobs cancel <id>
+```
+
+In `--dev`, the same operations are a page: `/__soli/jobs` (linked from the dev-bar tools panel). Cancel pending/scheduled/failed rows; retry failed/dead ones. Production operators use the CLI (or `Job.list` / `Job.retry` / `Job.cancel` from app code) — the dashboard is dev-only.
 
 ## Long-Running Jobs
 

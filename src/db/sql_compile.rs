@@ -18,7 +18,7 @@ pub enum Dialect {
 ///
 /// Compiled as a correlated `EXISTS` subquery rather than a real join, so the
 /// parent rows stay unduplicated and the existing `SELECT doc` shape is untouched.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExistsFilter {
     /// The child collection to look in.
     pub table: String,
@@ -26,6 +26,8 @@ pub struct ExistsFilter {
     pub foreign_key: String,
     /// Equality filters on the child, in the portable hash shape.
     pub eq_filters: BTreeMap<String, serde_json::Value>,
+    /// Structured hash filter on the child (comparisons, IN, LIKE, OR).
+    pub hash_filter: Option<super::hash_filter::HashFilter>,
 }
 
 /// Soft-delete handling for SQL emission (mirrors model SoftDeleteMode).
@@ -41,6 +43,9 @@ pub enum SoftDeleteMode {
 pub struct ListQuery {
     pub table: String,
     pub eq_filters: BTreeMap<String, serde_json::Value>,
+    /// Structured hash `.where` (comparisons, IN, LIKE, OR). When set, this is
+    /// compiled instead of flattening binds into equalities.
+    pub hash_filter: Option<super::hash_filter::HashFilter>,
     pub filter_sdbql: Option<String>,
     /// Post-`GROUP BY` comparison, in the portable `alias op number` shape.
     pub having: Option<String>,
@@ -58,6 +63,10 @@ pub struct ListQuery {
 /// backends can be feature-gated independently).
 pub struct ListQueryParts {
     pub table: String,
+    /// Structured hash `.where`. Passed in rather than attached afterwards: the
+    /// validation compile below must see the filter that will actually run, or it
+    /// judges the legacy `filter_sdbql` + binds pair that the IR replaces.
+    pub hash_filter: Option<super::hash_filter::HashFilter>,
     pub filter_sdbql: Option<String>,
     pub bind_vars: HashMap<String, serde_json::Value>,
     pub soft_delete: SoftDeleteMode,
@@ -70,9 +79,13 @@ pub struct ListQueryParts {
 
 /// Build a ListQuery IR (dialect-agnostic filters); validates with `dialect`.
 pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<ListQuery, String> {
+    // A structured filter supersedes the legacy pair: its binds are compiled from
+    // the IR, so emitting them again as equalities would double them, and the
+    // portable-shape assert does not apply to it.
+    let structured = parts.hash_filter.is_some();
     let mut eq_filters = BTreeMap::new();
     if let Some(ref f) = parts.filter_sdbql {
-        if !f.trim().is_empty() {
+        if !structured && !f.trim().is_empty() {
             for (k, v) in &parts.bind_vars {
                 if k.starts_with("__soli_") {
                     continue;
@@ -84,7 +97,8 @@ pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<
     let q = ListQuery {
         table: parts.table,
         eq_filters,
-        filter_sdbql: parts.filter_sdbql,
+        hash_filter: parts.hash_filter,
+        filter_sdbql: if structured { None } else { parts.filter_sdbql },
         having: None,
         exists_filters: Vec::new(),
         soft_delete: parts.soft_delete,
@@ -131,7 +145,7 @@ pub enum SqlAgg {
 }
 
 impl Dialect {
-    fn ph(self, n: usize) -> String {
+    pub(crate) fn ph(self, n: usize) -> String {
         match self {
             Dialect::Postgres => format!("${n}"),
             // SQLite accepts `?` positionally, like MySQL.
@@ -155,14 +169,18 @@ impl Dialect {
         })
     }
 
-    fn json_eq(self, field: &str, ph: &str) -> String {
+    pub(crate) fn json_eq(self, field: &str, ph: &str) -> String {
+        self.json_eq_on("doc", field, ph)
+    }
+
+    pub(crate) fn json_eq_on(self, doc: &str, field: &str, ph: &str) -> String {
         match self {
-            Dialect::Postgres => format!("(doc->'{field}') = {ph}"),
-            Dialect::Mysql => format!("JSON_EXTRACT(doc, '$.{field}') = CAST({ph} AS JSON)"),
+            Dialect::Postgres => format!("({doc}->'{field}') = {ph}"),
+            Dialect::Mysql => format!("JSON_EXTRACT({doc}, '$.{field}') = CAST({ph} AS JSON)"),
             // `->` yields JSON text on both sides, so a JSON-encoded bind
             // compares like it does on the other two adapters — including a
             // JSON null, which `->>` would flatten to SQL NULL and never match.
-            Dialect::Sqlite => format!("(doc -> '$.{field}') = json({ph})"),
+            Dialect::Sqlite => format!("({doc} -> '$.{field}') = json({ph})"),
         }
     }
 
@@ -198,14 +216,18 @@ impl Dialect {
     }
 
     /// Numeric extract for SUM/AVG/MIN/MAX over a JSON field.
-    fn json_num(self, field: &str) -> String {
+    pub(crate) fn json_num(self, field: &str) -> String {
+        self.json_num_on("doc", field)
+    }
+
+    pub(crate) fn json_num_on(self, doc: &str, field: &str) -> String {
         match self {
-            Dialect::Postgres => format!("(doc->>'{field}')::float8"),
+            Dialect::Postgres => format!("({doc}->>'{field}')::float8"),
             Dialect::Mysql => {
-                format!("CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) AS DECIMAL(30,10))")
+                format!("CAST(JSON_UNQUOTE(JSON_EXTRACT({doc}, '$.{field}')) AS DECIMAL(30,10))")
             }
             // SQLite has no exact numeric type; REAL is the widest it offers.
-            Dialect::Sqlite => format!("CAST((doc ->> '$.{field}') AS REAL)"),
+            Dialect::Sqlite => format!("CAST(({doc} ->> '$.{field}') AS REAL)"),
         }
     }
 
@@ -297,7 +319,9 @@ pub fn compile_select(q: &ListQuery) -> Result<CompiledSql, String> {
 }
 
 pub fn compile_select_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     let table = d.quote_ident(&q.table)?;
     let mut sql = format!("SELECT doc FROM {table}");
     let (where_sql, mut params) = compile_where(d, q)?;
@@ -323,7 +347,9 @@ pub fn compile_count(q: &ListQuery) -> Result<CompiledSql, String> {
 }
 
 pub fn compile_count_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     let table = d.quote_ident(&q.table)?;
     let mut sql = format!("SELECT {} FROM {table}", d.count_expr());
     let (where_sql, params) = compile_where(d, q)?;
@@ -354,7 +380,9 @@ pub fn compile_aggregate_d(
     func: SqlAgg,
     field: &str,
 ) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     if !matches!(func, SqlAgg::Count) {
         validate_field(field)?;
     }
@@ -376,7 +404,9 @@ pub fn compile_aggregate_d(
 }
 
 pub fn compile_delete_all_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     let table = d.quote_ident(&q.table)?;
     let mut sql = format!("DELETE FROM {table}");
     let (where_sql, params) = compile_where(d, q)?;
@@ -528,7 +558,9 @@ pub fn compile_group_by_d(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     if group_fields.is_empty() {
         return Err("group_by requires at least one field".into());
     }
@@ -613,7 +645,9 @@ pub fn compile_update_all_d(
     q: &ListQuery,
     patch: &serde_json::Value,
 ) -> Result<CompiledSql, String> {
-    assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    if q.hash_filter.is_none() {
+        assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
+    }
     let table = d.quote_ident(&q.table)?;
     let mut params = Vec::new();
     params.push(SqlBind::Json(patch.clone()));
@@ -680,6 +714,13 @@ fn compile_where_offset(
 ) -> Result<(String, Vec<SqlBind>), String> {
     let mut parts = Vec::new();
     let mut params = Vec::new();
+    if let Some(pred) = &q.hash_filter {
+        let sql =
+            super::hash_filter::compile_doc_pred_on(d, None, pred, &mut params, param_offset)?;
+        if !sql.is_empty() {
+            parts.push(sql);
+        }
+    }
     for (field, value) in &q.eq_filters {
         validate_field(field)?;
         let n = param_offset + params.len() + 1;
@@ -721,6 +762,18 @@ fn compile_where_offset(
             "{} = {parent}._key",
             d.json_text_on(&child, &exists.foreign_key)
         )];
+        if let Some(pred) = &exists.hash_filter {
+            let extra = super::hash_filter::compile_doc_pred_on(
+                d,
+                Some(&child),
+                pred,
+                &mut params,
+                param_offset,
+            )?;
+            if !extra.is_empty() {
+                inner.push(extra);
+            }
+        }
         for (field, value) in &exists.eq_filters {
             validate_field(field)?;
             let n = param_offset + params.len() + 1;
@@ -758,7 +811,7 @@ fn compile_where_offset(
     Ok((parts.join(" AND "), params))
 }
 
-fn validate_field(field: &str) -> Result<(), String> {
+pub(crate) fn validate_field(field: &str) -> Result<(), String> {
     if field.is_empty()
         || !field.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         || field.chars().next().is_some_and(|c| c.is_ascii_digit())
@@ -884,6 +937,7 @@ mod tests {
         ListQuery {
             table: "users".into(),
             eq_filters: eq,
+            hash_filter: None,
             filter_sdbql: Some("doc.status == @status".into()),
             having: None,
             exists_filters: Vec::new(),
@@ -894,6 +948,67 @@ mod tests {
             limit: Some(10),
             offset: Some(5),
         }
+    }
+
+    #[test]
+    fn a_structured_filter_survives_the_validation_compile() {
+        use crate::db::hash_filter::HashFilter;
+
+        // The regression this pins: `list_query_from_parts` ends with a
+        // validation compile, so a structured filter has to be present *then* —
+        // attaching it afterwards left the portable-shape assert judging the
+        // legacy `filter_sdbql` + binds pair that the IR replaces, and a plain
+        // `.where({ "status": "open" })` failed as "raw SDBQL".
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("status".to_string(), serde_json::json!("open"));
+        let parts = ListQueryParts {
+            table: "posts".into(),
+            hash_filter: Some(
+                HashFilter::from_json_map(
+                    serde_json::json!({ "views": { "gt": 10 } })
+                        .as_object()
+                        .unwrap(),
+                    "where",
+                )
+                .unwrap(),
+            ),
+            // A legacy pair that would NOT pass the portable-shape assert.
+            filter_sdbql: Some("doc.views > @views".into()),
+            bind_vars,
+            soft_delete: SoftDeleteMode::Default,
+            is_soft_delete_model: false,
+            order_field: None,
+            order_desc: false,
+            limit: None,
+            offset: None,
+        };
+        let q =
+            list_query_from_parts(parts, Dialect::Postgres).expect("structured filter compiles");
+        // The IR wins: the legacy pair is dropped rather than emitted twice.
+        assert!(q.hash_filter.is_some());
+        assert!(q.filter_sdbql.is_none());
+        assert!(q.eq_filters.is_empty());
+
+        let c = compile_select_d(Dialect::Postgres, &q).unwrap();
+        assert!(c.sql.contains("WHERE"), "{}", c.sql);
+        assert_eq!(c.params.len(), 1, "one bind, from the IR only");
+
+        // Without a structured filter, a non-portable raw filter is still refused.
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("views".to_string(), serde_json::json!(10));
+        let parts = ListQueryParts {
+            table: "posts".into(),
+            hash_filter: None,
+            filter_sdbql: Some("doc.views > @views".into()),
+            bind_vars,
+            soft_delete: SoftDeleteMode::Default,
+            is_soft_delete_model: false,
+            order_field: None,
+            order_desc: false,
+            limit: None,
+            offset: None,
+        };
+        assert!(list_query_from_parts(parts, Dialect::Postgres).is_err());
     }
 
     #[test]
@@ -943,6 +1058,34 @@ mod tests {
     }
 
     #[test]
+    fn hash_filter_compiles_instead_of_flattening_to_equality() {
+        use crate::db::hash_filter::HashFilter;
+        let mut q = sample_list();
+        q.eq_filters.clear();
+        q.filter_sdbql = None;
+        q.order_field = None;
+        q.limit = None;
+        q.offset = None;
+        q.hash_filter = Some(
+            HashFilter::from_json_map(
+                serde_json::json!({"total": {"gt": 10}, "status": "open"})
+                    .as_object()
+                    .unwrap(),
+                "where",
+            )
+            .unwrap(),
+        );
+        let c = compile_select_d(Dialect::Sqlite, &q).unwrap();
+        assert!(c.sql.contains(" > ?"), "{}", c.sql);
+        assert!(
+            c.sql.contains(" = ?") || c.sql.contains("LIKE"),
+            "{}",
+            c.sql
+        );
+        assert_eq!(c.params.len(), 2);
+    }
+
+    #[test]
     fn join_compiles_a_correlated_exists() {
         let mut q = sample_list();
         q.eq_filters.clear();
@@ -952,6 +1095,7 @@ mod tests {
             table: "comments".into(),
             foreign_key: "post_id".into(),
             eq_filters: BTreeMap::new(),
+            hash_filter: None,
         }];
         let c = compile_select_d(Dialect::Postgres, &q).unwrap();
         // Correlated on the parent's key, and qualified: an unqualified `doc`
@@ -1109,6 +1253,7 @@ mod tests {
         let q = ListQuery {
             table: "posts".into(),
             eq_filters: eq,
+            hash_filter: None,
             filter_sdbql: Some("doc.status == @status AND doc._key == @_key".into()),
             having: None,
             exists_filters: Vec::new(),

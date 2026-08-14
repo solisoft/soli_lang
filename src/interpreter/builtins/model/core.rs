@@ -259,6 +259,7 @@ fn sql_find_first_by(
     let lq = crate::db::ListQuery {
         table: collection.to_string(),
         eq_filters,
+        hash_filter: None,
         filter_sdbql: None,
         having: None,
         exists_filters: Vec::new(),
@@ -357,12 +358,22 @@ mod tests {
     }
 
     #[test]
-    fn hash_form_still_rejects_arrays() {
-        let v = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
-            Value::String("a".into()),
-        ])));
-        let err = ensure_scalar_bind_value(&v, "ids", "where").unwrap_err();
-        assert!(err.contains("must be a scalar"));
+    fn hash_form_array_is_an_in_list() {
+        let mut pairs = crate::interpreter::value::HashPairs::default();
+        pairs.insert(
+            crate::interpreter::value::HashKey::String("ids".into()),
+            Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ]))),
+        );
+        let hash = std::rc::Rc::new(std::cell::RefCell::new(pairs));
+        let (pred, sdbql, _binds) = parse_hash_filter(&hash, "where").unwrap();
+        assert!(matches!(
+            pred,
+            crate::db::hash_filter::HashFilter::In { .. }
+        ));
+        assert!(sdbql.contains("IN @"), "{sdbql}");
     }
 
     #[test]
@@ -547,34 +558,87 @@ pub fn build_safe_filter_from_hash(
     hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
     method: &str,
 ) -> Result<(String, std::collections::HashMap<String, serde_json::Value>), String> {
-    use crate::interpreter::value::HashKey;
+    let (pred, sdbql, binds) = parse_hash_filter(hash, method)?;
+    let _ = pred;
+    Ok((sdbql, binds))
+}
+
+/// Parse a hash `.where` into the structured IR plus the SDBQL string SoliDB
+/// still executes. SQL compilers use the IR so a `gt` cannot become `==`.
+pub fn parse_hash_filter(
+    hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+    method: &str,
+) -> Result<
+    (
+        crate::db::hash_filter::HashFilter,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    ),
+    String,
+> {
+    use crate::interpreter::value::{value_to_json, HashKey};
     let pairs = hash.borrow();
-    if pairs.is_empty() {
-        // An empty hash filter is a no-op: `where({})` adds no constraint and
-        // matches all rows (mirroring no `.where` at all). Return an empty
-        // filter string so callers simply skip building a FILTER clause rather
-        // than raising.
-        let _ = method;
-        return Ok((String::new(), std::collections::HashMap::new()));
-    }
-    let mut clauses = Vec::with_capacity(pairs.len());
-    let mut binds = std::collections::HashMap::new();
+    let mut map = serde_json::Map::new();
     for (k, v) in pairs.iter() {
-        let key = match k {
-            HashKey::String(s) => s.clone(),
-            _ => return Err(format!("{}() Hash filter keys must be strings", method)),
+        let HashKey::String(key) = k else {
+            return Err(format!("{method}() Hash filter keys must be strings"));
         };
-        validate_field_name(&key, method)?;
-        // Bind name shadows the field name (`@email` for key `"email"`).
-        // Field names are already sanitized to safe identifiers, so they
-        // make valid bind names too. Callers that supply the legacy raw
-        // string form take a separate code path, so there's no risk of
-        // colliding bind namespaces between the two forms.
-        clauses.push(format!("doc.{0} == @{0}", key));
-        let json_val = ensure_scalar_bind_value(v, &key, method)?;
-        binds.insert(key.to_string(), json_val);
+        map.insert(
+            key.to_string(),
+            value_to_json(v).map_err(|e| e.to_string())?,
+        );
     }
-    Ok((clauses.join(" AND "), binds))
+    let pred = crate::db::hash_filter::HashFilter::from_json_map(&map, method)?;
+    let (sdbql, binds) = pred.to_sdbql();
+    Ok((pred, sdbql, binds))
+}
+
+/// `.join("posts")` / `.join("posts", { published: true })` /
+/// `.join("posts", "published = @p", { p: true })`.
+type JoinFilterArgs = (
+    Option<String>,
+    std::collections::HashMap<String, serde_json::Value>,
+    Option<crate::db::hash_filter::HashFilter>,
+);
+
+pub fn parse_join_filter_args(
+    filter_arg: Option<&Value>,
+    binds_arg: Option<&Value>,
+) -> Result<JoinFilterArgs, String> {
+    match filter_arg {
+        Some(Value::Hash(hash)) => {
+            let (pred, sdbql, binds) = parse_hash_filter(hash, "join")?;
+            Ok((
+                if sdbql.trim().is_empty() {
+                    None
+                } else {
+                    Some(sdbql)
+                },
+                binds,
+                if pred.is_empty() { None } else { Some(pred) },
+            ))
+        }
+        Some(Value::String(s)) => {
+            let binds = match binds_arg {
+                Some(Value::Hash(hash)) => {
+                    use crate::interpreter::value::HashKey;
+                    let mut map = std::collections::HashMap::new();
+                    for (k, v) in hash.borrow().iter() {
+                        if let HashKey::String(key) = k {
+                            map.insert(
+                                key.to_string(),
+                                crate::interpreter::value::value_to_json(v)?,
+                            );
+                        }
+                    }
+                    map
+                }
+                _ => std::collections::HashMap::new(),
+            };
+            Ok((Some(s.to_string()), binds, None))
+        }
+        _ => Ok((None, std::collections::HashMap::new(), None)),
+    }
 }
 
 /// SEC-062: enforce that user-supplied bind values are scalars (string, number,
@@ -1556,10 +1620,19 @@ impl Model {
 
                     let mut bind_vars = std::collections::HashMap::new();
                     let mut fields: Option<Vec<String>> = None;
+                    let mut hash_filter = None;
 
                     for (k, v) in options_hash.iter() {
                         if let HashKey::String(key) = k {
-                            if **key == *"fields" {
+                            if **key == *"where" {
+                                if let Value::Hash(inner) = v {
+                                    let (pred, _, binds) = parse_hash_filter(inner, "includes")?;
+                                    if !pred.is_empty() {
+                                        hash_filter = Some(pred);
+                                    }
+                                    bind_vars.extend(binds);
+                                }
+                            } else if **key == *"fields" {
                                 if let Value::Array(arr) = v {
                                     let names: Vec<String> = arr
                                         .borrow()
@@ -1585,7 +1658,25 @@ impl Model {
                         }
                     }
 
+                    if hash_filter.is_none() && filter.is_none() && !bind_vars.is_empty() {
+                        let mut map = serde_json::Map::new();
+                        for (k, v) in &bind_vars {
+                            map.insert(k.clone(), v.clone());
+                        }
+                        if let Ok(pred) =
+                            crate::db::hash_filter::HashFilter::from_json_map(&map, "includes")
+                        {
+                            if !pred.is_empty() {
+                                hash_filter = Some(pred);
+                            }
+                        }
+                    }
                     qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
+                    if let Some(pred) = hash_filter {
+                        if let Some(last) = qb.includes.last_mut() {
+                            last.hash_filter = Some(pred);
+                        }
+                    }
                 } else {
                     // Pattern A: all strings → multi-relation unfiltered
                     for arg in arguments {
@@ -1709,30 +1800,16 @@ impl Model {
                 super::relations::reject_through_on_solidb("join", &rel)?;
                 super::relations::reject_polymorphic_relation("join", &rel)?;
 
-                let filter = match args.get(2) {
-                    Some(Value::String(s)) => Some(s.to_string()),
-                    _ => None,
-                };
-
-                let bind_vars = match args.get(3) {
-                    Some(Value::Hash(hash)) => {
-                        use crate::interpreter::value::HashKey;
-                        let mut map = std::collections::HashMap::new();
-                        for (k, v) in hash.borrow().iter() {
-                            if let HashKey::String(key) = k {
-                                map.insert(
-                                    key.to_string(),
-                                    crate::interpreter::value::value_to_json(v)?,
-                                );
-                            }
-                        }
-                        map
-                    }
-                    _ => std::collections::HashMap::new(),
-                };
+                let (filter, bind_vars, hash_filter) =
+                    parse_join_filter_args(args.get(2), args.get(3))?;
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.add_join(rel_name.to_string(), rel, filter, bind_vars);
+                if let Some(pred) = hash_filter {
+                    if let Some(last) = qb.joins.last_mut() {
+                        last.hash_filter = Some(pred);
+                    }
+                }
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
@@ -2046,7 +2123,15 @@ impl Model {
                                     the bind-vars hash is only valid with the string filter form"
                                     .to_string());
                             }
-                            build_safe_filter_from_hash(hash, "where")?
+                            let (pred, filter, binds) = parse_hash_filter(hash, "where")?;
+                            let mut qb = QueryBuilder::new_with_class(
+                                class_name.clone(),
+                                collection.clone(),
+                                class.clone(),
+                            );
+                            qb.hash_filter = if pred.is_empty() { None } else { Some(pred) };
+                            qb.set_filter(filter, binds);
+                            return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));
                         }
                         Some(Value::String(s)) => {
                             let filter = s.clone();

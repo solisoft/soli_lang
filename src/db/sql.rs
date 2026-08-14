@@ -459,6 +459,27 @@ pub fn ensure_doc_index(
     )
 }
 
+pub fn dump_schema() -> Result<String, String> {
+    route_sql!(
+        super::postgres::dump_schema(),
+        super::mysql::dump_schema(),
+        super::sqlite::dump_schema()
+    )
+}
+
+pub fn load_schema(dump: &str) -> Result<(), String> {
+    let versions = super::schema_dump::parse_versions(dump);
+    let body = super::schema_dump::sql_body(dump);
+    if !body.trim().is_empty() {
+        execute_raw(&body)?;
+    }
+    ensure_migrations_table()?;
+    for (version, name) in versions {
+        record_migration(&version, &name)?;
+    }
+    Ok(())
+}
+
 /// Dialect of the active connection — for compiling DDL before executing it.
 pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
     use super::sql_compile::Dialect;

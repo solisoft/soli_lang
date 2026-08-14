@@ -77,6 +77,8 @@ soli db:migrate up
 # On a SQL adapter, create the database first — SoliDB
 # makes its own on first use, a SQL server does not:
 soli db:create
+soli db:schema:dump   # write db/schema.sql + applied versions
+soli db:schema:load   # recreate a fresh database from that dump
 soli db:drop     # removes it (WAL sidecars too, on SQLite)</code></pre>
             </div>
         </div>
@@ -420,6 +422,10 @@ print("Seeded users")</code></pre>
         <code class="text-cyan-400">create_table("orders", { … })</code> &mdash; the tables
         <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">column-aware models</a>
         map onto. Anything SoliDB-specific raises rather than being silently skipped.
+        Per-adapter notes:
+        <a href="/docs/database/postgres" class="text-amber-400 hover:underline">PostgreSQL</a>,
+        <a href="/docs/database/mysql" class="text-amber-400 hover:underline">MySQL</a>,
+        <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Column tables</h3>

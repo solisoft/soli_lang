@@ -1,7 +1,7 @@
 //! Background jobs and cron scheduling — the Soli-side API surface.
 //!
 //! Exposes three static-method-only classes:
-//! - `Job` — enqueue, schedule, list, cancel queue jobs.
+//! - `Job` — enqueue, schedule, list, cancel, retry queue jobs.
 //! - `Webhook` — enqueue an outbound HTTP delivery as a job.
 //! - `Cron` — manage recurring jobs and build cron expressions.
 //!
@@ -341,6 +341,12 @@ fn job_cancel(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Bool(cancelled))
 }
 
+fn job_retry(args: &[Value]) -> Result<Value, String> {
+    let id = arg_string(args, 0, "Job.retry")?;
+    let retried = store::retry(&id).map_err(|e| format!("Job.retry failed: {e}"))?;
+    Ok(Value::Bool(retried))
+}
+
 fn job_list(args: &[Value]) -> Result<Value, String> {
     // No argument lists every queue; a string narrows to one.
     let queue = match args.first() {
@@ -570,6 +576,10 @@ fn register_job_class(env: &mut Environment) {
     statics.insert(
         "cancel".to_string(),
         Rc::new(NativeFunction::new("Job.cancel", Some(1), job_cancel)),
+    );
+    statics.insert(
+        "retry".to_string(),
+        Rc::new(NativeFunction::new("Job.retry", Some(1), job_retry)),
     );
     statics.insert(
         "list".to_string(),

@@ -38,6 +38,7 @@ fn list_query(
     db::ListQuery {
         table: table.to_string(),
         eq_filters,
+        hash_filter: None,
         filter_sdbql,
         having: None,
         exists_filters: Vec::new(),
@@ -230,6 +231,34 @@ pub fn fail(doc: &JobDoc, error: &str) -> Result<bool, String> {
         )?;
     }
     Ok(retryable)
+}
+
+/// Re-queue a `failed` or `dead` job so a worker will pick it up again.
+///
+/// Resets the lease and `finished_at` but keeps `attempts` and `last_error`
+/// so the dashboard can still show why it died. Returns `false` when the id
+/// is unknown.
+pub fn retry(id: &str) -> Result<bool, String> {
+    let Some(doc) = get(id)? else {
+        return Ok(false);
+    };
+    if !doc.state.is_retryable() {
+        return Err(format!(
+            "job {id} is {} and cannot be retried",
+            doc.state.as_str()
+        ));
+    }
+    patch_job(
+        id,
+        serde_json::json!({
+            "state": JobState::Pending.as_str(),
+            "run_at": super::now_iso(),
+            "locked_by": serde_json::Value::Null,
+            "locked_until": serde_json::Value::Null,
+            "finished_at": serde_json::Value::Null,
+        }),
+    )?;
+    Ok(true)
 }
 
 /// Push the lease of an in-flight job out by `lease_secs`, so a long job is not

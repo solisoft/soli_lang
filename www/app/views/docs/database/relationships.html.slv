@@ -19,9 +19,10 @@
             (three batched queries via the intermediate model), and <code>.join</code> compiles to a
             correlated <code>EXISTS</code> there so parents are not duplicated. Eager loading across
             two different connections raises (query each side, or colocate the models).
-            Column-aware models (<code>table "…"</code>) batch <code>belongs_to</code>,
-            <code>has_many</code>, <code>has_one</code> and <code>includes_count</code> over real
-            foreign-key columns; <code>through:</code> and HABTM there are still to come.</p>
+            Column-aware models (<code>table "…"</code>) batch the same associations
+            &mdash; including HABTM and <code>through:</code> &mdash; over real
+            foreign-key columns. A hash filter on <code>.includes("rel", { "visible": true })</code>
+            applies on both document tables and column mode.</p>
     </div>
     <h2 class="text-2xl font-bold text-white mb-6">Relationship DSL</h2>
     <p class="text-gray-400 mb-4">Declare associations inside your model class using the built-in relationship methods:</p>
@@ -352,6 +353,10 @@ recent = User.join("posts").order("created_at", "desc").limit(10).all</code></pr
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Only load published posts for each user
 users = User.includes("posts", "published = @p", { "p": true }).all
+
+# Hash form — portable on SoliDB and every SQL adapter
+users = User.includes("posts", { "published": true }).all
+users = User.includes("posts", { "where": { "views": { "gt": 10 } } }).all
 
 # Combine a filter with field projection using the "fields" key
 users = User.includes("posts", "published = @p", {

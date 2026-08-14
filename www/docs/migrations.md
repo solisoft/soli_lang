@@ -505,7 +505,8 @@ SOLIDB_PASSWORD=secret
 ```
 
 On a SQL adapter the target comes from `SOLI_DB_ADAPTER` + `DATABASE_URL`
-instead (or from the named connection in `config/database.toml`):
+instead (or from the named connection in `config/database.toml`). Adapter
+notes: [PostgreSQL](postgres.md), [MySQL](mysql.md), [SQLite](sqlite.md).
 
 ```bash
 SOLI_DB_ADAPTER=sqlite
@@ -520,8 +521,16 @@ first:
 soli db:create              # CREATE DATABASE (or the SQLite file + its directory)
 soli db:create -c legacy    # a named connection
 soli db:migrate up
+soli db:schema:dump         # write db/schema.sql + applied versions
+soli db:schema:load         # recreate a fresh database from that dump
 soli db:drop                # removes it — WAL sidecars included on SQLite
 ```
+
+`db:schema:dump` captures the dialect SQL for every user table and index plus
+the list of applied migration versions, so a new environment can skip replaying
+every file. `db:schema:load` runs that SQL and records the versions in
+`_migrations`. Both accept `--connection NAME`. SoliDB has no equivalent — its
+schema is the collections themselves.
 
 Or set them directly:
 

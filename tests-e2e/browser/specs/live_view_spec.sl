@@ -108,4 +108,59 @@ describe("liveview", fn() {
         wait_for_text("count=1")
         assert_no_page_errors()
     })
+
+    test("soli-disable-with restores the label after the patch", fn() {
+        visit("/live")
+        wait_for("#inc")
+        click("#inc")
+        wait_for_text("count=1")
+        assert_eq(evaluate("document.getElementById('inc').textContent"), "+")
+        assert_eq(evaluate("document.getElementById('inc').disabled"), false)
+    })
+
+    test("soli-click-away fires when clicking outside the element", fn() {
+        visit("/live")
+        wait_for("#open-state")
+        assert_eq(evaluate("document.getElementById('open-state').textContent"), "open=true")
+        click("#outside")
+        wait_for_text("open=false")
+        assert_eq(evaluate("document.getElementById('open-state').textContent"), "open=false")
+    })
+
+    test("soli-hook mounted then updated across a patch", fn() {
+        visit("/live")
+        wait_for("#hook-probe")
+        assert_eq(evaluate("document.getElementById('hook-probe').getAttribute('data-hook')"), "mounted")
+        click("#inc")
+        wait_for_text("count=1")
+        assert_eq(evaluate("document.getElementById('hook-probe').getAttribute('data-hook')"), "updated")
+    })
+
+    test("soli-patch updates the URL and the handler sees the path", fn() {
+        visit("/live")
+        wait_for("#tab-a")
+        click("#tab-a")
+        wait_for_text("path=/live")
+        assert_eq(evaluate("location.pathname + location.search"), "/live?tab=a")
+        assert_eq(evaluate("document.getElementById('path-state').textContent"), "path=/live")
+    })
+
+    test("soli-live swaps the page-root component without a full load", fn() {
+        visit("/live")
+        wait_for("#go-about")
+        click("#go-about")
+        wait_for_text("about-live")
+        assert_eq(evaluate("document.getElementById('about-live').textContent"), "about-live")
+        assert_eq(evaluate("location.pathname + location.search"), "/live?v=about")
+        assert_eq(evaluate("document.getElementById('count') == null"), true)
+    })
+
+    test("a nested LiveView survives a parent patch", fn() {
+        visit("/live")
+        wait_for_text("badge=badge-ok")
+        assert_eq(evaluate("document.getElementById('badge').textContent"), "badge=badge-ok")
+        click("#inc")
+        wait_for_text("count=1")
+        assert_eq(evaluate("document.getElementById('badge').textContent"), "badge=badge-ok")
+    })
 })

@@ -1,0 +1,229 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-sky-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">PostgreSQL</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            The SQL adapter for a multi-process, write-heavy, or already-Postgres app.
+            Same Model surface as
+            <a href="/docs/database/mysql" class="text-amber-400 hover:underline">MySQL</a> and
+            <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>
+            &mdash; hash <code class="text-cyan-400">.where</code>, associations, aggregates,
+            migrations, jobs &mdash; as <code class="text-cyan-400">_key</code> + JSONB
+            <code class="text-cyan-400">doc</code> tables or a
+            <a href="/docs/database/multi-database#columns" class="text-amber-400 hover:underline">column-aware</a>
+            mapping onto a real schema.
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-10">
+        <p class="text-cyan-200 text-sm leading-relaxed">
+            SoliDB remains the full stack (graph, vector, timeseries, raw SDBQL).
+            Use Postgres when you want SQL, an existing cluster, or to sit beside SoliDB via
+            <a href="/docs/database/multi-database" class="text-amber-400 hover:underline"><code>config/database.toml</code></a>.
+        </p>
+    </div>
+
+    <h2 id="connect" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Connect</h2>
+    <p class="text-gray-400 mb-4">Whole app on Postgres:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_DB_ADAPTER=postgres
+DATABASE_URL=postgres://user:pass@localhost:5432/myapp
+# optional
+SOLI_DB_POOL_SIZE=10</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">Aliases: <code class="text-cyan-400">postgres</code>, <code class="text-cyan-400">postgresql</code>, <code class="text-cyan-400">pg</code>.</p>
+    <p class="text-gray-400 mb-4">A named connection:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/database.toml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">default = "primary"
+
+[connections.primary]
+adapter = "postgres"
+url = "${DATABASE_URL}"
+pool = 10</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Order &lt; Model
+  connection "primary"
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The <code class="text-cyan-400">postgres</code> Cargo feature is on by default.
+        A binary built without it refuses to open a Postgres connection at boot and tells you to rebuild.
+    </p>
+
+    <h2 id="url" class="text-2xl font-bold text-white mb-6 scroll-mt-24">URL</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">postgres://USER:PASSWORD@HOST:5432/DATABASE
+postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The query string is kept on the URL (so <code class="text-cyan-400">sslmode</code> survives
+        <code class="text-cyan-400">db:create</code>, which rewrites only the database name).
+        <strong class="text-white">The client currently connects without TLS</strong> (<code>NoTls</code>)
+        &mdash; <code class="text-cyan-400">sslmode=require</code> is accepted in the URL and then ignored.
+        Put Postgres on a private network or terminate TLS in front of it until native SSL lands.
+        Placeholders in raw SQL are <code class="text-cyan-400">$1</code>, <code class="text-cyan-400">$2</code>, &hellip;
+    </p>
+
+    <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>
+    <p class="text-gray-400 mb-4">A SQL server does not create the database on first use. On a fresh target:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:create              # CREATE DATABASE via the postgres maintenance DB
+soli db:migrate up
+soli db:schema:dump         # optional snapshot of db/schema.sql
+soli db:drop                # DROP DATABASE IF EXISTS</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">db:create</code> connects to the <code class="text-cyan-400">postgres</code>
+        database on the same server, then <code>CREATE DATABASE</code> the name from the URL.
+        If it already exists (SQLSTATE <code class="text-cyan-400">42P04</code>) the command succeeds.
+        Both accept <code class="text-cyan-400">--connection NAME</code>.
+    </p>
+
+    <h2 id="documents" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Document tables</h2>
+    <p class="text-gray-400 mb-4">Each collection is:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">table &lt;collection&gt;
+  _key  TEXT PRIMARY KEY
+  doc   JSONB NOT NULL</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The table is created on first write. JSON operators are native
+        (<code class="text-cyan-400">doc-&gt;&gt;'status'</code>, <code class="text-cyan-400">jsonb_set</code>,
+        <code class="text-cyan-400">||</code> merge). String equality in
+        <code class="text-cyan-400">.where({ "status": "open" })</code> compares on the
+        <strong class="text-white">text extract</strong>, which is what a document index holds.
+    </p>
+
+    <h2 id="indexes" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Indexes</h2>
+    <p class="text-gray-400 mb-4">
+        <code class="text-cyan-400">index "status"</code> (or <code class="text-cyan-400">soli db:indexes</code>)
+        creates an expression index:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-sql text-sm">CREATE INDEX IF NOT EXISTS idx_posts_status ON posts ((doc-&gt;&gt;'status'))</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Multi-field and <code class="text-cyan-400">unique:</code> work the same way. Reconciliation is idempotent by name.
+        Numbers and booleans keep JSON comparison (<code class="text-cyan-400">10</code> matches a stored
+        <code class="text-cyan-400">10.0</code>) and are <strong class="text-white">not</strong> covered by that expression index.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Migrations can index a document field with a <code class="text-cyan-400">doc.</code> prefix:
+        <code class="text-cyan-400">db.add_index("posts", ["doc.status"], { "unique": true })</code>.
+        <code class="text-cyan-400">fulltext</code> / <code class="text-cyan-400">vector_index</code> /
+        <code class="text-cyan-400">geo_index</code> are reported as skipped on SQL, not as adapter errors.
+    </p>
+
+    <h2 id="jobs" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Background jobs</h2>
+    <p class="text-gray-400 mb-12">
+        The queue lives in <code class="text-cyan-400">_jobs</code> on the same connection. Claim uses
+        <code class="text-cyan-400">FOR UPDATE SKIP LOCKED</code>, so several workers can poll without
+        blocking each other. On first enqueue Soli indexes <code class="text-cyan-400">state</code>,
+        <code class="text-cyan-400">run_at</code>, and <code class="text-cyan-400">priority</code>
+        (plus <code class="text-cyan-400">next_run_at</code> / <code class="text-cyan-400">enabled</code> for cron).
+        See <a href="/docs/builtins/jobs" class="text-amber-400 hover:underline">Jobs</a>.
+    </p>
+
+    <h2 id="schema" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Schema dump</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli db:schema:dump         # writes db/schema.sql
+soli db:schema:load         # recreate a fresh database from that file</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The dump reconstructs <code>CREATE TABLE</code> from introspection
+        (<code class="text-cyan-400">pg_tables</code> + column types) and appends
+        <code class="text-cyan-400">pg_indexes</code> definitions, plus a
+        <code class="text-cyan-400">-- versions:</code> header so load records applied migrations
+        without replaying every file. Defaults and constraints that introspection does not
+        reconstruct may be missing &mdash; prefer replaying migrations when those matter.
+    </p>
+
+    <h2 id="columns" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Column-aware models</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Order &lt; Model
+  connection "legacy"
+  table "orders"
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Introspection uses <code class="text-cyan-400">information_schema</code>.
+        Generated keys (<code class="text-cyan-400">BIGSERIAL</code>, <code class="text-cyan-400">IDENTITY</code>)
+        are left to the database on insert.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">PostgreSQL</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>int2</code> / <code>int4</code> / <code>int8</code></td><td class="py-3 px-4">Int</td></tr>
+                <tr><td class="py-3 px-4"><code>float4</code> / <code>float8</code></td><td class="py-3 px-4">Float</td></tr>
+                <tr><td class="py-3 px-4"><code>numeric</code></td><td class="py-3 px-4">Float <span class="text-gray-500">(written as text; values beyond f64 lose precision on read)</span></td></tr>
+                <tr><td class="py-3 px-4"><code>bool</code></td><td class="py-3 px-4">Bool</td></tr>
+                <tr><td class="py-3 px-4"><code>text</code> / <code>varchar</code> / <code>citext</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>uuid</code></td><td class="py-3 px-4">String</td></tr>
+                <tr><td class="py-3 px-4"><code>date</code> / <code>timestamp</code> / <code>timestamptz</code></td><td class="py-3 px-4">DateTime</td></tr>
+                <tr><td class="py-3 px-4"><code>json</code> / <code>jsonb</code></td><td class="py-3 px-4">Hash / Array</td></tr>
+                <tr><td class="py-3 px-4"><code>bytea</code>, arrays, geometry</td><td class="py-3 px-4 text-red-400">unsupported</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code class="text-cyan-400">ILIKE</code> is native.
+        Hash <code class="text-cyan-400">.where({ "email": { "ilike": "%@x.com" } })</code>
+        compiles to <code class="text-cyan-400">email ILIKE $n</code>.
+    </p>
+
+    <h2 id="caveats" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Honest limits</h2>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white">No TLS in the client.</strong> Private network or a proxy.</li>
+        <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
+        <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
+        <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        The shared portable surface (hash filters, <code>.join</code>, <code>.having</code>, includes, HABTM / <code>through:</code>)
+        is documented under
+        <a href="/docs/database/multi-database#sql" class="text-amber-400 hover:underline">SQL document backends</a>.
+    </p>
+
+    <h2 id="next" class="text-2xl font-bold text-white mb-6 scroll-mt-24">See also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/database/mysql" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">MySQL &rarr;</h3>
+            <p class="text-sm text-gray-400">Generated-column indexes, claim-token jobs, UTC timestamps.</p>
+        </a>
+        <a href="/docs/database/sqlite" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">SQLite &rarr;</h3>
+            <p class="text-sm text-gray-400">A file, no server, same Model surface.</p>
+        </a>
+        <a href="/docs/database/multi-database" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">Multiple Databases &rarr;</h3>
+            <p class="text-sm text-gray-400">Named connections and the capability matrix.</p>
+        </a>
+    </div>
+</div>

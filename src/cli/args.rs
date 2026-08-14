@@ -182,6 +182,15 @@ pub enum Command {
         folder: String,
         connection: Option<String>,
     },
+    /// `soli db:schema:dump [folder]` / `soli db:schema:load [folder]`
+    DbSchemaDump {
+        folder: String,
+        connection: Option<String>,
+    },
+    DbSchemaLoad {
+        folder: String,
+        connection: Option<String>,
+    },
     /// `soli db:indexes [folder]` — create any missing indexes declared with
     /// the class-body DSL (`index`, `vector_index`, `fulltext_index`,
     /// `geo_index`). Idempotent; the production counterpart of the dev-boot
@@ -364,6 +373,9 @@ pub enum Command {
         scheme: String,
         app_name: String,
     },
+    /// `soli jobs` / `soli worker` — run a standalone job worker, or
+    /// inspect/retry/cancel queue rows without starting HTTP.
+    Jobs(JobsCommand),
 }
 
 pub enum EngineAction {
@@ -396,6 +408,29 @@ pub enum EnvAction {
     /// Print the environment's URL without creating anything.
     Url {
         branch: Option<String>,
+    },
+}
+
+/// Subcommands of `soli jobs` (alias: `soli worker` for the work action).
+pub enum JobsCommand {
+    /// Claim and run jobs until SIGINT/SIGTERM. `workers: None` means
+    /// "use SOLI_JOB_WORKERS / the serve default".
+    Work {
+        folder: String,
+        workers: Option<usize>,
+    },
+    List {
+        folder: String,
+        queue: Option<String>,
+        state: Option<String>,
+    },
+    Retry {
+        folder: String,
+        id: String,
+    },
+    Cancel {
+        folder: String,
+        id: String,
     },
 }
 
@@ -441,6 +476,11 @@ pub fn print_usage() {
     eprintln!(
         "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]"
     );
+    eprintln!("       soli jobs [folder] [--workers N]");
+    eprintln!("       soli jobs list [--queue NAME] [--state STATE] [folder]");
+    eprintln!("       soli jobs retry <id> [folder]");
+    eprintln!("       soli jobs cancel <id> [folder]");
+    eprintln!("       soli worker [folder] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
@@ -451,6 +491,8 @@ pub fn print_usage() {
     eprintln!("  soli env up [branch] [--server <name>] [--no-seed]");
     eprintln!("  soli env down [branch] [--server <name>] [--keep-data]");
     eprintln!("  soli env <list|url> [branch] [--server <name>]");
+    eprintln!("  soli db:schema:dump [--connection NAME] [folder]");
+    eprintln!("  soli db:schema:load [--connection NAME] [folder]");
     eprintln!("  soli db:migrate <up|down|status> [--connection NAME] [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
@@ -516,6 +558,8 @@ pub fn print_usage() {
     eprintln!("                       Supports .soli bundle files");
     eprintln!("                       A folder that is not a Soli app is served as files:");
     eprintln!("                       static assets, rendered Markdown, .slv/.erb templates");
+    eprintln!("  jobs [folder]        Run a standalone job worker (no HTTP). Alias: worker");
+    eprintln!("                       jobs list / retry <id> / cancel <id> inspect the queue");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
     eprintln!("  check [paths...]     Static type-check .sl files without running them");
@@ -1061,6 +1105,31 @@ pub fn parse_args() -> Options {
                 };
                 return options;
             }
+            "db:schema:dump" | "db:schema:load" => {
+                let loading = args[i] == "db:schema:load";
+                i += 1;
+                let mut folder = ".".to_string();
+                let mut connection = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--connection" | "-c" if i + 1 < args.len() => {
+                            connection = Some(args[i + 1].clone());
+                            i += 2;
+                        }
+                        other if !other.starts_with('-') => {
+                            folder = other.to_string();
+                            i += 1;
+                        }
+                        _ => i += 1,
+                    }
+                }
+                options.command = if loading {
+                    Command::DbSchemaLoad { folder, connection }
+                } else {
+                    Command::DbSchemaDump { folder, connection }
+                };
+                return options;
+            }
             "db:indexes" => {
                 i += 1;
                 let folder = if i < args.len() && !args[i].starts_with('-') {
@@ -1437,6 +1506,135 @@ pub fn parse_args() -> Options {
                     strict_port,
                     assets,
                 });
+                return options;
+            }
+            "jobs" | "worker" => {
+                let worker_alias = args[i] == "worker";
+                i += 1;
+                if !worker_alias {
+                    match args.get(i).map(|s| s.as_str()) {
+                        Some("list") => {
+                            i += 1;
+                            let mut folder = ".".to_string();
+                            let mut folder_set = false;
+                            let mut queue = None;
+                            let mut state = None;
+                            while i < args.len() {
+                                match args[i].as_str() {
+                                    "--queue" | "-q" => {
+                                        i += 1;
+                                        if i >= args.len() {
+                                            eprintln!("jobs list --queue requires a name");
+                                            process::exit(64);
+                                        }
+                                        queue = Some(args[i].clone());
+                                    }
+                                    arg if arg.starts_with("--queue=") => {
+                                        queue = Some(arg["--queue=".len()..].to_string());
+                                    }
+                                    "--state" | "-s" => {
+                                        i += 1;
+                                        if i >= args.len() {
+                                            eprintln!("jobs list --state requires a state");
+                                            process::exit(64);
+                                        }
+                                        state = Some(args[i].clone());
+                                    }
+                                    arg if arg.starts_with("--state=") => {
+                                        state = Some(arg["--state=".len()..].to_string());
+                                    }
+                                    arg if !arg.starts_with('-') && !folder_set => {
+                                        folder = arg.to_string();
+                                        folder_set = true;
+                                    }
+                                    other => {
+                                        eprintln!("Unknown option for jobs list: {other}");
+                                        print_usage();
+                                        process::exit(64);
+                                    }
+                                }
+                                i += 1;
+                            }
+                            options.command = Command::Jobs(JobsCommand::List {
+                                folder,
+                                queue,
+                                state,
+                            });
+                            return options;
+                        }
+                        Some("retry") | Some("cancel") => {
+                            let retrying = args[i] == "retry";
+                            i += 1;
+                            if i >= args.len() || args[i].starts_with('-') {
+                                eprintln!(
+                                    "jobs {} requires a job id",
+                                    if retrying { "retry" } else { "cancel" }
+                                );
+                                process::exit(64);
+                            }
+                            let id = args[i].clone();
+                            i += 1;
+                            let folder = if i < args.len() && !args[i].starts_with('-') {
+                                args[i].clone()
+                            } else if i < args.len() {
+                                eprintln!(
+                                    "Unknown option for jobs {}: {}",
+                                    if retrying { "retry" } else { "cancel" },
+                                    args[i]
+                                );
+                                process::exit(64);
+                            } else {
+                                ".".to_string()
+                            };
+                            options.command = Command::Jobs(if retrying {
+                                JobsCommand::Retry { folder, id }
+                            } else {
+                                JobsCommand::Cancel { folder, id }
+                            });
+                            return options;
+                        }
+                        Some("work") => {
+                            i += 1;
+                        }
+                        _ => {}
+                    }
+                }
+                let mut folder = ".".to_string();
+                let mut folder_set = false;
+                let mut workers: Option<usize> = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--workers" | "-w" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("jobs --workers requires a number");
+                                process::exit(64);
+                            }
+                            workers = Some(args[i].parse().unwrap_or_else(|_| {
+                                eprintln!("Invalid workers number: {}", args[i]);
+                                process::exit(64);
+                            }));
+                        }
+                        arg if arg.starts_with("--workers=") => {
+                            let n = &arg["--workers=".len()..];
+                            workers = Some(n.parse().unwrap_or_else(|_| {
+                                eprintln!("Invalid workers number: {n}");
+                                process::exit(64);
+                            }));
+                        }
+                        arg if !arg.starts_with('-') && !folder_set => {
+                            folder = arg.to_string();
+                            folder_set = true;
+                        }
+                        other => {
+                            eprintln!("Unknown option for jobs: {other}");
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::Jobs(JobsCommand::Work { folder, workers });
                 return options;
             }
             "init" => {

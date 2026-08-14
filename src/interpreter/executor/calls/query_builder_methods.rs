@@ -216,26 +216,35 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                 span,
             ));
         }
-        let (filter, bind_vars): (String, std::collections::HashMap<String, serde_json::Value>) =
-            match &arguments[0] {
-                Value::Hash(hash) => {
-                    if arguments.len() != 1 {
-                        return Err(RuntimeError::type_error(
+        let (filter, bind_vars, new_pred): (
+            String,
+            std::collections::HashMap<String, serde_json::Value>,
+            Option<crate::db::hash_filter::HashFilter>,
+        ) = match &arguments[0] {
+            Value::Hash(hash) => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::type_error(
                             "where(Hash) takes a single argument; the bind-vars hash is only valid with the string filter form",
                             span,
                         ));
-                    }
-                    crate::interpreter::builtins::model::build_safe_filter_from_hash(hash, "where")
-                        .map_err(|e| RuntimeError::General { message: e, span })?
                 }
-                Value::String(s) => {
-                    let filter = s.clone();
-                    let binds = match arguments.get(1) {
-                        Some(Value::Hash(hash)) => {
-                            let mut map = std::collections::HashMap::new();
-                            for (k, v) in hash.borrow().iter() {
-                                if let crate::interpreter::value::HashKey::String(key) = k {
-                                    let json_val =
+                let (pred, filter, binds) =
+                    crate::interpreter::builtins::model::parse_hash_filter(hash, "where")
+                        .map_err(|e| RuntimeError::General { message: e, span })?;
+                (
+                    filter,
+                    binds,
+                    if pred.is_empty() { None } else { Some(pred) },
+                )
+            }
+            Value::String(s) => {
+                let filter = s.clone();
+                let binds = match arguments.get(1) {
+                    Some(Value::Hash(hash)) => {
+                        let mut map = std::collections::HashMap::new();
+                        for (k, v) in hash.borrow().iter() {
+                            if let crate::interpreter::value::HashKey::String(key) = k {
+                                let json_val =
                                         crate::interpreter::builtins::model::ensure_string_form_bind_value(
                                             v, key, "where",
                                         )
@@ -243,28 +252,28 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                                             message: e,
                                             span,
                                         })?;
-                                    map.insert(key.to_string(), json_val);
-                                }
+                                map.insert(key.to_string(), json_val);
                             }
-                            map
                         }
-                        Some(_) => {
-                            return Err(RuntimeError::type_error(
-                                "where() expects hash for bind variables",
-                                span,
-                            ))
-                        }
-                        None => std::collections::HashMap::new(),
-                    };
-                    (filter.to_string(), binds)
-                }
-                _ => {
-                    return Err(RuntimeError::type_error(
-                        "where() expects a Hash filter or a string filter expression",
-                        span,
-                    ))
-                }
-            };
+                        map
+                    }
+                    Some(_) => {
+                        return Err(RuntimeError::type_error(
+                            "where() expects hash for bind variables",
+                            span,
+                        ))
+                    }
+                    None => std::collections::HashMap::new(),
+                };
+                (filter.to_string(), binds, None)
+            }
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "where() expects a Hash filter or a string filter expression",
+                    span,
+                ))
+            }
+        };
 
         // `where({})` (or an empty string filter) is a no-op — return the
         // builder unchanged rather than combining in an empty clause, which
@@ -283,6 +292,12 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             new_qb
                 .bind_vars
                 .insert(crate::interpreter::get_symbol(&k), v);
+        }
+        if let Some(pred) = new_pred {
+            new_qb.hash_filter = Some(match new_qb.hash_filter.take() {
+                Some(existing) => crate::db::hash_filter::HashFilter::And(vec![existing, pred]),
+                None => pred,
+            });
         }
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
@@ -500,10 +515,23 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
 
             let mut bind_vars = std::collections::HashMap::new();
             let mut fields: Option<Vec<String>> = None;
+            let mut hash_filter = None;
 
             for (k, v) in options_hash.iter() {
                 if let crate::interpreter::value::HashKey::String(key) = k {
-                    if **key == *"fields" {
+                    if **key == *"where" {
+                        if let Value::Hash(inner) = v {
+                            let (pred, _, binds) =
+                                crate::interpreter::builtins::model::parse_hash_filter(
+                                    inner, "includes",
+                                )
+                                .map_err(|e| RuntimeError::General { message: e, span })?;
+                            if !pred.is_empty() {
+                                hash_filter = Some(pred);
+                            }
+                            bind_vars.extend(binds);
+                        }
+                    } else if **key == *"fields" {
                         if let Value::Array(arr) = v {
                             let field_names: Vec<String> = arr
                                 .borrow()
@@ -530,7 +558,26 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                 }
             }
 
+            if hash_filter.is_none() && filter.is_none() && !bind_vars.is_empty() {
+                let mut map = serde_json::Map::new();
+                for (k, v) in &bind_vars {
+                    map.insert(k.clone(), v.clone());
+                }
+                if let Ok(pred) =
+                    crate::db::hash_filter::HashFilter::from_json_map(&map, "includes")
+                {
+                    if !pred.is_empty() {
+                        hash_filter = Some(pred);
+                    }
+                }
+            }
+
             new_qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
+            if let Some(pred) = hash_filter {
+                if let Some(last) = new_qb.includes.last_mut() {
+                    last.hash_filter = Some(pred);
+                }
+            }
         } else {
             // Pattern A: all strings → multi-relation unfiltered
             for arg in &arguments {
@@ -683,29 +730,19 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         crate::interpreter::builtins::model::relations::reject_polymorphic_relation("join", &rel)
             .map_err(|message| RuntimeError::General { message, span })?;
 
-        let filter = match arguments.get(1) {
-            Some(Value::String(s)) => Some(s.to_string()),
-            _ => None,
-        };
-
-        let bind_vars = match arguments.get(2) {
-            Some(Value::Hash(hash)) => {
-                let mut map = std::collections::HashMap::new();
-                for (k, v) in hash.borrow().iter() {
-                    if let crate::interpreter::value::HashKey::String(key) = k {
-                        map.insert(
-                            key.to_string(),
-                            crate::interpreter::builtins::model::value_to_json(v)
-                                .map_err(|e| RuntimeError::General { message: e, span })?,
-                        );
-                    }
-                }
-                map
-            }
-            _ => std::collections::HashMap::new(),
-        };
+        let (filter, bind_vars, hash_filter) =
+            crate::interpreter::builtins::model::parse_join_filter_args(
+                arguments.get(1),
+                arguments.get(2),
+            )
+            .map_err(|e| RuntimeError::General { message: e, span })?;
 
         new_qb.add_join(rel_name.to_string(), rel, filter, bind_vars);
+        if let Some(pred) = hash_filter {
+            if let Some(last) = new_qb.joins.last_mut() {
+                last.hash_filter = Some(pred);
+            }
+        }
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 

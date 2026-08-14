@@ -116,6 +116,18 @@ def database_multi_database
     render_docs("docs/database/multi-database", "Multiple Databases", "database", "multi_database")
 end
 
+def database_postgres
+    render_docs("docs/database/postgres", "PostgreSQL", "database", "postgres")
+end
+
+def database_mysql
+    render_docs("docs/database/mysql", "MySQL", "database", "mysql")
+end
+
+def database_sqlite
+    render_docs("docs/database/sqlite", "SQLite", "database", "sqlite")
+end
+
 def database_models
     render_docs("docs/database/models", "Models & ORM", "database", "models")
 end
