@@ -20,10 +20,9 @@ The client automatically detects which method works best for your browser and se
 Run your application with the `--dev` flag to enable live reload:
 
 ```bash
-soli run --dev
+soli serve . --dev
+soli serve ./myapp --dev --port 8080
 ```
-
-Or use the dev script:
 
 When the server starts, you'll see a message indicating live reload is enabled:
 
@@ -35,12 +34,10 @@ As you edit and save files, the browser will automatically reload to reflect you
 
 ## Configuration
 
-Live reload is automatically enabled when running in development mode. It can be controlled via environment variables:
-
-| Variable | Description |
-|----------|-------------|
-| `SOLI_ENV=development` | Enables live reload (default) |
-| `SOLI_ENV=production` | Disables live reload |
+Live reload follows the `--dev` flag, and nothing else: `soli serve <folder> --dev`
+enables it, `soli serve <folder>` does not. There is no environment variable that
+turns it on — a production server never serves the client script or the reload
+endpoints, so the cost in production is zero rather than merely disabled.
 
 ## Events
 
@@ -69,8 +66,8 @@ If you see WebSocket errors in the console, the client will automatically fall b
 
 ```bash
 # Restart the development server
-pkill -f "soli run"
-./dev.sh
+pkill -f "soli serve"
+soli serve . --dev
 ```
 
 ### Multiple Browser Tabs

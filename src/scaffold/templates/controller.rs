@@ -201,3 +201,30 @@ end
         controller_name, resource_path, resource_path
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The template appends "Controller" to the name it is given; a caller that
+    /// also appends produces `describe("UsersControllerController")`.
+    #[test]
+    fn controller_spec_names_the_controller_once() {
+        let spec = controller_test_template("Users", "users");
+        assert!(
+            spec.contains(r#"describe("UsersController")"#),
+            "unexpected describe name:\n{spec}"
+        );
+        assert!(!spec.contains("ControllerController"), "doubled suffix");
+        // And the generated assertions must be ones the runner actually has.
+        for name in ["assert_eq(", "assert(", "assert_hash_has_key("] {
+            assert!(spec.contains(name), "missing {name}");
+        }
+        for bogus in ["assert_true", "assert_equal", "assert_nil"] {
+            assert!(
+                !spec.contains(bogus),
+                "generated a nonexistent assertion: {bogus}"
+            );
+        }
+    }
+}

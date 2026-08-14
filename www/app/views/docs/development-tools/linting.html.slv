@@ -367,7 +367,7 @@ soli check app/models/user.sl
 # app/models/user.sl: Type error: Type mismatch: expected Int, found String at 14:14
 # 1 error(s) in 1 of 38 file(s)</code></pre>
             <p class="text-gray-400 mt-3">
-                Running a file with <code class="text-cyan-400">soli run</code> type-checks it first too (use <code class="text-cyan-400">--no-type-check</code> to skip); <code class="text-cyan-400">soli check</code> is the standalone, whole-project form that never runs your app.
+                Running a file with <code class="text-cyan-400">soli &lt;file&gt;</code> type-checks it first too (use <code class="text-cyan-400">--no-type-check</code> to skip); <code class="text-cyan-400">soli check</code> is the standalone, whole-project form that never runs your app.
             </p>
         </div>
     </section>

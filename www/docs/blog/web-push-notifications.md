@@ -75,7 +75,7 @@ println("VAPID_PRIVATE_KEY=" + keys["private_key"])
 Run it once and append the output to `.env`:
 
 ```bash
-soli run bin/vapid_keys.sl >> .env
+soli bin/vapid_keys.sl >> .env
 ```
 
 The returned strings are base64url with no padding. `public_key` is the 65-byte uncompressed P-256 point you will hand to the browser; `private_key` is the 32-byte scalar that signs the JWT.

@@ -724,7 +724,7 @@
       "title": "Cache.fetch",
       "type": "method",
       "category": "Cache",
-      "path": "/docs/builtins/cache#def-cache-fetch",
+      "path": "/docs/builtins/cache#def-fetch",
       "signature": "Cache.fetch(key, ttl?) do...end",
       "description": "Cache-aside pattern: returns cached value on hit, or executes the block on miss, caches and returns the result",
       "keywords": [
@@ -738,7 +738,7 @@
       "title": "Cache.get",
       "type": "method",
       "category": "Cache",
-      "path": "/docs/builtins/cache#def-cache-get",
+      "path": "/docs/builtins/cache#def-get",
       "signature": "Cache.get(key)",
       "description": "Retrieve a value from the cache",
       "keywords": [
@@ -751,7 +751,7 @@
       "title": "Cache.set",
       "type": "method",
       "category": "Cache",
-      "path": "/docs/builtins/cache#def-cache-set",
+      "path": "/docs/builtins/cache#def-set",
       "signature": "Cache.set(key, value, ttl?)",
       "description": "Store a value in the cache with optional TTL",
       "keywords": [
@@ -2436,44 +2436,35 @@
       ]
     },
     {
-      "title": ".add_weeks()",
+      "title": ".add_minutes()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#def-add-weeks",
-      "signature": "datetime.add_weeks(n)",
-      "description": "Add weeks to the date (use negative to subtract)",
+      "path": "/docs/builtins/datetime#def-add-minutes",
+      "signature": "datetime.add_minutes(n)",
+      "description": "Add minutes to the date/time (use negative to subtract)",
       "keywords": [
         "datetime",
         "add",
+        "minutes",
+        "arithmetic"
+      ]
+    },
+    {
+      "title": "Weeks, months, and years",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-weeks-months-years",
+      "signature": "datetime.add_days(7) \u00b7 DateTime.parse(...) \u00b7 beginning_of_month()",
+      "description": "There is no add_weeks / add_months / add_years: month and year steps need calendar rules a fixed offset cannot express. A week is add_days(7); for a calendar month or year, rebuild the date from its parts or step to a boundary.",
+      "keywords": [
+        "datetime",
+        "add_weeks",
+        "add_months",
+        "add_years",
         "weeks",
-        "arithmetic"
-      ]
-    },
-    {
-      "title": ".add_months()",
-      "type": "method",
-      "category": "DateTime",
-      "path": "/docs/builtins/datetime#def-add-months",
-      "signature": "datetime.add_months(n)",
-      "description": "Add months to the date (use negative to subtract)",
-      "keywords": [
-        "datetime",
-        "add",
         "months",
-        "arithmetic"
-      ]
-    },
-    {
-      "title": ".add_years()",
-      "type": "method",
-      "category": "DateTime",
-      "path": "/docs/builtins/datetime#def-add-years",
-      "signature": "datetime.add_years(n)",
-      "description": "Add years to the date (use negative to subtract)",
-      "keywords": [
-        "datetime",
-        "add",
         "years",
+        "calendar",
         "arithmetic"
       ]
     },
@@ -8051,166 +8042,44 @@
       ]
     },
     {
-      "title": "Math.floor",
+      "title": "Number math methods",
       "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-floor",
-      "signature": "Math.floor(n)",
-      "description": "Rounds a number down to the nearest integer",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-abs",
+      "signature": "(-5).abs() \u00b7 [3,7].min() \u00b7 [3,7].max() \u00b7 (2.5).round() \u00b7 (1.7).ceil() \u00b7 (3.7).floor()",
+      "description": "Math operations are methods on the number (or array), not free functions and not a Math namespace: there is no Math.floor / Math.random / Math.pi, and no abs(n) / min(a,b) either. Trigonometry, logarithms and exponentials are not in the language.",
       "keywords": [
         "math",
-        "round",
-        "floor",
-        "integer"
-      ]
-    },
-    {
-      "title": "Math.ceil",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-ceil",
-      "signature": "Math.ceil(n)",
-      "description": "Rounds a number up to the nearest integer",
-      "keywords": [
-        "math",
+        "abs",
+        "min",
+        "max",
         "round",
         "ceil",
-        "integer"
-      ]
-    },
-    {
-      "title": "Math.round",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-round",
-      "signature": "Math.round(n)",
-      "description": "Rounds a number to the nearest integer",
-      "keywords": [
-        "math",
-        "round",
-        "integer"
-      ]
-    },
-    {
-      "title": "Math.random",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-random",
-      "signature": "Math.random()",
-      "description": "Returns a random float between 0 and 1",
-      "keywords": [
-        "math",
+        "floor",
+        "Math.floor",
+        "Math.random",
+        "Math.pi",
+        "sin",
+        "cos",
+        "tan",
+        "log",
         "random",
         "number"
       ]
     },
     {
-      "title": "Math.log",
+      "title": ".sqrt() / .pow(exp)",
       "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-log",
-      "signature": "Math.log(n)",
-      "description": "Returns the natural logarithm of a number",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-sqrt",
+      "signature": "(16).sqrt() \u00b7 (2).pow(3)",
+      "description": "Square root and power, as methods on the number",
       "keywords": [
         "math",
-        "log",
-        "logarithm",
-        "ln"
-      ]
-    },
-    {
-      "title": "Math.log10",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-log10",
-      "signature": "Math.log10(n)",
-      "description": "Returns the base-10 logarithm of a number",
-      "keywords": [
-        "math",
-        "log10",
-        "logarithm"
-      ]
-    },
-    {
-      "title": "Math.sin",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-sin",
-      "signature": "Math.sin(n)",
-      "description": "Returns the sine of an angle in radians",
-      "keywords": [
-        "math",
-        "sin",
-        "sine",
-        "trigonometry"
-      ]
-    },
-    {
-      "title": "Math.cos",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-cos",
-      "signature": "Math.cos(n)",
-      "description": "Returns the cosine of an angle in radians",
-      "keywords": [
-        "math",
-        "cos",
-        "cosine",
-        "trigonometry"
-      ]
-    },
-    {
-      "title": "Math.tan",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-tan",
-      "signature": "Math.tan(n)",
-      "description": "Returns the tangent of an angle in radians",
-      "keywords": [
-        "math",
-        "tan",
-        "tangent",
-        "trigonometry"
-      ]
-    },
-    {
-      "title": "Math.exp",
-      "type": "method",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-exp",
-      "signature": "Math.exp(n)",
-      "description": "Returns e raised to the power of n",
-      "keywords": [
-        "math",
-        "exp",
-        "exponential",
-        "e"
-      ]
-    },
-    {
-      "title": "Math.pi",
-      "type": "constant",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-pi",
-      "signature": "Math.pi",
-      "description": "The mathematical constant pi (3.14159...)",
-      "keywords": [
-        "math",
-        "pi",
-        "constant"
-      ]
-    },
-    {
-      "title": "Math.e",
-      "type": "constant",
-      "category": "Math",
-      "path": "/docs/builtins/core#def-math-e",
-      "signature": "Math.e",
-      "description": "The mathematical constant e (2.71828...)",
-      "keywords": [
-        "math",
-        "e",
-        "constant"
+        "sqrt",
+        "pow",
+        "power",
+        "square root"
       ]
     },
     {
@@ -10044,7 +9913,7 @@
       "type": "page",
       "category": "Jobs",
       "path": "/docs/builtins/jobs#section-standalone-worker",
-      "signature": "soli jobs [folder] [--workers N] · soli jobs list|retry|cancel",
+      "signature": "soli jobs [folder] [--workers N] \u00b7 soli jobs list|retry|cancel",
       "description": "Standalone job worker with no HTTP listener. Pair with SOLI_JOB_WORKERS=0 on soli serve. list/retry/cancel inspect the queue; --dev adds /__soli/jobs.",
       "keywords": [
         "soli jobs",
@@ -14459,7 +14328,7 @@
       "type": "feature",
       "category": "Core Concepts",
       "path": "/docs/core-concepts/liveview#in-socket-nav",
-      "signature": "soli-patch=\"/path\" · { \"patch\": \"/path\" }",
+      "signature": "soli-patch=\"/path\" \u00b7 { \"patch\": \"/path\" }",
       "description": "In-socket LiveView navigation: pushState plus event == patch with path/query. Nested data-liveview-url mounts are child sockets.",
       "keywords": [
         "liveview",
@@ -14475,7 +14344,7 @@
       "type": "feature",
       "category": "Core Concepts",
       "path": "/docs/core-concepts/liveview#hooks",
-      "signature": "soli-hook=\"Chart\" · SoliLiveView.hooks · soli-disable-with · soli-click-away",
+      "signature": "soli-hook=\"Chart\" \u00b7 SoliLiveView.hooks \u00b7 soli-disable-with \u00b7 soli-click-away",
       "description": "Client hooks (mounted/updated/destroyed) for charts and widgets, in-flight loading classes and disable-with, and click-away for dropdowns.",
       "keywords": [
         "liveview",
@@ -14521,42 +14390,6 @@
         "websocket",
         "sse",
         "model changes"
-      ]
-    },
-    {
-      "title": "PAGERANK",
-      "type": "function",
-      "category": "Database",
-      "path": "/docs/sdbql-graphs",
-      "signature": "PAGERANK(edge_collection [, options])",
-      "description": "Computes PageRank over an edge collection graph. Returns sorted array of { node, score } objects. Supports damping and iteration options.",
-      "keywords": [
-        "pagerank",
-        "page rank",
-        "graph",
-        "centrality",
-        "ranking",
-        "sdbql",
-        "solidb",
-        "analytics",
-        "graph analytics"
-      ]
-    },
-    {
-      "title": "DEGREE_CENTRALITY",
-      "type": "function",
-      "category": "Database",
-      "path": "/docs/sdbql-graphs",
-      "signature": "DEGREE_CENTRALITY(edge_collection)",
-      "description": "Returns the degree (number of incident edges) for each node in an edge collection. Useful for simple centrality.",
-      "keywords": [
-        "degree_centrality",
-        "degree",
-        "centrality",
-        "graph",
-        "sdbql",
-        "solidb",
-        "analytics"
       ]
     },
     {

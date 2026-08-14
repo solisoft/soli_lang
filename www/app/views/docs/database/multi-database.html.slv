@@ -273,6 +273,14 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">one comparison of a group key or aggregate alias against a number</span></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4">Dev bar / <code>dev_queries()</code> / N+1 detection</td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">the SQL, its binds, and its duration are logged per request</span></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code>soli db:create</code> / <code>soli db:drop</code></td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">(SoliDB creates its database on first use instead)</span></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code>soli db:schema:dump</code> / <code>db:schema:load</code></td>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">writes / applies db/schema.sql plus applied migration versions</span></td>
                 </tr>
@@ -283,6 +291,10 @@ end</code></pre>
                 <tr>
                     <td class="py-3 px-4">Graph, vector, columnar, timeseries</td>
                     <td class="py-3 px-4 text-red-400">✗ SoliDB-only</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4">Raw SDBQL / string <code>.where("doc&hellip;")</code></td>
+                    <td class="py-3 px-4 text-red-400">✗ SoliDB-only <span class="text-gray-500">(use the hash form, or <code>find_by_sql</code>)</span></td>
                 </tr>
             </tbody>
         </table>

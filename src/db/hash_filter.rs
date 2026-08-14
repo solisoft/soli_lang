@@ -195,7 +195,8 @@ impl HashFilter {
                     let Some(op) = CmpOp::parse(raw_op) else {
                         return Err(format!(
                             "{method}() unknown operator {raw_op:?} on {field:?}. \
-                             Use gt, gte, lt, lte, eq, ne, like, ilike, in."
+                             Use gt, gte, lt, lte, eq, ne, like, ilike, in \
+                             (or the symbols >, >=, <, <=, ==, =, !=, <>)."
                         ));
                     };
                     if val.is_object() || val.is_array() {
@@ -785,6 +786,36 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("unknown operator"), "{err}");
+    }
+
+    /// The symbolic spellings are part of the accepted vocabulary (documented in
+    /// models.md), so they must compile to the same predicate as their names.
+    #[test]
+    fn symbolic_operators_match_their_named_forms() {
+        use super::super::sql_compile::Dialect;
+        for (symbol, name) in [
+            (">", "gt"),
+            (">=", "gte"),
+            ("<", "lt"),
+            ("<=", "lte"),
+            ("==", "eq"),
+            ("=", "eq"),
+            ("!=", "ne"),
+            ("<>", "ne"),
+        ] {
+            let compile = |op: &str| {
+                let filter = HashFilter::from_json_map(
+                    serde_json::json!({ "total": { op: 100 } })
+                        .as_object()
+                        .unwrap(),
+                    "where",
+                )
+                .unwrap_or_else(|e| panic!("{op:?} should parse: {e}"));
+                let mut params = Vec::new();
+                compile_doc_pred(Dialect::Sqlite, &filter, &mut params).unwrap()
+            };
+            assert_eq!(compile(symbol), compile(name), "{symbol} vs {name}");
+        }
     }
 
     #[test]

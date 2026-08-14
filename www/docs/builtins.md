@@ -1621,8 +1621,9 @@ end
 ### Secure Random
 
 Cryptographically secure random values drawn from the operating system entropy
-source. Do **not** use `Math.random` for anything security-bearing — it is a
-general-purpose PRNG, not a CSPRNG.
+source. These are the only random-number facilities in the language — there is no
+`Math.random`, so a token or nonce has no non-cryptographic alternative to reach
+for by mistake.
 
 All three take a **byte** count, not a character count, and reject anything
 outside `1..=1024`.
@@ -3142,32 +3143,44 @@ Adds hours to the date/time. Use negative values to subtract.
 
 **Returns:** DateTime - A new DateTime instance
 
-#### .add_weeks(n)
+#### .add_minutes(n)
 
-Adds weeks to the date. Use negative values to subtract.
+Adds minutes to the date/time. Use negative values to subtract.
 
 **Parameters:**
-- `n` (Int) - Number of weeks to add
+- `n` (Int) - Number of minutes to add
 
 **Returns:** DateTime - A new DateTime instance
 
-#### .add_months(n)
+```soli
+in_90_minutes = DateTime.now().add_minutes(90)
+five_min_ago  = DateTime.now().add_minutes(-5)
+```
 
-Adds months to the date. Use negative values to subtract.
+#### Weeks, months, and years
 
-**Parameters:**
-- `n` (Int) - Number of months to add
+The arithmetic methods are `add_days`, `add_hours`, and `add_minutes` — there is no
+`add_weeks` / `add_months` / `add_years`, because month and year steps need calendar
+rules (what is January 31st plus one month?) that a fixed offset cannot express.
 
-**Returns:** DateTime - A new DateTime instance
+A week is seven days:
 
-#### .add_years(n)
+```soli
+next_week = DateTime.now().add_days(7)
+```
 
-Adds years to the date. Use negative values to subtract.
+For a calendar month or year, rebuild the date from its parts:
 
-**Parameters:**
-- `n` (Int) - Number of years to add
+```soli
+today     = DateTime.now()
+next_year = DateTime.parse("#{today.year() + 1}-#{today.month()}-#{today.day()}")
+```
 
-**Returns:** DateTime - A new DateTime instance
+Or step to a boundary, which is exact:
+
+```soli
+next_month_start = DateTime.now().add_days(28).beginning_of_month()
+```
 
 ### Instance Methods - Boundaries
 
@@ -3353,8 +3366,8 @@ println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
 println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
-next_week = now.add_weeks(1)
-last_month = now.add_months(-1)
+next_week = now.add_days(7)
+in_two_hours = now.add_hours(2)
 
 # Parse a date string
 birthday = DateTime.parse("1990-06-15")

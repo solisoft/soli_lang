@@ -621,7 +621,7 @@ print([0].avg());           # 0</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Select records by a field value, using the same equality as <code>==</code>. <code>filter_by</code> returns every match; <code>find_by</code> returns the first, or <code>null</code>. Same names and meaning as <a href="/docs/core-concepts/models" class="text-amber-400 hover:underline">the model methods</a>, so an in-memory filter and a database one read alike.</p>
+                    <p class="text-gray-400 mb-3">Select records by a field value, using the same equality as <code>==</code>. <code>filter_by</code> returns every match; <code>find_by</code> returns the first, or <code>null</code>. Same names and meaning as <a href="/docs/database/models" class="text-amber-400 hover:underline">the model methods</a>, so an in-memory filter and a database one read alike.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">users = [
   { "name": "Alice", "role": "admin" },
   { "name": "Bob",   "role": "member" },

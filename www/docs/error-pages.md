@@ -57,7 +57,7 @@ When a view errored, the page also shows a **View Locals** panel with a one-clic
 
 A name passed to `render(...)` that collides with a controller-scope variable is shadowed by the controller value at the top level — reach the view's copy under `_view_data.<key>` (the View Locals buttons do this for you). Variables *created inside the template* (a `<% total = ... %>` assignment, a `for` loop variable) are not part of the snapshot; only the locals you passed into `render(...)` are.
 
-### Production Mode (`--no-dev`)
+### Production Mode (no `--dev`)
 
 In production mode, error pages keep the clean, branded look and **never leak failure details to the visitor**. The page shows only generic copy and an opaque error ID — the full failure context (error message, stack, request snapshot, environment) is written to stderr instead (see below), where an operator can correlate it by error ID without exposing internals to end users:
 
@@ -68,7 +68,7 @@ Custom error pages can override the defaults — see [Custom Error Pages](#custo
 
 #### Error logging to stderr
 
-For every 500 the server writes a multi-line block to stderr — useful when you only have access to the container / journald logs. This fires in **both `--dev` and `--no-dev`** so failures show up in your terminal during development the same way they do in production:
+For every 500 the server writes a multi-line block to stderr — useful when you only have access to the container / journald logs. This fires **with and without `--dev`** so failures show up in your terminal during development the same way they do in production:
 
 ```
 [ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
@@ -238,15 +238,18 @@ end
 
 ## Production Deployment
 
-When deploying to production, ensure you run the server in production mode:
+Production is the default: the developer error page (with its stack trace and
+environment dump) appears only under `--dev`, so simply omitting the flag serves
+the custom pages.
 
 ```bash
-# Using soli CLI
-soli serve --no-dev
-
-# Or set environment variable
-SOLI_ENV=production soli serve
+soli serve ./myapp                      # production error pages
+APP_ENV=production soli serve ./myapp   # also picks production worker defaults
 ```
+
+`APP_ENV=production` does not select the error pages — the `--dev` flag alone
+does that — but it is what marks the environment for worker counts, `.env.production`
+loading, and the other production defaults.
 
 This ensures:
 - Custom error pages are used
@@ -260,7 +263,7 @@ This ensures:
 1. Verify templates are in `app/views/errors/` (not `app/views/layouts/errors/` or another location)
 2. Ensure template files have the correct extension (`.html.slv` or `.slv`)
 3. Check that the status code in the filename matches the HTTP status
-4. Verify the application is running in production mode (`--no-dev`)
+4. Verify the application is running in production mode (started without `--dev`)
 
 ### Error pages still showing defaults
 

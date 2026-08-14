@@ -1,75 +1,59 @@
 # Testing Assertions
 
-Soli provides assertion helper functions for writing tests with clear, expressive syntax. These functions are typically defined in `tests/helpers/assertions.sl` and can be imported into test files.
+Assertions are **builtins** of the test runner: they are defined by the runtime and
+available inside any `test(...)` body run by `soli test`. Nothing to import, and no
+`tests/helpers/assertions.sl` to write.
 
-## Assertion Functions
-
-### assert_equal(expected, actual, message)
-
-Asserts that two values are equal.
-
-```soli
-assert_equal(42, result, "should return 42");
-assert_equal("hello", str, "string should match");
-assert_equal(true, is_valid, "should be valid");
-```
-
-**Returns:** `{passed: boolean, message: string, expected: Any, actual: Any}`
-
-### assert_true(value, message)
-
-Asserts that a value is `true`.
+Every assertion **raises** on failure — the runner catches it, marks the test failed,
+and prints the message with the file and line. There is no result hash to inspect and
+no `message` parameter to pass: the failure already points at the line. On success an
+assertion returns `1` and bumps the run's assertion counter (the count printed after
+each file).
 
 ```soli
-assert_true(user.is_active, "user should be active");
-assert_true(contains(items, "test"), "should contain test item");
+describe("User", fn() {
+    test("stores a normalized email", fn() {
+        user = User.create({ "email": " A@Example.com " })
+        assert_eq(user["email"], "a@example.com")
+        assert_not_null(user["_key"])
+    })
+})
 ```
 
-**Returns:** `{passed: boolean, message: string, expected: true, actual: Any}`
+## Value Assertions
 
-### assert_false(value, message)
+| Assertion | Passes when |
+|---|---|
+| `assert(value)` | `value` is the boolean `true` (a non-boolean is an error, not a failure) |
+| `assert_not(value)` | `value` is the boolean `false` |
+| `assert_eq(a, b)` | `a` and `b` are equal |
+| `assert_ne(a, b)` | `a` and `b` differ |
+| `assert_null(value)` | `value` is `null` |
+| `assert_not_null(value)` | `value` is anything but `null` |
+| `assert_gt(a, b)` | `a > b` |
+| `assert_lt(a, b)` | `a < b` |
+| `assert_match(string, pattern)` | the regex `pattern` matches `string` |
+| `assert_contains(collection, item)` | an array contains `item`, or a string contains the substring |
+| `assert_hash_has_key(hash, key)` | `hash` has that key |
+| `assert_json(string)` | `string` parses as JSON |
 
-Asserts that a value is `false`.
+`assert` and `assert_not` are strict about the boolean: `assert(user)` on a hash is an
+error rather than a pass, so a typo cannot quietly succeed. Compare explicitly
+(`assert_not_null(user)`) instead.
 
 ```soli
-assert_false(user.is_blocked, "user should not be blocked");
-assert_false(is_empty(items), "items should not be empty");
+assert(order["paid"])                          # a real boolean field
+assert_eq(response["status"], 200)
+assert_ne(user["_key"], other["_key"])
+assert_gt(total, 0)
+assert_match(slug, "^[a-z0-9-]+$")
+assert_contains(["draft", "open"], order["state"])
+assert_contains(response["body"], "Saved")     # substring on a string
+assert_hash_has_key(payload, "token")
+assert_json(response["body"])
 ```
 
-**Returns:** `{passed: boolean, message: string, expected: false, actual: Any}`
-
-### assert_contains(haystack, needle, message)
-
-Asserts that a collection contains a specific value.
-
-```soli
-assert_contains(users, "admin", "should contain admin user");
-assert_contains([1, 2, 3], 2, "should contain 2");
-```
-
-**Returns:** `{passed: boolean, message: string}`
-
-### assert_nil(value, message)
-
-Asserts that a value is `nil` (null).
-
-```soli
-assert_nil(result.error, "should have no error");
-assert_nil(user.deleted_at, "should not be deleted");
-```
-
-**Returns:** `{passed: boolean, message: string, expected: nil, actual: Any}`
-
-### assert_not_nil(value, message)
-
-Asserts that a value is not `nil`.
-
-```soli
-assert_not_nil(user.id, "user should have an id");
-assert_not_nil(response.body, "response should have body");
-```
-
-**Returns:** `{passed: boolean, message: string, expected: "not nil", actual: Any}`
+## Query Assertions
 
 ### assert_no_n_plus_one(response)
 
@@ -260,6 +244,17 @@ expect([1, 2, 3]).to_contain(2);
 expect("hello world").to_contain("world");
 ```
 
+### to_match(substring)
+
+Asserts a string **contains** `substring`. Despite the name this is not a regex —
+it is the same test as `to_contain` on a string. For a pattern, use the builtin
+`assert_match(string, pattern)`, which is regex-based.
+
+```soli
+expect(response["body"]).to_match("Saved");
+expect(slug).to_match("-");
+```
+
 ### to_be_valid_json()
 
 Asserts that the actual string is valid JSON:
@@ -269,152 +264,52 @@ expect('{"name": "Alice"}').to_be_valid_json();
 expect(response.body).to_be_valid_json();
 ```
 
-## Result Structure
-
-All assertion functions return a result hash with the following structure:
-
-```soli
-{
-  "passed": true,
-  "message": "description of the test",
-  "expected": value_that_was_expected,
-  "actual": value_that_was_actual
-}
-```
-
-Example:
-
-```soli
-result = assert_equal(42, response.code, "status should be 42");
-
-# result is:
-# {
-#     "passed": true,
-#     "message": "status should be 42",
-#     "expected": 42,
-#     "actual": 42
-# }
-```
-
-## Test Runner Pattern
-
-A typical test file structure with assertions:
-
-```soli
-class UserModelTest
-  static def run
-    results = []
-
-    # Test 1: Create user
-    user = User.create({"email": "test@example.com", "name": "Test"})
-    results.push(assert_true(contains(user, "id"), "create() returns user with id"))
-    results.push(assert_equal("test@example.com", user["email"], "email is stored correctly"))
-
-    # Test 2: Find user
-    found = User.find_by_email("test@example.com")
-    results.push(assert_not_nil(found, "find_by_email() returns user"))
-    results.push(assert_equal(user["id"], found["id"], "same user is returned"))
-
-    results
-  end
-end
-```
-
-## Running Tests
-
-```bash
-# Run test runner
-soli tests/run_tests.sl
-
-# Run with npm (if configured in package.json)
-npm test
-```
-
-## Test Results
-
-After running tests, collect and report results:
-
-```soli
-passed = 0
-failed = 0
-
-for result in results
-  if result["passed"]
-    passed = passed + 1
-    print("  [PASS] " + result["message"])
-  else
-    failed = failed + 1
-    print("  [FAIL] " + result["message"])
-    print("         Expected: " + string(result["expected"]))
-    print("         Actual: " + string(result["actual"]))
-  end
-end
-
-print("")
-print("Summary: " + string(passed) + " passed, " + string(failed) + " failed")
-```
-
 ## Custom Assertions
 
-You can create custom assertions by defining new functions:
+A custom assertion is an ordinary function that raises — the runner treats a raise as
+a failure, so `throw` is the whole contract:
 
 ```soli
-def assert_length(expected_len, collection, message)
-  actual_len = len(collection)
-  {
-    "passed": actual_len == expected_len,
-    "message": message,
-    "expected": expected_len,
-    "actual": actual_len
-  }
+def assert_length(collection, expected)
+    actual = collection.length()
+    throw "expected #{expected} items, got #{actual}" unless actual == expected
 end
 
-def assert_starts_with(prefix, str, message)
-  starts_with = len(str) >= len(prefix) && substring(str, 0, len(prefix)) == prefix
-  {
-    "passed": starts_with,
-    "message": message,
-    "expected": prefix + "...",
-    "actual": str
-  }
+def assert_starts_with(text, prefix)
+    throw "#{text} does not start with #{prefix}" unless text.starts_with(prefix)
+end
+```
+
+Composing the builtins works too, since they raise on their own:
+
+```soli
+def assert_valid_slug(slug)
+    assert_not_null(slug)
+    assert_match(slug, "^[a-z0-9-]+$")
 end
 ```
 
 ## Best Practices
 
-1. **Use descriptive messages**: Always provide clear test messages
-2. **Test one thing per assertion**: Separate assertions for separate concerns
-3. **Use appropriate assertions**: Use `assert_nil` instead of `assert_equal(nil, ...)`
-4. **Check both positive and negative cases**: Test both success and failure scenarios
-5. **Return all results**: Collect results in an array and return them from test functions
+1. **One concern per assertion** — a failure should name the thing that broke.
+2. **Prefer the specific assertion** — `assert_null(x)` beats `assert_eq(x, null)`; it
+   says what it means and fails with a clearer message.
+3. **Don't pass a message** — assertions take values only; the file and line already
+   identify the check. If a check needs prose, raise it yourself (see Custom
+   Assertions).
+4. **Keep `assert` for real booleans** — for presence, use `assert_not_null`.
+5. **Budget your queries** — an endpoint spec that asserts `assert_max_queries` or
+   `assert_no_n_plus_one` catches a regression that a value assertion never will.
 
-## Example Test Suite
+## Running Them
 
-```soli
-class TransactionModelTest
-  static def run
-    results = []
-    MockDatabase.reset()
-
-    # Test create
-    tx = TransactionModel.create({"amount": 100, "currency": "EUR"})
-    results.push(assert_not_nil(tx["id"], "create() returns id"))
-    results.push(assert_equal("pending", tx["status"], "default status is pending"))
-
-    # Test find
-    found = TransactionModel.find_by_id(tx["id"])
-    results.push(assert_not_nil(found, "find_by_id() returns transaction"))
-    results.push(assert_equal(tx["amount"], found["amount"], "amount matches"))
-
-    # Test update
-    updated = TransactionModel.update_status(tx["id"], "paid")
-    results.push(assert_equal("paid", updated["status"], "status updated"))
-
-    # Test stats
-    stats = TransactionModel.stats()
-    results.push(assert_equal(1, stats["total"], "one transaction in stats"))
-
-    results
-  end
-end
+```bash
+soli test                       # everything under tests/
+soli test tests/user_test.sl    # one file
+soli test --fail-on-n1          # fail any request spec that triggers an N+1
+soli test --browser             # also run browser specs
 ```
+
+See [Testing](testing.md) for the runner, fixtures, and lifecycle hooks,
+[E2E Controller Testing](testing-e2e.md) for request specs, and
+[Browser Testing](testing-browser.md) for the browser helpers.

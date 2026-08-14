@@ -676,66 +676,101 @@ to set up and clean up test state. Always reset authentication state between tes
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Assertions</h3>
-        <p class="text-gray-400 mb-4">Soli provides assertion functions for writing tests with expressive syntax:</p>
+        <p class="text-gray-400 mb-4">
+            Assertions are <strong class="text-white">builtins</strong> of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each one <strong class="text-white">raises</strong> on failure (the runner marks the test failed and prints the file and line) and returns <code>1</code> on success, bumping the run's assertion counter. They take <strong class="text-white">values only</strong>: there is no message parameter, because the failure already points at the line. When a check needs prose, <code class="text-cyan-400">throw</code> it yourself.
+        </p>
 
-        <section id="def-assert-equal" class="scroll-mt-20 mb-6">
+        <section id="def-assert" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-equal" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_equal(expected, actual, message)</code>
+                <a href="#def-assert" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert(value)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that two values are equal.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")
-assert_equal("hello", str, "string should match")</code></pre>
+                <p class="text-gray-400 mb-2">Passes when <code>value</code> is the boolean <code>true</code>. A non-boolean is an <em>error</em>, not a failure, so a typo cannot quietly pass &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert(order["paid"])</code></pre>
             </div>
         </section>
 
-        <section id="def-assert-true" class="scroll-mt-20 mb-6">
+        <section id="def-assert-not" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-true" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_true(value, message)</code>
+                <a href="#def-assert-not" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_not(value)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that a value is true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active");</code></pre>
+                <p class="text-gray-400 mb-2">Passes when <code>value</code> is the boolean <code>false</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_not(user["locked"])</code></pre>
             </div>
         </section>
 
-        <section id="def-assert-false" class="scroll-mt-20 mb-6">
+        <section id="def-assert-eq" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-false" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_false(value, message)</code>
+                <a href="#def-assert-eq" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_eq(a, b)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that a value is false.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked");</code></pre>
+                <p class="text-gray-400 mb-2">Passes when the two values are equal. <code class="text-cyan-400">assert_ne(a, b)</code> is the inverse.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_eq(response["status"], 200)
+assert_ne(user["_key"], other["_key"])</code></pre>
+            </div>
+        </section>
+
+        <section id="def-assert-null" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-null" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_null(value)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Passes when <code>value</code> is <code>null</code>. <code class="text-cyan-400">assert_not_null(value)</code> is the inverse.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_null(order["cancelled_at"])
+assert_not_null(user["_key"])</code></pre>
+            </div>
+        </section>
+
+        <section id="def-assert-gt" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-gt" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_gt(a, b) / assert_lt(a, b)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Ordering comparisons: <code>a &gt; b</code> and <code>a &lt; b</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_gt(total, 0)
+assert_lt(elapsed_ms, 500)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-assert-match" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-match" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_match(string, pattern)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Passes when the regex <code>pattern</code> matches <code>string</code>. Both arguments must be strings.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_match(slug, "^[a-z0-9-]+$")</code></pre>
             </div>
         </section>
 
         <section id="def-assert-contains" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-assert-contains" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_contains(haystack, needle, message)</code>
+                    <code class="font-mono text-amber-400">assert_contains(collection, item)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that a collection contains a specific value.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user");</code></pre>
+                <p class="text-gray-400 mb-2">Passes when an array contains <code>item</code>, or when a string contains that substring.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(["draft", "open"], order["state"])
+assert_contains(response["body"], "Saved")</code></pre>
             </div>
         </section>
 
-        <section id="def-assert-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-hash-has-key" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-nil" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_nil(value, message)</code>
+                <a href="#def-assert-hash-has-key" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_hash_has_key(hash, key)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that a value is nil (null).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error");</code></pre>
+                <p class="text-gray-400 mb-2">Passes when <code>hash</code> has that key.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_hash_has_key(payload, "token")</code></pre>
             </div>
         </section>
 
-        <section id="def-assert-not-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-json" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-not-nil" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">assert_not_nil(value, message)</code>
+                <a href="#def-assert-json" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_json(string)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Asserts that a value is not nil.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id");</code></pre>
+                <p class="text-gray-400 mb-2">Passes when <code>string</code> parses as JSON.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_json(response["body"])</code></pre>
             </div>
         </section>
 

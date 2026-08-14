@@ -91,7 +91,7 @@
 # Security headers (CSP, HSTS, clickjacking…).
 # ---------------------------------------------------------------------
 # `--dev` ships a relaxed CSP so the live-reload SSE works; production
-# (`--no-dev`) ships sensible defaults (X-Frame-Options: SAMEORIGIN,
+# (no `--dev`) ships sensible defaults (X-Frame-Options: SAMEORIGIN,
 # X-Content-Type-Options: nosniff, etc.). Tighten further from here:
 #
 #   # set_csp("default-src 'self'; script-src 'self' 'nonce-{nonce}'")

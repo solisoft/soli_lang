@@ -55,7 +55,7 @@ print("The area of a circle with radius " + str(radius) + " is " + str(area));
 
 ```bash
 # Run a single file
-soli run hello.sl
+soli hello.sl
 
 # Run with hot reload (development)
 soli serve
@@ -3563,10 +3563,9 @@ print(2.pow(10));      # 1024
 print([3, 7].min);     # 3
 print([3, 7].max);     # 7
 
-# Math class
-print(Math.sin(0));         # 0.0
-print(Math.cos(0));         # 1.0
-print(Math.tan(0.785398));  # ~1.0 (45 degrees in radians)
+# There is no Math namespace: the operations above are methods on the
+# number itself. Trigonometry, logarithms and exponentials are not in
+# the language today.
 
 # Rounding (number methods)
 print(3.7.floor);      # 3
@@ -3574,8 +3573,8 @@ print(3.2.ceil);       # 4
 print(3.5.round);      # 4
 print(38.995.round(2)); # 39.0 — rounds the decimal value, not the binary float
 
-# Random
-random_num = Math.random();   # 0.0 to 1.0
+# Random — use the crypto builtins (there is no Math.random)
+token = Crypto.random_hex(16);   # CSPRNG hex, see Builtins → Secure Random
 
 # Time
 print(clock());  # Current time in seconds since epoch

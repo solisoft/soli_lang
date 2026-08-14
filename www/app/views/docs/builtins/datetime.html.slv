@@ -408,77 +408,42 @@ in_two_hours = now.add_hours(2)</code></pre>
             </div>
         </section>
 
-        <section id="def-add-weeks" class="scroll-mt-20 mb-6">
+        <section id="def-add-minutes" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-add-weeks" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">.add_weeks(n)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
+                <a href="#def-add-minutes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">.add_minutes(n)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Add weeks to the date. Use negative values to subtract.</p>
+                <p class="text-gray-400 mb-3">Add minutes to the date/time. Use negative values to subtract.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> - Number of weeks to add
+                    <code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> - Number of minutes to add
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
-next_week = today.add_weeks(1)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">now = DateTime.now
+in_90_minutes = now.add_minutes(90)
+five_min_ago = now.add_minutes(-5)</code></pre>
             </div>
         </section>
 
-        <section id="def-add-months" class="scroll-mt-20 mb-6">
+        <section id="def-weeks-months-years" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-add-months" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">.add_months(n)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
+                <a href="#def-weeks-months-years" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Weeks, months, and years</code>
                 </a>
-                <p class="text-gray-400 mb-3">Add months to the date. Use negative values to subtract.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> - Number of months to add
-                </div>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-orange-400">DateTime</code> - A new DateTime instance
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
-next_month = today.add_months(1)
-last_quarter = today.add_months(-3)</code></pre>
+                <p class="text-gray-400 mb-3">
+                    The arithmetic methods are <code class="text-cyan-400">add_days</code>, <code class="text-cyan-400">add_hours</code>, and <code class="text-cyan-400">add_minutes</code> &mdash; there is no <code>add_weeks</code> / <code>add_months</code> / <code>add_years</code>, because month and year steps need calendar rules (what is January 31st plus one month?) that a fixed offset cannot express.
+                </p>
+                <pre data-filename="A week is seven days"><code class="language-soli text-sm">next_week = DateTime.now.add_days(7)</code></pre>
+                <p class="text-gray-400 mt-3 mb-3">For a calendar month or year, rebuild the date from its parts, or step to a boundary &mdash; which is exact:</p>
+                <pre data-filename="Calendar steps"><code class="language-soli text-sm">today = DateTime.now
+next_year = DateTime.parse("#{today.year() + 1}-#{today.month()}-#{today.day()}")
+
+next_month_start = DateTime.now.add_days(28).beginning_of_month()</code></pre>
             </div>
         </section>
-
-        <section id="def-add-years" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-add-years" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">.add_years(n)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Add years to the date. Use negative values to subtract.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> - Number of years to add
-                </div>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-orange-400">DateTime</code> - A new DateTime instance
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
-next_year = today.add_years(1)</code></pre>
-            </div>
-        </section>
-    </section>
-
-    <!-- Boundaries -->
-    <section id="section-boundaries" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Boundaries</h2>
 
         <section id="def-beginning-of-minute" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -795,8 +760,8 @@ println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
 println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
-next_week = now.add_weeks(1)
-last_month = now.add_months(-1)
+next_week = now.add_days(7)
+in_two_hours = now.add_hours(2)
 
 # Parse a date string
 birthday = DateTime.parse("1990-06-15")

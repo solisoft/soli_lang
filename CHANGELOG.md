@@ -2,7 +2,62 @@
 
 ## [Unreleased]
 
+### Added
+
+- **LiveView rooms share one instance across tabs and visitors.**
+  `data-live-room="name"` on the mount sends `?room=name`; the server keys
+  `room:name:component` instead of `session:component`. A public demo no
+  longer looks like a different session when the WebSocket upgrade has no
+  cookie (each socket used to mint a unique `sess-<uuid>`). The Field Desk
+  blog widget uses `field-desk`.
+
 ### Fixed
+
+- **Docs described an assertion API that does not exist.** The testing pages
+  documented `assert_equal` / `assert_true` / `assert_false` / `assert_nil` /
+  `assert_not_nil`, each taking a trailing `message`, and claimed assertions
+  return a `{passed, message, expected, actual}` hash. None of that is real: the
+  vocabulary is `assert`, `assert_not`, `assert_eq`, `assert_ne`, `assert_null`,
+  `assert_not_null`, `assert_gt`, `assert_lt`, `assert_match`, `assert_contains`,
+  `assert_hash_has_key`, `assert_json` — values only, raising on failure and
+  returning `1`. Rewritten across `testing-assertions.md`, the Testing and
+  Testing-Functions pages, and the scaffold page.
+
+- **`soli generate scaffold` wrote `describe("UsersControllerController")`.** The
+  caller appended `Controller` to a name the template already suffixes.
+
+- **Docs told you to run scripts with `soli run file.sl`**, which fails with
+  "Only one script file can be specified" — the invocation is `soli file.sl`.
+  Fixed in ten places, including the live-reload page (which also documented a
+  `SOLI_ENV` variable nothing reads, and a `./dev.sh` the template never shipped)
+  and the error-pages page (which documented a `--no-dev` flag that does not
+  exist; production is simply the absence of `--dev`).
+
+- **Docs documented `.add_weeks()` / `.add_months()` / `.add_years()`** on
+  DateTime, none of which exist, and omitted `.add_minutes()`, which does. The
+  page now says why month and year steps are absent and shows what to do instead.
+
+- **Docs documented a `Math` namespace and bare math functions.** There is no
+  `Math.floor` / `Math.random` / `Math.pi` (nor trigonometry, logarithms, or
+  exponentials anywhere), and `abs(n)` / `min(a, b)` / `sqrt(n)` are not free
+  functions — they are methods: `(-5).abs()`, `[3, 7].min()`, `(16).sqrt()`.
+
+- **Five docs links served a JSON blob instead of a page** (`/docs/jobs`,
+  `/docs/authorization`, `/docs/core-concepts/models`, `/docs/language/linting`,
+  `/docs/core-concepts/testing`), each falling through to the catch-all route.
+  Every internal `/docs` link in the site now resolves.
+
+- **Docs search returned entries for API that does not exist** — twelve `Math.*`
+  functions, plus two pointing at a removed `/docs/sdbql-graphs` page.
+
+- **The SQL adapter env vars were missing from the Configuration page.**
+  `SOLI_DB_ADAPTER`, `DATABASE_URL`, and `SOLI_DB_POOL_SIZE` were documented in
+  `configuration.md` but not on the page that mirrors it, whose Database section
+  listed only the SoliDB variables.
+
+- **The hash-filter operator symbols were undocumented.** `>`, `>=`, `<`, `<=`,
+  `==`, `=`, `!=`, `<>` are accepted alongside the names; they now appear in the
+  Models / Query-builder operator reference and in the unknown-operator error.
 
 - **LiveView instances are released when their last socket closes.** Nothing
   ever unregistered one, so every `session:component` pair kept its state, its

@@ -4,7 +4,7 @@
 > which SolidB owned the queue and delivered work back to the app through a
 > signed `POST /_jobs/run/:name` webhook. Soli now runs jobs **in-process**: the
 > queue is a `_jobs` collection on your default connection (SolidB, PostgreSQL,
-> or MySQL), a poller claims work atomically, worker threads execute it, and Soli
+> MySQL, or SQLite), a poller claims work atomically, worker threads execute it, and Soli
 > owns retries and cron. There is no callback URL, no inbound route, and no
 > required callback secret. The public API (`Job.*`, `Webhook.*`, `Cron.*`,
 > `perform_later`, `static cron`) is unchanged. See

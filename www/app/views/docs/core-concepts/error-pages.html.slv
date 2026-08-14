@@ -109,7 +109,7 @@
                     </li>
                 </ul>
                 <div class="mt-4 pt-4 border-t border-white/5">
-                    <code class="text-xs text-gray-500 block bg-[#171412] p-2 rounded">soli serve --no-dev</code>
+                    <code class="text-xs text-gray-500 block bg-[#171412] p-2 rounded">soli serve (no --dev)</code>
                 </div>
             </div>
         </div>
@@ -145,7 +145,7 @@ this.page_owner           # controller instance vars</code></pre>
         <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
             <h3 class="font-semibold text-white mb-3">Error logging to stderr</h3>
             <p class="text-gray-400 text-sm mb-4">
-                For every 500 the server writes a multi-line block to stderr — useful when you only have access to container / journald logs. This fires in <strong>both <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">--dev</code> and <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">--no-dev</code></strong> so failures show up in your terminal during development the same way they do in production. The first <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
+                For every 500 the server writes a multi-line block to stderr — useful when you only have access to container / journald logs. This fires in <strong>with and without <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">--dev</code></strong> so failures show up in your terminal during development the same way they do in production. The first <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
             </p>
             <pre class="text-xs text-gray-300 bg-[#171412] p-4 rounded overflow-x-auto"><code>[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
   stack:
@@ -383,11 +383,13 @@ this.page_owner           # controller instance vars</code></pre>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Using soli CLI
-soli serve --no-dev
+<pre><code class="language-bash text-sm"># Production is the default — the developer error page
+# (stack trace, environment dump) appears only under --dev
+soli serve ./myapp
 
-# Or set environment variable
-SOLI_ENV=production soli serve</code></pre>
+# APP_ENV marks the environment for worker defaults and
+# .env.production; the --dev flag alone selects the pages
+APP_ENV=production soli serve ./myapp</code></pre>
             </div>
         </div>
 

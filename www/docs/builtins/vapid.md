@@ -179,7 +179,7 @@ println("VAPID_PRIVATE_KEY=" + keys["private_key"])
 ```
 
 ```bash
-soli run bin/vapid_keys.sl >> .env
+soli bin/vapid_keys.sl >> .env
 ```
 
 **2. Expose the public key to the browser** so the service worker can call

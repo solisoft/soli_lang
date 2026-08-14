@@ -82,7 +82,7 @@ Within a directory, files load in alphabetical order and *before* their subdirec
 
 In `--dev`, edits to nested files under these directories hot-reload without a restart.
 
-If you run a model, service, or controller file directly with `soli run path/to/file.sl`, the auto-loader does **not** run — in that case you still need explicit imports.
+If you run a model, service, or controller file directly with `soli path/to/file.sl`, the auto-loader does **not** run — in that case you still need explicit imports.
 
 ## CRUD Operations
 
@@ -139,6 +139,7 @@ results = User.where("doc.age >= @min_age AND doc.role == @role", {
 |------------|---------|
 | scalar (`"open"`, `18`, `true`, `null`) | equality (`==`) |
 | `{ "gt" }` / `{ "gte" }` / `{ "lt" }` / `{ "lte" }` | comparison (`>`, `>=`, `<`, `<=`); `eq` / `ne` also accepted |
+| `{ ">": 100 }`, `{ "!=": "open" }`, … | the symbols are accepted spellings of the same operators |
 | `[1, 2, 3]` or `{ "in": [1, 2, 3] }` | `IN` (an empty list matches nothing) |
 | `{ "like": "INV%" }` / `{ "ilike": "%@x.com" }` | SQL `LIKE` / case-insensitive `LIKE` (`%` any run, `_` one character) |
 | `"or": [ {…}, {…} ]` / `"and": [ {…}, {…} ]` | boolean grouping |
@@ -209,9 +210,14 @@ real columns with typed binds, so each comparison is the column's own type and
 ordering on a text column follows the database's collation. A field that is not a
 column is refused by name, listing the columns that exist.
 
+**Operator spellings.** Each comparison also answers to its symbol, so
+`{ "total": { ">": 100 } }` and `{ "total": { "gt": 100 } }` compile to the same
+predicate: `>` `>=` `<` `<=` for the four comparisons, `==` or `=` for `eq`, and
+`!=` or `<>` for `ne`. `or` / `and` are matched case-insensitively.
+
 **Errors name the vocabulary.** An unknown operator reports
-`gt, gte, lt, lte, eq, ne, like, ilike, in`; a field name that is not an
-identifier is refused before anything is compiled.
+`gt, gte, lt, lte, eq, ne, like, ilike, in` and the symbols; a field name that is
+not an identifier is refused before anything is compiled.
 
 > **Security — `where(...)` filter forms.** The Hash form
 > (`where({field: value, ...})`) is safe for user input: keys are

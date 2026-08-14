@@ -580,29 +580,32 @@ String.new(true)     # "true"</code></pre>
             <section id="def-abs" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-abs" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-amber-400">abs(n)</code> / <code class="text-lg font-mono text-amber-400">min(a, b)</code> / <code class="text-lg font-mono text-amber-400">max(a, b)</code>
+                        <code class="text-lg font-mono text-amber-400">.abs()</code> / <code class="text-lg font-mono text-amber-400">.min()</code> / <code class="text-lg font-mono text-amber-400">.max()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Common math operations.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">abs(-5)       # 5
-min(3, 7)     # 3
-max(3, 7)     # 7</code></pre>
+                    <p class="text-gray-400 mb-3">Common math operations. They are <strong class="text-white">methods</strong>, not free functions &mdash; <code>abs(-5)</code> is not defined. Smallest and largest come off an array.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">(-5).abs()      # 5
+[3, 7].min()    # 3
+[3, 7].max()    # 7
+(2.5).round()   # 3
+(1.7).ceil()    # 2
+(3.7).floor()   # 3</code></pre>
                 </div>
             </section>
 
             <section id="def-sqrt" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-sqrt" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-amber-400">sqrt(n)</code> / <code class="text-lg font-mono text-amber-400">pow(base, exp)</code>
+                        <code class="text-lg font-mono text-amber-400">.sqrt()</code> / <code class="text-lg font-mono text-amber-400">.pow(exp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Square root and power functions.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">sqrt(16)      # 4.0
-pow(2, 3)     # 8.0</code></pre>
+                    <p class="text-gray-400 mb-3">Square root and power, also methods on the number.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">(16).sqrt()     # 4
+(2).pow(3)      # 8</code></pre>
                 </div>
             </section>
 

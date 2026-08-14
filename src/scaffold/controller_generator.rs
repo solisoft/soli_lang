@@ -66,9 +66,11 @@ pub fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
         })?;
     }
 
-    let controller_name = to_pascal_case(name) + "Controller";
+    // The template appends "Controller" itself (`describe("{0}Controller")`), so
+    // pass the bare resource name — appending here produced
+    // `describe("UsersControllerController")`.
     let controller_test_content =
-        controller::controller_test_template(&controller_name, &resource_path);
+        controller::controller_test_template(&to_pascal_case(name), &resource_path);
 
     let controller_test_path = controllers_dir.join(format!("{}_controller_spec.sl", snake_name));
     write_file(&controller_test_path, &controller_test_content)?;

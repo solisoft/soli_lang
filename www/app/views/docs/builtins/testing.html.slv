@@ -158,105 +158,17 @@
     <section id="section-assertions" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Assertions</h2>
 
-        <section id="def-assert-equal" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-equal" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_equal(expected, actual, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that two values are equal.</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")assert_equal("hello", str, "string should match")assert_equal(true, is_valid, "should be valid");</code></pre>
-                </div>
-            </div>
-        </section>
-
-        <section id="def-assert-true" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-true" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_true(value, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-amber-400">true</code>.</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active")assert_true(contains(items, "test"), "should contain test item");</code></pre>
-                </div>
-            </div>
-        </section>
-
-        <section id="def-assert-false" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-false" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_false(value, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-amber-400">false</code>.</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked")assert_false(is_empty(items), "items should not be empty");</code></pre>
-                </div>
-            </div>
-        </section>
-
-        <section id="def-assert-contains" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-contains" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_contains(haystack, needle, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that a collection contains a specific value.</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user")assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
-                </div>
-            </div>
-        </section>
-
-        <section id="def-assert-nil" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-nil" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_nil(value, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-amber-400">nil</code> (null).</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error")assert_nil(user.deleted_at, "should not be deleted");</code></pre>
-                </div>
-            </div>
-        </section>
-
-        <section id="def-assert-not-nil" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-assert-not-nil" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">assert_not_nil(value, message)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Asserts that a value is not <code class="text-amber-400">nil</code>.</p>
-                <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id")assert_not_nil(response.body, "response should have body");</code></pre>
-                </div>
-            </div>
-        </section>
+        <p class="text-gray-400 mb-6">
+            Assertions are builtins of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each <strong class="text-white">raises</strong> on failure (the runner prints the file and line) and returns <code>1</code> on success, bumping the run's assertion counter. They take <strong class="text-white">values only</strong>: there is no message parameter. <code class="text-cyan-400">assert</code> and <code class="text-cyan-400">assert_not</code> require a real boolean &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence. Full reference: <a href="/docs/testing#def-assert" class="text-amber-400 hover:underline">Testing &rarr; Assertions</a>.
+        </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-white mb-3">Assertion Result</h3>
-            <p class="text-gray-400 mb-3">All assertion functions return a result hash with the following structure:</p>
-            <pre data-filename="Result Structure"><code class="language-soli text-sm">{
-  "passed": true,
-  "message": "description of the test",
-  "expected": value_that_was_expected,
-  "actual": value_that_was_actual
-}</code></pre>
+            <h3 class="text-lg font-semibold text-white mb-3">On failure</h3>
+            <p class="text-gray-400 mb-3">An assertion raises; the runner catches it, marks the test failed, and prints the message with the file and line. There is no result hash to inspect &mdash; a custom check is just a function that <code class="text-cyan-400">throw</code>s.</p>
+            <pre data-filename="Custom assertion"><code class="language-soli text-sm">def assert_length(collection, expected)
+    actual = collection.length()
+    throw "expected #{expected} items, got #{actual}" unless actual == expected
+end</code></pre>
         </div>
     </section>
 
@@ -601,7 +513,7 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">View Introspection (E2E)</h3>
-            <p class="text-gray-400 text-sm mb-4">After a <code>get</code>/<code>post</code>/… request that renders a view, these helpers inspect what was rendered. They report nothing for a redirect or a JSON response. See the <a href="/docs/core-concepts/testing" class="text-amber-400 hover:text-amber-300">testing guide</a> for the full E2E flow.</p>
+            <p class="text-gray-400 text-sm mb-4">After a <code>get</code>/<code>post</code>/… request that renders a view, these helpers inspect what was rendered. They report nothing for a redirect or a JSON response. See the <a href="/docs/testing" class="text-amber-400 hover:text-amber-300">testing guide</a> for the full E2E flow.</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="def-assigns" class="scroll-mt-20">
                     <a href="#def-assigns" class="group flex items-center gap-2">
@@ -634,7 +546,7 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
             <p class="text-gray-500 text-xs mt-4">Very large locals (&approx;48&nbsp;KB+) degrade to a keys-only <code>assigns()</code>: keys present, values <code>null</code>.</p>
 
             <h3 class="text-lg font-semibold text-white mb-3 mt-8">Query Assertions (E2E)</h3>
-            <p class="text-gray-400 text-sm mb-4">Every response records the AQL queries the request ran (from the same log behind the dev bar's N+1 badge). Assert against it to catch a query issued in a loop, or to hold an endpoint to a query budget. See the <a href="/docs/core-concepts/testing" class="text-amber-400 hover:text-amber-300">testing guide</a>.</p>
+            <p class="text-gray-400 text-sm mb-4">Every response records the AQL queries the request ran (from the same log behind the dev bar's N+1 badge). Assert against it to catch a query issued in a loop, or to hold an endpoint to a query budget. See the <a href="/docs/testing" class="text-amber-400 hover:text-amber-300">testing guide</a>.</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="def-assert-no-n-plus-one" class="scroll-mt-20">
                     <a href="#def-assert-no-n-plus-one" class="group flex items-center gap-2">

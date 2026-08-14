@@ -153,7 +153,7 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/language/linting" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+        <a href="/docs/development-tools/linting" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Linting &rarr;</h3>
             <p class="text-sm text-gray-400">Style and smell rules enforced by <code>soli lint</code>.</p>
         </a>
