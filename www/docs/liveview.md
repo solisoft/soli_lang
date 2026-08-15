@@ -532,7 +532,7 @@ if event == "attached" {
 }
 ```
 
-`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. Files larger than 256 KiB are sent as **chunks** (`X-Soli-Upload-Id` / `X-Soli-Chunk-Index` / `X-Soli-Chunk-Count`); the server assembles them and the handler still sees one hydrated file. A refresh mid-upload starts over (chunks live 10 minutes). While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. Files larger than 256 KiB are sent as **chunks** (`X-Soli-Upload-Id` / `X-Soli-Chunk-Index` / `X-Soli-Chunk-Count`); the server assembles them and the handler still sees one hydrated file. A refresh mid-upload starts over (a partial upload is dropped after 2 minutes with no new chunk). While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
 
 Persist the file on a model with `has_one_attached` / `attach_<field>(params["file"])` — the LiveView upload hash is the same shape as `find_uploaded_file`.
 
@@ -542,6 +542,20 @@ An upload belongs to the session that posted it: the id is only redeemable by th
 session's LiveView, and each session holds at most **8** pending uploads (they also
 expire after 10 minutes). A handler that never consumes its files therefore cannot
 fill the server's upload store or lock other users out.
+
+The same accounting now covers uploads that are still being assembled. Each
+session gets at most **4** in-progress chunked uploads, the server holds **32**
+across all sessions and **64 MiB** of chunk data at once, and a partial upload
+is swept **2 minutes** after its last accepted chunk (the deadline is idle, not
+total, so a slow connection is never cut off mid-transfer). Over any of those,
+the POST returns `413` with a message rather than growing the staging area.
+Callers that retry a chunk are charged once, not twice.
+
+This matters because `POST /live/upload` is reachable without a session — it
+has to be, since a first-time visitor may not have one yet. Before these caps
+the partial-assembly map had only the expiry sweep, so a single unauthenticated
+client could mint a fresh `X-Soli-Upload-Id` per request, send one chunk of a
+declared 512, and park memory until the server ran out.
 
 ## Current limitations
 

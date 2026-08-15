@@ -337,6 +337,8 @@ end
 
 The options hash controls the cookie attributes: `path` (default `"/"`), `max_age` (seconds; `0` expires the cookie immediately), `expires` (RFC-1123 date), `http_only`, `secure`, `same_site` (`"Lax"`/`"Strict"`/`"None"`) and `domain` — plus the `signed`/`encrypted` sealing options below. Unknown keys raise, so a typo can't silently weaken a cookie.
 
+`Secure` is added for you in two cases beyond asking for it: when `same_site` is `"None"` (browsers drop such a cookie without it, so the alternative is one that silently never arrives), and when the operator has set `SOLI_FORCE_SECURE_COOKIES=1` / called `enable_force_secure_cookies()` — that switch covers every cookie the process emits, not just the framework's session cookie. Set `"secure": true` explicitly anyway on anything that authenticates: a deployment that forgot the switch shouldn't be what decides whether a long-lived credential travels in the clear.
+
 Cookies set via `set_cookie` are visible in templates and subsequent reads within the same request through the `cookies` global; `read_cookie` sees them too.
 
 ### Signed and encrypted cookies

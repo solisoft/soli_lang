@@ -118,6 +118,40 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+  # A published advisory against a transitive dependency is the one class of
+  # vulnerability no amount of reviewing *our* code will surface: nothing in
+  # the diff changes, and the suite stays green. Soli pulls in a TLS stack, an
+  # image decoder, tar/flate2, and several parsers that all sit directly on
+  # untrusted input, so this runs on every push rather than on a schedule.
+  #
+  # `--deny warnings` also fails on unmaintained/unsound advisories, not just
+  # ones with a CVE. When a finding has no fix available yet, ignore that
+  # specific advisory id here with a comment saying why and when to revisit —
+  # never by dropping the flag.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # RUSTSEC-2026-0253 (lru, unsound `LruCache::pop()` under a panicking
+      # Drop) — patched in lru >= 0.18.2, which is what our own `lru = "0.18"`
+      # already resolves to. The two flagged copies are pinned by transitive
+      # parents we don't control: ratatui 0.26 holds lru 0.12, and
+      # azul-layout / mysql 28 hold lru 0.16. Nothing here can move them.
+      # Drop this ignore once those parents release against 0.18.2 — re-check
+      # by removing the flag and reading which crate is still named.
+      - name: Audit dependencies
+        run: cargo audit --deny warnings --ignore RUSTSEC-2026-0253
+
   # The two engines must agree, `soli check` must not reject working code, and
   # hostile input must not reach a Rust panic. Each is a separate failure mode
   # that the unit tests structurally cannot see:

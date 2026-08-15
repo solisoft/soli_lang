@@ -425,10 +425,21 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
     let class_for_from_ip = Rc::clone(&rate_limiter_class);
     env.define(
         "rate_limiter_from_ip".to_string(),
+        // Variadic, not `Some(2)`: the window is optional and the body has
+        // always read `args.get(2)`, but an exact arity of 2 made the
+        // three-argument form the docs describe fail with "Wrong number of
+        // arguments: expected 2, got 3" before the body ever ran. The
+        // argument count is checked here instead.
         Value::NativeFunction(NativeFunction::new(
             "rate_limiter_from_ip",
-            Some(2),
+            None,
             move |args| {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(format!(
+                        "rate_limiter_from_ip(req, limit, window_seconds?) expects 2 or 3 arguments, got {}",
+                        args.len()
+                    ));
+                }
                 let req = match &args[0] {
                     Value::Hash(_) => &args[0],
                     other => {
@@ -447,13 +458,18 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                         ))
                     }
                 };
-                let window = args
-                    .get(2)
-                    .and_then(|v| match v {
-                        Value::Int(i) => Some(*i as u64),
-                        _ => None,
-                    })
-                    .unwrap_or(60);
+                // A non-integer window used to fall back to 60 silently, so a
+                // typo produced a limiter with a window nobody asked for.
+                let window = match args.get(2) {
+                    None | Some(Value::Null) => 60,
+                    Some(Value::Int(i)) => *i as u64,
+                    Some(other) => {
+                        return Err(format!(
+                            "rate_limiter_from_ip() expects int window_seconds, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
 
                 let ip = extract_client_ip(req).unwrap_or_default();
                 let key = format!("ip:{}", ip);

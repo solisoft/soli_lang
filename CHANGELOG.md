@@ -2,6 +2,86 @@
 
 ## [Unreleased]
 
+### Security
+
+- **Chunked LiveView uploads had no cap.** `put_chunk` pruned only by TTL,
+  so unlike the completed-file store it enforced neither a global nor a
+  per-session limit. `POST /live/upload` is reachable without a session
+  (a first-time visitor may not have one yet), so one unauthenticated
+  client could mint a fresh `X-Soli-Upload-Id` per request, send a single
+  chunk of a declared 512, and park up to 8 MiB per id until memory ran
+  out. Now: 4 in-progress uploads per session, 32 and 64 MiB globally, and
+  a 2-minute *idle* deadline refreshed by each accepted chunk (so a slow
+  transfer is never cut off). Over the limit returns `413`. A resent chunk
+  replaces its slot rather than being counted twice.
+
+- **The CSRF exemption covered application routes.** Both barriers — the
+  Origin/Referer gate and per-form token verification — skipped any path
+  starting with `/_`. That namespace is one applications use, so a
+  `POST /_internal/wipe` or `/_admin/users` lost both checks with nothing
+  asked for. The exemption is now the endpoints the framework serves:
+  `/_health`, `/_ready`, `/_metrics`, `/__coverage__`, and the reserved
+  `/__soli/`, `/__solidev/`, `/__dev/`, `/__livereload` prefixes.
+  `skip_csrf("/path")` remains the way an application route opts out.
+
+- **`SOLI_FORCE_SECURE_COOKIES` only covered `session_id`.** Every cookie
+  set from application code — the scaffolded remember-me token above all,
+  a 30-day bearer credential — was emitted without `Secure` even on a
+  deployment that had declared itself TLS-only. The switch now applies to
+  the whole jar. `set_cookie(..., {"same_site": "None"})` also adds
+  `Secure` on its own: browsers drop such a cookie without it, so the old
+  behaviour produced a cookie that silently never arrived.
+
+- **`soli generate auth` sign-in was a user-enumeration oracle.** It
+  returned early when no account matched, so a miss answered in
+  microseconds against ~100 ms of Argon2id for a real attempt, and it
+  showed a distinct "account locked" message *before* checking the
+  password. The miss path now spends the same hashing work
+  (`User.burn_password_work`), both failures share one message, and the
+  lockout message is held until the password verifies.
+
+- **No rate limiting on the credential endpoints.** Account lockout is
+  blind to credential stuffing spread across many accounts, and was itself
+  a denial of service: ten guesses locked any known address, and each
+  further guess re-stamped `locked_at`, extending the lockout
+  indefinitely. Sign-in, sign-up, and password-reset are now throttled per
+  source address (`429` over the limit), and an existing lockout is no
+  longer re-stamped. The three share one budget —
+  `AUTH_ATTEMPTS_PER_IP` per `AUTH_IP_WINDOW_SECONDS` (default 15 per
+  5 min) is the total across all credential traffic from that address, not
+  15 each. `rate_limiter_from_ip` keys on the peer address unless
+  `enable_trust_proxy()` is on, so a rotating `X-Forwarded-For` cannot
+  bypass it.
+
+- **`rate_limiter_from_ip` rejected its own documented third argument.**
+  It was registered with an exact arity of 2 while the body read
+  `args.get(2)` for the window, so the documented
+  `rate_limiter_from_ip(req, limit, window_seconds)` failed with "Wrong
+  number of arguments: expected 2, got 3" before running. It is variadic
+  now and checks the count itself; a non-integer window raises instead of
+  silently falling back to 60 seconds.
+
+- **The generated User model had no password policy.** A one-character
+  password was accepted at sign-up while the reset flow enforced an
+  unrelated 8-character minimum. `User#password_error` now owns the rule
+  (`AUTH_MIN_PASSWORD_LENGTH`, default 12) and both flows call it.
+  `finish_password_reset` also clears `remember_token_digest` — a reset is
+  what someone does when they suspect compromise, and a remember-me cookie
+  outliving it by 30 days means the reset evicted nobody.
+
+- **`auth_base_url` reads `APP_BASE_URL`.** It was a hardcoded
+  `http://localhost:5011` behind a `TODO`, so a deployment that missed the
+  comment mailed reset and confirmation links pointing at localhost — over
+  plaintext HTTP if the host resolved at all. The literal remains as a dev
+  fallback.
+
+- **`cargo audit --deny warnings` runs in CI.** An advisory against a
+  transitive dependency is invisible to code review and leaves the suite
+  green. RUSTSEC-2026-0253 (`lru`, unsound) is ignored with a comment: it
+  is patched in 0.18.2, which our direct dependency already resolves to,
+  and the two flagged copies are pinned by ratatui 0.26 and
+  azul-layout / mysql 28.
+
 ### Added
 
 - **First-class attachments.** `has_one_attached("avatar")` /

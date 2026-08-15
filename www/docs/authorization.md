@@ -22,10 +22,29 @@ layer:
   signup; enforcement is a one-line toggle (`auth_require_confirmed_email`
   in `app/models/user.sl`, off by default so the flow works before SMTP is
   configured).
-- **Remember-me**: an HttpOnly persistent cookie carrying a digest-stored
-  token, promoted to a fresh session by the middleware.
+- **Remember-me**: an HttpOnly + Secure persistent cookie carrying a
+  digest-stored token, promoted to a fresh session by the middleware and
+  revoked when the password is reset.
+- **Rate limiting**: sign-in, sign-up, and reset requests are throttled per
+  source IP — over the limit returns `429`. The three share **one** budget
+  (`rate_limiter_from_ip` keys on the address alone), so
+  `AUTH_ATTEMPTS_PER_IP` per `AUTH_IP_WINDOW_SECONDS` (default 15 per 5
+  minutes) is the total across all credential traffic from that address, not
+  15 each. The key is the peer address, or the proxy-recorded client only
+  when `enable_trust_proxy()` is on — so a rotating `X-Forwarded-For` can't
+  widen it. Raise the constants if your users sit behind a shared NAT.
 - **Account lockout**: 10 failed logins lock the account for 30 minutes
   (auto-unlock); thresholds are constants at the top of the User model.
+- **No account enumeration on sign-in**: an unknown address and a wrong
+  password return the same message *and* take the same time — the miss path
+  spends the same Argon2id work rather than returning early, so response
+  timing isn't an oracle either. The "account locked" message is only shown
+  once the password has been verified, so it tells the owner what happened
+  without telling an attacker that the address exists.
+- **Password policy**: `AUTH_MIN_PASSWORD_LENGTH` (default 12) is enforced by
+  `User#password_error`, which sign-up and password-reset both call — so the
+  reset flow can't be used to install a weaker password than registration
+  accepts.
 - `app/policies/application_policy.sl` — the `ApplicationPolicy` base class plus
   the global `authorize` / `policy_for` / `current_user` / `signed_in?` helpers.
 - `app/policies/user_policy.sl` — a worked example policy.
@@ -33,8 +52,9 @@ layer:
 
 Configure SMTP (`SOLI_SMTP_*` env vars) so the reset/confirmation emails go
 out — or `SOLI_MAIL_DELIVERY_METHOD=logger` in dev to print them to the
-console — and set your production URL in `auth_base_url`
-(`app/models/user.sl`).
+console — and set `APP_BASE_URL` to your `https://` origin, which
+`auth_base_url` (`app/models/user.sl`) reads. Left unset in production, reset
+and confirmation emails carry `http://localhost:5011` links.
 
 Files in `app/policies/` are auto-loaded into the global scope at boot, like
 models. **Restart the server after adding a new policy.**

@@ -1590,6 +1590,8 @@ fn build_cookie_attributes(
 
     let mut path = "/".to_string();
     let mut attrs = String::new();
+    let mut secure = false;
+    let mut same_site: Option<&'static str> = None;
 
     for (k, v) in options.iter() {
         let HashKey::String(key) = k else {
@@ -1612,14 +1614,10 @@ fn build_cookie_attributes(
                     attrs.push_str("; HttpOnly");
                 }
             }
-            "secure" => {
-                if matches!(v, Value::Bool(true)) {
-                    attrs.push_str("; Secure");
-                }
-            }
+            "secure" => secure = matches!(v, Value::Bool(true)),
             "same_site" => {
                 let raw = string_attr(v, "same_site")?;
-                let normalized = match raw.to_ascii_lowercase().as_str() {
+                same_site = Some(match raw.to_ascii_lowercase().as_str() {
                     "lax" => "Lax",
                     "strict" => "Strict",
                     "none" => "None",
@@ -1629,8 +1627,7 @@ fn build_cookie_attributes(
                             raw
                         ))
                     }
-                };
-                attrs.push_str(&format!("; SameSite={}", normalized));
+                });
             }
             "domain" => attrs.push_str(&format!("; Domain={}", string_attr(v, "domain")?)),
             // Sealing directives, consumed upstream by `seal_options` before
@@ -1643,6 +1640,29 @@ fn build_cookie_attributes(
                 ))
             }
         }
+    }
+
+    if let Some(value) = same_site {
+        attrs.push_str(&format!("; SameSite={}", value));
+    }
+
+    // Two reasons a cookie gets `Secure` beyond the caller asking for it:
+    //
+    // - SEC-079: browsers reject `SameSite=None` without `Secure`, so a
+    //   cookie built that way would be silently dropped. The session-cookie
+    //   builder has always self-corrected here; `set_cookie` did not, which
+    //   made the footgun reachable from application code.
+    // - SEC-028: `enable_force_secure_cookies()` /
+    //   `SOLI_FORCE_SECURE_COOKIES=1` is the operator saying "this app is
+    //   always behind TLS". That used to cover only the framework's own
+    //   `session_id` cookie, leaving every application credential —
+    //   remember-me tokens above all — to be transmitted in the clear on any
+    //   plaintext request. The knob means the whole jar.
+    if secure
+        || same_site == Some("None")
+        || super::secure_cookies::is_force_secure_cookies_enabled()
+    {
+        attrs.push_str("; Secure");
     }
 
     Ok(format!("; Path={}{}", path, attrs))
@@ -1731,6 +1751,42 @@ mod tests {
         )]))
         .unwrap_err();
         assert!(err.contains("same_site"), "got: {err}");
+    }
+
+    /// SEC-079, now on the application jar too: a `SameSite=None` cookie
+    /// without `Secure` is dropped by every modern browser. `set_cookie` used
+    /// to emit exactly that shape, so the cookie silently never arrived.
+    #[test]
+    fn set_cookie_samesite_none_implies_secure() {
+        let attrs = build_cookie_attributes(&options_hash(&[(
+            "same_site",
+            Value::String("none".into()),
+        )]))
+        .unwrap();
+        assert!(attrs.contains("; SameSite=None"), "{attrs}");
+        assert!(attrs.contains("; Secure"), "{attrs}");
+        assert_eq!(attrs.matches("Secure").count(), 1, "{attrs}");
+    }
+
+    /// SEC-028 widened: the "always behind TLS" operator switch has to cover
+    /// application cookies, not just the framework's `session_id`. The
+    /// scaffolded remember-me token is a 30-day credential and was the
+    /// motivating case — it was emitted without `Secure`.
+    #[test]
+    fn force_secure_cookies_applies_to_application_cookies() {
+        use std::sync::atomic::Ordering;
+
+        let plain =
+            build_cookie_attributes(&options_hash(&[("http_only", Value::Bool(true))])).unwrap();
+        assert!(!plain.contains("Secure"), "{plain}");
+
+        super::super::secure_cookies::FORCE_SECURE_COOKIES.store(true, Ordering::Relaxed);
+        let forced =
+            build_cookie_attributes(&options_hash(&[("http_only", Value::Bool(true))])).unwrap();
+        super::super::secure_cookies::FORCE_SECURE_COOKIES.store(false, Ordering::Relaxed);
+
+        assert!(forced.contains("; Secure"), "{forced}");
+        assert_eq!(forced.matches("Secure").count(), 1, "{forced}");
     }
 
     /// The attribute suffix survives the store → drain round-trip that the

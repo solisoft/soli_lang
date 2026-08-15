@@ -66,6 +66,27 @@ fn csrf_skipped_by_app(path: &str) -> bool {
         .any(|pattern| path_matches_csrf_skip(path, pattern))
 }
 
+/// Framework-served endpoints that are exempt from both CSRF barriers.
+///
+/// This used to be a bare `path.starts_with("/_")`, which is far wider than
+/// the set of paths the framework actually answers: a perfectly ordinary
+/// application route such as `POST /_internal/wipe` inherited the exemption
+/// and lost both the Origin gate and token verification. Single-underscore
+/// paths are a plausible app namespace, so only the three exact endpoints
+/// the framework owns there are listed; the `/__…` namespace is genuinely
+/// reserved and keeps prefix matching so new internal endpoints don't have
+/// to be enumerated here one by one.
+///
+/// An app that *wants* an exemption for its own route says so explicitly
+/// with `skip_csrf("/path[/*]")`.
+fn is_framework_path(path: &str) -> bool {
+    matches!(path, "/_health" | "/_ready" | "/_metrics" | "/__coverage__")
+        || path.starts_with("/__soli/")
+        || path.starts_with("/__solidev/")
+        || path.starts_with("/__dev/")
+        || path.starts_with("/__livereload")
+}
+
 /// Public hostnames this app is served under, from `SOLI_APP_HOSTS`.
 ///
 /// The safe way to run behind a reverse proxy, and the reason
@@ -191,7 +212,7 @@ pub(crate) fn verify_csrf_token(
     if matches!(method, "GET" | "HEAD" | "OPTIONS") {
         return Ok(());
     }
-    if path.starts_with("/_") || csrf_skipped_by_app(path) || csrf_disabled_by_env() {
+    if is_framework_path(path) || csrf_skipped_by_app(path) || csrf_disabled_by_env() {
         return Ok(());
     }
 
@@ -239,8 +260,12 @@ pub(crate) fn verify_csrf_token(
 ///
 /// Rules:
 /// - Safe methods (GET/HEAD/OPTIONS) are always allowed.
-/// - Paths under `/_` are exempt (framework endpoints such as health probes
-///   and `/__solidev/*`, which are not browser form targets).
+/// - Framework-served endpoints are exempt (see [`is_framework_path`]:
+///   the `/_health` / `/_ready` / `/_metrics` probes and the reserved
+///   `/__soli/`, `/__solidev/`, `/__dev/`, `/__livereload` namespaces),
+///   none of which are browser form targets. Application routes are never
+///   exempt implicitly — not even under `/_` — they opt out via
+///   `skip_csrf`.
 /// - Paths matching a `skip_csrf("/pattern[/*]")` declaration in user
 ///   Soli code are exempt. This is the per-route opt-out — call it
 ///   from `config/routes.sl` or a controller's `static` block for
@@ -272,7 +297,7 @@ pub(crate) fn check_csrf_origin(
     if matches!(method, "GET" | "HEAD" | "OPTIONS") {
         return Ok(());
     }
-    if path.starts_with("/_") {
+    if is_framework_path(path) {
         return Ok(());
     }
     if csrf_skipped_by_app(path) {
@@ -342,6 +367,48 @@ pub(crate) fn check_csrf_origin(
         return Err("missing both Origin and Referer on cookie-bearing request".to_string());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod framework_path_tests {
+    use super::is_framework_path;
+
+    #[test]
+    fn the_framework_endpoints_are_exempt() {
+        for path in [
+            "/_health",
+            "/_ready",
+            "/_metrics",
+            "/__coverage__",
+            "/__soli/prefetch.js",
+            "/__soli/inbox/clear",
+            "/__solidev/replay/abc",
+            "/__dev/repl",
+            "/__livereload",
+            "/__livereload_ws",
+        ] {
+            assert!(is_framework_path(path), "expected exempt: {path}");
+        }
+    }
+
+    #[test]
+    fn an_application_route_under_underscore_is_not_exempt() {
+        // The whole point of narrowing the old `starts_with("/_")`: these are
+        // ordinary app routes and must keep both CSRF barriers.
+        for path in [
+            "/_internal/probe",
+            "/_admin/users",
+            "/_health/subresource",
+            "/_",
+            "/__",
+            "/__soli",
+            "/__solidev",
+            "/__soliboom/x",
+            "/posts",
+        ] {
+            assert!(!is_framework_path(path), "expected NOT exempt: {path}");
+        }
+    }
 }
 
 #[cfg(test)]

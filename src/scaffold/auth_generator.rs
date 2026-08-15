@@ -240,8 +240,10 @@ pub fn print_auth_success_message() {
     println!();
     println!("  \x1b[2mIncluded flows:\x1b[0m password reset (/password/reset), email");
     println!("  confirmation (/confirmation/resend), remember-me, account lockout.");
-    println!("  Configure SMTP (SOLI_SMTP_* env vars) so the emails go out, set your");
-    println!("  production URL in \x1b[36mauth_base_url\x1b[0m, and tune the knobs at the top of");
+    println!("  Configure SMTP (SOLI_SMTP_* env vars) so the emails go out, set");
+    println!(
+        "  \x1b[36mAPP_BASE_URL\x1b[0m to your https:// origin, and tune the knobs at the top of"
+    );
     println!(
         "  \x1b[36mapp/models/user.sl\x1b[0m (lockout threshold, token TTLs, confirmation gate)."
     );

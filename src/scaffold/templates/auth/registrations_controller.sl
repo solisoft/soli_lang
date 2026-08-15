@@ -25,18 +25,24 @@ class RegistrationsController < Controller
   def create
     user = User.new()
     user.email = params["email"]
+
+    # Throttle account creation per source address: unmetered sign-up is how
+    # an app ends up seeding spam, and it is also a cheap Argon2id CPU sink
+    # (every attempt costs the server ~100ms of hashing).
+    limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
+    unless limiter.allowed()
+      return this._reject(user, "Too many sign-up attempts. Try again in a few minutes.", 429)
+    end
+
+    # `set_password` is a no-op on a blank value (so profile saves don't wipe
+    # the digest), which means the length rule has to be checked here or an
+    # account can be created with no usable password at all.
+    password_error = user.password_error(params["password"])
+    return this._reject(user, password_error, 422) unless password_error.nil?
+
     user.set_password(params["password"].to_s)
     user.save()
-    if user._errors
-      return render(
-        "registrations/new",
-        {
-          "title": "Create account",
-          "user": user,
-          "error": "Could not create your account"
-        }
-      )
-    end
+    return this._reject(user, "Could not create your account", 422) if user._errors
 
     # Send the confirmation link. `rescue null` keeps signup working before
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see
@@ -58,5 +64,18 @@ class RegistrationsController < Controller
     session_regenerate()
     session_set("user_id", user["_key"])
     return redirect("/")
+  end
+
+  # Re-render the sign-up form with an error and an accurate status code.
+  def _reject(user, message, status)
+    return render(
+      "registrations/new",
+      {
+        "title": "Create account",
+        "user": user,
+        "error": message
+      },
+      {"status": status}
+    )
   end
 end
