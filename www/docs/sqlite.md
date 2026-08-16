@@ -182,6 +182,8 @@ plain copy can miss frames still in the WAL.
   cannot express.
 - **`grouped {}` read-coalescing is SoliDB-only.**
 - **Composite primary keys** are refused at boot on column-aware models.
+- **`encrypts` and STI** work in column mode: encrypted fields must be text
+  columns; STI subclasses need a string `type` column.
 
 The shared portable surface (hash filters, `.join`, `.having`, includes,
 HABTM / `through:`) is documented under [Multiple Databases](multi-database.md#sql-document-backends).

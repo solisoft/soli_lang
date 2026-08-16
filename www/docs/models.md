@@ -24,7 +24,7 @@ rather than returning wrong rows.
 | `.join` (relation existence filter), `.having` | ✓ | ✓ on document tables |
 | `.includes` with `through:` | ✓ (accessor only) | ✓ on document tables (three batched queries) |
 | Graph/edge models, vector search, timeseries, columnar, `grouped {}` | ✓ | ✗ |
-| Encrypted attributes, STI, counter caches | ✓ | ✓ on document tables, ✗ in column mode |
+| Encrypted attributes (`encrypts`), STI, counter caches | ✓ | ✓ (column mode: `encrypts` on text columns; STI needs a string `type` column) |
 
 A model that declares `table "orders"` runs in **column mode** against a real
 relational schema — one you already have, or one a
@@ -1351,9 +1351,24 @@ Admin.all()                          # only Admin rows (and Admin's descendants)
 User.find(admin._key).badge()        # "admin" — hydration follows the type
 ```
 
-On a column-aware model, the base declares `table "users"` and the table must
-have a string `type` column. Subclass queries compile to `type IN (…)` on that
-column; boot fails if the column is missing.
+On a column-aware model the same rules apply to a real `type` column:
+
+```soli
+class User < Model
+  table "users"          # must include a string `type` column
+end
+
+class Admin < User
+end
+
+Admin.create({ "email": "a@x.co" })   # INSERT … type = 'Admin'
+Admin.where({ "email": "a@x.co" })    # AND type IN ('Admin', …descendants)
+User.find(admin.id).type              # "Admin"
+```
+
+Boot fails if an STI subclass's table has no `type` column. `find` / `find_by`
+/ `first_by` on a subclass refuse a row of another type (`RecordNotFound` /
+`nil`), matching the document path.
 
 Semantics:
 
@@ -2037,9 +2052,19 @@ u = User.create({ "ssn": "123-45-6789", "email": "a@b.com" });
 User.find(u._key).ssn  # => "123-45-6789"
 ```
 
-On a column-aware model (`table "users"`), each `encrypts` field must be a
-string/text column. Ciphertext is stored in that column; boot fails if the
-column is missing or not text.
+Works on SoliDB document collections, SQL document tables (`_key` + `doc`),
+and column-aware models:
+
+```soli
+class User < Model
+  table "users"          # `ssn` must be a string/text column
+  encrypts(:ssn)
+end
+```
+
+Ciphertext is stored in that column; `create` / `save` / `find` decrypt so
+the instance always sees plaintext. Boot fails if the column is missing or
+not text (encrypted values are base64).
 
 The encryption key comes from the `SOLI_ENCRYPTION_KEY` environment variable —
 set it to a long, high-entropy secret (e.g. `Crypto.random_hex(32)`) and keep

@@ -534,9 +534,23 @@ Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"
         <li><strong class="text-white"><code class="text-cyan-400">soft_delete</code></strong>, provided the table has a <code class="text-cyan-400">deleted_at</code> column. Without one there is nowhere to record the deletion, so boot fails with that message rather than silently returning deleted rows.</li>
         <li><strong class="text-white"><code class="text-cyan-400">encrypts</code></strong>, provided each named field is a string/text column. Values are AES-256-GCM ciphertext at rest and plaintext on the instance after <code>create</code> / <code>save</code> / <code>find</code>. Boot fails if the column is missing or not text.</li>
         <li><strong class="text-white">STI</strong> (<code>class Admin &lt; User</code> with <code>table</code> on the base). Subclass writes stamp a <code>type</code> string column; subclass queries add <code>type IN (class, descendants)</code>. Boot fails if an STI subclass's table has no <code>type</code> column.</li>
-
     </ul>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Person &lt; Model
+  table "people"         # id, name, ssn, type, timestamps
+  encrypts(:ssn)
+end
 
+class Admin &lt; Person
+end
+
+a = Admin.create({ "name": "Root", "ssn": "000-00-0001" })
+a.ssn                    # plaintext
+Admin.find_by("name", "Root").type   # "Admin"
+Person.where({ "name": "Root" }).count()  # 1 — base matches every type</code></pre>
+        </div>
+    </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Not supported on column-aware models</h3>
     <p class="text-gray-400 mb-4">Each of these raises an error naming the feature rather than returning wrong data:</p>

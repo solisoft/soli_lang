@@ -339,6 +339,22 @@ with SDBQL.
   Boot fails if an STI subclass's table has no `type` column. `find` /
   `find_by` / `first_by` on a subclass refuse a row of another type.
 
+```soli
+class Person < Model
+  table "people"         # columns: id, name, ssn, type, timestamps
+  encrypts(:ssn)
+end
+
+class Admin < Person
+end
+
+a = Admin.create({ "name": "Root", "ssn": "000-00-0001" })
+a.ssn                    # plaintext
+Admin.find_by("name", "Root").type   # "Admin"
+Person.where({ "name": "Root" }).count()  # 1 (base matches every type)
+Admin.where({ "name": "Guest" }).count()  # 0 if Guest is not an Admin
+```
+
 ### Not supported on column-aware models
 
 Each of these raises an error naming the feature rather than returning wrong data:
@@ -430,7 +446,9 @@ soli db:migrate down --connection legacy
 ## Not yet / limitations
 
 - **Per-connection SoliDB hosts:** registry stores host fields; full multi-host SoliDB routing is still completing — prefer one SoliDB endpoint plus SQL secondaries for now. A mismatch with the env values is rejected at boot.
-- **Column-aware models:** associations/`.includes`, `group_by`, `delete_all`/`update_all`, and composite primary keys are not implemented yet — see [Column-aware models](#column-aware-models-existing-databases).
+- **Column-aware models:** composite primary keys are still refused at boot.
+  `encrypts` (text columns) and STI (string `type` column) are supported —
+  see [Column-aware models](#column-aware-models-existing-databases).
 - **Request-scoped roles** (read replica / `writing`/`reading`) — not v1.
 - **pgvector** on document tables — SoliDB-only (or a later design).
 

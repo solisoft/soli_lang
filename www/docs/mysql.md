@@ -165,6 +165,8 @@ Migrations emit foreign keys at **table** level: MySQL parses an inline
   express.
 - **`grouped {}` read-coalescing is SoliDB-only.**
 - **Composite primary keys** are refused at boot on column-aware models.
+- **`encrypts` and STI** work in column mode: encrypted fields must be text
+  columns; STI subclasses need a string `type` column.
 - A reserved name (`_migrations`, `_jobs`, `_cron_jobs`) cannot be created,
   dropped, or renamed by a migration.
 

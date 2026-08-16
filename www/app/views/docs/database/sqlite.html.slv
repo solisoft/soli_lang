@@ -230,6 +230,7 @@ end</code></pre>
         <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
         <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
         <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>
+        <li><strong class="text-white"><code>encrypts</code> and STI</strong> work in column mode: encrypted fields must be text columns; STI subclasses need a string <code>type</code> column.</li>
     </ul>
     <p class="text-gray-400 mb-12">
         The shared portable surface is documented under

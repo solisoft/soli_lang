@@ -123,6 +123,7 @@ describe("STI persistence and hydration", fn() {
       assert(raised)
 
       assert_null(StiAdmin.find_by("email", "plain@x.co"))
+      assert_null(StiAdmin.first_by("email", "plain@x.co"))
       assert_not_null(StiUser.find_by("email", "plain@x.co"))
 
       user.delete()
