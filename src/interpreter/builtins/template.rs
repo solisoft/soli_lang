@@ -94,6 +94,13 @@ thread_local! {
     static VIEW_HELPER_ENV: RefCell<Option<Rc<RefCell<Environment>>>> = const { RefCell::new(None) };
 }
 
+/// Whether `load_view_helpers` has stashed a shared helper env on this thread.
+/// The request path skips rebinding `req`/`params` when no helpers exist.
+#[inline]
+pub fn helper_env_loaded() -> bool {
+    VIEW_HELPER_ENV.with(|cell| cell.borrow().is_some())
+}
+
 /// Bind request-scoped names onto the view helpers' shared closure env so user
 /// helpers (`app/helpers/*.sl`) can read `req`, `params`, etc. directly.
 ///

@@ -905,12 +905,18 @@ fn stack_effect(op: Op) -> i32 {
         JsonParse | JsonStringify => 0,
         // Peephole super-instructions (not emitted during the tracked pass; values
         // for completeness). Hash*Const directly-emitted variants are exact.
-        HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) => 0,
+        HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) | HashGetConst2(_, _) => 0,
         HashSetConst(_) => -1,
-        HashGetLocalConst(_, _) | HashHasKeyLocalConst(_, _) | HashDeleteLocalConst(_, _) => 1,
+        HashGetLocalConst(_, _)
+        | HashHasKeyLocalConst(_, _)
+        | HashDeleteLocalConst(_, _)
+        | HashGetLocalConst2(_, _, _) => 1,
         AddLocalsInPlace(_, _) => 0,
         HashSetLocalConst(_, _) => -1,
-        HashGetGlobalConst(_, _) | HashHasKeyGlobalConst(_, _) | HashDeleteGlobalConst(_, _) => 1,
+        HashGetGlobalConst(_, _)
+        | HashHasKeyGlobalConst(_, _)
+        | HashDeleteGlobalConst(_, _)
+        | HashGetGlobalConst2(_, _, _) => 1,
         HashSetGlobalConst(_, _) => -1,
         IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | SwapSetLocal(_) | IsNull | NotNull
         | PopNull | Nop => 0,
@@ -947,7 +953,8 @@ fn stack_effect(op: Op) -> i32 {
         | TestGreaterJump(_)
         | TestGreaterEqualJump(_)
         | TestNotEqualJump(_) => -2,
-        GetLocalProperty(_, _) | GetLocalIndex(_, _) => 1,
+        GetLocalProperty(_, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
+        AddNestedIndex(_, _, _, _) | SetNestedIndex(_, _, _, _) => 0,
         // Touches `iter_stack`, not the value stack.
         PopIter => 0,
         // Peeks the subject and branches; leaves the stack alone.
@@ -1038,6 +1045,158 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         if is_jump_target[i] {
             i += 1;
             continue;
+        }
+
+        // `total = total + h[keys[k]]` — acc += obj[arr[idx]]
+        // GetLocal(acc), GetLocal(obj), GetLocal(arr), GetLocal(idx),
+        // GetIndex, GetIndex, Add, SetLocal(acc) [, Pop]
+        if i + 7 < len {
+            if let (
+                Op::GetLocal(acc),
+                Op::GetLocal(obj),
+                Op::GetLocal(arr),
+                Op::GetLocal(idx),
+                Op::GetIndex,
+                Op::GetIndex,
+                Op::Add,
+                Op::SetLocal(acc2),
+            ) = (
+                code[i],
+                code[i + 1],
+                code[i + 2],
+                code[i + 3],
+                code[i + 4],
+                code[i + 5],
+                code[i + 6],
+                code[i + 7],
+            ) {
+                if acc == acc2 && !any_jump_target(&is_jump_target, i + 1, 8) {
+                    code[i] = Op::AddNestedIndex(acc, obj, arr, idx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    code[i + 5] = NOP;
+                    code[i + 6] = NOP;
+                    code[i + 7] = NOP;
+                    if i + 8 < len && matches!(code[i + 8], Op::Pop) {
+                        code[i + 8] = NOP;
+                        i += 9;
+                    } else {
+                        i += 8;
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // Already fused get: GetLocal(acc), GetNestedIndex, Add, SetLocal(acc)
+        if i + 3 < len {
+            if let (
+                Op::GetLocal(acc),
+                Op::GetNestedIndex(obj, arr, idx),
+                Op::Add,
+                Op::SetLocal(acc2),
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3])
+            {
+                if acc == acc2 && !any_jump_target(&is_jump_target, i + 1, 4) {
+                    code[i] = Op::AddNestedIndex(acc, obj, arr, idx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    if i + 4 < len && matches!(code[i + 4], Op::Pop) {
+                        code[i + 4] = NOP;
+                        i += 5;
+                    } else {
+                        i += 4;
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // `h[keys[k]] = v`
+        // GetLocal(obj), GetLocal(arr), GetLocal(idx), GetIndex, GetLocal(val), SetIndex [, Pop]
+        if i + 5 < len {
+            if let (
+                Op::GetLocal(obj),
+                Op::GetLocal(arr),
+                Op::GetLocal(idx),
+                Op::GetIndex,
+                Op::GetLocal(val),
+                Op::SetIndex,
+            ) = (
+                code[i],
+                code[i + 1],
+                code[i + 2],
+                code[i + 3],
+                code[i + 4],
+                code[i + 5],
+            ) {
+                if !any_jump_target(&is_jump_target, i + 1, 6) {
+                    code[i] = Op::SetNestedIndex(obj, arr, idx, val);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    code[i + 5] = NOP;
+                    if i + 6 < len && matches!(code[i + 6], Op::Pop) {
+                        code[i + 6] = NOP;
+                        i += 7;
+                    } else {
+                        i += 6;
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // GetLocal(obj), GetLocalIndex(arr, idx), GetLocal(val), SetIndex [, Pop]
+        if i + 3 < len {
+            if let (
+                Op::GetLocal(obj),
+                Op::GetLocalIndex(arr, idx),
+                Op::GetLocal(val),
+                Op::SetIndex,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 4) {
+                    code[i] = Op::SetNestedIndex(obj, arr, idx, val);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    if i + 4 < len && matches!(code[i + 4], Op::Pop) {
+                        code[i + 4] = NOP;
+                        i += 5;
+                    } else {
+                        i += 4;
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // `h[keys[k]]` as a value
+        // GetLocal(obj), GetLocal(arr), GetLocal(idx), GetIndex, GetIndex
+        if i + 4 < len {
+            if let (
+                Op::GetLocal(obj),
+                Op::GetLocal(arr),
+                Op::GetLocal(idx),
+                Op::GetIndex,
+                Op::GetIndex,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 5) {
+                    code[i] = Op::GetNestedIndex(obj, arr, idx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
         }
 
         // Pattern: GetLocal(s), Constant(c=1), Add, SetLocal(s), Pop → IncrLocal(s)
@@ -1908,6 +2067,92 @@ mod inplace_peephole_tests {
         assert!(
             ops.iter().any(|o| matches!(o, Op::AddLocalsInPlace(_, _))),
             "expected AddLocalsInPlace, got: {:?}",
+            ops
+        );
+    }
+
+    #[test]
+    fn hash_array_index_add_fuses() {
+        let ops = fn_ops(
+            r#"
+            let h = {"k0": 1}
+            let keys = ["k0"]
+            let k = 0
+            let total = 0
+            total = total + h[keys[k]]
+            "#,
+        );
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::AddNestedIndex(_, _, _, _))),
+            "expected AddNestedIndex, got: {:?}",
+            ops
+        );
+    }
+
+    #[test]
+    fn req_params_id_fuses_to_const2() {
+        let ops = fn_ops(
+            r#"
+            let req = {"params": {"id": "7"}}
+            req["params"]["id"]
+            "#,
+        );
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::HashGetLocalConst2(_, _, _))),
+            "expected HashGetLocalConst2, got: {:?}",
+            ops
+        );
+    }
+
+    #[test]
+    fn req_params_id_evaluates_on_vm() {
+        let ops_src = r#"
+            let req = {"params": {"id": "7"}, "query": {}}
+            return req["params"]["id"]
+            "#;
+        let ops = fn_ops(ops_src);
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::HashGetLocalConst2(_, _, _))),
+            "expected HashGetLocalConst2 in function body, got: {:?}",
+            ops
+        );
+        let src = format!("def f() {{\n{ops_src}\n}}\n");
+        let tokens = Scanner::new(&src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let proto = module
+            .main
+            .chunk
+            .constants
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) => Some(p.clone()),
+                _ => None,
+            })
+            .expect("function proto");
+        let mut vm = crate::vm::Vm::new();
+        let value = vm.execute(&proto).expect("vm");
+        assert_eq!(value, crate::interpreter::value::Value::String("7".into()));
+    }
+
+    #[test]
+    fn hash_array_index_set_fuses() {
+        let ops = fn_ops(
+            r#"
+            let h = {"k0": 1}
+            let keys = ["k0"]
+            let k = 0
+            let v = 2
+            h[keys[k]] = v
+            "#,
+        );
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::SetNestedIndex(_, _, _, _))),
+            "expected SetNestedIndex, got: {:?}",
             ops
         );
     }

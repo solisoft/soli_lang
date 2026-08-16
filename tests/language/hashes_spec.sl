@@ -39,6 +39,19 @@ describe("Hash Operations", fn() {
         assert_eq(h["person"]["address"]["city"], "NYC");
     });
 
+    test("controller nested params access", fn() {
+        let req = {
+            "params": {"id": "42", "slug": "hello"},
+            "query": {},
+            "json": {"email": "a@b.c"}
+        };
+        assert_eq(req["params"]["id"], "42");
+        assert_eq(req["params"]["slug"], "hello");
+        assert_eq(req["json"]["email"], "a@b.c");
+        assert_null(req["query"]["q"]);
+        assert_null(req["params"]["missing"]);
+    });
+
     test("hash key with spaces", fn() {
         let h = {"first name" => "John", "last name" => "Doe"};
         assert_eq(h["first name"], "John");

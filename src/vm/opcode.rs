@@ -248,6 +248,12 @@ pub enum Op {
     HashSetConst(u16),
     /// Specialized local-hash get with a compile-time constant string key.
     HashGetLocalConst(u16, u16),
+    /// `local["a"]["b"]` — the controller shape (`req["params"]["id"]`).
+    HashGetLocalConst2(u16, u16, u16),
+    /// `global["a"]["b"]`.
+    HashGetGlobalConst2(u16, u16, u16),
+    /// TOS `hash["a"]["b"]` after a computed receiver.
+    HashGetConst2(u16, u16),
     /// Specialized local-hash has_key? with a compile-time constant string key.
     HashHasKeyLocalConst(u16, u16),
     /// Specialized local-hash delete with a compile-time constant string key.
@@ -340,6 +346,14 @@ pub enum Op {
     GetLocalProperty(u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
+    /// `obj[arr[idx]]` with all three in locals. The `h[keys[i]]` shape of
+    /// every keyed loop: two GetIndex dispatches plus three GetLocals collapse
+    /// to one lookup.
+    GetNestedIndex(u16, u16, u16),
+    /// `acc += obj[arr[idx]]` in place. The body of `total = total + h[keys[k]]`.
+    AddNestedIndex(u16, u16, u16, u16),
+    /// `obj[arr[idx]] = val` with all four in locals. No stack traffic.
+    SetNestedIndex(u16, u16, u16, u16),
     /// Push the `index`-th payload field of the enum instance in `slot`, for
     /// the variant named by the constant at `variant_idx`.
     ///

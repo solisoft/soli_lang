@@ -3,7 +3,7 @@
 use crate::ast::Expr;
 use crate::error::RuntimeError;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
-use crate::interpreter::value::{hash_get_value, Value};
+use crate::interpreter::value::{hash_get_value, hash_set_value, Value};
 use crate::span::Span;
 
 impl Interpreter {
@@ -115,13 +115,12 @@ impl Interpreter {
                 Ok(new_value)
             }
             (Value::Hash(hash), key) => {
-                let hash_key = key.to_hash_key().ok_or_else(|| {
-                    RuntimeError::type_error(
+                if !hash_set_value(&mut hash.borrow_mut(), key, new_value.clone()) {
+                    return Err(RuntimeError::type_error(
                         format!("Cannot use {} as hash key", key.type_name()),
                         index.span,
-                    )
-                })?;
-                hash.borrow_mut().insert(hash_key, new_value.clone());
+                    ));
+                }
                 Ok(new_value)
             }
             _ => Err(RuntimeError::type_error("invalid assignment target", span)),

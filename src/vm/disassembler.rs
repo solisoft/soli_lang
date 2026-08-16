@@ -262,6 +262,29 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HGET_L_C     slot={} key={}", slot, name));
         }
+        Op::HashGetLocalConst2(slot, k1, k2) => {
+            out.push_str(&format!(
+                "HGET_L_C2    slot={} {} {}",
+                slot,
+                constant_string(chunk, *k1),
+                constant_string(chunk, *k2)
+            ));
+        }
+        Op::HashGetGlobalConst2(gidx, k1, k2) => {
+            out.push_str(&format!(
+                "HGET_G_C2    {} {} {}",
+                constant_string(chunk, *gidx),
+                constant_string(chunk, *k1),
+                constant_string(chunk, *k2)
+            ));
+        }
+        Op::HashGetConst2(k1, k2) => {
+            out.push_str(&format!(
+                "HASH_GET_C2  {} {}",
+                constant_string(chunk, *k1),
+                constant_string(chunk, *k2)
+            ));
+        }
         Op::HashHasKeyLocalConst(slot, idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HHAS_L_C     slot={} key={}", slot, name));
@@ -360,6 +383,18 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::GetLocalIndex(slot, idx_slot) => {
             out.push_str(&format!("GET_LOCAL_INDEX  {:>3},{:>3}", slot, idx_slot))
         }
+        Op::GetNestedIndex(obj, arr, idx) => out.push_str(&format!(
+            "GET_NESTED_INDEX {:>3},{:>3},{:>3}",
+            obj, arr, idx
+        )),
+        Op::AddNestedIndex(acc, obj, arr, idx) => out.push_str(&format!(
+            "ADD_NESTED_INDEX {:>3},{:>3},{:>3},{:>3}",
+            acc, obj, arr, idx
+        )),
+        Op::SetNestedIndex(obj, arr, idx, val) => out.push_str(&format!(
+            "SET_NESTED_INDEX {:>3},{:>3},{:>3},{:>3}",
+            obj, arr, idx, val
+        )),
     }
 }
 

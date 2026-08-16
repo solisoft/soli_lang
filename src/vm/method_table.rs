@@ -459,30 +459,15 @@ pub fn hash_method_two_arg(
             Some(Ok(value))
         }
         79 => {
-            match arg0 {
-                Value::String(s) => {
-                    let mut hash_ref = hash.borrow_mut();
-                    if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(s)) {
-                        *existing = arg1.clone();
-                    } else {
-                        hash_ref.insert(HashKey::String(s.clone()), arg1.clone());
-                    }
-                }
-                Value::Int(n) => {
-                    hash.borrow_mut().insert(HashKey::Int(*n), arg1.clone());
-                }
-                Value::Bool(b) => {
-                    hash.borrow_mut().insert(HashKey::Bool(*b), arg1.clone());
-                }
-                Value::Null => {
-                    hash.borrow_mut().insert(HashKey::Null, arg1.clone());
-                }
-                _ => {
-                    return Some(Err(RuntimeError::type_error(
-                        format!("Cannot use {} as hash key", arg0.type_name()),
-                        span,
-                    )))
-                }
+            if !crate::interpreter::value::hash_set_value(
+                &mut hash.borrow_mut(),
+                arg0,
+                arg1.clone(),
+            ) {
+                return Some(Err(RuntimeError::type_error(
+                    format!("Cannot use {} as hash key", arg0.type_name()),
+                    span,
+                )));
             }
             Some(Ok(Value::Null))
         }

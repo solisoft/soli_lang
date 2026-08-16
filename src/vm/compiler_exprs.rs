@@ -92,6 +92,13 @@ impl Compiler {
                 self.emit(Op::GetProperty(idx), line);
             }
             ExprKind::Index { object, index } => {
+                // `req["params"]["id"]` — two literal keys on a variable.
+                // One dispatch instead of HashGetLocalConst + HashGetConst.
+                if let ExprKind::StringLiteral(outer_key) = &index.kind {
+                    if self.try_emit_nested_const_index(object, outer_key, line)? {
+                        return Ok(());
+                    }
+                }
                 // Peephole: hash[const_str] → HashGetConst (avoids the generic
                 // GetIndex path and its key-allocation).
                 if let ExprKind::StringLiteral(key) = &index.kind {
@@ -1200,6 +1207,47 @@ impl Compiler {
                 Ok(Some(()))
             }
             _ => Ok(None),
+        }
+    }
+
+    /// `receiver["a"]["b"]` with literal keys. Returns true when an opcode was
+    /// emitted so the caller must not compile the index again.
+    fn try_emit_nested_const_index(
+        &mut self,
+        object: &Expr,
+        outer_key: &str,
+        line: usize,
+    ) -> CompileResult<bool> {
+        let ExprKind::Index {
+            object: inner,
+            index: inner_index,
+        } = &object.kind
+        else {
+            return Ok(false);
+        };
+        let ExprKind::StringLiteral(inner_key) = &inner_index.kind else {
+            return Ok(false);
+        };
+        let k1 = self.add_string_constant(inner_key);
+        let k2 = self.add_string_constant(outer_key);
+        match &inner.kind {
+            ExprKind::Variable(var_name) => match self.resolve_variable(var_name) {
+                VariableAccess::Local(slot) => {
+                    self.emit(Op::HashGetLocalConst2(slot, k1, k2), line);
+                    Ok(true)
+                }
+                VariableAccess::Global(_) => {
+                    let gidx = self.add_string_constant(var_name);
+                    self.emit(Op::HashGetGlobalConst2(gidx, k1, k2), line);
+                    Ok(true)
+                }
+                VariableAccess::Upvalue(_) => Ok(false),
+            },
+            _ => {
+                self.compile_expr(inner)?;
+                self.emit(Op::HashGetConst2(k1, k2), line);
+                Ok(true)
+            }
         }
     }
 

@@ -305,7 +305,7 @@ use crate::interpreter::builtins::session::{
     take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
-use crate::interpreter::value::{HashKey, HashPairs};
+use crate::interpreter::value::{HashKey, HashPairs, StrKey};
 use crate::interpreter::{Interpreter, Value};
 use crate::live::socket::{
     extract_session_id as extract_live_session_id, handle_live_connection, liveview_instance_id,
@@ -5564,6 +5564,10 @@ fn call_handler(
     request_hash: Value,
     dev_mode: bool,
     request_data: &RequestData,
+    // When true, `params`/`cookies` were just published and middleware did
+    // not run, so we skip re-probing the request hash and rewriting those
+    // globals. `req` is still published here (it is not set earlier).
+    request_globals_fresh: bool,
 ) -> ResponseData {
     // One span per dispatched handler — covers before_action + method body
     // + after_action so they nest as children. Cheap when --dev is off.
@@ -5588,33 +5592,39 @@ fn call_handler(
     // this request must not inherit a previous request's stale `_view_data`.
     crate::interpreter::builtins::template::clear_view_debug_context();
 
-    // Expose req["all"] as global `params` so handlers/views can reference it directly.
-    // Default to an empty hash (not Null) so callers can safely index into it.
-    let params_value = get_hash_field(&request_hash, "all")
-        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
-    interpreter
-        .global_env()
-        .borrow_mut()
-        .define_or_update("params", params_value.clone());
-    if let Some(vm_ref) = vm.as_deref_mut() {
-        vm_ref
-            .globals
-            .insert("params".to_string(), params_value.clone());
-    }
+    let helpers_need_context = crate::interpreter::builtins::template::helper_env_loaded();
 
-    // Expose parsed cookies as global `cookies` so handlers/view can reference
-    // cookies directly. Default to an empty hash (not Null).
-    let cookies_value = get_hash_field(&request_hash, "cookies")
-        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
-    interpreter
-        .global_env()
-        .borrow_mut()
-        .define_or_update("cookies", cookies_value.clone());
-    if let Some(vm_ref) = vm.as_deref_mut() {
-        vm_ref
-            .globals
-            .insert("cookies".to_string(), cookies_value.clone());
-    }
+    // After middleware the request hash may have changed, so republish
+    // `params`/`cookies`. On the no-middleware fast path they were just set.
+    let (params_value, cookies_value) = if request_globals_fresh && !helpers_need_context {
+        (None, None)
+    } else {
+        let params_value = get_hash_field(&request_hash, "all")
+            .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+        let cookies_value = get_hash_field(&request_hash, "cookies")
+            .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+        if !request_globals_fresh {
+            interpreter
+                .global_env()
+                .borrow_mut()
+                .define_or_update("params", params_value.clone());
+            if let Some(vm_ref) = vm.as_deref_mut() {
+                vm_ref
+                    .globals
+                    .insert("params".to_string(), params_value.clone());
+            }
+            interpreter
+                .global_env()
+                .borrow_mut()
+                .define_or_update("cookies", cookies_value.clone());
+            if let Some(vm_ref) = vm.as_deref_mut() {
+                vm_ref
+                    .globals
+                    .insert("cookies".to_string(), cookies_value.clone());
+            }
+        }
+        (Some(params_value), Some(cookies_value))
+    };
 
     // Expose the full request hash as a global `req` so actions can omit the
     // `(req)` parameter when they don't need to destructure the request.
@@ -5634,15 +5644,25 @@ fn call_handler(
     // `app/middleware/auth.sl`. Without this, helpers see only the env they
     // closed over at load time (builtins + sibling helpers) and `req` is
     // undefined.
-    let session_value = get_hash_field(&request_hash, "session").unwrap_or(Value::Null);
-    let headers_value = get_hash_field(&request_hash, "headers").unwrap_or(Value::Null);
-    crate::interpreter::builtins::template::set_helper_request_context(
-        &request_hash,
-        &params_value,
-        &session_value,
-        &cookies_value,
-        &headers_value,
-    );
+    if helpers_need_context {
+        let params_value = params_value.unwrap_or_else(|| {
+            get_hash_field(&request_hash, "all")
+                .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))))
+        });
+        let cookies_value = cookies_value.unwrap_or_else(|| {
+            get_hash_field(&request_hash, "cookies")
+                .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))))
+        });
+        let session_value = get_hash_field(&request_hash, "session").unwrap_or(Value::Null);
+        let headers_value = get_hash_field(&request_hash, "headers").unwrap_or(Value::Null);
+        crate::interpreter::builtins::template::set_helper_request_context(
+            &request_hash,
+            &params_value,
+            &session_value,
+            &cookies_value,
+            &headers_value,
+        );
+    }
 
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
@@ -6251,10 +6271,12 @@ fn invoke_middleware_with_frame(
     let _phase = phase_log::PhaseTimer::start("middleware");
     let _span = span_log::SpanGuard::start(name, span_log::SpanKind::Middleware);
 
-    // Always measure for the coarse production Prometheus counter (Phase A).
-    // The rich per-middleware log stays gated to --dev.
-    let mw_start = std::time::Instant::now();
-    let per_mw_start = middleware_log::is_enabled().then(std::time::Instant::now);
+    // Clock only when something will read it: Prometheus (`SOLI_METRICS=1`)
+    // or the --dev middleware log. Otherwise Instant::now is a syscall per
+    // middleware on every request.
+    let record_metrics = crate::metrics::metrics_enabled();
+    let record_dev = middleware_log::is_enabled();
+    let mw_start = (record_metrics || record_dev).then(std::time::Instant::now);
 
     interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
     if let Some(path) = source_path {
@@ -6263,11 +6285,14 @@ fn invoke_middleware_with_frame(
     let result = interpreter.call_value(handler, vec![request_hash], span);
     interpreter.pop_frame();
 
-    let elapsed = mw_start.elapsed();
-    crate::metrics::Metrics::global().record_middleware(elapsed);
-
-    if let Some(start) = per_mw_start {
-        middleware_log::record(name, start.elapsed().as_micros() as u64);
+    if let Some(start) = mw_start {
+        let elapsed = start.elapsed();
+        if record_metrics {
+            crate::metrics::Metrics::global().record_middleware(elapsed);
+        }
+        if record_dev {
+            middleware_log::record(name, elapsed.as_micros() as u64);
+        }
     }
     result
 }
@@ -6397,13 +6422,11 @@ fn call_class_method(
     }
 }
 
-/// Get a field from a hash value.
+/// Get a field from a hash value. Uses a borrowed `StrKey` so a serve-path
+/// probe (`req["all"]`, `req["cookies"]`, …) does not allocate a `String`.
 fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
     match hash {
-        Value::Hash(fields) => {
-            let key = HashKey::String(field.to_string().into());
-            fields.borrow().get(&key).cloned()
-        }
+        Value::Hash(fields) => fields.borrow().get(&StrKey(field)).cloned(),
         _ => None,
     }
 }
@@ -7268,22 +7291,29 @@ fn handle_request(
     // operator opts in.
     let cookie_secure =
         is_https || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
-    let req_host = if trust_proxy {
+
+    // Publish scheme + host before headers are taken. Skip when no named
+    // routes exist so a JSON API does not allocate host strings per request.
+    if crate::interpreter::builtins::named_routes::any_named_routes() {
         // SEC-044: take only the first comma-separated entry from
         // X-Forwarded-Host. A nginx-style appending proxy sends
         // "real, attacker" when a client supplied an XFH already; the
         // leftmost token is the value the trusted proxy wrote, so use
         // that for cookie / *_url decisions instead of the verbatim
         // string.
-        header_str(&data.headers, "x-forwarded-host")
-            .map(|v| first_forwarded_token(v).to_string())
-            .or_else(|| header_str(&data.headers, "host").map(|v| v.to_string()))
-            .unwrap_or_default()
-    } else {
-        header_str(&data.headers, "host")
-            .map(|v| v.to_string())
-            .unwrap_or_default()
-    };
+        let req_host = if trust_proxy {
+            header_str(&data.headers, "x-forwarded-host")
+                .map(|v| first_forwarded_token(v).to_string())
+                .or_else(|| header_str(&data.headers, "host").map(|v| v.to_string()))
+                .unwrap_or_default()
+        } else {
+            header_str(&data.headers, "host")
+                .map(|v| v.to_string())
+                .unwrap_or_default()
+        };
+        let req_scheme = if is_https { "https" } else { "http" }.to_string();
+        crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
+    }
 
     // Capture whether this is an HTMx partial-swap request before `headers`
     // is moved into `RequestData`. HTMx returns the response fragment into
@@ -7327,12 +7357,6 @@ fn handle_request(
         parsed_body,
         &data.peer_ip,
     );
-
-    // Publish scheme + host to the per-request thread-local so `<name>_url`
-    // helpers can build absolute URLs without threading the request through
-    // every callsite. Cleared in `finalize_response` below.
-    let req_scheme = if is_https { "https" } else { "http" }.to_string();
-    crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
 
     // Expose params and cookies as globals so middleware, handlers, and views
     // can reference them directly. Both values are already in hand (returned
@@ -7644,6 +7668,7 @@ fn handle_request(
             request_hash,
             dev_mode,
             data,
+            true,
         ));
     }
 
@@ -7897,6 +7922,7 @@ fn handle_request(
         request_hash,
         dev_mode,
         data,
+        false,
     ))
 }
 

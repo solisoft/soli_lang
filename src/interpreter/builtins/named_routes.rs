@@ -26,6 +26,13 @@ thread_local! {
     static CURRENT_REQUEST_HOST: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
 }
 
+/// True when at least one named route (`resources`, `name:`) is registered.
+/// The serve path skips stashing scheme/host when nothing can call `*_url`.
+#[inline]
+pub fn any_named_routes() -> bool {
+    NAMED_ROUTES.with(|n| !n.borrow().is_empty())
+}
+
 /// Set the (scheme, host) pair for the current request. Called by the server
 /// just before dispatching to the action so `*_url` helpers can read it.
 pub fn set_current_request_host(scheme: String, host: String) {

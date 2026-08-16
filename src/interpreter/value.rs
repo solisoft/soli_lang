@@ -285,6 +285,65 @@ pub fn hash_contains_value(hash: &HashPairs, key: &Value) -> bool {
     hash_get_value(hash, key).is_some()
 }
 
+/// Insert or overwrite `key`. Returns `false` if `key` is not hashable.
+///
+/// On a hit, the existing slot is overwritten without allocating a new
+/// `HashKey` (string/symbol keys used to clone on every `h[k] = v`).
+#[inline]
+pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
+    match key {
+        Value::String(s) => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&StrKey(s)) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::String(s.clone()), value);
+            }
+            true
+        }
+        Value::Symbol(s) => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&SymKey(s)) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::Symbol(s.clone()), value);
+            }
+            true
+        }
+        Value::Int(n) => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Int(*n)) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::Int(*n), value);
+            }
+            true
+        }
+        Value::Bool(b) => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Bool(*b)) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::Bool(*b), value);
+            }
+            true
+        }
+        Value::Null => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Null) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::Null, value);
+            }
+            true
+        }
+        Value::Decimal(d) => {
+            if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Decimal(d.clone())) {
+                *existing = value;
+            } else {
+                hash.insert(HashKey::Decimal(d.clone()), value);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
 /// A runtime value in Solilang.
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -2762,6 +2821,36 @@ mod value_misc_tests {
         // Insert-then-update through the borrowed key path.
         assert!(map.contains_key(&StrKey("name")));
         assert!(!map.contains_key(&StrKey("missing")));
+    }
+
+    #[test]
+    fn hash_set_overwrites_without_growing() {
+        let mut map = HashPairs::default();
+        let key = Value::String("name".into());
+        assert!(hash_set_value(&mut map, &key, Value::Int(1)));
+        assert!(hash_set_value(&mut map, &key, Value::Int(2)));
+        assert_eq!(map.len(), 1);
+        assert_eq!(hash_get_value(&map, &key), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn hash_get_set_small_and_large() {
+        let mut map = HashPairs::default();
+        for i in 0..20 {
+            let key = Value::String(format!("k{i}").into());
+            assert!(hash_set_value(&mut map, &key, Value::Int(i)));
+        }
+        assert_eq!(
+            hash_get_value(&map, &Value::String("k0".into())),
+            Some(&Value::Int(0))
+        );
+        assert_eq!(
+            hash_get_value(&map, &Value::String("k19".into())),
+            Some(&Value::Int(19))
+        );
+        assert_eq!(hash_get_value(&map, &Value::String("missing".into())), None);
+        assert_eq!(hash_get_value(&map, &Value::Int(0)), None);
+        assert!(!hash_set_value(&mut map, &Value::Float(1.0), Value::Int(1)));
     }
 
     #[test]

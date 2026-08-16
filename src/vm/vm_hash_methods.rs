@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{hash_contains_value, hash_get_value, HashKey, HashPairs, Value};
+use crate::interpreter::value::{
+    hash_contains_value, hash_get_value, hash_set_value, HashKey, HashPairs, Value,
+};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -56,8 +58,12 @@ impl Vm {
                 if args.len() != 2 {
                     return Err(RuntimeError::wrong_arity(2, args.len(), span));
                 }
-                let key = value_to_hash_key(&args[0], span)?;
-                hash.borrow_mut().insert(key, args[1].clone());
+                if !hash_set_value(&mut hash.borrow_mut(), &args[0], args[1].clone()) {
+                    return Err(RuntimeError::type_error(
+                        format!("Cannot use {} as hash key", args[0].type_name()),
+                        span,
+                    ));
+                }
                 Ok(Value::Null)
             }
             "delete" => {

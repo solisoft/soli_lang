@@ -7,7 +7,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, HashKey, HashPairs, StrKey, Value};
+use crate::interpreter::value::{
+    hash_get_value, hash_set_value, Class, HashKey, HashPairs, StrKey, Value,
+};
 use crate::metrics::VmTimingGuard;
 use crate::span::Span;
 
@@ -1246,6 +1248,43 @@ impl Vm {
                     };
                     self.push(result);
                 }
+                Op::HashGetLocalConst2(slot, k1, k2) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let (p1, p2) = self.two_const_str_ptrs(k1, k2);
+                    let receiver = self.stack[base + slot as usize].clone();
+                    let result =
+                        self.hash_get_nested(&receiver, unsafe { &*p1 }, unsafe { &*p2 })?;
+                    self.push(result);
+                }
+                Op::HashGetGlobalConst2(global_idx, k1, k2) => {
+                    let gname: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
+                            Constant::String(s) => s.as_ref() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let (p1, p2) = self.two_const_str_ptrs(k1, k2);
+                    let gname: &str = unsafe { &*gname };
+                    let receiver = self.globals.get(gname).cloned();
+                    let result = match receiver {
+                        Some(v) => self.hash_get_nested(&v, unsafe { &*p1 }, unsafe { &*p2 })?,
+                        None => {
+                            return Err(RuntimeError::undefined_variable(
+                                gname.to_string(),
+                                self.current_span(),
+                            ))
+                        }
+                    };
+                    self.push(result);
+                }
+                Op::HashGetConst2(k1, k2) => {
+                    let receiver = self.pop();
+                    let (p1, p2) = self.two_const_str_ptrs(k1, k2);
+                    let result =
+                        self.hash_get_nested(&receiver, unsafe { &*p1 }, unsafe { &*p2 })?;
+                    self.push(result);
+                }
                 Op::HashHasKeyLocalConst(slot, key_idx) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let key: *const str = {
@@ -1660,15 +1699,23 @@ impl Vm {
                 Op::GetIndex => {
                     let index = self.stack.pop().unwrap();
                     let object = self.stack.pop().unwrap();
-                    let result = self.op_get_index(&object, &index, self.current_span())?;
-                    self.stack.push(result);
+                    if let Some(result) = Self::try_get_index_hit(&object, &index) {
+                        self.stack.push(result);
+                    } else {
+                        let result = self.op_get_index(&object, &index, self.current_span())?;
+                        self.stack.push(result);
+                    }
                 }
                 Op::SetIndex => {
                     let value = self.stack.pop().unwrap();
                     let index = self.stack.pop().unwrap();
                     let object = self.stack.pop().unwrap();
-                    self.op_set_index(&object, &index, value, self.current_span())?;
-                    self.stack.push(object);
+                    if Self::try_set_index_hit(&object, &index, value.clone()) {
+                        self.stack.push(object);
+                    } else {
+                        self.op_set_index(&object, &index, value, self.current_span())?;
+                        self.stack.push(object);
+                    }
                 }
                 Op::BuildString(n) => {
                     let len = self.stack.len();
@@ -2727,11 +2774,46 @@ impl Vm {
                 }
                 Op::GetLocalIndex(slot, idx_slot) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let object = self.stack[base + slot as usize].clone();
-                    let index_val = self.stack[base + idx_slot as usize].clone();
-                    let span = self.current_span();
-                    let result = self.op_get_index(&object, &index_val, span)?;
+                    let result = match Self::try_get_index_hit(
+                        &self.stack[base + slot as usize],
+                        &self.stack[base + idx_slot as usize],
+                    ) {
+                        Some(v) => v,
+                        None => {
+                            let object = self.stack[base + slot as usize].clone();
+                            let index_val = self.stack[base + idx_slot as usize].clone();
+                            self.op_get_index(&object, &index_val, self.current_span())?
+                        }
+                    };
                     self.stack.push(result);
+                }
+                Op::GetNestedIndex(obj_slot, arr_slot, idx_slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let result = self.nested_index_get(base, obj_slot, arr_slot, idx_slot)?;
+                    self.stack.push(result);
+                }
+                Op::AddNestedIndex(acc_slot, obj_slot, arr_slot, idx_slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let addend = self.nested_index_get(base, obj_slot, arr_slot, idx_slot)?;
+                    let acc_i = base + acc_slot as usize;
+                    match (&self.stack[acc_i], &addend) {
+                        (Value::Int(a), Value::Int(b)) => {
+                            self.stack[acc_i] = Value::Int(a + b);
+                        }
+                        _ => {
+                            let acc = self.stack[acc_i].clone();
+                            self.stack[acc_i] = match (&acc, &addend) {
+                                (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                                (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
+                                (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
+                                _ => self.op_add(acc, addend, self.current_span())?,
+                            };
+                        }
+                    }
+                }
+                Op::SetNestedIndex(obj_slot, arr_slot, idx_slot, val_slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    self.nested_index_set(base, obj_slot, arr_slot, idx_slot, val_slot)?;
                 }
 
                 // --- JSON ---
@@ -3064,7 +3146,174 @@ impl Vm {
         }
     }
 
+    #[inline]
+    fn two_const_str_ptrs(&self, k1: u16, k2: u16) -> (*const str, *const str) {
+        let frame = self.frames.last().unwrap();
+        let p1 = match &frame.closure.proto.chunk.constants[k1 as usize] {
+            Constant::String(s) => s.as_ref() as *const str,
+            _ => "" as *const str,
+        };
+        let p2 = match &frame.closure.proto.chunk.constants[k2 as usize] {
+            Constant::String(s) => s.as_ref() as *const str,
+            _ => "" as *const str,
+        };
+        (p1, p2)
+    }
+
+    /// `receiver[k1][k2]` with the same miss rules as two `HashGetConst`s:
+    /// a missing first key is Null, and indexing Null raises.
+    fn hash_get_nested(
+        &mut self,
+        receiver: &Value,
+        k1: &str,
+        k2: &str,
+    ) -> Result<Value, RuntimeError> {
+        let inner = match receiver {
+            Value::Hash(hash) => hash
+                .borrow()
+                .get(&StrKey(k1))
+                .cloned()
+                .unwrap_or(Value::Null),
+            other => self.hash_get_const_on(other, k1)?,
+        };
+        self.hash_get_const_on(&inner, k2)
+    }
+
+    fn hash_get_const_on(&mut self, receiver: &Value, key: &str) -> Result<Value, RuntimeError> {
+        match receiver {
+            Value::Hash(hash) => Ok(hash
+                .borrow()
+                .get(&StrKey(key))
+                .cloned()
+                .unwrap_or(Value::Null)),
+            Value::Array(arr) => {
+                let span = self.current_span();
+                let arg = Value::String(key.into());
+                self.vm_call_array_method(&arr.clone(), "get", &[arg], span)
+            }
+            Value::String(st) => {
+                let span = self.current_span();
+                let arg = Value::String(key.into());
+                let st = st.clone();
+                self.vm_call_string_method(&st, "get", &[arg], span)
+            }
+            other => Err(RuntimeError::NoSuchProperty {
+                value_type: other.type_name(),
+                property: "get".to_string(),
+                span: self.current_span(),
+            }),
+        }
+    }
+
     // --- Index operations ---
+
+    /// Hit-only lookup: `Some` on a successful read (hash miss → Null),
+    /// `None` when the slow path must run (wrong types, array OOB).
+    #[inline(always)]
+    fn try_get_index_hit(object: &Value, index: &Value) -> Option<Value> {
+        match (object, index) {
+            (Value::Hash(hash), Value::String(s)) => Some(
+                hash.borrow()
+                    .get(&StrKey(s))
+                    .cloned()
+                    .unwrap_or(Value::Null),
+            ),
+            (Value::Hash(hash), key) => Some(
+                hash_get_value(&hash.borrow(), key)
+                    .cloned()
+                    .unwrap_or(Value::Null),
+            ),
+            (Value::Array(arr), Value::Int(i)) => {
+                let arr = arr.borrow();
+                let idx = if *i < 0 {
+                    (arr.len() as i64 + i) as usize
+                } else {
+                    *i as usize
+                };
+                arr.get(idx).cloned()
+            }
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    fn try_set_index_hit(object: &Value, index: &Value, value: Value) -> bool {
+        match (object, index) {
+            (Value::Hash(hash), key) => hash_set_value(&mut hash.borrow_mut(), key, value),
+            (Value::Array(arr), Value::Int(i)) => {
+                let mut arr = arr.borrow_mut();
+                let idx = if *i < 0 {
+                    (arr.len() as i64 + i) as usize
+                } else {
+                    *i as usize
+                };
+                if idx < arr.len() {
+                    arr[idx] = value;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    #[inline(always)]
+    fn nested_index_get(
+        &self,
+        base: usize,
+        obj_slot: u16,
+        arr_slot: u16,
+        idx_slot: u16,
+    ) -> Result<Value, RuntimeError> {
+        let key = match Self::try_get_index_hit(
+            &self.stack[base + arr_slot as usize],
+            &self.stack[base + idx_slot as usize],
+        ) {
+            Some(k) => k,
+            None => {
+                let object = self.stack[base + arr_slot as usize].clone();
+                let index = self.stack[base + idx_slot as usize].clone();
+                self.op_get_index(&object, &index, self.current_span())?
+            }
+        };
+        match Self::try_get_index_hit(&self.stack[base + obj_slot as usize], &key) {
+            Some(v) => Ok(v),
+            None => {
+                let object = self.stack[base + obj_slot as usize].clone();
+                self.op_get_index(&object, &key, self.current_span())
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn nested_index_set(
+        &self,
+        base: usize,
+        obj_slot: u16,
+        arr_slot: u16,
+        idx_slot: u16,
+        val_slot: u16,
+    ) -> Result<(), RuntimeError> {
+        let key = match Self::try_get_index_hit(
+            &self.stack[base + arr_slot as usize],
+            &self.stack[base + idx_slot as usize],
+        ) {
+            Some(k) => k,
+            None => {
+                let object = self.stack[base + arr_slot as usize].clone();
+                let index = self.stack[base + idx_slot as usize].clone();
+                self.op_get_index(&object, &index, self.current_span())?
+            }
+        };
+        let value = self.stack[base + val_slot as usize].clone();
+        if Self::try_set_index_hit(&self.stack[base + obj_slot as usize], &key, value.clone()) {
+            Ok(())
+        } else {
+            let object = self.stack[base + obj_slot as usize].clone();
+            self.op_set_index(&object, &key, value, self.current_span())
+        }
+    }
 
     fn op_get_index(
         &self,
@@ -3160,8 +3409,7 @@ impl Vm {
                 }
             }
             (Value::Hash(hash), key) => {
-                if let Some(hash_key) = HashKey::from_value(key) {
-                    hash.borrow_mut().insert(hash_key, value);
+                if crate::interpreter::value::hash_set_value(&mut hash.borrow_mut(), key, value) {
                     Ok(())
                 } else {
                     Err(RuntimeError::type_error(

@@ -384,6 +384,10 @@ harness = false
 name = "array_string_paths"
 harness = false
 
+[[bench]]
+name = "hash_get_set"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

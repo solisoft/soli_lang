@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeFunction, Value};
@@ -1000,8 +1001,12 @@ struct RequestHashKeys {
     cookies: HashKey,
 }
 
-thread_local! {
-    static REQUEST_KEYS: RequestHashKeys = RequestHashKeys {
+/// Process-wide keys so building `req` does not touch thread-local storage
+/// (the previous `thread_local!` showed up as `_tlv_get_addr` in profiles).
+/// Short `EcoString` clones are inline; the win is skipping TLS.
+fn request_keys() -> &'static RequestHashKeys {
+    static KEYS: OnceLock<RequestHashKeys> = OnceLock::new();
+    KEYS.get_or_init(|| RequestHashKeys {
         method: HashKey::String("method".into()),
         path: HashKey::String("path".into()),
         params: HashKey::String("params".into()),
@@ -1014,7 +1019,7 @@ thread_local! {
         all: HashKey::String("all".into()),
         remote_addr: HashKey::String("remote_addr".into()),
         cookies: HashKey::String("cookies".into()),
-    };
+    })
 }
 
 /// Pre-built response data for fast-path rendering (avoids Value::Hash round-trip).
@@ -1165,7 +1170,8 @@ pub fn build_request_hash_with_parsed(
         Some(Value::Hash(Rc::new(RefCell::new(headers))))
     };
 
-    // Build unified "all" params only when at least one source has data
+    // Unified `params` / `req["all"]`. When only one source is present, reuse
+    // that hash (same Rc) instead of cloning every key into a new map.
     let has_body_params = parsed
         .json
         .as_ref()
@@ -1174,33 +1180,12 @@ pub fn build_request_hash_with_parsed(
             .form
             .as_ref()
             .is_some_and(|v| matches!(v, Value::Hash(_)));
-    let all_value = if params_value.is_none() && query_value.is_none() && !has_body_params {
-        None // All sources empty — skip building unified params entirely
-    } else {
-        let params_ref = params_value.as_ref().and_then(|v| {
-            if let Value::Hash(h) = v {
-                Some(h.borrow())
-            } else {
-                None
-            }
-        });
-        let query_ref = query_value.as_ref().and_then(|v| {
-            if let Value::Hash(h) = v {
-                Some(h.borrow())
-            } else {
-                None
-            }
-        });
-        let empty_map = HashPairs::default();
-        let params_map = params_ref.as_deref().unwrap_or(&empty_map);
-        let query_map = query_ref.as_deref().unwrap_or(&empty_map);
-        let all_pairs = build_unified_params_refs(params_map, query_map, &parsed);
-        Some(Value::Hash(Rc::new(RefCell::new(all_pairs))))
-    };
+    let all_value = unified_params_value(&params_value, &query_value, &parsed, has_body_params);
 
     // Build request hash — only insert fields that have data
     // (missing keys return Null on access via StrKey lookup)
-    let request_pairs: HashPairs = REQUEST_KEYS.with(|keys| {
+    let request_pairs: HashPairs = {
+        let keys = request_keys();
         // Count how many fields we'll actually insert
         // cookies is always present (defaults to empty hash)
         let capacity = 3 // method + path + cookies are always present
@@ -1245,9 +1230,55 @@ pub fn build_request_hash_with_parsed(
         }
         map.insert(keys.cookies.clone(), cookies_value);
         map
-    });
+    };
 
     (Value::Hash(Rc::new(RefCell::new(request_pairs))), all_value)
+}
+
+/// `req["all"]` / the `params` global: same Rc as route or query when that
+/// is the only source; a merged map only when two sources actually collide.
+fn unified_params_value(
+    params_value: &Option<Value>,
+    query_value: &Option<Value>,
+    parsed: &ParsedBody,
+    has_body_params: bool,
+) -> Option<Value> {
+    if !has_body_params {
+        return match (params_value, query_value) {
+            (None, None) => None,
+            (Some(p), None) => Some(p.clone()),
+            (None, Some(q)) => Some(q.clone()),
+            (Some(_), Some(_)) => Some(merge_unified_params(params_value, query_value, parsed)),
+        };
+    }
+    Some(merge_unified_params(params_value, query_value, parsed))
+}
+
+fn merge_unified_params(
+    params_value: &Option<Value>,
+    query_value: &Option<Value>,
+    parsed: &ParsedBody,
+) -> Value {
+    let params_ref = params_value.as_ref().and_then(|v| {
+        if let Value::Hash(h) = v {
+            Some(h.borrow())
+        } else {
+            None
+        }
+    });
+    let query_ref = query_value.as_ref().and_then(|v| {
+        if let Value::Hash(h) = v {
+            Some(h.borrow())
+        } else {
+            None
+        }
+    });
+    let empty_map = HashPairs::default();
+    let params_map = params_ref.as_deref().unwrap_or(&empty_map);
+    let query_map = query_ref.as_deref().unwrap_or(&empty_map);
+    Value::Hash(Rc::new(RefCell::new(build_unified_params_refs(
+        params_map, query_map, parsed,
+    ))))
 }
 
 /// Build unified params from borrowed IndexMap references.
@@ -2091,5 +2122,59 @@ mod nested_param_tests {
     fn type_conflict_last_wins() {
         let v = nested("a=1&a%5Bb%5D=2");
         assert_eq!(as_str(&get(&get(&v, "a"), "b")), "2");
+    }
+
+    #[test]
+    fn all_params_shares_rc_when_only_route_params() {
+        let mut route = HashMap::new();
+        route.insert("id".into(), "42".into());
+        let (req, all) = build_request_hash_with_parsed(
+            "GET",
+            "/show/42",
+            route,
+            vec![],
+            HashPairs::default(),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+            "",
+            ParsedBody::default(),
+            "",
+        );
+        let all = all.expect("all");
+        let Value::Hash(req_h) = req else {
+            panic!("req")
+        };
+        let params = req_h
+            .borrow()
+            .get(&crate::interpreter::value::StrKey("params"))
+            .cloned()
+            .expect("params");
+        match (&all, &params) {
+            (Value::Hash(a), Value::Hash(b)) => assert!(
+                Rc::ptr_eq(a, b),
+                "all should be the same hash as route params"
+            ),
+            _ => panic!("expected hashes"),
+        }
+        assert_eq!(as_str(&get(&all, "id")), "42");
+    }
+
+    #[test]
+    fn all_params_merges_route_and_query() {
+        let mut route = HashMap::new();
+        route.insert("id".into(), "42".into());
+        let (_req, all) = build_request_hash_with_parsed(
+            "GET",
+            "/show/42",
+            route,
+            vec![("q".into(), "hello".into())],
+            HashPairs::default(),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+            "",
+            ParsedBody::default(),
+            "",
+        );
+        let all = all.expect("all");
+        assert_eq!(as_str(&get(&all, "id")), "42");
+        assert_eq!(as_str(&get(&all, "q")), "hello");
     }
 }

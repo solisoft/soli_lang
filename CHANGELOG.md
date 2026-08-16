@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **Hash get/set.** Overwriting an existing key (`h[k] = v` / `h.set(k, v)`)
+  no longer clones the key on a hit. The VM folds `h[keys[i]]` and
+  `total = total + h[keys[i]]` into one opcode and no longer calls the cold
+  span helper on a successful `[]` / `[]=`. Controller reads
+  `req["params"]["id"]` compile to one `HashGetLocalConst2` instead of two
+  hash gets. Request plumbing: `req["all"]`/`req["cookies"]` probes use a
+  borrowed key (no `String` per lookup), `req["all"]` reuses the params hash
+  when there is only one source, request-key construction is process-static
+  (no TLS), helper `req` rebinding is skipped when no view helpers are
+  loaded, and middleware no longer calls `Instant::now` unless metrics or
+  the dev middleware log is on. No-middleware requests skip republishing
+  `params`/`cookies` (already set) and skip stashing `*_url` host when no
+  named routes exist.
+
 ### Security
 
 - **Chunked LiveView uploads had no cap.** `put_chunk` pruned only by TTL,

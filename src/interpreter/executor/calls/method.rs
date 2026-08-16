@@ -27,26 +27,15 @@ impl Interpreter {
                     }
                     let key = &arguments[0];
                     let value = arguments[1].clone();
-                    match key {
-                        Value::String(s) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) =
-                                hash_ref.get_full_mut(&crate::interpreter::value::StrKey(s))
-                            {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref.insert(HashKey::String(s.clone()), value.clone());
-                            }
-                        }
-                        _ => {
-                            let hash_key = key.to_hash_key().ok_or_else(|| {
-                                RuntimeError::type_error(
-                                    format!("Cannot use {} as hash key", key.type_name()),
-                                    span,
-                                )
-                            })?;
-                            hash.borrow_mut().insert(hash_key, value.clone());
-                        }
+                    if !crate::interpreter::value::hash_set_value(
+                        &mut hash.borrow_mut(),
+                        key,
+                        value.clone(),
+                    ) {
+                        return Err(RuntimeError::type_error(
+                            format!("Cannot use {} as hash key", key.type_name()),
+                            span,
+                        ));
                     }
                     Ok(value)
                 }
