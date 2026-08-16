@@ -338,6 +338,9 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_RETENTION_SECS` | How long completed job rows are kept before pruning. | `604800` |
 | `SOLI_JOB_WORKERS` | Worker threads that run job code. Each worker is a full interpreter copy, so the default is conservative; raise it for higher throughput, or set `0` to disable the job engine in this process and run [`soli jobs`](jobs.md#standalone-worker) separately. | `1` |
 | `SOLI_JOB_VIEW_HELPERS` | Whether background-job interpreters load view helpers (which include an app's i18n locale tables — often the largest per-interpreter cost). Set `0` to skip them when no job renders a helper-using template, dropping that memory from every job interpreter. | enabled |
+| `SOLI_JOBS_USER` | HTTP Basic username for the production `/__soli/jobs` dashboard. Must be paired with `SOLI_JOBS_PASSWORD`. Unset (and no token) means the route 404s outside `--dev`. | unset |
+| `SOLI_JOBS_PASSWORD` | HTTP Basic password for `/__soli/jobs`. | unset |
+| `SOLI_JOBS_TOKEN` | Optional bearer token for `/__soli/jobs` (`Authorization: Bearer …`). Accepted alongside Basic when both are set. | unset |
 
 ## Cache And KV
 

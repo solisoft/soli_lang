@@ -189,11 +189,19 @@ pub(super) fn jwt_exp(token: &str) -> u64 {
 /// case.
 fn login_for_token() -> Option<CachedJwt> {
     let (username, password) = match (
-        std::env::var("SOLIDB_USERNAME").ok(),
+        std::env::var("SOLIDB_USERNAME")
+            .ok()
+            .filter(|s| !s.is_empty()),
         std::env::var("SOLIDB_PASSWORD").ok(),
     ) {
         (Some(u), Some(p)) => (u, p),
-        _ => return None,
+        _ => {
+            let spec = crate::db::active_spec().ok()?;
+            (
+                spec.solidb_username.filter(|s| !s.is_empty())?,
+                spec.solidb_password.unwrap_or_default(),
+            )
+        }
     };
     let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     let login_url = format!("{}/auth/login", host);
@@ -358,11 +366,37 @@ pub fn get_cursor_url() -> String {
 }
 
 pub fn get_api_key() -> Option<&'static str> {
-    get_db_config().api_key.as_deref()
+    get_db_config().api_key.as_deref().filter(|k| !k.is_empty())
 }
 
 pub fn get_basic_auth() -> Option<&'static str> {
     get_db_config().basic_auth.as_deref()
+}
+
+/// API key from env, or from the active `config/database.toml` connection.
+pub fn resolve_api_key() -> Option<String> {
+    if let Some(k) = get_api_key() {
+        return Some(k.to_string());
+    }
+    crate::db::active_spec()
+        .ok()
+        .and_then(|s| s.solidb_api_key)
+        .filter(|k| !k.is_empty())
+}
+
+/// Basic auth header from env, or from the active connection's user/pass.
+pub fn resolve_basic_auth() -> Option<String> {
+    if let Some(a) = get_basic_auth() {
+        return Some(a.to_string());
+    }
+    let spec = crate::db::active_spec().ok()?;
+    let user = spec.solidb_username.filter(|s| !s.is_empty())?;
+    let password = spec.solidb_password.unwrap_or_default();
+    use base64::Engine;
+    Some(format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{password}"))
+    ))
 }
 
 /// SEC-027: build a SoliDB URL using the configured scheme + host.
@@ -416,11 +450,11 @@ pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
             // > basic auth. `get_jwt_token()` can do a synchronous re-login
             // when the cached token nears expiry — that's once per ~24h on a
             // multi-thread runtime, acceptable here.
-            if let Some(jwt) = get_jwt_token() {
-                request = request.header("Authorization", format!("Bearer {}", jwt));
-            } else if let Some(key) = get_api_key() {
+            if let Some(key) = resolve_api_key() {
                 request = request.header("x-api-key", key);
-            } else if let Some(basic) = get_basic_auth() {
+            } else if let Some(jwt) = get_jwt_token() {
+                request = request.header("Authorization", format!("Bearer {}", jwt));
+            } else if let Some(basic) = resolve_basic_auth() {
                 request = request.header("Authorization", basic);
             }
             let outcome: Result<(), String> = match request.send().await {

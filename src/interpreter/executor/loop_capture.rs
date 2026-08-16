@@ -36,6 +36,11 @@ pub(crate) fn stmt_creates_closures(stmt: &Stmt) -> bool {
             condition,
             then_branch,
             else_branch,
+        }
+        | StmtKind::Unless {
+            condition,
+            then_branch,
+            else_branch,
         } => {
             expr_creates_closures(condition)
                 || stmt_creates_closures(then_branch)

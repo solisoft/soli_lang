@@ -552,6 +552,11 @@ impl CoverageTracker {
                 condition,
                 then_branch,
                 else_branch,
+            }
+            | Unless {
+                condition,
+                then_branch,
+                else_branch,
             } => {
                 self.collect_lines_from_expr(path, lines, condition);
                 self.collect_lines_from_stmt(path, lines, then_branch);

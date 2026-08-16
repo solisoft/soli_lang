@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Language
+
+- **Block `unless … end`.** `unless` is a first-class statement (`StmtKind::Unless`),
+  not a desugared `if !cond`. Multi-line guards parse and stay `unless` through
+  `soli fmt` (a short body still collapses to postfix `expr unless cond`).
+  `else` is allowed; `elsif` is not. Postfix `expr unless cond` is unchanged.
+
+### Jobs
+
+- **Production `/__soli/jobs`.** The queue dashboard (list, cancel, retry)
+  is no longer `--dev` only. In production set `SOLI_JOBS_USER` +
+  `SOLI_JOBS_PASSWORD` (HTTP Basic) and/or `SOLI_JOBS_TOKEN` (`Authorization:
+  Bearer`). Unconfigured production answers `404`; a wrong password is `401`
+  with `WWW-Authenticate`. `--dev` stays open.
+
 ### ORM
 
 - **Column-mode `encrypts` and STI.** A `table "…"` model can encrypt text

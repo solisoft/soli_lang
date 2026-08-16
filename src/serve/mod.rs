@@ -3509,6 +3509,15 @@ async fn handle_hyper_request(
         }
     }
 
+    // Job dashboard: open in --dev; in production only when credentials
+    // are configured (Basic and/or Bearer). Unconfigured production 404s
+    // so the route does not advertise itself.
+    if let Some(resp) =
+        dev_jobs::dispatch(&method, &path, req.uri().query(), req.headers(), dev_mode)
+    {
+        return Ok(resp);
+    }
+
     // Development mode endpoints
     if dev_mode {
         // REPL endpoint
@@ -3577,20 +3586,6 @@ async fn handle_hyper_request(
         if method == "GET" {
             if let Some(rest) = path.strip_prefix("/__soli/inbox/") {
                 return Ok(dev_inbox::handle_message(rest));
-            }
-        }
-        // Background-job dashboard: inspect queues, cancel, retry.
-        if method == "GET" && path == "/__soli/jobs" {
-            return Ok(dev_jobs::handle_index(req.uri().query()));
-        }
-        if method == "POST" {
-            if let Some(rest) = path.strip_prefix("/__soli/jobs/") {
-                return Ok(dev_jobs::handle_action(rest));
-            }
-        }
-        if method == "GET" {
-            if let Some(id) = path.strip_prefix("/__soli/jobs/") {
-                return Ok(dev_jobs::handle_show(id));
             }
         }
     }

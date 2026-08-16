@@ -207,6 +207,11 @@ fn build_symbols_recursive(
                 then_branch,
                 else_branch,
                 ..
+            }
+            | crate::ast::StmtKind::Unless {
+                then_branch,
+                else_branch,
+                ..
             } => {
                 build_symbols_recursive(
                     std::slice::from_ref(then_branch.as_ref()),

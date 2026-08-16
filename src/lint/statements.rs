@@ -45,6 +45,11 @@ impl Linter {
                 condition,
                 then_branch,
                 else_branch,
+            }
+            | StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
             } => {
                 self.depth += 1;
                 rules::smell::check_deep_nesting(self.depth, stmt.span, &mut self.diagnostics);

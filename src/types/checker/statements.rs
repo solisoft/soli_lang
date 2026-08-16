@@ -87,6 +87,11 @@ impl TypeChecker {
                 condition,
                 then_branch,
                 else_branch,
+            }
+            | StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
             } => {
                 let cond_type = self.check_expr(condition)?;
                 if !matches!(cond_type, Type::Bool | Type::Any | Type::Unknown) {

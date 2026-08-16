@@ -85,10 +85,8 @@ impl Parser {
         ))
     }
 
-    /// Block-form `unless cond ... end` — `if !cond`, the same desugaring the
-    /// postfix `stmt unless cond` already used. Only the postfix form existed,
-    /// so the multi-line guard shown in the project's own instructions
-    /// (`unless [...].includes?(status)` over several lines) did not parse.
+    /// Block-form `unless cond ... end`. First-class `StmtKind::Unless`
+    /// (the inverse of `if`): the body runs when `cond` is falsy.
     ///
     /// `else` is accepted for symmetry with `if`; `elsif` is not, because
     /// "unless A, else if B" reads as a puzzle rather than a guard — Ruby
@@ -98,13 +96,6 @@ impl Parser {
         self.expect(&TokenKind::Unless)?;
 
         let condition = self.expression_condition()?;
-        let negated = Expr::new(
-            ExprKind::Unary {
-                operator: crate::ast::expr::UnaryOp::Not,
-                operand: Box::new(condition),
-            },
-            start_span.merge(&self.previous_span()),
-        );
 
         self.match_token(&TokenKind::Then);
         let then_branch = self.parse_branch_body()?;
@@ -120,8 +111,8 @@ impl Parser {
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
-            StmtKind::If {
-                condition: negated,
+            StmtKind::Unless {
+                condition,
                 then_branch,
                 else_branch,
             },

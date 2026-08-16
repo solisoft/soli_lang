@@ -512,9 +512,31 @@ if is_weekend
 end
 ```
 
+### Unless
+
+`unless cond … end` runs the body when `cond` is falsy — the inverse of `if`. It is a real statement, not a rewrite of `if !cond`, so `unless a || b` keeps that meaning (and `soli fmt` keeps the `unless` keyword).
+
+```soli
+unless user.admin?
+  halt(403, "Forbidden")
+end
+
+# else is allowed; elsif is not
+unless cart.empty?
+  checkout()
+else
+  redirect("/cart")
+end
+
+# short bodies still format as postfix
+return cached unless cached.nil?
+```
+
+Optional `then` works the same as on `if`: `unless ready then wait() end`.
+
 ### The `then` Keyword
 
-The `then` keyword is an **optional** separator between the condition and the body of `if` and `elsif` statements. It improves readability, especially for single-line conditionals.
+The `then` keyword is an **optional** separator between the condition and the body of `if`, `elsif`, and `unless` statements. It improves readability, especially for single-line conditionals.
 
 ```soli
 # Multi-line with then

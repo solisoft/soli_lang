@@ -6,20 +6,37 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::{
-    db_url, force_refresh_jwt_token, get_api_key, get_basic_auth, get_cursor_url,
-    get_database_name, get_jwt_token,
+    db_url, force_refresh_jwt_token, get_cursor_url, get_database_name, get_jwt_token,
+    resolve_api_key, resolve_basic_auth,
 };
 #[allow(unused_imports)]
 use super::registry::{clear_model_classes, get_model_class, register_model_class};
 
 /// Apply DB authentication headers.
-/// Priority: JWT (fastest) > API key > Basic auth fallback.
+///
+/// Priority matches the native driver (`solidb_driver::authenticate`):
+/// API key first, then JWT, then Basic. JWT-first used to 401 on
+/// privileged collections such as `_jobs` when the logged-in user is
+/// not an admin but `SOLIDB_API_KEY` is.
 fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    if let Some(jwt) = get_jwt_token() {
-        builder.header("Authorization", format!("Bearer {}", jwt))
-    } else if let Some(key) = get_api_key() {
+    if let Some(key) = resolve_api_key() {
         builder.header("X-API-Key", key)
-    } else if let Some(auth) = get_basic_auth() {
+    } else if let Some(jwt) = get_jwt_token() {
+        builder.header("Authorization", format!("Bearer {}", jwt))
+    } else if let Some(auth) = resolve_basic_auth() {
+        builder.header("Authorization", auth)
+    } else {
+        builder
+    }
+}
+
+/// Same as [`apply_db_auth`] but never attaches a Bearer JWT. Used after
+/// a 401: the token may be valid for ordinary collections and still be
+/// forbidden on `_jobs` / other system collections.
+fn apply_db_auth_without_jwt(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    if let Some(key) = resolve_api_key() {
+        builder.header("X-API-Key", key)
+    } else if let Some(auth) = resolve_basic_auth() {
         builder.header("Authorization", auth)
     } else {
         builder
@@ -42,9 +59,19 @@ where
     F: Fn() -> reqwest::RequestBuilder,
 {
     let resp = apply_db_auth(make_request()).send().await?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        force_refresh_jwt_token();
-        return apply_db_auth(make_request()).send().await;
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(resp);
+    }
+    force_refresh_jwt_token();
+    let resp = apply_db_auth(make_request()).send().await?;
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(resp);
+    }
+    // Still 401: this JWT is not allowed on this resource. Retry with
+    // API key / Basic only so `_jobs` (and other admin collections)
+    // work when the operator key is configured.
+    if resolve_api_key().is_some() || resolve_basic_auth().is_some() {
+        return apply_db_auth_without_jwt(make_request()).send().await;
     }
     Ok(resp)
 }

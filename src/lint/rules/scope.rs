@@ -335,6 +335,11 @@ fn check_stmt(
             condition,
             then_branch,
             else_branch,
+        }
+        | StmtKind::Unless {
+            condition,
+            then_branch,
+            else_branch,
         } => {
             check_expr(condition, defined, program, diagnostics, reported);
             check_stmt(then_branch, defined, program, diagnostics, reported);
@@ -614,6 +619,11 @@ fn collect_assigned_in_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
         StmtKind::Expression(e) => collect_assigned_in_expr(e, out),
         StmtKind::Block(stmts) => collect_assigned_in_stmts(stmts, out),
         StmtKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        }
+        | StmtKind::Unless {
             condition,
             then_branch,
             else_branch,

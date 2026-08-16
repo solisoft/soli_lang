@@ -180,7 +180,7 @@ impl Printer<'_> {
                 // same StmtKind::If as block `if cond ... end`. Inspect the
                 // source bytes at the statement's start to recover the form.
                 if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start_usize()) {
-                    self.print_postfix_if(condition, then_branch, kw);
+                    self.print_postfix_if(condition, then_branch, kw, true);
                 } else if let Some(inner) = self.guard_clause_to_rewrite(
                     stmt,
                     condition,
@@ -189,10 +189,28 @@ impl Printer<'_> {
                 ) {
                     // Block form `if cond ... end` with a single guard-style
                     // body collapses to idiomatic postfix `expr if cond`.
-                    self.print_postfix_if(condition, inner, PostfixIfKind::If);
+                    self.print_postfix_if(condition, inner, PostfixIfKind::If, false);
                     self.last_stmt_rewrote_to_postfix = true;
                 } else {
                     self.print_if(condition, then_branch, else_branch.as_deref());
+                    self.maybe_blank_line_after_guard(then_branch, else_branch.as_deref());
+                }
+            }
+            StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if let Some(inner) = self.guard_clause_to_rewrite(
+                    stmt,
+                    condition,
+                    then_branch,
+                    else_branch.is_some(),
+                ) {
+                    self.print_postfix_if(condition, inner, PostfixIfKind::Unless, false);
+                    self.last_stmt_rewrote_to_postfix = true;
+                } else {
+                    self.print_unless(condition, then_branch, else_branch.as_deref());
                     self.maybe_blank_line_after_guard(then_branch, else_branch.as_deref());
                 }
             }
@@ -332,9 +350,21 @@ impl Printer<'_> {
         // newlines+continuation indent in pass-1 source but be collapsed
         // to one line in pass-2 source. Raw byte width disagrees between
         // passes and breaks idempotency.
-        let cond_w = super::expressions::span_inline_width(self.source, condition.span);
-        let inner_w = super::expressions::span_inline_width(self.source, inner.span);
-        let total = self.current_column() + inner_w + 4 /* " if " */ + cond_w;
+        //
+        // Cover child spans too: a desugared `unless a || b` is `Not(Or)`,
+        // and after the first pass the `!` node's own span is just the
+        // bang. Using only `condition.span` then underestimates the line
+        // and the second pass rewrites a block the first pass left
+        // alone (`google_oauth_service.sl`).
+        let cond_w = expr_print_width(condition);
+        let inner_w = match &inner.kind {
+            StmtKind::Throw(e) => 6 + expr_print_width(e),
+            StmtKind::Return(Some(e)) => 7 + expr_print_width(e),
+            StmtKind::Return(None) => 6,
+            StmtKind::Expression(e) => expr_print_width(e),
+            _ => super::expressions::span_inline_width(self.source, stmt_layout_span(inner)),
+        };
+        let total = self.pending_column() + inner_w + 4 /* " if " */ + cond_w;
         if total > MAX_LINE_LENGTH {
             return None;
         }
@@ -345,7 +375,13 @@ impl Printer<'_> {
     /// AST for `unless` form is `Unary{Not, inner}` (the parser desugars
     /// `expr unless cond` to `if !cond`); we strip that wrapper so the
     /// printed condition is the original `cond`.
-    fn print_postfix_if(&mut self, condition: &Expr, then_branch: &Stmt, kind: PostfixIfKind) {
+    fn print_postfix_if(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        kind: PostfixIfKind,
+        strip_desugared_not: bool,
+    ) {
         // The then_branch is `Stmt::Expression(expr)` — print the inner expr
         // directly (no trailing newline yet), then the keyword and condition.
         match &then_branch.kind {
@@ -374,19 +410,45 @@ impl Printer<'_> {
             }
             PostfixIfKind::Unless => {
                 self.write(" unless ");
-                // The parser wraps the cond in `!cond` — strip it.
-                if let ExprKind::Unary {
-                    operator: crate::ast::expr::UnaryOp::Not,
-                    operand,
-                } = &condition.kind
-                {
-                    self.without_do_blocks(|p| p.print_expr(operand));
+                // Postfix `expr unless cond` desugars to `If { !cond }`.
+                // Block `unless` stores the raw condition — do not strip.
+                let cond = if strip_desugared_not {
+                    if let ExprKind::Unary {
+                        operator: crate::ast::expr::UnaryOp::Not,
+                        operand,
+                    } = &condition.kind
+                    {
+                        operand.as_ref()
+                    } else {
+                        condition
+                    }
                 } else {
-                    self.without_do_blocks(|p| p.print_expr(condition));
-                }
+                    condition
+                };
+                self.without_do_blocks(|p| p.print_expr(cond));
             }
         }
         self.newline();
+    }
+
+    fn print_unless(&mut self, condition: &Expr, then_branch: &Stmt, else_branch: Option<&Stmt>) {
+        self.write("unless ");
+        self.without_do_blocks(|p| p.print_expr(condition));
+        self.newline();
+        self.print_block_or_stmt(then_branch);
+        match else_branch {
+            None => {
+                self.write("end");
+                self.newline();
+            }
+            Some(else_stmt) => {
+                self.write("else");
+                self.newline();
+                self.print_block_or_stmt(else_stmt);
+                self.write("end");
+                self.newline();
+            }
+        }
     }
 
     fn print_if(&mut self, condition: &Expr, then_branch: &Stmt, else_branch: Option<&Stmt>) {
@@ -884,6 +946,145 @@ fn format_type(ty: &crate::ast::types::TypeAnnotation) -> String {
     ty.to_string()
 }
 
+/// Printed width of `e` from the AST, not from source spans.
+///
+/// Spans on a desugared `unless` / a `!` token are often just the operator,
+/// so `span_inline_width` underestimates and a later fmt pass rewrites a
+/// block that the first pass left alone.
+fn expr_print_width(e: &Expr) -> usize {
+    use crate::ast::expr::UnaryOp;
+    match &e.kind {
+        ExprKind::StringLiteral(s) => s.len() + 2,
+        ExprKind::IntLiteral(n) => n.to_string().len(),
+        ExprKind::FloatLiteral(_) | ExprKind::DecimalLiteral(_) => 8,
+        ExprKind::BoolLiteral(true) => 4,
+        ExprKind::BoolLiteral(false) => 5,
+        ExprKind::Null => 4,
+        ExprKind::Variable(name) | ExprKind::Symbol(name) => name.len(),
+        ExprKind::Unary {
+            operator: UnaryOp::Not,
+            operand,
+        } => match &operand.kind {
+            ExprKind::LogicalOr { .. } | ExprKind::LogicalAnd { .. } | ExprKind::Binary { .. } => {
+                3 + expr_print_width(operand)
+            }
+            ExprKind::Grouping(_) => 1 + expr_print_width(operand),
+            _ => 1 + expr_print_width(operand),
+        },
+        ExprKind::Unary { operand, .. } => 1 + expr_print_width(operand),
+        ExprKind::Grouping(inner) => 2 + expr_print_width(inner),
+        ExprKind::LogicalOr { left, right } | ExprKind::LogicalAnd { left, right } => {
+            expr_print_width(left) + 4 + expr_print_width(right)
+        }
+        ExprKind::Binary {
+            left,
+            operator,
+            right,
+        } => expr_print_width(left) + 1 + operator.to_string().len() + 1 + expr_print_width(right),
+        ExprKind::Index { object, index } => expr_print_width(object) + 2 + expr_print_width(index),
+        ExprKind::Member { object, name, .. } | ExprKind::SafeMember { object, name, .. } => {
+            expr_print_width(object) + 1 + name.len()
+        }
+        ExprKind::Hash(pairs) => {
+            let inner: usize = pairs
+                .iter()
+                .map(|(k, v)| expr_print_width(k) + 2 + expr_print_width(v))
+                .sum();
+            let seps = pairs.len().saturating_sub(1) * 2;
+            2 + inner + seps
+        }
+        ExprKind::Call { callee, arguments } => {
+            let args: usize = arguments
+                .iter()
+                .map(|a| match a {
+                    Argument::Positional(x) | Argument::Block(x) => expr_print_width(x),
+                    Argument::Named(na) => na.name.len() + 2 + expr_print_width(&na.value),
+                })
+                .sum();
+            let seps = arguments.len().saturating_sub(1) * 2;
+            expr_print_width(callee) + 2 + args + seps
+        }
+        _ => super::expressions::span_inline_width("", e.span).max(8),
+    }
+}
+
+/// Source span covering `e` and every child. The node's own span can be a
+/// single operator token (`!` on a desugared `unless`); width checks must
+/// count the printed operand too.
+fn expr_layout_span(e: &Expr) -> crate::span::Span {
+    let mut span = e.span;
+    match &e.kind {
+        ExprKind::Unary { operand, .. }
+        | ExprKind::Grouping(operand)
+        | ExprKind::Spread(operand)
+        | ExprKind::Throw(operand)
+        | ExprKind::Member {
+            object: operand, ..
+        }
+        | ExprKind::SafeMember {
+            object: operand, ..
+        }
+        | ExprKind::QualifiedName {
+            qualifier: operand, ..
+        } => {
+            span = span.merge(&expr_layout_span(operand));
+        }
+        ExprKind::Binary { left, right, .. }
+        | ExprKind::Pipeline { left, right }
+        | ExprKind::LogicalAnd { left, right }
+        | ExprKind::LogicalOr { left, right }
+        | ExprKind::Assign {
+            target: left,
+            value: right,
+        }
+        | ExprKind::CompoundAssign {
+            target: left,
+            value: right,
+            ..
+        }
+        | ExprKind::Rescue {
+            expr: left,
+            fallback: right,
+        }
+        | ExprKind::Index {
+            object: left,
+            index: right,
+        } => {
+            span = span
+                .merge(&expr_layout_span(left))
+                .merge(&expr_layout_span(right));
+        }
+        ExprKind::Call { callee, arguments }
+        | ExprKind::New {
+            class_expr: callee,
+            arguments,
+        } => {
+            span = span.merge(&expr_layout_span(callee));
+            for arg in arguments {
+                match arg {
+                    Argument::Positional(x) | Argument::Block(x) => {
+                        span = span.merge(&expr_layout_span(x));
+                    }
+                    Argument::Named(na) => {
+                        span = span.merge(&expr_layout_span(&na.value));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    span
+}
+
+fn stmt_layout_span(s: &Stmt) -> crate::span::Span {
+    match &s.kind {
+        StmtKind::Return(Some(e)) | StmtKind::Throw(e) | StmtKind::Expression(e) => {
+            s.span.merge(&expr_layout_span(e))
+        }
+        _ => s.span,
+    }
+}
+
 /// Mirror the printer's break heuristics for collection literals. Returns
 /// true when `e` (or some sub-expression of `e`) is one the printer will
 /// emit across multiple lines, regardless of the source's original layout.
@@ -901,9 +1102,17 @@ pub(super) fn expr_likely_breaks(e: &Expr) -> bool {
             if pairs.len() > 1 {
                 return true;
             }
-            pairs
-                .iter()
-                .any(|(k, v)| expr_likely_breaks(k) || expr_likely_breaks(v))
+            // A one-pair `{k: call(a, b, c)}` is printed across lines once
+            // the call is wide. First pass used to keep the `if` block;
+            // second pass then collapsed it to postfix (`oauth_tokens`).
+            pairs.iter().any(|(k, v)| {
+                expr_likely_breaks(k)
+                    || expr_likely_breaks(v)
+                    || matches!(
+                        &v.kind,
+                        ExprKind::Call { arguments, .. } if arguments.len() > 1
+                    )
+            })
         }
         // The Array branch forces multi-line when > 3 elements, or with 3+
         // elements once we're past column 20. Like the Hash case, we can't

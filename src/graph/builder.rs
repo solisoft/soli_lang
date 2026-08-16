@@ -1016,6 +1016,11 @@ impl GraphBuilder {
                 condition,
                 then_branch,
                 else_branch,
+            }
+            | StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
             } => {
                 self.walk_expr(condition, ctx, locals);
                 let mut then_locals = locals.clone();

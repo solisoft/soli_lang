@@ -76,6 +76,18 @@ impl<'a> Printer<'a> {
         self.column
     }
 
+    /// Column the next `write` will start at, including pending indent.
+    /// `current_column` is 0 while `at_line_start` — using that for a
+    /// line-length check underestimates every statement that hasn't
+    /// printed yet (the postfix-if rewrite).
+    pub fn pending_column(&self) -> usize {
+        if self.at_line_start {
+            self.indent * INDENT_WIDTH
+        } else {
+            self.column
+        }
+    }
+
     /// True if any source comment falls on a line strictly between `start` and
     /// `end` (exclusive). Used by guard-clause rewriting to keep a `# note`
     /// inside an `if cond ... end` from being detached when the block is
@@ -459,6 +471,11 @@ fn is_return_stmt(stmt: &Stmt) -> bool {
             then_branch,
             else_branch: None,
             ..
+        }
+        | StmtKind::Unless {
+            then_branch,
+            else_branch: None,
+            ..
         } => match &then_branch.kind {
             StmtKind::Return(_) => true,
             StmtKind::Block(stmts) => {
@@ -501,6 +518,11 @@ fn ends_in_expression(stmt: &Stmt) -> bool {
         // ends with an expression too. Block-form `if/while/for/try/fn/class`
         // end with `end`, safe.
         StmtKind::If {
+            else_branch: None,
+            then_branch,
+            ..
+        }
+        | StmtKind::Unless {
             else_branch: None,
             then_branch,
             ..

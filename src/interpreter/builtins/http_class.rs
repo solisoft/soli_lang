@@ -604,17 +604,23 @@ pub fn block_on_db<F>(future: F) -> F::Output
 where
     F: std::future::Future,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        // Called from inside an async context, where this thread's reactor
-        // cannot be driven. Use a runtime scoped to this one call rather than
-        // blocking the caller's I/O driver. `db_http_client()` hands the
-        // shared client to this path, whose connections are retired when the
-        // scoped runtime drops, so nothing outlives its driver.
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create scoped DB runtime");
-        rt.block_on(future)
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        // Already on a Tokio thread (typically a `tokio-rt-worker` from the
+        // server runtime, or a job/session warmup that entered that handle).
+        // Building another Runtime here panics: "Cannot start a runtime from
+        // within a runtime". Drive the future on the ambient handle instead.
+        match handle.runtime_flavor() {
+            tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| handle.block_on(future))
+            }
+            // Current-thread cannot `block_in_place` and cannot host a
+            // nested Runtime. Request workers are multi-thread, so this
+            // arm is only the per-thread DB reactor calling itself.
+            // Drive on that same thread-local runtime's handle — the
+            // caller is already inside its `block_on`, so this panics
+            // with a Tokio message if we ever nest for real.
+            _ => handle.block_on(future),
+        }
     } else if db_shared_reactor() {
         // Kill-switch: old behavior — drive the future on the server's shared
         // runtime (single I/O driver, cross-thread wakeup per completion).

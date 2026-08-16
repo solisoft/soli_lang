@@ -246,7 +246,22 @@ soli jobs retry <id>
 soli jobs cancel <id>
 ```
 
-In `--dev`, the same operations are a page: `/__soli/jobs` (linked from the dev-bar tools panel). Cancel pending/scheduled/failed rows; retry failed/dead ones. Production operators use the CLI (or `Job.list` / `Job.retry` / `Job.cancel` from app code) — the dashboard is dev-only.
+The same operations are a page at `/__soli/jobs` (linked from the dev-bar tools panel in `--dev`). Cancel pending/scheduled/failed rows; retry failed/dead ones.
+
+In production the dashboard is off unless you set credentials. Configure **HTTP Basic**:
+
+```bash
+SOLI_JOBS_USER=ops
+SOLI_JOBS_PASSWORD=a-long-random-secret
+```
+
+or a **bearer token** (`Authorization: Bearer …`):
+
+```bash
+SOLI_JOBS_TOKEN=a-long-random-secret
+```
+
+Both can be set; either method is accepted. Without either pair, `/__soli/jobs` answers `404` so the route does not advertise itself. A wrong password answers `401` with `WWW-Authenticate: Basic realm="Soli jobs"`. `--dev` stays open (no prompt). The CLI (`soli jobs list` / `retry` / `cancel`) and `Job.*` still work without the dashboard.
 
 A LiveView that enqueues an upload job and refreshes when it finishes is walked through in [A Live Field Desk](/docs/blog/liveview-desk).
 

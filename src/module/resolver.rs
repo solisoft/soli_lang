@@ -597,6 +597,11 @@ fn set_stmt_source_path(stmt: &Stmt, source_path: PathBuf) -> Stmt {
             then_branch,
             else_branch,
             ..
+        }
+        | Unless {
+            then_branch,
+            else_branch,
+            ..
         } => {
             **then_branch = set_stmt_source_path(then_branch, source_path.clone());
             if let Some(else_stmt) = else_branch {

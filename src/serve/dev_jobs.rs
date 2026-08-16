@@ -1,11 +1,14 @@
-//! The `--dev` job dashboard at `/__soli/jobs`: inspect queues, cancel
-//! pending work, and retry failed/dead rows.
+//! The job dashboard at `/__soli/jobs`: inspect queues, cancel pending
+//! work, and retry failed/dead rows.
 //!
-//! Dev-only (wired next to the inbox). Production operators use
-//! `soli jobs list` / `retry` / `cancel`, or `Job.list` / `Job.retry` /
-//! `Job.cancel` from app code.
+//! Open in `--dev`. In production it is served only when
+//! `SOLI_JOBS_USER` + `SOLI_JOBS_PASSWORD` and/or `SOLI_JOBS_TOKEN` are
+//! set; otherwise the path 404s. Auth is HTTP Basic and/or `Bearer`.
 
-use hyper::{Response, StatusCode};
+use base64::Engine;
+use hyper::{header::HeaderMap, Response, StatusCode};
+
+use crate::interpreter::builtins::crypto::do_secure_compare;
 
 use crate::interpreter::builtins::server::parse_query_string;
 use crate::jobs::store;
@@ -68,6 +71,135 @@ fn paginate(total: usize, per: usize, page: usize) -> (usize, usize, usize) {
     (page, start, (start + per).min(total))
 }
 
+/// Decide whether this request is the jobs dashboard (any method).
+pub(crate) fn is_jobs_dashboard_path(method: &str, path: &str) -> bool {
+    if path == "/__soli/jobs" {
+        return method == "GET" || method == "HEAD";
+    }
+    let Some(rest) = path.strip_prefix("/__soli/jobs/") else {
+        return false;
+    };
+    if rest.is_empty() {
+        return false;
+    }
+    matches!(method, "GET" | "HEAD" | "POST")
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DashAuth {
+    Allow,
+    NeedAuth,
+    Hidden,
+}
+
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|s| !s.is_empty())
+}
+
+fn configured_basic() -> Option<(String, String)> {
+    let user = env_nonempty("SOLI_JOBS_USER")?;
+    let password = env_nonempty("SOLI_JOBS_PASSWORD")?;
+    Some((user, password))
+}
+
+fn configured_token() -> Option<String> {
+    env_nonempty("SOLI_JOBS_TOKEN")
+}
+
+fn parse_basic(headers: &HeaderMap) -> Option<(String, String)> {
+    let raw = headers.get(hyper::header::AUTHORIZATION)?.to_str().ok()?;
+    let b64 = raw.strip_prefix("Basic ")?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .ok()?;
+    let decoded = String::from_utf8(bytes).ok()?;
+    let (user, password) = decoded.split_once(':')?;
+    Some((user.to_string(), password.to_string()))
+}
+
+fn parse_bearer(headers: &HeaderMap) -> Option<String> {
+    let raw = headers.get(hyper::header::AUTHORIZATION)?.to_str().ok()?;
+    raw.strip_prefix("Bearer ").map(|s| s.trim().to_string())
+}
+
+fn authorize(headers: &HeaderMap, dev_mode: bool) -> DashAuth {
+    authorize_with(headers, dev_mode, configured_basic(), configured_token())
+}
+
+fn authorize_with(
+    headers: &HeaderMap,
+    dev_mode: bool,
+    basic: Option<(String, String)>,
+    token: Option<String>,
+) -> DashAuth {
+    if dev_mode {
+        return DashAuth::Allow;
+    }
+    if basic.is_none() && token.is_none() {
+        return DashAuth::Hidden;
+    }
+    if let (Some((want_user, want_pass)), Some((got_user, got_pass))) =
+        (basic.as_ref(), parse_basic(headers))
+    {
+        if do_secure_compare(want_user, &got_user) && do_secure_compare(want_pass, &got_pass) {
+            return DashAuth::Allow;
+        }
+    }
+    if let (Some(want), Some(got)) = (token.as_ref(), parse_bearer(headers)) {
+        if do_secure_compare(want, &got) {
+            return DashAuth::Allow;
+        }
+    }
+    DashAuth::NeedAuth
+}
+
+fn unauthorized() -> Response<ResponseBody> {
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .header("WWW-Authenticate", "Basic realm=\"Soli jobs\"")
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(full(Bytes::from("Unauthorized")))
+        .unwrap()
+}
+
+fn hidden_not_found() -> Response<ResponseBody> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(full(Bytes::from("Not Found")))
+        .unwrap()
+}
+
+/// Serve `/__soli/jobs` when the path matches. `None` if this is not a
+/// jobs-dashboard request. Production without credentials is a plain 404.
+pub(crate) fn dispatch(
+    method: &str,
+    path: &str,
+    query: Option<&str>,
+    headers: &HeaderMap,
+    dev_mode: bool,
+) -> Option<Response<ResponseBody>> {
+    if !is_jobs_dashboard_path(method, path) {
+        return None;
+    }
+    match authorize(headers, dev_mode) {
+        DashAuth::Allow => Some(route(method, path, query)),
+        DashAuth::NeedAuth => Some(unauthorized()),
+        DashAuth::Hidden => Some(hidden_not_found()),
+    }
+}
+
+fn route(method: &str, path: &str, query: Option<&str>) -> Response<ResponseBody> {
+    if path == "/__soli/jobs" {
+        return handle_index(query);
+    }
+    let rest = path.strip_prefix("/__soli/jobs/").unwrap_or("");
+    if method == "POST" {
+        return handle_action(rest);
+    }
+    handle_show(rest)
+}
+
 fn page_link(queue: &str, state: &str, per: usize, page: usize) -> String {
     format!(
         "/__soli/jobs?queue={}&state={}&per={}&page={}",
@@ -100,8 +232,15 @@ pub(crate) fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
     }) {
         Ok(rows) => rows,
         Err(e) => {
+            let hint = if e.contains("401") {
+                "<p class=\"muted\">SolidB rejected the query. The <code>_jobs</code> collection \
+is privileged — set <code>SOLIDB_API_KEY</code> (or <code>api_key</code> on the default \
+connection in <code>config/database.toml</code>) to an admin key, then restart.</p>"
+            } else {
+                ""
+            };
             return html_ok(jobs_page(&format!(
-                "<p class=\"err\">Could not read _jobs: {}</p>",
+                "<p class=\"err\">Could not read _jobs: {}</p>{hint}",
                 dev_bar::html_escape(&e)
             )));
         }
@@ -330,5 +469,75 @@ mod tests {
         assert!(!action_forms("x", "dead").contains("cancel"));
         assert!(action_forms("x", "running").is_empty());
         assert!(action_forms("x", "done").is_empty());
+    }
+
+    #[test]
+    fn jobs_paths() {
+        assert!(is_jobs_dashboard_path("GET", "/__soli/jobs"));
+        assert!(is_jobs_dashboard_path("GET", "/__soli/jobs/abc"));
+        assert!(is_jobs_dashboard_path("POST", "/__soli/jobs/abc/cancel"));
+        assert!(!is_jobs_dashboard_path("GET", "/__soli/inbox"));
+        assert!(!is_jobs_dashboard_path("POST", "/__soli/jobs"));
+        assert!(!is_jobs_dashboard_path("GET", "/jobs"));
+    }
+
+    fn headers_with(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(hyper::header::AUTHORIZATION, value.parse().expect("header"));
+        h
+    }
+
+    #[test]
+    fn prod_hidden_without_credentials() {
+        assert_eq!(
+            authorize_with(&HeaderMap::new(), false, None, None),
+            DashAuth::Hidden
+        );
+        assert_eq!(
+            authorize_with(&HeaderMap::new(), true, None, None),
+            DashAuth::Allow
+        );
+    }
+
+    #[test]
+    fn prod_basic_auth() {
+        let creds = Some(("ops".into(), "s3cret".into()));
+        let ok = base64::engine::general_purpose::STANDARD.encode("ops:s3cret");
+        let bad = base64::engine::general_purpose::STANDARD.encode("ops:wrong");
+        assert_eq!(
+            authorize_with(
+                &headers_with(&format!("Basic {ok}")),
+                false,
+                creds.clone(),
+                None
+            ),
+            DashAuth::Allow
+        );
+        assert_eq!(
+            authorize_with(
+                &headers_with(&format!("Basic {bad}")),
+                false,
+                creds.clone(),
+                None
+            ),
+            DashAuth::NeedAuth
+        );
+        assert_eq!(
+            authorize_with(&HeaderMap::new(), false, creds, None),
+            DashAuth::NeedAuth
+        );
+    }
+
+    #[test]
+    fn prod_bearer_token() {
+        let token = Some("tok-xyz".into());
+        assert_eq!(
+            authorize_with(&headers_with("Bearer tok-xyz"), false, None, token.clone()),
+            DashAuth::Allow
+        );
+        assert_eq!(
+            authorize_with(&headers_with("Bearer nope"), false, None, token),
+            DashAuth::NeedAuth
+        );
     }
 }

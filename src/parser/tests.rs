@@ -250,6 +250,37 @@ mod parser_tests {
     }
 
     #[test]
+    fn test_unless_with_end() {
+        match parse_stmt("unless false end") {
+            StmtKind::Unless {
+                then_branch,
+                else_branch,
+                condition,
+            } => {
+                if let StmtKind::Block(stmts) = &then_branch.kind {
+                    assert!(stmts.is_empty());
+                } else {
+                    panic!("Expected empty block in then branch");
+                }
+                assert!(else_branch.is_none());
+                assert!(
+                    !matches!(condition.kind, ExprKind::Unary { .. }),
+                    "block unless must keep the raw condition, not wrap it in !"
+                );
+            }
+            other => panic!("Expected unless, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_unless_else_with_end() {
+        match parse_stmt("unless true\n  1\nelse\n  2\nend") {
+            StmtKind::Unless { else_branch, .. } => assert!(else_branch.is_some()),
+            other => panic!("Expected unless, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_if_else_with_end() {
         match parse_stmt("if true end else { 1 }") {
             StmtKind::If {

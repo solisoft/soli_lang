@@ -65,6 +65,14 @@ pub enum StmtKind {
         else_branch: Option<Box<Stmt>>,
     },
 
+    /// Unless statement: unless cond ... end [else ... end].
+    /// Runs `then_branch` when `condition` is falsy (the inverse of `if`).
+    Unless {
+        condition: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+    },
+
     /// While loop: while (cond) { ... }
     While { condition: Expr, body: Box<Stmt> },
 

@@ -164,7 +164,8 @@ class ProcessAttachmentJob {
 }
 ```
 
-`soli jobs` (alias `soli worker`) runs that work with no HTTP listener — pair with `SOLI_JOB_WORKERS=0` on `soli serve` when you want the queue in another process. `Job.retry(id)` puts a `failed` or `dead` row back on the queue and keeps `attempts` / `last_error`. In `--dev`, `/__soli/jobs` is the same cancel/retry surface.
+`soli jobs` (alias `soli worker`) runs that work with no HTTP listener — pair with `SOLI_JOB_WORKERS=0` on `soli serve` when you want the queue in another process. `Job.retry(id)` puts a `failed` or `dead` row back on the queue and keeps `attempts` / `last_error`. `/__soli/jobs` is the same cancel/retry surface (`--dev` open; production
+behind `SOLI_JOBS_USER`/`SOLI_JOBS_PASSWORD` or `SOLI_JOBS_TOKEN`).
 
 On this page there is no queue: a short tick marks the attachment ready so you can see the chip flip without standing up SQLite. The job snippet is what you copy.
 

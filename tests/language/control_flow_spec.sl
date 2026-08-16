@@ -112,6 +112,70 @@ describe("If/Else Statements", fn() {
     });
 });
 
+describe("Unless/End Statements", fn() {
+    test("unless false executes the body", fn() {
+        let result = 0;
+        unless false
+            result = 1;
+        end
+        assert_eq(result, 1);
+    });
+
+    test("unless true skips the body", fn() {
+        let result = 0;
+        unless true
+            result = 1;
+        end
+        assert_eq(result, 0);
+    });
+
+    test("unless with then", fn() {
+        let result = 0;
+        unless false then
+            result = 1;
+        end
+        assert_eq(result, 1);
+    });
+
+    test("unless else runs the else when the condition is true", fn() {
+        let result = 0;
+        unless true
+            result = 1;
+        else
+            result = 2;
+        end
+        assert_eq(result, 2);
+    });
+
+    test("unless else runs the body when the condition is false", fn() {
+        let result = 0;
+        unless false
+            result = 1;
+        else
+            result = 2;
+        end
+        assert_eq(result, 1);
+    });
+
+    test("unless over or keeps the original meaning", fn() {
+        let result = "";
+        unless false || true
+            result = "neither";
+        else
+            result = "some";
+        end
+        assert_eq(result, "some");
+    });
+
+    test("postfix unless is unchanged", fn() {
+        let x = 0;
+        x = 42 unless false;
+        assert_eq(x, 42);
+        x = 7 unless true;
+        assert_eq(x, 42);
+    });
+});
+
 describe("While Loops", fn() {
     test("while loop iterates", fn() {
         let count = 0;

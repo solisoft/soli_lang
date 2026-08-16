@@ -85,6 +85,11 @@ impl Scan {
                 condition,
                 then_branch,
                 else_branch,
+            }
+            | StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
             } => {
                 self.expr(condition);
                 self.stmt(then_branch);

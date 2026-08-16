@@ -103,6 +103,21 @@ impl Interpreter {
                 }
             }
 
+            StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_value = self.evaluate(condition)?;
+                if !cond_value.is_truthy() {
+                    self.execute(then_branch)
+                } else if let Some(else_br) = else_branch {
+                    self.execute(else_br)
+                } else {
+                    Ok(ControlFlow::Normal(Value::Null))
+                }
+            }
+
             StmtKind::While { condition, body } => {
                 // Fast path: body is a Block — pre-allocate the block env once
                 // and reuse it across iterations via execute_block_in. Avoids

@@ -650,8 +650,28 @@ fn block_unless_over_or_keeps_its_parens() {
     // silent behaviour change, not just a formatting nit.
     let src =
         "fn f(a, b)\n  unless a || b\n    return \"neither\"\n  end\n  return \"some\"\nend\n";
-    let expected = "def f(a, b)\n  return \"neither\" if !(a || b)\n  return \"some\"\nend\n";
+    let expected = "def f(a, b)\n  return \"neither\" unless a || b\n  return \"some\"\nend\n";
     assert_fmt(src, expected);
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn long_unless_or_throw_stays_a_block_across_passes() {
+    // The OAuth scaffold: first pass used to emit `if !(a || b)` and the
+    // second pass then collapsed it to a wrapped postfix `throw … if`, so
+    // `fmt(fmt(x)) != fmt(x)` and the corpus test failed.
+    let src = "\
+class GoogleOauth
+  static def complete!(code) -> Any
+    let profile = fetch()
+    unless profile[\"email_verified\"] == true || profile[\"email_verified\"] == \"true\"
+      throw \"Google: email is not verified\"
+    end
+    profile
+  end
+end
+";
     assert_round_trip(src);
     assert_idempotent(src);
 }
@@ -659,7 +679,7 @@ fn block_unless_over_or_keeps_its_parens() {
 #[test]
 fn block_unless_over_and_keeps_its_parens() {
     let src = "fn f(a, b)\n  unless a && b\n    return 1\n  end\n  return 2\nend\n";
-    let expected = "def f(a, b)\n  return 1 if !(a && b)\n  return 2\nend\n";
+    let expected = "def f(a, b)\n  return 1 unless a && b\n  return 2\nend\n";
     assert_fmt(src, expected);
     assert_idempotent(src);
 }

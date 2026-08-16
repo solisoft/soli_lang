@@ -65,7 +65,14 @@ impl Compiler {
                 then_branch,
                 else_branch,
             } => {
-                self.compile_if_stmt(condition, then_branch, else_branch.as_deref(), line)?;
+                self.compile_if_stmt(condition, then_branch, else_branch.as_deref(), false, line)?;
+            }
+            StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.compile_if_stmt(condition, then_branch, else_branch.as_deref(), true, line)?;
             }
             StmtKind::While { condition, body } => {
                 self.compile_while(condition, body, line)?;
@@ -208,9 +215,13 @@ impl Compiler {
         condition: &crate::ast::Expr,
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
+        invert: bool,
         line: usize,
     ) -> CompileResult<()> {
         self.compile_expr(condition)?;
+        if invert {
+            self.emit(Op::Not, line);
+        }
         let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
 
         self.compile_stmt(then_branch)?;

@@ -69,6 +69,50 @@ print(letter);  # "B"</code></pre>
         </section>
     </section>
 
+    <section id="section-unless" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+            </span>
+            Unless
+        </h2>
+
+        <section id="kw-unless" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-unless" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">unless</code> / <code class="text-lg font-mono text-amber-400">end</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Runs the body when the condition is falsy — the inverse of <code>if</code>.
+                    This is a real statement, not a rewrite of <code>if !cond</code>, so
+                    <code>unless a || b</code> keeps that meaning.
+                </p>
+                <pre data-filename="Example"><code class="language-soli text-sm">unless user.admin?
+  halt(403, "Forbidden")
+end
+
+# else is allowed; elsif is not
+unless cart.empty?
+  checkout()
+else
+  redirect("/cart")
+end
+
+# short bodies still format as postfix
+return cached unless cached.nil?</code></pre>
+                <p class="text-gray-400 mt-3 text-sm">
+                    Optional <code>then</code> works the same as on <code>if</code>:
+                    <code>unless ready then wait() end</code>.
+                </p>
+            </div>
+        </section>
+    </section>
+
     <!-- Then Keyword -->
     <section id="section-then" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
@@ -89,7 +133,7 @@ print(letter);  # "B"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">
-                    The <code>then</code> keyword is an <strong class="text-white">optional</strong> separator between the condition and the body of an <code>if</code> or <code>elsif</code> statement.
+                    The <code>then</code> keyword is an <strong class="text-white">optional</strong> separator between the condition and the body of an <code>if</code>, <code>elsif</code>, or <code>unless</code> statement.
                     It improves readability, especially for single-line conditionals.
                 </p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Multi-line with then
