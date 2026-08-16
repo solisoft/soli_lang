@@ -230,17 +230,26 @@ fn sql_find_first_by(
     value: serde_json::Value,
     order_by_key: bool,
 ) -> Result<Value, String> {
-    if super::registry::is_sti_subclass(&class.name) {
-        return Err(format!(
-            "{}.find_by/first_by on an STI subclass is SoliDB-only on SQL adapters. \
-             See docs/sql-adapter-design.md.",
-            class.name
-        ));
-    }
     // Column-aware models filter on a real column.
     if let Some(schema) = super::column_mode::require_schema(collection)? {
         let mut q = crate::db::sql_columns_compile::ColumnQuery::new(schema.clone());
         q.eq_filters.insert(field.to_string(), value);
+        if super::registry::is_sti_subclass(&class.name) {
+            if !schema.has_column("type") {
+                return Err(format!(
+                    "{}.find_by/first_by needs a `type` column on table {:?} \
+                     (STI subclass).",
+                    class.name, schema.table
+                ));
+            }
+            q.in_filters.insert(
+                "type".to_string(),
+                super::registry::sti_type_names(&class.name)
+                    .into_iter()
+                    .map(serde_json::Value::String)
+                    .collect(),
+            );
+        }
         if order_by_key {
             q.order_field = Some(schema.pk.clone());
         }
@@ -256,7 +265,7 @@ fn sql_find_first_by(
     }
     let mut eq_filters = std::collections::BTreeMap::new();
     eq_filters.insert(field.to_string(), value);
-    let lq = crate::db::ListQuery {
+    let mut lq = crate::db::ListQuery {
         table: collection.to_string(),
         eq_filters,
         hash_filter: None,
@@ -271,6 +280,15 @@ fn sql_find_first_by(
         limit: Some(1),
         offset: None,
     };
+    if super::registry::is_sti_subclass(&class.name) {
+        lq.hash_filter = Some(crate::db::hash_filter::HashFilter::In {
+            field: "type".to_string(),
+            values: super::registry::sti_type_names(&class.name)
+                .into_iter()
+                .map(serde_json::Value::String)
+                .collect(),
+        });
+    }
     let rows = crate::db::sql::select(&lq)?;
     Ok(match rows.into_iter().next() {
         Some(doc) => super::crud::json_doc_to_instance_owned(class, doc),

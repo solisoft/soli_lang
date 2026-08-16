@@ -83,7 +83,7 @@ User.find(admin._key).badge()        # "admin" — hydration follows the type</c
             <li><strong class="text-white">Subclass writes stamp <code>type</code></strong>; rows hydrate as their stored type everywhere (<code>find</code>, <code>where</code>, relation accessors). A guard ignores <code>type</code> values that don't name a model class of the row's collection.</li>
             <li><strong class="text-white">Subclass queries are type-scoped</strong> (including descendants); the base class matches every row, Rails-style. <code>Admin.find(user_key)</code> on a base row raises <code>RecordNotFound</code>; class-form <code>update(id)</code>/<code>delete(id)</code> refuse rows outside the hierarchy; <code>Admin.delete_all</code> only removes its own rows.</li>
             <li><strong class="text-white">Metadata copies down at class definition</strong>: validations, callbacks, relations (with the base's foreign key), scopes, soft-delete, <code>attr_accessible</code>, <code>encrypts</code>, enums, and state machines. Declare the parent before its subclasses; parent DSL added <em>after</em> a subclass is defined does not propagate.</li>
-            <li>The discriminator column is always <code>type</code> &mdash; avoid a user field of that name on STI hierarchies.</li>
+            <li>The discriminator column is always <code>type</code> &mdash; avoid a user field of that name on STI hierarchies. On a column-aware model the table must have that string column; subclass queries compile to <code>type IN (…)</code> and boot fails if it is missing.</li>
         </ul>
     </div>
 
@@ -1195,7 +1195,7 @@ User.find(u._key).ssn   # =&gt; "123-45-6789" (decrypted)</code></pre>
     </div>
 
     <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-12">
-        <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone.</p>
+        <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone. On a column-aware model, each <code>encrypts</code> field must be a string/text column; boot fails if it is missing or not text.</p>
     </div>
 
     <h2 id="graph-models" class="text-2xl font-bold text-white mb-6">Graph Models (Edges &amp; Traversal)</h2>

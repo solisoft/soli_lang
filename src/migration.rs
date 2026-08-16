@@ -1460,14 +1460,23 @@ def up(db)
     "paid": { "type": "boolean", "default": false },
     "timestamps": true
   })
+  db.create_table("sql_people", {
+    "id": "pk",
+    "name": { "type": "string", "limit": 64, "null": false },
+    "ssn": "string",
+    "type": "string",
+    "timestamps": true
+  })
 end
 
 def down(db)
+  db.drop_table("sql_people")
   db.drop_table("sql_invoices")
 end
 "#,
             );
             runner(app).migrate_up().expect("up");
+            std::env::set_var("SOLI_ENCRYPTION_KEY", "unit-test-column-encrypt-key");
 
             let spec = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/builtins/sql_column_model_spec.sl");

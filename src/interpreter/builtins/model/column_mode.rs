@@ -123,8 +123,8 @@ pub fn unsupported(feature: &str, collection: &str) -> String {
         "{feature} is not supported on column-aware models (collection {collection:?} \
          is mapped to a real table with `table \"…\"`). Supported: find, find_by, \
          hash `.where`, order/limit/offset, count/exists, sum/avg/min/max, \
-         create/save/update/delete, and Model.transaction. \
-         See docs/multi-database.md."
+         create/save/update/delete, encrypts, STI (`type` column), and \
+         Model.transaction. See docs/multi-database.md."
     )
 }
 
@@ -208,9 +208,6 @@ pub fn column_query_from_qb(
     if qb.similar_query.is_some() || qb.time_bucket_info.is_some() {
         return Err(unsupported("vector / time-bucket queries", collection));
     }
-    if qb.sti_types.is_some() {
-        return Err(unsupported("single-table inheritance", collection));
-    }
     // Soft delete needs a real `deleted_at` column. When the schema has one, the
     // scope is a normal filter; when it does not, there is nowhere to record the
     // deletion, so say that rather than silently returning every row.
@@ -239,6 +236,7 @@ pub fn column_query_from_qb(
             super::query::SoftDeleteMode::WithDeleted => {}
         }
     }
+    apply_sti_scope(&mut q, qb)?;
     if q.hash_filter.is_none() {
         for (key, value) in &qb.bind_vars {
             let field = crate::interpreter::symbol_string(*key)
@@ -285,6 +283,31 @@ pub fn column_query_from_qb(
     Ok(q)
 }
 
+/// Scope an STI subclass query to `type IN (class, descendants)`.
+///
+/// The discriminator is a real `type` column — boot validation refuses a
+/// subclass whose table does not have one.
+fn apply_sti_scope(q: &mut ColumnQuery, qb: &super::query::QueryBuilder) -> Result<(), String> {
+    let Some(types) = qb.sti_types.as_ref() else {
+        return Ok(());
+    };
+    if !q.schema.has_column("type") {
+        return Err(format!(
+            "STI subclass queries need a `type` column on table {:?} \
+             (add a string column, or drop the subclass).",
+            q.schema.table
+        ));
+    }
+    q.in_filters.insert(
+        "type".to_string(),
+        types
+            .iter()
+            .map(|t| serde_json::Value::String(t.clone()))
+            .collect(),
+    );
+    Ok(())
+}
+
 /// Adopt a stored row onto an instance after a column-mode write.
 ///
 /// A SQL write returns the row as the database now holds it, which is the only
@@ -306,6 +329,16 @@ pub fn adopt_row_fields(
             continue;
         }
         inst.set(key.clone(), super::crud::json_to_value_owned(value.clone()));
+    }
+    // The stored row holds ciphertext; the in-memory instance must match a
+    // subsequent find() so save/create do not leak the ciphertext to callers.
+    for field in super::registry::get_encrypted_fields(&inst.class.name) {
+        if let Some(Value::String(ciphertext)) = inst.get(&field) {
+            if let Ok(plaintext) = crate::interpreter::builtins::crypto::decrypt_field(&ciphertext)
+            {
+                inst.set(field, Value::String(plaintext.into()));
+            }
+        }
     }
     true
 }
@@ -856,13 +889,10 @@ pub fn validate_declared_models() -> Vec<String> {
         // `deleted_at` column — checked below, once the schema is known.
         // Declarations that assume Soli-managed document storage still cannot
         // work against a schema Soli does not own.
-        for (decl, present) in [
-            ("encrypts", model.has_encrypted_fields),
-            (
-                "edge / timeseries / columnar",
-                model.collection_type.is_some(),
-            ),
-        ] {
+        for (decl, present) in [(
+            "edge / timeseries / columnar",
+            model.collection_type.is_some(),
+        )] {
             if present {
                 problems.push(format!(
                     "{} maps to table {:?} (column mode) but also declares `{decl}`, \
@@ -889,6 +919,31 @@ pub fn validate_declared_models() -> Vec<String> {
                          declaration — column mode never alters your schema.",
                         model.class_name, model.table
                     ));
+                }
+                if model.is_sti_subclass && !schema.has_column("type") {
+                    problems.push(format!(
+                        "{} is an STI subclass mapped to table {:?}, which has no `type` \
+                         column. Add a string discriminator, or drop the subclass — column \
+                         mode never alters your schema.",
+                        model.class_name, model.table
+                    ));
+                }
+                for field in &model.encrypted_fields {
+                    match schema.column(field) {
+                        None => problems.push(format!(
+                            "{} declares `encrypts(:{field})` and maps to table {:?}, which \
+                             has no `{field}` column.",
+                            model.class_name, model.table
+                        )),
+                        Some(col) if col.ty != ColType::Text => problems.push(format!(
+                            "{} declares `encrypts(:{field})` but column `{field}` on {:?} \
+                             is {} — encrypted values are text (base64).",
+                            model.class_name,
+                            model.table,
+                            col.ty.as_str()
+                        )),
+                        Some(_) => {}
+                    }
                 }
             }
         }

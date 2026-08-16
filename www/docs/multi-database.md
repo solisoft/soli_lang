@@ -330,6 +330,14 @@ with SDBQL.
 - **`soft_delete`**, provided the table has a `deleted_at` column. Without one
   there is nowhere to record the deletion, so boot fails with that message rather
   than silently returning deleted rows.
+- **`encrypts`**, provided each named field is a string/text column. Values are
+  AES-256-GCM ciphertext at rest (same as the document path) and plaintext on
+  the instance after `create` / `save` / `find`. Boot fails if the column is
+  missing or not text.
+- **STI** (`class Admin < User` with `table` on the base). Subclass writes stamp
+  a `type` string column; subclass queries add `type IN (class, descendants)`.
+  Boot fails if an STI subclass's table has no `type` column. `find` /
+  `find_by` / `first_by` on a subclass refuse a row of another type.
 
 ### Not supported on column-aware models
 
@@ -340,7 +348,6 @@ Each of these raises an error naming the feature rather than returning wrong dat
 | Raw/string `.where("doc…")` | SDBQL has no meaning against columns; use the hash form |
 | `.includes` across storage shapes | Both models must be column-aware — matching a real column against a JSON field is not a join Soli will guess at |
 | `.join` on `belongs_to` / HABTM / `through:` | Existence filter needs the child to hold the FK; use `.includes` and filter the related rows |
-| `encrypts`, STI | Assume Soli-managed document storage; declaring one alongside `table` fails at boot |
 | Composite primary keys | Key handling is single-column throughout; refused at boot with the columns named |
 | `grouped {}` coalescing, graph, vector, columnar, timeseries | SoliDB features |
 | Auto-create / index sync / implicit `ALTER` | The schema is Soli's only where you wrote it: **models** never issue DDL in column mode. A [migration](migrations.md#on-the-sql-adapters) can create and alter column tables explicitly |

@@ -10,6 +10,14 @@ class SqlInvoice < Model
   table "sql_invoices"
 end
 
+class SqlPerson < Model
+  table "sql_people"
+  encrypts(:ssn)
+end
+
+class SqlAdmin < SqlPerson
+end
+
 let __sql_ready = false
 try
   SqlInvoice.count()
@@ -60,6 +68,52 @@ describe("column-aware SqlInvoice on SQL", fn() {
     again.delete()
     assert_null(SqlInvoice.find_by("code", "INV-1"))
     assert_eq(SqlInvoice.count(), 0)
+  })
+
+  test("encrypts round-trips on a real column", fn() {
+    return unless __sql_ready
+
+    let created = SqlPerson.create({ "name": "Ada", "ssn": "123-45-6789" })
+    assert(created._errors.nil?)
+    assert_eq(created.ssn, "123-45-6789")
+
+    let fetched = SqlPerson.find(created.id)
+    assert_eq(fetched.ssn, "123-45-6789")
+    assert_eq(fetched.name, "Ada")
+
+    fetched.ssn = "987-65-4321"
+    assert(fetched.save())
+    assert_eq(SqlPerson.find(created.id).ssn, "987-65-4321")
+    created.delete()
+  })
+
+  test("STI subclasses share the table and scope by type", fn() {
+    return unless __sql_ready
+
+    let person = SqlPerson.create({ "name": "Base" })
+    let admin = SqlAdmin.create({ "name": "Root", "ssn": "000-00-0001" })
+    assert(person._errors.nil?)
+    assert(admin._errors.nil?)
+    assert_eq(admin.type, "SqlAdmin")
+    assert_eq(SqlAdmin.find(admin.id).name, "Root")
+    assert_eq(SqlAdmin.find(admin.id).ssn, "000-00-0001")
+
+    assert_eq(SqlPerson.where({ "name": "Root" }).count(), 1)
+    assert_eq(SqlAdmin.where({ "name": "Root" }).count(), 1)
+    assert_eq(SqlAdmin.where({ "name": "Base" }).count(), 0)
+    assert_eq(SqlAdmin.find_by("name", "Root").id, admin.id)
+    assert_null(SqlAdmin.find_by("name", "Base"))
+
+    let raised = false
+    try
+      SqlAdmin.find(person.id)
+    catch error
+      raised = true
+    end
+    assert(raised)
+
+    person.delete()
+    admin.delete()
   })
 
   test("find raises RecordNotFound on a missing integer key", fn() {

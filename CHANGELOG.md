@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### ORM
+
+- **Column-mode `encrypts` and STI.** A `table "…"` model can encrypt text
+  columns (AES-256-GCM, same key and format as the document path) and share
+  that table across subclasses with a string `type` discriminator. Subclass
+  queries add `type IN (class, descendants)` on the real column; `find` /
+  `find_by` / `first_by` on a subclass refuse a row of another type. Boot
+  fails if an encrypted field is missing or not text, or if an STI subclass's
+  table has no `type` column. `create`/`save` decrypt adopted rows so the
+  in-memory instance matches a subsequent `find`. Composite primary keys are
+  still refused.
+
 ### Performance
 
 - **Hash get/set.** Overwriting an existing key (`h[k] = v` / `h.set(k, v)`)
@@ -387,7 +399,8 @@
     instead of the declaration being rejected outright.
   - **Counter caches**, which follow from the atomic column increment above.
 
-  Still out: composite primary keys, `encrypts`, and STI.
+  Still out at the time: composite primary keys, `encrypts`, and STI
+  (`encrypts` and STI now land in column mode; see below).
 
 - **The dev bar, `dev_queries()`, and N+1 detection now work on the SQL
   adapters.** Only the SoliDB path wrote to the per-request query log, so on

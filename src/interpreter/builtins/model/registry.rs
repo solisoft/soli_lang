@@ -207,7 +207,8 @@ pub struct ColumnModelDecl {
     pub collection: String,
     pub table: String,
     pub soft_delete: bool,
-    pub has_encrypted_fields: bool,
+    pub encrypted_fields: Vec<String>,
+    pub is_sti_subclass: bool,
     pub collection_type: Option<String>,
 }
 
@@ -216,7 +217,6 @@ pub struct ColumnModelDecl {
 pub fn all_column_models() -> Vec<ColumnModelDecl> {
     let registry = MODEL_REGISTRY.read().unwrap();
     let types = COLLECTION_TYPES.read().unwrap();
-    let encrypted = ENCRYPTED_COLLECTIONS.read().unwrap();
     registry
         .iter()
         .filter_map(|(class_name, metadata)| {
@@ -226,9 +226,8 @@ pub fn all_column_models() -> Vec<ColumnModelDecl> {
             Some(ColumnModelDecl {
                 class_name: class_name.clone(),
                 soft_delete: metadata.soft_delete,
-                has_encrypted_fields: encrypted
-                    .get(&collection)
-                    .is_some_and(|fields| !fields.is_empty()),
+                encrypted_fields: metadata.encrypted_fields.clone(),
+                is_sti_subclass: is_sti_subclass(class_name),
                 collection_type: types.get(&collection).cloned(),
                 collection,
                 table,

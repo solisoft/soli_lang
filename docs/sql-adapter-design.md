@@ -84,6 +84,9 @@ Model API → QueryBuilder IR
 | `Model.find_by_sql` (raw SELECT) | ✗ (SDBQL) | ✓ | ✓ | ✓ |
 | Bulk insert (`create_many`) | per-row | ✓ chunked multi-row | ✓ | ✓ |
 | Server-side `pluck` / `select` (column mode) | ✓ | ✓ | ✓ | ✓ |
+| `encrypts` (column mode, text columns) | ✓ | ✓ | ✓ | ✓ |
+| STI `type` column (column mode + SQL document) | ✓ | ✓ | ✓ | ✓ |
+| Composite primary keys | ✗ | ✗ | ✗ | ✗ |
 
 ## Includes batching (SQL)
 

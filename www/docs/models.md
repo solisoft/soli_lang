@@ -1351,6 +1351,10 @@ Admin.all()                          # only Admin rows (and Admin's descendants)
 User.find(admin._key).badge()        # "admin" — hydration follows the type
 ```
 
+On a column-aware model, the base declares `table "users"` and the table must
+have a string `type` column. Subclass queries compile to `type IN (…)` on that
+column; boot fails if the column is missing.
+
 Semantics:
 
 - **Subclass writes stamp `type`** (`create`, `save`, `find_or_create_by`);
@@ -2032,6 +2036,10 @@ u = User.create({ "ssn": "123-45-6789", "email": "a@b.com" });
 # stored ciphertext in the DB; in memory it's plaintext:
 User.find(u._key).ssn  # => "123-45-6789"
 ```
+
+On a column-aware model (`table "users"`), each `encrypts` field must be a
+string/text column. Ciphertext is stored in that column; boot fails if the
+column is missing or not text.
 
 The encryption key comes from the `SOLI_ENCRYPTION_KEY` environment variable —
 set it to a long, high-entropy secret (e.g. `Crypto.random_hex(32)`) and keep

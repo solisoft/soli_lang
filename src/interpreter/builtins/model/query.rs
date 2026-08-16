@@ -1974,6 +1974,19 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
     // `hash_filter` rides in through `ListQueryParts` so the validation compile
     // inside `list_query_from_parts` judges the real filter.
     lq.exists_filters = exists_filters_from_qb(qb)?;
+    if let Some(types) = &qb.sti_types {
+        let sti = crate::db::hash_filter::HashFilter::In {
+            field: "type".to_string(),
+            values: types
+                .iter()
+                .map(|t| serde_json::Value::String(t.clone()))
+                .collect(),
+        };
+        lq.hash_filter = Some(match lq.hash_filter.take() {
+            None => sti,
+            Some(existing) => crate::db::hash_filter::HashFilter::And(vec![existing, sti]),
+        });
+    }
     Ok(lq)
 }
 

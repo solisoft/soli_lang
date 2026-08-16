@@ -532,6 +532,8 @@ Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"
         <li><strong class="text-white">Atomic <code class="text-cyan-400">increment</code> / <code class="text-cyan-400">decrement</code> and counter caches</strong> &mdash; one arithmetic <code>UPDATE</code> on the column.</li>
 
         <li><strong class="text-white"><code class="text-cyan-400">soft_delete</code></strong>, provided the table has a <code class="text-cyan-400">deleted_at</code> column. Without one there is nowhere to record the deletion, so boot fails with that message rather than silently returning deleted rows.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">encrypts</code></strong>, provided each named field is a string/text column. Values are AES-256-GCM ciphertext at rest and plaintext on the instance after <code>create</code> / <code>save</code> / <code>find</code>. Boot fails if the column is missing or not text.</li>
+        <li><strong class="text-white">STI</strong> (<code>class Admin &lt; User</code> with <code>table</code> on the base). Subclass writes stamp a <code>type</code> string column; subclass queries add <code>type IN (class, descendants)</code>. Boot fails if an STI subclass's table has no <code>type</code> column.</li>
 
     </ul>
 
@@ -550,7 +552,7 @@ Post.find_by_sql("SELECT doc FROM posts WHERE doc-&gt;&gt;'slug' = $1", ["hello"
                 <tr><td class="py-3 px-4">Raw/string <code>.where("doc…")</code></td><td class="py-3 px-4">SDBQL has no meaning against columns &mdash; use the hash form</td></tr>
                 <tr><td class="py-3 px-4"><code>.includes</code> across storage shapes</td><td class="py-3 px-4">Both models must be column-aware &mdash; matching a real column against a JSON field is not a join Soli will guess at</td></tr>
                 <tr><td class="py-3 px-4"><code>.join</code> on <code>belongs_to</code> / HABTM / <code>through:</code></td><td class="py-3 px-4">Existence filter needs the child to hold the FK; use <code>.includes</code> and filter the related rows</td></tr>
-                <tr><td class="py-3 px-4"><code>encrypts</code>, STI, composite primary keys</td><td class="py-3 px-4">Assume Soli-managed document storage (or single-column keys); refused at boot with the reason named</td></tr>
+                <tr><td class="py-3 px-4">Composite primary keys</td><td class="py-3 px-4">Key handling is single-column throughout; refused at boot with the columns named</td></tr>
                 <tr><td class="py-3 px-4"><code>grouped {}</code>, graph, vector, columnar, timeseries</td><td class="py-3 px-4">SoliDB features</td></tr>
                 <tr><td class="py-3 px-4">Auto-create / index sync / implicit <code>ALTER</code></td><td class="py-3 px-4">A <strong class="text-white">model</strong> never issues DDL in column mode. A <a href="/docs/database/migrations#sql-adapters" class="text-amber-400 hover:underline">migration</a> can create and alter column tables explicitly</td></tr>
             </tbody>
