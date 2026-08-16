@@ -10,8 +10,16 @@
 //!
 //! `enable_force_secure_cookies()` / `SOLI_FORCE_SECURE_COOKIES=1` is the
 //! operator's explicit "I'm always behind TLS" knob. When enabled, every
-//! `Set-Cookie: session_id=...` carries `Secure` regardless of detected
-//! scheme.
+//! cookie the process emits carries `Secure` regardless of detected scheme —
+//! the framework's own `session_id` *and* anything an application sets
+//! through `set_cookie`.
+//!
+//! It covered only `session_id` at first, which left the more valuable
+//! credential unprotected: a scaffolded remember-me token is a 30-day
+//! bearer credential set by application code, and it went out without
+//! `Secure` on a deployment that had explicitly declared itself TLS-only.
+//! An operator flipping a switch named "force secure cookies" means the
+//! whole jar.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
@@ -19,7 +27,7 @@ use std::sync::Once;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
-static FORCE_SECURE_COOKIES: AtomicBool = AtomicBool::new(false);
+pub(crate) static FORCE_SECURE_COOKIES: AtomicBool = AtomicBool::new(false);
 static ENV_INIT: Once = Once::new();
 
 /// Whether session cookies should always carry the `Secure` flag.

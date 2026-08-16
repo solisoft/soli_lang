@@ -9449,13 +9449,25 @@ mod tests {
     }
 
     #[test]
-    fn csrf_allows_under_underscore_paths() {
-        // Framework endpoints under `/_` are machine-to-machine, not browser
-        // form targets, so we don't expect Origin/Referer on them.
+    fn csrf_allows_framework_endpoints() {
+        // Framework endpoints are machine-to-machine, not browser form
+        // targets, so we don't expect Origin/Referer on them.
         let _g = csrf_lock();
         let h = make_headers(&[("host", "example.com")]);
-        assert!(check_csrf_origin(&h, "POST", "/_internal/probe").is_ok());
         assert!(check_csrf_origin(&h, "POST", "/__coverage__").is_ok());
+        assert!(check_csrf_origin(&h, "POST", "/__solidev/replay/abc").is_ok());
+        assert!(check_csrf_origin(&h, "POST", "/_metrics").is_ok());
+    }
+
+    #[test]
+    fn csrf_still_guards_application_routes_under_underscore() {
+        // The exemption used to be a bare `starts_with("/_")`, which handed
+        // every app route in that namespace a free pass. `/_internal/probe`
+        // is an ordinary route: it keeps the Origin gate.
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        assert!(check_csrf_origin(&h, "POST", "/_internal/probe").is_err());
+        assert!(check_csrf_origin(&h, "POST", "/_admin/users").is_err());
     }
 
     #[test]
@@ -9760,9 +9772,16 @@ mod tests {
         let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
         assert!(verify_csrf_token(&data, "POST", "/posts").is_err());
 
-        // `/_` paths are exempt.
+        // Framework endpoints are exempt.
         let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
-        assert!(verify_csrf_token(&data, "POST", "/_internal/probe").is_ok());
+        assert!(verify_csrf_token(&data, "POST", "/__solidev/replay/abc").is_ok());
+        assert!(verify_csrf_token(&data, "POST", "/_metrics").is_ok());
+
+        // An application route in the same namespace is not: a bad token is a
+        // 403 there like anywhere else. The old blanket `/_` prefix let
+        // `/_internal/probe` through with a token it had made up.
+        let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
+        assert!(verify_csrf_token(&data, "POST", "/_internal/probe").is_err());
 
         set_current_session_id(None);
     }

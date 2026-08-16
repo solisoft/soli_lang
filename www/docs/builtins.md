@@ -3822,6 +3822,13 @@ options only `Path=/` is set. The options hash accepts `max_age` (seconds;
 `signed`/`encrypted` sealing options (below). Unknown keys raise so a typo
 can't silently weaken a cookie.
 
+`Secure` is added for you in two cases beyond asking for it: when
+`same_site` is `"None"` (browsers drop such a cookie otherwise, so the
+alternative is a cookie that silently never arrives), and when the operator
+has set `SOLI_FORCE_SECURE_COOKIES=1` / called `enable_force_secure_cookies()`
+— that switch covers every cookie the process emits, not just the framework's
+session cookie.
+
 **Parameters:**
 - `name` (String) - Cookie name
 - `value` (String) - Cookie value (any JSON-serializable value with `signed`/`encrypted`)
@@ -3833,15 +3840,23 @@ can't silently weaken a cookie.
 ```soli
 set_cookie("theme", "dark")
 
-# Persistent remember-me cookie (what `soli generate auth` scaffolds):
+# Persistent remember-me cookie (what `soli generate auth` scaffolds).
+# `secure` is not optional on a 30-day bearer credential: without it, one
+# plaintext request to the same host hands it to anyone on the path.
 set_cookie("remember_token", user["_key"] + ":" + token, {
   "max_age": 30 * 86400,
   "http_only": true,
-  "same_site": "Lax"
+  "same_site": "Lax",
+  "secure": true
 })
 
 # Expire it on logout:
-set_cookie("remember_token", "", { "max_age": 0, "http_only": true })
+set_cookie("remember_token", "", {
+  "max_age": 0,
+  "http_only": true,
+  "same_site": "Lax",
+  "secure": true
+})
 ```
 
 ### Signed and encrypted cookies
@@ -4932,7 +4947,7 @@ Cleans up expired rate limit entries.
 
 **rate_limiter_from_ip(req, limit, window_seconds)**
 
-Creates a RateLimiter instance based on client IP address (extracts from X-Forwarded-For or Remote-Addr).
+Creates a RateLimiter instance keyed on the client IP address.
 
 **Parameters:**
 - `req` (Hash) - Request hash
@@ -4940,6 +4955,18 @@ Creates a RateLimiter instance based on client IP address (extracts from X-Forwa
 - `window_seconds` (Int, optional) - Time window in seconds (default: 60)
 
 **Returns:** RateLimiter instance
+
+The address comes from the TCP peer (`remote_addr`). `X-Forwarded-For` is
+consulted **only** when `enable_trust_proxy()` / `SOLI_TRUST_PROXY` is on —
+on a directly-exposed app the client controls that header, so trusting it
+would let a rotating value defeat the limiter entirely.
+
+The bucket key is the address alone (`ip:<addr>`), with no per-route
+component. Two call sites with the same limit therefore share one budget: the
+scaffolded auth controllers rely on this, so `AUTH_ATTEMPTS_PER_IP` is the
+total across sign-in, sign-up and reset rather than that many each. When you
+want a separate budget per action, build the key yourself with
+`RateLimiter("login:" + key, limit, window)`.
 
 ---
 

@@ -11,10 +11,27 @@ const AUTH_RESET_TOKEN_TTL = 7200  # password-reset links live 2 hours
 const AUTH_MAX_FAILED_ATTEMPTS = 10  # failed logins before lockout
 const AUTH_LOCKOUT_SECONDS = 1800  # auto-unlock after 30 minutes
 const AUTH_REMEMBER_DAYS = 30  # remember-me cookie lifetime
+const AUTH_MIN_PASSWORD_LENGTH = 12  # shortest password accepted at sign-up
+
+# Per-IP throttle on the credential endpoints (login, sign-up, reset). The
+# per-account lockout above cannot see these two attacks: credential stuffing
+# spread thinly across thousands of accounts never trips it, and an attacker
+# who knows an email address can lock its owner out on demand. Keying on the
+# source address covers both.
+const AUTH_ATTEMPTS_PER_IP = 15
+const AUTH_IP_WINDOW_SECONDS = 300
 
 # Base URL used in password-reset / confirmation emails.
+#
+# Read from the environment so a deployment sets it once, next to its other
+# config, rather than by editing this file. The literal fallback is a dev
+# convenience: left in place in production it mails `http://localhost` reset
+# links, which are both useless and, if the host does resolve, sent in the
+# clear. Set APP_BASE_URL to your `https://` origin.
 def auth_base_url
-  return "http://localhost:5011"  # TODO: set your production URL
+  return getenv("APP_BASE_URL").to_s if getenv("APP_BASE_URL").present?
+
+  return "http://localhost:5011"
 end
 
 # Require a confirmed email before sign-in. Flip to true once SMTP is
@@ -47,10 +64,29 @@ class User < Model
 
   # Hash `plaintext` and store it in `password_digest`. No-op when blank so a
   # profile update that doesn't change the password leaves the digest intact.
+  # Callers that accept a *new* password must run `password_error` first —
+  # this method deliberately has no opinion, so that a profile save with no
+  # password field doesn't wipe the digest.
   def set_password(plaintext)
     return if plaintext.blank?
 
     this.password_digest = Crypto.password_hash(plaintext)
+  end
+
+  # Why `plaintext` is unacceptable as a new password, or null when it is fine.
+  #
+  # Length is the only rule here on purpose. Composition rules ("one digit,
+  # one symbol") push people toward `Password1!` — they add a decimal digit of
+  # real entropy and a lot of friction. Length is what actually raises the
+  # cost of an offline attack against the Argon2id digest.
+  def password_error(plaintext)
+    value = plaintext.to_s
+    return "Password is required" if value.blank?
+
+    if value.length() < AUTH_MIN_PASSWORD_LENGTH
+      return "Password must be at least #{AUTH_MIN_PASSWORD_LENGTH} characters"
+    end
+    return null
   end
 
   # True when `plaintext` matches the stored Argon2id digest.
@@ -58,6 +94,17 @@ class User < Model
     return false if this.password_digest.blank?
 
     return Crypto.password_verify(plaintext, this.password_digest)
+  end
+
+  # Spend the same Argon2id work as a real `authenticate` without having an
+  # account to check against. Sign-in calls this when no user matches the
+  # submitted email: verifying costs ~100ms and returning early costs none, so
+  # without it the response time alone tells an attacker which addresses are
+  # registered — a user-enumeration oracle that no error-message wording can
+  # close. The result is deliberately discarded.
+  static def burn_password_work(plaintext)
+    Crypto.password_hash(plaintext.to_s)
+    return false
   end
 
   def admin?
@@ -83,10 +130,16 @@ class User < Model
   end
 
   # Set the new password, burn the token, and clear any lockout.
+  #
+  # Also drops the remember-me digest. Resetting a password is what someone
+  # does when they think the account is compromised, and a remember-me cookie
+  # outlives it by up to AUTH_REMEMBER_DAYS — leaving it valid means the reset
+  # doesn't actually evict the attacker.
   def finish_password_reset(plaintext)
     this.set_password(plaintext)
     this.reset_token_digest = null
     this.reset_sent_at = null
+    this.remember_token_digest = null
     this.failed_attempts = 0
     this.locked_at = null
     return this.update()
@@ -147,6 +200,12 @@ class User < Model
   end
 
   def register_failed_attempt
+    # Don't re-stamp `locked_at` on an account that is already locked: doing
+    # so slides the 30-minute window forward on every further guess, so an
+    # attacker who keeps knocking keeps the owner locked out indefinitely.
+    # The lockout should expire on schedule no matter how loud the attack is.
+    return true unless this.locked_at.nil?
+
     this.failed_attempts = (this.failed_attempts ?? 0) + 1
     this.locked_at = DateTime.utc().to_unix() if this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
     this.update()

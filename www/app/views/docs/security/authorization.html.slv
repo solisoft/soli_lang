@@ -38,8 +38,14 @@
             Generate it
         </h2>
         <p class="text-gray-400 mb-6">
-            <code class="text-amber-300">soli generate auth</code> scaffolds the full Devise-style auth suite &mdash; login/signup, password reset (hashed one-time tokens, 2h expiry), email confirmation with resend, remember-me (HttpOnly persistent cookie), account lockout with auto-unlock &mdash; and the policy layer together. Thresholds and the confirmation gate are constants/toggles at the top of the generated <code>app/models/user.sl</code>; configure SMTP (<code>SOLI_SMTP_*</code>) so the emails go out.
+            <code class="text-amber-300">soli generate auth</code> scaffolds the full Devise-style auth suite &mdash; login/signup, password reset (hashed one-time tokens, 2h expiry), email confirmation with resend, remember-me (HttpOnly + Secure persistent cookie, revoked on password reset), per-IP throttling on all three credential endpoints, account lockout with auto-unlock &mdash; and the policy layer together. Thresholds and the confirmation gate are constants/toggles at the top of the generated <code>app/models/user.sl</code>; configure SMTP (<code>SOLI_SMTP_*</code>) so the emails go out, and set <code class="text-orange-400">APP_BASE_URL</code> to your <code>https://</code> origin &mdash; unset in production, reset and confirmation emails carry <code>http://localhost:5011</code> links.
         </p>
+        <div class="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-5 mb-6">
+            <h3 class="text-sm font-semibold text-emerald-300 mb-2">Sign-in tells an attacker nothing</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+                An unknown email and a wrong password return the same message <em>and</em> take the same time: the miss path spends the same Argon2id work instead of returning early, so response timing is not an enumeration oracle either. The specific &ldquo;account locked&rdquo; message appears only <em>after</em> the password has been verified &mdash; the owner learns what happened, someone guessing does not learn that the address exists. <code class="text-amber-300">AUTH_MIN_PASSWORD_LENGTH</code> (default 12) is enforced through <code class="text-amber-300">User#password_error</code>, which both sign-up and password reset call, so the reset flow cannot install a password registration would have rejected.
+            </p>
+        </div>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
                 <div class="w-3 h-3 rounded-full bg-red-500/80"></div>

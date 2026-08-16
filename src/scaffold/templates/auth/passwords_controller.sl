@@ -24,6 +24,23 @@ class PasswordsController < Controller
 
   # POST /password/reset — send the link
   def create
+    # Throttle per source address. The uniform response below stops this
+    # endpoint being used to probe for accounts, but nothing stopped it being
+    # used to mail-bomb one known address (or to burn the app's sending
+    # reputation across many).
+    limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
+    unless limiter.allowed()
+      return render(
+        "passwords/new",
+        {
+          "title": "Reset password",
+          "notice": "",
+          "error": "Too many reset requests. Try again in a few minutes."
+        },
+        {"status": 429}
+      )
+    end
+
     email = params["email"].to_s.trim().downcase()
     user = User.find_by("email", email)
     if !user.nil?
@@ -80,33 +97,33 @@ class PasswordsController < Controller
     end
 
     password = params["password"].to_s
-    if password.length() < 8
-      return render(
-        "passwords/edit",
-        {
-          "title": "Choose a new password",
-          "token": params["token"].to_s,
-          "error": "Password must be at least 8 characters."
-        }
-      )
-    end
+    # One rule, one place: `password_error` is what sign-up enforces too, so
+    # the reset flow can't quietly become the way to install a weaker password
+    # than registration would have accepted.
+    password_error = user.password_error(password)
+    return this._reject_edit(password_error) unless password_error.nil?
 
-    if password != params["password_confirmation"].to_s
-      return render(
-        "passwords/edit",
-        {
-          "title": "Choose a new password",
-          "token": params["token"].to_s,
-          "error": "Passwords don't match."
-        }
-      )
-    end
+    return this._reject_edit("Passwords don't match.") if password != params["password_confirmation"].to_s
 
     user.finish_password_reset(password)
     # Sign the user straight in with a fresh session.
     session_regenerate()
     session_set("user_id", user["_key"])
     return redirect("/")
+  end
+
+  # Re-render the "choose a new password" form with an error, keeping the
+  # token so the user doesn't have to click the emailed link again.
+  def _reject_edit(message)
+    return render(
+      "passwords/edit",
+      {
+        "title": "Choose a new password",
+        "token": params["token"].to_s,
+        "error": message
+      },
+      {"status": 422}
+    )
   end
 
   # Resolve a reset token to its (non-expired) user, or nil.

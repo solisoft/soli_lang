@@ -120,8 +120,10 @@ println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</
         <h2 class="text-2xl font-bold text-white mb-6">Helper Functions</h2>
         <div class="space-y-6">
             <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">rate_limiter_from_ip(req, limit, window_seconds)</h3>
-                <p class="text-gray-400">Creates a RateLimiter instance based on client IP address (extracts from X-Forwarded-For or Remote-Addr).</p>
+                <h3 class="text-lg font-semibold text-white mb-2">rate_limiter_from_ip(req, limit, window_seconds?)</h3>
+                <p class="text-gray-400 mb-3">Creates a RateLimiter instance keyed on the client IP address. <code class="text-amber-300">window_seconds</code> is optional and defaults to 60.</p>
+                <p class="text-gray-400 mb-3">The address comes from the TCP peer (<code class="text-amber-300">remote_addr</code>). <code class="text-amber-300">X-Forwarded-For</code> is consulted <strong class="text-white">only</strong> when <code class="text-amber-300">enable_trust_proxy()</code> / <code class="text-orange-400">SOLI_TRUST_PROXY</code> is on &mdash; on a directly-exposed app the client controls that header, so trusting it would let a rotating value defeat the limiter entirely.</p>
+                <p class="text-gray-400">The bucket key is the address alone (<code class="text-amber-300">ip:&lt;addr&gt;</code>), with no per-route component, so two call sites with the same limit share one budget. The scaffolded auth controllers rely on this: <code class="text-amber-300">AUTH_ATTEMPTS_PER_IP</code> is the total across sign-in, sign-up and reset rather than that many each. For a separate budget per action, build the key yourself with <code class="text-amber-300">RateLimiter("login:" + key, limit, window)</code>.</p>
             </div>
         </div>
     </section>
