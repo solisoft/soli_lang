@@ -294,7 +294,11 @@ jobs:
         run: /tmp/verapdf/verapdf --flavour ua1 /tmp/vp_tagged_pdfa.pdf
 
   release:
-    needs: [test, clippy, fmt]
+    # Tag releases wait for the full gate, not just test/clippy/fmt.
+    # windows-check, audit, engine-parity, browser, and verapdf each
+    # cover a failure mode the Linux suite cannot see; a red job here
+    # must stop the draft release and the binary/docker publish.
+    needs: [test, clippy, fmt, windows-check, audit, engine-parity, browser, verapdf]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
