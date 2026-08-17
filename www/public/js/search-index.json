@@ -1400,6 +1400,42 @@
       ]
     },
     {
+      "title": "Crypto.secure_compare",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-secure-compare",
+      "signature": "Crypto.secure_compare(a, b)",
+      "description": "Constant-time string equality for tokens, HMACs, and webhook signatures",
+      "keywords": [
+        "crypto",
+        "secure",
+        "compare",
+        "constant-time",
+        "timing",
+        "hmac",
+        "csrf",
+        "signature"
+      ]
+    },
+    {
+      "title": "secure_compare",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-secure-compare",
+      "signature": "secure_compare(a, b)",
+      "description": "Constant-time string equality (alias for Crypto.secure_compare)",
+      "keywords": [
+        "crypto",
+        "secure",
+        "compare",
+        "constant-time",
+        "timing",
+        "hmac",
+        "csrf",
+        "signature"
+      ]
+    },
+    {
       "title": "Crypto.argon2_hash",
       "type": "method",
       "category": "Crypto",

@@ -7,6 +7,20 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
+<a href="/docs/blog/whats-unreleased"><img src="/images/blog/whats-unreleased.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="What's unreleased"></a>
+<br>
+<strong><a href="/docs/blog/whats-unreleased">What's on main since v1.29.0</a></strong><br>
+<small>SQL backends, in-process jobs, LiveView rooms, unless/end, auth hardening — the tour, not the ledger.</small>
+</div>
+
+<div>
+<a href="/docs/blog/stripe-checkout"><img src="/images/blog/stripe-checkout.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Stripe Checkout"></a>
+<br>
+<strong><a href="/docs/blog/stripe-checkout">Taking Payments with Stripe in a Soli App</a></strong><br>
+<small>No generator. Checkout Session, signed webhook, idempotent fulfill — <code>HTTP.post</code>, <code>Crypto.hmac</code>, <code>skip_csrf</code>.</small>
+</div>
+
+<div>
 <a href="/docs/blog/multi-database"><img src="/images/blog/multi-database.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Multiple databases"></a>
 <br>
 <strong><a href="/docs/blog/multi-database">Multiple Databases in One Soli App</a></strong><br>
@@ -143,6 +157,8 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [What's on main since v1.29.0](/docs/blog/whats-unreleased) - SQL as a real backend, in-process jobs, LiveView rooms and hardening, `unless … end`, auth that no longer helps attackers
+- [Taking Payments with Stripe in a Soli App](/docs/blog/stripe-checkout) - Checkout Session, signed webhook, idempotent fulfill — no generator. `HTTP.post`, `Crypto.hmac`, `skip_csrf("/webhooks/stripe")`
 - [How to Operate a Release Channel](/docs/blog/release-channels) - Signing keys, CDN layout, canary before stable, fix-forward rollbacks, key rotation, and monitoring for Soli auto-update channels
 - [RAG Product Discovery in Soli](/docs/blog/rag-product-discovery) - Embed products on save, retrieve with `.similar()` and `hybrid()`, then generate grounded shopping answers with `llm_generate` — no separate vector DB or orchestration framework
 - [Full End-to-End Tests in Pure Soli](/docs/blog/e2e-testing) - Realistic integration tests using a built-in test server, BDD DSL (`describe`/`test`), session helpers, and coverage gates — no external tools.

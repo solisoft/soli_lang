@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="What's on main since v1.29.0: SQL backends, in-process jobs, LiveView rooms, auth hardening, unless/end.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="48" y="58" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="30" font-weight="700" fill="#f4f4f5">Since v1.29.0</text>
+  <text x="48" y="88" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">On main · not tagged yet · one Model surface · one process owns the queue</text>
+
+  <!-- SQL -->
+  <g>
+    <rect x="48" y="120" width="300" height="190" rx="14" fill="#101319" stroke="#3a2f14"/>
+    <text x="68" y="150" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.6" fill="#f59e0b">SQL</text>
+    <text x="68" y="184" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">postgres · mysql · sqlite</text>
+    <text x="68" y="210" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">table "orders"</text>
+    <text x="68" y="236" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">.where({ gt / in / or })</text>
+    <text x="68" y="262" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">encrypts · STI</text>
+    <text x="68" y="288" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">dev bar + N+1 on every adapter</text>
+  </g>
+
+  <!-- Jobs -->
+  <g>
+    <rect x="368" y="120" width="300" height="190" rx="14" fill="#101319" stroke="#14532d"/>
+    <text x="388" y="150" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.6" fill="#22c55e">JOBS</text>
+    <text x="388" y="184" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">_jobs on default conn</text>
+    <text x="388" y="210" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">perform_later / perform_now</text>
+    <text x="388" y="236" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">soli jobs · /__soli/jobs</text>
+    <text x="388" y="262" font-family="system-ui, sans-serif" font-size="13" fill="#86efac">no callback URL</text>
+    <text x="388" y="288" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">Basic / Bearer in production</text>
+  </g>
+
+  <!-- LiveView -->
+  <g>
+    <rect x="688" y="120" width="288" height="190" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="708" y="150" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.6" fill="#a78bfa">LIVEVIEW</text>
+    <text x="708" y="184" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">data-live-room</text>
+    <text x="708" y="210" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">send_update · upload</text>
+    <text x="708" y="236" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">closed views reaped</text>
+    <text x="708" y="262" font-family="system-ui, sans-serif" font-size="13" fill="#c4b5fd">frames serialized</text>
+    <text x="708" y="288" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">events stay on this socket</text>
+  </g>
+
+  <!-- Auth -->
+  <g>
+    <rect x="48" y="334" width="460" height="190" rx="14" fill="#101319" stroke="#7f1d1d"/>
+    <text x="68" y="364" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.6" fill="#f87171">AUTH</text>
+    <text x="68" y="398" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">same Argon2 work on a miss</text>
+    <text x="68" y="424" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">AUTH_ATTEMPTS_PER_IP · 429</text>
+    <text x="68" y="450" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">/_ is not skip_csrf</text>
+    <text x="68" y="476" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">Secure on the whole jar</text>
+    <text x="68" y="502" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">password policy in one place · APP_BASE_URL</text>
+  </g>
+
+  <!-- Language -->
+  <g>
+    <rect x="528" y="334" width="448" height="190" rx="14" fill="#101319" stroke="#3a2f14"/>
+    <text x="548" y="364" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.6" fill="#f59e0b">LANGUAGE · OPS</text>
+    <text x="548" y="398" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">unless cond … end</text>
+    <text x="548" y="424" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">has_one_attached / has_many</text>
+    <text x="548" y="450" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">SOLI_LOG_FORMAT=json</text>
+    <text x="548" y="476" font-family="ui-monospace, Menlo, monospace" font-size="14" fill="#e5e7eb">SOLI_OTEL=1 · workers=2</text>
+    <text x="548" y="502" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">docs match the binary</text>
+  </g>
+</svg>

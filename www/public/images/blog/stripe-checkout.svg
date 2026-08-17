@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Checkout flow: Soli creates a Stripe session, the buyer pays on Stripe, Stripe posts a signed webhook, Soli marks the order paid.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="48" y="64" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="32" font-weight="700" fill="#f4f4f5">Trust the signed POST</text>
+  <text x="48" y="96" font-family="system-ui, sans-serif" font-size="16" fill="#8b929e">Create a Checkout Session. Mark the order paid only after Stripe’s webhook verifies.</text>
+
+  <!-- Buyer -->
+  <g>
+    <rect x="48" y="150" width="200" height="120" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="68" y="180" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.4" fill="#f59e0b">BUYER</text>
+    <text x="68" y="212" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">POST /checkout</text>
+    <text x="68" y="238" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">browser + CSRF</text>
+  </g>
+
+  <!-- Soli app -->
+  <g>
+    <rect x="312" y="140" width="240" height="140" rx="14" fill="#101319" stroke="#3a2f14"/>
+    <text x="332" y="170" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.4" fill="#f59e0b">SOLI APP</text>
+    <text x="332" y="204" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">Order.create</text>
+    <text x="332" y="228" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">status: pending</text>
+    <text x="332" y="256" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">then HTTP.post session</text>
+  </g>
+
+  <!-- Stripe -->
+  <g>
+    <rect x="616" y="140" width="360" height="140" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="636" y="170" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.4" fill="#635bff">STRIPE CHECKOUT</text>
+    <text x="636" y="204" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">cs_test_… hosted page</text>
+    <text x="636" y="228" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">card 4242… · 3-D Secure · wallets</text>
+    <text x="636" y="256" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">success_url is display only</text>
+  </g>
+
+  <path d="M248 210 H312" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M552 210 H616" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Webhook card -->
+  <g>
+    <rect x="312" y="340" width="664" height="176" rx="14" fill="#101319" stroke="#14532d"/>
+    <text x="332" y="372" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.4" fill="#22c55e">POST /webhooks/stripe</text>
+    <text x="332" y="408" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">Stripe-Signature: t=…,v1=…</text>
+    <text x="332" y="436" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">Crypto.hmac(t + "." + req.body, whsec)</text>
+    <text x="332" y="464" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#e5e7eb">secure_compare → checkout.session.completed</text>
+    <text x="332" y="492" font-family="system-ui, sans-serif" font-size="14" fill="#86efac">order.status = paid · enqueue ReceiptJob · 200</text>
+  </g>
+
+  <path d="M796 280 V340" fill="none" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- skip_csrf chip -->
+  <rect x="48" y="400" width="220" height="96" rx="12" fill="#12151b" stroke="#3a2f14"/>
+  <text x="68" y="432" font-family="system-ui, sans-serif" font-size="11" letter-spacing="1.4" fill="#f59e0b">ROUTES</text>
+  <text x="68" y="460" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e5e7eb">skip_csrf(</text>
+  <text x="68" y="480" font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e5e7eb">  "/webhooks/stripe")</text>
+</svg>
