@@ -631,7 +631,13 @@ impl Interpreter {
             if method_decl.is_static {
                 static_methods.insert(method_decl.name.clone(), Rc::new(func));
             } else {
-                methods.insert(method_decl.name.clone(), Rc::new(func));
+                let func = Rc::new(func);
+                // Modules also expose instance methods as module functions
+                // so `MyModule.hello()` works (Ruby `extend self`).
+                if decl.is_module {
+                    static_methods.insert(method_decl.name.clone(), func.clone());
+                }
+                methods.insert(method_decl.name.clone(), func);
             }
         }
 
@@ -697,10 +703,32 @@ impl Interpreter {
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
             const_fields,
             static_const_fields,
+            is_module: decl.is_module,
             ..Default::default()
         };
 
         let class_rc = Rc::new(class);
+        if !decl.included_hooks.is_empty() {
+            *class_rc.included_hook_stmts.borrow_mut() = decl.included_hooks.clone();
+        }
+        if !decl.extended_hooks.is_empty() {
+            *class_rc.extended_hook_stmts.borrow_mut() = decl.extended_hooks.clone();
+        }
+        if !decl.concern_class_methods.is_empty() {
+            let mut names = class_rc.concern_method_names.borrow_mut();
+            let mut stored = class_rc.concern_static_methods.borrow_mut();
+            let mut on_module = class_rc.mixin_static_methods.borrow_mut();
+            for method_decl in &decl.concern_class_methods {
+                let func = Rc::new(Function::from_method(
+                    method_decl,
+                    method_env.clone(),
+                    source_path.clone(),
+                ));
+                names.push(method_decl.name.clone());
+                stored.insert(method_decl.name.clone(), func.clone());
+                on_module.insert(method_decl.name.clone(), func);
+            }
+        }
         self.environment
             .borrow_mut()
             .define(decl.name.clone(), Value::Class(class_rc.clone()));
@@ -739,6 +767,8 @@ impl Interpreter {
                 .insert(field_name, value);
         }
 
+        self.apply_mixins(&class_rc, &decl.includes, &decl.extends, decl.span)?;
+
         // Execute static block if present
         if let Some(ref static_block) = decl.static_block {
             // Create a temporary "this" context for the static block
@@ -759,113 +789,7 @@ impl Interpreter {
 
         // Execute class-level statements (validates, callbacks, etc.) for Model subclasses
         if extends_model && !decl.class_statements.is_empty() {
-            // Execute each class statement with the class as implicit receiver
-            for stmt in &decl.class_statements {
-                // For expression statements that are function calls,
-                // we need to pass the class as the first argument
-                if let crate::ast::StmtKind::Expression(expr) = &stmt.kind {
-                    if let crate::ast::ExprKind::Call { callee, arguments } = &expr.kind {
-                        // `state_machine :field do … end` — the declarative state
-                        // machine DSL. Unlike `validates`/`scope`, its block must
-                        // be invoked with `&mut Interpreter` (so nested
-                        // `event`/`transition`/`guard` calls run), so it can't be a
-                        // plain native. Route it to `define_state_machine` and skip
-                        // the generic class-statement dispatch below.
-                        if let crate::ast::ExprKind::Variable(fname) = &callee.kind {
-                            if fname == "state_machine" {
-                                let block = arguments.iter().find_map(|a| match a {
-                                    Argument::Block(e) => Some(e),
-                                    Argument::Positional(e)
-                                        if matches!(
-                                            e.kind,
-                                            crate::ast::ExprKind::Lambda { .. }
-                                        ) =>
-                                    {
-                                        Some(e)
-                                    }
-                                    _ => None,
-                                });
-                                let field = arguments.iter().find_map(|a| match a {
-                                    Argument::Positional(e)
-                                        if !matches!(
-                                            e.kind,
-                                            crate::ast::ExprKind::Lambda { .. }
-                                        ) =>
-                                    {
-                                        Some(e)
-                                    }
-                                    _ => None,
-                                });
-                                if let (Some(field_expr), Some(block_expr)) = (field, block) {
-                                    self.define_state_machine(
-                                        class_rc.clone(),
-                                        field_expr,
-                                        block_expr,
-                                        stmt.span,
-                                    )?;
-                                    continue;
-                                }
-                            }
-                        }
-
-                        // Get the callee value (should be a native function from Model)
-                        let callee_val = self.evaluate(callee)?;
-
-                        // Build arguments with class as first argument
-                        let mut args = vec![Value::Class(class_rc.clone())];
-                        let has_named = arguments
-                            .iter()
-                            .any(|arg| matches!(arg, Argument::Named(_)));
-                        if has_named {
-                            let mut hash_pairs = HashPairs::default();
-                            for arg in arguments {
-                                match arg {
-                                    Argument::Positional(expr) => {
-                                        args.push(self.evaluate(expr)?);
-                                    }
-                                    Argument::Named(named) => {
-                                        let val = self.evaluate(&named.value)?;
-                                        hash_pairs.insert(
-                                            HashKey::String(named.name.clone().into()),
-                                            val,
-                                        );
-                                    }
-                                    Argument::Block(_) => {
-                                        return Err(RuntimeError::type_error(
-                                            "model validation does not support block arguments",
-                                            stmt.span,
-                                        ));
-                                    }
-                                }
-                            }
-                            args.push(Value::Hash(Rc::new(RefCell::new(hash_pairs))));
-                        } else {
-                            for arg in arguments {
-                                match arg {
-                                    Argument::Positional(expr) => {
-                                        args.push(self.evaluate(expr)?);
-                                    }
-                                    Argument::Named(_) => {
-                                        return Err(RuntimeError::type_error(
-                                            "model validation does not support named arguments",
-                                            stmt.span,
-                                        ));
-                                    }
-                                    Argument::Block(_) => {
-                                        return Err(RuntimeError::type_error(
-                                            "model validation does not support block arguments",
-                                            stmt.span,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-
-                        // Call the function with the class
-                        self.call_value(callee_val, args, stmt.span)?;
-                    }
-                }
-            }
+            self.execute_class_level_calls(&class_rc, &decl.class_statements)?;
         }
 
         // Process nested classes
@@ -874,6 +798,185 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    /// Run class-body DSL calls (`validates`, `has_many`, …) with the class
+    /// prepended as the first argument — same dispatch as a Model class body.
+    pub(crate) fn execute_class_level_calls(
+        &mut self,
+        class_rc: &Rc<Class>,
+        stmts: &[crate::ast::Stmt],
+    ) -> RuntimeResult<()> {
+        for stmt in stmts {
+            // For expression statements that are function calls,
+            // we need to pass the class as the first argument
+            if let crate::ast::StmtKind::Expression(expr) = &stmt.kind {
+                if let crate::ast::ExprKind::Call { callee, arguments } = &expr.kind {
+                    // `state_machine :field do … end` — the declarative state
+                    // machine DSL. Unlike `validates`/`scope`, its block must
+                    // be invoked with `&mut Interpreter` (so nested
+                    // `event`/`transition`/`guard` calls run), so it can't be a
+                    // plain native. Route it to `define_state_machine` and skip
+                    // the generic class-statement dispatch below.
+                    if let crate::ast::ExprKind::Variable(fname) = &callee.kind {
+                        if fname == "state_machine" {
+                            let block = arguments.iter().find_map(|a| match a {
+                                Argument::Block(e) => Some(e),
+                                Argument::Positional(e)
+                                    if matches!(e.kind, crate::ast::ExprKind::Lambda { .. }) =>
+                                {
+                                    Some(e)
+                                }
+                                _ => None,
+                            });
+                            let field = arguments.iter().find_map(|a| match a {
+                                Argument::Positional(e)
+                                    if !matches!(e.kind, crate::ast::ExprKind::Lambda { .. }) =>
+                                {
+                                    Some(e)
+                                }
+                                _ => None,
+                            });
+                            if let (Some(field_expr), Some(block_expr)) = (field, block) {
+                                self.define_state_machine(
+                                    class_rc.clone(),
+                                    field_expr,
+                                    block_expr,
+                                    stmt.span,
+                                )?;
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Get the callee value (should be a native function from Model)
+                    let callee_val = self.evaluate(callee)?;
+
+                    // Build arguments with class as first argument
+                    let mut args = vec![Value::Class(class_rc.clone())];
+                    let has_named = arguments
+                        .iter()
+                        .any(|arg| matches!(arg, Argument::Named(_)));
+                    if has_named {
+                        let mut hash_pairs = HashPairs::default();
+                        for arg in arguments {
+                            match arg {
+                                Argument::Positional(expr) => {
+                                    args.push(self.evaluate(expr)?);
+                                }
+                                Argument::Named(named) => {
+                                    let val = self.evaluate(&named.value)?;
+                                    hash_pairs
+                                        .insert(HashKey::String(named.name.clone().into()), val);
+                                }
+                                Argument::Block(_) => {
+                                    return Err(RuntimeError::type_error(
+                                        "model validation does not support block arguments",
+                                        stmt.span,
+                                    ));
+                                }
+                            }
+                        }
+                        args.push(Value::Hash(Rc::new(RefCell::new(hash_pairs))));
+                    } else {
+                        for arg in arguments {
+                            match arg {
+                                Argument::Positional(expr) => {
+                                    args.push(self.evaluate(expr)?);
+                                }
+                                Argument::Named(_) => {
+                                    return Err(RuntimeError::type_error(
+                                        "model validation does not support named arguments",
+                                        stmt.span,
+                                    ));
+                                }
+                                Argument::Block(_) => {
+                                    return Err(RuntimeError::type_error(
+                                        "model validation does not support block arguments",
+                                        stmt.span,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    // Call the function with the class
+                    self.call_value(callee_val, args, stmt.span)?;
+                } else {
+                    self.execute(stmt)?;
+                }
+            } else {
+                self.execute(stmt)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_mixins(
+        &mut self,
+        class: &Rc<crate::interpreter::value::Class>,
+        includes: &[String],
+        extends: &[String],
+        span: crate::span::Span,
+    ) -> RuntimeResult<()> {
+        for name in includes {
+            let module = self.resolve_module(name, span)?;
+            let newly = class
+                .include_module(&module)
+                .map_err(|e| RuntimeError::new(e, span))?;
+            if newly {
+                self.fire_mixin_hooks(class, &module, true, span)?;
+            }
+        }
+        for name in extends {
+            let module = self.resolve_module(name, span)?;
+            class
+                .extend_module(&module)
+                .map_err(|e| RuntimeError::new(e, span))?;
+            self.fire_mixin_hooks(class, &module, false, span)?;
+        }
+        Ok(())
+    }
+
+    fn fire_mixin_hooks(
+        &mut self,
+        class: &Rc<Class>,
+        module: &Rc<Class>,
+        including: bool,
+        span: crate::span::Span,
+    ) -> RuntimeResult<()> {
+        let hooks = if including {
+            module.included_hook_stmts.borrow().clone()
+        } else {
+            module.extended_hook_stmts.borrow().clone()
+        };
+        for body in hooks {
+            self.execute_class_level_calls(class, &body)?;
+        }
+        let hook_name = if including { "included" } else { "extended" };
+        if let Some(func) = module.find_static_method(hook_name) {
+            self.call_function(&func, vec![Value::Class(class.clone())])?;
+        }
+        if let Some(native) = module.find_native_static_method(hook_name) {
+            (native.func)(&[Value::Class(class.clone())])
+                .map_err(|e| RuntimeError::new(e, span))?;
+        }
+        Ok(())
+    }
+
+    fn resolve_module(
+        &self,
+        name: &str,
+        span: crate::span::Span,
+    ) -> RuntimeResult<Rc<crate::interpreter::value::Class>> {
+        match self.environment.borrow().get(name) {
+            Some(Value::Class(class)) => Ok(class),
+            Some(other) => Err(RuntimeError::type_error(
+                format!("expected module {}, got {}", name, other.type_name()),
+                span,
+            )),
+            None => Err(RuntimeError::undefined_variable(name, span)),
+        }
     }
 
     /// Execute nested class declarations

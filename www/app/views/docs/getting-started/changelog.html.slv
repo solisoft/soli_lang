@@ -21,8 +21,17 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
+        <h3 id="unreleased-docs-new" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Docs</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><a href="/ai" class="text-amber-400 hover:underline">/ai</a> landing page.</strong> A public &ldquo;Soli is built for AI&rdquo; page in the same role as Rails&rsquo;s <code>/ai</code>: convention, token efficiency, the agent contract, and LLM/RAG in the binary.</li>
+            <li><strong class="text-white"><a href="/docs/development-tools/ai-evals" class="text-amber-400 hover:underline">Agents on Soli</a>.</strong> Stage 1 comparison on atomic Soli tasks (<code>evals/</code>, 12 slugs, graded with <code class="text-cyan-400">soli lint</code> + <code class="text-cyan-400">soli test</code>). First frozen runners: <code class="text-cyan-400">claude -p</code>, OpenCode + DeepSeek, Grok Build. The <a href="/ai#agents-on-soli" class="text-amber-400 hover:underline">/ai</a> table stays empty until a paid run is committed to <code>www/data/ai_evals.json</code> &mdash; no invented scores.</li>
+            <li><strong class="text-white"><a href="/docs/blog/whats-unreleased" class="text-amber-400 hover:underline">What's on main since v1.29.0</a>.</strong> A tour of the unreleased cycle &mdash; SQL as a real backend, in-process jobs, LiveView rooms and hardening, <code>unless … end</code>, auth that no longer helps attackers. The changelog stays the ledger; this post is the map.</li>
+            <li><strong class="text-white"><a href="/docs/blog/stripe-checkout" class="text-amber-400 hover:underline">Taking Payments with Stripe</a>.</strong> A Checkout Session + signed webhook walkthrough &mdash; no <code class="text-cyan-400">soli generate stripe</code>. Verify <code>Stripe-Signature</code> on <code>req["body"]</code>, fulfill once, treat the success URL as display only.</li>
+        </ul>
+
         <h3 id="unreleased-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Mixin modules and concern hooks.</strong> <code class="text-cyan-400">module Name … end</code> is a mixin (and a namespace). <code class="text-cyan-400">include</code> / <code class="text-cyan-400">extend</code> mix methods in. <code class="text-cyan-400">included do</code> / <code class="text-cyan-400">extended do</code> replay class-body DSL on the host (so a concern can <code>validates</code> / <code>has_many</code>). <code class="text-cyan-400">class_methods do</code> installs class methods on the includer; <code class="text-cyan-400">def self.included(base)</code> is called with the host class. See <a href="/docs/language/modules" class="text-amber-400 hover:underline">Modules</a>.</li>
             <li><strong class="text-white">Block <code class="text-cyan-400">unless … end</code>.</strong> <code>unless</code> is a first-class statement, not a rewritten <code>if !cond</code>. Multi-line membership guards parse and stay <code>unless</code> through <code class="text-cyan-400">soli fmt</code> (a short body still becomes postfix <code>expr unless cond</code>). <code>else</code> is allowed; <code>elsif</code> is not. Postfix <code>expr unless cond</code> is unchanged.</li>
         </ul>
 

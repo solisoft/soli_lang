@@ -455,6 +455,12 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let callee_idx = self.stack.len() - 1 - argc;
+        if class.is_module {
+            return Err(RuntimeError::type_error(
+                format!("cannot instantiate module {}", class.name),
+                span,
+            ));
+        }
         let instance_val = Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
 
         // Bytecode constructor (classes compiled in the VM): registered as

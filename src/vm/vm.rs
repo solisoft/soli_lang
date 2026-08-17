@@ -1823,6 +1823,32 @@ impl Vm {
                     };
                     self.stack.push(Value::Class(Rc::new(class)));
                 }
+                Op::Module(idx) => {
+                    let name = self.read_string_constant_owned(idx);
+                    let class = Class {
+                        name: name.clone(),
+                        is_module: true,
+                        ..Default::default()
+                    };
+                    if let Some(hooks) = crate::interpreter::mixin_registry::take(&name) {
+                        *class.included_hook_stmts.borrow_mut() = hooks.included;
+                        *class.extended_hook_stmts.borrow_mut() = hooks.extended;
+                        *class.concern_method_names.borrow_mut() = hooks.concern_method_names;
+                    }
+                    self.stack.push(Value::Class(Rc::new(class)));
+                }
+                Op::Include => {
+                    let module_val = self.stack.pop().unwrap();
+                    let class_val = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
+                    self.op_include(&class_val, &module_val, span)?;
+                }
+                Op::Extend => {
+                    let module_val = self.stack.pop().unwrap();
+                    let class_val = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
+                    self.op_extend(&class_val, &module_val, span)?;
+                }
                 Op::Inherit => {
                     let superclass_val = self.stack.pop().unwrap();
                     let subclass_val = self.stack.last().unwrap().clone();

@@ -350,6 +350,13 @@ pub fn register_expectation_class(env: &mut Environment) {
         vm_methods: Rc::new(RefCell::new(HashMap::default())),
         vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
         model_subclass_memo: std::cell::Cell::new(None),
+        is_module: false,
+        included_modules: Rc::new(RefCell::new(Vec::new())),
+        mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
+        included_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+        extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+        concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
+        concern_method_names: Rc::new(RefCell::new(Vec::new())),
     };
 
     env.define(

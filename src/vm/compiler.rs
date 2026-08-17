@@ -887,9 +887,9 @@ fn stack_effect(op: Op) -> i32 {
         GetProperty(_) => 0,
         SetProperty(_) => -1,
         // Classes (class value stays on the stack; method/field defs pop one).
-        Class(_) => 1,
-        Inherit | Method(_) | StaticMethod(_) | Field(_) | StaticField(_) | ConstField(_)
-        | StaticConstField(_) => -1,
+        Class(_) | Module(_) => 1,
+        Inherit | Include | Extend | Method(_) | StaticMethod(_) | Field(_) | StaticField(_)
+        | ConstField(_) | StaticConstField(_) => -1,
         New(argc) => -(argc as i32),
         // Exceptions.
         TryBegin(_, _) | TryEnd | CatchMatch(_, _) | PopHandler | RescueJump(_) => 0,

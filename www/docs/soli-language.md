@@ -2121,6 +2121,80 @@ print(from_area.width);   # ~3.464
 print(from_area.height);  # ~6.928
 ```
 
+### Mixin modules
+
+`module Name … end` defines a mixin (and a namespace). Instance methods can be mixed into a class with `include` (they become instance methods) or `extend` (they become class methods). Methods on a module are also callable on the module itself (`Greetable.greet` works without an include — like Ruby `extend self`).
+
+```soli
+module Greetable
+  def greet
+    "hello, #{self.name}"
+  end
+end
+
+class User
+  include Greetable
+  new(name)
+    @name = name
+  end
+end
+
+User.new("Ada").greet   # "hello, Ada"
+
+class Factory
+  extend Greetable
+end
+# Factory.greet — `self` is the class
+
+module Admin
+  class User
+    def role
+      "admin"
+    end
+  end
+end
+Admin::User.new().role  # "admin"
+```
+
+- `include` / `extend` accept one or more names: `include A, B`.
+- A class's own methods win over included ones.
+- `new ModuleName()` raises — modules are not instantiated.
+- This is separate from file `import` / `export` (see [Modules](#modules) below).
+
+### Concern hooks
+
+Rails-style hooks so a module can configure the host class (the `ActiveSupport::Concern` shape):
+
+```soli
+module Publishable
+  included do
+    # Replayed as class-body DSL on the host (`validates`, `has_many`, …).
+    validates("published_at", { "presence": true })
+  end
+
+  class_methods do
+    def published
+      this.where("published_at != null")
+    end
+  end
+
+  def publish
+    self.published_at = DateTime.utc()
+  end
+end
+
+class Post < Model
+  include Publishable
+end
+```
+
+- `included do … end` — run against the including class (same dispatch as a Model class body, so `validates` / `has_many` / `scope` work).
+- `extended do … end` — same, when the module is `extend`ed.
+- `class_methods do … end` — those methods become class methods on the includer.
+- `def self.included(base)` / `def self.extended(base)` — called with the host class after the mix-in.
+
+Not in this cut: `prepend`, ancestor-chain `super` into the module, or `include` of a class.
+
 ### Inheritance
 
 > **Note:** You can use `<` as an alias for `extends` (e.g., `class Dog < Animal`).

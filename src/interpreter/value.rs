@@ -1381,6 +1381,20 @@ pub struct Class {
     /// outside this module — always leave it `Cell::new(None)`; reading goes
     /// through [`Class::is_model_subclass`].
     pub model_subclass_memo: Cell<Option<bool>>,
+    /// `true` when this Class was defined with `module Name … end`.
+    pub is_module: bool,
+    /// Modules mixed into this class via `include` (instance methods).
+    pub included_modules: Rc<RefCell<Vec<Rc<Class>>>>,
+    /// Instance methods copied from `extend Module` as class methods.
+    pub mixin_static_methods: Rc<RefCell<HashMap<String, Rc<Function>>>>,
+    /// `included do … end` bodies, replayed on each includer.
+    pub included_hook_stmts: Rc<RefCell<Vec<Vec<crate::ast::Stmt>>>>,
+    /// `extended do … end` bodies, replayed on each extender.
+    pub extended_hook_stmts: Rc<RefCell<Vec<Vec<crate::ast::Stmt>>>>,
+    /// `class_methods do` methods (copied onto includers as class methods).
+    pub concern_static_methods: Rc<RefCell<HashMap<String, Rc<Function>>>>,
+    /// Names of concern class methods (VM copies matching `vm_static_methods`).
+    pub concern_method_names: Rc<RefCell<Vec<String>>>,
 }
 
 impl Default for Class {
@@ -1404,6 +1418,13 @@ impl Default for Class {
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
+            is_module: false,
+            included_modules: Rc::new(RefCell::new(Vec::new())),
+            mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            included_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+            extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+            concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            concern_method_names: Rc::new(RefCell::new(Vec::new())),
         }
     }
 }
@@ -1442,6 +1463,13 @@ impl Class {
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
+            is_module: false,
+            included_modules: Rc::new(RefCell::new(Vec::new())),
+            mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            included_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+            extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
+            concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            concern_method_names: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -1570,10 +1598,101 @@ impl Class {
         if let Some(method) = self.static_methods.get(name) {
             return Some(method.clone());
         }
+        if let Some(method) = self.mixin_static_methods.borrow().get(name) {
+            return Some(method.clone());
+        }
         if let Some(ref superclass) = self.superclass {
             return superclass.find_static_method(name);
         }
         None
+    }
+
+    pub fn invalidate_method_cache(&self) {
+        *self.all_methods_cache.borrow_mut() = None;
+        *self.all_native_methods_cache.borrow_mut() = None;
+    }
+
+    /// Mix `module`'s instance methods into this class (Ruby `include`).
+    /// Existing methods on `self` win. Transitive includes are applied first.
+    /// Returns `true` when the module was newly mixed in (`false` if already included).
+    pub fn include_module(&self, module: &Rc<Class>) -> Result<bool, String> {
+        if !module.is_module {
+            return Err(format!(
+                "can only include a module (got class {})",
+                module.name
+            ));
+        }
+        if std::ptr::eq(self as *const Class, Rc::as_ptr(module)) {
+            return Err("a module cannot include itself".to_string());
+        }
+        {
+            let already = self.included_modules.borrow();
+            if already
+                .iter()
+                .any(|m| std::ptr::eq(Rc::as_ptr(m), Rc::as_ptr(module)))
+            {
+                return Ok(false);
+            }
+        }
+        for inner in module.included_modules.borrow().iter() {
+            self.include_module(inner)?;
+        }
+        {
+            let mut mine = self.methods.borrow_mut();
+            for (name, method) in module.methods.borrow().iter() {
+                mine.entry(name.clone()).or_insert_with(|| method.clone());
+            }
+        }
+        {
+            let mut mine = self.vm_methods.borrow_mut();
+            for (name, method) in module.vm_methods.borrow().iter() {
+                mine.entry(name.clone()).or_insert_with(|| method.clone());
+            }
+        }
+        {
+            let mut mine = self.mixin_static_methods.borrow_mut();
+            for (name, method) in module.concern_static_methods.borrow().iter() {
+                mine.entry(name.clone()).or_insert_with(|| method.clone());
+            }
+        }
+        {
+            let names = module.concern_method_names.borrow();
+            if !names.is_empty() {
+                let mut mine = self.vm_static_methods.borrow_mut();
+                let src = module.vm_static_methods.borrow();
+                for name in names.iter() {
+                    if let Some(method) = src.get(name) {
+                        mine.entry(name.clone()).or_insert_with(|| method.clone());
+                    }
+                }
+            }
+        }
+        self.included_modules.borrow_mut().push(module.clone());
+        self.invalidate_method_cache();
+        Ok(true)
+    }
+
+    /// Mix `module`'s instance methods in as class methods (Ruby `extend`).
+    pub fn extend_module(&self, module: &Rc<Class>) -> Result<(), String> {
+        if !module.is_module {
+            return Err(format!(
+                "can only extend a module (got class {})",
+                module.name
+            ));
+        }
+        {
+            let mut mine = self.mixin_static_methods.borrow_mut();
+            for (name, method) in module.methods.borrow().iter() {
+                mine.entry(name.clone()).or_insert_with(|| method.clone());
+            }
+        }
+        {
+            let mut mine = self.vm_static_methods.borrow_mut();
+            for (name, method) in module.vm_methods.borrow().iter() {
+                mine.entry(name.clone()).or_insert_with(|| method.clone());
+            }
+        }
+        Ok(())
     }
 
     /// Find a native static method in this class or its superclass chain.

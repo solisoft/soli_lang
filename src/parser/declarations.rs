@@ -14,7 +14,7 @@ impl Parser {
             self.export_declaration()
         } else if self.check(&TokenKind::Fn) {
             self.function_declaration()
-        } else if self.check(&TokenKind::Class) {
+        } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
             self.class_declaration()
         } else if self.check(&TokenKind::Enum) {
             self.enum_declaration()
@@ -129,7 +129,7 @@ impl Parser {
         // Parse the declaration being exported
         let inner = if self.check(&TokenKind::Fn) {
             self.function_declaration()?
-        } else if self.check(&TokenKind::Class) {
+        } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
             self.class_declaration()?
         } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()?
@@ -137,7 +137,7 @@ impl Parser {
             self.let_declaration()?
         } else {
             return Err(ParserError::general(
-                "Expected 'fn', 'class', 'interface', or 'let' after 'export'",
+                "Expected 'fn', 'class', 'module', 'interface', or 'let' after 'export'",
                 self.current_span(),
             ));
         };
@@ -177,7 +177,12 @@ impl Parser {
 
     pub(crate) fn class_declaration(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
-        self.expect(&TokenKind::Class)?;
+        let is_module = if self.match_token(&TokenKind::Module) {
+            true
+        } else {
+            self.expect(&TokenKind::Class)?;
+            false
+        };
 
         let name = self.expect_identifier()?;
 
@@ -212,6 +217,12 @@ impl Parser {
                     static_block: None,
                     class_statements: Vec::new(),
                     nested_classes: Vec::new(),
+                    is_module,
+                    includes: Vec::new(),
+                    extends: Vec::new(),
+                    included_hooks: Vec::new(),
+                    extended_hooks: Vec::new(),
+                    concern_class_methods: Vec::new(),
                     span,
                 }),
                 span,
@@ -228,6 +239,11 @@ impl Parser {
         let mut static_block = None;
         let mut class_statements = Vec::new();
         let mut nested_classes = Vec::new();
+        let mut includes = Vec::new();
+        let mut extends = Vec::new();
+        let mut included_hooks = Vec::new();
+        let mut extended_hooks = Vec::new();
+        let mut concern_class_methods = Vec::new();
 
         while !self.check(&TokenKind::RightBrace)
             && !self.check(&TokenKind::End)
@@ -258,6 +274,12 @@ impl Parser {
             let (visibility, is_static, is_const) = self.parse_modifiers();
 
             if self.check(&TokenKind::New) {
+                if is_module {
+                    return Err(ParserError::general(
+                        "modules cannot have a constructor (`new`); mix them in with `include`",
+                        self.current_span(),
+                    ));
+                }
                 if constructor.is_some() {
                     return Err(ParserError::general(
                         "Class already has a constructor",
@@ -265,12 +287,20 @@ impl Parser {
                     ));
                 }
                 constructor = Some(self.parse_constructor()?);
-            } else if self.check(&TokenKind::Class) {
-                // Handle nested class declaration
+            } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
+                // Handle nested class / module declaration
                 let nested_class = self.class_declaration()?;
                 if let StmtKind::Class(nested_class_decl) = nested_class.kind {
                     nested_classes.push(*nested_class_decl);
                 }
+            } else if self.parse_concern_hook(
+                &mut included_hooks,
+                &mut extended_hooks,
+                &mut concern_class_methods,
+            )? {
+                // `included do` / `extended do` / `class_methods do`
+            } else if self.parse_include_or_extend(&mut includes, &mut extends)? {
+                // `include Greetable` / `extend Persistable`
             } else if self.check(&TokenKind::Fn) {
                 methods.push(self.parse_method(visibility, is_static)?);
             } else if self.is_class_level_statement() {
@@ -299,11 +329,123 @@ impl Parser {
                 static_block,
                 class_statements,
                 nested_classes,
+                is_module,
+                includes,
+                extends,
+                included_hooks,
+                extended_hooks,
+                concern_class_methods,
                 span,
             }),
             span,
             None,
         ))
+    }
+
+    /// Parse `include Foo, Bar` / `extend Foo` at class-body level.
+    /// Returns `true` when the current token started such a statement.
+    fn parse_include_or_extend(
+        &mut self,
+        includes: &mut Vec<String>,
+        extends: &mut Vec<String>,
+    ) -> ParseResult<bool> {
+        let kind = match &self.peek().kind {
+            TokenKind::Identifier(name) if name == "include" || name == "extend" => name.clone(),
+            _ => return Ok(false),
+        };
+        let next = self.tokens.get(self.current + 1).map(|t| &t.kind);
+        let starts_list = matches!(
+            next,
+            Some(TokenKind::Identifier(_)) | Some(TokenKind::LeftParen)
+        );
+        if !starts_list {
+            return Ok(false);
+        }
+        self.advance(); // include / extend
+        let parenthesized = self.match_token(&TokenKind::LeftParen);
+        loop {
+            let name = self.expect_identifier()?;
+            if kind == "include" {
+                includes.push(name);
+            } else {
+                extends.push(name);
+            }
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+        if parenthesized {
+            self.expect(&TokenKind::RightParen)?;
+        }
+        self.match_token(&TokenKind::Semicolon);
+        Ok(true)
+    }
+
+    /// Parse `included do … end`, `extended do … end`, or `class_methods do … end`.
+    fn parse_concern_hook(
+        &mut self,
+        included_hooks: &mut Vec<Vec<Stmt>>,
+        extended_hooks: &mut Vec<Vec<Stmt>>,
+        concern_class_methods: &mut Vec<MethodDecl>,
+    ) -> ParseResult<bool> {
+        let kind = match &self.peek().kind {
+            TokenKind::Identifier(name)
+                if name == "included" || name == "extended" || name == "class_methods" =>
+            {
+                name.clone()
+            }
+            _ => return Ok(false),
+        };
+        let next = self.tokens.get(self.current + 1).map(|t| &t.kind);
+        if !matches!(next, Some(TokenKind::Do) | Some(TokenKind::LeftBrace)) {
+            return Ok(false);
+        }
+        self.advance(); // included / extended / class_methods
+        let brace = self.match_token(&TokenKind::LeftBrace);
+        if !brace {
+            self.expect(&TokenKind::Do)?;
+        }
+        if kind == "class_methods" {
+            while !self.check(&TokenKind::End)
+                && !self.check(&TokenKind::RightBrace)
+                && !self.is_at_end()
+            {
+                let (visibility, is_static, _is_const) = self.parse_modifiers();
+                if self.check(&TokenKind::Fn) {
+                    let mut method = self.parse_method(visibility, is_static)?;
+                    method.is_static = true;
+                    concern_class_methods.push(method);
+                } else {
+                    return Err(ParserError::general(
+                        "class_methods blocks may only contain method declarations",
+                        self.current_span(),
+                    ));
+                }
+            }
+        } else {
+            let mut body = Vec::new();
+            while !self.check(&TokenKind::End)
+                && !self.check(&TokenKind::RightBrace)
+                && !self.is_at_end()
+            {
+                if self.is_class_level_statement() {
+                    body.push(self.parse_class_level_statement()?);
+                } else {
+                    body.push(self.statement()?);
+                }
+            }
+            if kind == "included" {
+                included_hooks.push(body);
+            } else {
+                extended_hooks.push(body);
+            }
+        }
+        if brace {
+            self.expect(&TokenKind::RightBrace)?;
+        } else {
+            self.expect(&TokenKind::End)?;
+        }
+        Ok(true)
     }
 
     /// Parse an enum declaration:

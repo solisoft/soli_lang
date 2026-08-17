@@ -546,6 +546,7 @@ impl GraphBuilder {
         let kind = match role {
             "model" => "model",
             "controller" => "controller",
+            _ if decl.is_module => "module",
             _ => "class",
         };
         let signature = class_signature(decl);

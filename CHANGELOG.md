@@ -2,8 +2,24 @@
 
 ## [Unreleased]
 
+### Docs
+
+- **Blog: Stripe Checkout.** A how-to for taking payments in a Soli app
+  (session + signed webhook). There is no `soli generate stripe`.
+- **Blog: What's on `main` since v1.29.0.** A tour of the unreleased cycle
+  (SQL, jobs, LiveView, unless, auth).
+- **`/ai` landing page.** Public “Soli is built for AI” page (conventions,
+  token efficiency, agent contract, in-binary LLM/RAG) — same role as
+  rubyonrails.org/ai.
+- **Agents on Soli.** Stage 1 model evals: `evals/` fixture + 12 atomic
+  tasks, `scripts/evals/run.py` with frozen runners (`claude -p`,
+  OpenCode + DeepSeek, Grok Build), empty `www/data/ai_evals.json`, table
+  on `/ai` (no invented scores until a paid run is committed).
+
 ### Language
 
+- **Mixin modules.** `module Name … end` is a mixin (and a namespace for nested classes). `include Greetable` copies the module's instance methods onto the class; `extend Greetable` copies them as class methods. Module methods are also callable on the module itself (`Greetable.hello()`). `new` on a module raises. File `import`/`export` is unchanged.
+- **Concern hooks.** `included do` / `extended do` replay their body on the host class (same class-body DSL as a Model, so `validates` / `has_many` work). `class_methods do` installs class methods on the includer. `def self.included(base)` / `def self.extended(base)` are called with the host class.
 - **Block `unless … end`.** `unless` is a first-class statement (`StmtKind::Unless`),
   not a desugared `if !cond`. Multi-line guards parse and stay `unless` through
   `soli fmt` (a short body still collapses to postfix `expr unless cond`).

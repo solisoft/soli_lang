@@ -710,7 +710,11 @@ impl Printer<'_> {
     }
 
     fn print_class_decl(&mut self, decl: &ClassDecl) {
-        self.write("class ");
+        if decl.is_module {
+            self.write("module ");
+        } else {
+            self.write("class ");
+        }
         self.write(&decl.name);
         if let Some(sup) = &decl.superclass {
             self.write(" < ");
@@ -742,6 +746,49 @@ impl Printer<'_> {
                 if !decl.methods.is_empty() {
                     p.blank_line();
                 }
+            }
+            for body in &decl.included_hooks {
+                p.write("included do");
+                p.newline();
+                p.with_indent(|pp| {
+                    for s in body {
+                        pp.print_stmt(s);
+                    }
+                });
+                p.write("end");
+                p.newline();
+            }
+            for body in &decl.extended_hooks {
+                p.write("extended do");
+                p.newline();
+                p.with_indent(|pp| {
+                    for s in body {
+                        pp.print_stmt(s);
+                    }
+                });
+                p.write("end");
+                p.newline();
+            }
+            if !decl.concern_class_methods.is_empty() {
+                p.write("class_methods do");
+                p.newline();
+                p.with_indent(|pp| {
+                    for m in &decl.concern_class_methods {
+                        pp.print_method_decl(m);
+                    }
+                });
+                p.write("end");
+                p.newline();
+            }
+            for name in &decl.includes {
+                p.write("include ");
+                p.write(name);
+                p.newline();
+            }
+            for name in &decl.extends {
+                p.write("extend ");
+                p.write(name);
+                p.newline();
             }
             // Class-level statements (DSL: validates, before_save, etc.)
             for s in &decl.class_statements {

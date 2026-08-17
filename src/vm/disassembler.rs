@@ -143,7 +143,13 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CLASS        {:>5} ({})", idx, name));
         }
+        Op::Module(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("MODULE       {:>5} ({})", idx, name));
+        }
         Op::Inherit => out.push_str("INHERIT"),
+        Op::Include => out.push_str("INCLUDE"),
+        Op::Extend => out.push_str("EXTEND"),
         Op::Method(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("METHOD       {:>5} ({})", idx, name));

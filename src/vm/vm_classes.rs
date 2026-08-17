@@ -441,6 +441,9 @@ impl Vm {
             // Preserve the shared bytecode-method maps across rebuilds.
             new_class.vm_methods = sub.vm_methods.clone();
             new_class.vm_static_methods = sub.vm_static_methods.clone();
+            new_class.is_module = sub.is_module;
+            new_class.included_modules = sub.included_modules.clone();
+            new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             // Replace the class on top of the stack
             let top = self.stack.len() - 1;
             self.stack[top] = Value::Class(Rc::new(new_class));
@@ -488,7 +491,14 @@ impl Vm {
                             current
                                 .vm_methods
                                 .borrow_mut()
-                                .insert(name.to_string(), closure);
+                                .insert(name.to_string(), closure.clone());
+                            // Modules expose instance methods as module functions.
+                            if current.is_module {
+                                current
+                                    .vm_static_methods
+                                    .borrow_mut()
+                                    .insert(name.to_string(), closure);
+                            }
                         }
                         return Ok(());
                     }
@@ -517,6 +527,13 @@ impl Vm {
                 // Preserve the shared bytecode-method maps across rebuilds.
                 new_class.vm_methods = current.vm_methods.clone();
                 new_class.vm_static_methods = current.vm_static_methods.clone();
+                new_class.is_module = current.is_module;
+                new_class.included_modules = current.included_modules.clone();
+                new_class.mixin_static_methods = current.mixin_static_methods.clone();
+                new_class.included_hook_stmts = current.included_hook_stmts.clone();
+                new_class.extended_hook_stmts = current.extended_hook_stmts.clone();
+                new_class.concern_static_methods = current.concern_static_methods.clone();
+                new_class.concern_method_names = current.concern_method_names.clone();
                 self.stack[top] = Value::Class(Rc::new(new_class));
             }
             Ok(())
@@ -526,6 +543,99 @@ impl Vm {
                 span,
             ))
         }
+    }
+
+    pub fn op_include(
+        &mut self,
+        class_val: &Value,
+        module_val: &Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let class = match class_val {
+            Value::Class(c) => c,
+            _ => {
+                return Err(RuntimeError::type_error(
+                    format!("include expected a class, got {}", class_val.type_name()),
+                    span,
+                ));
+            }
+        };
+        let module = match module_val {
+            Value::Class(c) => c,
+            _ => {
+                return Err(RuntimeError::type_error(
+                    format!("include expected a module, got {}", module_val.type_name()),
+                    span,
+                ));
+            }
+        };
+        let newly = class
+            .include_module(module)
+            .map_err(|e| RuntimeError::new(e, span))?;
+        if newly {
+            self.fire_mixin_hooks(class, module, true, span)?;
+        }
+        Ok(())
+    }
+
+    pub fn op_extend(
+        &mut self,
+        class_val: &Value,
+        module_val: &Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let class = match class_val {
+            Value::Class(c) => c,
+            _ => {
+                return Err(RuntimeError::type_error(
+                    format!("extend expected a class, got {}", class_val.type_name()),
+                    span,
+                ));
+            }
+        };
+        let module = match module_val {
+            Value::Class(c) => c,
+            _ => {
+                return Err(RuntimeError::type_error(
+                    format!("extend expected a module, got {}", module_val.type_name()),
+                    span,
+                ));
+            }
+        };
+        class
+            .extend_module(module)
+            .map_err(|e| RuntimeError::new(e, span))?;
+        self.fire_mixin_hooks(class, module, false, span)
+    }
+
+    fn fire_mixin_hooks(
+        &mut self,
+        class: &Rc<Class>,
+        module: &Rc<Class>,
+        including: bool,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let hooks = if including {
+            module.included_hook_stmts.borrow().clone()
+        } else {
+            module.extended_hook_stmts.borrow().clone()
+        };
+        if !hooks.is_empty() {
+            let mut interp = Interpreter::new();
+            for body in hooks {
+                interp.execute_class_level_calls(class, &body)?;
+            }
+        }
+        let hook_name = if including { "included" } else { "extended" };
+        if let Some(closure) = module.find_vm_static_method(hook_name) {
+            self.push(Value::VmClosure(closure));
+            self.push(Value::Class(class.clone()));
+            self.call_value(1, span)?;
+        } else if let Some(func) = module.find_static_method(hook_name) {
+            let mut interp = Interpreter::new();
+            interp.call_function(&func, vec![Value::Class(class.clone())])?;
+        }
+        Ok(())
     }
 
     /// Instantiate a class with constructor arguments.

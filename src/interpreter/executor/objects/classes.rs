@@ -32,6 +32,13 @@ impl Interpreter {
             }
         };
 
+        if class.is_module {
+            return Err(RuntimeError::type_error(
+                format!("cannot instantiate module {}", class.name),
+                span,
+            ));
+        }
+
         // Create instance
         let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
 

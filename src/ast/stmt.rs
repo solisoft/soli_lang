@@ -216,6 +216,24 @@ pub struct ClassDecl {
     pub class_statements: Vec<Stmt>,
     /// Nested classes defined within this class
     pub nested_classes: Vec<ClassDecl>,
+    /// `true` when parsed as `module Name … end` (mixin + namespace).
+    #[serde(default)]
+    pub is_module: bool,
+    /// Modules mixed into instances: `include Greetable`.
+    #[serde(default)]
+    pub includes: Vec<String>,
+    /// Modules mixed in as class methods: `extend Greetable`.
+    #[serde(default)]
+    pub extends: Vec<String>,
+    /// `included do … end` bodies — replayed on the including class.
+    #[serde(default)]
+    pub included_hooks: Vec<Vec<Stmt>>,
+    /// `extended do … end` bodies — replayed on the extending class.
+    #[serde(default)]
+    pub extended_hooks: Vec<Vec<Stmt>>,
+    /// Methods from `class_methods do … end` — become class methods on include.
+    #[serde(default)]
+    pub concern_class_methods: Vec<MethodDecl>,
     pub span: Span,
 }
 
@@ -443,6 +461,12 @@ impl EnumDecl {
             static_block: None,
             class_statements: Vec::new(),
             nested_classes: Vec::new(),
+            is_module: false,
+            includes: Vec::new(),
+            extends: Vec::new(),
+            included_hooks: Vec::new(),
+            extended_hooks: Vec::new(),
+            concern_class_methods: Vec::new(),
             span,
         }
     }

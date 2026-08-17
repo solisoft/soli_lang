@@ -7,7 +7,7 @@ use super::core::{ParseResult, Parser};
 
 impl Parser {
     pub(crate) fn statement(&mut self) -> ParseResult<Stmt> {
-        if self.check(&TokenKind::Class) {
+        if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
             self.class_declaration()
         } else if self.check(&TokenKind::Fn) {
             self.function_declaration()

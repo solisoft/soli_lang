@@ -6,6 +6,7 @@ pub mod executor;
 pub mod hidden_class;
 pub mod inline_cache;
 pub mod jsonp;
+pub mod mixin_registry;
 pub mod symbol;
 pub mod value;
 pub mod value_json;

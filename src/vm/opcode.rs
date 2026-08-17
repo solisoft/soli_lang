@@ -133,8 +133,14 @@ pub enum Op {
     // --- Classes ---
     /// Create a class with the given name constant index.
     Class(u16),
+    /// Create a mixin module with the given name constant index.
+    Module(u16),
     /// Set up inheritance: stack has [subclass, superclass].
     Inherit,
+    /// Mix a module into a class: stack has [class, module]. Leaves class.
+    Include,
+    /// Mix a module's instance methods in as class methods. Same stack as Include.
+    Extend,
     /// Add a method to a class. Name from constant index.
     Method(u16),
     /// Add a static method to a class. Name from constant index.

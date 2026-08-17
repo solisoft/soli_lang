@@ -17,8 +17,12 @@ impl Compiler {
         }
         let name_idx = self.add_string_constant(&decl.name);
 
-        // Create the class
-        self.emit(Op::Class(name_idx), line);
+        // Create the class or module
+        if decl.is_module {
+            self.emit(Op::Module(name_idx), line);
+        } else {
+            self.emit(Op::Class(name_idx), line);
+        }
 
         // Handle superclass
         if let Some(ref superclass_name) = decl.superclass {
@@ -55,6 +59,39 @@ impl Compiler {
         // Compile methods
         for method in &decl.methods {
             self.compile_method(method, line)?;
+        }
+        for method in &decl.concern_class_methods {
+            self.compile_method(method, line)?;
+        }
+
+        if decl.is_module
+            && (!decl.included_hooks.is_empty()
+                || !decl.extended_hooks.is_empty()
+                || !decl.concern_class_methods.is_empty())
+        {
+            crate::interpreter::mixin_registry::register(
+                decl.name.clone(),
+                crate::interpreter::mixin_registry::ModuleHookRecord {
+                    included: decl.included_hooks.clone(),
+                    extended: decl.extended_hooks.clone(),
+                    concern_method_names: decl
+                        .concern_class_methods
+                        .iter()
+                        .map(|m| m.name.clone())
+                        .collect(),
+                },
+            );
+        }
+
+        for module_name in &decl.includes {
+            let idx = self.add_string_constant(module_name);
+            self.emit(Op::GetGlobal(idx), line);
+            self.emit(Op::Include, line);
+        }
+        for module_name in &decl.extends {
+            let idx = self.add_string_constant(module_name);
+            self.emit(Op::GetGlobal(idx), line);
+            self.emit(Op::Extend, line);
         }
 
         // Compile constructor. Field initializers are baked into the

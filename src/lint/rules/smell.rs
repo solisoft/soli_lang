@@ -176,6 +176,12 @@ mod tests {
             static_block: None,
             class_statements: vec![],
             nested_classes: vec![],
+            is_module: false,
+            includes: vec![],
+            extends: vec![],
+            included_hooks: vec![],
+            extended_hooks: vec![],
+            concern_class_methods: vec![],
             span: span(),
         };
         let mut d = Vec::new();
@@ -215,6 +221,12 @@ mod tests {
             static_block: None,
             class_statements: vec![],
             nested_classes: vec![],
+            is_module: false,
+            includes: vec![],
+            extends: vec![],
+            included_hooks: vec![],
+            extended_hooks: vec![],
+            concern_class_methods: vec![],
             span: span(),
         };
         let mut d = Vec::new();

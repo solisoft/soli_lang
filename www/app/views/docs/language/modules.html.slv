@@ -27,9 +27,71 @@ MyModule.hello()</code></pre>
 
 hello()</code></pre>
         <p class="text-xl text-gray-300 leading-8">
-            Organize code with exports, imports, classes, and module structure.
+            Organize code with exports, imports, mixin modules, classes, and package structure.
         </p>
     </div>
+
+    <section id="section-mixins" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Mixin modules</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">module Name … end</code> is a mixin (and a namespace).
+            <code class="text-amber-400">include</code> copies instance methods onto a class;
+            <code class="text-amber-400">extend</code> copies them as class methods.
+            Methods are also callable on the module itself. This is separate from file
+            <code class="text-amber-400">import</code> / <code class="text-amber-400">export</code>.
+        </p>
+        <pre data-filename="greetable.sl"><code class="language-soli text-sm">module Greetable
+  def greet
+    "hello, #{self.name}"
+  end
+end
+
+class User
+  include Greetable
+  new(name)
+    @name = name
+  end
+end
+
+User.new("Ada").greet   # "hello, Ada"
+Greetable.greet         # also works — like Ruby `extend self`
+
+class Factory
+  extend Greetable
+end</code></pre>
+        <p class="text-gray-400 mt-4 text-sm">
+            A class's own methods win over included ones. <code>new Greetable()</code> raises.
+            Nested classes work as a namespace: <code>Admin::User</code>.
+            Not yet: <code>prepend</code>, or <code>super</code> into the module.
+        </p>
+        <h3 class="text-xl font-bold text-white mt-8 mb-3">Concern hooks</h3>
+        <p class="text-gray-400 mb-4">
+            The <code class="text-amber-400">ActiveSupport::Concern</code> shape: an
+            <code class="text-amber-400">included do</code> block is replayed as class-body DSL
+            on the host (so <code>validates</code> / <code>has_many</code> / <code>scope</code> work),
+            and <code class="text-amber-400">class_methods do</code> installs class methods.
+            <code class="text-amber-400">def self.included(base)</code> is also called.
+        </p>
+        <pre data-filename="publishable.sl"><code class="language-soli text-sm">module Publishable
+  included do
+    validates("published_at", { "presence": true })
+  end
+
+  class_methods do
+    def published
+      this.where("published_at != null")
+    end
+  end
+
+  def publish
+    self.published_at = DateTime.utc()
+  end
+end
+
+class Post < Model
+  include Publishable
+end</code></pre>
+    </section>
 
     <!-- Export Declarations -->
     <section id="section-exports" class="scroll-mt-20 mb-12">
