@@ -25,6 +25,14 @@
   `soli fmt` (a short body still collapses to postfix `expr unless cond`).
   `else` is allowed; `elsif` is not. Postfix `expr unless cond` is unchanged.
 
+### REPL
+
+- **Ctrl+C twice exits the TUI REPL.** The first press still cancels the current
+  line and now prints `^C  (press Ctrl+C again to exit)`; a second press with no
+  other key in between saves history and quits. Any other key disarms it, and
+  key-release events (Windows / kitty protocol) are ignored so one press is never
+  counted twice.
+
 ### Jobs
 
 - **Production `/__soli/jobs`.** The queue dashboard (list, cancel, retry)

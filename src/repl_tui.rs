@@ -5,8 +5,9 @@ use std::time::Duration;
 use crossterm::{
     cursor::{self, Show},
     event::{
-        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEventKind,
+        KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags,
     },
     terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
@@ -232,6 +233,8 @@ struct TuiRepl {
     input: InputState,
     highlighting_enabled: bool,
     completion: CompletionState,
+    /// True right after a Ctrl+C; a second Ctrl+C while armed exits the REPL.
+    ctrl_c_armed: bool,
 }
 
 impl TuiRepl {
@@ -264,6 +267,7 @@ impl TuiRepl {
             input: InputState::new(),
             highlighting_enabled: true,
             completion: CompletionState::new(),
+            ctrl_c_armed: false,
         };
         repl.load_history();
         repl
@@ -871,9 +875,17 @@ impl TuiRepl {
     }
 
     fn handle_key(&mut self, key: event::KeyEvent) -> bool {
+        // Terminals that report key-up (Windows, kitty protocol) would otherwise make a
+        // single Ctrl+C look like two presses.
+        if key.kind == KeyEventKind::Release {
+            return false;
+        }
         if key.code != KeyCode::Tab {
             self.completion.reset();
         }
+        // Only two Ctrl+C in a row exit; any other key disarms.
+        let ctrl_c_armed = self.ctrl_c_armed;
+        self.ctrl_c_armed = false;
         match key.code {
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -883,8 +895,13 @@ impl TuiRepl {
                             return true;
                         }
                         'c' => {
+                            if ctrl_c_armed {
+                                self.save_history();
+                                return true;
+                            }
                             self.input.line = LineBuffer::new();
-                            self.input.add_info("^C");
+                            self.input.add_info("^C  (press Ctrl+C again to exit)");
+                            self.ctrl_c_armed = true;
                         }
                         _ => {}
                     }
@@ -1588,7 +1605,8 @@ impl TuiRepl {
         self.input.add_info("exit / Ctrl+D  - Exit the REPL");
         self.input.add_info("Esc            - Exit the REPL");
         self.input.add_info("Arrow Up/Down  - History navigation");
-        self.input.add_info("Ctrl+C         - Cancel input");
+        self.input
+            .add_info("Ctrl+C         - Cancel input (twice in a row exits)");
         self.input
             .add_info("Shift+Enter    - New line in multi-line mode");
         self.input.add_info("");

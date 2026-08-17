@@ -35,6 +35,11 @@
             <li><strong class="text-white">Block <code class="text-cyan-400">unless … end</code>.</strong> <code>unless</code> is a first-class statement, not a rewritten <code>if !cond</code>. Multi-line membership guards parse and stay <code>unless</code> through <code class="text-cyan-400">soli fmt</code> (a short body still becomes postfix <code>expr unless cond</code>). <code>else</code> is allowed; <code>elsif</code> is not. Postfix <code>expr unless cond</code> is unchanged.</li>
         </ul>
 
+        <h3 id="unreleased-repl" class="text-xl font-semibold text-white mb-4 scroll-mt-24">REPL</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Ctrl+C twice exits.</strong> In the TUI REPL, Ctrl+C cleared the current line and nothing more &mdash; the reflex that leaves every other shell left Soli running, and <code class="text-cyan-400">exit</code> / Ctrl+D / Esc were the only ways out. The first press still cancels the line, now printing <code>^C  (press Ctrl+C again to exit)</code>; a second press with no other key in between saves history and quits. Any other key disarms it.</li>
+        </ul>
+
         <h3 id="unreleased-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Chunked LiveView uploads are capped.</strong> The completed-file store has had per-session and global limits since it shipped, but the map holding uploads still being <em>assembled</em> had only an expiry sweep &mdash; and <code>POST /live/upload</code> is reachable without a session, because a first-time visitor may not have one yet. One unauthenticated client could therefore mint a fresh <code class="text-cyan-400">X-Soli-Upload-Id</code> per request, send one chunk of a declared 512, and park up to 8&nbsp;MiB per id until the server ran out of memory. A session now gets 4 in-progress uploads, the server 32 and 64&nbsp;MiB of chunk data, and a partial upload is swept 2 minutes after its last accepted chunk &mdash; an idle deadline, so a slow connection is never cut off. A retried chunk is charged once rather than twice.</li>
