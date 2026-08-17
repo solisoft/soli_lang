@@ -292,6 +292,8 @@ mod tests {
         assert!(NAV_SCRIPT.contains("__soliNavInstalled"));
         assert!(NAV_SCRIPT.contains("defaultPrevented"));
         assert!(NAV_SCRIPT.contains("data-no-nav"));
+        assert!(NAV_SCRIPT.contains("soli-patch"));
+        assert!(NAV_SCRIPT.contains("soli-live"));
         assert!(NAV_SCRIPT.contains("hx-"));
         assert!(NAV_SCRIPT.contains("pushState"));
         assert!(NAV_SCRIPT.contains("popstate"));

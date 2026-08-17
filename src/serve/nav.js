@@ -229,6 +229,15 @@
         if (method !== "get") return false;
         if (a.hasAttribute("data-no-nav")) return false;
         if (a.closest("[data-no-nav]")) return false;
+        // LiveView owns these: in-socket patch / component swap / redirect.
+        // Instant-nav binds on DOMContentLoaded; LiveView bindEvents runs
+        // later (after the first websocket render), so our bubble listener
+        // would otherwise steal the click and fetch a new page.
+        if (a.hasAttribute("soli-patch") || a.hasAttribute("data-soli-patch") ||
+            a.hasAttribute("soli-live") || a.hasAttribute("data-soli-live") ||
+            a.hasAttribute("soli-href") || a.hasAttribute("data-soli-href")) {
+            return false;
+        }
         // htmx manages its own requests — never fight it.
         for (var i = 0; i < a.attributes.length; i++) {
             var n = a.attributes[i].name;

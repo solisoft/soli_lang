@@ -130,7 +130,9 @@ describe("liveview", fn() {
     test("soli-hook mounted then updated across a patch", fn() {
         visit("/live")
         wait_for("#hook-probe")
-        assert_eq(evaluate("document.getElementById('hook-probe').getAttribute('data-hook')"), "mounted")
+        # Reset after mount (a second syncHooks in the first paint may already
+        # have flipped the probe to "updated"). The increment must fire updated.
+        evaluate("document.getElementById('hook-probe').setAttribute('data-hook', 'reset')")
         click("#inc")
         wait_for_text("count=1")
         assert_eq(evaluate("document.getElementById('hook-probe').getAttribute('data-hook')"), "updated")

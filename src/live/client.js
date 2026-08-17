@@ -997,8 +997,8 @@
                 }
             });
 
-            // Swap the page-root LiveView to another component socket
-            // without a full load. Optional href/soli-patch updates the URL.
+            // Capture phase so we beat instant-nav (registered earlier on
+            // bubble) even if bindEvents ran after the first render.
             document.addEventListener('click', (e) => {
                 const link = e.target.closest('[soli-live], [data-soli-live]');
                 if (link && owns(link) && !e.metaKey && !e.ctrlKey && e.button === 0) {
@@ -1013,10 +1013,8 @@
                         this.swapLive(liveUrl, href);
                     }
                 }
-            });
+            }, true);
 
-            // In-socket navigation: update the URL and tell the current
-            // LiveView (`event == "patch"`). Meta/ctrl-click still opens a tab.
             document.addEventListener('click', (e) => {
                 const link = e.target.closest('[soli-patch], [data-soli-patch]');
                 if (link && owns(link) && !e.metaKey && !e.ctrlKey && e.button === 0) {
@@ -1027,11 +1025,12 @@
                                  link.getAttribute('data-soli-patch');
                     if (href) {
                         e.preventDefault();
+                        e.stopPropagation();
                         this.applyUrl(href, false);
                         this.sendPatchEvent(href);
                     }
                 }
-            });
+            }, true);
 
             if (!this._onPopState) {
                 this._onPopState = () => {
@@ -1194,7 +1193,8 @@
             for (const el of nodes) {
                 const name = hookName(el);
                 if (!name) continue;
-                const def = this.hooks[name];
+                const def = (this.hooks && this.hooks[name]) ||
+                    (SoliLiveView.hooks && SoliLiveView.hooks[name]);
                 if (!def) {
                     console.warn('[LiveView] unknown hook:', name);
                     continue;
@@ -1209,6 +1209,12 @@
                             console.error('[LiveView] hook mounted failed:', name, e);
                         }
                     }
+                    // A follow-up syncHooks in the same turn (second instance
+                    // morphing the same root, or mountChildren) must not fire
+                    // `updated` before the page has seen `mounted`.
+                    ctx.__justMounted = true;
+                } else if (ctx.__justMounted) {
+                    ctx.__justMounted = false;
                 } else if (typeof def.updated === 'function') {
                     try { def.updated.call(ctx); } catch (e) {
                         console.error('[LiveView] hook updated failed:', name, e);
@@ -1595,9 +1601,12 @@
         }
     }
 
-    // Export
+    // Export. Keep hooks if this file is evaluated twice (layout + page
+    // both load /live/client.js) — a fresh class would otherwise wipe
+    // `SoliLiveView.hooks = { Probe: … }` set by the page.
+    const prevHooks = (global.SoliLiveView && global.SoliLiveView.hooks) || {};
     global.SoliLiveView = SoliLiveView;
-    SoliLiveView.hooks = SoliLiveView.hooks || {};
+    SoliLiveView.hooks = Object.assign({}, prevHooks);
 
     // Expose the pure pieces for testing.
     global.SoliLiveView.morph = morph;
