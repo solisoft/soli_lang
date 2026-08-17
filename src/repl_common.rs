@@ -116,8 +116,10 @@ pub fn should_print_result(source: &str) -> bool {
         && !trimmed.starts_with("class ")
         && !trimmed.starts_with("interface ")
         && !trimmed.starts_with("if ")
+        && !trimmed.starts_with("unless ")
         && !trimmed.starts_with("while ")
         && !trimmed.starts_with("for ")
+        && !trimmed.starts_with("module ")
         && !trimmed.starts_with("return ")
         && !trimmed.starts_with("print(")
         && !trimmed.starts_with("println(")
@@ -163,13 +165,13 @@ pub fn prepare_source(code: &str) -> String {
         return code.to_string();
     }
 
-    // `@sdbql{ ... }` (and its legacy alias `@sdql{ ... }`) is an expression even
-    // though it ends in `}`, so don't treat it as passthrough — otherwise the REPL
-    // never prints its result.
-    let is_sdbql_block = trimmed.starts_with("@sdbql{") || trimmed.starts_with("@sdql{");
-    let passthrough = (trimmed.ends_with('}') && !is_sdbql_block)
-        || trimmed.ends_with(';')
-        || trimmed.ends_with("end");
+    // Only a trailing semicolon means "statement, don't echo". Ending in `}`
+    // or `end` used to be treated the same so `class`/`def` bodies were not
+    // printed — but those are already skipped by `should_print_result`.
+    // Expressions that happen to close with a brace or `end` must still echo:
+    // `[1,2].filter { |x| x % 2 == 0 }`, `arr.map do |x| x end`, `{a: 1}`,
+    // `@sdbql{ … }`.
+    let passthrough = trimmed.ends_with(';');
 
     if should_print_result(code) && !passthrough {
         let expr = strip_trailing_comment(trimmed);
@@ -247,5 +249,40 @@ mod tests {
                 "expected multi-line block to be print-wrapped, got: {prepared}"
             );
         }
+    }
+
+    fn assert_print_wrapped(src: &str) {
+        let prepared = prepare_source(src);
+        assert!(
+            prepared.contains("println(_.inspect)"),
+            "expected {src:?} to be print-wrapped, got: {prepared}"
+        );
+    }
+
+    fn assert_not_print_wrapped(src: &str) {
+        let prepared = prepare_source(src);
+        assert!(
+            !prepared.contains("println(_.inspect)"),
+            "expected {src:?} not to be print-wrapped, got: {prepared}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_source_wraps_trailing_brace_and_do_blocks() {
+        assert_print_wrapped("[1,2].filter { |x| x % 2 == 0 }");
+        assert_print_wrapped("[1,2].filter do |x| x % 2 == 0 end");
+        assert_print_wrapped("[1,2].map { |x| x * 2 }");
+        assert_print_wrapped("{ \"a\": 1 }");
+        assert_print_wrapped("[1,2].filter(|x| x % 2 == 0)");
+    }
+
+    #[test]
+    fn test_prepare_source_skips_declarations() {
+        assert_not_print_wrapped("class Foo { }");
+        assert_not_print_wrapped("fn hello { \"hi\" }");
+        assert_not_print_wrapped("def greet\n  \"hi\"\nend");
+        assert_not_print_wrapped("module Publishable\nend");
+        assert_not_print_wrapped("let x = 1");
+        assert_not_print_wrapped("1;");
     }
 }
