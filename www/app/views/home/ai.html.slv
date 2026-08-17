@@ -1,0 +1,264 @@
+<section class="relative isolate overflow-hidden">
+    <div class="container mx-auto max-w-6xl px-6 py-20 sm:py-28 lg:px-8">
+        <div class="mb-8">
+            <div class="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm leading-6 text-stone-300 ring-1 ring-white/10 bg-white/5">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                Agents · RAG · Code graph
+            </div>
+        </div>
+
+        <h1 class="font-display text-5xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl max-w-4xl">
+            Soli is built for AI.
+        </h1>
+        <p class="mt-8 text-lg leading-8 text-stone-300 sm:text-xl max-w-3xl">
+            Soli gives coding agents the same thing it gives you: one way to do each thing,
+            a short language, and a complete product stack. Token-efficient code that agents
+            can write and humans can review &mdash; from <code class="text-amber-200">soli new</code>
+            to production, including the LLM and the retrieval layer.
+        </p>
+        <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <a href="/docs/development-tools/ai-agents" class="group inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-semibold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all">
+                Agent setup
+                <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+            </a>
+            <a href="/docs/builtins/ai" class="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-3.5 text-sm font-semibold text-white ring-1 ring-white/15 hover:bg-white/5 transition-all">
+                LLM &amp; embeddings
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="border-t border-white/10">
+    <div class="container mx-auto max-w-6xl px-6 py-20 lg:px-8">
+        <div class="grid gap-10 sm:grid-cols-2">
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-8">
+                <p class="text-xs font-semibold tracking-[0.2em] text-amber-400 mb-3">01</p>
+                <h2 class="text-2xl font-bold text-white mb-3">Convention over configuration</h2>
+                <p class="text-stone-400 leading-relaxed">
+                    <strong class="text-stone-200">Soli gives agents a map.</strong>
+                    One folder for models, one for controllers, one for jobs.
+                    <code class="text-amber-200/90">resources("posts")</code>,
+                    <code class="text-amber-200/90">soli generate scaffold</code>,
+                    and a root <code class="text-amber-200/90">CLAUDE.md</code> so generated
+                    changes land closer to idiomatic Soli with less prompting.
+                </p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-8">
+                <p class="text-xs font-semibold tracking-[0.2em] text-amber-400 mb-3">02</p>
+                <h2 class="text-2xl font-bold text-white mb-3">Token efficiency</h2>
+                <p class="text-stone-400 leading-relaxed">
+                    <strong class="text-stone-200">Less language means more context.</strong>
+                    Soli is a small language on purpose: postfix
+                    <code class="text-amber-200/90">unless</code>, implicit returns,
+                    no package manager, no bundler. Agents spend tokens on the product,
+                    not on boilerplate or five ways to import a model.
+                </p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-8">
+                <p class="text-xs font-semibold tracking-[0.2em] text-amber-400 mb-3">03</p>
+                <h2 class="text-2xl font-bold text-white mb-3">A contract, not a prompt</h2>
+                <p class="text-stone-400 leading-relaxed">
+                    <strong class="text-stone-200">Verification is non-negotiable.</strong>
+                    Every <code class="text-amber-200/90">soli new</code> app ships
+                    <code class="text-amber-200/90">AGENTS.md</code>, per-directory
+                    guides, <code class="text-amber-200/90">/soli-verify</code>, and
+                    a coverage gate. If lint or tests fail, the rule is to fix the
+                    cause &mdash; never weaken the suite.
+                </p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-8">
+                <p class="text-xs font-semibold tracking-[0.2em] text-amber-400 mb-3">04</p>
+                <h2 class="text-2xl font-bold text-white mb-3">The one-person stack</h2>
+                <p class="text-stone-400 leading-relaxed">
+                    <strong class="text-stone-200">One person can ship more.</strong>
+                    MVC, jobs, auth, LiveView, and the LLM live in one binary.
+                    Add an agent and you are not stitching a vector DB, a queue,
+                    and a chat SDK together from scratch.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="border-t border-white/10" id="agents-on-soli">
+    <div class="container mx-auto max-w-6xl px-6 py-20 lg:px-8">
+        <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-4">Agents on Soli</h2>
+        <p class="text-stone-400 max-w-3xl mb-4">
+            The same idea as Rails&rsquo; Agents on Rails: measure coding
+            agents on a frozen corpus of atomic Soli tasks. First board:
+            Claude Code (<code class="text-amber-200">claude -p</code>),
+            OpenCode + DeepSeek, and Grok Build. Graded with
+            <code class="text-amber-200">soli lint</code> and
+            <code class="text-amber-200">soli test</code>. Stage 1 only &mdash;
+            one capability per task. Not a Cursor-vs-Claude-Code table, and not
+            Soli vs Rails on the same numbers.
+        </p>
+        <p class="text-sm text-stone-500 mb-10">
+            Methodology: <a href="/docs/development-tools/ai-evals" class="text-amber-400 hover:underline">Agents on Soli</a>.
+            Harness <code class="text-amber-200/80"><%= h(str(evals["harness"])) %></code>,
+            <%= str(evals["runs_per_model"]) %> runs per model.
+        </p>
+
+        <% if evals["models"].length() > 0 %>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table id="ai-evals-table" class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10 bg-white/5">
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="id">Model</th>
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="accuracy">Accuracy</th>
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="speed_s">Median speed</th>
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="tokens">Mean tokens</th>
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="cost_usd">Mean cost</th>
+                        <th class="px-6 py-4 font-semibold text-white cursor-pointer" data-sort="api_recall">API recall</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-stone-300">
+                    <% for row in evals["models"] %>
+                    <tr>
+                        <td class="px-6 py-4 font-mono text-amber-200" data-v="<%= h(str(row["id"])) %>"><%= h(str(row["id"])) %></td>
+                        <td class="px-6 py-4" data-v="<%= str(row["accuracy"]) %>"><%= str(row["accuracy"]) %></td>
+                        <td class="px-6 py-4" data-v="<%= str(row["speed_s"]) %>"><%= str(row["speed_s"]) %>s</td>
+                        <td class="px-6 py-4" data-v="<%= str(row["tokens"]) %>"><%= str(row["tokens"]) %></td>
+                        <td class="px-6 py-4" data-v="<%= str(row["cost_usd"]) %>">$<%= str(row["cost_usd"]) %></td>
+                        <td class="px-6 py-4" data-v="<%= str(row["api_recall"]) %>"><%= str(row["api_recall"]) %></td>
+                    </tr>
+                    <% end %>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-4 text-xs text-stone-500">Last run: <%= h(str(evals["generated_at"])) %>. Click a column to sort.</p>
+        <script>
+        (function () {
+            var table = document.getElementById("ai-evals-table");
+            if (!table) return;
+            var tbody = table.tBodies[0];
+            table.querySelectorAll("th[data-sort]").forEach(function (th, idx) {
+                th.addEventListener("click", function () {
+                    var rows = Array.prototype.slice.call(tbody.rows);
+                    var dir = th.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+                    table.querySelectorAll("th").forEach(function (h) { h.removeAttribute("data-dir"); });
+                    th.setAttribute("data-dir", dir);
+                    rows.sort(function (a, b) {
+                        var av = a.cells[idx].getAttribute("data-v") || "";
+                        var bv = b.cells[idx].getAttribute("data-v") || "";
+                        var an = parseFloat(av), bn = parseFloat(bv);
+                        var cmp = (!isNaN(an) && !isNaN(bn)) ? (an - bn) : av.localeCompare(bv);
+                        return dir === "asc" ? cmp : -cmp;
+                    });
+                    rows.forEach(function (r) { tbody.appendChild(r); });
+                });
+            });
+        })();
+        </script>
+        <% else %>
+        <div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-8 sm:p-10">
+            <p class="text-stone-200 font-medium mb-2">No numbers until the first run is committed.</p>
+            <p class="text-stone-400 text-sm leading-relaxed">
+                The corpus is in <code class="text-amber-200">evals/</code> (12 tasks).
+                The harness is <code class="text-amber-200">scripts/evals/run.py</code>.
+                A paid refresh writes <code class="text-amber-200">www/data/ai_evals.json</code>.
+                We will not invent scores for this table.
+            </p>
+        </div>
+        <% end %>
+    </div>
+</section>
+
+<section class="border-t border-white/10 bg-white/[0.015]">
+    <div class="container mx-auto max-w-6xl px-6 py-20 lg:px-8">
+        <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-4">What ships on day one</h2>
+        <p class="text-stone-400 max-w-2xl mb-10">
+            <code class="text-amber-200">soli new myapp</code> is already an agent workspace.
+            Claude Code, Cursor, Aider, Copilot CLI, and Codex read the same files.
+        </p>
+        <div class="overflow-hidden rounded-xl border border-white/10">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10 bg-white/5">
+                        <th class="px-6 py-4 font-semibold text-white">Path</th>
+                        <th class="px-6 py-4 font-semibold text-white">Purpose</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-stone-400">
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">CLAUDE.md</td><td class="px-6 py-4">Root guide: verification loop, footguns, recipes</td></tr>
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">AGENTS.md</td><td class="px-6 py-4">Tool-agnostic pointer to that guide</td></tr>
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">app/*/CLAUDE.md</td><td class="px-6 py-4">Controllers, models, views, middleware, tests, migrations</td></tr>
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/</td><td class="px-6 py-4"><code>/soli-verify</code>, <code>/soli-test</code>, <code>/soli-resource</code></td></tr>
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/settings.json</td><td class="px-6 py-4">Safe <code>soli</code> subcommands pre-allowed</td></tr>
+                    <tr><td class="px-6 py-4 font-mono text-amber-300">docs/</td><td class="px-6 py-4">Bundled language docs so the agent does not need the network</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <pre class="mt-8 rounded-xl border border-white/10 bg-[#0b0d0f] p-5 text-sm text-stone-300 overflow-x-auto"><code><span class="text-green-400">$</span> soli lint app/controllers/orders_controller.sl
+<span class="text-green-400">$</span> soli test tests/controllers/orders_controller_spec.sl
+<span class="text-green-400">$</span> soli test --coverage --coverage-min 90</code></pre>
+        <p class="mt-4 text-sm text-stone-500">
+            Full walkthrough: <a href="/docs/development-tools/ai-agents" class="text-amber-400 hover:underline">AI agents in Soli projects</a>
+            and the <a href="/docs/blog/ai-coding-agents" class="text-amber-400 hover:underline">agent philosophy post</a>.
+        </p>
+    </div>
+</section>
+
+<section class="border-t border-white/10">
+    <div class="container mx-auto max-w-6xl px-6 py-20 lg:px-8">
+        <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-4">AI in the product, not a sidecar</h2>
+        <p class="text-stone-400 max-w-2xl mb-10">
+            The same binary that serves your app talks to an OpenAI-compatible chat API,
+            embeds rows, and walks a code graph. No extra process.
+        </p>
+        <div class="grid gap-6 lg:grid-cols-3">
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-7">
+                <h3 class="text-lg font-semibold text-white mb-2">
+                    <a href="/docs/builtins/ai" class="hover:text-amber-200">llm_generate</a>
+                </h3>
+                <p class="text-sm text-stone-400 leading-relaxed">Chat completions with <code class="text-amber-200/80">SOLI_LLM_API_KEY</code>. Stream tokens with <code class="text-amber-200/80">out.llm_stream</code> inside <code class="text-amber-200/80">sse</code>.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-7">
+                <h3 class="text-lg font-semibold text-white mb-2">
+                    <a href="/docs/database/search#rag" class="hover:text-amber-200">.similar() · Model.rag</a>
+                </h3>
+                <p class="text-sm text-stone-400 leading-relaxed">Embed on save, retrieve by cosine / hybrid search, ground the prompt. <a href="/docs/blog/rag-product-discovery" class="text-amber-400 hover:underline">Product discovery tutorial</a>.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-7">
+                <h3 class="text-lg font-semibold text-white mb-2">
+                    <a href="/docs/development-tools/graph" class="hover:text-amber-200">soli graph</a>
+                </h3>
+                <p class="text-sm text-stone-400 leading-relaxed">Index routes, callers, and views with embeddings. Agents get a neighbourhood, not a random snippet. <a href="/docs/blog/code-graph-rag" class="text-amber-400 hover:underline">Code Graph RAG</a>.</p>
+            </div>
+        </div>
+        <pre class="mt-10 rounded-xl border border-white/10 bg-[#0b0d0f] p-5 text-sm text-stone-300 overflow-x-auto"><code class="language-soli"># retrieve, then stream
+hits = Product.similar(q, { "limit": 8 })
+answer = out.llm_stream(
+  "Answer only from the catalogue.",
+  "Question: #&#123;q}\n\nContext:\n#&#123;hits.map(fn(h) h.name).join(\"\\n\")}"
+)</code></pre>
+    </div>
+</section>
+
+<section class="border-t border-white/10 bg-white/[0.015]">
+    <div class="container mx-auto max-w-6xl px-6 py-20 lg:px-8">
+        <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-10">Why agents do well here</h2>
+        <blockquote class="rounded-2xl border border-white/10 bg-[#0b0d0f] p-8 sm:p-10 mb-6">
+            <p class="text-lg text-stone-200 leading-relaxed">
+                Convention over configuration is not nostalgia. It is a prior.
+                One MVC layout, one test DSL, one job folder, one
+                <code class="text-amber-200">CLAUDE.md</code> &mdash; the model
+                already knows the shape of the next file.
+            </p>
+        </blockquote>
+        <blockquote class="rounded-2xl border border-white/10 bg-[#0b0d0f] p-8 sm:p-10">
+            <p class="text-lg text-stone-200 leading-relaxed">
+                A fast <code class="text-amber-200">soli test</code> loop is the
+                difference between an agent that guesses and an agent that
+                finishes. If it is red, it is not done.
+            </p>
+        </blockquote>
+        <div class="mt-12 flex flex-wrap gap-4">
+            <a href="/docs/getting-started/introduction" class="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-6 py-3 text-sm font-semibold text-stone-950 hover:bg-amber-400">Install Soli</a>
+            <a href="/docs/blog/ai-coding-agents" class="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white ring-1 ring-white/15 hover:bg-white/5">Read the long version</a>
+        </div>
+    </div>
+</section>

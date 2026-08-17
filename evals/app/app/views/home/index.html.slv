@@ -1,0 +1,2 @@
+<h1><%= h(title) %></h1>
+<p>Eval fixture shop.</p>

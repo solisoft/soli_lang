@@ -1,0 +1,79 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Agents on Soli</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            How we grade <strong class="text-white">models</strong> on real Soli work.
+            The table lives on <a href="/ai" class="text-amber-400 hover:underline">/ai</a>.
+            Numbers only come from <code>www/data/ai_evals.json</code>.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-4">What is compared</h2>
+    <p class="text-gray-400 mb-6 leading-relaxed">
+        The first board freezes three coding CLIs on the same fixture and hidden tests:
+        <code>claude -p</code> (Claude Code / sonnet),
+        <code>opencode run</code> (DeepSeek <code>opencode/deepseek-v4-flash-free</code>),
+        and Grok Build (<code>grok --prompt-file</code>, <code>grok-4.6</code>).
+        It is not Cursor vs Claude Code as products, and it is not Soli vs Rails
+        on the same numbers.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-4">Corpus</h2>
+    <p class="text-gray-400 mb-6">Twelve one-capability tasks on <code>evals/app</code>, not this docs site.</p>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="px-6 py-3 font-semibold text-white">Slug</th>
+                    <th class="px-6 py-3 font-semibold text-white">Capability</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="px-6 py-3 font-mono text-amber-300">hello-world</td><td class="px-6 py-3">harness smoke</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">scaffold-resource</td><td class="px-6 py-3"><code>resources</code> + controller</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">hash-where</td><td class="px-6 py-3">portable hash <code>.where</code> with <code>gt</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">column-sti</td><td class="px-6 py-3">subclass + <code>type</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">job-enqueue</td><td class="px-6 py-3"><code>perform_later</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">unless-guard</td><td class="px-6 py-3">block <code>unless</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">csrf-webhook</td><td class="px-6 py-3"><code>skip_csrf</code> on the webhook only</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">form-permit</td><td class="px-6 py-3"><code>permit</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">validation</td><td class="px-6 py-3"><code>validates</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">attachment</td><td class="px-6 py-3"><code>has_one_attached</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">test-spec</td><td class="px-6 py-3"><code>assert_eq</code>, not <code>assert_equal</code></td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">llm-stream</td><td class="px-6 py-3"><code>sse</code> + <code>llm_stream</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-4">Grading</h2>
+    <ol class="list-decimal pl-6 text-gray-400 space-y-2 mb-8">
+        <li>Copy <code>evals/app</code> to a fresh worktree.</li>
+        <li>Apply <code>prompt.md</code> with a single-shot coding agent.</li>
+        <li>Copy hidden tests in. Run <code>soli lint</code> and <code>soli test hidden</code>.</li>
+        <li>Scan the diff for identifiers in <code>expect.md</code> (API recall).</li>
+    </ol>
+    <p class="text-gray-400 mb-8">
+        Three runs per model. Accuracy is passes / (tasks &times; 3). Speed is median
+        wall time. Tokens and cost are means. Failures and refusals count as fail.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-4">Cost</h2>
+    <p class="text-gray-400 mb-8">
+        About 5 models &times; 12 tasks &times; 3 &asymp; 180 runs. At $0.50&ndash;$2 each,
+        a board refresh is roughly <strong class="text-white">$90&ndash;$360</strong>.
+        That is why this is not on every pull request.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-4">Reproduce</h2>
+    <pre class="rounded-xl border border-white/10 bg-[#0b0d0f] p-5 text-sm text-stone-300 overflow-x-auto mb-8"><code>python3 scripts/evals/run.py --list
+python3 scripts/evals/run.py --dry-run --models claude,opencode,grok --tasks hello-world --runs 1
+python3 scripts/evals/run.py --models claude,opencode,grok --out www/data/ai_evals.json</code></pre>
+    <p class="text-gray-400 mb-4">
+        Until a paid run is committed, <code>models</code> in the JSON is empty and
+        <a href="/ai" class="text-amber-400 hover:underline">/ai</a> shows that empty
+        state. Do not invent scores. Token/cost stay null when a CLI does not
+        report them. Harness id: <code>soli-evals/0.2</code>.
+    </p>
+</div>

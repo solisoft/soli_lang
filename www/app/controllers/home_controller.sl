@@ -14,6 +14,27 @@ class HomeController extends Controller
         })
     end
 
+    # GET /ai
+    def ai
+        evals = {
+            "generated_at": null,
+            "harness": "soli-evals/0.2",
+            "runs_per_model": 3,
+            "models": [],
+            "tasks": [],
+            "note": "No paid run committed yet."
+        }
+        path = "data/ai_evals.json"
+        path = "www/data/ai_evals.json" unless File.exists(path)
+        if File.exists(path)
+            evals = json_parse(File.read(path)) rescue evals
+        end
+        render("home/ai", {
+            "title": "Soli is built for AI",
+            "evals": evals
+        })
+    end
+
     # GET /health
     def health
         render_json({

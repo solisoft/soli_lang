@@ -8,6 +8,7 @@
 
 # Root path
 get("/", "home#index")
+get("/ai", "home#ai")
 
 # Public routes
 get("/health", "home#health")
@@ -93,6 +94,7 @@ get("/docs/native/platform-limits", "docs#native_platform_limits")
 get("/docs/development-tools/editor-integration", "docs#development_tools_editor_integration")
 get("/docs/development-tools/formatting", "docs#development_tools_formatting")
 get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents")
+get("/docs/development-tools/ai-evals", "docs#development_tools_ai_evals")
 get("/docs/development-tools/linting", "docs#development_tools_linting")
 get("/docs/development-tools/graph", "docs#development_tools_graph")
 

@@ -1,0 +1,28 @@
+{
+  "generated_at": null,
+  "harness": "soli-evals/0.2",
+  "runs_per_model": 3,
+  "runners": {
+    "claude": { "id": "claude-code", "model": "sonnet" },
+    "opencode": { "id": "opencode-deepseek", "model": "opencode/deepseek-v4-flash-free" },
+    "grok": { "id": "grok-build", "model": "grok-4.6" }
+  },
+  "task_count": 12,
+  "tasks": [
+    "attachment",
+    "column-sti",
+    "csrf-webhook",
+    "form-permit",
+    "hash-where",
+    "hello-world",
+    "job-enqueue",
+    "llm-stream",
+    "scaffold-resource",
+    "test-spec",
+    "unless-guard",
+    "validation"
+  ],
+  "models": [],
+  "evaluations": [],
+  "note": "No paid run committed yet. Do not invent scores."
+}

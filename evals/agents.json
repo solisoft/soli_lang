@@ -1,0 +1,27 @@
+{
+  "harness": "soli-evals/0.2",
+  "note": "First board freezes these three coding CLIs. Each run is one prompt in a fresh copy of evals/app. Hidden tests are copied in only after the agent exits.",
+  "runners": {
+    "claude": {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "bin": "claude",
+      "default_model": "sonnet",
+      "model_env": "SOLI_EVALS_CLAUDE_MODEL"
+    },
+    "opencode": {
+      "id": "opencode-deepseek",
+      "label": "OpenCode (DeepSeek)",
+      "bin": "opencode",
+      "default_model": "opencode/deepseek-v4-flash-free",
+      "model_env": "SOLI_EVALS_OPENCODE_MODEL"
+    },
+    "grok": {
+      "id": "grok-build",
+      "label": "Grok Build",
+      "bin": "grok",
+      "default_model": "grok-4.6",
+      "model_env": "SOLI_EVALS_GROK_MODEL"
+    }
+  }
+}

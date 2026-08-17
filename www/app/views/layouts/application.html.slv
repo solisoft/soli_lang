@@ -126,6 +126,9 @@
                     <a href="/" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
                         Home
                     </a>
+                    <a href="/ai" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
+                        AI
+                    </a>
                     <a href="/docs" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
                         Documentation
                     </a>
@@ -165,6 +168,7 @@
         <div id="mobileNav" class="mobile-nav lg:hidden absolute top-full left-0 right-0 bg-[#0C0A09]/95 backdrop-blur-xl border-b border-white/5">
             <div class="px-4 py-4 space-y-1">
                 <a href="/" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Home</a>
+                <a href="/ai" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">AI</a>
                 <a href="/docs" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Documentation</a>
                 <a href="/docs/blog" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Blog</a>
                 <button onclick="openSearchModal()" class="w-full flex items-center gap-3 px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">

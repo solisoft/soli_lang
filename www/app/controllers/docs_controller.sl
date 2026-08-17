@@ -306,6 +306,15 @@ def development_tools_ai_agents
     )
 end
 
+def development_tools_ai_evals
+    render_docs(
+        "docs/development-tools/ai-evals",
+        "Agents on Soli",
+        "development_tools",
+        "ai_evals"
+    )
+end
+
 def development_tools_linting
     render_docs("docs/development-tools/linting", "Linting", "development_tools", "linting")
 end
