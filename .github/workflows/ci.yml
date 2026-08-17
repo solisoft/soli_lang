@@ -216,7 +216,7 @@ jobs:
       # The runner image happens to ship Chrome, but relying on that makes the
       # job depend on an image detail that can change without notice.
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
@@ -262,7 +262,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Java (for veraPDF)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
