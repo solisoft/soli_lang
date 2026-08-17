@@ -120,5 +120,6 @@ fn server_message_serialization() {
 
     let msg = ServerMessage::HeartbeatAck;
     let json = serde_json::to_string(&msg).unwrap();
-    assert_eq!(json, r#"{"type":"HeartbeatAck"}"#);
+    // Wire name matches the JS client (`case 'heartbeat_ack'`), not the Rust variant.
+    assert_eq!(json, r#"{"type":"heartbeat_ack"}"#);
 }

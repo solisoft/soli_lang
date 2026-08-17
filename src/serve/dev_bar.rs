@@ -1329,7 +1329,7 @@ fn fmt_duration_us(us: u64) -> String {
 /// Linux publishes it in `/proc/self/status`; macOS has no procfs, so the dev bar
 /// read `?` there. `proc_pidinfo` is the macOS equivalent and needs no child
 /// process — a `ps` fork per request would be visible in the very render time the
-/// bar is measuring.
+/// bar is measuring. Windows uses `GetProcessMemoryInfo` (working set).
 fn read_rss_kb() -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
@@ -1362,6 +1362,22 @@ fn read_rss_kb() -> Option<u64> {
             return None;
         }
         return Some(info.pti_resident_size / 1024);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::System::ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+        };
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        // SAFETY: `pmc` is zeroed then sized; the API writes at most `cb` bytes.
+        let mut pmc: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        pmc.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        let ok = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) };
+        if ok == 0 {
+            return None;
+        }
+        return Some((pmc.WorkingSetSize as u64) / 1024);
     }
 
     #[allow(unreachable_code)]
