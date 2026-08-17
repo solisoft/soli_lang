@@ -4,7 +4,11 @@ Soli is a dynamically-typed, high-performance web framework written in Rust. Thi
 
 ## For AI agents — read this first
 
-You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirks; skim the **Footgun cheatsheet** below before generating code. Per-directory `CLAUDE.md` files in `app/controllers/`, `app/models/`, `app/views/`, `app/middleware/`, `tests/`, and `db/migrations/` give you the local rules — Claude Code loads them automatically when you work in those directories.
+You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirks; skim the **Footgun cheatsheet** below before generating code. Per-directory `CLAUDE.md` files in `app/controllers/`, `app/models/`,
+`app/models/concerns/`, `app/views/`, `app/middleware/`, `tests/`, and
+`db/migrations/` give you the local rules — Claude Code loads them
+automatically when you work in those directories. Shared model mixins
+(`module` / `include`) live in `app/models/concerns/`.
 
 ### Verification loop (mandatory before reporting done)
 

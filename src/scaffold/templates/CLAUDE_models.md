@@ -6,7 +6,9 @@ This directory holds the data layer. **One file per model**: `post.sl` defines
 
 Models are auto-loaded by `soli serve` — controllers and migrations reference
 them by class name without an `import`. Adding `import "../models/*.sl"`
-inside a controller trips `style/redundant-model-import`.
+inside a controller trips `style/redundant-model-import`. Shared mixin modules
+live in `app/models/concerns/` (also auto-loaded); see that folder's
+`CLAUDE.md` and **Concerns** below.
 
 Models own validation, persistence, and business rules. Controllers are thin;
 push every "X happens when Y is created" rule into the model layer.
@@ -45,6 +47,41 @@ end
 Models are **untyped** — you don't declare `title: String` at class level.
 Fields are inferred from what you assign / persist, and validated by the rules
 you register.
+
+## Concerns (shared mixins)
+
+Reusable behavior that more than one model should share goes in
+`app/models/concerns/<name>.sl` as a `module`, then `include`d on the model.
+The folder is created empty by `soli new` so agents have a place and a local
+`CLAUDE.md`.
+
+```soli
+# app/models/concerns/publishable.sl
+module Publishable
+  included do
+    validates("published_at", { "presence": true })
+  end
+
+  class_methods do
+    def published
+      this.where("published_at != null")
+    end
+  end
+
+  def publish
+    self.published_at = DateTime.utc()
+  end
+end
+
+# app/models/post.sl
+class Post < Model
+  include Publishable
+end
+```
+
+Do not `import` the concern — `app/models/**` is already loaded. Full hooks
+and limits (`included` / `extended` / `class_methods`, no `prepend`):
+`app/models/concerns/CLAUDE.md`.
 
 ## Inherited CRUD (don't override)
 

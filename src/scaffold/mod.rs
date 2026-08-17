@@ -139,6 +139,7 @@ fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
 
     let dirs = [
         "app/models",
+        "app/models/concerns",
         "app/controllers",
         "app/views",
         "tests",

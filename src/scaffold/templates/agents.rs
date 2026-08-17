@@ -6,6 +6,7 @@ pub const AGENTS_MD_TEMPLATE: &str = include_str!("AGENTS.md");
 /// Per-directory CLAUDE.md files. Claude Code auto-loads these from cwd up to root.
 pub const CLAUDE_CONTROLLERS_TEMPLATE: &str = include_str!("CLAUDE_controllers.md");
 pub const CLAUDE_MODELS_TEMPLATE: &str = include_str!("CLAUDE_models.md");
+pub const CLAUDE_CONCERNS_TEMPLATE: &str = include_str!("CLAUDE_concerns.md");
 pub const CLAUDE_VIEWS_TEMPLATE: &str = include_str!("CLAUDE_views.md");
 pub const CLAUDE_MIDDLEWARE_TEMPLATE: &str = include_str!("CLAUDE_middleware.md");
 pub const CLAUDE_TESTS_TEMPLATE: &str = include_str!("CLAUDE_tests.md");

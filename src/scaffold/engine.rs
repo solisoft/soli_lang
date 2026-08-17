@@ -35,6 +35,7 @@ pub fn create_engine(name: &str) -> Result<(), String> {
     let dirs = [
         format!("engines/{}/app/controllers", name),
         format!("engines/{}/app/models", name),
+        format!("engines/{}/app/models/concerns", name),
         format!("engines/{}/app/views", name),
         format!("engines/{}/app/helpers", name),
         format!("engines/{}/config", name),
@@ -248,6 +249,7 @@ mod tests {
             .join("app/views/layouts/engine.html.slv")
             .exists());
         assert!(engine_path.join("app/models").is_dir());
+        assert!(engine_path.join("app/models/concerns").is_dir());
         assert!(engine_path.join("app/helpers").is_dir());
         assert!(engine_path.join("db/migrations").is_dir());
 

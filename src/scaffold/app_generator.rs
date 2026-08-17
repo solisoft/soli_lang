@@ -21,6 +21,9 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
         "app/jobs",
         "app/middleware",
         "app/models",
+        // Shared mixin modules (`include` / concern hooks). Auto-loaded
+        // with the rest of `app/models/**`; keep reusable behavior here.
+        "app/models/concerns",
         "app/views",
         "app/views/home",
         "app/views/layouts",
@@ -202,6 +205,10 @@ pub fn create_nested_claude_mds(app_path: &Path) -> Result<(), String> {
             agents::CLAUDE_CONTROLLERS_TEMPLATE,
         ),
         ("app/models/CLAUDE.md", agents::CLAUDE_MODELS_TEMPLATE),
+        (
+            "app/models/concerns/CLAUDE.md",
+            agents::CLAUDE_CONCERNS_TEMPLATE,
+        ),
         ("app/views/CLAUDE.md", agents::CLAUDE_VIEWS_TEMPLATE),
         (
             "app/middleware/CLAUDE.md",
@@ -282,6 +289,7 @@ pub const PROJECT_DOC_AGENT_PATHS: &[&str] = &[
     "AGENTS.md",
     "app/controllers/CLAUDE.md",
     "app/models/CLAUDE.md",
+    "app/models/concerns/CLAUDE.md",
     "app/views/CLAUDE.md",
     "app/middleware/CLAUDE.md",
     "tests/CLAUDE.md",
@@ -326,6 +334,7 @@ pub fn update_project_docs(app_path: &Path) -> Result<Vec<String>, String> {
     for dir in [
         "app/controllers",
         "app/models",
+        "app/models/concerns",
         "app/views",
         "app/middleware",
         "tests",
@@ -804,7 +813,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
         "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m middleware/     \x1b[2m# Request filters\x1b[0m"
     );
     println!(
-        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models\x1b[0m"
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models + concerns/\x1b[0m"
     );
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m views/          \x1b[2m# Templates\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m config/");
@@ -845,6 +854,14 @@ fn validate_template_entry_path(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_directories_includes_model_concerns() {
+        let dir = tempfile::tempdir().unwrap();
+        create_directories(dir.path()).unwrap();
+        assert!(dir.path().join("app/models/concerns").is_dir());
+        assert!(dir.path().join("app/jobs").is_dir());
+    }
 
     #[test]
     fn accepts_normal_relative_paths() {
