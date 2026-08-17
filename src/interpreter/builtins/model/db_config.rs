@@ -196,11 +196,15 @@ fn login_for_token() -> Option<CachedJwt> {
     ) {
         (Some(u), Some(p)) => (u, p),
         _ => {
-            let spec = crate::db::active_spec().ok()?;
-            (
-                spec.solidb_username.filter(|s| !s.is_empty())?,
-                spec.solidb_password.unwrap_or_default(),
-            )
+            if let Ok(spec) = crate::db::active_spec() {
+                if let Some(user) = spec.solidb_username.filter(|s| !s.is_empty()) {
+                    (user, spec.solidb_password.unwrap_or_default())
+                } else {
+                    loopback_dev_credentials()?
+                }
+            } else {
+                loopback_dev_credentials()?
+            }
         }
     };
     let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
@@ -389,14 +393,30 @@ pub fn resolve_basic_auth() -> Option<String> {
     if let Some(a) = get_basic_auth() {
         return Some(a.to_string());
     }
-    let spec = crate::db::active_spec().ok()?;
-    let user = spec.solidb_username.filter(|s| !s.is_empty())?;
-    let password = spec.solidb_password.unwrap_or_default();
+    let (user, password) = if let Ok(spec) = crate::db::active_spec() {
+        if let Some(user) = spec.solidb_username.filter(|s| !s.is_empty()) {
+            (user, spec.solidb_password.unwrap_or_default())
+        } else {
+            loopback_dev_credentials()?
+        }
+    } else {
+        loopback_dev_credentials()?
+    };
     use base64::Engine;
     Some(format!(
         "Basic {}",
         base64::engine::general_purpose::STANDARD.encode(format!("{user}:{password}"))
     ))
+}
+
+/// Same local-dev default as the native driver: `admin`/`admin` on loopback
+/// when nothing is configured. Remote hosts never get this fallback.
+fn loopback_dev_credentials() -> Option<(String, String)> {
+    if is_loopback_db_host(&DB_CONFIG.host) {
+        Some(("admin".into(), "admin".into()))
+    } else {
+        None
+    }
 }
 
 /// SEC-027: build a SoliDB URL using the configured scheme + host.
@@ -506,6 +526,13 @@ mod tests {
     use std::sync::Arc;
 
     /// SEC-027: explicit schemes survive the parse round-trip.
+    #[test]
+    fn loopback_dev_credentials_only_on_loopback() {
+        assert!(is_loopback_db_host("localhost:6745"));
+        assert!(is_loopback_db_host("127.0.0.1:6745"));
+        assert!(!is_loopback_db_host("db.example.com:6745"));
+    }
+
     #[test]
     fn parse_solidb_host_preserves_explicit_scheme() {
         assert_eq!(

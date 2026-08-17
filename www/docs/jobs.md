@@ -238,6 +238,8 @@ The worker loads models, services, mailers, and `app/jobs/`, registers `static c
 
 Inspect and operate the queue without starting HTTP:
 
+On SolidB, `_jobs` is a privileged collection. A normal app JWT is not enough — set `SOLIDB_API_KEY` (or `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` for an admin). On loopback with no credentials configured, Soli tries SolidB's bootstrap `admin` / `admin`, same as the native driver.
+
 ```bash
 soli jobs list                        # every queue
 soli jobs list --queue mailers

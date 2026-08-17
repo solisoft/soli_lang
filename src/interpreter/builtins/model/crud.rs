@@ -54,6 +54,21 @@ fn apply_db_auth_without_jwt(builder: reqwest::RequestBuilder) -> reqwest::Reque
 /// retry covers the corner cases where the token *was* still valid at
 /// request-build time but the request itself comes back unauthorised
 /// (server-side revocation, clock skew between client and DB, etc.).
+fn format_query_http_failure(status: reqwest::StatusCode, body: &str) -> String {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        format!(
+            "Query failed: 401 Unauthorized — SolidB refused this credential on a privileged collection (e.g. `_jobs`). Set SOLIDB_API_KEY to an admin key, or SOLIDB_USERNAME / SOLIDB_PASSWORD for an admin user.{}",
+            if body.trim().is_empty() {
+                String::new()
+            } else {
+                format!(" {body}")
+            }
+        )
+    } else {
+        format!("Query failed: {status} - {body}")
+    }
+}
+
 async fn send_with_db_auth_retry<F>(make_request: F) -> Result<reqwest::Response, reqwest::Error>
 where
     F: Fn() -> reqwest::RequestBuilder,
@@ -572,7 +587,7 @@ pub fn exec_async_query_with_binds(
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
                 .await
                 .unwrap_or_default();
-            return Err(format!("Query failed: {} - {}", status, body));
+            return Err(format_query_http_failure(status, &body));
         }
 
         let json: serde_json::Value = resp
@@ -671,7 +686,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
                 .await
                 .unwrap_or_default();
-            return Err(format!("Query failed: {} - {}", status, body));
+            return Err(format_query_http_failure(status, &body));
         }
 
         crate::interpreter::builtins::http_class::read_capped_text_async(resp)
