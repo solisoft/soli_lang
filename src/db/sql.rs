@@ -377,7 +377,10 @@ pub fn insert_many(rows_table: &str, rows: &[(String, serde_json::Value)]) -> Re
     }
     let mut total = 0u64;
     for chunk in rows.chunks(CHUNK) {
-        let inserted = route_sql!(
+        // Annotated: with every SQL feature off, all `route_sql!` arms are the
+        // `Err(feature_missing(..))` fallback, which leaves `Ok` unconstrained
+        // and fails `--no-default-features` with E0282.
+        let inserted: Result<u64, String> = route_sql!(
             super::postgres::insert_many(rows_table, chunk),
             super::mysql::insert_many(rows_table, chunk),
             super::sqlite::insert_many(rows_table, chunk)

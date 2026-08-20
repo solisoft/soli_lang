@@ -165,11 +165,30 @@ pub fn wrap_component(name: &str, inner: &str) -> String {
 }
 
 pub fn wrap_component_cid(name: &str, cid: &str, inner: &str) -> String {
+    // `cid` carries `spec["id"]`, which is application data — the whole point of
+    // the keyed-child pattern is `live_component("row", {"id": row.slug})`. It
+    // lands in an HTML attribute that reaches the DOM through `morph` →
+    // `innerHTML`, so unescaped it is a script-injection sink (`" onmouseover=…`)
+    // and a bare quote also corrupts the line the diff engine splices on.
+    // Escaping (rather than rewriting) keeps the value intact: the browser
+    // decodes it back before echoing it as `_component`, so it still matches the
+    // state-bag key.
+    let name_attr = crate::template::renderer::attr_escape(name);
     if cid == name {
-        format!("<div soli-component=\"{name}\">{inner}</div>")
+        format!("<div soli-component=\"{name_attr}\">{inner}</div>")
     } else {
-        format!("<div soli-component=\"{name}\" soli-component-id=\"{cid}\">{inner}</div>")
+        let cid_attr = crate::template::renderer::attr_escape(cid);
+        format!(
+            "<div soli-component=\"{name_attr}\" soli-component-id=\"{cid_attr}\">{inner}</div>"
+        )
     }
+}
+
+/// A component id must survive a line-based diff and an HTML attribute round
+/// trip. Escaping covers the attribute; a newline or control character would
+/// still split the line the patch engine splices on, so those are refused.
+fn is_safe_component_id(id: &str) -> bool {
+    !id.is_empty() && !id.chars().any(|c| c.is_control())
 }
 
 /// Render a nested component: resolve assigns from the parent, overlay
@@ -177,6 +196,14 @@ pub fn wrap_component_cid(name: &str, cid: &str, inner: &str) -> String {
 pub fn render_nested(name: &str, parent: &JsonValue, spec: &JsonValue) -> Result<String, String> {
     if !crate::template::is_safe_template_name(name) {
         return Err(format!("Invalid component name: {name}"));
+    }
+    if let Some(id) = spec.get("id").and_then(|v| v.as_str()) {
+        if !is_safe_component_id(id) {
+            return Err(format!(
+                "Invalid component id for {name:?}: ids must be non-empty and free of \
+                 control characters (got {id:?})"
+            ));
+        }
     }
     let assigns = resolve_child_render_state(name, parent, spec);
     let cid = component_cid(name, spec);
@@ -187,6 +214,36 @@ pub fn render_nested(name: &str, parent: &JsonValue, spec: &JsonValue) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `spec["id"]` is application data (a slug, a key), so it must not be able
+    /// to break out of the attribute it lands in.
+    #[test]
+    fn component_id_is_attribute_escaped() {
+        let hostile = "\" onmouseover=alert(1) x=\"";
+        let cid = component_cid("row", &json!({ "id": hostile }));
+        let html = wrap_component_cid("row", &cid, "<span>x</span>");
+        // The payload may still appear as *text* inside the attribute value —
+        // what matters is that it cannot close the attribute and become a
+        // handler of its own. Four quotes exactly: the two attribute pairs.
+        assert!(html.contains("&quot;"), "quote was not escaped: {html}");
+        assert_eq!(
+            html.matches('"').count(),
+            4,
+            "broke out of the attribute: {html}"
+        );
+        assert!(
+            !html.contains("\" onmouseover"),
+            "live handler reached the DOM: {html}"
+        );
+    }
+
+    #[test]
+    fn control_characters_in_a_component_id_are_refused() {
+        let err = render_nested("row", &json!({}), &json!({ "id": "a\nb" }))
+            .expect_err("a newline would split the diff line");
+        assert!(err.contains("control characters"), "{err}");
+    }
+
     use crate::live::component::{render_component, set_app_root};
     use std::fs;
     use tempfile::tempdir;

@@ -200,11 +200,17 @@ class User < Model
   end
 
   def register_failed_attempt
-    # Don't re-stamp `locked_at` on an account that is already locked: doing
-    # so slides the 30-minute window forward on every further guess, so an
-    # attacker who keeps knocking keeps the owner locked out indefinitely.
+    # Don't re-stamp `locked_at` on an account that is *currently* locked:
+    # doing so slides the 30-minute window forward on every further guess, so
+    # an attacker who keeps knocking keeps the owner locked out indefinitely.
     # The lockout should expire on schedule no matter how loud the attack is.
-    return true unless this.locked_at.nil?
+    #
+    # Ask `locked?()` rather than testing `locked_at` directly — it is what
+    # clears an expired stamp. Testing the raw field meant that once the first
+    # lockout landed, nothing on the failure path ever cleared it, so
+    # `failed_attempts` froze and the account could never lock a second time:
+    # after the first window elapsed the attacker guessed at full rate forever.
+    return true if this.locked?()
 
     this.failed_attempts = (this.failed_attempts ?? 0) + 1
     this.locked_at = DateTime.utc().to_unix() if this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS

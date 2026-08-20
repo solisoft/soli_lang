@@ -1,0 +1,2 @@
+- `def greet`
+- string interpolation `#{name}` (not `"Hello, " + name` only — either form is accepted; interpolation is the hit)

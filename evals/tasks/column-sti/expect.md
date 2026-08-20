@@ -1,0 +1,2 @@
+- `table "payments"`
+- `class CardPayment` extending `Payment`

@@ -31,6 +31,7 @@ pub mod qr;
 pub mod render;
 pub mod sign;
 pub mod stationery;
+pub mod svg;
 pub mod template;
 pub mod text;
 

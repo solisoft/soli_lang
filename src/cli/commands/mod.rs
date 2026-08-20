@@ -2292,6 +2292,11 @@ fn create_tarball(project_dir: &Path, dest: &std::path::Path) -> Result<(), Stri
 /// `soli db:schema:dump` / `soli db:schema:load`.
 pub fn run_db_schema(folder: &str, connection: Option<&str>, load: bool) {
     use std::path::PathBuf;
+    // `.env` first, like `db:create` and `db:migrate`. Without it a
+    // `DATABASE_URL` that lives in `.env` was invisible, so `db:schema:dump`
+    // and `db:schema:load` reported "needs a SQL connection" in the one setup
+    // where every other db command works.
+    solilang::serve::env_loader::load_env_files(std::path::Path::new(folder));
     solilang::db::init_from_app_path(std::path::Path::new(folder)).ok();
     let path = PathBuf::from(folder).join("db/schema.sql");
     let run = || {

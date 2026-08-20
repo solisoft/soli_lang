@@ -294,6 +294,39 @@ impl LiveRegistry {
         views.get_mut(id).map(f)
     }
 
+    /// Attach to a live instance if one exists, or register `instance` — under
+    /// one lock.
+    ///
+    /// Returns `Some(existing)` when an instance was already there (the sender is
+    /// attached to it), or `None` when `instance` was registered.
+    ///
+    /// The caller used to `get()`, decide, then `register()`. Two sockets arriving
+    /// together for the same id — the normal case for a room, where every visitor
+    /// shares one instance — both saw "absent", both rendered, and the second
+    /// `register` replaced the first, orphaning the first socket: it stayed open
+    /// but was no longer in the registry, so it never received another update.
+    pub fn attach_or_register(
+        &self,
+        instance: LiveViewInstance,
+        sender: Arc<async_channel::Sender<Result<Message, tungstenite::Error>>>,
+    ) -> Option<LiveViewInstance> {
+        let mut views = self.views.lock().unwrap();
+        let id = instance.id.clone();
+        if let Some(existing) = views.get_mut(&id) {
+            if !existing.is_expired(self.timeout) {
+                existing.senders.retain(|s| !s.is_closed());
+                if !existing.senders.iter().any(|s| Arc::ptr_eq(s, &sender)) {
+                    existing.senders.push(sender);
+                }
+                existing.detached_at = None;
+                existing.touch();
+                return Some(existing.clone());
+            }
+        }
+        views.insert(id, instance);
+        None
+    }
+
     /// Attach another socket to an existing instance (second browser tab).
     pub fn add_sender(
         &self,

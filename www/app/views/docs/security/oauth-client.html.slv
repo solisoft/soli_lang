@@ -71,6 +71,16 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback</code></pre>
     <h2 class="text-2xl font-bold text-white mb-4">Security</h2>
     <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
         <li>Callback verifies <code class="text-cyan-400">state</code> against the session (CSRF)</li>
+        <li><strong class="text-white">PKCE is <code class="text-cyan-400">S256</code>.</strong>
+            <code class="text-cyan-400">begin_pkce()</code> stores a random verifier in the session and returns
+            <code class="text-cyan-400">base64url(SHA256(verifier))</code> unpadded, per RFC&nbsp;7636 &sect;4.2. Earlier cuts
+            sent the raw verifier with <code class="text-cyan-400">code_challenge_method=plain</code>, where the challenge and
+            the verifier are the same string &mdash; PKCE in name only. Never ship <code>plain</code>.</li>
+        <li>The services call <code class="text-cyan-400">HTTP.request(method, url, headers, body)</code>.
+            <code class="text-cyan-400">HTTP.get</code> / <code class="text-cyan-400">HTTP.post</code> read their options hash
+            for <code>timeout</code> alone and return the body as a String, so a <code>"headers"</code> key there is silently
+            dropped &mdash; which is why the generated flow used to 401. Provider responses are status-checked, so a 401
+            reports as a 401 rather than a JSON parse error on the provider's error page.</li>
         <li>Google requires a verified email</li>
         <li>OAuth-created accounts get a random password and confirmed email</li>
         <li>Use HTTPS redirect URIs in production</li>

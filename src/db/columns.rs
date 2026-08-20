@@ -219,28 +219,67 @@ pub fn group_result_names(
     names
 }
 
-/// One grouped row: group keys stay text, aggregates parse to numbers.
-pub fn group_row_to_json(names: &[String], texts: &[Option<String>]) -> serde_json::Value {
+/// Parse an aggregate's text result into a number, or keep it as a string.
+///
+/// Only ever applied to aggregate columns: `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` are
+/// numeric by construction, so a numeric-looking result *is* a number.
+pub fn parse_aggregate_text(text: String) -> serde_json::Value {
+    if let Ok(n) = text.trim().parse::<i64>() {
+        serde_json::json!(n)
+    } else if let Ok(f) = text.trim().parse::<f64>() {
+        serde_json::json!(f)
+    } else {
+        serde_json::Value::String(text)
+    }
+}
+
+/// One grouped row. Aggregates parse to numbers; a group key parses to a number
+/// only when its column is genuinely numeric, and otherwise keeps the exact text
+/// the column held.
+///
+/// `group_key_count` is how many leading entries of `names` are group keys (the
+/// rest are aggregate aliases — see [`group_result_names`]), and
+/// `group_key_numeric` says, per group key, whether its column type is numeric.
+///
+/// The type has to be consulted rather than guessed either way. Parsing every
+/// column (the original behaviour) turned a *text* key of `"00042"` into `42`
+/// and collapsed `"01"` and `"1"` into one bucket downstream. Parsing none of
+/// them fixes that but changes `Order.group_by("year")` on an integer column
+/// from `{"year": 2024}` to `{"year": "2024"}`, breaking arithmetic on the key
+/// and any `row.year == 2024` comparison.
+pub fn group_row_to_json(
+    names: &[String],
+    texts: &[Option<String>],
+    group_key_count: usize,
+    group_key_numeric: &[bool],
+) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     for (index, name) in names.iter().enumerate() {
         let raw = texts.get(index).cloned().flatten();
-        // The group keys are the first `names.len() - aggregates` entries; an
-        // aggregate is always numeric, a key is whatever the column held.
         let value = match raw {
             None => serde_json::Value::Null,
-            Some(text) => {
-                if let Ok(n) = text.trim().parse::<i64>() {
-                    serde_json::json!(n)
-                } else if let Ok(f) = text.trim().parse::<f64>() {
-                    serde_json::json!(f)
+            Some(text) if index < group_key_count => {
+                if group_key_numeric.get(index).copied().unwrap_or(false) {
+                    parse_aggregate_text(text)
                 } else {
                     serde_json::Value::String(text)
                 }
             }
+            Some(text) => parse_aggregate_text(text),
         };
         out.insert(name.clone(), value);
     }
     serde_json::Value::Object(out)
+}
+
+/// Per group key, whether its column holds a numeric type — the companion
+/// argument to [`group_row_to_json`]. An unknown column name is treated as
+/// non-numeric so its text is preserved verbatim.
+pub fn group_key_numeric_flags(schema: &TableSchema, group_fields: &[String]) -> Vec<bool> {
+    group_fields
+        .iter()
+        .map(|field| schema.column(field).is_some_and(|col| col.ty.is_numeric()))
+        .collect()
 }
 
 /// Stamp `created_at` / `updated_at` when the table has them and the caller
@@ -275,6 +314,132 @@ pub fn parse_agg_text(raw: Option<String>) -> serde_json::Value {
                 Err(_) => serde_json::Value::Null,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod group_row_tests {
+    use super::{group_key_numeric_flags, group_row_to_json, parse_aggregate_text};
+    use crate::db::introspect::{build_schema, pg_coltype, RawColumns};
+    use serde_json::json;
+
+    /// A group key on a *text* column keeps the text the column held. Parsing it
+    /// collapsed distinct keys — `"00042"` became `42`, and `"01"` and `"1"`
+    /// landed in one bucket.
+    #[test]
+    fn text_group_keys_keep_their_text_and_aggregates_parse() {
+        let names = vec!["code".to_string(), "n".to_string()];
+        let row = group_row_to_json(
+            &names,
+            &[Some("00042".to_string()), Some("7".to_string())],
+            1,
+            &[false],
+        );
+        assert_eq!(row, json!({ "code": "00042", "n": 7 }));
+    }
+
+    /// A group key on a numeric column stays a JSON number, so `row.year == 2024`
+    /// and arithmetic on the key keep working.
+    #[test]
+    fn numeric_group_keys_stay_numbers() {
+        let names = vec!["year".to_string(), "n".to_string()];
+        let row = group_row_to_json(
+            &names,
+            &[Some("2024".to_string()), Some("7".to_string())],
+            1,
+            &[true],
+        );
+        assert_eq!(row, json!({ "year": 2024, "n": 7 }));
+    }
+
+    #[test]
+    fn leading_zero_text_keys_stay_distinct() {
+        let names = vec!["code".to_string(), "n".to_string()];
+        let a = group_row_to_json(
+            &names,
+            &[Some("01".to_string()), Some("1".to_string())],
+            1,
+            &[false],
+        );
+        let b = group_row_to_json(
+            &names,
+            &[Some("1".to_string()), Some("1".to_string())],
+            1,
+            &[false],
+        );
+        assert_ne!(a["code"], b["code"], "distinct keys must not merge");
+    }
+
+    #[test]
+    fn multiple_group_keys_and_aggregates_split_at_the_boundary() {
+        let names = vec![
+            "region".to_string(),
+            "zip".to_string(),
+            "total".to_string(),
+            "avg".to_string(),
+        ];
+        let row = group_row_to_json(
+            &names,
+            &[
+                Some("north".to_string()),
+                Some("01234".to_string()),
+                Some("10".to_string()),
+                Some("2.5".to_string()),
+            ],
+            2,
+            &[false, false],
+        );
+        assert_eq!(
+            row,
+            json!({ "region": "north", "zip": "01234", "total": 10, "avg": 2.5 })
+        );
+    }
+
+    #[test]
+    fn a_null_cell_is_null_on_either_side_of_the_boundary() {
+        let names = vec!["k".to_string(), "n".to_string()];
+        let row = group_row_to_json(&names, &[None, None], 1, &[false]);
+        assert_eq!(row, json!({ "k": null, "n": null }));
+    }
+
+    /// The flags come from the schema, so `int`/`numeric` keys parse and
+    /// `text`/`date` keys do not. An unknown name is treated as non-numeric.
+    #[test]
+    fn numeric_flags_follow_the_column_types() {
+        let mut raw = RawColumns {
+            columns: vec![("id".into(), "int8".into(), String::new(), false, true)],
+            pk: vec!["id".into()],
+        };
+        for (name, ty) in [
+            ("year", "int4"),
+            ("amount", "numeric"),
+            ("code", "text"),
+            ("day", "date"),
+        ] {
+            raw.columns
+                .push((name.to_string(), ty.to_string(), String::new(), true, false));
+        }
+        let schema = build_schema("legacy", "orders", raw, |t, _| pg_coltype(t)).unwrap();
+        assert_eq!(
+            group_key_numeric_flags(
+                &schema,
+                &[
+                    "year".to_string(),
+                    "amount".to_string(),
+                    "code".to_string(),
+                    "day".to_string(),
+                    "nope".to_string(),
+                ]
+            ),
+            vec![true, true, false, false, false]
+        );
+    }
+
+    #[test]
+    fn aggregate_text_parses_ints_floats_and_keeps_the_rest() {
+        assert_eq!(parse_aggregate_text("7".into()), json!(7));
+        assert_eq!(parse_aggregate_text("2.5".into()), json!(2.5));
+        assert_eq!(parse_aggregate_text("abc".into()), json!("abc"));
     }
 }
 

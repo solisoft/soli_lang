@@ -1002,6 +1002,24 @@ fn expr_print_width(e: &Expr) -> usize {
     use crate::ast::expr::UnaryOp;
     match &e.kind {
         ExprKind::StringLiteral(s) => s.len() + 2,
+        // Without an arm of its own an interpolated string fell to the
+        // `span_inline_width("", …).max(8)` fallback below, which measures
+        // nothing (the source is empty there) and reported 8 for any length.
+        // `guard_clause_to_rewrite` then thought a long postfix line would fit
+        // and emitted one the linter rejects — `soli fmt` producing code that
+        // fails `soli lint` on a freshly generated app.
+        ExprKind::InterpolatedString(parts) => {
+            // Two quotes, plus each literal run, plus `#{` + expr + `}`.
+            2 + parts
+                .iter()
+                .map(|part| match part {
+                    crate::ast::expr::InterpolatedPart::Literal(text) => text.len(),
+                    crate::ast::expr::InterpolatedPart::Expression(inner) => {
+                        3 + expr_print_width(inner)
+                    }
+                })
+                .sum::<usize>()
+        }
         ExprKind::IntLiteral(n) => n.to_string().len(),
         ExprKind::FloatLiteral(_) | ExprKind::DecimalLiteral(_) => 8,
         ExprKind::BoolLiteral(true) => 4,

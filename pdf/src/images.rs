@@ -10,20 +10,19 @@ use crate::error::{PdfError, Result};
 
 /// Process-wide cache of decoded images, keyed by a hash of the source (plus
 /// file mtime+len for filesystem paths, so an edited file re-decodes). PNG
-/// decode — and especially SVG rasterisation (usvg parse + fontdb build +
-/// resvg render) — costs milliseconds per image, yet a server renders the
-/// same template logo on every request. Only deterministic sources are
-/// cached: `data:` URIs (the URI *is* the content) and local files (guarded
-/// by mtime+len); http(s) responses are not.
+/// decode — and SVG → PDF conversion (usvg parse + svg2pdf) — costs
+/// milliseconds per image, yet a server renders the same template logo on
+/// every request. Only deterministic sources are cached: `data:` URIs (the
+/// URI *is* the content) and local files (guarded by mtime+len); http(s)
+/// responses are not.
 struct ImageCache {
     /// Sum of `pixels.len()` over all entries, bounding memory.
     bytes: usize,
     map: HashMap<u64, Arc<ImageData>>,
 }
 
-/// Decoded-pixel budget. A full-size rasterised SVG is ~16 MB RGBA, so this
-/// holds a handful of large logos or dozens of small ones. Wholesale clear on
-/// overflow keeps it simple; live sources re-fill on the next render.
+/// Decoded-image budget. Raster logos are a few MB; SVG Form PDFs are tens of
+/// KB. Wholesale clear on overflow keeps it simple; live sources re-fill.
 const IMAGE_CACHE_MAX_BYTES: usize = 128 * 1024 * 1024;
 
 fn image_cache() -> &'static Mutex<ImageCache> {
@@ -37,7 +36,7 @@ fn image_cache() -> &'static Mutex<ImageCache> {
 }
 
 /// Cache key for `src`, or `None` when the source must not be cached.
-/// `font_bytes` shape the raster for SVG `<text>`, so a fingerprint of them
+/// `font_bytes` shape SVG `<text>` embedding, so a fingerprint of them
 /// (count + lengths) is folded in — different font sets must not share hits.
 fn cache_key(src: &str, font_bytes: &[&[u8]]) -> Option<u64> {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -88,11 +87,12 @@ pub fn load_image(
     let img = Arc::new(decoded);
     if let Some(k) = key {
         let mut cache = image_cache().lock().unwrap();
-        if cache.bytes + img.pixels.len() > IMAGE_CACHE_MAX_BYTES {
+        let n = img.cache_bytes();
+        if cache.bytes + n > IMAGE_CACHE_MAX_BYTES {
             cache.map.clear();
             cache.bytes = 0;
         }
-        cache.bytes += img.pixels.len();
+        cache.bytes += n;
         cache.map.insert(k, img.clone());
     }
     Ok(img)
@@ -187,17 +187,16 @@ fn decode(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     } else {
         img.to_rgb8().into_raw()
     };
-    Ok(ImageData {
-        width_px: w,
-        height_px: h,
-        format: if has_alpha {
+    Ok(ImageData::raster(
+        w,
+        h,
+        if has_alpha {
             PixelFormat::Rgba8
         } else {
             PixelFormat::Rgb8
         },
-        source_key: None,
         pixels,
-    })
+    ))
 }
 
 /// Sniff whether `bytes` are an SVG document. Raster formats (PNG/JPEG/GIF/WebP)
@@ -227,67 +226,20 @@ fn contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|w| w.eq_ignore_ascii_case(needle))
 }
 
-/// Rasterise an SVG into an RGBA8 [`ImageData`] via usvg + resvg + tiny-skia, so
-/// it flows through the same image XObject path as any raster picture. The SVG
-/// is drawn at a quality multiple of its intrinsic size, with the longest edge
-/// clamped to `[MIN_EDGE, MAX_EDGE]` px so tiny icons stay crisp when placed large
-/// and huge viewBoxes don't blow up memory. `<text>` fonts come from `font_bytes`.
+/// Convert an SVG into a vector [`ImageData`]: a standalone PDF whose first
+/// page the backend imports as a Form XObject. Intrinsic size is the SVG's
+/// user-unit size (no quality-upscale pixmap). `<text>` fonts come from
+/// `font_bytes`.
 fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
-    use resvg::{tiny_skia, usvg};
-
-    const QUALITY: f32 = 3.0;
-    const MIN_EDGE: f32 = 512.0;
-    const MAX_EDGE: f32 = 2048.0;
-
-    let mut opt = usvg::Options::default();
-    {
-        // Feed fonts to usvg by bytes (`load_font_data`) rather than
-        // `load_fonts_dir`, which needs fontdb's `fs` feature — kept off so we
-        // don't pull system-font discovery. `font_bytes` is already loaded (the
-        // render's `FontRegistry`), so this is a memcpy, not a disk re-read.
-        let db = opt.fontdb_mut();
-        for &bytes in font_bytes {
-            db.load_font_data(bytes.to_vec());
-        }
-    }
-    let tree = usvg::Tree::from_data(bytes, &opt)
-        .map_err(|e| PdfError::Image(format!("SVG parse: {e}")))?;
-
-    let size = tree.size();
-    let (w, h) = (size.width(), size.height());
-    // usvg guarantees a positive, finite size, so a plain `<= 0` check is safe.
-    if w <= 0.0 || h <= 0.0 {
-        return Err(PdfError::Image("SVG has zero size".into()));
-    }
-    let longest = w.max(h);
-    // Vectors re-rasterise cleanly when upscaled, so a small intrinsic size is
-    // still pushed up to MIN_EDGE for crispness when placed large.
-    let target = (longest * QUALITY).clamp(MIN_EDGE, MAX_EDGE);
-    let scale = target / longest;
-
-    let pw = (w * scale).round().max(1.0) as u32;
-    let ph = (h * scale).round().max(1.0) as u32;
-    let mut pixmap = tiny_skia::Pixmap::new(pw, ph)
-        .ok_or_else(|| PdfError::Image(format!("SVG pixmap alloc failed ({pw}x{ph})")))?;
-    resvg::render(
-        &tree,
-        tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
-
-    // tiny-skia stores premultiplied RGBA; the backend expects straight alpha
-    // (as the `image` crate yields), so demultiply each pixel.
-    let mut pixels = Vec::with_capacity((pw as usize) * (ph as usize) * 4);
-    for px in pixmap.pixels() {
-        let c = px.demultiply();
-        pixels.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
-    }
+    let (pdf, w, h) = crate::svg::svg_to_pdf(bytes, font_bytes)?;
     Ok(ImageData {
-        width_px: pw as usize,
-        height_px: ph as usize,
+        width_px: w.round().max(1.0) as usize,
+        height_px: h.round().max(1.0) as usize,
         format: PixelFormat::Rgba8,
+        pixels: Vec::new(),
         source_key: None,
-        pixels,
+        vector: Some(pdf),
+        opacity: 1.0,
     })
 }
 
@@ -297,7 +249,19 @@ fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
 /// into a soft wash. `source_key` is dropped so the faded copy never shares the
 /// original's cached XObject.
 pub fn faded(img: &ImageData, opacity: f32) -> ImageData {
-    let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u16;
+    let opacity = opacity.clamp(0.0, 1.0);
+    if let Some(pdf) = &img.vector {
+        return ImageData {
+            width_px: img.width_px,
+            height_px: img.height_px,
+            format: img.format,
+            pixels: Vec::new(),
+            source_key: None,
+            vector: Some(pdf.clone()),
+            opacity: img.opacity * opacity,
+        };
+    }
+    let alpha = (opacity * 255.0).round() as u16;
     let scaled = |orig: u16| ((orig * alpha) / 255) as u8;
     let n = img.width_px * img.height_px;
     let src = &img.pixels;
@@ -325,6 +289,8 @@ pub fn faded(img: &ImageData, opacity: f32) -> ImageData {
         format: PixelFormat::Rgba8,
         pixels,
         source_key: None,
+        vector: None,
+        opacity: 1.0,
     }
 }
 
@@ -376,26 +342,15 @@ mod tests {
     #[test]
     fn faded_scales_alpha_and_promotes_to_rgba() {
         // RGB source: colours kept, a fresh alpha = round(255 * opacity).
-        let rgb = ImageData {
-            width_px: 1,
-            height_px: 1,
-            format: PixelFormat::Rgb8,
-            pixels: vec![10, 20, 30],
-            source_key: Some(7),
-        };
+        let mut rgb = ImageData::raster(1, 1, PixelFormat::Rgb8, vec![10, 20, 30]);
+        rgb.source_key = Some(7);
         let f = faded(&rgb, 0.5);
         assert_eq!(f.format, PixelFormat::Rgba8);
         assert_eq!(f.pixels, vec![10, 20, 30, 128]);
         assert_eq!(f.source_key, None, "faded copy drops the cache key");
 
         // RGBA source: existing alpha is multiplied by opacity.
-        let rgba = ImageData {
-            width_px: 1,
-            height_px: 1,
-            format: PixelFormat::Rgba8,
-            pixels: vec![10, 20, 30, 200],
-            source_key: None,
-        };
+        let rgba = ImageData::raster(1, 1, PixelFormat::Rgba8, vec![10, 20, 30, 200]);
         assert_eq!(faded(&rgba, 0.5).pixels, vec![10, 20, 30, 100]);
 
         // Opacity is clamped to [0, 1].
@@ -404,27 +359,24 @@ mod tests {
     }
 
     #[test]
-    fn detects_and_rasterises_svg() {
+    fn detects_and_converts_svg() {
         // A 100x60 SVG with a filled rect — text-free, so no fonts needed.
         let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60"><rect width="100" height="60" fill="#0a7"/></svg>"##;
         assert!(looks_like_svg(svg));
         let img = decode(svg, &[]).unwrap();
-        // Intrinsic 100x60 is upscaled so the longest edge reaches MIN_EDGE (512).
-        assert_eq!(img.format, PixelFormat::Rgba8);
-        assert_eq!(img.width_px, 512);
-        assert_eq!(img.height_px, 307); // 60 * (512/100), rounded
-        assert_eq!(img.pixels.len(), img.width_px * img.height_px * 4);
-        // The fill is opaque somewhere in the middle.
-        let mid = (img.height_px / 2 * img.width_px + img.width_px / 2) * 4;
-        assert_eq!(img.pixels[mid + 3], 255);
+        assert!(img.is_vector(), "SVG becomes a PDF Form, not a pixmap");
+        assert_eq!(img.width_px, 100);
+        assert_eq!(img.height_px, 60);
+        let pdf = img.vector.as_ref().unwrap();
+        assert!(pdf.starts_with(b"%PDF"), "svg2pdf emitted a PDF");
     }
 
     #[test]
     fn svg_data_uri_is_detected() {
         let uri = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='5'/></svg>";
         let img = load_image(uri, false, Duration::from_secs(1), &[]).unwrap();
-        assert_eq!(img.format, PixelFormat::Rgba8);
-        assert!(img.width_px >= 512);
+        assert!(img.is_vector());
+        assert_eq!((img.width_px, img.height_px), (10, 10));
     }
 
     #[test]

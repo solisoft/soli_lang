@@ -174,8 +174,14 @@ fn pool_for_active() -> Result<SqPool, String> {
         .url
         .clone()
         .ok_or_else(|| format!("connection {name:?}: url required for sqlite"))?;
+    // Keyed by name AND url. The name alone was not enough: a connection
+    // repointed at a different file (a config change, a test fixture, an app
+    // switching databases at runtime) kept handing back the pool for the OLD
+    // file, so reads and writes silently went to the previous database — and a
+    // deleted file left a pool of handles to nothing.
+    let cache_key = format!("{name}\u{1f}{url}");
     let mut map = pools().lock().unwrap();
-    if let Some(p) = map.get(&name) {
+    if let Some(p) = map.get(&cache_key) {
         return Ok(p.clone());
     }
     let target = parse_target(&url);
@@ -202,7 +208,7 @@ fn pool_for_active() -> Result<SqPool, String> {
         .connection_timeout(Duration::from_secs(10))
         .build(manager)
         .map_err(|e| format!("sqlite pool ({name}): {e}"))?;
-    map.insert(name, pool.clone());
+    map.insert(cache_key, pool.clone());
     Ok(pool)
 }
 
@@ -496,9 +502,11 @@ pub fn update(
     }
     let table_q = Dialect::Sqlite.quote_ident(table)?;
     let doc_str = document.to_string();
-    // json_patch is SQLite's RFC 7396 merge: the same semantics as Postgres
-    // `||` and MySQL JSON_MERGE_PATCH for a flat patch. `excluded.doc` holds
-    // the patch, so one statement covers both the update and the insert.
+    // `json_patch` is SQLite's RFC 7396 merge — the semantics `super::merge`
+    // defines and every adapter now produces. (It is NOT the same as Postgres
+    // `jsonb ||`, which the old comment here claimed: `||` is shallow and stores
+    // a null rather than removing the key. `postgres::update` compensates.)
+    // `excluded.doc` holds the patch, so one statement covers update and insert.
     let set = if merge {
         "doc = json_patch(COALESCE(doc, '{}'), excluded.doc)"
     } else {
@@ -936,31 +944,31 @@ fn reset_sqlite_session(conn: &rusqlite::Connection) {
     }
 }
 
-/// `db.execute`: a dedicated file connection so ATTACH / PRAGMA cannot poison
-/// the pool. `:memory:` *is* the pool (a second connection is a second empty
-/// database), so that path resets the session afterwards instead.
+/// `db.execute`: runs on the pooled connection, resetting the session afterwards
+/// so a stray `ATTACH` / `PRAGMA` cannot poison it.
 pub fn execute_raw(sql: &str) -> Result<(), String> {
+    // Still resolved so a connection with no `url` is refused with the same
+    // message as every other sqlite entry point.
     let spec = active_spec()?;
     let url = spec
         .url
         .as_deref()
         .ok_or_else(|| format!("connection {:?}: url required for sqlite", spec.name))?;
-    match parse_target(url) {
-        Target::Memory => with_conn(|conn| {
-            let result = conn
-                .execute_batch(sql)
-                .map_err(|e| lite_error("sqlite execute", &e));
-            reset_sqlite_session(conn);
-            result
-        }),
-        Target::File(path) => {
-            let mut conn = rusqlite::Connection::open(&path)
-                .map_err(|e| lite_error("sqlite execute open", &e))?;
-            init_conn(&mut conn).map_err(|e| lite_error("sqlite execute init", &e))?;
-            conn.execute_batch(sql)
-                .map_err(|e| lite_error("sqlite execute", &e))
-        }
-    }
+    // The pooled connection for both targets. Opening a second connection to the
+    // same FILE looked like useful isolation but self-deadlocked: SQLite takes a
+    // database-wide write lock, so `db.execute` called inside a `transaction()`
+    // blocked forever waiting for the very transaction that was calling it. (The
+    // memory target never had the option — a second `:memory:` handle is a
+    // different database.) Session isolation comes from `reset_sqlite_session`
+    // afterwards, which is what actually undoes stray `PRAGMA` / `ATTACH`.
+    let _ = url;
+    with_conn(|conn| {
+        let result = conn
+            .execute_batch(sql)
+            .map_err(|e| lite_error("sqlite execute", &e));
+        reset_sqlite_session(conn);
+        result
+    })
 }
 
 // ---------- column-aware model execution ----------
@@ -1230,6 +1238,7 @@ pub fn col_group_by(
     let compiled = cols::compile_group_by_cols(Dialect::Sqlite, q, group_fields, aggs)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let names = super::columns::group_result_names(group_fields, aggs);
+    let numeric = super::columns::group_key_numeric_flags(&q.schema, group_fields);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let mut stmt = conn
@@ -1246,7 +1255,12 @@ pub fn col_group_by(
             let texts: Vec<Option<String>> = (0..names.len())
                 .map(|i| row.get::<_, Option<String>>(i).ok().flatten())
                 .collect();
-            out.push(super::columns::group_row_to_json(&names, &texts));
+            out.push(super::columns::group_row_to_json(
+                &names,
+                &texts,
+                group_fields.len(),
+                &numeric,
+            ));
         }
         Ok(out)
     })
@@ -1872,6 +1886,38 @@ mod tests {
                 aggregate(&gone, SqlAgg::Count, "amount").unwrap(),
                 serde_json::json!(0)
             );
+        });
+    }
+
+    /// `db.execute` used to open a SECOND connection to the same file. SQLite
+    /// takes a database-wide write lock, so calling it inside a `transaction()`
+    /// blocked on the very transaction that was calling it — a self-deadlock that
+    /// only appeared on a file target (`:memory:` never had a second handle to
+    /// open). It runs on the pooled connection now.
+    #[test]
+    fn execute_raw_inside_a_transaction_does_not_self_deadlock() {
+        with_sqlite("execute-in-tx", || {
+            begin_transaction(None).expect("begin");
+            // Before the fix this blocked until SQLite's busy timeout expired and
+            // then failed; it must simply succeed on the transaction's own
+            // connection.
+            execute_raw("CREATE TABLE probe_in_tx (id INTEGER PRIMARY KEY)")
+                .expect("db.execute inside a transaction");
+            commit_transaction().expect("commit");
+
+            // And the DDL is really there afterwards.
+            let exists = with_conn(|conn| {
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                        ["probe_in_tx"],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| lite_error("probe", &e))?;
+                Ok(count)
+            })
+            .expect("probe");
+            assert_eq!(exists, 1, "the table created inside the tx must persist");
         });
     }
 

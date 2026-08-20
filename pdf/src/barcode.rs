@@ -79,13 +79,12 @@ fn rasterize(pattern: &[u8]) -> Result<ImageData> {
         }
     }
 
-    Ok(ImageData {
+    Ok(ImageData::raster(
         width_px,
         height_px,
-        format: PixelFormat::Gray8,
-        source_key: None,
+        PixelFormat::Gray8,
         pixels,
-    })
+    ))
 }
 
 #[cfg(test)]

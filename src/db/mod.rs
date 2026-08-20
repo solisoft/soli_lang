@@ -18,6 +18,7 @@ pub mod error;
 pub mod hash_filter;
 pub mod import;
 pub mod introspect;
+pub mod merge;
 #[cfg(feature = "mysql")]
 pub mod mysql;
 #[cfg(feature = "postgres")]

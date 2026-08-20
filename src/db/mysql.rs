@@ -112,8 +112,12 @@ fn pool_for_active() -> Result<MyPool, String> {
         .url
         .clone()
         .ok_or_else(|| format!("connection {name:?}: url required for mysql"))?;
+    // Keyed by name AND url, so a connection repointed at a different database
+    // (a config change, an app switching at runtime) does not keep handing back
+    // the pool for the old one. See the matching comment in `sqlite.rs`.
+    let cache_key = format!("{name}\u{1f}{url}");
     let mut map = pools().lock().unwrap();
-    if let Some(p) = map.get(&name) {
+    if let Some(p) = map.get(&cache_key) {
         return Ok(p.clone());
     }
     let opts = Opts::from_url(&url).map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
@@ -125,7 +129,7 @@ fn pool_for_active() -> Result<MyPool, String> {
         .connection_timeout(Duration::from_secs(10))
         .build(manager)
         .map_err(|e| format!("mysql pool ({name}): {e}"))?;
-    map.insert(name, pool.clone());
+    map.insert(cache_key, pool.clone());
     Ok(pool)
 }
 
@@ -485,7 +489,13 @@ pub fn group_by(
             let mut map = serde_json::Map::new();
             for (i, name) in col_names.iter().enumerate() {
                 let v: Option<MysqlValue> = row.get(i);
-                map.insert(name.clone(), mysql_value_to_json(v));
+                // Group keys keep whatever the column held; only aggregates are
+                // numeric by construction. Coercing keys turned a `"00042"`
+                // group into `42` and merged `"01"` with `"1"`.
+                map.insert(
+                    name.clone(),
+                    mysql_value_to_json(v, i >= group_fields.len()),
+                );
             }
             out.push(serde_json::Value::Object(map));
         }
@@ -493,7 +503,12 @@ pub fn group_by(
     })
 }
 
-fn mysql_value_to_json(v: Option<MysqlValue>) -> serde_json::Value {
+/// Convert one MySQL cell to JSON.
+///
+/// `parse_text` decides what happens to a `Bytes` payload: aggregates are numeric
+/// by construction so their text is parsed, while a group key is returned as the
+/// string the column held. Parsing keys as well turned `"00042"` into `42`.
+fn mysql_value_to_json(v: Option<MysqlValue>, parse_text: bool) -> serde_json::Value {
     match v {
         None | Some(MysqlValue::NULL) => serde_json::Value::Null,
         Some(MysqlValue::Int(n)) => serde_json::json!(n),
@@ -502,10 +517,8 @@ fn mysql_value_to_json(v: Option<MysqlValue>) -> serde_json::Value {
         Some(MysqlValue::Double(n)) => serde_json::json!(n),
         Some(MysqlValue::Bytes(b)) => {
             let s = String::from_utf8_lossy(&b).into_owned();
-            if let Ok(n) = s.parse::<i64>() {
-                serde_json::json!(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                serde_json::json!(f)
+            if parse_text {
+                super::columns::parse_aggregate_text(s)
             } else {
                 serde_json::Value::String(s)
             }
@@ -1058,6 +1071,7 @@ pub fn col_group_by(
     let compiled = cols::compile_group_by_cols(Dialect::Mysql, q, group_fields, aggs)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let names = super::columns::group_result_names(group_fields, aggs);
+    let numeric = super::columns::group_key_numeric_flags(&q.schema, group_fields);
     with_conn(|conn| {
         let rows: Vec<mysql::Row> = conn
             .exec(&compiled.sql, to_mysql_params(&compiled.params))
@@ -1072,7 +1086,7 @@ pub fn col_group_by(
                             .flatten()
                     })
                     .collect();
-                super::columns::group_row_to_json(&names, &texts)
+                super::columns::group_row_to_json(&names, &texts, group_fields.len(), &numeric)
             })
             .collect())
     })

@@ -68,6 +68,10 @@ pub struct ListQueryParts {
     /// judges the legacy `filter_sdbql` + binds pair that the IR replaces.
     pub hash_filter: Option<super::hash_filter::HashFilter>,
     pub filter_sdbql: Option<String>,
+    /// True when a *string* `.where("…")` contributed to `filter_sdbql`, as
+    /// opposed to it being the SDBQL echo a hash `.where` also produces. Only
+    /// the echo is safe to drop when `hash_filter` is set.
+    pub has_raw_where: bool,
     pub bind_vars: HashMap<String, serde_json::Value>,
     pub soft_delete: SoftDeleteMode,
     pub is_soft_delete_model: bool,
@@ -79,10 +83,25 @@ pub struct ListQueryParts {
 
 /// Build a ListQuery IR (dialect-agnostic filters); validates with `dialect`.
 pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<ListQuery, String> {
-    // A structured filter supersedes the legacy pair: its binds are compiled from
-    // the IR, so emitting them again as equalities would double them, and the
-    // portable-shape assert does not apply to it.
+    // A hash `.where` sets BOTH `hash_filter` (the IR) and `filter_sdbql` (its
+    // SDBQL echo, for the SoliDB path), so the two being present together is
+    // the normal case — the echo's binds are compiled from the IR and must not
+    // be re-emitted as equalities.
+    //
+    // `has_raw_where` is the thing that distinguishes a *chained string*
+    // `.where` from that echo. Dropping the raw filter in that case silently
+    // discarded a predicate the caller asked for: `.where({active: true})
+    // .where("doc.age >= @min", {min: 18})` returned minors. Raw SDBQL is not
+    // portable to SQL, so refuse the combination loudly instead.
     let structured = parts.hash_filter.is_some();
+    if structured && parts.has_raw_where {
+        return Err(
+            "String/raw SDBQL `.where(\"…\")` cannot be combined with a hash \
+             `.where({ … })` on a SQL adapter. Express both conditions in the hash \
+             form: `.where({ \"active\": true, \"age\": { \"gte\": 18 } })`."
+                .to_string(),
+        );
+    }
     let mut eq_filters = BTreeMap::new();
     if let Some(ref f) = parts.filter_sdbql {
         if !structured && !f.trim().is_empty() {
@@ -652,13 +671,34 @@ pub fn compile_update_all_d(
     let mut params = Vec::new();
     params.push(SqlBind::Json(patch.clone()));
     let patch_ph = d.ph(1);
+    // Every adapter applies RFC 7396 (see `super::merge`). MySQL and SQLite have
+    // a primitive for it; Postgres does not — `jsonb ||` is shallow and stores a
+    // null instead of removing the key, so the null half is corrected with a
+    // trailing key removal.
+    //
+    // The recursive half cannot be expressed in one Postgres statement, and a
+    // read-merge-write loop over an unbounded row set is not a bulk update. A
+    // patch containing a nested object is refused there rather than silently
+    // destroying the stored object's other keys.
+    if d == Dialect::Postgres && super::merge::needs_recursive_merge(patch) {
+        return Err(
+            "`update_all` with a nested object in the patch is not supported on \
+             Postgres: merging into a stored object requires per-row recursion, and \
+             `jsonb ||` would replace the object and drop its other keys. Patch the \
+             nested field with a flat value, or iterate the records and `save` each."
+                .to_string(),
+        );
+    }
     let set = match d {
-        Dialect::Postgres => format!("doc = COALESCE(doc, '{{}}'::jsonb) || {patch_ph}"),
+        Dialect::Postgres => format!(
+            "doc = (COALESCE(doc, '{{}}'::jsonb) || {patch_ph}) - (\
+                 SELECT COALESCE(array_agg(key), ARRAY[]::text[]) \
+                 FROM jsonb_each({patch_ph}) WHERE value = 'null'::jsonb\
+             )"
+        ),
         Dialect::Mysql => {
             format!("doc = JSON_MERGE_PATCH(COALESCE(doc, '{{}}'), CAST({patch_ph} AS JSON))")
         }
-        // json_patch is SQLite's RFC 7396 merge — the same semantics as
-        // JSON_MERGE_PATCH and jsonb `||` for a flat patch.
         Dialect::Sqlite => {
             format!("doc = json_patch(COALESCE(doc, '{{}}'), json({patch_ph}))")
         }
@@ -974,6 +1014,7 @@ mod tests {
             ),
             // A legacy pair that would NOT pass the portable-shape assert.
             filter_sdbql: Some("doc.views > @views".into()),
+            has_raw_where: false,
             bind_vars,
             soft_delete: SoftDeleteMode::Default,
             is_soft_delete_model: false,
@@ -993,6 +1034,35 @@ mod tests {
         assert!(c.sql.contains("WHERE"), "{}", c.sql);
         assert_eq!(c.params.len(), 1, "one bind, from the IR only");
 
+        // A *chained* string `.where` is not the hash filter's echo — it is an
+        // independent predicate. Dropping it silently returned rows the caller
+        // had excluded, so the mixed shape has to be refused.
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("active".to_string(), serde_json::json!(true));
+        bind_vars.insert("min".to_string(), serde_json::json!(18));
+        let parts = ListQueryParts {
+            table: "users".into(),
+            hash_filter: Some(
+                HashFilter::from_json_map(
+                    serde_json::json!({ "active": true }).as_object().unwrap(),
+                    "where",
+                )
+                .unwrap(),
+            ),
+            filter_sdbql: Some("(doc.active == @active) AND (doc.age >= @min)".into()),
+            has_raw_where: true,
+            bind_vars,
+            soft_delete: SoftDeleteMode::Default,
+            is_soft_delete_model: false,
+            order_field: None,
+            order_desc: false,
+            limit: None,
+            offset: None,
+        };
+        let err = list_query_from_parts(parts, Dialect::Postgres)
+            .expect_err("a chained raw .where must not be silently dropped");
+        assert!(err.contains("cannot be combined"), "{err}");
+
         // Without a structured filter, a non-portable raw filter is still refused.
         let mut bind_vars = HashMap::new();
         bind_vars.insert("views".to_string(), serde_json::json!(10));
@@ -1000,6 +1070,7 @@ mod tests {
             table: "posts".into(),
             hash_filter: None,
             filter_sdbql: Some("doc.views > @views".into()),
+            has_raw_where: false,
             bind_vars,
             soft_delete: SoftDeleteMode::Default,
             is_soft_delete_model: false,

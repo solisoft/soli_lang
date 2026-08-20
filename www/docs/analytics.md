@@ -41,7 +41,12 @@ rows = Order
 - The `aggregate` spec maps `alias: [func, field]` — or `alias: ["count"]`
   for a plain row count.
 - In grouped mode, `order` must name a **group field or an aggregate alias**;
-  `limit` / `offset` compose as usual.
+  `limit` / `offset` compose as usual. Sorting is numeric on aggregates, so
+  `.order("n", "desc").limit(3)` really is the top three by count.
+- On a columnar (`table "…"`) model, a group key keeps its **column's** type: an
+  `integer` or `numeric` column yields a JSON number, a `text` column yields the
+  exact stored text (so a zero-padded code like `"00042"` stays distinct from
+  `"42"`).
 
 Available aggregate functions:
 

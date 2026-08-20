@@ -36,11 +36,10 @@ subsetter = "0.1"
 # QR encoding only (we rasterize the module matrix ourselves into an RGB buffer),
 # so default features (image/svg renderers) stay off.
 qrcode = { version = "0.14", default-features = false }
-# SVG rasterisation: parse with usvg, render with resvg into a tiny-skia pixmap,
-# then feed the pixels through the normal image XObject path. `system-fonts` stays
-# off — we resolve <text> fonts from the caller's font_dirs, like the rest of the
-# engine, for deterministic/offline renders.
-resvg = { version = "0.45", default-features = false, features = ["text"] }
+# SVG → PDF Form XObject. usvg parses; svg2pdf emits vectors (and embeds
+# <text> glyphs). system-fonts stay off — we load faces from font_dirs, like
+# the rest of the engine, so renders stay deterministic/offline.
+svg2pdf = { version = "0.13", default-features = false, features = ["text"] }
 # 1D barcode encoding only — we rasterise the bar pattern ourselves into an RGB
 # buffer (like QR), so the image/svg generator features stay off.
 barcoders = { version = "2", default-features = false, features = ["std"] }

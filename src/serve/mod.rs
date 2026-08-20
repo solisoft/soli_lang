@@ -53,7 +53,7 @@ pub(crate) mod file_upload;
 pub mod job_worker;
 mod json;
 mod repl_session;
-mod tailwind;
+pub(crate) mod tailwind;
 mod worker_pool;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
@@ -2722,6 +2722,15 @@ pub struct LiveViewEventData {
     pub event: String,
     /// Event parameters
     pub params: serde_json::Value,
+    /// Session of the socket that sent this event, when a client sent it.
+    ///
+    /// Upload ids are owned by the session that uploaded them, and the taker has
+    /// to be that same session. Using the *instance's* session instead meant a
+    /// room — one instance deliberately shared by many visitors — only let the
+    /// visitor who happened to mount it complete an upload. `None` for
+    /// server-originated events (ticks, live-query wakeups), which carry no
+    /// upload ids.
+    pub sender_session: Option<String>,
     /// Response channel - sends back result
     pub response_tx: oneshot::Sender<Result<(), String>>,
 }
@@ -2980,6 +2989,10 @@ async fn handle_hyper_request(
 
                 // Initialize the LiveView connection
                 let liveview_id = liveview_instance_id(&session_id, &component, room.as_deref());
+                // Kept for the event sites below: `handle_live_connection` takes
+                // ownership, and a room instance's own session is the creator's,
+                // not this socket's.
+                let socket_session = session_id.clone();
                 handle_live_connection(component.clone(), session_id, tx_arc.clone(), room);
 
                 // Fire a synthetic `connect` event so user handlers can seed
@@ -2993,6 +3006,7 @@ async fn handle_hyper_request(
                         component: component.clone(),
                         event: "connect".to_string(),
                         params: serde_json::json!({}),
+                        sender_session: Some(socket_session.clone()),
                         response_tx,
                     });
                 }
@@ -3068,6 +3082,9 @@ async fn handle_hyper_request(
                                                         component: component.clone(),
                                                         event: event.clone(),
                                                         params,
+                                                        sender_session: Some(
+                                                            socket_session.clone(),
+                                                        ),
                                                         response_tx,
                                                     };
 
@@ -4755,10 +4772,18 @@ fn handle_liveview_event(
     // state — a typical handler returns that hash, so a pre-merge
     // snapshot would drop the child's patch.
     let mut event_params = data.params.clone();
+    // The session that actually sent the event owns any upload ids in it. Falling
+    // back to the instance's own session keeps server-originated events working;
+    // using it *first* was the bug — a room instance carries its creator's
+    // session, so no other visitor in the room could complete an upload.
+    let taker_session = data
+        .sender_session
+        .clone()
+        .unwrap_or_else(|| instance.session_id.clone());
     let state_value = json_to_value(&crate::live::nested::prepare_handler_state(
         &mut instance.state,
         &mut event_params,
-        Some(instance.session_id.as_str()),
+        Some(taker_session.as_str()),
     ));
     let params_value = json_to_value(&event_params);
 
@@ -5221,6 +5246,8 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
                 component: component.clone(),
                 event: "tick".to_string(),
                 params: serde_json::json!({}),
+                // Server-originated: no client socket, so no upload ids to claim.
+                sender_session: None,
                 response_tx,
             });
             // If the channel is permanently disconnected, stop the task.
@@ -5253,6 +5280,8 @@ pub(crate) fn enqueue_live_query_changed(subscribers: Vec<(String, String)>) {
             component,
             event: "live_query_changed".to_string(),
             params: serde_json::json!({}),
+            // Server-originated: no client socket, so no upload ids to claim.
+            sender_session: None,
             response_tx,
         });
     }

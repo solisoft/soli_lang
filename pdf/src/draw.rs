@@ -235,7 +235,8 @@ impl PixelFormat {
     }
 }
 
-/// Decoded raster image ready to embed.
+/// Decoded image ready to embed: a raster pixmap, or an SVG converted to a
+/// standalone PDF that the backend imports as a Form XObject.
 #[derive(Debug, Clone)]
 pub struct ImageData {
     pub width_px: usize,
@@ -248,6 +249,39 @@ pub struct ImageData {
     /// plane split + flate, milliseconds for a large logo — is reused across
     /// renders instead of recomputed per save.
     pub source_key: Option<u64>,
+    /// When `Some`, this is an SVG: `vector` is a complete PDF from svg2pdf
+    /// (page 1 becomes a Form XObject). `pixels` is empty. Intrinsic size is
+    /// still in `width_px`/`height_px` (SVG user units, treated as pt at 72
+    /// dpi for layout).
+    pub vector: Option<Vec<u8>>,
+    /// Extra alpha applied when painting (background-image fade). Rasters bake
+    /// this into `pixels`; vectors keep it here so the Form can use an ExtGState.
+    pub opacity: f32,
+}
+
+impl ImageData {
+    pub fn raster(width_px: usize, height_px: usize, format: PixelFormat, pixels: Vec<u8>) -> Self {
+        Self {
+            width_px,
+            height_px,
+            format,
+            pixels,
+            source_key: None,
+            vector: None,
+            opacity: 1.0,
+        }
+    }
+
+    pub fn is_vector(&self) -> bool {
+        self.vector.is_some()
+    }
+
+    pub fn cache_bytes(&self) -> usize {
+        self.vector
+            .as_ref()
+            .map(|v| v.len())
+            .unwrap_or(self.pixels.len())
+    }
 }
 
 /// Where one template element ended up on the page.

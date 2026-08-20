@@ -22,16 +22,22 @@ class OauthClient
     session_delete("oauth_pkce_verifier")
   }
 
-  # PKCE (S256): store verifier, return code_challenge for the authorize URL.
+  # PKCE (S256): store the verifier, return the code_challenge for the
+  # authorize URL.
+  #
+  # `code_challenge = base64url(SHA256(verifier))`, unpadded, per RFC 7636 §4.2.
+  # `Crypto.sha256` returns hex, so it is decoded back to bytes before
+  # encoding — `Base64.urlsafe_encode` is already unpadded, which is what the
+  # spec requires.
+  #
+  # This used to send the raw verifier with `code_challenge_method=plain`, which
+  # is PKCE in name only: the challenge and the verifier were the same string,
+  # so an attacker who intercepted the authorization request could complete the
+  # exchange. Never ship `plain`.
   static def begin_pkce() -> String {
     let verifier = Crypto.random_hex(32)
     session_set("oauth_pkce_verifier", verifier)
-    # S256 challenge: base64url(SHA256(verifier)). Crypto.sha256 returns hex;
-    # for Google we send the plain verifier as code_challenge_method=plain
-    # when S256 helpers are unavailable — prefer S256 if you add a helper.
-    # Google accepts "plain" for confidential clients on localhost; production
-    # apps should use S256. See Google OIDC docs.
-    verifier
+    Base64.urlsafe_encode(Hex.decode(Crypto.sha256(verifier)))
   }
 
   static def pkce_verifier() -> Any {

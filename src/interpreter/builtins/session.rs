@@ -1488,7 +1488,15 @@ pub fn register_cookie_builtins(env: &mut Environment) {
             };
             validate_cookie_pair(&name, &value)?;
             let attrs = match args.get(2) {
-                None => "; Path=/".to_string(),
+                // Build from an empty option set rather than hardcoding the
+                // string: the hardcoded form skipped `build_cookie_attributes`
+                // and with it `SOLI_FORCE_SECURE_COOKIES`, so a two-argument
+                // `set_cookie("remember_me", token)` shipped a credential with
+                // no `Secure` even when the operator had declared the app
+                // TLS-only. An empty set yields the same `; Path=/`.
+                None | Some(Value::Null) => {
+                    build_cookie_attributes(&crate::interpreter::value::HashPairs::default())?
+                }
                 Some(Value::Hash(options)) => build_cookie_attributes(&options.borrow())?,
                 Some(other) => {
                     return Err(format!(
@@ -1666,6 +1674,34 @@ fn build_cookie_attributes(
     }
 
     Ok(format!("; Path={}{}", path, attrs))
+}
+
+#[cfg(test)]
+mod cookie_attribute_tests {
+    use super::build_cookie_attributes;
+    use crate::interpreter::value::HashPairs;
+    use std::sync::atomic::Ordering;
+
+    /// The two-argument `set_cookie` builds from an empty option set, so it must
+    /// pick up `SOLI_FORCE_SECURE_COOKIES` like every other path. It used to
+    /// hardcode `"; Path=/"` and skip this function entirely, shipping
+    /// application credentials with no `Secure` on a TLS-only app.
+    ///
+    /// One `#[test]`: the flag is process-global.
+    #[test]
+    fn empty_options_honour_force_secure_cookies() {
+        let flag = crate::interpreter::builtins::secure_cookies::force_secure_flag();
+
+        flag.store(false, Ordering::Relaxed);
+        let plain = build_cookie_attributes(&HashPairs::default()).unwrap();
+        assert_eq!(plain, "; Path=/", "no options, no forcing");
+
+        flag.store(true, Ordering::Relaxed);
+        let forced = build_cookie_attributes(&HashPairs::default()).unwrap();
+        assert_eq!(forced, "; Path=/; Secure", "forcing must reach this path");
+
+        flag.store(false, Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]

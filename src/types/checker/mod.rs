@@ -63,6 +63,18 @@ impl TypeChecker {
             }
         }
 
+        // Between the passes: fold `include` / `extend` members into the classes
+        // that mix them in. Its own pass so declaration order does not matter.
+        let class_decls: Vec<ClassDecl> = program
+            .statements
+            .iter()
+            .filter_map(|stmt| match &stmt.kind {
+                StmtKind::Class(decl) => Some((**decl).clone()),
+                _ => None,
+            })
+            .collect();
+        self.apply_mixin_members(&class_decls);
+
         // Second pass: check all declarations
         for stmt in &program.statements {
             if let Err(e) = self.check_stmt(stmt) {

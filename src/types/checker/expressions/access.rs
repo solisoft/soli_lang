@@ -48,6 +48,21 @@ impl TypeChecker {
                             return_type: Box::new(Type::Bool),
                         })
                     }
+                    // Reflection the runtime implements on the class value itself
+                    // (see `executor::access::member`'s `Value::Class` arm). The
+                    // checker knew nothing about it, so `A.define_method("hi", …)`
+                    // was rejected on both engines and needed `--no-type-check`.
+                    // The shapes are dynamic by nature, hence `Any`.
+                    "define_method" | "alias_method" | "class_eval" | "send" => {
+                        return Ok(Type::Any)
+                    }
+                    "methods" => return Ok(Type::Array(Box::new(Type::String))),
+                    "respond_to?" => {
+                        return Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
                     _ => {}
                 }
                 Err(TypeError::NoSuchMember {

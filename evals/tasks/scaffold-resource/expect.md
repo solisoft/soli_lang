@@ -1,0 +1,2 @@
+- `resources("notes")`
+- `class NotesController`

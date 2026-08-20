@@ -532,6 +532,18 @@ every file. `db:schema:load` runs that SQL and records the versions in
 `_migrations`. Both accept `--connection NAME`. SoliDB has no equivalent — its
 schema is the collections themselves.
 
+All four refuse an unknown or value-less flag with exit 64 rather than ignoring
+it. That matters most for `db:drop`: `soli db:drop --connection` with the value
+forgotten used to fall through with no connection and drop the **default**
+database without a word.
+
+An in-file `connection "name"` in a migration is resolved against
+`config/database.toml` when the file is loaded, and an unknown name is an error
+naming the connections that do exist. Left unchecked, a typo made every step
+fall back to SoliDB — printing *Applied* while creating collections in the
+default database and recording the version there, leaving the real target
+permanently unmigrated.
+
 Or set them directly:
 
 ```bash

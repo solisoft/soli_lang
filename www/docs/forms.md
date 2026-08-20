@@ -237,6 +237,8 @@ To make tokens mandatory for browser form posts, set:
 
 ```bash
 SOLI_CSRF_TOKENS=require   # form posts without a valid token → 403
+                           # (the built-in /__soli/jobs dashboard is exempt —
+                           #  Basic auth, so no session token to embed)
 ```
 
 JSON/API traffic is never token-gated; `skip_csrf("/path")` and

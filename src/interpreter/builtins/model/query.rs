@@ -105,6 +105,11 @@ pub struct QueryBuilder {
     /// Structured hash `.where` (comparisons, IN, LIKE, OR). Set only for the
     /// hash form; the string/SDBQL form leaves this `None`.
     pub hash_filter: Option<crate::db::hash_filter::HashFilter>,
+    /// True once a *string* `.where("…")` has contributed to `filter`. A hash
+    /// `.where` also writes `filter` (its SDBQL echo, for the SoliDB path), so
+    /// `filter.is_some()` cannot tell the two apart — and only the echo is safe
+    /// for the SQL compiler to drop in favour of `hash_filter`.
+    pub has_raw_where: bool,
     pub bind_vars: HashMap<SymbolId, serde_json::Value>,
     pub order_by: Option<(SymbolId, SymbolId)>,
     pub limit_val: Option<usize>,
@@ -183,6 +188,7 @@ impl QueryBuilder {
             class: None,
             filter: None,
             hash_filter: None,
+            has_raw_where: false,
             bind_vars: HashMap::new(),
             order_by: None,
             limit_val: None,
@@ -226,6 +232,7 @@ impl QueryBuilder {
             class: Some(class),
             filter: None,
             hash_filter: None,
+            has_raw_where: false,
             bind_vars: HashMap::new(),
             order_by: None,
             limit_val: None,
@@ -1962,6 +1969,7 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         table: collection.to_string(),
         hash_filter: qb.hash_filter.clone(),
         filter_sdbql: qb.filter.clone(),
+        has_raw_where: qb.has_raw_where,
         bind_vars,
         soft_delete: soft,
         is_soft_delete_model: qb.is_soft_delete_model,

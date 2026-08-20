@@ -31,6 +31,12 @@ pub(crate) static FORCE_SECURE_COOKIES: AtomicBool = AtomicBool::new(false);
 static ENV_INIT: Once = Once::new();
 
 /// Whether session cookies should always carry the `Secure` flag.
+/// The process-global flag itself, for tests that need to drive it.
+#[cfg(test)]
+pub(crate) fn force_secure_flag() -> &'static std::sync::atomic::AtomicBool {
+    &FORCE_SECURE_COOKIES
+}
+
 pub fn is_force_secure_cookies_enabled() -> bool {
     FORCE_SECURE_COOKIES.load(Ordering::Relaxed)
 }

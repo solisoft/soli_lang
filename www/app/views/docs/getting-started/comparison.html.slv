@@ -26,7 +26,7 @@
 
     <h2 class="text-2xl font-bold text-white mb-6">The Philosophy</h2>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
-        <li><strong class="text-white">One binary, three commands.</strong> <code>curl</code> the binary, <code>soli new</code>, <code>soli serve</code>. No <code>bundle install</code>, no <code>npm install</code>, no compile step for your app code.</li>
+        <li><strong class="text-white">One binary, three commands.</strong> <code>curl</code> the binary, <code>soli new</code>, <code>soli serve</code>. No <code>bundle install</code>, no <code>npm install</code>, no compile step for your app code &mdash; a generated app has no <code>package.json</code> at all, and Soli compiles its Tailwind with a checksummed standalone binary it fetches once per machine.</li>
         <li><strong class="text-white">Convention over configuration</strong>, Rails-style: auto-loaded models/controllers/policies, RESTful <code>resources</code> routing, <code class="text-amber-300">*_path</code> helpers, ERB-style views.</li>
         <li><strong class="text-white">Server-rendered first.</strong> htmx + Alpine.js ship vendored in every new app; instant navigation and hover prefetch are built into the server. No JS build pipeline &mdash; by design.</li>
         <li><strong class="text-white">SoliDB-native by default.</strong> The full ORM surface (graph, vector, columnar, timeseries, raw SDBQL) speaks SoliDB. <code>SOLI_DB_ADAPTER=postgres</code>, <code>mysql</code>, or <code>sqlite</code> gives document CRUD + aggregates + batched <code>includes</code>, and <code>table "…"</code> maps a model onto a table's real columns (CRUD, hash <code>.where</code>, aggregates, batched associations, <code>group_by</code>, bulk writes, transactions, <code>encrypts</code>, STI), which migrations can now create portably &mdash; still not full SQL parity (no composite primary keys; raw SQL goes through <code>Model.find_by_sql</code>), and deliberate about that ceiling. See <code>docs/sql-adapter-design.md</code>.</li>
@@ -142,6 +142,7 @@
         <code class="text-cyan-400">soli generate oauth github</code> / <code class="text-cyan-400">google</code>
         (requires auth first). See
         <a href="/docs/security/oauth-client" class="text-amber-400 hover:text-amber-300">OAuth Client</a>.
+        The generated flow uses state CSRF and PKCE <code>S256</code>, and status-checks every provider response.
         Ceiling: GitHub and Google only in v1 &mdash; not a full OmniAuth catalog.
     </p>
     <p class="text-gray-400 mb-8">

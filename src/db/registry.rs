@@ -322,8 +322,11 @@ pub fn expand_env(input: &str) -> String {
                 continue;
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        // Step by whole characters: `bytes[i] as char` reinterprets each UTF-8
+        // byte as a codepoint, so a password containing `é` came back as `Ã©`.
+        let ch = input[i..].chars().next().unwrap_or('\u{fffd}');
+        out.push(ch);
+        i += ch.len_utf8();
     }
     out
 }
@@ -334,14 +337,26 @@ thread_local! {
     static ACTIVE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Restores the previously active connection on drop.
+///
+/// A plain post-call restore is not enough: a panic inside the adapter unwinds
+/// straight past it, and `serve::run_caught` catches the panic and keeps the
+/// worker alive. The override then leaked for the rest of that worker's life,
+/// so every later request on it read *and wrote* the secondary database.
+struct ActiveGuard(Option<String>);
+
+impl Drop for ActiveGuard {
+    fn drop(&mut self) {
+        let prev = self.0.take();
+        ACTIVE.with(|c| *c.borrow_mut() = prev);
+    }
+}
+
 /// Run `f` with the given connection name as the active SQL/SoliDB target.
 pub fn with_connection<T>(name: &str, f: impl FnOnce() -> T) -> T {
-    ACTIVE.with(|c| {
-        let prev = c.replace(Some(name.to_string()));
-        let out = f();
-        *c.borrow_mut() = prev;
-        out
-    })
+    let prev = ACTIVE.with(|c| c.replace(Some(name.to_string())));
+    let _guard = ActiveGuard(prev);
+    f()
 }
 
 /// Active connection name, or registry default.

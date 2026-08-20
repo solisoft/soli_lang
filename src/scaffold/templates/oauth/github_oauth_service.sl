@@ -14,51 +14,65 @@ class GithubOauth
       "&state=" + state
   }
 
+  # `HTTP.request` is the only form that sends headers: `HTTP.post`/`HTTP.get`
+  # inspect their options hash for `timeout` alone, so a `"headers"` key there
+  # is silently dropped — and they return the body as a String, not a response
+  # hash. Headers are the 3rd positional argument; the body is the 4th.
   static def exchange_code(code) -> Any {
-    let response = HTTP.post(
+    let response = HTTP.request(
+      "POST",
       "https://github.com/login/oauth/access_token",
+      {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
       json_stringify({
         "client_id": getenv("GITHUB_CLIENT_ID"),
         "client_secret": getenv("GITHUB_CLIENT_SECRET"),
         "code": code,
         "redirect_uri": getenv("GITHUB_REDIRECT_URI")
-      }),
-      {
-        "headers": {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        }
-      }
+      })
     )
-    json_parse(response["body"] || response.body)
+    GithubOauth._json_body(response, "token exchange")
   }
 
   static def fetch_user(access_token) -> Any {
-    let response = HTTP.get(
+    let response = HTTP.request(
+      "GET",
       "https://api.github.com/user",
       {
-        "headers": {
-          "Authorization": "Bearer " + access_token,
-          "Accept": "application/json",
-          "User-Agent": "soli-oauth"
-        }
+        "Authorization": "Bearer " + access_token,
+        "Accept": "application/json",
+        "User-Agent": "soli-oauth"
       }
     )
-    json_parse(response["body"] || response.body)
+    GithubOauth._json_body(response, "profile fetch")
   }
 
   static def fetch_emails(access_token) -> Any {
-    let response = HTTP.get(
+    let response = HTTP.request(
+      "GET",
       "https://api.github.com/user/emails",
       {
-        "headers": {
-          "Authorization": "Bearer " + access_token,
-          "Accept": "application/json",
-          "User-Agent": "soli-oauth"
-        }
+        "Authorization": "Bearer " + access_token,
+        "Accept": "application/json",
+        "User-Agent": "soli-oauth"
       }
     )
-    json_parse(response["body"] || response.body)
+    GithubOauth._json_body(response, "email fetch")
+  }
+
+  # `HTTP.request` returns the response instead of raising on a non-2xx, so the
+  # status has to be read. Without this a 401 surfaced as a JSON parse error on
+  # GitHub's error page.
+  static def _json_body(response, step) -> Any {
+    let status = response["status"]
+    let body = response["body"].to_s
+    unless status >= 200 && status < 300
+      throw "GitHub " + step + " failed (HTTP " + str(status) + "): " + body
+    end
+
+    json_parse(body)
   }
 
   static def primary_email(emails) -> Any {

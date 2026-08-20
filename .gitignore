@@ -15,7 +15,10 @@ node_modules
 # on a clean checkout with "".env.test file not found". These hold no secrets.
 !tests-e2e/*/.env.test
 .claude/settings.local.json
-tasks*
+# Anchored to the repo root: the unanchored `tasks*` also matched
+# `evals/tasks/`, so the eval harness's task fixtures were never committed and
+# `scripts/evals/run.py` raised FileNotFoundError on a clean clone.
+/tasks*
 
 # codegraph sub-crate build artifacts
 /codegraph/target/

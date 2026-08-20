@@ -75,9 +75,59 @@ pub(crate) fn add_xobject_to_document(
             doc.add_object(stream)
         }
         XObject::External(external_xobject) => {
-            let stream = external_xobject.stream.into_lopdf();
+            // PATCHED (soli-pdf): hoist nested streams before writing. An
+            // imported SVG carries its resources (ICCBased colour spaces,
+            // FontFile2 programs, embedded images) inside `/Resources` and
+            // `/Group`; `DictItem::to_lopdf` renders those as *direct*
+            // streams, which PDF forbids and no parser can read. Give each
+            // one its own object and reference it.
+            let mut dict = external_xobject.stream.dict.clone();
+            hoist_nested_streams(&mut dict, doc);
+            let stream =
+                lopdf::Stream::new(build_dict(&dict), external_xobject.stream.content.clone())
+                    .with_compression(external_xobject.stream.compress);
             doc.add_object(stream)
         }
+    }
+}
+
+/// PATCHED (soli-pdf): replace every `DictItem::Stream` reachable from `map`
+/// with an indirect reference to a newly added object.
+///
+/// PDF streams are only legal as indirect objects (PDF 32000-1 7.3.8), so a
+/// dictionary value that is itself a stream has to be lifted out into the
+/// document and referenced. Nested dicts and arrays are walked too, and inner
+/// streams are hoisted before their parent so the parent's dict already holds
+/// references by the time it is serialized.
+fn hoist_nested_streams(map: &mut BTreeMap<String, DictItem>, doc: &mut lopdf::Document) {
+    for item in map.values_mut() {
+        hoist_nested_streams_item(item, doc);
+    }
+}
+
+fn hoist_nested_streams_item(item: &mut DictItem, doc: &mut lopdf::Document) {
+    match item {
+        DictItem::Stream { stream } => {
+            let mut inner = stream.dict.clone();
+            hoist_nested_streams(&mut inner, doc);
+            // The content keeps whatever `/Filter` the source declared, so
+            // already-compressed streams are referenced as-is rather than
+            // re-encoded.
+            let lo = lopdf::Stream::new(build_dict(&inner), stream.content.clone())
+                .with_compression(stream.compress);
+            let id = doc.add_object(lo);
+            *item = DictItem::Ref {
+                obj: id.0,
+                gen: id.1,
+            };
+        }
+        DictItem::Dict { map } => hoist_nested_streams(map, doc),
+        DictItem::Array(items) => {
+            for inner in items {
+                hoist_nested_streams_item(inner, doc);
+            }
+        }
+        _ => {}
     }
 }
 

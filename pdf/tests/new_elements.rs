@@ -49,7 +49,7 @@ fn text_of(op: &DrawOp) -> Option<String> {
 
 #[test]
 fn svg_image_is_decoded_and_embedded() {
-    // An inline SVG data-URI (text-free, so no fonts are needed to rasterise).
+    // An inline SVG data-URI (text-free, so no fonts are needed).
     let tmpl = br##"{ "fonts": ["titillium"], "content": [
         { "type": "image", "width": 80,
           "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='%23123456'/></svg>" }
@@ -58,12 +58,11 @@ fn svg_image_is_decoded_and_embedded() {
     let images = ops_of(&doc, |o| matches!(o, DrawOp::Image { .. }));
     assert_eq!(images, 1, "the SVG produced one image op");
     assert_eq!(doc.images.len(), 1, "one decoded image");
-    assert_eq!(
-        doc.images[0].format,
-        soli_pdf::draw::PixelFormat::Rgba8,
-        "SVG rasterises to RGBA"
+    assert!(
+        doc.images[0].is_vector(),
+        "SVG is embedded as a PDF Form, not a pixmap"
     );
-    assert!(!doc.images[0].pixels.is_empty(), "non-empty raster");
+    assert!(!doc.images[0].vector.as_ref().unwrap().is_empty());
     assert!(
         warnings.is_empty(),
         "no warnings for a valid SVG: {warnings:?}"
@@ -72,23 +71,23 @@ fn svg_image_is_decoded_and_embedded() {
 
 #[test]
 fn svg_text_renders_with_a_font_from_font_dirs() {
-    // Black text on a transparent canvas (no background rect): if the named
-    // family resolves from `font_dirs`, the glyphs paint opaque near-black
-    // pixels; if it does not, the raster stays fully transparent.
+    // Black text on a transparent canvas: if the named family resolves from
+    // `font_dirs`, svg2pdf embeds a font file in the Form PDF; if it does not,
+    // the page has no Font resource.
     let tmpl = br##"{ "fonts": ["titillium"], "content": [
         { "type": "image", "width": 160,
           "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='40'><text x='4' y='30' font-family='Titillium Web' font-size='28' fill='black'>Soli</text></svg>" }
     ] }"##;
     let (doc, _) = render(tmpl, b"{}");
     assert_eq!(doc.images.len(), 1);
-    let dark = doc.images[0]
-        .pixels
-        .chunks_exact(4)
-        .filter(|px| px[3] > 200 && px[0] < 60 && px[1] < 60 && px[2] < 60)
-        .count();
+    let pdf = doc.images[0]
+        .vector
+        .as_ref()
+        .expect("SVG should convert to a PDF Form");
+    let hay = String::from_utf8_lossy(pdf);
     assert!(
-        dark > 0,
-        "SVG <text> rendered glyphs using a font_dirs font"
+        hay.contains("/Font") || pdf.windows(5).any(|w| w == b"/Font"),
+        "SVG <text> embedded a font from font_dirs"
     );
 }
 
@@ -371,4 +370,74 @@ fn multi_series_data_bound_grouped_bars() {
 /// Count draw ops matching a predicate.
 fn ops_of(doc: &LaidOutDoc, pred: impl Fn(&DrawOp) -> bool) -> usize {
     all_ops(doc).iter().filter(|o| pred(o)).count()
+}
+
+/// Regression: an imported SVG's own resources (colour spaces, embedded fonts,
+/// images) must be written as **indirect** objects. PDF forbids a direct stream
+/// inside a dictionary, and emitting one produced a file that no parser —
+/// qpdf, poppler, or lopdf itself — could read.
+#[test]
+fn svg_resource_streams_are_written_as_indirect_objects() {
+    // Two SVGs: a plain shape (svg2pdf still attaches an ICCBased `/Group`)
+    // and one with <text>, which additionally embeds a FontFile2 stream.
+    for svg in [
+        "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'>\
+         <rect width='40' height='40' fill='%23123456'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='40'>\
+         <text x='4' y='30' font-family='Titillium Web' font-size='28' fill='black'>Soli</text></svg>",
+    ] {
+        let tmpl = format!(
+            r##"{{ "fonts": ["titillium"], "content": [
+                {{ "type": "image", "width": 80, "value": "data:image/svg+xml,{svg}" }}
+            ] }}"##
+        );
+        let out = soli_pdf::render::render_with_warnings(tmpl.as_bytes(), b"{}", &opts())
+            .expect("render");
+
+        let doc = lopdf::Document::load_mem(&out.pdf).expect("output re-parses as a PDF");
+        let form = doc
+            .objects
+            .values()
+            .filter_map(|o| match o {
+                lopdf::Object::Stream(s) => Some(s),
+                _ => None,
+            })
+            .find(|s| {
+                s.dict.get(b"Subtype").and_then(|o| o.as_name()).ok() == Some(b"Form".as_slice())
+            })
+            .expect("the SVG is present as a Form XObject");
+
+        // Every resource that is a stream must be reached by reference, never
+        // inlined. Walk the Form's dict and assert no `Object::Stream` hides
+        // inside it.
+        fn assert_no_inline_stream(obj: &lopdf::Object, path: &str) {
+            match obj {
+                lopdf::Object::Stream(_) => panic!("inline stream at {path}"),
+                lopdf::Object::Dictionary(d) => {
+                    for (k, v) in d.iter() {
+                        assert_no_inline_stream(v, &format!("{path}/{}", String::from_utf8_lossy(k)));
+                    }
+                }
+                lopdf::Object::Array(a) => {
+                    for (i, v) in a.iter().enumerate() {
+                        assert_no_inline_stream(v, &format!("{path}[{i}]"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert_no_inline_stream(&lopdf::Object::Dictionary(form.dict.clone()), "/Form");
+
+        // And the references must actually resolve to objects in the document.
+        let resources = form
+            .dict
+            .get(b"Resources")
+            .and_then(|o| o.as_dict())
+            .expect("Form has /Resources");
+        for (_, v) in resources.iter() {
+            if let lopdf::Object::Reference(id) = v {
+                doc.get_object(*id).expect("resource reference resolves");
+            }
+        }
+    }
 }

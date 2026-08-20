@@ -4025,6 +4025,22 @@ Pure string builders — six-field expressions (`sec min hour day-of-month month
 | `Cron.daily_at("03:00")` | `0 0 3 * * *` |
 | `Cron.weekly_at("monday", "09:00")` | `0 0 9 * * Mon` |
 
+`Cron.every` refuses an interval cron cannot express, rather than emitting one
+that never runs:
+
+| Rejected | Why |
+|----------|-----|
+| `"90 seconds"` | Cron has no sub-minute field; the remainder would be dropped |
+| `"90 minutes"` | The minute field only reaches 59, and 90 is not a whole number of hours |
+| `"25 hours"` | The hour field only reaches 23 |
+| `"40 days"` | The day-of-month field only reaches 31 |
+
+Every in-range value is accepted. Note that `*/N` means "every value of this
+field divisible by N", and each field restarts on its own cycle — so
+`Cron.every("45 minutes")` fires at `:00` and `:45`, and the gap across the hour
+boundary is 15 minutes, not 45. That is how cron works everywhere; pick a divisor
+of 60 (or of 24 for hours) when you want an even spacing.
+
 ### Declarative `static cron`
 
 A class can declare a `static cron` field; on boot, worker 0 upserts a cron entry named after the class (snake_case, e.g. `nightly_report_job`).

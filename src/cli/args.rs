@@ -1085,17 +1085,34 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut folder = ".".to_string();
                 let mut connection = None;
+                let cmd = if dropping { "db:drop" } else { "db:create" };
                 while i < args.len() {
                     match args[i].as_str() {
-                        "--connection" | "-c" if i + 1 < args.len() => {
-                            connection = Some(args[i + 1].clone());
-                            i += 2;
+                        "--connection" | "-c" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("{cmd} --connection requires a connection name");
+                                process::exit(64);
+                            }
+                            connection = Some(args[i].clone());
+                            i += 1;
                         }
-                        other if !other.starts_with('-') => {
+                        flag if flag.starts_with("--connection=") => {
+                            connection = Some(flag["--connection=".len()..].to_string());
+                            i += 1;
+                        }
+                        // Never fall through on an unrecognised flag. A typo'd
+                        // or value-less `--connection` used to leave
+                        // `connection` as None and silently act on the DEFAULT
+                        // database — for `db:drop`, unrecoverably.
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown {cmd} flag: {other}");
+                            process::exit(64);
+                        }
+                        other => {
                             folder = other.to_string();
                             i += 1;
                         }
-                        _ => i += 1,
                     }
                 }
                 options.command = if dropping {
@@ -1110,17 +1127,38 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut folder = ".".to_string();
                 let mut connection = None;
+                let cmd = if loading {
+                    "db:schema:load"
+                } else {
+                    "db:schema:dump"
+                };
                 while i < args.len() {
                     match args[i].as_str() {
-                        "--connection" | "-c" if i + 1 < args.len() => {
-                            connection = Some(args[i + 1].clone());
-                            i += 2;
+                        "--connection" | "-c" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("{cmd} --connection requires a connection name");
+                                process::exit(64);
+                            }
+                            connection = Some(args[i].clone());
+                            i += 1;
                         }
-                        other if !other.starts_with('-') => {
+                        flag if flag.starts_with("--connection=") => {
+                            connection = Some(flag["--connection=".len()..].to_string());
+                            i += 1;
+                        }
+                        // Never fall through on an unrecognised flag. A typo'd
+                        // or value-less `--connection` used to leave
+                        // `connection` as None and silently act on the DEFAULT
+                        // database — for `db:drop`, unrecoverably.
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown {cmd} flag: {other}");
+                            process::exit(64);
+                        }
+                        other => {
                             folder = other.to_string();
                             i += 1;
                         }
-                        _ => i += 1,
                     }
                 }
                 options.command = if loading {

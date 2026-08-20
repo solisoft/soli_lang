@@ -18,11 +18,12 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use printpdf::{
-    Actions, BorderArray, Color as PpColor, Destination, FontId, ImageCompression,
-    ImageOptimizationOptions, Line, LineDashPattern, LinePoint, LinkAnnotation, Mm, Op, PaintMode,
-    ParsedFont, PdfDocument, PdfFontHandle, PdfPage, PdfSaveOptions, Point, Polygon as PpPolygon,
-    PolygonRing, Pt, RawImage, RawImageData, RawImageFormat, Rect as PpRect, Rgb as PpRgb,
-    TextItem, TextMatrix, WindingOrder, XObjectId, XObjectTransform,
+    Actions, BorderArray, Color as PpColor, Destination, DictItem, ExternalStream, ExternalXObject,
+    FontId, ImageCompression, ImageOptimizationOptions, Line, LineDashPattern, LinePoint,
+    LinkAnnotation, Mm, Op, PaintMode, ParsedFont, PdfDocument, PdfFontHandle, PdfPage,
+    PdfSaveOptions, Point, Polygon as PpPolygon, PolygonRing, Pt, Px, RawImage, RawImageData,
+    RawImageFormat, Rect as PpRect, Rgb as PpRgb, TextItem, TextMatrix, WindingOrder, XObjectId,
+    XObjectTransform,
 };
 
 use crate::color::Rgb;
@@ -166,10 +167,15 @@ pub fn emit(
         font_ids.insert(*slot, pdf.add_font(&parsed));
     }
 
-    // Register images once each.
+    // Register images once each. Rasters become Image XObjects; SVGs become
+    // Form XObjects (vectors), built from the svg2pdf page.
     let mut image_ids: Vec<XObjectId> = Vec::with_capacity(doc.images.len());
     for img in &doc.images {
-        image_ids.push(pdf.add_image_owned(raw_image(img)));
+        if let Some(svg_pdf) = &img.vector {
+            image_ids.push(pdf.add_xobject(&svg_pdf_to_xobject(svg_pdf, img.opacity)?));
+        } else {
+            image_ids.push(pdf.add_image_owned(raw_image(img)));
+        }
     }
 
     for page in &doc.pages {
@@ -259,6 +265,162 @@ pub fn emit(
 /// Convert points to millimetres (printpdf page size is in mm).
 fn px_mm(pt: f32) -> f32 {
     pt * 0.352_778
+}
+
+/// Import page 1 of an svg2pdf document as a self-contained Form XObject.
+/// Resources are inlined (no dangling refs — printpdf only adds the stream
+/// itself). The Form's matrix maps the page to a 1×1 square so `UseXobject`
+/// scaling matches the raster image path.
+fn svg_pdf_to_xobject(pdf_bytes: &[u8], opacity: f32) -> Result<ExternalXObject> {
+    use lopdf::{Dictionary, Document, Object};
+
+    let src = Document::load_mem(pdf_bytes)
+        .map_err(|e| PdfError::Backend(format!("SVG Form: parse: {e}")))?;
+    let page_id = src
+        .page_iter()
+        .next()
+        .ok_or_else(|| PdfError::Backend("SVG Form: no page".into()))?;
+
+    let mut content = src
+        .get_page_content(page_id)
+        .map_err(|e| PdfError::Backend(format!("SVG Form: could not read content: {e}")))?;
+    let bbox = page_media_box(&src, page_id).unwrap_or([0.0, 0.0, 1.0, 1.0]);
+    let width = (bbox[2] - bbox[0]).abs().max(1.0);
+    let height = (bbox[3] - bbox[1]).abs().max(1.0);
+
+    let mut resources = Dictionary::new();
+    if let Ok((inline, referenced)) = src.get_page_resources(page_id) {
+        for rid in referenced.iter().rev() {
+            if let Ok(d) = src.get_dictionary(*rid) {
+                for (k, v) in d.iter() {
+                    resources.set(k.clone(), v.clone());
+                }
+            }
+        }
+        if let Some(d) = inline {
+            for (k, v) in d.iter() {
+                resources.set(k.clone(), v.clone());
+            }
+        }
+    }
+    let resources = inline_object(&src, &Object::Dictionary(resources), 0);
+
+    let opacity = opacity.clamp(0.0, 1.0);
+    let resources = if opacity < 0.999 {
+        let mut res = match resources {
+            Object::Dictionary(d) => d,
+            _ => Dictionary::new(),
+        };
+        let mut gs = Dictionary::new();
+        gs.set("ca", Object::Real(opacity));
+        gs.set("CA", Object::Real(opacity));
+        let mut ext = Dictionary::new();
+        ext.set("SoliCa", Object::Dictionary(gs));
+        res.set("ExtGState", Object::Dictionary(ext));
+        content.splice(0..0, b"q /SoliCa gs ".iter().copied());
+        content.extend_from_slice(b" Q");
+        Object::Dictionary(res)
+    } else {
+        resources
+    };
+
+    let sx = 1.0 / width;
+    let sy = 1.0 / height;
+    let mut dict = Dictionary::new();
+    dict.set("Type", Object::Name(b"XObject".to_vec()));
+    dict.set("Subtype", Object::Name(b"Form".to_vec()));
+    dict.set("FormType", Object::Integer(1));
+    dict.set(
+        "BBox",
+        Object::Array(bbox.iter().copied().map(Object::Real).collect()),
+    );
+    dict.set(
+        "Matrix",
+        Object::Array(vec![
+            Object::Real(sx),
+            Object::Real(0.0),
+            Object::Real(0.0),
+            Object::Real(sy),
+            Object::Real(0.0),
+            Object::Real(0.0),
+        ]),
+    );
+    dict.set("Resources", resources);
+    if let Ok(page) = src.get_dictionary(page_id) {
+        if let Ok(group) = page.get(b"Group") {
+            dict.set("Group", inline_object(&src, group, 0));
+        }
+    }
+
+    let dict_item = DictItem::from_lopdf(&Object::Dictionary(dict));
+    let map = match dict_item {
+        DictItem::Dict { map } => map,
+        _ => std::collections::BTreeMap::new(),
+    };
+
+    Ok(ExternalXObject {
+        stream: ExternalStream {
+            dict: map,
+            content,
+            compress: true,
+        },
+        width: Some(Px(width.round().max(1.0) as usize)),
+        height: Some(Px(height.round().max(1.0) as usize)),
+        dpi: Some(72.0),
+    })
+}
+
+fn inline_object(doc: &lopdf::Document, obj: &lopdf::Object, depth: usize) -> lopdf::Object {
+    use lopdf::{Dictionary, Object, Stream};
+    if depth > 64 {
+        return obj.clone();
+    }
+    match obj {
+        Object::Reference(id) => match doc.get_object(*id) {
+            Ok(resolved) => inline_object(doc, resolved, depth + 1),
+            Err(_) => Object::Null,
+        },
+        Object::Dictionary(d) => {
+            let mut nd = Dictionary::new();
+            for (k, v) in d.iter() {
+                nd.set(k.clone(), inline_object(doc, v, depth + 1));
+            }
+            Object::Dictionary(nd)
+        }
+        Object::Array(a) => {
+            Object::Array(a.iter().map(|v| inline_object(doc, v, depth + 1)).collect())
+        }
+        Object::Stream(s) => {
+            let dict = match inline_object(doc, &Object::Dictionary(s.dict.clone()), depth + 1) {
+                Object::Dictionary(d) => d,
+                _ => s.dict.clone(),
+            };
+            let mut ns = Stream::new(dict, s.content.clone());
+            ns.allows_compression = s.allows_compression;
+            Object::Stream(ns)
+        }
+        other => other.clone(),
+    }
+}
+
+fn page_media_box(doc: &lopdf::Document, page_id: lopdf::ObjectId) -> Option<[f32; 4]> {
+    let dict = doc.get_dictionary(page_id).ok()?;
+    let mb = match dict.get(b"MediaBox").ok()? {
+        lopdf::Object::Reference(r) => doc.get_object(*r).ok()?,
+        other => other,
+    };
+    let a = match mb {
+        lopdf::Object::Array(a) if a.len() == 4 => a,
+        _ => return None,
+    };
+    let num = |o: &lopdf::Object| -> Option<f32> {
+        match o {
+            lopdf::Object::Integer(i) => Some(*i as f32),
+            lopdf::Object::Real(r) => Some(*r),
+            _ => None,
+        }
+    };
+    Some([num(&a[0])?, num(&a[1])?, num(&a[2])?, num(&a[3])?])
 }
 
 fn raw_image(img: &ImageData) -> RawImage {

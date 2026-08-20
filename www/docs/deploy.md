@@ -191,9 +191,14 @@ local_domain_base = "dev.example.test"   # for local ones
 sites_dir         = "~/workspace/proxy/sites"
 worktrees_dir     = "~/.soli/previews"
 env_template      = ".env.preview.example"
-build_command     = "npm ci && npm run build:css"
+build_command     = ""                   # optional; Soli needs no npm step
 seed              = true
 ```
+
+`build_command` is for projects that keep their own asset toolchain. A
+`soli new` app has no `package.json` and compiles its Tailwind with the
+binary Soli ships, so leave it empty unless you added a build step yourself
+— `npm ci` on a project without a lockfile fails the preview build.
 
 ### The env template must not be your production `.env`
 

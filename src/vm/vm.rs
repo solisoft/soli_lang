@@ -1185,7 +1185,10 @@ impl Vm {
                                 hash_ref
                                     .insert(HashKey::String(key.to_string().into()), value.clone());
                             }
-                            self.push(Value::Null);
+                            drop(hash_ref);
+                            // Same rule as `Op::SetIndex`: the expression's value
+                            // is the assigned value, not null.
+                            self.push(value);
                         }
                         other => {
                             return Err(RuntimeError::NoSuchProperty {
@@ -1347,9 +1350,10 @@ impl Vm {
                         Value::Hash(hash) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value;
+                                *existing = value.clone();
                             } else {
-                                hash_ref.insert(HashKey::String(key.to_string().into()), value);
+                                hash_ref
+                                    .insert(HashKey::String(key.to_string().into()), value.clone());
                             }
                         }
                         other => {
@@ -1360,7 +1364,10 @@ impl Vm {
                             });
                         }
                     }
-                    self.push(Value::Null);
+                    // The expression's value is the assigned value, matching the
+                    // tree-walker; pushing null made `h["k"] = v` as a
+                    // function's last statement return null under `--vm`.
+                    self.push(value);
                 }
                 Op::HashGetGlobalConst(global_idx, key_idx) => {
                     let global_name: *const str = {
@@ -1524,9 +1531,10 @@ impl Vm {
                         Some(Value::Hash(hash)) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value;
+                                *existing = value.clone();
                             } else {
-                                hash_ref.insert(HashKey::String(key.to_string().into()), value);
+                                hash_ref
+                                    .insert(HashKey::String(key.to_string().into()), value.clone());
                             }
                         }
                         Some(other) => {
@@ -1543,7 +1551,9 @@ impl Vm {
                             ));
                         }
                     }
-                    self.push(Value::Null);
+                    // The expression's value is the assigned value, matching the
+                    // tree-walker and the other three hash-set opcodes.
+                    self.push(value);
                 }
                 Op::Closure(idx) => {
                     let frame = self.frames.last().unwrap();
@@ -1710,11 +1720,17 @@ impl Vm {
                     let value = self.stack.pop().unwrap();
                     let index = self.stack.pop().unwrap();
                     let object = self.stack.pop().unwrap();
+                    // An assignment expression evaluates to the assigned value,
+                    // which is what the tree-walker returns. Pushing `object`
+                    // here made `h[k] = v` as a function's last statement return
+                    // the whole container under `--vm` and `v` under `--dev`.
+                    // Statement position is unaffected: every emission site
+                    // follows this with a `Pop`.
                     if Self::try_set_index_hit(&object, &index, value.clone()) {
-                        self.stack.push(object);
+                        self.stack.push(value);
                     } else {
-                        self.op_set_index(&object, &index, value, self.current_span())?;
-                        self.stack.push(object);
+                        self.op_set_index(&object, &index, value.clone(), self.current_span())?;
+                        self.stack.push(value);
                     }
                 }
                 Op::BuildString(n) => {
@@ -1830,7 +1846,7 @@ impl Vm {
                         is_module: true,
                         ..Default::default()
                     };
-                    if let Some(hooks) = crate::interpreter::mixin_registry::take(&name) {
+                    if let Some(hooks) = crate::interpreter::mixin_registry::get(&name) {
                         *class.included_hook_stmts.borrow_mut() = hooks.included;
                         *class.extended_hook_stmts.borrow_mut() = hooks.extended;
                         *class.concern_method_names.borrow_mut() = hooks.concern_method_names;

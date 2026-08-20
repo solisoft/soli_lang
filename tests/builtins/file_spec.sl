@@ -95,8 +95,22 @@ describe("File Existence", fn() {
     });
 
     test("is_dir() returns true for directory", fn() {
-        let result = File.is_dir("/tmp");
-        assert(result);
+        // A directory this test creates, not the platform's `/tmp`. On macOS
+        // `/tmp` is a symlink to `private/tmp`, and `File` is deliberately
+        // nofollow (that is the jail policy), so `File.is_dir("/tmp")` is
+        // correctly false there while being true on Linux. Use `Trusted` to
+        // check the follow-symlinks side separately.
+        let dir = "/tmp/soli_is_dir_probe";
+        mkdir_p(dir);
+
+        assert(File.is_dir(dir));
+    });
+
+    test("is_dir() follows a symlinked path only through Trusted", fn() {
+        // `/tmp` is a real directory on Linux and a symlink on macOS. `Trusted`
+        // follows symlinks, so it answers true either way; `File` does not
+        // follow, which is the point of the policy.
+        assert(Trusted.is_dir("/tmp"));
     });
 
     test("is_dir() returns false for file", fn() {

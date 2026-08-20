@@ -129,19 +129,15 @@ docker run --rm soli --version
 ## Create a New MVC Project
 
 ```bash
-# Clone this example or template
-git clone https://github.com/solilang/solilang.git
-cd solilang/examples/mvc_app
-
-# Install frontend dependencies
-npm install
-
-# Build CSS
-npm run build:css
-
-# Start development server
-npm run dev
+soli new my_app
+cd my_app
+soli serve . --dev
 ```
+
+There is no `npm install` step and no `package.json`: `soli new` compiles
+`app/assets/css/application.css` itself, with the same checksummed standalone
+Tailwind binary the dev server uses, and commits the result. Node is not
+required to build or run a Soli app.
 
 ## Project Setup
 
@@ -184,32 +180,48 @@ soli serve . --dev
 
 In `--dev` mode the server compiles your Tailwind CSS for you: it scans
 `app/assets/css/*.css`, detects whether the project is **Tailwind v3 or v4**
-(from your CSS directives and `package.json`), and writes the result to
-`public/css/`. It recompiles on startup and whenever views, asset CSS,
-controllers, or helpers change, so new utility classes show up on the next
-reload.
+(from your CSS directives, and from `package.json` if you keep one), and
+writes the result to `public/css/`. It recompiles on startup and whenever
+views, asset CSS, controllers, or helpers change, so new utility classes show
+up on the next reload.
 
 Which Tailwind binary it uses:
 
-- a local `node_modules/.bin/tailwindcss` if present (whatever version you
-  installed — preferred), otherwise
+- a local `node_modules/.bin/tailwindcss` if present — `soli new` does not
+  create one, but a project that keeps its own npm toolchain has deliberately
+  installed that CLI, so its version wins; otherwise
 - a SHA-256-pinned standalone CLI downloaded to `~/.soli/bin/` (v4.3.1 for
   v4 projects, v3.4.17 for legacy v3 projects).
 
-Because the dev server handles this, a separate Tailwind watcher is optional.
-If you prefer to run your own (e.g. for the official `--watch` incremental
-mode), the template still ships the npm scripts:
+### Pinning a Tailwind version
 
-```bash
-# Start both the Tailwind watcher and the Soli server together
-npm run dev
+To compile with a version other than the built-in pin, name it in `soli.toml`:
+
+```toml
+[assets]
+tailwind_version = "4.1.5"
+# Optional: pin the exact bytes. Without it, the download is verified against
+# the release's own sha256sums.txt, which proves you received what the release
+# lists — not that the release is what someone vetted.
+tailwind_sha256 = "…64 hex characters…"
 ```
+
+`SOLI_TAILWIND_VERSION` and `SOLI_TAILWIND_SHA256` override the file, so CI and
+one-off upgrade checks need no commit. A project-chosen version is cached under
+its own name, so two projects on different Tailwinds do not fight over one file.
+If no checksum can be obtained, nothing is installed — an unverified binary is
+never executed.
+
+Because the dev server handles this, a separate Tailwind watcher is optional. If
+you prefer the official `--watch` incremental mode, install the CLI yourself at
+`node_modules/.bin/tailwindcss` and run it alongside `soli serve`.
 
 ## Building for Production
 
 ```bash
-# Build CSS
-npm run build:css
+# CSS is compiled by `soli serve . --dev`; commit public/css/ so the
+# deployed app ships it. To rebuild explicitly, touch a file under
+# app/assets/css/ and start the dev server once.
 
 # Build Soli application
 cargo build --release

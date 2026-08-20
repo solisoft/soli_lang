@@ -48,26 +48,6 @@ pub const AUTH_MIDDLEWARE_TEMPLATE: &str = include_str!("auth.sl");
 /// FeatureFlags stdlib module template
 pub const FEATURE_FLAGS_TEMPLATE: &str = include_str!("feature_flags.sl");
 
-/// Generate package.json content
-pub fn package_json(name: &str) -> String {
-    format!(
-        r#"{{
-  "name": "{}",
-  "version": "1.0.0",
-  "description": "A Soli MVC application",
-  "scripts": {{
-    "build:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css",
-    "watch:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
-  }},
-  "devDependencies": {{
-    "@tailwindcss/cli": "^4.3.1"
-  }}
-}}
-"#,
-        name
-    )
-}
-
 /// Generate soli.toml content
 pub fn soli_toml(name: &str) -> String {
     format!(
@@ -140,8 +120,17 @@ soli serve . -d
 │   ├── js/
 │   └── images/
 ├── tests/               # Test files
-└── package.json         # npm dependencies (Tailwind config is CSS-first, in application.css)
+└── soli.toml            # Project manifest
 ```
+
+## CSS
+
+Tailwind is compiled by `soli` itself — there is no `package.json` and no
+`node_modules`. `soli serve . --dev` rebuilds `public/css/application.css`
+from `app/assets/css/application.css` on every change, using a standalone
+Tailwind binary cached in `~/.soli/bin/`. Tailwind's configuration is
+CSS-first (`@theme` in `application.css`), so there is no `tailwind.config.js`
+either.
 
 ## Database Migrations
 

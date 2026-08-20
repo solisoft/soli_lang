@@ -499,12 +499,22 @@ pub fn compile_doc_pred_on(
             } else {
                 format!("{extract} IN ({})", phs.join(", "))
             };
+            let mut disjuncts = if clause.is_empty() { 0 } else { 1 };
             for json_clause in json_clauses {
                 clause = if clause.is_empty() {
                     json_clause
                 } else {
                     format!("{clause} OR {json_clause}")
                 };
+                disjuncts += 1;
+            }
+            // Parenthesise as soon as there is more than one disjunct. The
+            // caller joins siblings with " AND ", and AND binds tighter than
+            // OR, so a bare `a OR b` returned from here silently swallowed
+            // every sibling predicate — including the implicit soft-delete and
+            // STI scopes, which is how soft-deleted rows started leaking.
+            if disjuncts > 1 {
+                clause = format!("({clause})");
             }
             if has_null {
                 let null_sql = format!("{extract} IS NULL");
@@ -719,9 +729,24 @@ pub fn compile_col_pred(
                     let serde_json::Value::String(pat) = value else {
                         return Err(format!("LIKE on {field:?} expects a string"));
                     };
+                    // A LIKE pattern is text on both sides, whatever the column
+                    // is. Passing `col.ty` produced `$1::text::uuid` against a
+                    // uuid column, and `uuid LIKE uuid` is not an operator any
+                    // backend has — the query was rejected outright. Bind as
+                    // text, and cast the column side to text too so a
+                    // non-textual column can still be pattern-matched.
                     params.push(super::sql_compile::SqlBind::Text(pat.clone()));
-                    let ph = placeholder(d, params.len(), col.ty);
-                    Ok(like_sql(d, &quoted, &ph, *op == CmpOp::Ilike))
+                    let ph = placeholder(d, params.len(), super::introspect::ColType::Text);
+                    let subject = match col.ty {
+                        super::introspect::ColType::Text => quoted.clone(),
+                        _ => match d {
+                            super::sql_compile::Dialect::Mysql => {
+                                format!("CAST({quoted} AS CHAR)")
+                            }
+                            _ => format!("CAST({quoted} AS TEXT)"),
+                        },
+                    };
+                    Ok(like_sql(d, &subject, &ph, *op == CmpOp::Ilike))
                 }
                 _ => {
                     let Some(bind) = bind_for_column(col, value)? else {
@@ -816,6 +841,68 @@ mod tests {
             };
             assert_eq!(compile(symbol), compile(name), "{symbol} vs {name}");
         }
+    }
+
+    /// A numeric `IN` list compiles to a chain of JSON-equality disjuncts. It
+    /// must come back parenthesised, because the caller joins siblings with
+    /// " AND " and AND binds tighter than OR — unparenthesised, the sibling
+    /// predicate (and the implicit soft-delete / STI scopes) was swallowed.
+    #[test]
+    fn multi_disjunct_in_list_is_parenthesised() {
+        use super::super::sql_compile::Dialect;
+        for dialect in [Dialect::Postgres, Dialect::Mysql, Dialect::Sqlite] {
+            let f = HashFilter::In {
+                field: "id".into(),
+                values: vec![
+                    serde_json::json!(1),
+                    serde_json::json!(2),
+                    serde_json::json!(3),
+                ],
+            };
+            let mut params = Vec::new();
+            let sql = compile_doc_pred(dialect, &f, &mut params).unwrap();
+            assert!(
+                sql.contains(" OR "),
+                "{dialect:?}: expected disjuncts: {sql}"
+            );
+            assert!(
+                sql.starts_with('(') && sql.ends_with(')'),
+                "{dialect:?}: unparenthesised disjunction leaks into the AND chain: {sql}"
+            );
+
+            // The whole point: ANDed with a sibling, the sibling must still bind.
+            let combined = HashFilter::And(vec![
+                HashFilter::In {
+                    field: "id".into(),
+                    values: vec![serde_json::json!(1), serde_json::json!(2)],
+                },
+                HashFilter::Cmp {
+                    field: "status".into(),
+                    op: CmpOp::Eq,
+                    value: serde_json::json!("open"),
+                },
+            ]);
+            let mut params = Vec::new();
+            let sql = compile_doc_pred(dialect, &combined, &mut params).unwrap();
+            let (before_and, _) = sql.split_once(" AND ").expect("an AND join: {sql}");
+            assert!(
+                before_and.starts_with('(') && before_and.ends_with(')'),
+                "{dialect:?}: the OR chain must be grouped before the AND: {sql}"
+            );
+        }
+    }
+
+    /// A single-value `IN` list needs no parentheses, and must not grow any.
+    #[test]
+    fn single_disjunct_in_list_is_bare() {
+        use super::super::sql_compile::Dialect;
+        let f = HashFilter::In {
+            field: "id".into(),
+            values: vec![serde_json::json!(7)],
+        };
+        let mut params = Vec::new();
+        let sql = compile_doc_pred(Dialect::Sqlite, &f, &mut params).unwrap();
+        assert!(!sql.contains(" OR "), "{sql}");
     }
 
     #[test]

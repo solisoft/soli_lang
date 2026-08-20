@@ -56,6 +56,10 @@ pub fn is_keyword_block_opener(trimmed: &str) -> bool {
         || trimmed.starts_with("while ")
         || trimmed.starts_with("for ")
         || trimmed.starts_with("class ")
+        // `module` opens a block exactly like `class`. It was added to
+        // `should_print_result` but not here, so typing `module Foo` into the
+        // REPL submitted one line and failed instead of continuing.
+        || trimmed.starts_with("module ")
         || trimmed.starts_with("match ")
         || trimmed == "do"
         || trimmed.starts_with("do ")
@@ -282,6 +286,10 @@ mod tests {
         assert_not_print_wrapped("fn hello { \"hi\" }");
         assert_not_print_wrapped("def greet\n  \"hi\"\nend");
         assert_not_print_wrapped("module Publishable\nend");
+        // …and it must also open a multiline block, or the declaration cannot
+        // be typed in at all.
+        assert!(is_keyword_block_opener("module Publishable"));
+        assert!(detect_multiline_needed("module Publishable"));
         assert_not_print_wrapped("let x = 1");
         assert_not_print_wrapped("1;");
     }

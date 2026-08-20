@@ -202,12 +202,22 @@ class AttachmentsController < Controller
             return this._render_transformed(b64, ct, query)
         end
 
+        # This route serves attacker-supplied bytes from the application's own
+        # origin, so two headers are not optional. `nosniff` stops a browser
+        # re-typing a blob into something executable, and anything that isn't
+        # an image the page means to render inline is forced to download.
+        # `image/svg+xml` counts as executable, not as an image.
+        let disposition = "attachment"
+        disposition = "inline" if ct.starts_with("image/") && ct != "image/svg+xml"
+
         {
             "status":  200,
             "headers": {
-                "Content-Type":   ct,
-                "Content-Length": str(meta["size"]),
-                "Cache-Control":  "private, max-age=300"
+                "Content-Type":           ct,
+                "Content-Length":         str(meta["size"]),
+                "Content-Disposition":    disposition,
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control":          "private, max-age=300"
             },
             "body": Base64.decode(b64)
         }
@@ -391,9 +401,10 @@ class AttachmentsController < Controller
             return {
                 "status":  200,
                 "headers": {
-                    "Content-Type":   out_ct,
-                    "Content-Length": str(data.length()),
-                    "Cache-Control":  "public, max-age=86400"
+                    "Content-Type":           out_ct,
+                    "Content-Length":         str(data.length()),
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control":          "public, max-age=86400"
                 },
                 "body": data
             }
@@ -404,8 +415,9 @@ class AttachmentsController < Controller
             return {
                 "status":  200,
                 "headers": {
-                    "Content-Type":   original_ct,
-                    "Cache-Control":  "private, max-age=60"
+                    "Content-Type":           original_ct,
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control":          "private, max-age=60"
                 },
                 "body": Base64.decode(b64)
             }

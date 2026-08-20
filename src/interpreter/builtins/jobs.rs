@@ -147,27 +147,80 @@ fn format_iso_utc(unix_seconds: i64) -> String {
 // with the `cron` crate, which requires the leading seconds field and rejects
 // the 5-field Unix form — `Cron.schedule` surfaces that as an error naming the
 // six-field shape rather than accepting a schedule that would never fire.
+/// Translate a duration into a cron expression.
+///
+/// `*/N` means "every value of this field divisible by N", and each field
+/// restarts on its own cycle — so `*/45` on minutes fires at :00 and :45, and the
+/// gap across the hour boundary is 15 minutes, not 45. That irregularity is how
+/// cron works everywhere and is left to the caller (see the docs); what is *not*
+/// acceptable is a schedule that never runs at all. Two such bugs lived here:
+///
+/// | input          | old result                                        |
+/// |----------------|---------------------------------------------------|
+/// | `"90 minutes"` | `*/90` — beyond the 0&ndash;59 field, `cron` rejects the |
+/// | `"25 hours"`   | `*/25` — beyond 0&ndash;23, same                       |
+/// | `"40 days"`    | `*/40` — beyond 1&ndash;31, same                       |
+/// | `"90 seconds"` | silently truncated to 60s                         |
+///
+/// In every case the job was registered with an unparsable expression and simply
+/// never fired. Each is now an error that says what to use instead.
 fn cron_every(arg: &Value) -> Result<String, String> {
     let secs = parse_duration(arg)?;
     if secs < 60 {
         return Err("Cron.every() minimum granularity is 1 minute".to_string());
     }
-    let mins = secs / 60;
-    let hours = mins / 60;
-    let days = hours / 24;
-    if days > 0 && hours % 24 == 0 {
-        return Ok(format!("0 0 0 */{} * *", days));
+    if secs % 60 != 0 {
+        return Err(format!(
+            "Cron.every() takes whole minutes; {secs}s is {}m{}s. Cron has no \
+             sub-minute field, so the remainder would be dropped silently.",
+            secs / 60,
+            secs % 60
+        ));
     }
-    if hours > 0 && mins % 60 == 0 {
+    let mins = secs / 60;
+
+    // Whole days -> day-of-month, which only reaches 31.
+    if mins % 1440 == 0 {
+        let days = mins / 1440;
+        if days > 31 {
+            return Err(format!(
+                "Cron.every(\"{days} days\") cannot be expressed: cron's day-of-month field \
+                 only reaches 31, so this schedule would never run. Use a period of at \
+                 most 31 days, or Cron.daily_at(...) with an interval check in the job."
+            ));
+        }
+        return Ok(format!("0 0 0 */{days} * *"));
+    }
+
+    // Whole hours -> the hour field, 0-23.
+    if mins % 60 == 0 {
+        let hours = mins / 60;
         if hours == 1 {
             return Ok("0 0 * * * *".to_string());
         }
-        return Ok(format!("0 0 */{} * * *", hours));
+        if hours > 23 {
+            return Err(format!(
+                "Cron.every(\"{hours} hours\") cannot be expressed: cron's hour field only \
+                 reaches 23, so this schedule would never run. Use at most 23 hours, or \
+                 express it in days."
+            ));
+        }
+        return Ok(format!("0 0 */{hours} * * *"));
     }
+
+    // Minutes -> the minute field, 0-59. A whole-hour multiple already returned
+    // above, so anything left over 59 (90, 150, …) is unrepresentable.
     if mins == 1 {
         return Ok("0 * * * * *".to_string());
     }
-    Ok(format!("0 */{} * * * *", mins))
+    if mins > 59 {
+        return Err(format!(
+            "Cron.every(\"{mins} minutes\") cannot be expressed: cron's minute field only \
+             reaches 59 and {mins} is not a whole number of hours, so this schedule would \
+             never run. Use at most 59 minutes, or a whole number of hours."
+        ));
+    }
+    Ok(format!("0 */{mins} * * * *"))
 }
 
 fn cron_daily_at(time: &str) -> Result<String, String> {
@@ -1046,6 +1099,42 @@ mod cron_expr_tests {
         assert_eq!(every("3 days"), "0 0 0 */3 * *");
         for spec in ["1 hour", "2 hours", "1 day", "3 days"] {
             assert_valid(&every(spec));
+        }
+    }
+
+    /// The four inputs that used to register an unparsable expression and then
+    /// never fire. Each must now be a loud error instead.
+    #[test]
+    fn every_rejects_intervals_cron_cannot_express() {
+        for (spec, expect_in_message) in [
+            ("90 minutes", "minute field only reaches 59"),
+            ("150 minutes", "minute field only reaches 59"),
+            ("25 hours", "hour field only reaches 23"),
+            ("40 days", "day-of-month field only reaches 31"),
+            ("90 seconds", "whole minutes"),
+        ] {
+            let err = cron_every(&Value::String(spec.to_string().into())).expect_err(spec);
+            assert!(
+                err.contains(expect_in_message),
+                "{spec}: expected {expect_in_message:?}, got {err}"
+            );
+        }
+    }
+
+    /// In-range values still compile, and every one must parse — `*/45` is an
+    /// irregular schedule but a legal and functioning one, so it is the caller's
+    /// call, not an error.
+    #[test]
+    fn every_accepts_every_in_range_interval() {
+        for mins in 1..=59u64 {
+            let expr = every(&format!("{mins} minutes"));
+            assert_valid(&expr);
+        }
+        for hours in 1..=23u64 {
+            assert_valid(&every(&format!("{hours} hours")));
+        }
+        for days in 1..=31u64 {
+            assert_valid(&every(&format!("{days} days")));
         }
     }
 

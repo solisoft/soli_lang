@@ -1634,9 +1634,11 @@ impl Class {
                 return Ok(false);
             }
         }
-        for inner in module.included_modules.borrow().iter() {
-            self.include_module(inner)?;
-        }
+        // The module's OWN methods are copied first, then its transitive
+        // includes. Every copy is `or_insert`, so whoever lands first wins —
+        // recursing before copying gave a nested module precedence over the
+        // module that includes it (`module Named { include Base; def label(){…} }`
+        // resolved `label` to Base's).
         {
             let mut mine = self.methods.borrow_mut();
             for (name, method) in module.methods.borrow().iter() {
@@ -1667,9 +1669,42 @@ impl Class {
                 }
             }
         }
+        // Transitive includes, after the module's own methods (see above).
+        for inner in module.included_modules.borrow().iter() {
+            self.include_module(inner)?;
+        }
         self.included_modules.borrow_mut().push(module.clone());
         self.invalidate_method_cache();
         Ok(true)
+    }
+
+    /// Modules newly added to `self` by including `module` — the module itself
+    /// plus any of its transitive includes that were not already mixed in,
+    /// innermost first.
+    ///
+    /// Callers need this to fire concern hooks: `included do` has to run against
+    /// the host class for every module that joins it, not just the one named in
+    /// the `include`. Firing only for the named module left a nested concern's
+    /// hook registered against the intermediate *module*, so it never ran.
+    pub fn include_module_collecting(&self, module: &Rc<Class>) -> Result<Vec<Rc<Class>>, String> {
+        let before: Vec<*const Class> = self
+            .included_modules
+            .borrow()
+            .iter()
+            .map(Rc::as_ptr)
+            .collect();
+        if !self.include_module(module)? {
+            return Ok(Vec::new());
+        }
+        // `include_module` pushes a module's transitive includes before the
+        // module itself, so this order is already innermost-first.
+        Ok(self
+            .included_modules
+            .borrow()
+            .iter()
+            .filter(|m| !before.contains(&Rc::as_ptr(m)))
+            .cloned()
+            .collect())
     }
 
     /// Mix `module`'s instance methods in as class methods (Ruby `extend`).

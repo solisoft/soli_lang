@@ -146,17 +146,42 @@ pub fn list(queue: Option<&str>) -> Result<Vec<serde_json::Value>, String> {
 }
 
 /// Distinct queue names across non-terminal rows.
+///
+/// Excludes terminal rows in the *query* rather than after the fact. Filtering a
+/// `list(None)` window meant 500 retained `done`/`dead` rows filled it and this
+/// returned `[]` — the dashboard's queue filter emptied itself as history built
+/// up.
 pub fn queues() -> Result<Vec<serde_json::Value>, String> {
-    let rows = list(None)?;
+    // Grouped, not listed: the answer is bounded by the number of distinct
+    // queues (a handful), so the database must not be asked for one document
+    // per pending job. On a large backlog, `SELECT doc` here loaded the whole
+    // table into memory every time the dashboard rendered its queue filter.
+    let rows = if db::is_sql() {
+        let mut query = list_query(JOBS_COLLECTION, BTreeMap::new(), None, None);
+        // Two `Ne`s ANDed, so both reach the WHERE clause.
+        query.hash_filter = Some(db::hash_filter::HashFilter::And(vec![
+            db::hash_filter::HashFilter::Cmp {
+                field: "state".to_string(),
+                op: db::hash_filter::CmpOp::Ne,
+                value: serde_json::Value::String("done".to_string()),
+            },
+            db::hash_filter::HashFilter::Cmp {
+                field: "state".to_string(),
+                op: db::hash_filter::CmpOp::Ne,
+                value: serde_json::Value::String("dead".to_string()),
+            },
+        ]));
+        db::sql::group_by(&query, &["queue".to_string()], &[])?
+    } else {
+        let sdbql = format!(
+            "FOR doc IN {} FILTER doc.state NOT IN [\"done\", \"dead\"] \
+             COLLECT queue = doc.queue RETURN {{queue: queue}}",
+            JOBS_COLLECTION
+        );
+        crud::exec_query(JOBS_COLLECTION, sdbql)?
+    };
     let mut seen: Vec<String> = Vec::new();
     for row in rows {
-        let terminal = matches!(
-            row.get("state").and_then(|v| v.as_str()),
-            Some("done") | Some("dead")
-        );
-        if terminal {
-            continue;
-        }
         if let Some(q) = row.get("queue").and_then(|v| v.as_str()) {
             if !seen.iter().any(|s| s == q) {
                 seen.push(q.to_string());
@@ -274,28 +299,52 @@ pub fn renew_lease(id: &str, lease_secs: i64) -> Result<(), String> {
 
 /// Delete `done` rows finished before `older_than_iso`. Returns rows removed.
 pub fn prune_done(older_than_iso: &str) -> Result<usize, String> {
-    let rows = list(None)?;
+    // Scoped at the database, not filtered out of `list`'s 500-row window.
+    // Scanning that window meant retention stopped working entirely once 500
+    // retained `dead` rows accumulated — `dead` is terminal and never pruned, so
+    // it filled the window permanently and no `done` row was ever seen again.
+    if db::is_sql() {
+        // `delete_all` reports the affected-row count itself, so there is no
+        // pre-`SELECT` here: counting first would materialise every doomed
+        // row's whole document just to learn how many there are, and a
+        // retention tick runs against the entire backlog.
+        let removed = db::sql::delete_all(&prune_query(older_than_iso))?;
+        return Ok(removed as usize);
+    }
+
+    let sdbql = format!(
+        "FOR doc IN {} FILTER doc.state == \"done\" AND doc.finished_at < \"{}\" \
+         RETURN doc._key",
+        JOBS_COLLECTION,
+        escape_sdbql(older_than_iso)
+    );
     let mut removed = 0usize;
-    for row in rows {
-        let is_done = row.get("state").and_then(|v| v.as_str()) == Some("done");
-        let old = row
-            .get("finished_at")
-            .and_then(|v| v.as_str())
-            .is_some_and(|f| f < older_than_iso);
-        if is_done && old {
-            if let Some(key) = row.get("_key").and_then(|v| v.as_str()) {
-                let deleted = if db::is_sql() {
-                    db::sql::delete(JOBS_COLLECTION, key).is_ok()
-                } else {
-                    crud::exec_delete(JOBS_COLLECTION, key).is_ok()
-                };
-                if deleted {
-                    removed += 1;
-                }
+    for row in crud::exec_query(JOBS_COLLECTION, sdbql)? {
+        if let Some(key) = row.as_str() {
+            if crud::exec_delete(JOBS_COLLECTION, key).is_ok() {
+                removed += 1;
             }
         }
     }
     Ok(removed)
+}
+
+/// `state == "done" AND finished_at < cutoff`, as a portable query.
+fn prune_query(older_than_iso: &str) -> db::ListQuery {
+    let mut query = list_query(JOBS_COLLECTION, BTreeMap::new(), None, None);
+    query.hash_filter = Some(db::hash_filter::HashFilter::And(vec![
+        db::hash_filter::HashFilter::Cmp {
+            field: "state".to_string(),
+            op: db::hash_filter::CmpOp::Eq,
+            value: serde_json::Value::String("done".to_string()),
+        },
+        db::hash_filter::HashFilter::Cmp {
+            field: "finished_at".to_string(),
+            op: db::hash_filter::CmpOp::Lt,
+            value: serde_json::Value::String(older_than_iso.to_string()),
+        },
+    ]));
+    query
 }
 
 // ---------- cron rows ----------

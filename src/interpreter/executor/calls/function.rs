@@ -2566,6 +2566,20 @@ impl Interpreter {
 
             Value::Method(method) => self.call_method(method, arguments, span),
 
+            // A bytecode function reached from a tree-walked AST fragment —
+            // a concern hook body calling an application helper under `--vm`.
+            // Run it in a VM seeded with the same globals the fragment sees.
+            // Only reachable when this interpreter was built by
+            // `for_vm_fragment`; a standalone interpreter never holds one.
+            Value::VmClosure(closure) => {
+                let Some(globals) = self.vm_globals.clone() else {
+                    return Err(RuntimeError::not_callable(span));
+                };
+                let mut vm = crate::vm::Vm::new();
+                vm.globals = (*globals).clone();
+                vm.call_value_direct(Value::VmClosure(closure), &arguments, span)
+            }
+
             _ => Err(RuntimeError::not_callable(span)),
         }
     }

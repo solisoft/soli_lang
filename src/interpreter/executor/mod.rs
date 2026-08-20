@@ -58,6 +58,11 @@ pub struct Interpreter {
     pub(crate) current_source_path: Option<PathBuf>,
     pub(crate) call_stack: Vec<StackFrame>,
     pub assertion_count: i64,
+    /// Globals of the VM that spawned this interpreter, when it was created to
+    /// run an AST fragment on the VM's behalf (concern hooks). Lets
+    /// `call_value` dispatch a `VmClosure` back through a VM that can still see
+    /// the program's globals. `None` for a standalone interpreter.
+    pub(crate) vm_globals: Option<Rc<ahash::AHashMap<String, Value>>>,
 }
 
 impl Interpreter {
@@ -71,6 +76,7 @@ impl Interpreter {
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
+            vm_globals: None,
         }
     }
 
@@ -96,7 +102,32 @@ impl Interpreter {
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
+            vm_globals: None,
         }
+    }
+
+    /// An interpreter for running an AST fragment on a VM's behalf — concern
+    /// hooks (`included do … end`), whose bodies survive only as AST.
+    ///
+    /// Seeds the environment from the VM's globals so the fragment can see the
+    /// program's functions, classes and constants, not just builtins. Bodies
+    /// used to run in a bare `Interpreter::new()`, so a hook that called an
+    /// application helper failed with `Undefined variable` under `--vm` while
+    /// working under `--dev`.
+    ///
+    /// Globals the fragment assigns are not copied back to the VM: it is meant
+    /// to configure the host class (which is behind an `Rc`, so those changes do
+    /// propagate), not to mutate program state.
+    pub(crate) fn for_vm_fragment(globals: &ahash::AHashMap<String, Value>) -> Self {
+        let mut interp = Self::new();
+        {
+            let mut env = interp.environment.borrow_mut();
+            for (name, value) in globals {
+                env.define_or_update(name, value.clone());
+            }
+        }
+        interp.vm_globals = Some(Rc::new(globals.clone()));
+        interp
     }
 
     /// Create an interpreter with a pre-built environment (skips register_builtins).
@@ -108,6 +139,7 @@ impl Interpreter {
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
+            vm_globals: None,
         }
     }
 
@@ -121,6 +153,7 @@ impl Interpreter {
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
+            vm_globals: None,
         }
     }
 

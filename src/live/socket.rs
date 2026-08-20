@@ -201,11 +201,21 @@ pub fn handle_live_connection(
 
     let liveview_id = instance.id.clone();
 
-    // Already mounted (second tab, or a reconnect): keep state, attach this
-    // socket, and send the current HTML only to the new connection.
-    if let Some(prev) = LIVE_REGISTRY.get(&liveview_id) {
-        if !prev.is_expired(std::time::Duration::from_secs(3600)) {
-            LIVE_REGISTRY.add_sender(&liveview_id, sender.clone());
+    // Render our candidate's HTML before claiming the slot, so the instance we
+    // may register is complete.
+    let initial_html =
+        render_component(&component, &instance.state).unwrap_or_else(|e| render_error_html(&e));
+    instance.last_html = initial_html.clone();
+
+    // One lock decides: attach to whatever is already mounted (second tab, a
+    // reconnect, or another visitor in the same room) or register this instance.
+    // Checking and then registering as two steps let two concurrent sockets both
+    // register, and the loser's socket was orphaned — open but no longer in the
+    // registry, so it never saw another update.
+    match LIVE_REGISTRY.attach_or_register(instance.clone(), sender.clone()) {
+        Some(prev) => {
+            // Already mounted: keep its state and send its current HTML to this
+            // connection only.
             let html = if prev.last_html.is_empty() {
                 render_component(&component, &prev.state).unwrap_or_else(|e| render_error_html(&e))
             } else {
@@ -217,25 +227,14 @@ pub fn handle_live_connection(
             }) {
                 let _ = sender.try_send(Ok(Message::text(payload)));
             }
-            return;
+        }
+        None => {
+            let _ = instance.send(ServerMessage::Render {
+                html: initial_html,
+                liveview_id,
+            });
         }
     }
-
-    // Render initial HTML
-    let initial_html =
-        render_component(&component, &instance.state).unwrap_or_else(|e| render_error_html(&e));
-
-    // Save last_html for future diffs
-    instance.last_html = initial_html.clone();
-
-    // Register the instance
-    LIVE_REGISTRY.register(instance.clone());
-
-    // Send initial render
-    let _ = instance.send(ServerMessage::Render {
-        html: initial_html,
-        liveview_id,
-    });
 }
 
 /// Handle an event from a LiveView client.

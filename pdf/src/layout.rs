@@ -311,7 +311,7 @@ impl<'a> Engine<'a> {
     ) -> Result<(LaidOutDoc, Vec<RenderWarning>)> {
         self.data = Some(data);
         let root = data.resolver();
-        // Intern a page background image up front so its decoded pixels are in
+        // Intern a page background image up front so its decoded image is in
         // `self.images` before layout; the op itself is inserted per page in a
         // post-pass (the `pages` filter needs the final page count).
         let bg_image = template.options.background_image.as_ref().and_then(|bg| {

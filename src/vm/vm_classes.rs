@@ -9,6 +9,112 @@ use crate::span::Span;
 
 use super::vm::Vm;
 
+/// Members the tree-walker implements on a class value itself, rather than
+/// looking them up in the class's own method tables.
+///
+/// Kept beside the `EngineFallback` that uses it so the two are read together;
+/// the authoritative implementations are in
+/// `interpreter::executor::access::member`'s `Value::Class` arm.
+/// `Class.define_method(name, body)` for both engines.
+///
+/// A tree-walked body is an `Rc<Function>` and goes in `methods`; a compiled one
+/// is a `VmClosure` and goes in `vm_methods`. Instance dispatch consults both, so
+/// either lands as a real method. Primitive-tagged classes (Int, Float, …) route
+/// to the per-type user-method overlay, matching the tree-walker — their dispatch
+/// never consults `Class.methods`.
+fn vm_define_method(class: Rc<Class>) -> Value {
+    Value::NativeFunction(NativeFunction::new(
+        "define_method",
+        Some(2),
+        move |args: &[Value]| -> Result<Value, String> {
+            let method_name = match args.first() {
+                Some(Value::String(s)) | Some(Value::Symbol(s)) => s.to_string(),
+                _ => return Err("define_method expects method name as first argument".to_string()),
+            };
+            match args.get(1) {
+                Some(Value::Function(f)) => {
+                    if let Some(prim) = class.primitive {
+                        crate::interpreter::executor::calls::user_methods::register_user_method(
+                            prim,
+                            method_name,
+                            f.clone(),
+                        );
+                    } else {
+                        class.methods.borrow_mut().insert(method_name, f.clone());
+                    }
+                }
+                Some(Value::VmClosure(c)) => {
+                    if class.primitive.is_some() {
+                        return Err("define_method on a primitive class needs an interpreted \
+                             function; run this file without --vm"
+                            .to_string());
+                    }
+                    class.vm_methods.borrow_mut().insert(method_name, c.clone());
+                }
+                _ => return Err("define_method expects a function as second argument".to_string()),
+            }
+            class.invalidate_method_cache();
+            Ok(Value::Null)
+        },
+    ))
+}
+
+/// `Class.alias_method(new_name, existing_name)` for both engines.
+fn vm_alias_method(class: Rc<Class>) -> Value {
+    Value::NativeFunction(NativeFunction::new(
+        "alias_method",
+        Some(2),
+        move |args: &[Value]| -> Result<Value, String> {
+            let name_of = |arg: Option<&Value>, which: &str| -> Result<String, String> {
+                match arg {
+                    Some(Value::String(s)) | Some(Value::Symbol(s)) => Ok(s.to_string()),
+                    _ => Err(format!(
+                        "alias_method expects {which} as a string or symbol"
+                    )),
+                }
+            };
+            let new_name = name_of(args.first(), "the new name")?;
+            let old_name = name_of(args.get(1), "the existing name")?;
+            // Resolve into owned values FIRST. A `borrow()` temporary inside an
+            // `if let` scrutinee lives to the end of the statement, so borrowing
+            // mutably in the body panics.
+            let interpreted = class.methods.borrow().get(&old_name).cloned();
+            let compiled = class.vm_methods.borrow().get(&old_name).cloned();
+            match (interpreted, compiled) {
+                (Some(f), _) => {
+                    class.methods.borrow_mut().insert(new_name, f);
+                }
+                (None, Some(c)) => {
+                    class.vm_methods.borrow_mut().insert(new_name, c);
+                }
+                (None, None) => {
+                    return Err(format!(
+                        "alias_method: {:?} has no method {old_name:?}",
+                        class.name
+                    ));
+                }
+            }
+            class.invalidate_method_cache();
+            Ok(Value::Null)
+        },
+    ))
+}
+
+fn is_class_reflection_member(name: &str) -> bool {
+    matches!(
+        name,
+        "define_method"
+            | "alias_method"
+            | "class_eval"
+            | "methods"
+            | "respond_to?"
+            | "send"
+            | "inspect"
+            | "to_s"
+            | "to_string"
+    )
+}
+
 impl Vm {
     /// Get a property from a value.
     pub fn op_get_property(
@@ -190,6 +296,34 @@ impl Vm {
                 if class.find_static_method("method_missing").is_some() {
                     return Err(RuntimeError::EngineFallback(
                         format!("class method_missing for '{}'", name),
+                        span,
+                    ));
+                }
+                // Class reflection (`define_method`, `class_eval`, `send`, …) is
+                // implemented only in the tree-walker's member access, which owns
+                // the primitive-overlay and method-cache bookkeeping. The VM used
+                // to report "Cannot access property 'define_method'", so a script
+                // that ran fine under `--dev` failed under `--vm`. Punt via the
+                // same `EngineFallback` route the `method_missing` and
+                // state-machine carve-outs above use.
+                // `define_method` / `alias_method` are implemented here rather
+                // than punted, because a bytecode body is a `VmClosure` and the
+                // tree-walker's version only accepts a `Function` — and because
+                // `EngineFallback` only re-runs in serve mode, so a `--vm` script
+                // would have no fallback at all.
+                if name == "define_method" {
+                    return Ok(vm_define_method(class.clone()));
+                }
+                if name == "alias_method" {
+                    return Ok(vm_alias_method(class.clone()));
+                }
+                // The rest of the reflection surface (`class_eval`, `send`,
+                // `methods`, …) lives only in the tree-walker's member access,
+                // which owns the primitive-overlay bookkeeping. Punt via the same
+                // route the `method_missing` and state-machine carve-outs use.
+                if is_class_reflection_member(name) {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("class reflection member '{}'", name),
                         span,
                     ));
                 }
@@ -569,11 +703,15 @@ impl Vm {
                 ));
             }
         };
-        let newly = class
-            .include_module(module)
+        // Hooks fire for every module that actually joined the class — the named
+        // one plus its transitive includes, innermost first. See the matching
+        // comment in the tree-walker's `apply_mixins`.
+        let added = class
+            .include_module_collecting(module)
             .map_err(|e| RuntimeError::new(e, span))?;
-        if newly {
-            self.fire_mixin_hooks(class, module, true, span)?;
+        let class = class.clone();
+        for joined in &added {
+            self.fire_mixin_hooks(&class, joined, true, span)?;
         }
         Ok(())
     }
@@ -621,7 +759,11 @@ impl Vm {
             module.extended_hook_stmts.borrow().clone()
         };
         if !hooks.is_empty() {
-            let mut interp = Interpreter::new();
+            // Seeded from the VM's globals: a hook body is AST, so it runs in a
+            // tree-walking interpreter, and a bare `Interpreter::new()` saw only
+            // builtins — a hook calling an application helper died with
+            // `Undefined variable` under `--vm` but worked under `--dev`.
+            let mut interp = Interpreter::for_vm_fragment(&self.globals);
             for body in hooks {
                 interp.execute_class_level_calls(class, &body)?;
             }
@@ -632,7 +774,7 @@ impl Vm {
             self.push(Value::Class(class.clone()));
             self.call_value(1, span)?;
         } else if let Some(func) = module.find_static_method(hook_name) {
-            let mut interp = Interpreter::new();
+            let mut interp = Interpreter::for_vm_fragment(&self.globals);
             interp.call_function(&func, vec![Value::Class(class.clone())])?;
         }
         Ok(())

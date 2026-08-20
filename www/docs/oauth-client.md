@@ -54,6 +54,17 @@ Do not re-run the generator to edit views — add a link yourself:
 ## Security notes
 
 - Callback verifies `state` against the session (CSRF).
+- **PKCE is `S256`.** `begin_pkce()` stores a random verifier in the session and
+  returns `base64url(SHA256(verifier))` unpadded, per RFC 7636 §4.2. Earlier
+  cuts sent the raw verifier with `code_challenge_method=plain`, where the
+  challenge and the verifier are the same string — PKCE in name only. Never
+  ship `plain`.
+- The services call `HTTP.request(method, url, headers, body)`. `HTTP.get` /
+  `HTTP.post` read their options hash for `timeout` alone and return the body as
+  a String, so a `"headers"` key there is silently dropped — which is why the
+  generated flow used to 401.
+- Provider responses are status-checked, so a 401 reports as a 401 instead of a
+  JSON parse error on the provider's error page.
 - Google path requires a **verified** email.
 - Accounts created via OAuth get a random password and confirmed email.
 - Prefer HTTPS redirect URIs in production.

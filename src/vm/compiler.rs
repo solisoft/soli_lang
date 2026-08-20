@@ -1049,7 +1049,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
 
         // `total = total + h[keys[k]]` — acc += obj[arr[idx]]
         // GetLocal(acc), GetLocal(obj), GetLocal(arr), GetLocal(idx),
-        // GetIndex, GetIndex, Add, SetLocal(acc) [, Pop]
+        // GetIndex, GetIndex, Add, SetLocal(acc), Pop
         if i + 7 < len {
             if let (
                 Op::GetLocal(acc),
@@ -1070,7 +1070,20 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 code[i + 6],
                 code[i + 7],
             ) {
-                if acc == acc2 && !any_jump_target(&is_jump_target, i + 1, 8) {
+                // The trailing `Pop` is part of the pattern, not an optional
+                // extra. The fused opcode writes straight into the local slot
+                // and pushes nothing, while the sequence it replaces nets +1
+                // (`Op::SetLocal` peeks instead of popping; `Op::SetIndex`
+                // re-pushes the object). Fusing without the `Pop` therefore
+                // loses a stack slot, so a function whose last statement is one
+                // of these — which `compile_function_body` emits with no `Pop`
+                // before `Op::Return` — returns a stray local instead of its
+                // value. The `IncrLocal` peephole below matches the same way.
+                if acc == acc2
+                    && i + 8 < len
+                    && matches!(code[i + 8], Op::Pop)
+                    && !any_jump_target(&is_jump_target, i + 1, 9)
+                {
                     code[i] = Op::AddNestedIndex(acc, obj, arr, idx);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
@@ -1079,18 +1092,14 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                     code[i + 5] = NOP;
                     code[i + 6] = NOP;
                     code[i + 7] = NOP;
-                    if i + 8 < len && matches!(code[i + 8], Op::Pop) {
-                        code[i + 8] = NOP;
-                        i += 9;
-                    } else {
-                        i += 8;
-                    }
+                    code[i + 8] = NOP;
+                    i += 9;
                     continue;
                 }
             }
         }
 
-        // Already fused get: GetLocal(acc), GetNestedIndex, Add, SetLocal(acc)
+        // Already fused get: GetLocal(acc), GetNestedIndex, Add, SetLocal(acc), Pop
         if i + 3 < len {
             if let (
                 Op::GetLocal(acc),
@@ -1099,24 +1108,33 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 Op::SetLocal(acc2),
             ) = (code[i], code[i + 1], code[i + 2], code[i + 3])
             {
-                if acc == acc2 && !any_jump_target(&is_jump_target, i + 1, 4) {
+                // The trailing `Pop` is part of the pattern, not an optional
+                // extra. The fused opcode writes straight into the local slot
+                // and pushes nothing, while the sequence it replaces nets +1
+                // (`Op::SetLocal` peeks instead of popping; `Op::SetIndex`
+                // re-pushes the object). Fusing without the `Pop` therefore
+                // loses a stack slot, so a function whose last statement is one
+                // of these — which `compile_function_body` emits with no `Pop`
+                // before `Op::Return` — returns a stray local instead of its
+                // value. The `IncrLocal` peephole below matches the same way.
+                if acc == acc2
+                    && i + 4 < len
+                    && matches!(code[i + 4], Op::Pop)
+                    && !any_jump_target(&is_jump_target, i + 1, 5)
+                {
                     code[i] = Op::AddNestedIndex(acc, obj, arr, idx);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
-                    if i + 4 < len && matches!(code[i + 4], Op::Pop) {
-                        code[i + 4] = NOP;
-                        i += 5;
-                    } else {
-                        i += 4;
-                    }
+                    code[i + 4] = NOP;
+                    i += 5;
                     continue;
                 }
             }
         }
 
         // `h[keys[k]] = v`
-        // GetLocal(obj), GetLocal(arr), GetLocal(idx), GetIndex, GetLocal(val), SetIndex [, Pop]
+        // GetLocal(obj), GetLocal(arr), GetLocal(idx), GetIndex, GetLocal(val), SetIndex, Pop
         if i + 5 < len {
             if let (
                 Op::GetLocal(obj),
@@ -1133,25 +1151,33 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 code[i + 4],
                 code[i + 5],
             ) {
-                if !any_jump_target(&is_jump_target, i + 1, 6) {
+                // The trailing `Pop` is part of the pattern, not an optional
+                // extra. The fused opcode writes straight into the local slot
+                // and pushes nothing, while the sequence it replaces nets +1
+                // (`Op::SetLocal` peeks instead of popping; `Op::SetIndex`
+                // re-pushes the object). Fusing without the `Pop` therefore
+                // loses a stack slot, so a function whose last statement is one
+                // of these — which `compile_function_body` emits with no `Pop`
+                // before `Op::Return` — returns a stray local instead of its
+                // value. The `IncrLocal` peephole below matches the same way.
+                if i + 6 < len
+                    && matches!(code[i + 6], Op::Pop)
+                    && !any_jump_target(&is_jump_target, i + 1, 7)
+                {
                     code[i] = Op::SetNestedIndex(obj, arr, idx, val);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
                     code[i + 4] = NOP;
                     code[i + 5] = NOP;
-                    if i + 6 < len && matches!(code[i + 6], Op::Pop) {
-                        code[i + 6] = NOP;
-                        i += 7;
-                    } else {
-                        i += 6;
-                    }
+                    code[i + 6] = NOP;
+                    i += 7;
                     continue;
                 }
             }
         }
 
-        // GetLocal(obj), GetLocalIndex(arr, idx), GetLocal(val), SetIndex [, Pop]
+        // GetLocal(obj), GetLocalIndex(arr, idx), GetLocal(val), SetIndex, Pop
         if i + 3 < len {
             if let (
                 Op::GetLocal(obj),
@@ -1160,17 +1186,25 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 Op::SetIndex,
             ) = (code[i], code[i + 1], code[i + 2], code[i + 3])
             {
-                if !any_jump_target(&is_jump_target, i + 1, 4) {
+                // The trailing `Pop` is part of the pattern, not an optional
+                // extra. The fused opcode writes straight into the local slot
+                // and pushes nothing, while the sequence it replaces nets +1
+                // (`Op::SetLocal` peeks instead of popping; `Op::SetIndex`
+                // re-pushes the object). Fusing without the `Pop` therefore
+                // loses a stack slot, so a function whose last statement is one
+                // of these — which `compile_function_body` emits with no `Pop`
+                // before `Op::Return` — returns a stray local instead of its
+                // value. The `IncrLocal` peephole below matches the same way.
+                if i + 4 < len
+                    && matches!(code[i + 4], Op::Pop)
+                    && !any_jump_target(&is_jump_target, i + 1, 5)
+                {
                     code[i] = Op::SetNestedIndex(obj, arr, idx, val);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
-                    if i + 4 < len && matches!(code[i + 4], Op::Pop) {
-                        code[i + 4] = NOP;
-                        i += 5;
-                    } else {
-                        i += 4;
-                    }
+                    code[i + 4] = NOP;
+                    i += 5;
                     continue;
                 }
             }
@@ -2073,7 +2107,33 @@ mod inplace_peephole_tests {
 
     #[test]
     fn hash_array_index_add_fuses() {
+        // `total` is read afterwards so the assignment sits in statement
+        // position and carries its `Pop` — which the fusion requires, because
+        // `AddNestedIndex` has stack effect 0 where the sequence nets +1.
         let ops = fn_ops(
+            r#"
+            let h = {"k0": 1}
+            let keys = ["k0"]
+            let k = 0
+            let total = 0
+            total = total + h[keys[k]]
+            total
+            "#,
+        );
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::AddNestedIndex(_, _, _, _))),
+            "expected AddNestedIndex, got: {:?}",
+            ops
+        );
+    }
+
+    /// In tail position the compiler emits no `Pop`, so these fusions must not
+    /// fire: they push nothing where the sequence they replace leaves a value,
+    /// and the function would return a stray local instead of its result.
+    #[test]
+    fn nested_index_statements_do_not_fuse_in_tail_position() {
+        let add_ops = fn_ops(
             r#"
             let h = {"k0": 1}
             let keys = ["k0"]
@@ -2083,10 +2143,88 @@ mod inplace_peephole_tests {
             "#,
         );
         assert!(
-            ops.iter()
+            !add_ops
+                .iter()
                 .any(|o| matches!(o, Op::AddNestedIndex(_, _, _, _))),
-            "expected AddNestedIndex, got: {:?}",
-            ops
+            "must not fuse without a trailing Pop, got: {:?}",
+            add_ops
+        );
+
+        let set_ops = fn_ops(
+            r#"
+            let h = {"k0": 1}
+            let keys = ["k0"]
+            let k = 0
+            let v = 2
+            h[keys[k]] = v
+            "#,
+        );
+        assert!(
+            !set_ops
+                .iter()
+                .any(|o| matches!(o, Op::SetNestedIndex(_, _, _, _))),
+            "must not fuse without a trailing Pop, got: {:?}",
+            set_ops
+        );
+    }
+
+    /// The values those tail statements produce, end to end. `+=` yields the
+    /// new accumulator; an index assignment yields the assigned value (not the
+    /// container, and not null).
+    #[test]
+    fn nested_index_tail_statements_return_the_right_value() {
+        use crate::interpreter::value::Value;
+        let run = |body: &str| {
+            let src = format!("def f() {{\n{body}\n}}\n");
+            let tokens = Scanner::new(&src).scan_tokens().expect("lex");
+            let program = Parser::new(tokens).parse().expect("parse");
+            let module = Compiler::compile(&program).expect("compile");
+            let proto = module
+                .main
+                .chunk
+                .constants
+                .iter()
+                .find_map(|c| match c {
+                    Constant::Function(p) => Some(p.clone()),
+                    _ => None,
+                })
+                .expect("function proto");
+            let mut vm = crate::vm::Vm::new();
+            vm.execute(&proto).expect("vm")
+        };
+
+        assert_eq!(
+            run(r#"
+            let sentinel = "OOPS"
+            let h = {"k0": 5}
+            let keys = ["k0"]
+            let k = 0
+            let total = 100
+            total = total + h[keys[k]]
+            "#),
+            Value::Int(105)
+        );
+
+        assert_eq!(
+            run(r#"
+            let sentinel = "OOPS"
+            let h = {"k0": 1}
+            let keys = ["k0"]
+            let k = 0
+            let v = 42
+            h[keys[k]] = v
+            "#),
+            Value::Int(42)
+        );
+
+        // The constant-key opcodes take the same rule.
+        assert_eq!(
+            run(r#"
+            let sentinel = "OOPS"
+            let h = {"k0": 1}
+            h["k0"] = 7
+            "#),
+            Value::Int(7)
         );
     }
 
@@ -2147,6 +2285,7 @@ mod inplace_peephole_tests {
             let k = 0
             let v = 2
             h[keys[k]] = v
+            h
             "#,
         );
         assert!(

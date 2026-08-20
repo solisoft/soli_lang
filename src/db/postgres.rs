@@ -119,8 +119,12 @@ fn pool_for_active() -> Result<PgPool, String> {
         .url
         .clone()
         .ok_or_else(|| format!("connection {name:?}: url required for postgres"))?;
+    // Keyed by name AND url, so a connection repointed at a different database
+    // (a config change, an app switching at runtime) does not keep handing back
+    // the pool for the old one. See the matching comment in `sqlite.rs`.
+    let cache_key = format!("{name}\u{1f}{url}");
     let mut map = pools().lock().unwrap();
-    if let Some(p) = map.get(&name) {
+    if let Some(p) = map.get(&cache_key) {
         return Ok(p.clone());
     }
     let manager = PostgresConnectionManager::new(
@@ -134,7 +138,7 @@ fn pool_for_active() -> Result<PgPool, String> {
         .connection_timeout(Duration::from_secs(10))
         .build(manager)
         .map_err(|e| format!("postgres pool ({name}): {e}"))?;
-    map.insert(name, pool.clone());
+    map.insert(cache_key, pool.clone());
     Ok(pool)
 }
 
@@ -145,6 +149,21 @@ pub fn ensure_connected() -> Result<(), String> {
 
 pub fn has_active_tx() -> bool {
     TX_ACTIVE.get()
+}
+
+/// Whether an application transaction is open **on the connection this op will
+/// run against**, i.e. whether `with_conn` is about to hand back the
+/// transaction's own client. Mirrors the `tx_matches` test in `with_conn`.
+///
+/// Code that needs its own atomic unit must ask this before issuing `BEGIN`:
+/// inside an open transaction, `BEGIN` is a no-op warning and the following
+/// `COMMIT` would commit the *caller's* transaction.
+fn tx_open_on_active_connection() -> bool {
+    if !TX_ACTIVE.get() {
+        return false;
+    }
+    let name = active_connection_name();
+    TX.with(|c| c.borrow().as_ref().is_some_and(|t| t.name == name))
 }
 
 fn map_isolation(level: Option<&str>) -> Result<&'static str, String> {
@@ -365,26 +384,110 @@ pub fn update(
     }
     let table_q = Dialect::Postgres.quote_ident(table)?;
     if merge {
-        // JSONB `||` is right-biased: keys in the patch overwrite; others stay.
-        // If the row is missing, fall back to a full insert of the patch.
-        let sql = format!(
-            "UPDATE {table_q} SET doc = COALESCE(doc, '{{}}'::jsonb) || $2::jsonb \
-             WHERE _key = $1 RETURNING doc"
-        );
+        // Postgres has no core RFC-7396 merge, and `||` is not one: it is
+        // shallow (a nested object in the patch REPLACES the stored object,
+        // destroying its other keys) and it stores a null instead of removing
+        // the key. SQLite's `json_patch` and MySQL's `JSON_MERGE_PATCH` both do
+        // RFC 7396, so the same `Model.update` behaved differently per adapter.
+        // See `super::merge` for the canonical semantics.
+        //
+        // A patch of scalars/arrays/nulls only can still be done atomically in
+        // one statement: `||` overwrites each key, and the trailing `- keys`
+        // removes the ones whose patch value was null. A patch containing a
+        // nested object needs recursion, so it takes the locked read-merge-write
+        // path below.
+        if !super::merge::needs_recursive_merge(&document) {
+            let sql = format!(
+                "UPDATE {table_q} SET doc = (COALESCE(doc, '{{}}'::jsonb) || $2::jsonb) - (\
+                     SELECT COALESCE(array_agg(key), ARRAY[]::text[]) \
+                     FROM jsonb_each($2::jsonb) WHERE value = 'null'::jsonb\
+                 ) WHERE _key = $1 RETURNING doc"
+            );
+            let _trace = super::trace::start_plain(&sql);
+            return with_conn(|client| {
+                let rows = client
+                    .query(&sql, &[&key, &document])
+                    .map_err(|e| pg_error("postgres update (merge)", &e))?;
+                if let Some(row) = rows.first() {
+                    return Ok(row.get(0));
+                }
+                // No existing row — insert the patch as the full document, with
+                // its nulls dropped so the result matches a merge into `{}`.
+                let mut fresh = serde_json::json!({});
+                super::merge::merge_patch(&mut fresh, &document);
+                let insert_sql =
+                    format!("INSERT INTO {table_q} (_key, doc) VALUES ($1, $2) RETURNING doc");
+                let row = client
+                    .query_one(&insert_sql, &[&key, &fresh])
+                    .map_err(|e| pg_error("postgres update (merge insert)", &e))?;
+                Ok(row.get(0))
+            });
+        }
+
+        // Recursive merge: read the row under a row lock, merge in process, write
+        // it back. `FOR UPDATE` inside the transaction is what keeps this as
+        // atomic as the single-statement path — two concurrent merges serialize
+        // on the row rather than clobbering each other.
+        let select_sql = format!("SELECT doc FROM {table_q} WHERE _key = $1 FOR UPDATE");
+        let update_sql = format!("UPDATE {table_q} SET doc = $2 WHERE _key = $1 RETURNING doc");
+        let insert_sql = format!("INSERT INTO {table_q} (_key, doc) VALUES ($1, $2) RETURNING doc");
+        let _trace = super::trace::start_plain(&update_sql);
+        // Inside an application transaction (`transaction(fn() { ... })`)
+        // `with_conn` hands back that transaction's client, so a bare
+        // BEGIN/COMMIT here would commit the caller's work early and make its
+        // later rollback a no-op. Nest with a savepoint instead.
+        let nested = tx_open_on_active_connection();
+        let (open_sql, commit_sql, undo_sql) = if nested {
+            (
+                "SAVEPOINT soli_merge",
+                "RELEASE SAVEPOINT soli_merge",
+                "ROLLBACK TO SAVEPOINT soli_merge",
+            )
+        } else {
+            ("BEGIN", "COMMIT", "ROLLBACK")
+        };
         return with_conn(|client| {
-            let rows = client
-                .query(&sql, &[&key, &document])
-                .map_err(|e| pg_error("postgres update (merge)", &e))?;
-            if let Some(row) = rows.first() {
-                return Ok(row.get(0));
+            client
+                .batch_execute(open_sql)
+                .map_err(|e| pg_error("postgres update (merge begin)", &e))?;
+            let result = (|| -> Result<serde_json::Value, String> {
+                let existing = client
+                    .query(&select_sql, &[&key])
+                    .map_err(|e| pg_error("postgres update (merge select)", &e))?;
+                match existing.first() {
+                    Some(row) => {
+                        let mut doc: serde_json::Value = row.get(0);
+                        super::merge::merge_patch(&mut doc, &document);
+                        let updated = client
+                            .query_one(&update_sql, &[&key, &doc])
+                            .map_err(|e| pg_error("postgres update (merge write)", &e))?;
+                        Ok(updated.get(0))
+                    }
+                    None => {
+                        let mut fresh = serde_json::json!({});
+                        super::merge::merge_patch(&mut fresh, &document);
+                        let inserted = client
+                            .query_one(&insert_sql, &[&key, &fresh])
+                            .map_err(|e| pg_error("postgres update (merge insert)", &e))?;
+                        Ok(inserted.get(0))
+                    }
+                }
+            })();
+            match result {
+                Ok(doc) => {
+                    client
+                        .batch_execute(commit_sql)
+                        .map_err(|e| pg_error("postgres update (merge commit)", &e))?;
+                    Ok(doc)
+                }
+                Err(e) => {
+                    // Undo only this merge; an enclosing transaction keeps
+                    // everything it had already written and stays open so the
+                    // caller decides its fate.
+                    let _ = client.batch_execute(undo_sql);
+                    Err(e)
+                }
             }
-            // No existing row — insert the patch as the full document.
-            let insert_sql =
-                format!("INSERT INTO {table_q} (_key, doc) VALUES ($1, $2) RETURNING doc");
-            let row = client
-                .query_one(&insert_sql, &[&key, &document])
-                .map_err(|e| pg_error("postgres update (merge insert)", &e))?;
-            Ok(row.get(0))
         });
     }
     let sql = format!(
@@ -1065,6 +1168,7 @@ pub fn col_group_by(
     let compiled = cols::compile_group_by_cols(Dialect::Postgres, q, group_fields, aggs)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let names = super::columns::group_result_names(group_fields, aggs);
+    let numeric = super::columns::group_key_numeric_flags(&q.schema, group_fields);
     with_conn(|client| {
         let owned = bind_owned(&compiled.params);
         let refs = bind_refs(&owned);
@@ -1075,7 +1179,7 @@ pub fn col_group_by(
             .iter()
             .map(|row| {
                 let texts: Vec<Option<String>> = (0..names.len()).map(|i| row.get(i)).collect();
-                super::columns::group_row_to_json(&names, &texts)
+                super::columns::group_row_to_json(&names, &texts, group_fields.len(), &numeric)
             })
             .collect())
     })
@@ -1318,11 +1422,16 @@ pub fn claim_cron_slot(
 
 fn table_exists(table: &str) -> Result<bool, String> {
     with_conn(|client| {
+        // `current_schema()`, not a hardcoded `'public'`: every other schema
+        // query in this file resolves the schema through the connection's
+        // `search_path`, and disagreeing here made an app on a non-public schema
+        // see every table as missing — reads returned empty and `claim_jobs`
+        // never claimed, both silently.
         let row = client
             .query_one(
                 "SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables
-                    WHERE table_schema = 'public' AND table_name = $1
+                    WHERE table_schema = current_schema() AND table_name = $1
                 )",
                 &[&table],
             )
@@ -1725,7 +1834,19 @@ mod integration_tests {
             assert_eq!(soft["deleted_at"], "2026-08-10T00:00:00Z");
             assert_eq!(soft["name"], "Ada");
             assert_eq!(soft["status"], "late");
-            // restore-shaped: set deleted_at to null via merge
+            // restore-shaped: set deleted_at to null via merge.
+            //
+            // RFC 7396 (what `super::merge` defines and every adapter now
+            // produces) treats a null as "absent", so the key is REMOVED rather
+            // than stored as JSON null. This used to assert the key survived with
+            // a null value, which was Postgres-only behaviour — SQLite and MySQL
+            // already removed it, so the same restore left two different
+            // documents depending on the adapter.
+            //
+            // Either representation satisfies the soft-delete scope, since
+            // `doc ->> 'deleted_at' IS NULL` is true for an absent key as well as
+            // a JSON null. What must hold is that the field no longer reads as a
+            // value.
             let restored = update(
                 table,
                 "u1",
@@ -1733,10 +1854,17 @@ mod integration_tests {
                 true,
             )
             .expect("restore");
-            assert!(restored
-                .get("deleted_at")
-                .map(|v| v.is_null())
-                .unwrap_or(false));
+            assert!(
+                restored.get("deleted_at").is_none(),
+                "a null patch removes the key: {restored}"
+            );
+            assert!(
+                restored
+                    .get("deleted_at")
+                    .map(|v| v.is_null())
+                    .unwrap_or(true),
+                "and it must never read as a value"
+            );
             assert_eq!(restored["name"], "Ada");
             let _ = drop_table(table);
         });

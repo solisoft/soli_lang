@@ -42,7 +42,8 @@
     <ul class="text-gray-400 text-sm space-y-2 mb-8 list-disc list-inside">
         <li><code>group_by</code> takes a field name or an <strong class="text-white">array</strong> of field names. Each result row is a plain hash carrying the group fields plus your aggregate aliases.</li>
         <li>The <code>aggregate</code> spec maps <code>alias: [func, field]</code> &mdash; or <code>alias: ["count"]</code> for a plain row count.</li>
-        <li>In grouped mode, <code>order</code> must name a <strong class="text-white">group field or an aggregate alias</strong>; <code>limit</code> / <code>offset</code> compose as usual.</li>
+        <li>In grouped mode, <code>order</code> must name a <strong class="text-white">group field or an aggregate alias</strong>; <code>limit</code> / <code>offset</code> compose as usual. Sorting is numeric on aggregates, so <code>.order("n", "desc").limit(3)</code> really is the top three by count.</li>
+        <li>On a columnar (<code>table "&hellip;"</code>) model, a group key keeps its <strong class="text-white">column's</strong> type: an <code>integer</code> or <code>numeric</code> column yields a JSON number, a <code>text</code> column yields the exact stored text (so a zero-padded code like <code>"00042"</code> stays distinct from <code>"42"</code>).</li>
     </ul>
 
     <h3 class="text-lg font-semibold text-white mb-3">Aggregate functions</h3>

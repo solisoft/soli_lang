@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::ast::stmt::{ClassDecl, ConstructorDecl, FieldDecl, MethodDecl};
+use crate::ast::StmtKind;
 
 use super::chunk::Constant;
 use super::compiler::{CompileResult, Compiler, FunctionType};
@@ -83,14 +84,17 @@ impl Compiler {
             );
         }
 
+        // Resolve the module the same way any other name read does. Hardcoding
+        // `GetGlobal` only worked for a top-level `module`: one declared inside a
+        // function is a local (or an upvalue), so `include Inner` there failed with
+        // "Undefined variable 'Inner'" under `--vm` while the tree-walker resolved
+        // it through its scope chain.
         for module_name in &decl.includes {
-            let idx = self.add_string_constant(module_name);
-            self.emit(Op::GetGlobal(idx), line);
+            self.compile_module_ref(module_name, line)?;
             self.emit(Op::Include, line);
         }
         for module_name in &decl.extends {
-            let idx = self.add_string_constant(module_name);
-            self.emit(Op::GetGlobal(idx), line);
+            self.compile_module_ref(module_name, line)?;
             self.emit(Op::Extend, line);
         }
 
@@ -168,6 +172,24 @@ impl Compiler {
         Ok(())
     }
 
+    /// Push the module named by an `include` / `extend` onto the stack, resolved
+    /// through the full scope chain (local, upvalue, then global).
+    fn compile_module_ref(&mut self, module_name: &str, line: usize) -> CompileResult<()> {
+        match self.resolve_variable(module_name) {
+            super::compiler::VariableAccess::Local(slot) => {
+                self.emit(Op::GetLocal(slot), line);
+            }
+            super::compiler::VariableAccess::Upvalue(idx) => {
+                self.emit(Op::GetUpvalue(idx), line);
+            }
+            super::compiler::VariableAccess::Global(_) => {
+                let idx = self.add_string_constant(module_name);
+                self.emit(Op::GetGlobal(idx), line);
+            }
+        }
+        Ok(())
+    }
+
     fn compile_method(&mut self, method: &MethodDecl, line: usize) -> CompileResult<()> {
         let func_type = if method.is_static {
             FunctionType::Function
@@ -180,7 +202,22 @@ impl Compiler {
         self.begin_scope();
         self.emit_param_defaults(&method.params)?;
         self.hoist_locals(&method.body, line);
-        for stmt in &method.body {
+        // A method's trailing expression is its return value, exactly as for a
+        // free function (`compile_function_body`). Without this the expression
+        // was compiled, popped, and the method fell off the end returning
+        // null — so every method written in the documented implicit-return
+        // style returned null under `--vm` while the tree-walker returned the
+        // value. Constructors are deliberately excluded: they return the
+        // instance, not their last expression.
+        let last_idx = method.body.len().checked_sub(1);
+        for (i, stmt) in method.body.iter().enumerate() {
+            if Some(i) == last_idx {
+                if let StmtKind::Expression(expr) = &stmt.kind {
+                    self.compile_expr(expr)?;
+                    self.emit(Op::Return, stmt.span.line as usize);
+                    break;
+                }
+            }
             self.compile_stmt(stmt)?;
         }
         self.end_scope(line);

@@ -21,10 +21,56 @@ rather than returning wrong rows.
 | `.includes` for `belongs_to` / `has_many` / `has_one` / HABTM | ✓ | ✓ (batched) |
 | `Transactions` (`Model.transaction`) | ✓ | ✓ |
 | Raw SDBQL string `.where("doc…")` | ✓ | ✗ (use `Model.find_by_sql`) |
+| A raw string `.where` chained onto a hash `.where` | ✓ | ✗ — refused, not silently dropped |
 | `.join` (relation existence filter), `.having` | ✓ | ✓ on document tables |
 | `.includes` with `through:` | ✓ (accessor only) | ✓ on document tables (three batched queries) |
 | Graph/edge models, vector search, timeseries, columnar, `grouped {}` | ✓ | ✗ |
 | Encrypted attributes (`encrypts`), STI, counter caches | ✓ | ✓ (column mode: `encrypts` on text columns; STI needs a string `type` column) |
+
+On a SQL adapter, mixing the two `.where` forms is an error rather than a
+partial query:
+
+```soli
+# Refused on SQL — the raw predicate is SoliDB syntax and cannot be compiled.
+User.where({ "active": true }).where("doc.age >= @min", { "min": 18 })
+
+# Express both conditions in the hash form instead.
+User.where({ "active": true, "age": { "gte": 18 } })
+```
+
+The raw filter used to be discarded silently, so that first query returned
+minors. It now raises with the hash equivalent named in the message.
+
+### Merge-patch semantics
+
+`update(hash)` / `save(hash)` / `.update_all(hash)` **merge** rather than
+replace, following [RFC 7396](https://www.rfc-editor.org/rfc/rfc7396) on every
+adapter:
+
+- a key with an object value **merges recursively**, keeping the stored
+  object's other keys
+- a key with a `null` value **removes** the key
+- anything else replaces the key
+- arrays replace wholesale — they are never merged element-wise
+
+```soli
+# stored: { "prefs": { "theme": "dark", "lang": "fr" }, "note": "hi" }
+record.update({ "prefs": { "theme": "light" }, "note": null })
+# result: { "prefs": { "theme": "light", "lang": "fr" } }
+```
+
+Earlier cuts diverged here: Postgres used a shallow merge that stored a null,
+while SQLite and MySQL applied RFC 7396 — so the same call destroyed unrelated
+nested keys on one adapter and not the others. Removing a key rather than storing
+a null makes no difference to `record.field` (both read as `nil`) or to the
+soft-delete scope (both satisfy `IS NULL`).
+
+On Postgres, a patch containing a nested object needs a read-modify-write under
+a row lock rather than a single statement. Inside a `Model.transaction` that
+nests with a `SAVEPOINT`, so it is atomic on its own and still rolls back with
+the enclosing block; outside one it runs in a transaction of its own. Either
+way two concurrent merges of the same row serialize instead of clobbering each
+other.
 
 A model that declares `table "orders"` runs in **column mode** against a real
 relational schema — one you already have, or one a
@@ -458,7 +504,7 @@ ordered field sort first.
 | `.count` | Execute query, return count |
 | `.exists` | Execute query, return boolean (true if records exist) |
 | `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
-| `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement. Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. |
+| `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement, applying [merge-patch semantics](#merge-patch-semantics). Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. On Postgres a patch containing a *nested object* is refused — merging into a stored object needs per-row recursion, which a bulk statement cannot do. |
 | `.sum(field)` | Execute aggregation, return sum of field |
 | `.avg(field)` | Execute aggregation, return average of field |
 | `.min(field)` | Execute aggregation, return minimum of field |
@@ -766,7 +812,7 @@ First-class file attachments use `has_one_attached` / `has_many_attached`. They 
 
 ```soli
 class User < Model
-  has_one_attached("avatar")   # disk, 10 MiB, any content type
+  has_one_attached("avatar")   # disk, 10 MiB, safe default content types
   has_many_attached("photos", {
     "service": "s3",
     "content_types": ["image/jpeg", "image/png", "image/webp"],
@@ -779,6 +825,30 @@ user.avatar_url()
 user.detach_avatar()
 # destroy / User.delete(id) purges the blobs automatically
 ```
+
+### The default content-type allow-list
+
+`uploader(...)` **requires** a `content_types` array. `has_one_attached` /
+`has_many_attached` are the low-ceremony form and fall back to a curated
+allow-list instead: common images (JPEG, PNG, GIF, WebP, AVIF, HEIC, BMP,
+TIFF), PDF, plain text, Markdown and CSV, JSON, Zip, the Office formats, and
+common audio/video.
+
+> **Upgrading:** `has_*_attached` used to accept *any* content type when the
+> declaration named none. If your app stores something outside the curated list
+> — most likely `image/svg+xml`, `text/html`, or `text/xml` — those uploads now
+> get rejected. Name the types you need with `content_types` to opt back in;
+> the exclusions exist for a reason, so weigh the XSS note below first.
+
+That default deliberately **excludes every type a browser executes script
+from** — `text/html`, `application/xhtml+xml`, `image/svg+xml`, `text/xml` —
+because the blob route serves attachments from your application's own origin.
+Passing `content_types` narrows the list; there is no way to widen it to "any
+type".
+
+The blob route also sends `X-Content-Type-Options: nosniff`, and
+`Content-Disposition: attachment` for anything that is not an inline-safe
+image, so a stored file cannot be re-typed into a script by the browser.
 
 The older `uploader(name, options)` form still works and still defaults to SoliDB blobs (`service: "solidb"`). Same generated methods: `attach_<field>`, `detach_<field>`, `<field>_url` / `<field>_urls`.
 
@@ -845,7 +915,7 @@ end
 | Option | Default | Description |
 |--------|---------|-------------|
 | `multiple` | `false` | `true` keeps an array of blob ids (`<field>_blob_ids`); `false` keeps one (`<field>_blob_id`). |
-| `content_types` | — (required) | Allow-list of MIME types. Anything else is rejected before storage. |
+| `content_types` | required for `uploader`; a safe default list for `has_*_attached` | Allow-list of MIME types. Anything else is rejected before storage. The default never includes a script-executing type — see above. |
 | `max_size` | — (required) | Hard cap in bytes. Above this → `_errors` populated, no blob stored. |
 | `service` | `solidb` for `uploader`; `disk` for `has_*_attached` | `"disk"`, `"s3"`, or `"solidb"`. |
 | `collection` | `<snake>_<field>s` | SoliDB collection (solidb) or key prefix (disk/s3). |

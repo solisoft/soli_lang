@@ -150,14 +150,50 @@ fn dispatch_due() -> Result<(), String> {
     let jobs = super::claim::claim(slots)?;
     for job in jobs {
         if job.handler == WEBHOOK_HANDLER {
-            // Pure HTTP: no interpreter needed, so run it here.
-            let error = deliver_webhook(&job).err();
-            report_outcome(&job, error.as_deref());
+            // Pure HTTP, so no interpreter is needed — but it must not run *on
+            // the poller*. A black-holed host made one tick block for the whole
+            // connect timeout per due webhook, which outlives the lease and also
+            // stalls `renew_leases` and the cron tick; a second poller then
+            // re-claimed the in-flight job through the expired-lease branch and
+            // ran `perform` a second time, concurrently.
+            //
+            // Its own thread, bracketed by `mark_started`/`mark_finished`, keeps
+            // the slot accounting honest (so the next tick does not over-claim)
+            // and puts the job on the in-flight list that `renew_leases` walks.
+            spawn_webhook_delivery(job);
             continue;
         }
         dispatch_to_pool(job);
     }
     Ok(())
+}
+
+/// Deliver one webhook off the poller thread. Holds a worker slot for its
+/// duration and stays on the in-flight list so its lease keeps being renewed.
+fn spawn_webhook_delivery(job: JobDoc) {
+    mark_started(&job.key);
+    // `job` moves into the closure, and a failed `spawn` drops it with the
+    // closure — so keep a copy for the failure path below.
+    let unspawned = job.clone();
+    let spawned = std::thread::Builder::new()
+        .name("soli-webhook".to_string())
+        .spawn(move || {
+            let error = deliver_webhook(&job).err();
+            report_outcome(&job, error.as_deref());
+            mark_finished(&job.key);
+        });
+    if let Err(e) = spawned {
+        // Could not spawn: undo the claim so the job is retried rather than
+        // stranded in `running`. `mark_finished` is what does the undoing —
+        // returning the slot alone would leave the id on the in-flight list,
+        // where `renew_leases` extends its lease forever and nothing ever
+        // reclaims it.
+        eprintln!("[jobs] could not spawn webhook thread: {e}");
+        mark_finished(&unspawned.key);
+        if let Err(e) = release(&unspawned) {
+            eprintln!("[jobs] failed to release {}: {e}", unspawned.key);
+        }
+    }
 }
 
 /// Hand a job to the background pool. If the pool is not running (or its

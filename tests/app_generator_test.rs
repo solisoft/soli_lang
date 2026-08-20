@@ -1,5 +1,5 @@
 //! Tests for individual app-generator functions. We don't run the full
-//! `create_app` (it shells out to npm + git) — instead we exercise each
+//! `create_app` (it compiles Tailwind and shells out to git) — instead we exercise each
 //! file-creation step against a tempdir and assert on the produced contents.
 
 use std::fs;
@@ -9,9 +9,8 @@ use solilang::scaffold::app_generator::{
     create_agents_md, create_application_helper, create_bundled_docs, create_claude_md,
     create_css_file, create_directories, create_dot_claude, create_env_file, create_gitignore,
     create_home_controller, create_index_view, create_layout, create_nested_claude_mds,
-    create_package_json, create_readme, create_routes_file, create_sample_middleware,
-    create_soli_toml, is_soli_project, replace_placeholders, update_project_docs, write_file,
-    PROJECT_DOC_AGENT_PATHS,
+    create_readme, create_routes_file, create_sample_middleware, create_soli_toml, is_soli_project,
+    replace_placeholders, update_project_docs, write_file, PROJECT_DOC_AGENT_PATHS,
 };
 use solilang::scaffold::templates::{agents, app, bundled_docs};
 
@@ -158,21 +157,6 @@ fn create_env_gitignore_claude_helpers_middleware() {
         .filter_map(Result::ok)
         .collect();
     assert!(!mw.is_empty(), "no middleware file created");
-}
-
-#[test]
-fn create_package_json_includes_app_name() {
-    let tmp = fresh();
-    setup_app(tmp.path());
-    create_package_json(tmp.path(), "MyCoolApp").expect("package.json ok");
-    let content = fs::read_to_string(tmp.path().join("package.json")).unwrap();
-    // After placeholder replacement the app name should be embedded.
-    // Just check the file is non-empty JSON-ish.
-    assert!(
-        content.contains('{') && content.contains('}'),
-        "not JSON: {}",
-        content
-    );
 }
 
 #[test]

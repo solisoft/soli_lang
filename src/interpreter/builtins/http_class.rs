@@ -972,7 +972,14 @@ async fn send_logged(
             if let Some(s) = start {
                 let dur = s.elapsed().as_secs_f64() * 1000.0;
                 let status = resp.status().as_u16();
-                let span_name = format!("{} {}", method, url);
+                // Scrubbed: a span name is exported off-box to the OTel collector,
+                // so it must not carry credentials from the query string or
+                // userinfo. The `http_log::record` call below scrubs too.
+                let span_name = format!(
+                    "{} {}",
+                    method,
+                    crate::interpreter::builtins::http_log::scrub_url_for_log(url)
+                );
                 crate::serve::span_log::record(
                     &span_name,
                     crate::serve::span_log::SpanKind::Http,
@@ -997,7 +1004,14 @@ async fn send_logged(
             let msg = describe_request_error(&e);
             if let Some(s) = start {
                 let dur = s.elapsed().as_secs_f64() * 1000.0;
-                let span_name = format!("{} {}", method, url);
+                // Scrubbed: a span name is exported off-box to the OTel collector,
+                // so it must not carry credentials from the query string or
+                // userinfo. The `http_log::record` call below scrubs too.
+                let span_name = format!(
+                    "{} {}",
+                    method,
+                    crate::interpreter::builtins::http_log::scrub_url_for_log(url)
+                );
                 crate::serve::span_log::record(
                     &span_name,
                     crate::serve::span_log::SpanKind::Http,

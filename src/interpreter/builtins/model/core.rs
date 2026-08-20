@@ -1005,8 +1005,70 @@ fn build_uploader_config_from_args(
     })
 }
 
+/// Turn the query layer's in-band error value into a real error.
+///
+/// Several query entry points signal failure by returning
+/// `Value::String("Error: …")` rather than an `Err`. That is fine where the
+/// caller renders the value, but for a scalar result — a count, an aggregate —
+/// it hands back a String where a number belongs, and `try`/`catch` never fires.
+fn raise_if_error_value(value: Value) -> Result<Value, String> {
+    if let Value::String(text) = &value {
+        if let Some(message) = text.strip_prefix("Error: ") {
+            return Err(message.to_string());
+        }
+    }
+    Ok(value)
+}
+
+/// The allowlist `has_one_attached` / `has_many_attached` use when the
+/// declaration names no `content_types`. Deliberately excludes every type a
+/// browser will execute script from — `text/html`, `application/xhtml+xml`,
+/// `image/svg+xml`, `text/xml` — because the blob route serves attachments
+/// from the application's own origin. Pass an explicit `content_types` to
+/// narrow it; there is no way to widen it to "anything".
+///
+/// This default used to be "any content type", so it is a breaking change for
+/// an app that upgrades while storing something not listed here — hence the
+/// list stays as wide as it safely can, and only the script-executable types
+/// above are held back. `Content-Disposition: attachment` and `nosniff` on the
+/// blob route (see `serve/uploads_prelude.rs`) are the primary defence; this
+/// allowlist is defence-in-depth on top of it.
+const DEFAULT_ATTACHMENT_CONTENT_TYPES: &[&str] = &[
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/heic",
+    "image/heif",
+    "image/bmp",
+    "image/tiff",
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/zip",
+    // The MIME older Windows clients send for a .zip.
+    "application/x-zip-compressed",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/wav",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+];
+
 /// `has_one_attached("avatar")` / `has_many_attached("photos", { ... })`.
-/// Options are optional. Defaults: disk service, 10 MiB cap, any content type.
+/// Options are optional. Defaults: disk service, 10 MiB cap, and the
+/// `DEFAULT_ATTACHMENT_CONTENT_TYPES` allowlist.
 fn build_attached_config_from_args(
     class_name: &str,
     args: &[Value],
@@ -1110,6 +1172,22 @@ fn build_attached_config_from_args(
         .unwrap_or_else(|| "disk".to_string());
     let max_size = max_size.unwrap_or(10 * 1024 * 1024);
     let collection = collection.unwrap_or_else(|| default_collection(class_name, &name));
+
+    // `uploader()` *requires* a non-empty content_types; `has_*_attached` is the
+    // low-ceremony form and takes a default instead. That default must never be
+    // "anything", because the blob route echoes the stored content type back
+    // from the app's own origin: an empty allowlist accepted `text/html` and
+    // turned every bare `has_one_attached("avatar")` into stored XSS. Note the
+    // omissions — no text/html, no image/svg+xml, no XML — all of which execute
+    // script when a browser renders them.
+    let content_types = if content_types.is_empty() {
+        DEFAULT_ATTACHMENT_CONTENT_TYPES
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        content_types
+    };
 
     Ok(UploaderConfig {
         name: name.to_string(),
@@ -2353,6 +2431,9 @@ impl Model {
                     };
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
+                // Only the string form reaches here (the hash form returned
+                // above), so this filter is raw SDBQL rather than a hash echo.
+                qb.has_raw_where = true;
                 qb.set_filter(filter, bind_vars);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
@@ -2516,7 +2597,14 @@ impl Model {
                     // SQL document adapters have no raw SDBQL — route through
                     // the QueryBuilder so hash filters / soft-delete / STI
                     // scopes compile to portable SQL.
-                    if crate::db::is_sql() {
+                    // Connection-aware: a model with its own `connection` may sit on a
+                    // different engine than the ambient default. The bare
+                    // `db::is_sql()` sent a Postgres-backed model's read to SoliDB
+                    // while `.where(...).all()` on the same model reached Postgres.
+                    // A `table "…"` model on a connection that cannot serve it must fail
+                    // here rather than fall through to the document path below.
+                    super::column_mode::ensure_supported(&collection)?;
+                    if super::crud::collection_is_sql(&collection) {
                         let qb = QueryBuilder::new_with_class(
                             class.name.clone(),
                             collection,
@@ -2562,7 +2650,14 @@ impl Model {
                 |args| {
                     let class = get_class_rc_from_args(args)?;
                     let collection = class_name_to_collection(&class.name);
-                    if crate::db::is_sql() {
+                    // Connection-aware: a model with its own `connection` may sit on a
+                    // different engine than the ambient default. The bare
+                    // `db::is_sql()` sent a Postgres-backed model's read to SoliDB
+                    // while `.where(...).all()` on the same model reached Postgres.
+                    // A `table "…"` model on a connection that cannot serve it must fail
+                    // here rather than fall through to the document path below.
+                    super::column_mode::ensure_supported(&collection)?;
+                    if super::crud::collection_is_sql(&collection) {
                         let qb = QueryBuilder::new_with_class(
                             class.name.clone(),
                             collection,
@@ -2854,7 +2949,13 @@ impl Model {
             Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
                 let class = get_class_rc_from_args(args)?;
                 let collection = class_name_to_collection(&class.name);
-                if crate::db::is_sql() {
+                // Connection-aware: the bare `db::is_sql()` listed keys from the
+                // ambient default and then routed each delete to the model's own
+                // connection — two different databases in one operation.
+                // A `table "…"` model on a connection that cannot serve it must fail
+                // here rather than fall through to the document path below.
+                super::column_mode::ensure_supported(&collection)?;
+                if super::crud::collection_is_sql(&collection) {
                     let qb =
                         QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
                     return Ok(super::query::execute_query_builder_delete_all(&qb));
@@ -2951,14 +3052,29 @@ impl Model {
                         }
                     }
 
-                    if crate::db::is_sql() {
+                    // Connection-aware: a model with its own `connection` may sit on a
+                    // different engine than the ambient default. The bare
+                    // `db::is_sql()` sent a Postgres-backed model's read to SoliDB
+                    // while `.where(...).all()` on the same model reached Postgres.
+                    // A `table "…"` model on a connection that cannot serve it must fail
+                    // here rather than fall through to the document path below.
+                    super::column_mode::ensure_supported(&collection)?;
+                    if super::crud::collection_is_sql(&collection) {
                         let class = get_class_rc_from_args(args)?;
                         let qb = QueryBuilder::new_with_class(
                             class.name.clone(),
                             collection.clone(),
                             class,
                         );
-                        return Ok(super::query::execute_query_builder_count(&qb));
+                        // `count` must yield a number. The query layer reports
+                        // failures by RETURNING `Value::String("Error: …")`, so a
+                        // missing column-mode table came back as a string that
+                        // `try`/`catch` never saw — every guard of the shape
+                        // `try { Model.count() } catch { … }` silently believed
+                        // the table was there. Raise instead.
+                        return raise_if_error_value(super::query::execute_query_builder_count(
+                            &qb,
+                        ));
                     }
 
                     let sti_clause = get_class_name_from_class(args)
@@ -3071,11 +3187,16 @@ impl Model {
 
                 let mut qb =
                     super::query::QueryBuilder::new_with_class(class_name, collection, class);
-                let total_val = super::query::execute_query_builder_count(&qb);
-                let total = match total_val {
-                    Value::Int(n) => n as usize,
-                    _ => 0,
-                };
+                // Same in-band error convention as `Model.count()`: the query
+                // layer RETURNs `Value::String("Error: …")` on failure. Treating
+                // that as `0` reported `total: 0, total_pages: 1` plus an
+                // error-string `records` payload — a silent success for a
+                // missing table. Raise so `try`/`catch` can see it.
+                let total =
+                    match raise_if_error_value(super::query::execute_query_builder_count(&qb))? {
+                        Value::Int(n) => n as usize,
+                        _ => 0,
+                    };
 
                 let total_pages = if total == 0 { 1 } else { total.div_ceil(per) };
                 let page = if page > total_pages {
@@ -3087,7 +3208,7 @@ impl Model {
 
                 qb.set_offset(offset);
                 qb.set_limit(per);
-                let records = super::query::execute_query_builder(&qb);
+                let records = raise_if_error_value(super::query::execute_query_builder(&qb))?;
 
                 let mut pagination = crate::interpreter::value::HashPairs::default();
                 pagination.insert(
@@ -3196,6 +3317,9 @@ impl Model {
                 // SQL connections can't run the raw-SDBQL form below (and the
                 // old `_ => nil` arm would silently swallow that error) —
                 // express the lookup as a portable eq-filter query instead.
+                // A `table "…"` model on a connection that cannot serve it must fail
+                // here rather than fall through to the document path below.
+                super::column_mode::ensure_supported(&collection)?;
                 if super::crud::collection_is_sql(&collection) {
                     return super::registry::run_on_collection_connection(&collection, || {
                         sql_find_first_by(&class, &collection, &field, value.clone(), false)
@@ -3250,6 +3374,9 @@ impl Model {
                     None => return Err("first_by() requires a value".to_string()),
                 };
                 // SQL connections: portable eq-filter query — see find_by.
+                // A `table "…"` model on a connection that cannot serve it must fail
+                // here rather than fall through to the document path below.
+                super::column_mode::ensure_supported(&collection)?;
                 if super::crud::collection_is_sql(&collection) {
                     return super::registry::run_on_collection_connection(&collection, || {
                         sql_find_first_by(&class, &collection, &field, value.clone(), true)
@@ -3502,8 +3629,11 @@ impl Model {
                 // statement per chunk instead of one round trip per row. The
                 // per-item strong-params filter still runs — bulk insert is
                 // otherwise a perfect bypass for `attr_accessible`.
-                let bulk_sql =
-                    crate::db::is_sql() && !super::column_mode::is_column_mode(&collection);
+                // Connection-aware: a model with its own `connection` may be on
+                // a different engine than the ambient default, and only that
+                // engine's answer decides whether a bulk statement is possible.
+                let bulk_sql = super::crud::collection_is_sql(&collection)
+                    && !super::column_mode::is_column_mode(&collection);
                 let mut bulk_rows: Vec<(String, serde_json::Value)> = Vec::new();
 
                 for item in &items {
@@ -3544,6 +3674,11 @@ impl Model {
                         if let Some(obj) = doc.as_object_mut() {
                             obj.insert("_key".to_string(), serde_json::json!(key));
                         }
+                        // The bulk path skips `exec_insert`, so it must apply
+                        // the `encrypts` transform itself — otherwise
+                        // `create_many` is a silent plaintext write for every
+                        // declared encrypted field, and reads still look right.
+                        super::registry::encrypt_document_fields(&collection, &mut doc)?;
                         bulk_rows.push((key, doc));
                         continue;
                     }

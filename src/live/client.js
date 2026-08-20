@@ -706,6 +706,11 @@
                     break;
 
                 case 'error':
+                    // Clear the pending state first. Every other terminal frame
+                    // does; this one did not, so a failed handler left a
+                    // `soli-disable-with` button disabled for good and the user
+                    // could not retry.
+                    this.clearLoading();
                     console.error('LiveView error:', msg.message);
                     this.emit('error', msg.message);
                     break;

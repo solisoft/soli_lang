@@ -265,6 +265,9 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                     }
                     None => std::collections::HashMap::new(),
                 };
+                // `None` for the IR: the string form contributes nothing
+                // structured, and `raw` below records that it ran so the SQL
+                // compiler can refuse the mixed shape rather than drop it.
                 (filter.to_string(), binds, None)
             }
             _ => {
@@ -283,6 +286,13 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         }
 
         let mut new_qb = qb.borrow().clone();
+        // A string `.where` is raw SDBQL, not the echo of a hash filter. Record
+        // it so `list_query_from_parts` can tell the two apart — it drops the
+        // echo when a hash filter is present, which silently discarded a
+        // chained string predicate.
+        if new_pred.is_none() {
+            new_qb.has_raw_where = true;
+        }
         if let Some(existing_filter) = &new_qb.filter {
             new_qb.filter = Some(format!("({}) AND ({})", existing_filter, filter));
         } else {

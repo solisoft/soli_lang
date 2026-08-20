@@ -117,6 +117,21 @@ pub fn is_column_mode(collection: &str) -> bool {
     super::registry::get_table_mapping(collection).is_some()
 }
 
+/// Refuse a column-mode model whose table cannot actually be served.
+///
+/// A `table "…"` declaration is a promise about a real relational table. When
+/// the connection is SoliDB, or the table is missing, the operation used to fall
+/// through to the *document* path and quietly read and write a `_key`/`doc`
+/// table nobody asked for — `Model.count()` answered 0 instead of failing, so a
+/// `try { Model.count() } catch { … }` capability probe concluded the table was
+/// there. Returns the introspection error, which names the fix.
+pub fn ensure_supported(collection: &str) -> Result<(), String> {
+    if !is_column_mode(collection) {
+        return Ok(());
+    }
+    require_schema(collection).map(|_| ())
+}
+
 /// The error a SoliDB/document-only feature raises on a column-aware model.
 pub fn unsupported(feature: &str, collection: &str) -> String {
     format!(
@@ -237,6 +252,16 @@ pub fn column_query_from_qb(
         }
     }
     apply_sti_scope(&mut q, qb)?;
+    // A hash `.where` also writes `qb.filter` (its SDBQL echo), so the branch
+    // below is skipped whenever a hash filter exists — which silently dropped a
+    // *chained* string `.where`. `has_raw_where` is set only by the string form,
+    // so it distinguishes the two; raw SDBQL is not portable to columns.
+    if q.hash_filter.is_some() && qb.has_raw_where {
+        return Err(unsupported(
+            "raw/string `.where(\"…\")` combined with a hash `.where({ … })`",
+            collection,
+        ));
+    }
     if q.hash_filter.is_none() {
         for (key, value) in &qb.bind_vars {
             let field = crate::interpreter::symbol_string(*key)

@@ -122,8 +122,8 @@ my_app/
 │   ├── application.sl     # App configuration
 │   └── locales/            # i18n translation files
 ├── public/
-│   └── css/                # Compiled CSS output
-└── package.json            # Tailwind toolchain (only needed if customizing)
+│   └── css/                # Compiled CSS output (committed; no npm needed)
+└── soli.toml               # Project manifest
 ```
 
 ## Quick Example

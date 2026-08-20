@@ -31,7 +31,39 @@ pub fn is_enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
 
-fn scrub_url_for_log(url: &str) -> String {
+/// Remove a `user:password@` userinfo component from a URL's authority.
+///
+/// Returns the input unchanged when there is no scheme, no `@`, or the `@`
+/// belongs to the path or query rather than the authority (`/a@b`, `?to=a@b`).
+fn strip_userinfo(url: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    let Some(scheme_end) = url.find("://") else {
+        return Cow::Borrowed(url);
+    };
+    let authority_start = scheme_end + 3;
+    let after_scheme = &url[authority_start..];
+    // The authority ends at the first `/`, `?` or `#`.
+    let authority_end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    let authority = &after_scheme[..authority_end];
+    // `rfind`: a password may itself contain an `@`.
+    let Some(at_in_authority) = authority.rfind('@') else {
+        return Cow::Borrowed(url);
+    };
+    Cow::Owned(format!(
+        "{}{}",
+        &url[..authority_start],
+        &after_scheme[at_in_authority + 1..]
+    ))
+}
+
+/// Strip userinfo and sensitive query values from a URL before it is logged.
+///
+/// `pub(crate)` because the flamegraph span name needs the same treatment: it
+/// used to be built from the raw URL, so `?api_key=sk_live_…` was exported to
+/// the OTel collector even though the query panel next to it was scrubbed.
+pub(crate) fn scrub_url_for_log(url: &str) -> String {
     const SENSITIVE_QUERY_PARAMS: &[&str] = &[
         "api_key",
         "token",
@@ -41,27 +73,14 @@ fn scrub_url_for_log(url: &str) -> String {
         "private_key",
     ];
 
-    if let Some(at_pos) = url.find('@') {
-        if let Some(scheme_end) = url.find("://") {
-            let after_scheme = &url[scheme_end + 3..];
-            if after_scheme
-                .find('@')
-                .is_some_and(|i| i < at_pos.saturating_sub(scheme_end + 3))
-            {
-                let scheme = &url[..scheme_end + 3];
-                let after_userinfo = &url[at_pos + 1..];
-                if let Some(path_start) = after_userinfo.find('/') {
-                    return format!(
-                        "{}{}{}",
-                        scheme,
-                        &after_userinfo[..path_start],
-                        &after_userinfo[path_start..]
-                    );
-                }
-                return format!("{}{}", scheme, after_userinfo);
-            }
-        }
-    }
+    // Strip `user:password@` from the authority, then fall through to query
+    // scrubbing. Two bugs lived here: the guard compared the `@` offset within
+    // the post-scheme slice against the same offset computed a second way and
+    // required `<` where the two are always equal, so it never fired at all;
+    // and it `return`ed on success, so a URL carrying both userinfo and an
+    // `?api_key=` would have kept the key.
+    let without_userinfo = strip_userinfo(url);
+    let url: &str = &without_userinfo;
 
     if let Some(query_pos) = url.find('?') {
         let base = &url[..query_pos];
@@ -156,4 +175,63 @@ pub fn record_with_start(
 
 pub fn snapshot() -> Vec<LoggedHttpRequest> {
     LOG.with(|l| l.borrow().clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scrub_url_for_log;
+
+    /// Both the query panel and the flamegraph span name go through this, and
+    /// span names are exported off-box over OTLP — so a credential in the URL
+    /// must not survive it.
+    #[test]
+    fn credentials_are_stripped_from_a_logged_url() {
+        for (raw, must_not_contain) in [
+            ("https://api.test/v1?api_key=sk_live_abc", "sk_live_abc"),
+            ("https://api.test/v1?token=tok_abc", "tok_abc"),
+            ("https://api.test/v1?access_token=at_abc", "at_abc"),
+            ("https://api.test/v1?secret=s3cr3t", "s3cr3t"),
+            ("https://api.test/v1?password=hunter2", "hunter2"),
+            ("https://api.test/v1?private_key=pk_abc", "pk_abc"),
+            ("https://user:pw@api.test/v1", "pw"),
+        ] {
+            let scrubbed = scrub_url_for_log(raw);
+            assert!(
+                !scrubbed.contains(must_not_contain),
+                "{must_not_contain:?} survived scrubbing of {raw:?}: {scrubbed}"
+            );
+        }
+    }
+
+    /// Userinfo stripping used to `return` early, so a URL with both kinds of
+    /// secret kept the query one.
+    #[test]
+    fn userinfo_and_query_secrets_are_both_removed() {
+        let scrubbed = scrub_url_for_log("https://user:pw@api.test/v1?api_key=sk_live_abc&page=2");
+        assert!(!scrubbed.contains("pw@"), "{scrubbed}");
+        assert!(!scrubbed.contains("sk_live_abc"), "{scrubbed}");
+        assert!(
+            scrubbed.contains("page=2"),
+            "harmless params survive: {scrubbed}"
+        );
+        assert!(scrubbed.starts_with("https://api.test/v1"), "{scrubbed}");
+    }
+
+    /// An `@` outside the authority is not userinfo and must be left alone.
+    #[test]
+    fn an_at_sign_in_the_path_or_query_is_not_userinfo() {
+        for url in [
+            "https://api.test/users/a@b.test",
+            "https://api.test/v1?to=a@b.test",
+            "https://api.test/v1#a@b",
+        ] {
+            assert_eq!(scrub_url_for_log(url), url, "{url}");
+        }
+    }
+
+    #[test]
+    fn a_url_with_nothing_sensitive_is_left_alone() {
+        let plain = "https://api.test/v1/orders?page=2&per=50";
+        assert_eq!(scrub_url_for_log(plain), plain);
+    }
 }

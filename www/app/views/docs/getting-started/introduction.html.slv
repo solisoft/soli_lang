@@ -350,7 +350,7 @@ soli serve . --dev</code></pre>
 │   └── locales/          # i18n translation files
 ├── public/
 │   └── css/               # Compiled CSS output
-└── package.json           # Tailwind toolchain (only needed if customizing)</code></pre>
+└── soli.toml              # Project manifest (no package.json, no npm)</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Quick Example</h2>
     <p class="text-gray-400 mb-6">Here's how the pieces fit together in a simple Soli application:</p>

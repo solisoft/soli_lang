@@ -387,11 +387,6 @@ pub fn create_stdlib(app_path: &Path) -> Result<(), String> {
     )
 }
 
-/// Create package.json
-pub fn create_package_json(app_path: &Path, name: &str) -> Result<(), String> {
-    write_file(&app_path.join("package.json"), &app::package_json(name))
-}
-
 /// Create README.md
 pub fn create_readme(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join("README.md"), &app::readme(name))
@@ -402,61 +397,19 @@ pub fn create_soli_toml(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join("soli.toml"), &app::soli_toml(name))
 }
 
-/// Install npm dependencies with spinner
-pub fn install_npm_dependencies(app_path: &Path) -> bool {
-    // Check if npm is available
-    if Command::new("npm")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_err()
-    {
-        let spinner = Spinner::start("Installing npm packages...");
-        spinner.stop_with_warning("npm not found - run 'npm install' manually");
-        return false;
-    }
-
-    let spinner = Spinner::start("Installing npm packages...");
-
-    let result = Command::new("npm")
-        .args(["install"])
-        .current_dir(app_path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-
-    match result {
-        Ok(status) if status.success() => {
-            spinner.stop_with_success("Dependencies installed");
-            true
-        }
-        _ => {
-            spinner.stop_with_warning("npm install failed - run manually");
-            false
-        }
-    }
-}
-
-/// Build Tailwind CSS with spinner
+/// Compile `app/assets/css/*.css` into `public/css/` with the same
+/// standalone Tailwind binary `soli serve --dev` uses — the one cached in
+/// `~/.soli/bin/` and verified against a pinned SHA-256 (SEC-081).
+///
+/// No npm, no `node_modules`: a new app is styled on a machine that has
+/// never seen Node, and the compiler that runs is the one we checksummed
+/// rather than whatever a floating `^4` range resolved to today. The
+/// binary is downloaded once per machine and shared by every project.
+///
+/// Prints its own progress (including the first-run download), so it is
+/// deliberately not wrapped in a spinner.
 pub fn build_tailwind_css(app_path: &Path) {
-    let spinner = Spinner::start("Compiling Tailwind CSS...");
-
-    let result = Command::new("npm")
-        .args(["run", "build:css"])
-        .current_dir(app_path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-
-    match result {
-        Ok(status) if status.success() => {
-            spinner.stop_with_success("Tailwind CSS compiled");
-        }
-        _ => {
-            spinner.stop_with_warning("CSS build failed - run 'npm run build:css' manually");
-        }
-    }
+    crate::serve::tailwind::compile_tailwind_css_once(app_path);
 }
 
 /// Initialize git repository with spinner
@@ -728,7 +681,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     }
 
     // Use default template generation
-    let mut progress = ProgressDisplay::new(7);
+    let mut progress = ProgressDisplay::new(6);
 
     // Step 1: Create directory structure
     progress.step("Creating directory structure...");
@@ -747,7 +700,6 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_nested_claude_mds(app_path)?;
     create_bundled_docs(app_path)?;
     create_dot_claude(app_path)?;
-    create_package_json(app_path, name)?;
     create_soli_toml(app_path, name)?;
     ProgressDisplay::done();
 
@@ -768,25 +720,13 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_readme(app_path, name)?;
     ProgressDisplay::done();
 
-    // Step 5: Install dependencies (npm)
-    progress.step("Installing dependencies...");
+    // Step 5: Build CSS with the standalone Tailwind binary (no npm)
+    progress.step("Building Tailwind CSS...");
     io::stdout().flush().unwrap();
-    println!(); // Move to next line for spinner
+    println!(); // Move to next line for the compiler's own output
+    build_tailwind_css(app_path);
 
-    let npm_available = install_npm_dependencies(app_path);
-
-    // Step 6: Build CSS
-    if npm_available {
-        progress.step("Building Tailwind CSS...");
-        io::stdout().flush().unwrap();
-        println!(); // Move to next line for spinner
-        build_tailwind_css(app_path);
-    } else {
-        progress.step("Building Tailwind CSS...");
-        ProgressDisplay::skip("npm not available");
-    }
-
-    // Step 7: Initialize git repository
+    // Step 6: Initialize git repository
     progress.step("Initializing git repository...");
     io::stdout().flush().unwrap();
     println!(); // Move to next line for spinner

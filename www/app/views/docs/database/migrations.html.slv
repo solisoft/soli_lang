@@ -80,6 +80,14 @@ soli db:create
 soli db:schema:dump   # write db/schema.sql + applied versions
 soli db:schema:load   # recreate a fresh database from that dump
 soli db:drop     # removes it (WAL sidecars too, on SQLite)</code></pre>
+                <p class="mt-3 text-sm text-gray-400">
+                    All four refuse an unknown or value-less flag with exit 64 rather than ignoring it. That matters most for
+                    <code class="text-cyan-400">db:drop</code>: <code class="text-cyan-400">soli db:drop --connection</code> with
+                    the value forgotten used to fall through with no connection and drop the <strong class="text-white">default</strong>
+                    database without a word. An in-file <code class="text-cyan-400">connection "name"</code> is likewise resolved
+                    against <code>config/database.toml</code> at load time &mdash; a typo used to print <em>Applied</em> while
+                    migrating the default SoliDB instead.
+                </p>
             </div>
         </div>
 

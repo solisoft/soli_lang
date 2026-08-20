@@ -410,6 +410,29 @@ impl MigrationRunner {
             if let Some(err) = &migration.connection_error {
                 return Err(format!("{}: {err}", migration.path.display()));
             }
+            // Resolve an in-file `connection "name"` against the registry, the
+            // way `--connection` already is. Left unchecked, an unknown name
+            // made `active_spec()` error, `db::is_sql()` swallow it to `false`,
+            // and every step take its SoliDB branch — so a typo'd
+            // `connection "legcy"` printed "Applied" while creating collections
+            // in the default SoliDB database and recording the version there.
+            if let Some(name) = &migration.connection {
+                let reg = crate::db::registry();
+                if !reg.connections.contains_key(name) {
+                    let mut known: Vec<_> = reg.connections.keys().cloned().collect();
+                    known.sort();
+                    return Err(format!(
+                        "{}: unknown database connection {name:?}. Known: {}. \
+                         See config/database.toml.",
+                        migration.path.display(),
+                        if known.is_empty() {
+                            "(none — no database.toml?)".to_string()
+                        } else {
+                            known.join(", ")
+                        }
+                    ));
+                }
+            }
             migrations.push(migration);
         }
 
@@ -848,6 +871,43 @@ let db = MigrationDb();
             if newest.is_none_or(|current| migration.version > current.version) {
                 newest = Some(migration);
             }
+        }
+
+        // A version recorded in the database but with no file on disk must stop
+        // the rollback. `migrations` only holds file-backed migrations, so
+        // without this check the loop above picked the newest applied migration
+        // *that still had a file* — an OLDER one — and reverted that instead of
+        // refusing. Deleting a migration file, or switching to a branch that
+        // never had it, silently rolled back the wrong change.
+        let mut orphan: Option<String> = None;
+        let newest_with_file = newest.map(|m| m.version.clone());
+        // Seed the target every migration would use by default, so the check
+        // still runs when *no* file survives — otherwise `cache` would be empty
+        // and the orphaned versions in the database would go unmentioned.
+        let default_target = self.connection_filter.clone();
+        let _ = self.applied_for(&mut cache, default_target)?;
+        for target in cache.keys().cloned().collect::<Vec<_>>() {
+            for version in self.applied_for(&mut cache, target.clone())?.clone() {
+                let newer_than_candidate = newest_with_file
+                    .as_ref()
+                    .is_none_or(|newest_version| version > *newest_version);
+                let has_file = migrations.iter().any(|m| m.version == version);
+                if newer_than_candidate
+                    && !has_file
+                    && orphan.as_ref().is_none_or(|current| version > *current)
+                {
+                    orphan = Some(version);
+                }
+            }
+        }
+        if let Some(version) = orphan {
+            return Err(format!(
+                "Cannot roll back: migration {version} is recorded as applied but its file \
+                 is missing from {}. Restore the file (or check out the branch that has \
+                 it) before rolling back — reverting an older migration instead would \
+                 leave the schema inconsistent with the version table.",
+                self.migrations_path.display()
+            ));
         }
 
         let Some(migration) = newest else {

@@ -921,11 +921,16 @@ impl Interpreter {
     ) -> RuntimeResult<()> {
         for name in includes {
             let module = self.resolve_module(name, span)?;
-            let newly = class
-                .include_module(&module)
+            // Fire hooks for every module that actually joined the class —
+            // the named one plus its transitive includes, innermost first.
+            // Firing only for the named module meant a nested concern's
+            // `included do` was registered against the intermediate module and
+            // never ran against the host.
+            let added = class
+                .include_module_collecting(&module)
                 .map_err(|e| RuntimeError::new(e, span))?;
-            if newly {
-                self.fire_mixin_hooks(class, &module, true, span)?;
+            for joined in &added {
+                self.fire_mixin_hooks(class, joined, true, span)?;
             }
         }
         for name in extends {

@@ -160,7 +160,7 @@ fn bookmarked_paragraphs_become_headings() {
     assert_eq!(count_role(&doc, b"P"), 1, "one plain P");
 }
 
-// A 2x2 red square SVG — rasterises offline (no fetch), so it interns as a figure.
+// A 2x2 red square SVG — converts offline (no fetch), so it interns as a figure.
 const IMG: &str = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8' fill='red'/></svg>";
 
 #[test]

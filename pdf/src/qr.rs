@@ -139,13 +139,12 @@ pub fn encode_qr(payload: &str, ec: EcLevel) -> Result<ImageData> {
         }
     }
 
-    Ok(ImageData {
-        width_px: side_px,
-        height_px: side_px,
-        format: PixelFormat::Gray8,
-        source_key: None,
+    Ok(ImageData::raster(
+        side_px,
+        side_px,
+        PixelFormat::Gray8,
         pixels,
-    })
+    ))
 }
 
 #[cfg(test)]

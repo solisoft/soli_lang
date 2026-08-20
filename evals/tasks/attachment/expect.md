@@ -1,0 +1,2 @@
+- `has_one_attached`
+- `"receipt"`

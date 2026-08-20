@@ -20,9 +20,42 @@
             CRUD, validations, callbacks, hash <code>.where</code>, aggregates, <code>group_by</code>,
             batched <code>.includes</code>, soft delete, transactions, <code>encrypts</code>, and STI.
             Raw SDBQL, graph, vector, timeseries, columnar, and <code>grouped {}</code> are SoliDB-only,
-            and each raises a message naming the feature rather than returning wrong rows. See
+            and each raises a message naming the feature rather than returning wrong rows &mdash; including a
+            raw string <code>.where</code> chained onto a hash <code>.where</code>, which is refused with the hash
+            equivalent named rather than silently dropping the raw half. See
             <a href="/docs/database/multi-database" class="text-amber-400 hover:underline">Multiple Databases</a>.</p>
     </div>
+    <h2 class="text-2xl font-bold text-white mb-6">Merge-patch semantics</h2>
+    <p class="text-gray-400 mb-4">
+        <code>update(hash)</code>, <code>save(hash)</code> and <code>.update_all(hash)</code>
+        <strong class="text-white">merge</strong> rather than replace, following
+        <a href="https://www.rfc-editor.org/rfc/rfc7396" class="text-amber-400 hover:underline">RFC&nbsp;7396</a>
+        on every adapter:
+    </p>
+    <ul class="text-gray-400 mb-4 space-y-1 ml-4">
+        <li>a key with an object value <strong class="text-white">merges recursively</strong>, keeping the stored object's other keys</li>
+        <li>a key with a <code>null</code> value <strong class="text-white">removes</strong> the key</li>
+        <li>anything else replaces the key</li>
+        <li>arrays replace wholesale &mdash; never merged element-wise</li>
+    </ul>
+<pre><code class="language-soli text-sm"># stored: &lbrace; "prefs": &lbrace; "theme": "dark", "lang": "fr" &rbrace;, "note": "hi" &rbrace;
+record.update(&lbrace; "prefs": &lbrace; "theme": "light" &rbrace;, "note": null &rbrace;)
+# result: &lbrace; "prefs": &lbrace; "theme": "light", "lang": "fr" &rbrace; &rbrace;</code></pre>
+    <p class="text-gray-400 mb-4 mt-4">
+        Earlier cuts diverged: Postgres used a shallow merge that stored a null, while SQLite and MySQL applied
+        RFC&nbsp;7396 &mdash; so the same call destroyed unrelated nested keys on one adapter and not the others.
+        Removing a key rather than storing a null makes no difference to <code>record.field</code> (both read as
+        <code>nil</code>) or to the soft-delete scope (both satisfy <code>IS NULL</code>). On Postgres,
+        <code>.update_all</code> refuses a patch containing a nested object &mdash; merging into a stored object needs
+        per-row recursion, which a bulk statement cannot do.
+    </p>
+    <p class="text-gray-400 mb-4">
+        On Postgres a single-row <code>update</code> carrying a nested object takes that same read-modify-write path,
+        under a row lock. Inside a <code>Model.transaction</code> it nests with a <code>SAVEPOINT</code> &mdash; atomic
+        on its own, and still rolled back with the enclosing block; outside one it runs in a transaction of its own.
+        Either way two concurrent merges of the same row serialize rather than clobbering each other.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Defining Models</h2>
     <p class="text-gray-400 mb-4">
         Create model files in <code>app/models/</code>. The collection name is <strong class="text-white">automatically derived</strong> from the class name:
@@ -860,10 +893,16 @@ end</code></pre>
         </div>
     </div>
 
+    <p class="text-gray-400 mb-6">
+        The blob route also sends <code>X-Content-Type-Options: nosniff</code>, and
+        <code>Content-Disposition: attachment</code> for anything that is not an inline-safe image, so a stored
+        file cannot be re-typed into a script by the browser.
+    </p>
+
     <h3 class="text-lg font-semibold text-white mb-3">Options</h3>
     <ul class="text-gray-400 mb-6 space-y-1 ml-4">
         <li><code>multiple</code> &mdash; <code>false</code> stores one blob in <code>&lt;name&gt;_blob_id</code>; <code>true</code> stores an array of ids in <code>&lt;name&gt;_blob_ids</code>.</li>
-        <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip.</li>
+        <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip. Required by <code>uploader</code>; <code>has_*_attached</code> falls back to a curated default (common images including BMP and TIFF, PDF, plain text, Markdown, CSV, JSON, Zip, Office, audio/video) that <strong>excludes every script-executing type</strong> &mdash; no <code>text/html</code>, no <code>image/svg+xml</code>, no XML &mdash; because the blob route serves files from your own origin. Passing the option narrows that list; there is no way to allow any type. <strong class="text-white">Upgrading:</strong> this default used to be "anything", so an app storing a type outside the list must now name it in <code>content_types</code>.</li>
         <li><code>max_size</code> &mdash; hard cap in bytes. Same fast-fail.</li>
         <li><code>service</code> &mdash; <code>disk</code>, <code>s3</code>, or <code>solidb</code>. <code>has_*_attached</code> defaults to disk; <code>uploader</code> defaults to solidb.</li>
         <li><code>collection</code> &mdash; SoliDB collection or disk/S3 key prefix. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>

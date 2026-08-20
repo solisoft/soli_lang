@@ -434,6 +434,18 @@ fn append_order_limit(
         let dir = if q.order_desc { "DESC" } else { "ASC" };
         sql.push_str(&format!(" ORDER BY {quoted} {dir}"));
     }
+    append_limit_offset_cols(d, sql, params, q)
+}
+
+/// The `LIMIT` / `OFFSET` tail, without the `ORDER BY`. Shared with the grouped
+/// compiler, which resolves its ordering against group keys and aggregate
+/// aliases rather than against table columns.
+fn append_limit_offset_cols(
+    d: Dialect,
+    sql: &mut String,
+    params: &mut Vec<SqlBind>,
+    q: &ColumnQuery,
+) -> Result<(), String> {
     if let Some(limit) = q.limit {
         params.push(SqlBind::I64(limit as i64));
         let lim = placeholder(d, params.len(), ColType::Int);
@@ -474,24 +486,35 @@ pub fn compile_group_by_cols(
     }
     let mut selected = Vec::with_capacity(group_fields.len() + aggs.len().max(1));
     let mut grouped = Vec::with_capacity(group_fields.len());
+    // Every entry carries `AS "<result name>"`. The readers index positionally,
+    // so the aliases are not needed for that — they exist so `ORDER BY` can name
+    // a group key or an aggregate, which is how the document path orders too.
+    // Without them `.order("total", …)` compiled to `ORDER BY "total"` against a
+    // SELECT list that had no such output column.
     for field in group_fields {
         let col = resolve_col(&q.schema, field)?;
         let quoted = d.quote_ident(&col.name)?;
+        let alias = d.quote_ident(field)?;
         // Group keys are read as text so every dialect returns one shape.
         selected.push(match d {
-            Dialect::Postgres => format!("{quoted}::text"),
-            Dialect::Mysql => format!("CAST({quoted} AS CHAR)"),
-            Dialect::Sqlite => format!("CAST({quoted} AS TEXT)"),
+            Dialect::Postgres => format!("{quoted}::text AS {alias}"),
+            Dialect::Mysql => format!("CAST({quoted} AS CHAR) AS {alias}"),
+            Dialect::Sqlite => format!("CAST({quoted} AS TEXT) AS {alias}"),
         });
         grouped.push(quoted);
     }
+    // alias -> the un-cast expression behind it, so `ORDER BY` can sort on the
+    // number rather than on its text rendering (see the ordering block below).
+    let mut agg_exprs: Vec<(String, String)> = Vec::new();
     if aggs.is_empty() {
         // The default aggregate is a row count, aliased `n` like the document path.
+        let alias = d.quote_ident("n")?;
         selected.push(match d {
-            Dialect::Postgres => "COUNT(*)::text".to_string(),
-            Dialect::Mysql => "CAST(COUNT(*) AS CHAR)".to_string(),
-            Dialect::Sqlite => "CAST(COUNT(*) AS TEXT)".to_string(),
+            Dialect::Postgres => format!("COUNT(*)::text AS {alias}"),
+            Dialect::Mysql => format!("CAST(COUNT(*) AS CHAR) AS {alias}"),
+            Dialect::Sqlite => format!("CAST(COUNT(*) AS TEXT) AS {alias}"),
         });
+        agg_exprs.push(("n".to_string(), "COUNT(*)".to_string()));
     } else {
         for agg in aggs {
             let expr = if matches!(agg.func, SqlAgg::Count) {
@@ -514,11 +537,13 @@ pub fn compile_group_by_cols(
                 }
                 format!("{name}({})", d.quote_ident(&col.name)?)
             };
+            let alias = d.quote_ident(&agg.alias)?;
             selected.push(match d {
-                Dialect::Postgres => format!("({expr})::text"),
-                Dialect::Mysql => format!("CAST({expr} AS CHAR)"),
-                Dialect::Sqlite => format!("CAST({expr} AS TEXT)"),
+                Dialect::Postgres => format!("({expr})::text AS {alias}"),
+                Dialect::Mysql => format!("CAST({expr} AS CHAR) AS {alias}"),
+                Dialect::Sqlite => format!("CAST({expr} AS TEXT) AS {alias}"),
             });
+            agg_exprs.push((agg.alias.clone(), expr));
         }
     }
 
@@ -536,6 +561,41 @@ pub fn compile_group_by_cols(
             &q.schema,
         )?);
     }
+    // `.order`, `.limit` and `.offset` were silently dropped here, while the
+    // document-mode twin honours all three — so the same grouped query returned
+    // unordered, unbounded rows on a `table "…"` model and a paginated,
+    // sorted set on a document one. Ordering resolves against the group keys and
+    // aggregate aliases (what the SELECT list actually holds), not against
+    // arbitrary table columns, which `GROUP BY` would reject anyway.
+    //
+    // Order on the *expression*, never on the alias. The SELECT list casts
+    // every group key and aggregate to text so all three dialects return one
+    // shape, and a bare name in `ORDER BY` binds to the output column — so
+    // `ORDER BY "n"` would sort those texts lexicographically and rank a count
+    // of 9 above 100. A table-qualified column and a spelled-out aggregate
+    // both bind to the input instead, and sort numerically.
+    if let Some(field) = &q.order_field {
+        let dir = if q.order_desc { "DESC" } else { "ASC" };
+        if let Some(group_field) = group_fields.iter().find(|g| *g == field) {
+            let col = resolve_col(&q.schema, group_field)?;
+            let quoted = d.quote_ident(&col.name)?;
+            sql.push_str(&format!(" ORDER BY {table}.{quoted} {dir}"));
+        } else if let Some((_, expr)) = agg_exprs.iter().find(|(alias, _)| alias == field) {
+            sql.push_str(&format!(" ORDER BY {expr} {dir}"));
+        } else {
+            return Err(format!(
+                "`.order({field:?})` on a grouped query must name one of this query's \
+                 group keys or aggregate aliases ({}).",
+                group_fields
+                    .iter()
+                    .cloned()
+                    .chain(aggs.iter().map(|a| a.alias.clone()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    append_limit_offset_cols(d, &mut sql, &mut params, q)?;
     Ok(CompiledSql { sql, params })
 }
 
@@ -1239,6 +1299,46 @@ mod tests {
 
         q.having = Some("nope > 1".into());
         let err = compile_group_by_cols(Dialect::Sqlite, &q, &["name".into()], &[]).unwrap_err();
+        assert!(err.contains("nope"), "{err}");
+    }
+
+    #[test]
+    fn grouped_order_by_sorts_on_the_expression_not_the_text_alias() {
+        // The SELECT list casts everything to text, and a bare name in ORDER BY
+        // binds to the output column — so ordering by the alias would compare
+        // "9" > "100". Aggregates must sort on the aggregate expression and
+        // group keys on the table-qualified column.
+        let mut q = query();
+        q.order_field = Some("n".into());
+        q.order_desc = true;
+        for d in [Dialect::Postgres, Dialect::Mysql, Dialect::Sqlite] {
+            let c = compile_group_by_cols(d, &q, &["name".into()], &[]).unwrap();
+            assert!(c.sql.contains("ORDER BY COUNT(*) DESC"), "{d:?}: {}", c.sql);
+        }
+
+        let aggs = [GroupAgg {
+            alias: "total".into(),
+            func: SqlAgg::Sum,
+            field: "qty".into(),
+        }];
+        q.order_field = Some("total".into());
+        let c = compile_group_by_cols(Dialect::Postgres, &q, &["name".into()], &aggs).unwrap();
+        assert!(c.sql.contains("ORDER BY SUM(\"qty\") DESC"), "{}", c.sql);
+
+        // A group key orders on the input column, qualified so it cannot bind
+        // to the same-named text alias in the SELECT list.
+        q.order_field = Some("name".into());
+        q.order_desc = false;
+        let c = compile_group_by_cols(Dialect::Postgres, &q, &["name".into()], &aggs).unwrap();
+        assert!(
+            c.sql.contains("ORDER BY \"orders\".\"name\" ASC"),
+            "{}",
+            c.sql
+        );
+
+        // An unknown field is still a clear error, not a silent drop.
+        q.order_field = Some("nope".into());
+        let err = compile_group_by_cols(Dialect::Sqlite, &q, &["name".into()], &aggs).unwrap_err();
         assert!(err.contains("nope"), "{err}");
     }
 

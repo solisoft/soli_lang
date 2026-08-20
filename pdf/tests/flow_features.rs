@@ -216,7 +216,7 @@ fn page_of_lines_defer_to_pass_two() {
 
 #[test]
 fn image_height_and_contain_fit() {
-    // The SVG rasterises at 40x40 px (square).
+    // The SVG's intrinsic size is 40×40 user units (square).
     let svg = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='%23123456'/></svg>";
     let tmpl = format!(
         r#"{{ "fonts": ["titillium"], "content": [

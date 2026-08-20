@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### PDF
+
+- **SVG images are embedded as vectors.** Template `image` elements whose
+  source is SVG are converted with svg2pdf and placed as Form XObjects
+  instead of being rasterised through resvg/tiny-skia. Logos stay sharp at
+  any placed size; `<text>` still uses `font_dirs`.
+- **Fixed: an embedded SVG produced an unreadable PDF.** The imported Form's
+  own resources — the ICCBased colour space svg2pdf always attaches, plus a
+  `FontFile2` for `<text>` and any raster the SVG references — were written
+  inline in the resource dictionary. PDF permits a stream only as an indirect
+  object, so every SVG-bearing document came out corrupt (qpdf: *expected
+  endobj*; poppler could not parse the object; the artwork did not render).
+  Nested resource streams are hoisted into their own objects and referenced.
+
 ### Docs
 
 - **Blog: Stripe Checkout.** A how-to for taking payments in a Soli app
@@ -24,6 +38,174 @@
   not a desugared `if !cond`. Multi-line guards parse and stay `unless` through
   `soli fmt` (a short body still collapses to postfix `expr unless cond`).
   `else` is allowed; `elsif` is not. Postfix `expr unless cond` is unchanged.
+
+### Fixed
+
+- **A nested-object `update` inside a Postgres transaction committed it early.**
+  The recursive-merge path (read-modify-write under `FOR UPDATE`) issued a raw
+  `BEGIN`/`COMMIT` on the connection an enclosing `Model.transaction` was
+  already holding, so its `COMMIT` committed the caller's work and the caller's
+  rollback became a no-op; on the error side its `ROLLBACK` discarded writes the
+  caller had already made. It nests with a `SAVEPOINT` when a transaction is
+  open on the same connection.
+- **Ordering a grouped query sorted text instead of numbers.** Grouped rows are
+  selected as text so all dialects return one shape, and a bare alias in
+  `ORDER BY` binds to that output column — so
+  `Order.group_by("status").order("n", "desc").limit(3)` ranked a count of `9`
+  above `100`. Ordering targets the underlying expression now: the aggregate
+  itself, or the table-qualified group column.
+- **Grouped keys lost their column's type.** Parsing every group key turned a
+  text key of `"00042"` into `42` and merged `"01"` with `"1"`; keeping every
+  key as text fixed that but turned `Order.group_by("year")` on an integer
+  column into `{"year": "2024"}`, breaking arithmetic and `== 2024`. The schema
+  decides: numeric columns yield numbers, text columns keep their exact text.
+- **`Model.paginate` swallowed query errors.** It read the in-band
+  `"Error: …"` value as `0`, reporting `total: 0, total_pages: 1` with an error
+  string in `records` for a missing table. Both its count and its records query
+  raise, matching `Model.count`.
+- **A webhook whose delivery thread could not be spawned was stranded.** The
+  failure path returned the worker slot but left the job on the in-flight list,
+  so lease renewal extended it forever and the row sat in `running` unclaimable.
+- **Job retention and the queue filter scanned the whole table.** `prune_done`
+  pre-counted with a `SELECT` before deleting (the `DELETE` already reports the
+  count), and `queues()` selected one document per non-terminal job to collect a
+  handful of distinct names — now a `GROUP BY`.
+- **`SOLI_CSRF_TOKENS=require` 403'd the jobs dashboard's own buttons.** The
+  dashboard authenticates with Basic auth rather than a cookie session, so it has
+  no session token to embed in its retry/cancel forms. `/__soli/jobs` keeps the
+  Origin/Referer gate and is exempt from the mandatory-token layer only.
+- **Merge updates behaved differently on every SQL adapter.** Postgres used
+  `jsonb ||` (shallow, stores a null); SQLite and MySQL use RFC 7396 (merges
+  nested objects, *removes* a null key). So `update({"prefs": {"theme": "dark"}})`
+  destroyed the rest of `prefs` on Postgres, and `update({"deleted_at": null})`
+  left two different documents. RFC 7396 is the defined behaviour everywhere
+  now: a flat patch stays one atomic statement on Postgres, a nested one takes a
+  row-locked read-merge-write. `update_all` follows the same rule and refuses a
+  nested-object patch on Postgres. Verified against live Postgres and SQLite.
+- **An app on a non-public Postgres schema saw every table as missing.**
+  `table_exists` hardcoded `table_schema = 'public'` while every other schema
+  query uses `current_schema()`, so reads returned empty and the job poller never
+  claimed — a record created and immediately looked up raised `RecordNotFound`.
+- **A repointed connection kept using the old database.** Adapter pools were
+  cached by connection *name* alone, so changing a URL handed back the previous
+  pool. All three adapters key on name and URL.
+- **Job retention stopped working once history built up.** `prune_done` scanned a
+  500-row window, and `dead` rows are terminal and never pruned — 500 of them
+  filled it permanently. `Job.queues()` emptied itself the same way. Both are
+  scoped at the database now.
+- **`Cron.every` registered schedules that never fired.** `"90 minutes"`,
+  `"25 hours"` and `"40 days"` each emitted a `*/N` beyond its field's range,
+  which the parser rejects; `"90 seconds"` was truncated to 60. Each is an error
+  now, and every in-range value is covered by a test.
+- **Grouped-query keys were coerced to numbers.** A group key of `"00042"` came
+  back as `42` and `"01"`/`"1"` collapsed into one bucket, despite the doc
+  comment saying keys stay text. Only aggregates are parsed now.
+- **Column-mode `group_by` dropped `ORDER BY`, `LIMIT` and `OFFSET`** that its
+  document-mode twin honours. The grouped SELECT list carries SQL aliases now so
+  ordering can name a group key or an aggregate.
+- **`LIKE` on a non-text column was rejected by the database.** The pattern's
+  placeholder was cast to the column's type, producing `$1::text::uuid`, and
+  `uuid LIKE uuid` is not an operator.
+- **`db:migrate down` could roll back the wrong migration.** If the newest
+  applied migration's file was missing, an *older* one was reverted instead of
+  refusing. It stops with the orphaned version named.
+- **`db.execute` self-deadlocked inside a transaction on SQLite.** It opened a
+  second connection to the same file, and SQLite takes a database-wide write
+  lock. It runs on the pooled connection now.
+- **Two visitors joining a LiveView room at once orphaned one of them.** Mounting
+  checked then registered as two steps, so the second registration replaced the
+  first and left that socket open but unreachable. Attach-or-register is atomic
+  now. Room uploads are scoped to the session that sent the event rather than the
+  instance's creator.
+- **A failed LiveView handler left a `soli-disable-with` button disabled
+  forever** — the `error` frame never cleared the pending state.
+- **`Model.count` returned an error string instead of raising.** On a `table "…"`
+  model whose table was missing the failure came back as `"Error: …"` where a
+  number belongs, so `try { Model.count() } catch` never fired. It raises now,
+  and a `table` declaration on a connection that cannot serve it is refused
+  rather than silently falling back to document storage.
+- **`define_method` / `alias_method` did not work under `--vm`**, and the type
+  checker rejected them on both engines. Both are implemented for the VM (a
+  compiled body lands in the bytecode method table), and the checker knows the
+  reflection surface, so neither needs `--no-type-check`.
+- **`include` of a module declared inside a function failed under `--vm`.** The
+  compiler resolved the name as a global; `include`/`extend` now use the same
+  resolution as any other name read.
+- **`module Foo` could not be typed into the REPL** — `module` was missing from
+  the block-opener check.
+- **`db:schema:dump` / `db:schema:load` did not read `.env`,** unlike
+  `db:create` and `db:migrate`.
+- **Non-ASCII `database.toml` values were mangled** — env expansion
+  reinterpreted each byte as a character.
+- **The eval harness was missing from a clean clone.** An unanchored `tasks*`
+  rule in `.gitignore` also matched `evals/tasks/`, so all twelve fixtures were
+  untracked and `scripts/evals/run.py` raised `FileNotFoundError`.
+- **A method's implicit return produced `null` under `--vm`.** Free functions
+  returned their trailing expression; methods compiled it, popped it, and fell off
+  the end — so any method in the documented implicit-return style returned `null`
+  in compiled mode, silently. Constructors still return the instance.
+- **An index assignment evaluated to the container under `--vm`.** `h[k] = v` as a
+  function's last statement returned the hash, and `h["k"] = v` returned `null`,
+  instead of `v`. All four hash-set opcodes yield the assigned value now.
+- **Nested-index peepholes dropped a stack slot.** `AddNestedIndex` /
+  `SetNestedIndex` treated the trailing `Pop` as optional but push nothing where
+  the replaced sequence leaves a value, so a function ending in
+  `total = total + h[ks[k]]` returned a stray local. All four require the `Pop`.
+- **`include` on a non-`Model` class failed the type checker.** Nothing under
+  `src/types/` read `ClassDecl.includes`, so `soli check` rejected `u.greet()` for
+  `class User { include Greetable }`. Module members (transitive includes and
+  `class_methods do` blocks included) fold into the class type in a pass of their
+  own, so declaration order does not matter.
+- **A module's own method lost to the module it includes.** Transitive includes
+  were applied first and both copies were first-wins, so
+  `module Named { include Base; def label() {"named"} }` resolved to `Base`'s.
+- **A nested concern's `included do` never ran against the class.** Hooks fired
+  only for directly-named modules, so `module Auditable { include Timestamps }` +
+  `class Post { include Auditable }` registered `Timestamps`'s hook on `Auditable`
+  and never applied it to `Post`. Hooks fire for every module that joins the
+  class, innermost first.
+- **Concern hook bodies could not see application code under `--vm`.** They ran in
+  a throwaway interpreter holding builtins only. It is seeded from the running
+  program's globals now, and a bytecode function reached from a hook dispatches
+  back through the VM.
+- **Module hook metadata was lost to caching and re-execution.** The side table
+  was thread-local while the compiled-module cache is process-global, and it was
+  read destructively. It is process-global and read non-destructively.
+- **A typo'd in-file `connection "name"` reported success while migrating the
+  wrong database.** Unknown names were not resolved against the registry, and the
+  resulting error was swallowed into "not SQL", so every step took its SoliDB
+  branch — printing *Applied* while recording the version in the default
+  database. In-file names are resolved at load time, with known ones listed.
+- **A numeric `IN` list defeated every sibling predicate.** It compiled to
+  unparenthesised disjuncts, and siblings join with `AND`, which binds tighter —
+  so `Post.where({"id": [1,2,3], "status": "open"})` became
+  `id=1 OR id=2 OR (id=3 AND status='open')`. The implicit soft-delete and STI
+  scopes were defeated the same way, leaking soft-deleted rows.
+- **A string `.where` chained onto a hash `.where` was discarded on SQL.**
+  `User.where({"active": true}).where("doc.age >= @min", {"min": 18})` returned
+  minors with no error. The raw filter is now told apart from the SDBQL echo a
+  hash `.where` also produces, and the mixed form is refused with the hash
+  equivalent named.
+- **`Model.all`, `all_json`, `count` and `delete_all` ignored a model's own
+  `connection`.** They tested the ambient default, so a `connection "reporting"`
+  model read from SoliDB while `.where(…).all` reached Postgres; `delete_all`
+  listed keys from one database and deleted from the other.
+- **A slow webhook host could make a job run twice.** Delivery ran inline on the
+  poller, blocking the tick past the lease (stalling lease renewal and cron with
+  it) so a second poller re-claimed the in-flight job. It runs on its own thread,
+  holding a worker slot and staying on the in-flight list.
+- **`soli fmt` emitted lines `soli lint` rejected.** The postfix-collapse width
+  estimate had no case for an interpolated string and scored every one as 8
+  characters, so a long guard collapsed past the 120-char limit — a freshly
+  generated app failed its own lint.
+- **Non-ASCII `database.toml` values were mangled.** Env expansion reinterpreted
+  each byte as a character, so a password with `é` arrived as `Ã©`.
+- **`soli new` produced an app with no compiled stylesheet.** The Tailwind
+  compiler ran with `current_dir(folder)` while its input path was also relative
+  to `folder`, so the path resolved twice and `public/css/` was committed empty.
+- **The documented `--no-default-features` build did not compile.** With every SQL
+  feature off, one call site had no arm constraining its success type. CI built
+  only `--all-features`.
 
 ### REPL
 
@@ -71,6 +253,63 @@
 
 ### Security
 
+- **The jobs dashboard was exempt from CSRF.** The whole reserved `/__soli/`
+  namespace skipped both barriers, and `POST /__soli/jobs/<id>/retry` is
+  production-reachable behind Basic auth — which a browser attaches
+  automatically, so any other site could forge it against a logged-in operator.
+  `/__soli/jobs` keeps both barriers now; its own forms are same-origin.
+- **`SOLI_FORCE_SECURE_COOKIES` was bypassed by the two-argument `set_cookie`.**
+  That form hardcoded its attribute string and skipped the builder that applies
+  the flag, so `set_cookie("remember_me", token)` shipped a credential with no
+  `Secure` on an app declared TLS-only.
+- **OpenTelemetry span names carried credentials off-box.** An outbound HTTP span
+  was named from the raw URL while the query panel beside it was scrubbed. Span
+  names go through the same scrubber now — which itself had two bugs: its
+  userinfo check required `<` where the two offsets it compared are always
+  equal, so `user:password@` was never stripped; and it returned early, so a URL
+  with both userinfo and an `?api_key=` kept the key.
+- **`create_many` stored `encrypts` fields as plaintext on SQL.** The bulk-insert
+  branch bypassed the write layer that applies the transform, so a model with
+  `encrypts("ssn")` persisted raw values, and reads still looked correct because
+  the loader leaves non-ciphertext untouched. The bulk path now encrypts each row
+  (and picks the bulk path per the model's own `connection`, not the ambient one).
+- **`has_*_attached` accepted and re-served `text/html`.** An absent
+  `content_types` meant "anything", and the blob route echoed the client-declared
+  type with no `nosniff` — a bare `has_one_attached("avatar")` was stored XSS on
+  the app's origin. They now default to a curated allow-list that excludes every
+  script-executing type (no `text/html`, no `image/svg+xml`, no XML), and the blob
+  route sends `X-Content-Type-Options: nosniff` plus `Content-Disposition:
+  attachment` for anything that is not an inline-safe image. Since those
+  disposition headers are the primary defence, the list stays as wide as it
+  safely can — images including BMP and TIFF, PDF, plain text, Markdown, CSV,
+  JSON, Zip (both MIME spellings), the Office formats, common audio/video.
+  **Upgrading:** this is still a change from "anything", so an app storing a
+  type outside the list must name it in `content_types`.
+- **A locked account could never lock again.** In the generated auth stack,
+  `register_failed_attempt` returned early whenever `locked_at` was set, and only
+  `locked?()` cleared an expired stamp — which ran after a *successful* login. The
+  attempt counter froze permanently, so once the first window elapsed an attacker
+  guessed at full rate forever. The guard asks `locked?()` now, which re-arms the
+  lockout without sliding the window under sustained attack.
+- **Generated OAuth clients could not authenticate, and their PKCE was `plain`.**
+  The services passed `"headers"` to `HTTP.get`/`HTTP.post`, which read that hash
+  for `timeout` only and return the body as a String — so the `Authorization`
+  header was dropped and `response["body"]` was a type error. They use
+  `HTTP.request(method, url, headers, body)` now and check the status. PKCE sends
+  a real `S256` challenge instead of the raw verifier.
+- **`live_component` interpolated its child id into HTML unescaped.** The id is
+  application data (`live_component("row", {"id": row.slug})`) and reached the DOM
+  through `morph` → `innerHTML`, so a quote could add a live event handler. Ids
+  are attribute-escaped, and one containing a control character (which would split
+  the line the patch engine splices on) is refused at the call.
+- **A panic inside an adapter pinned the worker to the wrong database.**
+  `with_connection` restored the previous target only on the normal path, so a
+  caught panic left the worker reading *and writing* the secondary database for
+  the rest of its life. The restore is a `Drop` guard.
+- **`soli db:drop` could silently drop the default database.** Its flag loop
+  ignored anything unrecognised, so `soli db:drop --connection` with the value
+  forgotten dropped the default without a word. `db:create`, `db:drop`,
+  `db:schema:dump` and `db:schema:load` exit 64 on an unknown or value-less flag.
 - **Chunked LiveView uploads had no cap.** `put_chunk` pruned only by TTL,
   so unlike the completed-file store it enforced neither a global nor a
   per-session limit. `POST /live/upload` is reachable without a session

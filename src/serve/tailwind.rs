@@ -109,6 +109,179 @@ fn tailwind_binary_info(major: u8) -> Option<BinaryAsset> {
     }
 }
 
+/// The version this build pins for a given major. Used when the project
+/// doesn't name one of its own.
+fn pinned_version(major: u8) -> &'static str {
+    if major >= 4 {
+        "4.3.1"
+    } else {
+        "3.4.17"
+    }
+}
+
+/// This platform's slug in the upstream asset name (`tailwindcss-<slug>`).
+/// `None` on platforms upstream doesn't publish a standalone binary for.
+fn platform_slug() -> Option<&'static str> {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    return Some("macos-arm64");
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    return Some("macos-x64");
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    return Some("linux-x64");
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    return Some("linux-arm64");
+    #[cfg(not(any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(target_os = "macos", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "aarch64"),
+    )))]
+    None
+}
+
+/// A Tailwind binary to obtain: where to fetch it, what to call it in the
+/// cache, and what to check it against.
+struct ResolvedAsset {
+    url: String,
+    /// Cache filename. Version-qualified for project-chosen versions so two
+    /// projects on different Tailwinds don't fight over one cached file.
+    cache_name: String,
+    /// The hash this build pins. `None` for a project-chosen version — there
+    /// is no constant to pin it to, so it is checked against the release's
+    /// own `sha256sums.txt` (or an explicitly configured hash) instead.
+    sha256: Option<String>,
+    version: String,
+    /// The asset's name in the upstream release (and in its
+    /// `sha256sums.txt`), which carries no version — unlike `cache_name`.
+    upstream_name: String,
+    /// True when the version came from the project rather than from us.
+    configured: bool,
+}
+
+/// Accept only what can safely become a URL path segment and a filename:
+/// one to four dot-separated runs of digits (`4`, `4.1`, `4.1.5`, `3.4.17`).
+fn is_valid_version(version: &str) -> bool {
+    let mut segments = 0;
+    for segment in version.split('.') {
+        segments += 1;
+        if segments > 4 || segment.is_empty() || !segment.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+    }
+    segments > 0
+}
+
+fn is_valid_sha256(hex: &str) -> bool {
+    hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Read a key from the `[assets]` table of the project's `soli.toml`.
+fn assets_config_value(folder: &Path, key: &str) -> Option<String> {
+    let text = std::fs::read_to_string(folder.join("soli.toml")).ok()?;
+    let parsed: toml::Value = text.parse().ok()?;
+    let value = parsed.get("assets")?.get(key)?.as_str()?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// The environment always wins over `soli.toml` — CI and one-off upgrade
+/// checks shouldn't require editing a checked-in file.
+fn configured_value(folder: &Path, env_key: &str, toml_key: &str) -> Option<String> {
+    if let Ok(from_env) = std::env::var(env_key) {
+        let trimmed = from_env.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    assets_config_value(folder, toml_key)
+}
+
+/// Decide which binary to use for `major`, honouring a project-chosen
+/// version from `[assets] tailwind_version` in `soli.toml` (or
+/// `SOLI_TAILWIND_VERSION`). Prints and ignores an unusable version rather
+/// than failing the build over it.
+fn resolve_asset(folder: &Path, major: u8) -> Option<ResolvedAsset> {
+    if let Some(version) = configured_value(folder, "SOLI_TAILWIND_VERSION", "tailwind_version") {
+        if !is_valid_version(&version) {
+            eprintln!(
+                "   ✗ Ignoring Tailwind version '{}': expected a numeric version like 4.1.5",
+                version
+            );
+        } else if let Some(slug) = platform_slug() {
+            let configured_hash =
+                configured_value(folder, "SOLI_TAILWIND_SHA256", "tailwind_sha256").filter(|hex| {
+                    let ok = is_valid_sha256(hex);
+                    if !ok {
+                        eprintln!("   ✗ Ignoring tailwind_sha256: expected 64 hex characters");
+                    }
+                    ok
+                });
+            return Some(ResolvedAsset {
+                url: format!(
+                    "https://github.com/tailwindlabs/tailwindcss/releases/download/v{}/tailwindcss-{}",
+                    version, slug
+                ),
+                cache_name: format!("tailwindcss-{}-{}", version, slug),
+                sha256: configured_hash,
+                version,
+                upstream_name: format!("tailwindcss-{}", slug),
+                configured: true,
+            });
+        }
+    }
+
+    let asset = tailwind_binary_info(major)?;
+    Some(ResolvedAsset {
+        url: asset.url.to_string(),
+        cache_name: asset.name.to_string(),
+        sha256: Some(asset.sha256.to_string()),
+        version: pinned_version(major).to_string(),
+        upstream_name: format!("tailwindcss-{}", platform_slug().unwrap_or_default()),
+        configured: false,
+    })
+}
+
+/// The SHA-256 for `asset_name` from a release's own `sha256sums.txt`.
+///
+/// This is what a project-chosen version is verified against when it hasn't
+/// declared `tailwind_sha256`. It is weaker than the pinned constants: it
+/// proves the bytes we received are the bytes the release lists, not that
+/// the release itself is what it was when someone vetted it. Declaring
+/// `tailwind_sha256` restores the stronger guarantee.
+fn fetch_release_sha256(version: &str, asset_name: &str) -> Option<String> {
+    let url = format!(
+        "https://github.com/tailwindlabs/tailwindcss/releases/download/v{}/sha256sums.txt",
+        version
+    );
+    let output = std::process::Command::new("curl")
+        .args(["-sL", "--fail"])
+        .arg(&url)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let listing = String::from_utf8_lossy(&output.stdout);
+    for line in listing.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 2 {
+            continue;
+        }
+        let hash = fields[0];
+        let name = fields[fields.len() - 1]
+            .trim_start_matches("./")
+            .trim_start_matches('*');
+        if name == asset_name && is_valid_sha256(hash) {
+            return Some(hash.to_ascii_lowercase());
+        }
+    }
+    None
+}
+
 /// Get the path where the standalone Tailwind binary is cached.
 /// Stored in ~/.soli/bin/
 fn tailwind_cache_dir() -> Option<PathBuf> {
@@ -151,16 +324,11 @@ fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
 /// `verify_sha256` returns Ok does it get renamed to `dest`. Mismatches
 /// fail closed with the partial file deleted, so a hostile or corrupted
 /// download never leaves an executable cached file behind.
-fn download_tailwind_binary(dest: &Path, major: u8) -> bool {
-    let asset = match tailwind_binary_info(major) {
-        Some(a) => a,
-        None => {
-            eprintln!("   ✗ No standalone Tailwind binary available for this platform");
-            return false;
-        }
-    };
-
-    println!("   Downloading Tailwind CSS standalone CLI...");
+fn download_tailwind_binary(dest: &Path, asset: &ResolvedAsset) -> bool {
+    println!(
+        "   Downloading Tailwind CSS {} standalone CLI...",
+        asset.version
+    );
 
     if let Some(parent) = dest.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -172,12 +340,19 @@ fn download_tailwind_binary(dest: &Path, major: u8) -> bool {
     // Stage download to `<dest>.partial` so a failed verification (or a
     // crashed download mid-flight) can never leave an executable cached
     // file at `dest`.
-    let partial = dest.with_extension("partial");
+    // Append rather than `with_extension`, which would truncate at the last
+    // dot of a version-qualified name — `tailwindcss-4.3.1-macos-arm64` and
+    // `…-4.3.5-…` would both stage to `tailwindcss-4.3.partial` and collide.
+    let partial = {
+        let mut name = dest.file_name().unwrap_or_default().to_os_string();
+        name.push(".partial");
+        dest.with_file_name(name)
+    };
 
     let curl_result = std::process::Command::new("curl")
         .args(["-sL", "--fail", "-o"])
         .arg(&partial)
-        .arg(asset.url)
+        .arg(&asset.url)
         .output();
 
     match curl_result {
@@ -195,7 +370,34 @@ fn download_tailwind_binary(dest: &Path, major: u8) -> bool {
         }
     }
 
-    if let Err(e) = verify_sha256(&partial, asset.sha256) {
+    // A version we ship has a pinned hash. A project-chosen one is checked
+    // against the release's own `sha256sums.txt`, unless the project declared
+    // `tailwind_sha256` — and if neither can be had, nothing is installed.
+    let expected = match asset.sha256.clone() {
+        Some(hex) => hex,
+        None => match fetch_release_sha256(&asset.version, &asset.upstream_name) {
+            Some(hex) => {
+                println!(
+                    "   Verifying against the v{} release's sha256sums.txt \
+                     (declare tailwind_sha256 in soli.toml to pin it here instead)",
+                    asset.version
+                );
+                hex
+            }
+            None => {
+                let _ = std::fs::remove_file(&partial);
+                eprintln!(
+                    "   ✗ No checksum available for Tailwind {}: the release's sha256sums.txt \
+                     could not be read.\n     Refusing to install an unverified binary. Check the \
+                     version exists, or set tailwind_sha256 in soli.toml.",
+                    asset.version
+                );
+                return false;
+            }
+        },
+    };
+
+    if let Err(e) = verify_sha256(&partial, &expected) {
         let _ = std::fs::remove_file(&partial);
         eprintln!(
             "   ✗ {}\n     Refusing to install an unverified Tailwind binary. \
@@ -226,20 +428,37 @@ fn download_tailwind_binary(dest: &Path, major: u8) -> bool {
         return false;
     }
 
-    println!(
-        "   ✓ Tailwind CSS CLI downloaded and verified ({})",
-        asset.name
-    );
+    if asset.configured {
+        // The project picked this version, so show the hash it resolved to:
+        // pasting it into `[assets] tailwind_sha256` upgrades the check from
+        // "matches the release listing" to "matches the bytes I vetted".
+        match sha256_hex_of_file(dest) {
+            Ok(hex) => println!(
+                "   ✓ Tailwind CSS {} downloaded and verified\n     tailwind_sha256 = \"{}\"",
+                asset.version, hex
+            ),
+            Err(_) => println!(
+                "   ✓ Tailwind CSS {} downloaded and verified",
+                asset.version
+            ),
+        }
+    } else {
+        println!(
+            "   ✓ Tailwind CSS CLI downloaded and verified ({})",
+            asset.cache_name
+        );
+    }
     true
 }
 
 /// Find or download the Tailwind CSS binary for the given major version.
 /// Priority: local node_modules > cached standalone > download standalone.
 ///
-/// The local `node_modules/.bin/tailwindcss` is preferred unconditionally:
-/// it is whatever version the project installed, so it is correct by
-/// construction (a v4 project that ran `npm install` ships the v4 CLI there).
-/// Only the standalone fallback is version-selected via `major`.
+/// The local `node_modules/.bin/tailwindcss` still wins when it exists:
+/// `soli new` no longer creates one, but a project that keeps its own npm
+/// toolchain has deliberately installed that CLI, and its version is the one
+/// that project means to use. A project with no `node_modules` gets the
+/// standalone binary for `[assets] tailwind_version`, or the pinned default.
 fn find_tailwind_binary(folder: &Path, major: u8) -> Option<PathBuf> {
     // 1. Check local node_modules/.bin/tailwindcss
     let local_bin = folder.join("node_modules/.bin/tailwindcss");
@@ -248,15 +467,15 @@ fn find_tailwind_binary(folder: &Path, major: u8) -> Option<PathBuf> {
     }
 
     // 2. Check cached standalone binary in ~/.soli/bin/
-    let asset = tailwind_binary_info(major)?;
+    let asset = resolve_asset(folder, major)?;
     let cache_dir = tailwind_cache_dir()?;
-    let cached = cache_dir.join(asset.name);
+    let cached = cache_dir.join(&asset.cache_name);
     if cached.exists() {
         return Some(cached);
     }
 
     // 3. Download standalone binary (verifies SHA-256 before installing).
-    if download_tailwind_binary(&cached, major) {
+    if download_tailwind_binary(&cached, &asset) {
         return Some(cached);
     }
 
@@ -342,6 +561,15 @@ fn semver_major_after_key(pkg_json: &str, key: &str) -> Option<u8> {
 /// Each `app/assets/css/foo.css` is compiled to `public/css/foo.css`.
 /// Returns true if all compilations were successful.
 pub(crate) fn compile_tailwind_css_once(folder: &Path) -> bool {
+    // The compiler runs with `current_dir(folder)` so Tailwind's `@source`
+    // globs resolve against the project. That makes a *relative* `folder`
+    // resolve twice — `soli new blog` would ask for `./blog/app/...` from
+    // inside `blog/`. Absolutise once, up front, and use it everywhere.
+    let root = folder
+        .canonicalize()
+        .unwrap_or_else(|_| folder.to_path_buf());
+    let folder: &Path = &root;
+
     let assets_dir = folder.join("app/assets/css");
     if !assets_dir.exists() {
         return false;
@@ -392,7 +620,16 @@ pub(crate) fn compile_tailwind_css_once(folder: &Path) -> bool {
     let tailwind_bin = match find_tailwind_binary(folder, major) {
         Some(bin) => bin,
         None => {
-            eprintln!("   ✗ Tailwind CSS CLI not found. Run 'npm install' in your project or check your internet connection.");
+            // Don't suggest npm: a scaffolded project has no package.json.
+            // Either the download failed, or this platform has no pinned
+            // standalone binary (see `platform_slug`).
+            eprintln!(
+                "   ✗ No Tailwind CSS compiler available.\n     \
+                 Check your internet connection, or pin a version with \
+                 [assets] tailwind_version in soli.toml.\n     \
+                 On a platform with no standalone build, install the CLI \
+                 yourself at node_modules/.bin/tailwindcss."
+            );
             return false;
         }
     };
