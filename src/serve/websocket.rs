@@ -246,6 +246,7 @@ impl WebSocketRegistry {
     // (cheap `Arc` bump) and the actual sends happen lock-free.
 
     /// Send a message to a specific connection.
+    #[allow(clippy::result_large_err)]
     pub async fn send_to(&self, id: &Uuid, message: &str) -> Result<(), tungstenite::Error> {
         let sender = {
             let connections = self.connections.lock().await;

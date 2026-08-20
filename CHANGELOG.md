@@ -253,6 +253,14 @@
 
 ### Security
 
+- **`h2` bumped to 0.4.18 — RUSTSEC-2026-0258 (unbounded empty DATA frames).**
+  A peer could stream empty HTTP/2 DATA frames without bound, so the server
+  side of our own hyper 1.x / reqwest stack was a DoS target. The bump clears
+  it; no Soli-facing behavior changes. The second flagged copy — `h2` 0.3.27,
+  pinned by hyper 0.14 under `rusoto_core` — has no patched 0.3 release and is
+  waived in `.cargo/audit.toml`: it is client-only, reached solely by the S3
+  builtins talking to AWS, and goes away with the rusoto → aws-sdk-s3
+  migration.
 - **The jobs dashboard was exempt from CSRF.** The whole reserved `/__soli/`
   namespace skipped both barriers, and `POST /__soli/jobs/<id>/retry` is
   production-reachable behind Basic auth — which a browser attaches

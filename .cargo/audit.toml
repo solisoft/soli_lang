@@ -78,4 +78,14 @@ ignore = [
     # 0.7 line (advisory wants >=0.8.17); unblocked when rust_decimal ships an
     # optional rkyv 0.8 dep (then `cargo update -p rust_decimal && cargo audit`).
     "RUSTSEC-2026-0235",
+
+    # h2 0.3.27 — unbounded empty DATA frames (HTTP/2 DoS). There is no fix on
+    # the 0.3 line (the advisory wants >=0.4.16) and this copy is pinned by
+    # hyper 0.14, which rusoto_core 0.48 requires; nothing we control can move
+    # it. Our own HTTP/2 stack (hyper 1.x / reqwest) is on h2 >=0.4.18 and
+    # clear. Scope: the flagged 0.3.27 is client-only, reached solely by the S3
+    # builtins talking to AWS, so an attacker would have to be the S3 endpoint.
+    # Unblocked by the rusoto -> aws-sdk-s3 migration tracked under
+    # RUSTSEC-2022-0071 above; re-check with `cargo tree -i h2@0.3.27`.
+    "RUSTSEC-2026-0258",
 ]
