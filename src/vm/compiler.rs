@@ -607,6 +607,28 @@ impl Compiler {
         proto
     }
 
+    /// Compile `body` inside a zero-argument lambda and immediately call it.
+    ///
+    /// Used when a construct needs a locals-baseline stack (comprehensions,
+    /// binding `match`) but the current expression sits above anonymous
+    /// temporaries. The inner `Compiler` starts at a clean frame, so
+    /// `stack_height == locals.len()` holds; upvalues capture any outer
+    /// locals the body reads. Net stack effect is +1 (the body's value).
+    pub fn wrap_in_lambda<F>(&mut self, line: usize, body: F) -> CompileResult<()>
+    where
+        F: FnOnce(&mut Compiler) -> CompileResult<()>,
+    {
+        let _dummy = self.start_function(FunctionType::Lambda, "<expr>".to_string(), &[]);
+        self.resync_stack_height();
+        body(self)?;
+        self.emit(Op::Return, line);
+        let proto = self.finish_function(line);
+        let idx = self.add_constant(Constant::Function(Arc::new(proto)));
+        self.emit(Op::Closure(idx), line);
+        self.emit(Op::Call(0), line);
+        Ok(())
+    }
+
     // --- Loop context ---
 
     pub fn begin_loop(&mut self, start: usize, has_iterator: bool) {

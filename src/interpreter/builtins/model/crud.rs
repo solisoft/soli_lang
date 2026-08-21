@@ -1,7 +1,7 @@
 //! Database CRUD operations and JSON conversion utilities.
 
 use crate::interpreter::value::{Class, Instance, Value};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -162,6 +162,61 @@ pub fn has_active_tx() -> bool {
     CURRENT_TX.with(|tx| tx.borrow().is_some()) || crate::db::sql::has_active_tx()
 }
 
+thread_local! {
+    /// Set whenever a transaction commits on this thread; never cleared by the
+    /// commit path itself.
+    ///
+    /// The request path clears it before handing a handler to the bytecode VM
+    /// and checks it if the VM run fails. A failed VM handler is normally
+    /// re-run on the tree-walker (see `serve::handle_request`), but a handler
+    /// that already *committed* must not be: the second run would repeat the
+    /// committed writes. One `Order.transaction { Order.create(...) }` followed
+    /// by an `EngineFallback` later in the same handler is enough to create the
+    /// order twice.
+    static DURABLE_COMMIT: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Arm the durable-commit tripwire for a fresh handler attempt.
+pub fn clear_durable_commit() {
+    DURABLE_COMMIT.with(|c| c.set(false));
+}
+
+/// Whether a transaction committed since the last [`clear_durable_commit`].
+pub fn had_durable_commit() -> bool {
+    DURABLE_COMMIT.with(|c| c.get())
+}
+
+/// Run `run` inside a model-class transaction (begin on the receiver's
+/// connection, commit on success, rollback + re-raise on error). Nested
+/// calls join the outer transaction. Shared by the tree-walker interceptor
+/// and the VM native-call path.
+pub fn with_model_transaction<T, E>(
+    class_name: &str,
+    run: impl FnOnce() -> Result<T, E>,
+    on_begin: impl FnOnce(String) -> E,
+    on_commit: impl FnOnce(String) -> E,
+) -> Result<T, E> {
+    if has_active_tx() {
+        return run();
+    }
+    super::registry::run_on_model_connection(class_name, || begin_transaction(None))
+        .map_err(on_begin)?;
+    match run() {
+        Ok(value) => match commit_transaction() {
+            Ok(()) => Ok(value),
+            Err(e) => {
+                clear_current_tx();
+                Err(on_commit(e))
+            }
+        },
+        Err(err) => {
+            let _ = rollback_transaction();
+            clear_current_tx();
+            Err(err)
+        }
+    }
+}
+
 /// Forcibly drop the thread-local transaction state without a clean server
 /// commit. SoliDB: drop tx id. SQL: ROLLBACK then return the pool connection.
 /// Used after a failed commit/rollback so a reused worker never leaks a tx.
@@ -235,6 +290,17 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
 
 /// Commit the current transaction.
 pub fn commit_transaction() -> Result<(), String> {
+    let result = commit_transaction_inner();
+    if result.is_ok() {
+        // The writes are durable now. `serve` reads this to decide whether a
+        // failed VM handler may be retried on the tree-walker — it may not,
+        // or the committed writes happen a second time.
+        DURABLE_COMMIT.with(|c| c.set(true));
+    }
+    result
+}
+
+fn commit_transaction_inner() -> Result<(), String> {
     if crate::db::sql::has_active_tx() {
         return crate::db::sql::commit_transaction();
     }

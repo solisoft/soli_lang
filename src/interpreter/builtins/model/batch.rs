@@ -102,6 +102,34 @@ pub fn in_block() -> bool {
     GROUPED_DEPTH.with(|d| d.get() > 0)
 }
 
+/// Run a `grouped` block, sharing begin/join/flush with both engines.
+///
+/// `run` is the block body. `on_flush_err` turns a final-flush failure into
+/// the caller's error type. Nested `grouped` joins the outer batch; `--dev`
+/// without the test-runner flag skips coalescing (`coalesce == false`).
+pub fn with_grouped_block<T, E>(
+    coalesce: bool,
+    run: impl FnOnce() -> Result<T, E>,
+    on_flush_err: impl FnOnce(String) -> E,
+) -> Result<T, E> {
+    enter_block();
+    if is_active() || !coalesce {
+        let result = run();
+        exit_block();
+        return result;
+    }
+    begin();
+    let outcome = match run() {
+        Ok(value) => end().map_err(on_flush_err).map(|()| value),
+        Err(err) => {
+            let _ = end();
+            Err(err)
+        }
+    };
+    exit_block();
+    outcome
+}
+
 /// Begin a batch. Returns `true` if this call started a *new* batch (the caller
 /// owns it and must call [`end`]); returns `false` if a batch was already
 /// active (a nested `grouped` joins the outer one and must NOT end it).

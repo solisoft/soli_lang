@@ -28,11 +28,15 @@ impl Compiler {
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
             }
-            ExprKind::CommandSubstitution(_) => {
-                return Err(CompileError::new(
-                    "Command substitution `...` is not supported in compiled mode",
-                    expr.span,
-                ));
+            ExprKind::CommandSubstitution(cmd) => {
+                // Same as `System.shell(cmd)`: `sh -c` plus a Future result.
+                // Property access on that Future auto-resolves (see
+                // `Vm::force_lazy_receiver`), matching the tree-walker.
+                let sys = self.add_string_constant("System");
+                self.emit(Op::GetGlobal(sys), line);
+                self.emit_constant(Constant::String(cmd.clone().into()), line);
+                let shell = self.add_string_constant("shell");
+                self.emit(Op::CallMethod(shell, 1), line);
             }
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
@@ -460,51 +464,6 @@ impl Compiler {
             }
         }
 
-        // `<ModelClass>.transaction(fn() { ... })` — the block form runs a user
-        // closure with begin/commit/rollback semantics, which the bytecode VM
-        // can't express inline. Refuse to compile it (like `&.` safe navigation)
-        // so the enclosing handler falls back to the tree-walking interpreter,
-        // where the executor interceptor runs the block correctly. Only the
-        // literal-block form is rejected; the AQL-string and no-arg handle forms
-        // compile and run in the VM as ordinary native calls.
-        if let ExprKind::Member { name, .. } = &callee.kind {
-            if name == "transaction" && arguments.len() == 1 {
-                let is_block = match &arguments[0] {
-                    Argument::Block(_) => true,
-                    Argument::Positional(e) => matches!(e.kind, ExprKind::Lambda { .. }),
-                    _ => false,
-                };
-                if is_block {
-                    return Err(CompileError::new(
-                        "Model.transaction { ... } block form runs in the interpreter, not the VM",
-                        callee.span,
-                    ));
-                }
-            }
-        }
-
-        // `grouped(fn() { ... })` — like the transaction block form, the
-        // request-coalescing batch runs a user closure with deferred-result
-        // semantics the bytecode VM can't express inline. Refuse the block form
-        // so the enclosing handler falls back to the tree-walking interpreter,
-        // where the `grouped` interceptor (and `Value::Deferred` resolution)
-        // runs it correctly — production requests still get the coalescing.
-        if let ExprKind::Variable(name) = &callee.kind {
-            if name == "grouped" && arguments.len() == 1 {
-                let is_block = match &arguments[0] {
-                    Argument::Block(_) => true,
-                    Argument::Positional(e) => matches!(e.kind, ExprKind::Lambda { .. }),
-                    _ => false,
-                };
-                if is_block {
-                    return Err(CompileError::new(
-                        "grouped(fn() { ... }) runs in the interpreter, not the VM",
-                        callee.span,
-                    ));
-                }
-            }
-        }
-
         // `super(...)` / `super.method(...)` — dispatch against the
         // *defining* class's superclass at runtime (the CallSuper* handlers
         // read the class recorded on the call frame). `this` goes in the
@@ -589,7 +548,7 @@ impl Compiler {
         if let ExprKind::Member { object, name } = &callee.kind {
             let all_positional = arguments
                 .iter()
-                .all(|a| matches!(a, Argument::Positional(_)));
+                .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
             if all_positional && arguments.len() <= 255 {
                 if let Some(op) =
                     self.try_compile_hash_const_string_call(object, name, arguments, line)?
@@ -609,9 +568,12 @@ impl Compiler {
                 self.compile_expr(object)?;
                 let mut argc = 0u8;
                 for arg in arguments {
-                    if let Argument::Positional(expr) = arg {
-                        self.compile_expr(expr)?;
-                        argc += 1;
+                    match arg {
+                        Argument::Positional(expr) | Argument::Block(expr) => {
+                            self.compile_expr(expr)?;
+                            argc += 1;
+                        }
+                        Argument::Named(_) => unreachable!(),
                     }
                 }
                 let name_idx = self.add_string_constant(name);
@@ -1259,18 +1221,15 @@ impl Compiler {
         condition: Option<&Expr>,
         line: usize,
     ) -> CompileResult<()> {
-        // Clean-position gate: the result array is addressed by the slot
-        // `locals.len()`, which only equals its true stack position when no
-        // anonymous temporaries sit below it. If the comprehension is a
-        // sub-expression (a call argument, an element of an enclosing array
-        // literal, ...) there are temporaries on the stack — fall back to the
-        // interpreter (which handles comprehensions correctly) rather than risk
-        // a wrong slot. See `Compiler::stack_height`.
+        // Result slot is `locals.len()`, which equals the array's stack
+        // position only at the locals baseline. As a sub-expression (call
+        // argument, element of an enclosing literal) wrap in a lambda so the
+        // inner compiler is at a clean frame — same value, no wrong-slot
+        // GetLocal. See `Compiler::wrap_in_lambda`.
         if self.stack_height != self.locals.len() {
-            return Err(CompileError::new(
-                "list comprehension not supported by the VM as a sub-expression",
-                element.span,
-            ));
+            return self.wrap_in_lambda(line, |c| {
+                c.compile_list_comprehension(element, variable, iterable, condition, line)
+            });
         }
 
         let result_slot = self.locals.len() as u16;
@@ -1350,12 +1309,11 @@ impl Compiler {
         condition: Option<&Expr>,
         line: usize,
     ) -> CompileResult<()> {
-        // Clean-position gate — same reasoning as compile_list_comprehension.
+        // Same baseline requirement as list comprehensions.
         if self.stack_height != self.locals.len() {
-            return Err(CompileError::new(
-                "hash comprehension not supported by the VM as a sub-expression",
-                key.span,
-            ));
+            return self.wrap_in_lambda(line, |c| {
+                c.compile_hash_comprehension(key, value, variable, iterable, condition, line)
+            });
         }
 
         let result_slot = self.locals.len() as u16;
@@ -1426,15 +1384,7 @@ impl Compiler {
 }
 
 #[cfg(test)]
-mod transaction_compile_tests {
-    //! The block form `Model.transaction(fn() { ... })` must NOT compile in the
-    //! bytecode VM: the compiler rejects it so the production request path's
-    //! VM→interpreter fallback (`serve::mod.rs`) runs it on the tree-walker,
-    //! where the executor interceptor provides begin/commit/rollback. The
-    //! AQL-string and no-arg handle forms must still compile (ordinary native
-    //! calls). These tests pin that contract so a refactor can't silently make
-    //! the block form compile to a doomed native call (which would drop the
-    //! block and never roll back).
+mod subexpr_compile_tests {
     use crate::vm::compiler::Compiler;
 
     fn compiles(src: &str) -> bool {
@@ -1444,11 +1394,77 @@ mod transaction_compile_tests {
     }
 
     #[test]
-    fn block_form_is_rejected_for_interpreter_fallback() {
+    fn list_comprehension_as_array_element_compiles() {
         assert!(
-            !compiles("User.transaction(fn() { User.create({}) })"),
-            "the literal block form must fail VM compilation so it falls back to the interpreter"
+            compiles("let r = [[1, 2], [x for x in [3, 4]]]"),
+            "nested list comprehension must compile via wrap_in_lambda"
         );
+    }
+
+    #[test]
+    fn list_comprehension_as_call_arg_compiles() {
+        assert!(compiles(
+            "fn total(a) { a }\nprint(total([x * 2 for x in [1, 2, 3]]))"
+        ));
+    }
+
+    #[test]
+    fn binding_match_as_call_argument_compiles() {
+        assert!(compiles(
+            "let out = []\nfor i in [1, 2, 3] { out.push(match i { 1 => \"a\", n => \"n\" + str(n) }) }"
+        ));
+    }
+
+    #[test]
+    fn command_substitution_compiles() {
+        assert!(
+            compiles("let files = `echo hello`"),
+            "backticks must compile as System.shell"
+        );
+    }
+
+    #[test]
+    fn command_substitution_runs_and_resolves_stdout() {
+        use crate::interpreter::environment::Environment;
+        use crate::interpreter::value::Value;
+        use crate::vm::Vm;
+
+        let src = "let out = `printf hello`.stdout";
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+
+        let mut env = Environment::new();
+        crate::interpreter::builtins::system::register_system_builtins(&mut env);
+        let mut vm = Vm::new();
+        vm.globals.insert(
+            "System".to_string(),
+            env.get("System").expect("System builtin"),
+        );
+        vm.execute(&module.main).expect("vm");
+        assert_eq!(vm.globals.get("out"), Some(&Value::String("hello".into())));
+    }
+}
+
+#[cfg(test)]
+mod transaction_compile_tests {
+    //! The block form compiles to `CallMethod`; the VM intercepts a model-class
+    //! receiver and runs begin/commit/rollback around `invoke_callable`.
+    use crate::vm::compiler::Compiler;
+
+    fn compiles(src: &str) -> bool {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).is_ok()
+    }
+
+    #[test]
+    fn block_form_compiles_on_vm() {
+        assert!(
+            compiles("User.transaction(fn() { User.create({}) })"),
+            "the literal block form must compile; the VM native path runs the tx"
+        );
+        assert!(compiles("User.transaction do User.create({}) end"));
     }
 
     #[test]
@@ -1466,12 +1482,8 @@ mod transaction_compile_tests {
 
 #[cfg(test)]
 mod grouped_compile_tests {
-    //! `grouped(fn() { ... })` must NOT compile in the bytecode VM: the
-    //! request-coalescing batch defers query results and resolves them through
-    //! `Value::Deferred`, which the VM can't express inline. Rejecting it makes
-    //! the production request path's VM→interpreter fallback run the handler on
-    //! the tree-walker, where the `grouped` interceptor (and deferred-result
-    //! resolution) work. This pins that contract.
+    //! `grouped(fn() { ... })` compiles as an ordinary call; the VM intercepts
+    //! the native and runs the batch around `invoke_callable`.
     use crate::vm::compiler::Compiler;
 
     fn compiles(src: &str) -> bool {
@@ -1481,11 +1493,37 @@ mod grouped_compile_tests {
     }
 
     #[test]
-    fn block_form_is_rejected_for_interpreter_fallback() {
+    fn block_form_compiles_on_vm() {
         assert!(
-            !compiles("grouped(fn() { Post.all })"),
-            "the literal block form must fail VM compilation so it falls back to the interpreter"
+            compiles("grouped(fn() { Post.all })"),
+            "grouped() must compile; the VM native path owns the batch"
         );
+    }
+}
+
+#[cfg(test)]
+mod break_in_try_compile_tests {
+    use crate::vm::compiler::Compiler;
+
+    fn compiles(src: &str) -> bool {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).is_ok()
+    }
+
+    #[test]
+    fn break_inside_try_in_loop_compiles() {
+        assert!(compiles("for x in [1, 2, 3] { try { break } catch e { } }"));
+    }
+
+    #[test]
+    fn next_inside_try_in_loop_compiles() {
+        assert!(compiles("for x in [1, 2, 3] { try { next } catch e { } }"));
+    }
+
+    #[test]
+    fn break_inside_try_finally_in_loop_compiles() {
+        assert!(compiles("for x in [1, 2, 3] { try { break } finally { } }"));
     }
 }
 

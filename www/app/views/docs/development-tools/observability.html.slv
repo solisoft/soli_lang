@@ -126,7 +126,7 @@ curl -s localhost:5011/_metrics</code></pre>
                 <tr><td class="py-3 px-4"><code>soli_template_render_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Views, layouts, partials</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_middleware_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Middleware totals</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_db_query_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">SoliDB / SolidB query time</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_vm_handler_demotions_total</code></td><td class="py-3 px-4">Handlers that fell back from the VM to the tree-walker (cached per worker)</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_vm_handler_demotions_total</code></td><td class="py-3 px-4">Handlers that fell back from the VM to the tree-walker (cached per worker). <code>SOLI_ENGINE_LOG=1</code> prints one line per unique handler; <code>SOLI_FAIL_ON_VM_DEMOTION=1</code> exits the process when the VM <em>refuses</em> a handler, so CI cannot ship a new refuse. The bytecode VM only runs outside <code>--dev</code>, so neither applies to <code>soli serve --dev</code> or <code>soli test</code></td></tr>
                 <tr><td class="py-3 px-4"><code>soli_handler_panics_total</code></td><td class="py-3 px-4">Panics contained by the per-request <code>catch_unwind</code> (client got 500; worker stayed up)</td></tr>
             </tbody>
         </table>

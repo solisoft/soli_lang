@@ -63,7 +63,7 @@ Representative series (all Prometheus text format):
 | `soli_template_render_duration_seconds` / `_count` | Views, layouts, partials |
 | `soli_middleware_duration_seconds` / `_count` | Middleware totals |
 | `soli_db_query_duration_seconds` / `_count` | SoliDB / SolidB query time |
-| `soli_vm_handler_demotions_total` | Handlers that fell back from the VM to the tree-walker (cached per worker) |
+| `soli_vm_handler_demotions_total` | Handlers that fell back from the VM to the tree-walker (cached per worker). `SOLI_ENGINE_LOG=1` prints one line per unique handler; `SOLI_FAIL_ON_VM_DEMOTION=1` exits the process when the VM *refuses* a handler, so CI cannot ship a new refuse. The bytecode VM only runs outside `--dev`, so neither applies to `soli serve --dev` or `soli test`. |
 | `soli_handler_panics_total` | Panics contained by the per-request `catch_unwind` (client got 500; worker stayed up) |
 
 `soli_handler_panics_total` and `soli_vm_handler_demotions_total` are counted even when `SOLI_METRICS` is off — rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance.

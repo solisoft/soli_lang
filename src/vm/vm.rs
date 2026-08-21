@@ -720,6 +720,14 @@ impl Vm {
                 Op::CallMethod(name_idx, argc) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
+                    if matches!(
+                        &self.stack[receiver_idx],
+                        Value::Future(_) | Value::Deferred(_)
+                    ) {
+                        let span = self.current_span();
+                        let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
+                        self.stack[receiver_idx] = resolved;
+                    }
 
                     // Borrow method name from constant pool (no clone)
                     let name: *const str = {
@@ -928,6 +936,14 @@ impl Vm {
                 Op::CallMethodById(name_idx, argc, method_id) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
+                    if matches!(
+                        &self.stack[receiver_idx],
+                        Value::Future(_) | Value::Deferred(_)
+                    ) {
+                        let span = self.current_span();
+                        let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
+                        self.stack[receiver_idx] = resolved;
+                    }
                     // Fast path: zero-arg methods on primitives — pure integer dispatch
                     if argc == 0 {
                         let result = match &self.stack[receiver_idx] {
@@ -3044,6 +3060,17 @@ impl Vm {
                 index: 0,
             }),
             Value::String(s) => Ok(IterState::String { s, byte_offset: 0 }),
+            // `for post in @posts` after a `grouped {}` block: the value is a
+            // deferred query result, so force it and iterate the materialised
+            // collection. Matches the tree-walker (executor/statements.rs's
+            // `deferred @ Value::Deferred(_) => deferred.force_deferred()`).
+            // Only `Deferred` is forced — a `Future` is not iterable on either
+            // engine, and silently blocking on one here would diverge.
+            Value::Deferred(ref cell) => {
+                let resolved = crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(|e| RuntimeError::General { message: e, span })?;
+                self.create_iterator(resolved, span)
+            }
             _ => Err(RuntimeError::type_error(
                 format!("Cannot iterate over {}", iterable.type_name()),
                 span,
@@ -3363,6 +3390,13 @@ impl Vm {
         index: &Value,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // `@posts[0]` after a `grouped {}` block: force the deferred query
+        // result first, the way the tree-walker's variable/member reads do.
+        if let Value::Deferred(cell) = object {
+            let resolved = crate::interpreter::builtins::model::batch::force(cell)
+                .map_err(|e| RuntimeError::General { message: e, span })?;
+            return self.op_get_index(&resolved, index, span);
+        }
         match (object, index) {
             (Value::Array(arr), Value::Int(i)) => {
                 let arr = arr.borrow();

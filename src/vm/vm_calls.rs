@@ -407,6 +407,13 @@ impl Vm {
         // Pop the callee
         self.pop();
 
+        if native.name == "grouped" {
+            return self.call_grouped_block(args, span);
+        }
+        if native.name == "with_transaction" {
+            return self.call_with_transaction_block(args, span);
+        }
+
         // Call the native function. Wrap in a flamegraph `Fn` span when
         // the native is on the request-path whitelist (see
         // `span_log::is_request_path_native`); cheap builtins are
@@ -414,6 +421,108 @@ impl Vm {
         let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
         let result = (native.func)(&args).map_err(|e| RuntimeError::new(e, span))?;
         drop(_native_span);
+        self.push(result);
+        Ok(())
+    }
+
+    fn is_callable_block(value: &Value) -> bool {
+        matches!(
+            value,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        )
+    }
+
+    fn call_grouped_block(&mut self, args: Vec<Value>, span: Span) -> Result<(), RuntimeError> {
+        if args.len() != 1 || !Self::is_callable_block(&args[0]) {
+            return Err(RuntimeError::new(
+                "grouped() expects a function block: grouped(fn() { ... })",
+                span,
+            ));
+        }
+        let block = args.into_iter().next().unwrap();
+        let coalesce = crate::interpreter::builtins::model::batch::should_coalesce(
+            crate::interpreter::builtins::template::is_dev_mode(),
+            crate::interpreter::builtins::test_server::is_test_runner_process(),
+        );
+        let result = crate::interpreter::builtins::model::batch::with_grouped_block(
+            coalesce,
+            || self.invoke_callable(block.clone(), &[], span),
+            |e| RuntimeError::General {
+                message: format!("grouped: failed to flush queries: {}", e),
+                span,
+            },
+        )?;
+        self.push(result);
+        Ok(())
+    }
+
+    fn call_with_transaction_block(
+        &mut self,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        use crate::interpreter::builtins::model::crud::{
+            begin_transaction, clear_current_tx, has_active_tx, rollback_transaction,
+        };
+        if args.len() != 1 || !Self::is_callable_block(&args[0]) {
+            return Err(RuntimeError::new(
+                "with_transaction() expects a function block",
+                span,
+            ));
+        }
+        let block = args.into_iter().next().unwrap();
+        if has_active_tx() {
+            let result = self.invoke_callable(block, &[], span)?;
+            self.push(result);
+            return Ok(());
+        }
+        begin_transaction(None).map_err(|e| RuntimeError::General {
+            message: format!("with_transaction: failed to begin: {}", e),
+            span,
+        })?;
+        match self.invoke_callable(block, &[], span) {
+            Ok(value) => {
+                if let Err(e) = rollback_transaction() {
+                    clear_current_tx();
+                    return Err(RuntimeError::General {
+                        message: format!("with_transaction: rollback failed: {}", e),
+                        span,
+                    });
+                }
+                self.push(value);
+                Ok(())
+            }
+            Err(err) => {
+                let _ = rollback_transaction();
+                clear_current_tx();
+                Err(err)
+            }
+        }
+    }
+
+    fn call_model_transaction_block(
+        &mut self,
+        receiver_idx: usize,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let class_name = match &self.stack[receiver_idx] {
+            Value::Class(class) => class.name.clone(),
+            _ => unreachable!(),
+        };
+        let block = self.stack.pop().expect("transaction block");
+        let _receiver = self.stack.pop().expect("transaction receiver");
+        let result = crate::interpreter::builtins::model::crud::with_model_transaction(
+            &class_name,
+            || self.invoke_callable(block.clone(), &[], span),
+            |e| RuntimeError::General {
+                message: format!("transaction: failed to begin: {}", e),
+                span,
+            },
+            |e| RuntimeError::General {
+                message: format!("transaction: commit failed: {}", e),
+                span,
+            },
+        )?;
         self.push(result);
         Ok(())
     }
@@ -562,6 +671,16 @@ impl Vm {
         argc: usize,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        if name == "transaction" && argc == 1 {
+            if let Value::Class(class) = &self.stack[receiver_idx] {
+                if class.is_model_subclass()
+                    && Self::is_callable_block(&self.stack[receiver_idx + 1])
+                {
+                    let span = self.current_span();
+                    return self.call_model_transaction_block(receiver_idx, span);
+                }
+            }
+        }
         let compiled = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();

@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Language / VM
+
+- **Sub-expression comprehensions and binding `match` compile on the VM** by wrapping the construct in a zero-arg lambda so the result/subject sits at a real local slot. Nested `[x for x in xs]` and `out.push(match i { n => … })` no longer demote the whole handler.
+- **`grouped(fn() { … })` and `Model.transaction { … }` run on the VM.** The compiler no longer
+  refuses the block forms; the native-call path uses the same begin/flush and begin/commit
+  helpers as the tree-walker, invoking the block through `invoke_callable`. Because a
+  transaction can now commit on the VM, a handler that fails *after* committing is no longer
+  re-run on the tree-walker — the retry would repeat the committed writes.
+- **Reading a `grouped` deferred result works everywhere on the VM.** Property access already
+  resolved it; iteration (`for post in @posts`), indexing (`@posts[0]`) and reading it back
+  out of an instance field now do too, matching the tree-walker.
+- **`SOLI_FAIL_ON_VM_DEMOTION=1` stops the server when the VM refuses a handler**, so CI cannot
+  ship a new refuse silently. It fires only on an engine-fallback refusal — not on the
+  handler's own errors (a `throw`, a 404 `RecordNotFound`) — and exits the process rather
+  than panicking, which the per-request `catch_unwind` would have turned into a 500.
+  `SOLI_ENGINE_LOG=1` still logs every demotion. Note the bytecode VM only runs outside
+  `--dev`, so neither applies to `soli serve --dev` or `soli test`.
+- **Command substitution (backticks) compiles on the VM** as `System.shell`. Property access on a `Future` or a `grouped` `Deferred` auto-resolves, matching the tree-walker, so `` `printf hello`.stdout `` stays on the bytecode path.
+
 ### SQL connection security
 
 - **Postgres and MySQL connections speak TLS.** Neither client had a TLS

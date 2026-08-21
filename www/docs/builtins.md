@@ -4565,11 +4565,6 @@ while true
 end
 ```
 
-> **Note:** handlers containing `break` are not compiled by the bytecode VM —
-> they fall back to the tree-walking interpreter automatically (the same
-> precedent as safe navigation `&.`). Behavior is identical; only the JIT path
-> is skipped.
-
 ### next
 
 Skips to the next iteration of a loop.

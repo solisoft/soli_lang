@@ -5371,6 +5371,23 @@ fn value_to_json(value: &Value) -> serde_json::Value {
 /// (`soli_vm_handler_demotions_total` on `/_metrics`) and, when
 /// `SOLI_ENGINE_LOG=1`, log which handler was demoted and why. Demotions are
 /// cached in `vm.failed_handlers`, so this fires once per handler per worker.
+///
+/// There is deliberately no `--dev` branch: the worker only builds a VM when
+/// `!dev_mode` (see the `Option<Vm>` in `worker_loop`), so nothing here is
+/// reachable under `--dev` — including `soli test`, which serves with it.
+///
+/// `SOLI_FAIL_ON_VM_DEMOTION=1` turns a *refusal* into a hard stop so CI cannot
+/// ship one silently. Two details matter for that to work:
+///
+/// * It fires only on [`RuntimeError::EngineFallback`] — the VM saying "I can't
+///   compile/run this". Every other error is the handler's own (`throw`, a
+///   `RecordNotFound` on a 404 route, a bad arity); those demote too, but they
+///   are the app behaving as written, not a coverage regression.
+/// * It exits the process rather than panicking. A panic here is swallowed by
+///   the per-request `catch_unwind` in `run_caught` into a 500, so the run
+///   would look like a flaky request instead of a failure — and it would unwind
+///   past the `failed_handlers` insert, making *every* later request to the
+///   handler 500 as well.
 fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     crate::metrics::Metrics::global()
         .vm_handler_demotions_total
@@ -5384,6 +5401,58 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     if log {
         eprintln!("[soli engine] handler '{handler}' demoted to the interpreter: {err}");
     }
+    if !matches!(err, RuntimeError::EngineFallback(..)) {
+        return;
+    }
+    static FAIL: OnceLock<bool> = OnceLock::new();
+    let fail = *FAIL.get_or_init(|| {
+        std::env::var("SOLI_FAIL_ON_VM_DEMOTION")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    });
+    if fail {
+        eprintln!(
+            "[soli engine] SOLI_FAIL_ON_VM_DEMOTION: handler '{handler}' was refused by the VM: {err}"
+        );
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+        std::process::exit(70);
+    }
+}
+
+/// Decide whether a failed VM handler may be retried on the tree-walker.
+///
+/// Normally it may: the VM either refused the code or blew up before doing
+/// anything observable, and re-running on the interpreter is what makes the
+/// fallback invisible. The exception is a handler that already **committed a
+/// transaction** — `Model.transaction { ... }` and the `grouped` block form now
+/// run on the VM, so a commit can land and a later `EngineFallback` in the same
+/// handler can still demote it. Re-running then repeats the committed writes
+/// (the order is created twice). Returns `Some(response)` when the retry must
+/// be suppressed; the handler is blacklisted by the caller, so the *next*
+/// request runs on the interpreter from a clean slate.
+fn no_retry_after_commit(
+    handler: &str,
+    err: &RuntimeError,
+    request_data: &RequestData,
+) -> Option<ResponseData> {
+    if !crate::interpreter::builtins::model::crud::had_durable_commit() {
+        return None;
+    }
+    // A raised 404/403 is a deliberate outcome, not a failure to re-drive.
+    if let Some(resp) = record_not_found_response(err) {
+        return Some(resp);
+    }
+    if let Some(resp) = forbidden_response(err) {
+        return Some(resp);
+    }
+    let request_id = Uuid::new_v4().to_string();
+    let error_msg = err.to_string();
+    eprintln!(
+        "[soli engine] handler '{handler}' failed after committing a transaction on the VM \
+         — not retrying on the interpreter (that would repeat the committed writes)"
+    );
+    error_logging::log_production_error(&request_id, request_data, &error_msg, &[], None);
+    Some(panic_response())
 }
 
 /// Listen for `SIGTERM`/`SIGINT` and drive the drain sequence.
@@ -5724,6 +5793,10 @@ fn call_handler(
     if let Some(ref mut vm) = vm {
         if !force_interpreter && !vm.failed_handlers.contains(handler_name) {
             if let Ok(ref handler_value) = handler_result {
+                // Arm the durable-commit tripwire for this attempt: if the VM
+                // run commits a transaction and *then* fails, the fallback
+                // below must not re-run the handler.
+                crate::interpreter::builtins::model::crud::clear_durable_commit();
                 let call_result = if handler_wants_request {
                     vm.call_value_direct_one(
                         handler_value.clone(),
@@ -5747,6 +5820,10 @@ fn call_handler(
                         record_vm_demotion(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
                         vm.reset();
+                        if let Some(resp) = no_retry_after_commit(handler_name, &err, request_data)
+                        {
+                            return resp;
+                        }
                     }
                 }
             }
@@ -6342,6 +6419,7 @@ fn call_class_method(
             // Only use VM for methods that take a (req) parameter. Zero-arg
             // methods get req via the global and fall back to the interpreter.
             if !vm.failed_handlers.contains(&handler_key) && !method.params.is_empty() {
+                crate::interpreter::builtins::model::crud::clear_durable_commit();
                 match vm.call_method_bound(
                     &method,
                     instance.clone(),
@@ -6356,6 +6434,12 @@ fn call_class_method(
                         record_vm_demotion(&handler_key, &err);
                         vm.failed_handlers.insert(handler_key);
                         vm.reset();
+                        // Committed already — re-running the action on the
+                        // tree-walker would repeat the committed writes. See
+                        // `no_retry_after_commit`.
+                        if crate::interpreter::builtins::model::crud::had_durable_commit() {
+                            return Err(err);
+                        }
                     }
                 }
             }

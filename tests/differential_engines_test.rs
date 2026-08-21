@@ -182,16 +182,21 @@ const CASES: &[(&str, &str)] = &[
         "let all = []\nfor n in [1, 2] { let r = [x for x in [n, n]]\n  all.push(r) }\nprint(all)",
     ),
     (
-        // Comprehension as a sub-expression (inside an array literal). Used to
-        // silently corrupt a neighbouring array on the VM; the clean-position
-        // gate now errors → interpreter fallback instead. KNOWN_DIVERGENT.
+        // Comprehension as a sub-expression (inside an array literal). Compiled
+        // as a zero-arg lambda so the result array lives at a real local slot.
         "list_comprehension_nested",
         "let r = [[1, 2], [x for x in [3, 4]]]\nprint(r)",
     ),
     (
-        // Comprehension as a call argument — sub-expression, falls back. DIVERGENT.
+        // Comprehension as a call argument — wrapped in a clean-frame lambda.
         "comprehension_call_arg",
         "fn total(a) { let t = 0\n  for v in a { t = t + v }\n  return t }\nprint(total([x * 2 for x in [1, 2, 3]]))",
+    ),
+    (
+        // Backticks used to refuse compiled mode. They lower to System.shell;
+        // `.stdout` auto-resolves the Future on both engines.
+        "backtick_echo",
+        "print(`printf hello`.stdout)",
     ),
     // --- iteration method chains with closures ---
     (
@@ -666,8 +671,8 @@ const CASES: &[(&str, &str)] = &[
     // --- binding match patterns compile at a clean stack position ---
     // The subject now lives in a real local slot, so `x => …` can bind it and
     // the arm collapses [subject, binding, result] to [result] via SetLocal.
-    // Mid-expression there are temporaries below the top and no slot to bind
-    // into, so those fall back — `binding_pattern_as_call_argument` pins that.
+    // Mid-expression binding arms wrap in a lambda so the subject has a slot.
+    // `binding_pattern_as_call_argument` pins that both engines agree.
     (
         "match_binding_with_guard",
         "fn f(n) { return match n { x if x < 0 => \"neg\", 0 => \"zero\", x => \"pos\" + str(x) } }\nprint([f(-2), f(0), f(5)])",
@@ -1052,23 +1057,11 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // A binding pattern mid-expression has no clean slot to bind into, so it
-    // falls back; a direct `--vm` run reports the compile error while the
-    // interpreter runs it. Binding patterns at a clean position compile — see
-    // the `match_binding_*` cases, which are NOT listed here.
-    "binding_pattern_as_call_argument",
-    // #9 — comprehensions now run on the VM at a clean stack position (see
-    //      compile_list_comprehension), so `list_comprehension` AGREES and is no
-    //      longer listed. As a SUB-EXPRESSION the VM still falls back (the
-    //      clean-position gate errors → interpreter), so a nested/embedded
-    //      comprehension stays divergent — but is no longer silently wrong.
-    "list_comprehension_nested",
-    "comprehension_call_arg",
-    // #11/#12/#13 — match patterns that BIND a variable (`x`, `[a, b]`,
-    //   `{k: v}`). The binding aliases the subject's stack slot, which the
-    //   match epilogue then pops before the body — a body that uses the binding
-    //   read a freed slot (panic). The VM now refuses to compile binding
-    //   patterns (→ fallback); literal/wildcard arms still run on the VM.
+    // Empty: sub-expression comprehensions and binding `match` as a call
+    // argument now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
+    // Binding patterns at a statement position already compiled — see
+    // `match_binding_*`.
+    //
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
     //   #6  assignment inside catch          — TryBegin catch_ip off-by-one

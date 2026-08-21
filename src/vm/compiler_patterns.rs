@@ -94,9 +94,14 @@ impl Compiler {
         // Binding needs a slot, and a slot is only meaningful when the value
         // stack is at the locals baseline. Mid-expression — `out.push(match x
         // { … })` — there are temporaries below the top, so `add_local` would
-        // name a position that is not where the subject is. Same gate the
-        // comprehension compiler uses, for the same reason.
+        // name a position that is not where the subject is.
+        //
+        // Literal/wildcard arms can still use the stack-only path. Binding
+        // patterns wrap in a lambda so the inner match sits at a clean frame.
         if self.stack_height != self.locals.len() {
+            if arms.iter().any(|a| is_binding_pattern(&a.pattern)) {
+                return self.wrap_in_lambda(line, |c| c.compile_match(expression, arms, line));
+            }
             return self.compile_match_stackwise(expression, arms, line);
         }
 

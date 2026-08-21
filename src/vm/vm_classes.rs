@@ -116,6 +116,20 @@ fn is_class_reflection_member(name: &str) -> bool {
 }
 
 impl Vm {
+    /// Resolve a `Future` or `grouped` `Deferred` the way the tree-walker does
+    /// on member access, so `` `echo hi`.stdout `` and a deferred query's
+    /// fields work under the VM.
+    pub(crate) fn force_lazy_receiver(object: &Value, span: Span) -> Result<Value, RuntimeError> {
+        match object {
+            Value::Future(future) => Value::Future(future.clone())
+                .resolve()
+                .map_err(|e| RuntimeError::new(e, span)),
+            Value::Deferred(cell) => crate::interpreter::builtins::model::batch::force(cell)
+                .map_err(|e| RuntimeError::General { message: e, span }),
+            other => Ok(other.clone()),
+        }
+    }
+
     /// Get a property from a value.
     pub fn op_get_property(
         &self,
@@ -149,6 +163,10 @@ impl Vm {
                 }
             }
         }
+        if matches!(object, Value::Future(_) | Value::Deferred(_)) {
+            let resolved = Self::force_lazy_receiver(object, span)?;
+            return self.op_get_property(&resolved, name, span);
+        }
         match object {
             // A DateTime is a native value with no class, so it resolves
             // through the same helper the tree-walker uses — one definition of
@@ -160,6 +178,18 @@ impl Vm {
                 let inst_ref = inst.borrow();
                 // Check instance fields first
                 if let Some(val) = inst_ref.fields.get(name) {
+                    // A field holding a `grouped {}` deferred query result is
+                    // forced on read, so `@posts` / `this.posts` hands back
+                    // materialised data. The tree-walker does the same (see
+                    // `evaluate_member`'s `was_instance` branch in
+                    // executor/access/member.rs) — without it the VM leaks a
+                    // `Value::Deferred` into for-loops, indexing and natives.
+                    if let Value::Deferred(cell) = val {
+                        let cell = cell.clone();
+                        drop(inst_ref);
+                        return crate::interpreter::builtins::model::batch::force(&cell)
+                            .map_err(|e| RuntimeError::General { message: e, span });
+                    }
                     return Ok(val.clone());
                 }
                 // Check class methods
@@ -430,6 +460,10 @@ impl Vm {
         name: &str,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        if matches!(object, Value::Future(_) | Value::Deferred(_)) {
+            let resolved = Self::force_lazy_receiver(object, span)?;
+            return self.op_get_property_member(&resolved, name, span);
+        }
         // Compiled (VmClosure) instance methods: bare access auto-invokes
         // the zero-arg form with the receiver as `this`, mirroring the
         // tree-walker's auto-invoke of zero-arg class methods. Instance
@@ -795,5 +829,85 @@ impl Vm {
                 span,
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod deferred_force_tests {
+    //! A `grouped(fn() { @posts = Post.all })` block leaves a
+    //! `Value::Deferred` behind. The tree-walker forces it on every read — bare
+    //! variable, instance field, index, `for` subject — so the VM has to as
+    //! well, or the documented pattern (`for post in @posts`) raises on the
+    //! bytecode path and demotes the handler *after* the coalesced queries
+    //! already ran. These use a pre-resolved cell, so no server is involved.
+    use crate::interpreter::value::{Class, DeferredCell, Instance, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn resolved_deferred(items: Vec<Value>) -> Value {
+        Value::Deferred(Rc::new(RefCell::new(DeferredCell {
+            resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
+        })))
+    }
+
+    fn instance_holding(field: &str, value: Value) -> Value {
+        let class = Rc::new(Class {
+            name: "Rec".to_string(),
+            ..Default::default()
+        });
+        let inst = Rc::new(RefCell::new(Instance::new(class)));
+        inst.borrow_mut().fields.insert(field.into(), value);
+        Value::Instance(inst)
+    }
+
+    fn run(src: &str, binding: (&str, Value)) -> Value {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        vm.globals.insert(binding.0.to_string(), binding.1);
+        vm.execute(&module.main).expect("vm");
+        vm.globals.get("out").cloned().expect("out")
+    }
+
+    fn two_posts() -> Value {
+        resolved_deferred(vec![Value::String("a".into()), Value::String("b".into())])
+    }
+
+    #[test]
+    fn for_loop_forces_a_deferred_subject() {
+        let out = run(
+            "let out = \"\"\nfor p in posts { out = out + p }",
+            ("posts", two_posts()),
+        );
+        assert_eq!(out, Value::String("ab".into()));
+    }
+
+    #[test]
+    fn index_access_forces_a_deferred() {
+        let out = run("let out = posts[1]", ("posts", two_posts()));
+        assert_eq!(out, Value::String("b".into()));
+    }
+
+    #[test]
+    fn instance_field_read_forces_a_deferred() {
+        // `@posts` compiles to `this.posts`; a controller field holding a
+        // deferred must hand back the materialised array, not the placeholder.
+        let out = run(
+            "let out = rec.posts.length()",
+            ("rec", instance_holding("posts", two_posts())),
+        );
+        assert_eq!(out, Value::Int(2));
+    }
+
+    #[test]
+    fn instance_field_deferred_is_iterable() {
+        let out = run(
+            "let out = \"\"\nfor p in rec.posts { out = out + p }",
+            ("rec", instance_holding("posts", two_posts())),
+        );
+        assert_eq!(out, Value::String("ab".into()));
     }
 }
