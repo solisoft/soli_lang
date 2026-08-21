@@ -69,11 +69,61 @@ postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require</code></pre>
     <p class="text-gray-400 mb-12">
         The query string is kept on the URL (so <code class="text-cyan-400">sslmode</code> survives
         <code class="text-cyan-400">db:create</code>, which rewrites only the database name).
-        <strong class="text-white">The client currently connects without TLS</strong> (<code>NoTls</code>)
-        &mdash; <code class="text-cyan-400">sslmode=require</code> is accepted in the URL and then ignored.
-        Put Postgres on a private network or terminate TLS in front of it until native SSL lands.
         Placeholders in raw SQL are <code class="text-cyan-400">$1</code>, <code class="text-cyan-400">$2</code>, &hellip;
     </p>
+
+    <h2 id="tls" class="text-2xl font-bold text-white mb-6 scroll-mt-24">TLS</h2>
+    <p class="text-gray-400 mb-6">
+        The client speaks TLS &mdash; rustls with the <code class="text-cyan-400">ring</code> provider,
+        compiled in, so there is no system OpenSSL to install and a cross-compiled binary keeps it.
+        The modes are libpq's, spelled the libpq way:
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>sslmode</code></th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Encrypts</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Verifies the chain</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Verifies the hostname</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>disable</code></td><td class="py-3 px-4">no</td><td class="py-3 px-4">&mdash;</td><td class="py-3 px-4">&mdash;</td></tr>
+                <tr><td class="py-3 px-4"><code>prefer</code> <span class="text-gray-500">(default)</span></td><td class="py-3 px-4">when the server offers it</td><td class="py-3 px-4">no</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>require</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4">no</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>verify-ca</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>verify-full</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># managed Postgres — the mode to use
+DATABASE_URL=postgres://user:pass@db.example.com:5432/myapp?sslmode=verify-full
+
+# a private CA instead of the built-in Mozilla roots
+DATABASE_URL=postgres://user:pass@db.internal:5432/myapp?sslmode=verify-full&amp;sslrootcert=/etc/ssl/rds-ca.pem</code></pre>
+        </div>
+    </div>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white"><code>prefer</code> is the default</strong>, as in libpq: a server that
+            offers TLS gets an encrypted connection with no configuration at all, and a server that does not
+            still connects. <code class="text-cyan-400">sslmode=disable</code> asks for cleartext explicitly.</li>
+        <li><strong class="text-white">Encryption and identity are separate rungs</strong>, also as in libpq:
+            <code class="text-cyan-400">require</code> encrypts but never checks <em>who</em> answered. For a
+            managed database use <code class="text-cyan-400">verify-full</code> &mdash; that is the mode an
+            impostor cannot satisfy.</li>
+        <li><code class="text-cyan-400">sslrootcert</code> <strong class="text-white">replaces</strong> the
+            built-in roots rather than adding to them, and a CA file supplied with a mode that would not
+            consult it is refused, not silently ignored.</li>
+        <li>A mandatory mode fails at boot naming the reason, e.g.
+            <code>connection "primary" asked for sslmode=require: error performing TLS handshake: server does not support TLS</code>.</li>
+        <li>Postgres never negotiates TLS over a Unix socket, so <code class="text-cyan-400">require</code>
+            and up fail on a socket URL rather than pretending the connection is encrypted.</li>
+        <li><code class="text-cyan-400">verify-ca</code> skips only the hostname check &mdash; useful behind a
+            proxy, or when the URL names an IP the certificate does not.</li>
+    </ul>
 
     <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>
     <p class="text-gray-400 mb-4">A SQL server does not create the database on first use. On a fresh target:</p>
@@ -200,7 +250,6 @@ end</code></pre>
 
     <h2 id="caveats" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Honest limits</h2>
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
-        <li><strong class="text-white">No TLS in the client.</strong> Private network or a proxy.</li>
         <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
         <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
         <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>

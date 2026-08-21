@@ -10,16 +10,17 @@ use super::sql_compile::{
     compile_select_json_text_in_d, compile_update_all_d, create_table_sql_d, drop_table_sql_d,
     migrations_table_sql_d, Dialect, GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
+use super::tls::MaybeTls;
 use postgres::types::{ToSql, Type};
 use r2d2::Pool;
-use r2d2_postgres::{postgres::NoTls, PostgresConnectionManager};
+use r2d2_postgres::PostgresConnectionManager;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-type PgPool = Pool<PostgresConnectionManager<NoTls>>;
-type PgPooled = r2d2::PooledConnection<PostgresConnectionManager<NoTls>>;
+type PgPool = Pool<PostgresConnectionManager<MaybeTls>>;
+type PgPooled = r2d2::PooledConnection<PostgresConnectionManager<MaybeTls>>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, PgPool>>> = OnceLock::new();
 
@@ -63,6 +64,26 @@ impl Drop for ActiveClientGuard {
     }
 }
 
+/// A driver error's message plus the causes underneath it.
+///
+/// Connection failures keep the useful part in the source chain: a refused TLS
+/// handshake displays as "error performing TLS handshake", and only its cause
+/// says "server does not support TLS" — which is the sentence that tells an
+/// operator to drop `sslmode=require` or switch TLS on server-side.
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut text = e.to_string();
+    let mut next = e.source();
+    while let Some(cause) = next {
+        let message = cause.to_string();
+        if !text.contains(&message) {
+            text.push_str(": ");
+            text.push_str(&message);
+        }
+        next = cause.source();
+    }
+    text
+}
+
 /// Render a driver error usefully, and classify a constraint violation.
 ///
 /// `postgres::Error`'s own `Display` is the string "db error" — every message
@@ -71,7 +92,7 @@ impl Drop for ActiveClientGuard {
 /// column or constraint name.
 fn pg_error(context: &str, e: &postgres::Error) -> String {
     let Some(db) = e.as_db_error() else {
-        return format!("{context}: {e}");
+        return format!("{context}: {}", error_chain(e));
     };
     let mut text = format!("{context}: {}", db.message());
     if let Some(detail) = db.detail() {
@@ -101,6 +122,45 @@ fn pg_error(context: &str, e: &postgres::Error) -> String {
     }
 }
 
+/// Parse a connection URL into a driver config plus the TLS connector it asked
+/// for.
+///
+/// The TLS options come out of the URL first: `tokio_postgres` rejects
+/// `sslrootcert` as an unknown option, and of the five `sslmode` values it only
+/// understands three (`verify-ca` / `verify-full` are the client's own work, not
+/// the protocol's). `ssl_mode` is only overridden when the URL actually said
+/// something, so a libpq keyword-form connection string — which has no query
+/// string to lift — keeps the mode its own parser found.
+fn config_and_tls(url: &str, name: &str) -> Result<(postgres::Config, MaybeTls), String> {
+    let (cleaned, ssl) = super::tls::split_url(url)?;
+    let mut config = cleaned
+        .parse::<postgres::Config>()
+        .map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
+    if ssl.mode.is_some() {
+        config.ssl_mode(super::tls::postgres_driver_ssl_mode(ssl.mode()));
+    }
+    let tls =
+        super::tls::postgres_connector(&ssl).map_err(|e| format!("connection {name:?}: {e}"))?;
+    Ok((config, tls))
+}
+
+/// The TLS mode a URL asked for, when that mode forbids falling back to
+/// cleartext. `None` for `disable` and `prefer`, which have nothing to promise.
+fn mandatory_tls_mode(url: &str) -> Option<super::tls::SslMode> {
+    let mode = super::tls::split_url(url).ok()?.1.mode();
+    (mode.encrypts() && !mode.may_fall_back()).then_some(mode)
+}
+
+/// A single connection outside the pool (maintenance DDL, `db.execute`), with
+/// the same TLS treatment the pool gets.
+fn connect_direct(
+    url: &str,
+    on_error: impl Fn(&postgres::Error) -> String,
+) -> Result<postgres::Client, String> {
+    let (config, tls) = config_and_tls(url, "postgres")?;
+    config.connect(tls).map_err(|e| on_error(&e))
+}
+
 fn pools() -> &'static Mutex<HashMap<String, PgPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -127,17 +187,29 @@ fn pool_for_active() -> Result<PgPool, String> {
     if let Some(p) = map.get(&cache_key) {
         return Ok(p.clone());
     }
-    let manager = PostgresConnectionManager::new(
-        url.parse::<postgres::Config>()
-            .map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?,
-        NoTls,
-    );
+    let (config, tls) = config_and_tls(&url, &name)?;
+    // A mandatory TLS mode is worth one probe connection: r2d2 retries a failing
+    // connection until its timeout and then reports "timed out waiting for
+    // connection", losing the reason. Connecting once here surfaces the real
+    // cause ("server does not support TLS") immediately instead of ten seconds
+    // later with the diagnosis missing. Pools are cached per connection name,
+    // so this is once per pool, not per checkout.
+    if let Some(mode) = mandatory_tls_mode(&url) {
+        config.connect(tls.clone()).map_err(|e| {
+            format!(
+                "connection {name:?} asked for sslmode={}: {}",
+                mode.as_str(),
+                error_chain(&e)
+            )
+        })?;
+    }
+    let manager = PostgresConnectionManager::new(config, tls);
     let max = spec.pool_size.unwrap_or(10).max(1);
     let pool = Pool::builder()
         .max_size(max as u32)
         .connection_timeout(Duration::from_secs(10))
         .build(manager)
-        .map_err(|e| format!("postgres pool ({name}): {e}"))?;
+        .map_err(|e| format!("postgres pool ({name}): {}", error_chain(&e)))?;
     map.insert(cache_key, pool.clone());
     Ok(pool)
 }
@@ -787,7 +859,7 @@ pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
     let (maintenance_url, database) = split_database(&url)?;
     let quoted = Dialect::Postgres.quote_ident(&database)?;
 
-    let mut client = postgres::Client::connect(&maintenance_url, NoTls).map_err(|e| {
+    let mut client = connect_direct(&maintenance_url, |e| {
         format!(
             "could not connect to the postgres maintenance database ({}): {e}",
             redact(&maintenance_url)
@@ -967,8 +1039,7 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
         .url
         .as_deref()
         .ok_or_else(|| format!("connection {:?}: url required for postgres", spec.name))?;
-    let mut client =
-        postgres::Client::connect(url, NoTls).map_err(|e| pg_error("postgres execute", &e))?;
+    let mut client = connect_direct(url, |e| pg_error("postgres execute", e))?;
     client
         .batch_execute(sql)
         .map_err(|e| pg_error("postgres execute", &e))
@@ -1543,8 +1614,10 @@ mod integration_tests {
             .ok()
             .filter(|u| u.starts_with("postgres"))
             .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
-        if postgres::Client::connect(&url, NoTls).is_err() {
-            eprintln!("skip: postgres not reachable at {url}");
+        // Probe through the same path the pool uses, so a TLS misconfiguration
+        // shows up here rather than as a mystery failure inside a test body.
+        if let Err(e) = connect_direct(&url, |e| e.to_string()) {
+            crate::db::skip_unless_required(&format!("postgres not reachable at {url}: {e}"));
             return;
         }
         use crate::db::registry::{
@@ -1594,12 +1667,14 @@ mod integration_tests {
         const PER_THREAD: i64 = 25;
 
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_increment_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             insert(table, Some("hits"), serde_json::json!({ "views": 0 })).expect("seed");
@@ -1637,7 +1712,8 @@ mod integration_tests {
         use crate::db::error::{Constraint, ConstraintKind};
 
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_constraint_test";
@@ -1690,14 +1766,14 @@ mod integration_tests {
     #[test]
     fn crud_roundtrip_when_pg_available() {
         with_pg(|| {
-            if ensure_connected().is_err() {
-                eprintln!("skip: pool init failed (pool may already be solidb from other tests)");
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool init failed: {e}"));
                 return;
             }
             let table = "soli_pg_crud_test";
             let _ = drop_table(table);
             if let Err(e) = ensure_table(table) {
-                eprintln!("skip: ensure_table failed: {e}");
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             let doc = serde_json::json!({
@@ -1749,12 +1825,14 @@ mod integration_tests {
     #[test]
     fn null_filter_matches_json_null() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_null_filter_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             insert(
@@ -1798,12 +1876,14 @@ mod integration_tests {
     #[test]
     fn partial_merge_preserves_sibling_fields() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_merge_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             insert(
@@ -1873,12 +1953,14 @@ mod integration_tests {
     #[test]
     fn sum_aggregate_when_pg_available() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_agg_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             insert(
@@ -1918,10 +2000,12 @@ mod integration_tests {
     #[test]
     fn migrations_table_roundtrip_when_pg_available() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
-            if ensure_migrations_table().is_err() {
+            if let Err(e) = ensure_migrations_table() {
+                crate::db::skip_unless_required(&format!("postgres migrations table: {e}"));
                 return;
             }
             let _ = remove_migration("20990101000000");
@@ -1935,13 +2019,15 @@ mod integration_tests {
     #[test]
     fn transaction_commit_and_rollback_when_pg_available() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             clear_transaction();
             let table = "soli_pg_tx_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
 
@@ -1982,13 +2068,15 @@ mod integration_tests {
     #[test]
     fn transaction_does_not_capture_other_connections() {
         with_pg_conns(&["primary", "secondary"], || {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             clear_transaction();
             let table = "soli_pg_tx_route_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
 
@@ -2030,12 +2118,14 @@ mod integration_tests {
     #[test]
     fn group_by_and_batch_keys_when_pg_available() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let table = "soli_pg_group_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("postgres ensure_table: {e}"));
                 return;
             }
             insert(
@@ -2147,8 +2237,8 @@ mod column_integration_tests {
 
     /// Create a table with the column types a real legacy schema mixes.
     fn setup_table() -> bool {
-        if ensure_connected().is_err() {
-            eprintln!("skip: postgres not reachable");
+        if let Err(e) = ensure_connected() {
+            crate::db::skip_unless_required(&format!("postgres pool: {e}"));
             return false;
         }
         let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {TABLE}"));
@@ -2360,7 +2450,8 @@ mod column_integration_tests {
     #[test]
     fn composite_and_missing_primary_keys_fail_introspection() {
         with_pg(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
                 return;
             }
             let composite = "soli_col_composite";
@@ -2394,6 +2485,66 @@ mod column_integration_tests {
 
             let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {composite}"));
             let _ = execute_ddl(&format!("DROP TABLE IF EXISTS {keyless}"));
+        });
+    }
+
+    /// The TLS path, checked against whatever the server is actually
+    /// configured for: an `ssl = on` server must report the session as
+    /// encrypted under `sslmode=require`, and an `ssl = off` server must refuse
+    /// that URL outright rather than quietly connecting in cleartext.
+    #[test]
+    fn require_mode_matches_what_the_server_offers() {
+        let url = std::env::var("PG_DATABASE_URL")
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .ok()
+            .filter(|u| u.starts_with("postgres"))
+            .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
+        let Ok(mut plain) = connect_direct(&url, |e| e.to_string()) else {
+            crate::db::skip_unless_required(&format!("postgres not reachable at {url}"));
+            return;
+        };
+        let server_tls: bool = plain
+            .query_one("SELECT current_setting('ssl') = 'on'", &[])
+            .map(|row| row.get(0))
+            .expect("read the server's ssl setting");
+
+        let separator = if url.contains('?') { "&" } else { "?" };
+        let secured = format!("{url}{separator}sslmode=require");
+        match connect_direct(&secured, |e| e.to_string()) {
+            Ok(mut client) => {
+                assert!(
+                    server_tls,
+                    "sslmode=require connected to a server with ssl off"
+                );
+                let encrypted: bool = client
+                    .query_one(
+                        "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+                        &[],
+                    )
+                    .map(|row| row.get(0))
+                    .expect("pg_stat_ssl");
+                assert!(encrypted, "require connected but the session is cleartext");
+            }
+            Err(e) => {
+                assert!(!server_tls, "sslmode=require failed on a TLS server: {e}");
+                assert!(
+                    e.to_lowercase().contains("tls") || e.to_lowercase().contains("ssl"),
+                    "require failed for a non-TLS reason: {e}"
+                );
+            }
+        }
+    }
+
+    /// `prefer` is the default now, so a server with TLS switched off must
+    /// still be reachable — the negotiation falls back to cleartext.
+    #[test]
+    fn prefer_connects_to_a_server_without_tls() {
+        with_pg(|| {
+            // Connecting *is* the assertion: no TLS options anywhere, so this
+            // exercises the default `prefer` negotiation end to end.
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
+            }
         });
     }
 }

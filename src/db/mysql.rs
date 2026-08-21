@@ -94,6 +94,80 @@ fn my_error(context: &str, e: &mysql::Error) -> String {
     format!("{} {text}", constraint.to_marker())
 }
 
+/// Build driver options from a connection URL, plus the TLS mode it asked for.
+///
+/// `Opts::from_url` rejects any parameter it does not know, so the TLS options
+/// are lifted out of the URL before it ever sees them.
+fn opts_for(url: &str, name: &str) -> Result<(OptsBuilder, super::tls::SslMode), String> {
+    let (cleaned, ssl) = super::tls::split_url(url)?;
+    let opts =
+        Opts::from_url(&cleaned).map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
+    let ssl_opts =
+        super::tls::mysql_ssl_opts(&ssl).map_err(|e| format!("connection {name:?}: {e}"))?;
+    let mut builder = OptsBuilder::from_opts(opts).ssl_opts(ssl_opts);
+    let mode = ssl.mode();
+    if mode.encrypts() && !mode.may_fall_back() {
+        // The driver prefers a Unix socket for a localhost URL and then skips
+        // TLS on it outright ("won't secure socket connection"), which would
+        // satisfy `require` with a cleartext connection. A mandatory mode takes
+        // TCP so the promise is real; `prefer` keeps the socket, since a local
+        // socket is not on the network in the first place.
+        builder = builder.prefer_socket(false);
+    }
+    Ok((builder, mode))
+}
+
+/// Pool options, with the TLS mode resolved up front.
+///
+/// The driver has no opportunistic mode and the pool builds its own
+/// connections, so `prefer` is settled here: probe once with TLS and, if the
+/// handshake cannot be made, hand back cleartext options. A mandatory mode is
+/// probed too, but never downgraded — the probe is there so a certificate
+/// failure is reported as one. Pools are cached per connection name, so this
+/// costs one extra connection per pool, not per checkout.
+fn pool_opts_for(url: &str, name: &str) -> Result<OptsBuilder, String> {
+    let (builder, mode) = opts_for(url, name)?;
+    if !mode.encrypts() {
+        return Ok(builder);
+    }
+    if mode.may_fall_back() {
+        return Ok(match mysql::Conn::new(builder.clone()) {
+            Ok(_) => builder,
+            Err(_) => builder.ssl_opts(None),
+        });
+    }
+    // A mandatory mode is worth one probe connection: r2d2 otherwise retries
+    // until its timeout and reports "timed out waiting for connection", which
+    // buries the certificate error underneath it.
+    mysql::Conn::new(builder.clone()).map_err(|e| {
+        format!(
+            "connection {name:?} asked for ssl-mode={}: {e}",
+            mode.as_str()
+        )
+    })?;
+    Ok(builder)
+}
+
+/// Open one connection, retrying without TLS only when the mode allows it.
+///
+/// The direct callers (`db.execute`, `db:create` / `db:drop`) build their own
+/// options and so need the same `prefer` rule the pool gets from
+/// [`pool_opts_for`].
+fn connect_with_fallback(
+    builder: OptsBuilder,
+    mode: super::tls::SslMode,
+) -> Result<mysql::Conn, mysql::Error> {
+    match mysql::Conn::new(builder.clone()) {
+        Ok(conn) => Ok(conn),
+        Err(e) if mode.may_fall_back() && mode.encrypts() => {
+            // Report the TLS attempt's error if the cleartext retry also fails:
+            // the first one says what actually went wrong.
+            mysql::Conn::new(builder.ssl_opts(None)).map_err(|_| e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 fn pools() -> &'static Mutex<HashMap<String, MyPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -120,8 +194,7 @@ fn pool_for_active() -> Result<MyPool, String> {
     if let Some(p) = map.get(&cache_key) {
         return Ok(p.clone());
     }
-    let opts = Opts::from_url(&url).map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
-    let builder = OptsBuilder::from_opts(opts);
+    let builder = pool_opts_for(&url, &name)?;
     let manager = MySqlConnectionManager::new(builder);
     let max = spec.pool_size.unwrap_or(10).max(1);
     let pool = Pool::builder()
@@ -665,7 +738,8 @@ pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
         .url
         .clone()
         .ok_or_else(|| "connection has no url".to_string())?;
-    let opts = Opts::from_url(&url).map_err(|e| format!("invalid DATABASE_URL: {e}"))?;
+    let (cleaned, ssl) = super::tls::split_url(&url)?;
+    let opts = Opts::from_url(&cleaned).map_err(|e| format!("invalid DATABASE_URL: {e}"))?;
     let database = opts
         .get_db_name()
         .filter(|name| !name.is_empty())
@@ -674,8 +748,10 @@ pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
     let quoted = Dialect::Mysql.quote_ident(&database)?;
 
     // Same server, no database selected.
-    let server = OptsBuilder::from_opts(opts).db_name(None::<String>);
-    let mut conn = mysql::Conn::new(server)
+    let server = OptsBuilder::from_opts(opts)
+        .db_name(None::<String>)
+        .ssl_opts(super::tls::mysql_ssl_opts(&ssl)?);
+    let mut conn = connect_with_fallback(server, ssl.mode())
         .map_err(|e| format!("could not connect to the mysql server: {e}"))?;
     let sql = if drop {
         format!("DROP DATABASE IF EXISTS {quoted}")
@@ -826,8 +902,9 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
         .url
         .as_deref()
         .ok_or_else(|| format!("connection {:?}: url required for mysql", spec.name))?;
-    let opts = Opts::from_url(url).map_err(|e| format!("mysql execute: {e}"))?;
-    let mut conn = mysql::Conn::new(opts).map_err(|e| my_error("mysql execute", &e))?;
+    let (builder, mode) = opts_for(url, "mysql")?;
+    let mut conn =
+        connect_with_fallback(builder, mode).map_err(|e| my_error("mysql execute", &e))?;
     conn.query_drop(sql)
         .map_err(|e| my_error("mysql execute", &e))
 }
@@ -1367,12 +1444,17 @@ mod integration_tests {
         let url = match std::env::var("MYSQL_URL").or_else(|_| std::env::var("DATABASE_URL")) {
             Ok(u) if u.starts_with("mysql") => u,
             _ => {
-                eprintln!("skip: no MYSQL_URL / mysql DATABASE_URL");
+                crate::db::skip_unless_required("no MYSQL_URL / mysql DATABASE_URL is set");
                 return;
             }
         };
-        if mysql::Pool::new(Opts::from_url(&url).expect("url")).is_err() {
-            eprintln!("skip: mysql not reachable at {url}");
+        // Probe through the same path the pool uses, so a TLS misconfiguration
+        // shows up here rather than as a mystery failure inside a test body.
+        if pool_opts_for(&url, "primary")
+            .and_then(|b| mysql::Pool::new(b).map_err(|e| e.to_string()))
+            .is_err()
+        {
+            crate::db::skip_unless_required(&format!("mysql not reachable at {url}"));
             return;
         }
         use crate::db::registry::{
@@ -1415,12 +1497,14 @@ mod integration_tests {
     #[test]
     fn crud_roundtrip_when_mysql_available() {
         with_mysql(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("mysql pool: {e}"));
                 return;
             }
             let table = "soli_mysql_crud_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("mysql ensure_table: {e}"));
                 return;
             }
             let doc = serde_json::json!({"_key": "k1", "name": "Ada", "status": "up"});
@@ -1441,12 +1525,14 @@ mod integration_tests {
         use super::super::sql_compile::SoftDeleteMode;
         use std::collections::BTreeMap;
         with_mysql(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("mysql pool: {e}"));
                 return;
             }
             let table = "soli_mysql_agg_test";
             let _ = drop_table(table);
-            if ensure_table(table).is_err() {
+            if let Err(e) = ensure_table(table) {
+                crate::db::skip_unless_required(&format!("mysql ensure_table: {e}"));
                 return;
             }
             insert(
@@ -1494,13 +1580,70 @@ mod integration_tests {
         });
     }
 
+    /// The point of the whole TLS path: `ssl-mode=REQUIRED` must produce a
+    /// connection the server itself reports as encrypted.
+    ///
+    /// A server built without TLS has no cipher to report, and `REQUIRED` fails
+    /// there by design — that is the assertion in the other arm.
+    #[test]
+    fn required_mode_actually_encrypts_the_connection_when_mysql_available() {
+        let Ok(url) = std::env::var("MYSQL_URL").or_else(|_| std::env::var("DATABASE_URL")) else {
+            crate::db::skip_unless_required("no MYSQL_URL / mysql DATABASE_URL is set");
+            return;
+        };
+        if !url.starts_with("mysql") {
+            return;
+        }
+        // Reachability first: a refused connection is a skip, not a TLS verdict.
+        let (cleartext, _) = opts_for(&url, "primary").expect("opts");
+        if mysql::Conn::new(cleartext.ssl_opts(None)).is_err() {
+            crate::db::skip_unless_required(&format!("mysql not reachable at {url}"));
+            return;
+        }
+        let separator = if url.contains('?') { "&" } else { "?" };
+        let secured = format!("{url}{separator}ssl-mode=REQUIRED");
+        let (builder, mode) = opts_for(&secured, "primary").expect("opts");
+        assert!(!mode.may_fall_back(), "REQUIRED must never downgrade");
+        match connect_with_fallback(builder, mode) {
+            Ok(mut conn) => {
+                let cipher: Option<(String, String)> = conn
+                    .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+                    .expect("status");
+                let (_, cipher) = cipher.expect("Ssl_cipher status row");
+                assert!(
+                    !cipher.is_empty(),
+                    "REQUIRED connected but the session reports no cipher"
+                );
+            }
+            Err(e) => {
+                // Only acceptable outcome for a server with TLS switched off.
+                let text = e.to_string();
+                assert!(
+                    text.to_lowercase().contains("ssl") || text.to_lowercase().contains("tls"),
+                    "REQUIRED failed for a non-TLS reason: {text}"
+                );
+            }
+        }
+    }
+
+    /// `prefer` is the default, so a server that refuses TLS must still be
+    /// reachable — silently, in cleartext, the way the MySQL client behaves.
+    #[test]
+    fn prefer_still_connects_when_mysql_available() {
+        with_mysql(|| {
+            assert!(ensure_connected().is_ok(), "prefer must connect");
+        });
+    }
+
     #[test]
     fn migrations_when_mysql_available() {
         with_mysql(|| {
-            if ensure_connected().is_err() {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("mysql pool: {e}"));
                 return;
             }
-            if ensure_migrations_table().is_err() {
+            if let Err(e) = ensure_migrations_table() {
+                crate::db::skip_unless_required(&format!("mysql migrations table: {e}"));
                 return;
             }
             let _ = remove_migration("20990101000001");

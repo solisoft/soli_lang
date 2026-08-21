@@ -69,6 +69,60 @@ end</code></pre>
         Identifiers are backtick-quoted.
     </p>
 
+    <h2 id="tls" class="text-2xl font-bold text-white mb-6 scroll-mt-24">TLS</h2>
+    <p class="text-gray-400 mb-6">
+        The client speaks TLS &mdash; rustls with the <code class="text-cyan-400">ring</code> provider,
+        compiled in, so there is no system OpenSSL to install. The modes are MySQL's; libpq's spellings
+        (<code>prefer</code>, <code>require</code>, <code>verify-ca</code>, <code>verify-full</code>) parse to
+        the same rungs, so a URL copied from either ecosystem works.
+    </p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>ssl-mode</code></th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Encrypts</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Verifies the chain</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Verifies the hostname</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>DISABLED</code></td><td class="py-3 px-4">no</td><td class="py-3 px-4">&mdash;</td><td class="py-3 px-4">&mdash;</td></tr>
+                <tr><td class="py-3 px-4"><code>PREFERRED</code> <span class="text-gray-500">(default)</span></td><td class="py-3 px-4">when the server supports it</td><td class="py-3 px-4">no</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>REQUIRED</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4">no</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>VERIFY_CA</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4">no</td></tr>
+                <tr><td class="py-3 px-4"><code>VERIFY_IDENTITY</code></td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td><td class="py-3 px-4 text-emerald-400">yes</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># managed MySQL — the mode to use
+DATABASE_URL=mysql://user:pass@db.example.com:3306/myapp?ssl-mode=VERIFY_IDENTITY
+
+# verify against the server's own CA (MySQL writes `ca.pem` into its data dir)
+DATABASE_URL=mysql://user:pass@db.internal:3306/myapp?ssl-mode=VERIFY_CA&amp;ssl-ca=/var/lib/mysql/ca.pem</code></pre>
+        </div>
+    </div>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
+        <li><strong class="text-white"><code>PREFERRED</code> is the default.</strong> The driver has no
+            opportunistic mode, so Soli probes once with TLS when the pool opens and falls back to cleartext if
+            the server declines. Anything stronger never downgrades.</li>
+        <li><strong class="text-white"><code>REQUIRED</code> and up connect over TCP</strong>, even for a
+            <code>localhost</code> URL. The driver skips TLS on a Unix socket outright, so preferring the
+            socket would satisfy <code>REQUIRED</code> with a cleartext connection &mdash; the promise has to
+            be real.</li>
+        <li>MySQL's auto-generated server certificate is <strong class="text-white">self-signed</strong>:
+            <code class="text-cyan-400">REQUIRED</code> accepts it (it encrypts without identifying), while
+            <code class="text-cyan-400">VERIFY_CA</code> needs <code class="text-cyan-400">ssl-ca</code>
+            pointing at that server's <code>ca.pem</code>.</li>
+        <li><code class="text-cyan-400">ssl-ca</code> <strong class="text-white">replaces</strong> the built-in
+            Mozilla roots rather than adding to them, and a CA file supplied with a mode that would not consult
+            it is refused, not silently ignored.</li>
+        <li>A mandatory mode fails at boot naming the reason, e.g.
+            <code>connection "primary" asked for ssl-mode=verify-full: invalid peer certificate: UnknownIssuer</code>.</li>
+    </ul>
+
     <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>
     <p class="text-gray-400 mb-4">A SQL server does not create the database on first use. On a fresh target:</p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
@@ -198,6 +252,7 @@ end</code></pre>
     <h2 id="caveats" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Honest limits</h2>
     <ul class="list-disc list-inside text-gray-400 space-y-2 text-sm mb-12">
         <li><strong class="text-white">No timezone-aware timestamp.</strong> <code class="text-cyan-400">datetime</code> / <code class="text-cyan-400">timestamp</code> values are UTC.</li>
+        <li><strong class="text-white">A Unix socket is never encrypted.</strong> <code class="text-cyan-400">ssl-mode=REQUIRED</code> and up therefore force TCP; a socket-only server is reachable in cleartext modes only.</li>
         <li><strong class="text-white">No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.</strong> Those stay on SoliDB. Use <code class="text-cyan-400">Model.find_by_sql</code> for SQL the portable surface cannot express.</li>
         <li><strong class="text-white"><code>grouped {}</code> read-coalescing is SoliDB-only.</strong></li>
         <li><strong class="text-white">Composite primary keys</strong> are refused at boot on column-aware models.</li>

@@ -91,7 +91,7 @@
       "category": "Database",
       "path": "/docs/database/postgres",
       "signature": "SOLI_DB_ADAPTER=postgres \u00b7 DATABASE_URL=postgres://\u2026",
-      "description": "Postgres adapter: JSONB document tables, SKIP LOCKED jobs, expression indexes, schema dump, column-aware models. Client is currently NoTls.",
+      "description": "Postgres adapter: JSONB document tables, SKIP LOCKED jobs, expression indexes, schema dump, column-aware models, TLS via sslmode / sslrootcert.",
       "keywords": [
         "postgres",
         "postgresql",
@@ -100,7 +100,12 @@
         "skip locked",
         "ILIKE",
         "schema dump",
-        "DATABASE_URL"
+        "DATABASE_URL",
+        "tls",
+        "ssl",
+        "sslmode",
+        "sslrootcert",
+        "verify-full"
       ]
     },
     {
@@ -117,7 +122,12 @@
         "generated column",
         "claim token",
         "schema dump",
-        "DATABASE_URL"
+        "DATABASE_URL",
+        "tls",
+        "ssl",
+        "ssl-mode",
+        "ssl-ca",
+        "VERIFY_IDENTITY"
       ]
     },
     {
@@ -11935,7 +11945,7 @@
       "type": "function",
       "category": "Database",
       "path": "/docs/database/models#uploaders",
-      "signature": "store_attachment(config, file) · read_attachment(config, id) · delete_attachment(config, id)",
+      "signature": "store_attachment(config, file) \u00b7 read_attachment(config, id) \u00b7 delete_attachment(config, id)",
       "description": "Low-level disk/S3 blob store used by has_*_attached. file is a LiveView or multipart hash (filename, content_type, size, base64 data).",
       "keywords": [
         "store_attachment",
