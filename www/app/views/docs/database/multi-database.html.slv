@@ -277,6 +277,10 @@ end</code></pre>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">the SQL, its binds, and its duration are logged per request</span></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4">TLS to the server</td>
+                    <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">Postgres / MySQL, opportunistic by default and verifiable on request &mdash; see <a href="/docs/database/postgres#tls" class="text-amber-400 hover:underline">Postgres</a> and <a href="/docs/database/mysql#tls" class="text-amber-400 hover:underline">MySQL</a> (SQLite is a local file, so there is no connection to encrypt)</span></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code>soli db:create</code> / <code>soli db:drop</code></td>
                     <td class="py-3 px-4 text-green-400">✓ <span class="text-gray-500">(SoliDB creates its database on first use instead)</span></td>
                 </tr>

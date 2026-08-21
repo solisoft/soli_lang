@@ -4327,8 +4327,8 @@ mod habtm_integration_tests {
     /// Two posts, three tags, and a join row pointing at a tag that does not
     /// exist. Returns false when Postgres is unreachable.
     fn seed() -> bool {
-        if crate::db::sql::ensure_connected().is_err() {
-            eprintln!("skip: postgres not reachable");
+        if let Err(e) = crate::db::sql::ensure_connected() {
+            crate::db::skip_unless_required(&format!("postgres pool: {e}"));
             return false;
         }
         for t in [POSTS, TAGS, JOIN] {

@@ -534,6 +534,17 @@ cargo clippy -- -D warnings
 cargo fmt
 ```
 
+The Postgres and MySQL adapter tests skip when no server answers, and a skipped
+test still reports `ok`. Point them at a server and set `SOLI_REQUIRE_DB=1` to
+turn a would-be skip into a failure — this is what CI does, with both databases
+as service containers:
+
+```bash
+PG_DATABASE_URL=postgres://soli:soli@localhost:5432/soli_test \
+MYSQL_URL=mysql://root:soli@127.0.0.1:3306/soli_test \
+SOLI_REQUIRE_DB=1 cargo test
+```
+
 ## Local Deploy
 
 After making changes to the Rust interpreter, deploy the new `soli` binary locally so dev projects pick it up:

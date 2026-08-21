@@ -181,8 +181,8 @@ mod integration_tests {
 
     /// True when a live Postgres backed this run; tests skip otherwise.
     fn pg_ready() -> bool {
-        if db::sql::ensure_connected().is_err() {
-            eprintln!("skip: postgres not reachable");
+        if let Err(e) = db::sql::ensure_connected() {
+            crate::db::skip_unless_required(&format!("postgres pool: {e}"));
             return false;
         }
         let _ = db::sql::drop_table(JOBS_COLLECTION);

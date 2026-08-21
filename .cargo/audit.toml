@@ -79,6 +79,16 @@ ignore = [
     # optional rkyv 0.8 dep (then `cargo update -p rust_decimal && cargo audit`).
     "RUSTSEC-2026-0235",
 
+    # rustls-pemfile 2.2.0 — unmaintained; its PEM parsing moved into
+    # rustls-pki-types, which we now use directly for the Postgres CA path.
+    # This copy is pulled transitively by the `mysql` crate's rustls backend
+    # (mysql 28 -> rustls-pemfile) to read `ssl-ca` files, and nothing we
+    # control can move it. Scope: parsing a CA bundle the operator points at, so
+    # the input is already trusted. Unblocked when mysql switches to
+    # rustls-pki-types' own PEM reader (then `cargo update -p mysql && cargo
+    # audit`).
+    "RUSTSEC-2025-0134",
+
     # h2 0.3.27 — unbounded empty DATA frames (HTTP/2 DoS). There is no fix on
     # the 0.3 line (the advisory wants >=0.4.16) and this copy is pinned by
     # hyper 0.14, which rusoto_core 0.48 requires; nothing we control can move

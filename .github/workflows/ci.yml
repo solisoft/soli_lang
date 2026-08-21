@@ -14,8 +14,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # The SQL adapters are only really tested when a server is there to answer.
+  # Their test helpers skip when one is not, and a skipping test still reports
+  # `ok` (cargo swallows the message for a passing test), so a run without these
+  # services looked exactly like a run that exercised Postgres and MySQL.
+  # `SOLI_REQUIRE_DB=1` closes that hole: any adapter test that would skip fails
+  # instead, so a broken or missing service breaks the build rather than quietly
+  # halving the suite. SQLite needs nothing — its client is bundled.
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: soli
+          POSTGRES_PASSWORD: soli
+          POSTGRES_DB: soli_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U soli -d soli_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: soli
+          MYSQL_DATABASE: soli_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -psoli --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+          --health-start-period 30s
+
+    env:
+      PG_DATABASE_URL: postgres://soli:soli@localhost:5432/soli_test
+      MYSQL_URL: mysql://root:soli@127.0.0.1:3306/soli_test
+      SOLI_REQUIRE_DB: "1"
+
     steps:
       - uses: actions/checkout@v5
 
@@ -36,6 +78,31 @@ jobs:
             ~/.cargo/git/
             target/
           key: ${{ runner.os }}-cargo-${{ github.sha }}
+
+      # The Postgres image ships with TLS off, so without this the adapter's
+      # TLS path would only ever be exercised in its "server refuses TLS" arm.
+      # A throwaway self-signed cert (generated on the runner, which is
+      # guaranteed to have openssl) and a config reload — `ssl` is a SIGHUP
+      # parameter — let the suite assert that `sslmode=require` really does
+      # produce an encrypted session. The MySQL image has TLS on already.
+      - name: Turn on TLS in the Postgres service
+        run: |
+          set -euo pipefail
+          cid=$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -1)
+          openssl req -new -x509 -days 1 -nodes -subj "/CN=localhost" \
+            -keyout server.key -out server.crt
+          docker cp server.key "$cid":/var/lib/postgresql/server.key
+          docker cp server.crt "$cid":/var/lib/postgresql/server.crt
+          docker exec -u root "$cid" chown postgres:postgres \
+            /var/lib/postgresql/server.key /var/lib/postgresql/server.crt
+          docker exec -u root "$cid" chmod 600 /var/lib/postgresql/server.key
+          docker exec "$cid" psql -U soli -d soli_test -q \
+            -c "ALTER SYSTEM SET ssl = on" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'" \
+            -c "SELECT pg_reload_conf()"
+          rm -f server.key server.crt
+          test "$(docker exec "$cid" psql -U soli -d soli_test -tAc 'show ssl')" = on
 
       - name: Run tests
         run: cargo test --locked

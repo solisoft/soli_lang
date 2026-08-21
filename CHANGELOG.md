@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+### SQL connection security
+
+- **Postgres and MySQL connections speak TLS.** Neither client had a TLS
+  implementation compiled in: the Postgres pool was built with `NoTls` and the
+  `mysql` crate resolved with no TLS backend, so `?sslmode=require` was accepted
+  and then ignored and every managed database (RDS, Cloud SQL, Neon,
+  PlanetScale, Aiven) needed a proxy or a private network in front of it. Both
+  now use **rustls with the `ring` provider** — the provider the mail and HTTP
+  clients already use, so no system OpenSSL is linked and a cross-compiled
+  binary keeps TLS.
+  - **libpq's ladder, and libpq's semantics.** `disable` / `prefer` / `require` /
+    `verify-ca` / `verify-full`, with MySQL's spellings (`DISABLED` …
+    `VERIFY_IDENTITY`) parsing to the same rungs. Encryption and identity stay
+    separate: `require` encrypts without checking who answered, and verification
+    begins at `verify-ca` — so a URL behaves as it does under `psql`, and a
+    self-signed server keeps working.
+  - **`prefer` is the default.** A server offering TLS gets an encrypted
+    connection with no configuration; one that does not still connects.
+    `sslmode=disable` asks for the previous cleartext behaviour.
+  - **A CA file replaces the built-in roots** (`sslrootcert=` on Postgres,
+    `ssl-ca=` on MySQL) and is refused, not ignored, when the mode would never
+    consult it. Both options are lifted off the URL before the driver's own
+    parser sees it — `tokio_postgres` rejects `sslrootcert` as unknown, and
+    `mysql` rejects any parameter it does not list.
+  - **A mandatory mode cannot be satisfied by a Unix socket.** The MySQL driver
+    skips TLS on a socket outright and prefers a socket for a `localhost` URL,
+    which would have satisfied `REQUIRED` in cleartext; `REQUIRED` and up now
+    take TCP. Postgres does not negotiate TLS on a socket either, so `require`
+    fails rather than pretending.
+  - **A TLS failure names its cause.** The pool used to retry until its timeout
+    and report *timed out waiting for connection*; a mandatory mode is now
+    probed once as the pool opens, so the error reads `connection "primary"
+    asked for sslmode=require: error performing TLS handshake: server does not
+    support TLS` immediately. `pg_error` also renders a driver error's whole
+    source chain, not just its top line.
+  - New deps: `tokio-postgres-rustls` (feature `ring`), the `mysql` crate's
+    `rustls-tls-ring` feature, and `rustls-pki-types`' `std` feature for reading
+    a PEM CA file. `RUSTSEC-2025-0134` (rustls-pemfile unmaintained, reached
+    only through the MySQL driver's CA reader) is waived in `.cargo/audit.toml`.
+- **The SQL adapters are a CI gate.** Their tests skip when no server answers,
+  and a skipped test still reports `ok` — `cargo test` swallows the message for a
+  passing test — so a green build never actually meant Postgres and MySQL had
+  been exercised. CI now runs both as service containers, with TLS switched on
+  in the Postgres one so the encrypted path is asserted rather than assumed, and
+  `SOLI_REQUIRE_DB=1` turns every would-be skip into a failure. Locally, without
+  the flag, the suite skips exactly as before.
+
 ### PDF
 
 - **SVG images are embedded as vectors.** Template `image` elements whose

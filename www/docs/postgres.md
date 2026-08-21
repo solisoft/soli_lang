@@ -52,12 +52,48 @@ postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require
 ```
 
 The query string is kept on the URL (so `sslmode` and friends survive
-`db:create`, which rewrites only the database name). **The client currently
-connects without TLS** (`NoTls`) — `sslmode=require` is accepted in the URL and
-then ignored. Put Postgres on a private network or terminate TLS in front of it
-until native SSL lands.
+`db:create`, which rewrites only the database name).
 
 Placeholders in raw SQL are `$1`, `$2`, … — see [`Model.find_by_sql`](multi-database.md#raw-sql-escape-hatch).
+
+## TLS
+
+The client speaks TLS — rustls with the `ring` provider, compiled in, so there
+is no system OpenSSL to install and a cross-compiled binary keeps it. The modes
+are libpq's, spelled the libpq way:
+
+| `sslmode` | Encrypts | Verifies the chain | Verifies the hostname |
+|-----------|----------|--------------------|-----------------------|
+| `disable` | no | — | — |
+| `prefer` **(default)** | when the server offers it | no | no |
+| `require` | yes | no | no |
+| `verify-ca` | yes | yes | no |
+| `verify-full` | yes | yes | yes |
+
+```bash
+# managed Postgres — the mode to use
+DATABASE_URL=postgres://user:pass@db.example.com:5432/myapp?sslmode=verify-full
+
+# a private CA instead of the built-in Mozilla roots
+DATABASE_URL=postgres://user:pass@db.internal:5432/myapp?sslmode=verify-full&sslrootcert=/etc/ssl/rds-ca.pem
+```
+
+- **`prefer` is the default**, as in libpq: a server that offers TLS gets an
+  encrypted connection with no configuration at all, and a server that does not
+  still connects. `sslmode=disable` asks for cleartext explicitly.
+- **Encryption and identity are separate rungs**, also as in libpq: `require`
+  encrypts but never checks *who* answered. For a managed database use
+  `verify-full` — that is the mode an impostor cannot satisfy.
+- `sslrootcert` **replaces** the built-in roots rather than adding to them, and
+  a CA file supplied with a mode that would not consult it is refused, not
+  silently ignored.
+- A mandatory mode fails at boot naming the reason, e.g. `connection "primary"
+  asked for sslmode=require: error performing TLS handshake: server does not
+  support TLS`.
+- Postgres never negotiates TLS over a Unix socket, so `require` and up fail on
+  a socket URL rather than pretending the connection is encrypted.
+- `verify-ca` skips only the hostname check — useful behind a proxy or when the
+  URL names an IP the certificate does not.
 
 ## Create and drop
 
@@ -158,7 +194,6 @@ Introspection uses `information_schema`. Generated keys (`BIGSERIAL`,
 
 ## Honest limits
 
-- **No TLS in the client.** Private network or a proxy.
 - **No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.** Those
   stay on SoliDB. Use `Model.find_by_sql` for SQL the portable surface cannot
   express.

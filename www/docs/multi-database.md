@@ -162,6 +162,7 @@ Portable surface (hash filters, not raw SDBQL):
 | `create_many` | ✓ one multi-row `INSERT` per 500-row chunk, in one transaction |
 | `pluck` / `select` on column models | ✓ pushed into the `SELECT` list |
 | Dev bar / `dev_queries()` / N+1 detection | ✓ the SQL, its binds, and its duration are logged per request |
+| TLS to the server | ✓ Postgres / MySQL, opportunistic by default and verifiable on request — see [Postgres](postgres.md#tls) and [MySQL](mysql.md#tls) (SQLite is a local file, so there is no connection to encrypt) |
 | `soli db:create` / `soli db:drop` | ✓ (SoliDB creates its database on first use instead) |
 | `soli db:schema:dump` / `soli db:schema:load` | ✓ writes / applies `db/schema.sql` plus applied migration versions |
 | `through:` includes | ✓ three batched queries via the intermediate model |

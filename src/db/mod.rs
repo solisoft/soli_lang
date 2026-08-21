@@ -8,6 +8,11 @@
 //! `mysql`, `sqlite`; all on by default). Drop them at build time for a smaller
 //! binary.
 //!
+//! Postgres and MySQL connections are TLS-capable: the `sslmode` / `ssl-mode`
+//! and `sslrootcert` / `ssl-ca` options on a connection URL are read by
+//! [`tls`], which encrypts opportunistically by default. See `tls` for the
+//! mode ladder.
+//!
 //! Design: `docs/sql-adapter-design.md`.
 
 mod adapter;
@@ -30,6 +35,8 @@ pub mod sql_columns_compile;
 pub mod sql_compile;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+pub mod tls;
 pub mod trace;
 
 pub use adapter::{parse_adapter, Adapter, AdapterConfig};
@@ -44,6 +51,24 @@ pub use sql_compile::{
 };
 
 use std::sync::OnceLock;
+
+/// Skip a test that needs a live SQL server — or fail, when the environment
+/// says one must be there.
+///
+/// A test that returns early still reports `ok`, and `cargo test` swallows the
+/// message for a passing test, so a run with no Postgres or MySQL looked
+/// *exactly* like a run that exercised both adapters. `SOLI_REQUIRE_DB=1` turns
+/// that silence into a failure: CI sets it alongside its service containers, so
+/// a broken or missing server breaks the build instead of quietly halving the
+/// suite. It covers the SQL adapters only — SoliDB-backed tests have their own
+/// skips and CI runs no SoliDB.
+#[cfg(test)]
+pub(crate) fn skip_unless_required(reason: &str) {
+    if std::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
+        panic!("SOLI_REQUIRE_DB=1 but this test would have been skipped: {reason}");
+    }
+    eprintln!("skip: {reason}");
+}
 
 /// One cell of a raw query result, read as text and re-parsed.
 ///

@@ -31,6 +31,18 @@ DATABASE_URL=sqlite://db/app.sqlite3
 SOLI_DB_POOL_SIZE=10              # optional, default 10
 ```
 
+TLS (Postgres / MySQL) rides on the connection URL, libpq-style:
+
+```bash
+DATABASE_URL=postgres://user:pass@host:5432/app?sslmode=verify-full
+DATABASE_URL=postgres://user:pass@host:5432/app?sslmode=verify-ca&sslrootcert=/etc/ssl/ca.pem
+DATABASE_URL=mysql://user:pass@host:3306/app?ssl-mode=VERIFY_IDENTITY
+```
+
+`disable` / `prefer` (default) / `require` / `verify-ca` / `verify-full`, with
+MySQL's spellings accepted for the same rungs. rustls + `ring`; encryption and
+identity are separate rungs, as in libpq. `src/db/tls.rs`.
+
 Unset `SOLI_DB_ADAPTER` → `solidb`.
 
 ## Architecture (shipped)
@@ -75,6 +87,7 @@ Model API → QueryBuilder IR
 | `.join` existence filter | ✓ | ✓ (EXISTS) | ✓ | ✓ |
 | Transactions (`Model.transaction`) | ✓ | ✓ | ✓ | ✓ (serializable only) |
 | `db:migrate --connection` | ✓ (default + name) | ✓ | ✓ | ✓ |
+| TLS to the server (`sslmode` / `ssl-mode`, CA file) | ✓ (HTTP client) | ✓ | ✓ | n/a (local file) |
 | Graph / vector (pgvector) / columnar / timeseries | ✓ | ✗ | ✗ | ✗ |
 | Auto-create table on first write | collections | ✓ | ✓ | ✓ |
 | `index` declarations (`soli db:indexes`) | ✓ | ✓ (expression) | ✓ (generated column) | ✓ (expression) |

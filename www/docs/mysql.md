@@ -54,6 +54,44 @@ mysql://USER:PASSWORD@HOST:3306/DATABASE
 Placeholders in raw SQL are `?` — see [`Model.find_by_sql`](multi-database.md#raw-sql-escape-hatch).
 Identifiers are backtick-quoted.
 
+## TLS
+
+The client speaks TLS — rustls with the `ring` provider, compiled in, so there
+is no system OpenSSL to install. The modes are MySQL's; libpq's spellings
+(`prefer`, `require`, `verify-ca`, `verify-full`) parse to the same rungs, so a
+URL copied from either ecosystem works.
+
+| `ssl-mode` | Encrypts | Verifies the chain | Verifies the hostname |
+|------------|----------|--------------------|-----------------------|
+| `DISABLED` | no | — | — |
+| `PREFERRED` **(default)** | when the server supports it | no | no |
+| `REQUIRED` | yes | no | no |
+| `VERIFY_CA` | yes | yes | no |
+| `VERIFY_IDENTITY` | yes | yes | yes |
+
+```bash
+# managed MySQL — the mode to use
+DATABASE_URL=mysql://user:pass@db.example.com:3306/myapp?ssl-mode=VERIFY_IDENTITY
+
+# verify against the server's own CA (MySQL writes `ca.pem` into its data dir)
+DATABASE_URL=mysql://user:pass@db.internal:3306/myapp?ssl-mode=VERIFY_CA&ssl-ca=/var/lib/mysql/ca.pem
+```
+
+- **`PREFERRED` is the default.** The driver has no opportunistic mode, so Soli
+  probes once with TLS when the pool opens and falls back to cleartext if the
+  server declines. Anything stronger never downgrades.
+- **`REQUIRED` and up connect over TCP**, even for a `localhost` URL. The driver
+  skips TLS on a Unix socket outright, so preferring the socket would satisfy
+  `REQUIRED` with a cleartext connection — the promise has to be real.
+- MySQL's auto-generated server certificate is **self-signed**: `REQUIRED`
+  accepts it (it encrypts without identifying), while `VERIFY_CA` needs
+  `ssl-ca` pointing at that server's `ca.pem`.
+- `ssl-ca` **replaces** the built-in Mozilla roots rather than adding to them,
+  and a CA file supplied with a mode that would not consult it is refused, not
+  silently ignored.
+- A mandatory mode fails at boot naming the reason, e.g. `connection "primary"
+  asked for ssl-mode=verify-full: invalid peer certificate: UnknownIssuer`.
+
 ## Create and drop
 
 A SQL server does not create the database on first use. On a fresh target:
@@ -160,6 +198,8 @@ Migrations emit foreign keys at **table** level: MySQL parses an inline
 ## Honest limits
 
 - **No timezone-aware timestamp.** `datetime` / `timestamp` values are UTC.
+- **A Unix socket is never encrypted.** `ssl-mode=REQUIRED` and up therefore
+  force TCP; a socket-only server is reachable in cleartext modes only.
 - **No graph, vector, fulltext, geo, columnar, timeseries, or raw SDBQL.** Those
   stay on SoliDB. Use `Model.find_by_sql` for SQL the portable surface cannot
   express.
