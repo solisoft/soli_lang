@@ -1,0 +1,30 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Toml / Yaml Classes</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Config-format parse/stringify over the same Value model as JSON. Malformed input produces clean errors naming the parser.
+        </p>
+    </div>
+    <section id="def-toml-parse" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Toml.parse(str) / Toml.stringify(hash)</h2>
+        <p class="text-gray-400 mb-4">TOML documents map onto hashes of scalars, arrays, and nested tables. Stringify raises on null values — TOML cannot represent them.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let config = Toml.parse(slurp(&quot;config.toml&quot;));
+config[&quot;owner&quot;][&quot;name&quot;];
+
+Toml.stringify({ &quot;title&quot;: &quot;demo&quot;, &quot;owner&quot;: { &quot;name&quot;: &quot;Ann&quot; } });</code></pre>
+        </div>
+    </section>
+    <section id="def-yaml-parse" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Yaml.parse(str) / Yaml.stringify(value)</h2>
+        <p class="text-gray-400 mb-4">YAML parses into whatever shape the document has — hash, array, or scalar. Stringify accepts any serializable value.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let spec = Yaml.parse(slurp(&quot;openapi.yaml&quot;));
+spec[&quot;paths&quot;][&quot;/users&quot;][&quot;get&quot;][&quot;summary&quot;];
+
+Yaml.stringify({ &quot;name&quot;: &quot;demo&quot;, &quot;counts&quot;: [1, 2] });</code></pre>
+        </div>
+    </section>
+</div>

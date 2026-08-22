@@ -209,6 +209,12 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     // `include_test_builtins: false` — helpers never run under `soli test`.
     let helper_env = Rc::new(RefCell::new(Environment::new()));
     crate::interpreter::builtins::register_builtins(&mut helper_env.borrow_mut(), false);
+    // Retry is evaluated Soli, so `register_builtins` (which takes `&mut
+    // Environment`) cannot carry it — register it against the Rc, or a helper
+    // calling `Retry.with_backoff(...)` fails with "Undefined variable".
+    if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&helper_env) {
+        eprintln!("[WARN] Retry stdlib failed to load for helpers: {}", e);
+    }
 
     let entries = std::fs::read_dir(helpers_dir)
         .map_err(|e| format!("Failed to read helpers directory: {}", e))?;

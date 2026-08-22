@@ -1,0 +1,40 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Logger Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Leveled structured logging to stderr. Levels are debug &lt; info &lt; warn &lt; error; entries below the configured level are dropped. SOLI_LOG_LEVEL seeds the initial level (default info).
+        </p>
+    </div>
+    <section id="def-logger-log" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Logger.debug / info / warn / error(msg, fields?)</h2>
+        <p class="text-gray-400 mb-4">Emit one entry. The optional fields hash is merged into the output.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Logger.info(&quot;order placed&quot;, { &quot;order_id&quot;: order[&quot;id&quot;], &quot;total&quot;: total });
+Logger.warn(&quot;slow query&quot;, { &quot;ms&quot;: 812 });
+Logger.error(&quot;payment failed&quot;, { &quot;provider&quot;: &quot;stripe&quot; });</code></pre>
+        </div>
+    </section>
+    <section id="def-logger-formats" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Output formats</h2>
+        <p class="text-gray-400 mb-4">Text by default: timestamp, level, message, then key=value fields. Set <code>{"json": true}</code> to emit one JSON object per line with <code>ts</code>, <code>level</code>, <code>message</code> plus fields — ready for any log pipeline.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">2026-08-22T10:30:00Z [INFO] order placed order_id=42 total=149.7
+{&quot;ts&quot;:&quot;2026-08-22T10:30:00Z&quot;,&quot;level&quot;:&quot;INFO&quot;,&quot;message&quot;:&quot;order placed&quot;,&quot;order_id&quot;:42}
+
+Logger.configure({ &quot;level&quot;: &quot;warn&quot;, &quot;json&quot;: true });
+Logger.level();   # &quot;WARN&quot;</code></pre>
+        </div>
+    </section>
+    <section id="def-logger-capture" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Testing with capture</h2>
+        <p class="text-gray-400 mb-4"><code>set_capture(true)</code> records entries into a bounded ring buffer so specs assert on them instead of scraping stderr.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Logger.set_capture(true);
+do_work();
+assert(Logger.entries().length() &gt; 0);
+Logger.set_capture(false);   # disables and clears</code></pre>
+        </div>
+    </section>
+</div>

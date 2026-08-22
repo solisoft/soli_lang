@@ -16029,6 +16029,588 @@
       "path": "/docs/development-tools/static-server",
       "signature": "soli serve . --app",
       "description": "Require soli serve to boot an MVC app; fail with the Invalid MVC structure error if the folder is not one."
+    },
+    {
+      "title": "Url",
+      "type": "class",
+      "category": "Url",
+      "path": "/docs/builtins/url",
+      "signature": "Url",
+      "description": "Parse, build, join, and rewrite URLs without string surgery",
+      "keywords": [
+        "url",
+        "uri",
+        "parse",
+        "query"
+      ]
+    },
+    {
+      "title": "Url.parse",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-parse",
+      "signature": "Url.parse(url)",
+      "description": "Hash of URL components: scheme, username, password, host, port, path, query, fragment (null when absent)",
+      "keywords": [
+        "url",
+        "parse",
+        "components",
+        "host"
+      ]
+    },
+    {
+      "title": "Url.params",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-params",
+      "signature": "Url.params(url)",
+      "description": "Hash of decoded query parameters; bare keys map to null",
+      "keywords": [
+        "url",
+        "query",
+        "params",
+        "decode"
+      ]
+    },
+    {
+      "title": "Url.param",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-params",
+      "signature": "Url.param(url, name)",
+      "description": "Decoded query parameter value, or null when absent",
+      "keywords": [
+        "url",
+        "query",
+        "param",
+        "get"
+      ]
+    },
+    {
+      "title": "Url.set_param",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-set-param",
+      "signature": "Url.set_param(url, name, value)",
+      "description": "New URL string with a param set; null removes it. Existing params are replaced",
+      "keywords": [
+        "url",
+        "query",
+        "set",
+        "remove"
+      ]
+    },
+    {
+      "title": "Url.join",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-join-build",
+      "signature": "Url.join(base, relative)",
+      "description": "Resolve a relative URL reference against a base URL",
+      "keywords": [
+        "url",
+        "join",
+        "resolve",
+        "relative"
+      ]
+    },
+    {
+      "title": "Url.build",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-join-build",
+      "signature": "Url.build(hash)",
+      "description": "Build a URL string from scheme/host/port/path/query/fragment parts; query accepts a params hash",
+      "keywords": [
+        "url",
+        "build",
+        "construct",
+        "serialize"
+      ]
+    },
+    {
+      "title": "Url.encode_component",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-encode-component",
+      "signature": "Url.encode_component(str)",
+      "description": "Percent-encode a string for use in a URL component",
+      "keywords": [
+        "url",
+        "encode",
+        "percent",
+        "escape"
+      ]
+    },
+    {
+      "title": "Url.decode_component",
+      "type": "method",
+      "category": "Url",
+      "path": "/docs/builtins/url#def-url-encode-component",
+      "signature": "Url.decode_component(str)",
+      "description": "Decode percent-encoded characters back to text",
+      "keywords": [
+        "url",
+        "decode",
+        "percent",
+        "unescape"
+      ]
+    },
+    {
+      "title": "Logger",
+      "type": "class",
+      "category": "Logger",
+      "path": "/docs/builtins/logger",
+      "signature": "Logger",
+      "description": "Leveled structured logging to stderr with optional fields and text/JSON formats",
+      "keywords": [
+        "log",
+        "logging",
+        "debug",
+        "stderr"
+      ]
+    },
+    {
+      "title": "Logger.info",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-log",
+      "signature": "Logger.info(msg, fields?)",
+      "description": "Log at info level (also debug/warn/error); fields is an optional hash merged into the entry",
+      "keywords": [
+        "log",
+        "info",
+        "message",
+        "fields"
+      ]
+    },
+    {
+      "title": "Logger.configure",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-formats",
+      "signature": "Logger.configure(opts)",
+      "description": "Set level (\"debug\"/\"info\"/\"warn\"/\"error\") and/or JSON line format at runtime",
+      "keywords": [
+        "log",
+        "configure",
+        "level",
+        "json"
+      ]
+    },
+    {
+      "title": "Logger.level",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-formats",
+      "signature": "Logger.level()",
+      "description": "Current minimum level name (INFO by default; SOLI_LOG_LEVEL seeds it)",
+      "keywords": [
+        "log",
+        "level"
+      ]
+    },
+    {
+      "title": "Logger.set_capture",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-capture",
+      "signature": "Logger.set_capture(bool)",
+      "description": "Record entries into a bounded ring buffer for specs; disabling clears it",
+      "keywords": [
+        "log",
+        "capture",
+        "test",
+        "assert"
+      ]
+    },
+    {
+      "title": "Logger.entries",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-capture",
+      "signature": "Logger.entries()",
+      "description": "Captured log lines, oldest first \u2014 assert on these in tests",
+      "keywords": [
+        "log",
+        "entries",
+        "test",
+        "capture"
+      ]
+    },
+    {
+      "title": "Logger.clear_entries",
+      "type": "method",
+      "category": "Logger",
+      "path": "/docs/builtins/logger#def-logger-capture",
+      "signature": "Logger.clear_entries()",
+      "description": "Empty the capture buffer",
+      "keywords": [
+        "log",
+        "clear",
+        "capture"
+      ]
+    },
+    {
+      "title": "Retry.with_backoff",
+      "type": "method",
+      "category": "Retry",
+      "path": "/docs/builtins/resilience#def-retry-with-backoff",
+      "signature": "Retry.with_backoff(block, opts?)",
+      "description": "Run the block up to attempts times with exponential backoff; re-raises the last error when exhausted",
+      "keywords": [
+        "retry",
+        "backoff",
+        "flaky",
+        "attempts",
+        "resilience"
+      ]
+    },
+    {
+      "title": "Retry.within",
+      "type": "method",
+      "category": "Retry",
+      "path": "/docs/builtins/resilience#def-retry-within",
+      "signature": "Retry.within(block, opts?)",
+      "description": "Keep retrying the block until a deadline in seconds passes instead of a fixed count",
+      "keywords": [
+        "retry",
+        "deadline",
+        "boot",
+        "resilience"
+      ]
+    },
+    {
+      "title": "CircuitBreaker",
+      "type": "class",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience",
+      "signature": "CircuitBreaker",
+      "description": "Per-name circuit breaker (closed/open/half-open) shared across workers and engines",
+      "keywords": [
+        "circuit",
+        "breaker",
+        "resilience",
+        "failure"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.allow",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-state-machine",
+      "signature": "CircuitBreaker.allow(name)",
+      "description": "True when a call may proceed through the named circuit",
+      "keywords": [
+        "circuit",
+        "allow",
+        "guard"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.record_success",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-state-machine",
+      "signature": "CircuitBreaker.record_success(name)",
+      "description": "Reset failures and close the circuit",
+      "keywords": [
+        "circuit",
+        "success",
+        "record"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.record_failure",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-state-machine",
+      "signature": "CircuitBreaker.record_failure(name)",
+      "description": "Count a failure; trips open at the threshold",
+      "keywords": [
+        "circuit",
+        "failure",
+        "record",
+        "trip"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.state",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-state-machine",
+      "signature": "CircuitBreaker.state(name)",
+      "description": "Current state: \"closed\", \"open\", or \"half_open\"",
+      "keywords": [
+        "circuit",
+        "state",
+        "status"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.configure",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-scope",
+      "signature": "CircuitBreaker.configure(name, opts)",
+      "description": "Set threshold (default 5) and reset_after seconds (default 30) before first use",
+      "keywords": [
+        "circuit",
+        "configure",
+        "threshold"
+      ]
+    },
+    {
+      "title": "CircuitBreaker.reset",
+      "type": "method",
+      "category": "Circuit Breaker",
+      "path": "/docs/builtins/resilience#def-circuit-breaker-scope",
+      "signature": "CircuitBreaker.reset(name)",
+      "description": "Forget all state for the named circuit (ops/testing)",
+      "keywords": [
+        "circuit",
+        "reset"
+      ]
+    },
+    {
+      "title": "Toml",
+      "type": "class",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml",
+      "signature": "Toml",
+      "description": "TOML parse/stringify over the same Value model as JSON",
+      "keywords": [
+        "toml",
+        "config",
+        "parse"
+      ]
+    },
+    {
+      "title": "Toml.parse",
+      "type": "method",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml#def-toml-parse",
+      "signature": "Toml.parse(str)",
+      "description": "Parse a TOML document into a hash; clean errors on malformed input",
+      "keywords": [
+        "toml",
+        "parse",
+        "config"
+      ]
+    },
+    {
+      "title": "Toml.stringify",
+      "type": "method",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml#def-toml-parse",
+      "signature": "Toml.stringify(hash)",
+      "description": "Serialize a hash to TOML (null values are not representable and raise)",
+      "keywords": [
+        "toml",
+        "stringify",
+        "serialize"
+      ]
+    },
+    {
+      "title": "Yaml",
+      "type": "class",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml",
+      "signature": "Yaml",
+      "description": "YAML parse/stringify over the same Value model as JSON",
+      "keywords": [
+        "yaml",
+        "config",
+        "parse"
+      ]
+    },
+    {
+      "title": "Yaml.parse",
+      "type": "method",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml#def-yaml-parse",
+      "signature": "Yaml.parse(str)",
+      "description": "Parse YAML into whatever shape the document has: hash, array, or scalar",
+      "keywords": [
+        "yaml",
+        "parse",
+        "config"
+      ]
+    },
+    {
+      "title": "Yaml.stringify",
+      "type": "method",
+      "category": "TOML / YAML",
+      "path": "/docs/builtins/toml-yaml#def-yaml-parse",
+      "signature": "Yaml.stringify(value)",
+      "description": "Serialize any value to YAML",
+      "keywords": [
+        "yaml",
+        "stringify",
+        "serialize"
+      ]
+    },
+    {
+      "title": "Semaphore",
+      "type": "class",
+      "category": "Semaphore",
+      "path": "/docs/builtins/semaphore",
+      "signature": "Semaphore",
+      "description": "Named process-global counting semaphores with explicit tokens",
+      "keywords": [
+        "semaphore",
+        "lock",
+        "concurrency",
+        "overlap"
+      ]
+    },
+    {
+      "title": "Semaphore.try_acquire",
+      "type": "method",
+      "category": "Semaphore",
+      "path": "/docs/builtins/semaphore#def-semaphore-try-acquire",
+      "signature": "Semaphore.try_acquire(name, limit)",
+      "description": "Int token when a slot is free, null otherwise; first call fixes the limit",
+      "keywords": [
+        "semaphore",
+        "acquire",
+        "token",
+        "guard"
+      ]
+    },
+    {
+      "title": "Semaphore.release",
+      "type": "method",
+      "category": "Semaphore",
+      "path": "/docs/builtins/semaphore#def-semaphore-count",
+      "signature": "Semaphore.release(name, token)",
+      "description": "Give the slot back; true when the token was held, so double-release is detectable",
+      "keywords": [
+        "semaphore",
+        "release",
+        "token"
+      ]
+    },
+    {
+      "title": "Semaphore.count",
+      "type": "method",
+      "category": "Semaphore",
+      "path": "/docs/builtins/semaphore#def-semaphore-count",
+      "signature": "Semaphore.count(name)",
+      "description": "{\"limit\": n, \"held\": k} for the named semaphore, or null",
+      "keywords": [
+        "semaphore",
+        "count",
+        "occupancy"
+      ]
+    },
+    {
+      "title": "Money",
+      "type": "class",
+      "category": "Money",
+      "path": "/docs/builtins/money",
+      "signature": "Money",
+      "description": "Currency-aware amounts over decimals with ISO-4217 minor units",
+      "keywords": [
+        "money",
+        "currency",
+        "amount",
+        "decimal"
+      ]
+    },
+    {
+      "title": "Money.new",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-new",
+      "signature": "Money.new(amount, currency)",
+      "description": "Build from Int/Float/Decimal/String; strings use \".\" decimals and \"_\" grouping, commas rejected as ambiguous",
+      "keywords": [
+        "money",
+        "new",
+        "currency",
+        "amount"
+      ]
+    },
+    {
+      "title": "Money.add",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-arithmetic",
+      "signature": "Money.add(a, b)",
+      "description": "Sum two money values; currency mismatch is an error",
+      "keywords": [
+        "money",
+        "add",
+        "sum"
+      ]
+    },
+    {
+      "title": "Money.sub",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-arithmetic",
+      "signature": "Money.sub(a, b)",
+      "description": "Subtract two money values; currency mismatch is an error",
+      "keywords": [
+        "money",
+        "sub",
+        "subtract"
+      ]
+    },
+    {
+      "title": "Money.mul",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-arithmetic",
+      "signature": "Money.mul(m, factor)",
+      "description": "Scale money by an Int/Float scalar",
+      "keywords": [
+        "money",
+        "multiply",
+        "scale"
+      ]
+    },
+    {
+      "title": "Money.compare",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-arithmetic",
+      "signature": "Money.compare(a, b)",
+      "description": "-1, 0, or 1; mismatching currencies error",
+      "keywords": [
+        "money",
+        "compare",
+        "order"
+      ]
+    },
+    {
+      "title": "Money.allocate",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-allocate",
+      "signature": "Money.allocate(m, ratios)",
+      "description": "Split losslessly by ratios using largest remainder \u2014 no lost cents",
+      "keywords": [
+        "money",
+        "allocate",
+        "split",
+        "divide"
+      ]
+    },
+    {
+      "title": "Money.format",
+      "type": "method",
+      "category": "Money",
+      "path": "/docs/builtins/money#def-money-format",
+      "signature": "Money.format(m, opts?)",
+      "description": "\"1,234.50 \u20ac\" style output; symbol omits the glyph, locale switches separator style",
+      "keywords": [
+        "money",
+        "format",
+        "locale",
+        "display"
+      ]
     }
   ]
 }

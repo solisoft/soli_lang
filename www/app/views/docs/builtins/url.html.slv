@@ -1,0 +1,66 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Url Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Parse, build, join, and manipulate URLs without string surgery. All methods are static.
+        </p>
+    </div>
+    <section id="def-url-parse" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Url.parse(url)</h2>
+        <p class="text-gray-400 mb-4">Returns a hash of components. Absent parts are null (never missing keys).</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let u = Url.parse(&quot;https://user:pw@api.ex.com:8443/v1/items?page=2#top&quot;);
+u[&quot;scheme&quot;];    # &quot;https&quot;
+u[&quot;host&quot;];      # &quot;api.ex.com&quot;
+u[&quot;port&quot;];      # 8443
+u[&quot;path&quot;];      # &quot;/v1/items&quot;
+u[&quot;query&quot;];     # &quot;page=2&quot;
+u[&quot;fragment&quot;];  # &quot;top&quot;</code></pre>
+        </div>
+    </section>
+    <section id="def-url-params" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Url.params(url) / Url.param(url, name)</h2>
+        <p class="text-gray-400 mb-4">Decoded query-parameter access. A pair with no <code>=</code> maps to null; a repeated key keeps its last value. <code>+</code> decodes to a space and an undecodable escape is kept verbatim &mdash; the same rules request params use, so <code>Url.params</code> and <code>req["params"]</code> agree on the same query.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Url.params(&quot;https://ex.com/?q=red%20shoe&amp;flag&quot;);
+# { &quot;q&quot;: &quot;red shoe&quot;, &quot;flag&quot;: null }
+
+Url.param(&quot;https://ex.com/?page=2&quot;, &quot;page&quot;);   # &quot;2&quot;
+Url.param(&quot;https://ex.com/?page=2&quot;, &quot;nope&quot;);   # null</code></pre>
+        </div>
+    </section>
+    <section id="def-url-set-param" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Url.set_param(url, name, value)</h2>
+        <p class="text-gray-400 mb-4">Returns a new URL string. Setting an existing param replaces it; setting null removes it. Only the named param is rewritten &mdash; every other pair keeps its exact original text, so a value this helper cannot decode is never altered.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Url.set_param(&quot;https://ex.com/?b=2&quot;, &quot;a&quot;, &quot;1&quot;);   # &quot;https://ex.com/?b=2&amp;a=1&quot;
+Url.set_param(&quot;https://ex.com/?a=1&amp;b=2&quot;, &quot;a&quot;, null);  # &quot;https://ex.com/?b=2&quot;</code></pre>
+        </div>
+    </section>
+    <section id="def-url-join-build" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Url.join(base, relative) / Url.build(hash)</h2>
+        <p class="text-gray-400 mb-4">Resolve relative references and construct URLs from parts. <code>build</code> accepts <code>scheme/host/port/path/query/fragment</code>; <code>query</code> may be a string or a params hash.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Url.join(&quot;https://ex.com/a/b&quot;, &quot;c&quot;);       # &quot;https://ex.com/a/c&quot;
+Url.join(&quot;https://ex.com/a/b&quot;, &quot;?page=2&quot;); # &quot;https://ex.com/a/b?page=2&quot;
+
+Url.build({
+  &quot;scheme&quot;: &quot;https&quot;,
+  &quot;host&quot;: &quot;api.ex.com&quot;,
+  &quot;path&quot;: &quot;/v1/x&quot;,
+  &quot;query&quot;: { &quot;page&quot;: 2, &quot;q&quot;: &quot;a b&quot; }
+});
+# &quot;https://api.ex.com/v1/x?page=2&amp;q=a%20b&quot;</code></pre>
+        </div>
+    </section>
+    <section id="def-url-encode-component" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Url.encode_component(str) / Url.decode_component(str)</h2>
+        <p class="text-gray-400 mb-4">Percent-encoding helpers (spaces become <code>%20</code>). Decoding leaves invalid escapes as-is.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Url.encode_component(&quot;Ann Lee&quot;);   # &quot;Ann%20Lee&quot;
+Url.decode_component(&quot;Ann%20Lee&quot;); # &quot;Ann Lee&quot;</code></pre>
+        </div>
+    </section>
+</div>

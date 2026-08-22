@@ -17,6 +17,50 @@
 - **`security/unfiltered-mass-assignment` lint.** `Model.create(params)` / `.update` / `.create_many` in `app/controllers/` or `app/services/` with the raw request hash is a warning; `permit` / `_permit_params` / a hash literal is clean.
 - **File-mode HTTP responses no longer unwrap a poisoned builder.** `soli serve` on a plain directory built `Location` / body responses with `.body(..).unwrap()`. A path that injected CR/LF into `Location` panics the worker. Those sites now go through `finish_response` and return 500. Inventory: `scripts/inventory_panics.sh`. Defaults vs. remaining operator knobs: [Production security defaults](www/docs/security/defaults.md).
 
+### Builtins
+
+- **`Url` class.** Parse, build, join, and rewrite URLs without string surgery: `Url.parse`, `Url.build`, `Url.join`, `Url.params`/`param`/`set_param`, percent-encoding helpers.
+- **`Logger` class.** Leveled structured logging to stderr (`debug` < `info` < `warn` < `error`) with optional key-value fields, text or JSON line format, `SOLI_LOG_LEVEL` default, and a capture mode for specs.
+- **`Retry.with_backoff` / `Retry.within`.** Exponential-backoff retries for flaky outbound calls, plus a deadline variant; engine-embedded Soli so blocks just work.
+- **`CircuitBreaker`.** Per-name circuit breaker (closed/open/half-open) with a process-global store shared by both engines and all workers; callback-free `allow`/`record_success`/`record_failure` API.
+- **`Toml` / `Yaml` classes.** Parse and generate TOML and YAML over the same Value model as JSON.
+- **`Semaphore` class.** Named process-global counting semaphores with explicit tokens — "at most N of these running at once" without DB round-trips.
+- **`Money` class.** Currency-aware amounts over decimals with ISO-4217 minor units, mismatch-detecting
+  arithmetic, lossless largest-remainder allocation, and localized formatting. Amounts are quantized to
+  the currency's minor units on every operation, so `m["amount"]` is always exactly what
+  `Money.format(m)` displays; currency codes are case-insensitive and validated as three ASCII letters.
+- **The new classes type-check.** `Money`, `Url`, `Logger`, `Toml`, `Yaml`, `CircuitBreaker`, `Semaphore`
+  and `Retry` were installed at runtime but unknown to the type checker, so every documented example
+  failed with `Undefined variable 'Money'` unless it was run with `--no-type-check`.
+- **`Retry` works in views and helpers.** It was registered only in the interpreter constructors, so
+  `Retry.with_backoff(...)` inside a `.html.slv` view or an `app/helpers/*.sl` raised
+  `Undefined variable: Retry` while every other new class resolved there.
+- **`Retry.within` backs off.** It ignored `factor` and `max_delay` and retried at a constant 0.25s
+  (documented default: 0.5s), so a long `deadline` meant hundreds of tight retries against a service
+  that was already down. It now backs off exactly as `with_backoff` does, bounded by elapsed time.
+- **A half-open circuit admits one probe.** Nothing recorded that a probe was already running, so the
+  instant the cool-down elapsed *every* concurrent caller was let through — a thundering herd onto the
+  dependency that had just failed. A probe that never reports back no longer wedges the circuit either,
+  and a failed probe re-opens immediately rather than waiting for the threshold again.
+- **`CircuitBreaker.configure` accepts fractional `reset_after`.** The Float branch scaled to
+  milliseconds and then passed the number to `Duration::from_secs`, so `{"reset_after": 0.5}` held the
+  circuit open for 500 *seconds*.
+- **Released semaphore names are forgotten.** Slots were created per name and never reclaimed, so a
+  per-key pattern (`"import-#{tenant}"`) permanently filled the 1000-name store, after which every
+  `try_acquire` for a new name *raised* — a 500 inside a request handler.
+- **`Url` decoding matches request params.** `+` now decodes to a space (so `Url.params` and
+  `req["params"]` agree on the same query), and an escape that is not valid UTF-8 is kept verbatim
+  instead of being replaced with an empty string. `Url.set_param` rewrites only the named param and
+  leaves every other pair's text byte-identical — it used to round-trip the whole query, which blanked
+  a param it could not decode and turned a `+` in an untouched value into `%2B`.
+- **A `DateTime` answers the universal members.** `inspect`, `to_s`, `class`, `nil?`, `blank?` and
+  `present?` were hard errors on a DateTime — it resolved only its own registered methods — so the REPL
+  echoing a result raised `Cannot access property 'inspect' on DateTime` for `DateTime.now()`. Both
+  engines share the one definition, so both are fixed.
+- **JSON log lines are always valid JSON.** A field value with no JSON form was spliced in unquoted, so
+  a function field emitted `{"cb":Function}` and a non-finite float `{"ratio":NaN}` — breaking every
+  downstream parser for that line.
+
 ### Language / VM
 
 - **Sub-expression comprehensions and binding `match` compile on the VM** by wrapping the construct in a zero-arg lambda so the result/subject sits at a real local slot. Nested `[x for x in xs]` and `out.push(match i { n => … })` no longer demote the whole handler.

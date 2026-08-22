@@ -85,6 +85,8 @@ impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
         register_builtins(&mut globals.borrow_mut(), true);
+        crate::interpreter::builtins::retry::register_retry_class(&globals)
+            .expect("retry stdlib must evaluate");
 
         Self {
             environment: globals,
@@ -111,6 +113,8 @@ impl Interpreter {
     pub fn new_for_serve() -> Self {
         let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
         register_builtins(&mut globals.borrow_mut(), false);
+        crate::interpreter::builtins::retry::register_retry_class(&globals)
+            .expect("retry stdlib must evaluate");
 
         Self {
             environment: globals,
@@ -162,6 +166,8 @@ impl Interpreter {
     pub fn with_coverage_tracker(tracker: Arc<Mutex<CoverageTracker>>) -> Self {
         let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
         register_builtins(&mut globals.borrow_mut(), true);
+        crate::interpreter::builtins::retry::register_retry_class(&globals)
+            .expect("retry stdlib must evaluate");
 
         Self {
             environment: globals,

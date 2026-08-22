@@ -49,6 +49,13 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             if let Err(e) = crate::interpreter::builtins::template::register_form_builder(&env_rc) {
                 eprintln!("[WARN] template form builder failed to load: {}", e);
             }
+            // Retry is pure Soli too, so it needs the wrapped env like the form
+            // builder. It was wired only into the `Interpreter::*` constructors,
+            // so every other class from `register_builtins` resolved in a view
+            // while `Retry.with_backoff(...)` raised "Undefined variable".
+            if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&env_rc) {
+                eprintln!("[WARN] Retry stdlib failed to load: {}", e);
+            }
             *opt = Some(env_rc);
         }
         opt.as_ref().unwrap().clone()

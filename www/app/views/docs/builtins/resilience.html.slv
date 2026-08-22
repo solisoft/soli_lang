@@ -1,0 +1,95 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Retry &amp; CircuitBreaker</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Resilience helpers for flaky outbound calls: exponential-backoff retries in Soli, and a per-name circuit breaker with a process-global state machine.
+        </p>
+    </div>
+    <section id="def-retry-with-backoff" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Retry.with_backoff(block, opts?)</h2>
+        <p class="text-gray-400 mb-4">Runs the block up to attempts times, sleeping between attempts with exponential backoff. Re-raises the last error when every attempt fails.</p>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b border-white/10">
+                        <th class="py-3 pr-4 font-medium">Method</th>
+                        <th class="py-3 font-medium">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">attempts</code></td><td class="py-3">Total tries including the first (default 3).</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">base_delay</code></td><td class="py-3">Seconds before the first retry (default 0.5).</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">max_delay</code></td><td class="py-3">Backoff cap in seconds (default 8).</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">factor</code></td><td class="py-3">Multiplier per attempt (default 2).</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let body = Retry.with_backoff(fn() {
+  HTTP.post_json(webhook_url, payload)
+}, { &quot;attempts&quot;: 3, &quot;base_delay&quot;: 0.5 });</code></pre>
+        </div>
+    </section>
+    <section id="def-retry-within" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Retry.within(block, opts?)</h2>
+        <p class="text-gray-400 mb-4">Keep retrying until a deadline passes rather than a fixed count — useful for boot work that must succeed within N seconds.</p>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b border-white/10">
+                        <th class="py-3 pr-4 font-medium">Method</th>
+                        <th class="py-3 font-medium">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">deadline</code></td><td class="py-3">Give up after this many seconds (default 10).</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Retry.within(fn() { Solidb.ping() }, { &quot;deadline&quot;: 10 });</code></pre>
+        </div>
+    </section>
+    <section id="def-circuit-breaker-state-machine" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">CircuitBreaker state machine</h2>
+        <p class="text-gray-400 mb-4">After threshold consecutive failures the named circuit trips open and refuses calls for reset_after seconds &mdash; an Int, or a Float for sub-second cool-downs &mdash; then allows one probe (half-open). Concurrent callers are refused until that probe reports back, and a probe that never reports is retried after another reset_after. A failed probe re-opens it immediately; a success closes it and resets the count.</p>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b border-white/10">
+                        <th class="py-3 pr-4 font-medium">Method</th>
+                        <th class="py-3 font-medium">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">allow(name)</code></td><td class="py-3">True when a call may proceed.</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">record_success(name)</code></td><td class="py-3">Reset failures and close.</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">record_failure(name)</code></td><td class="py-3">Count a failure; trips at the threshold.</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">state(name)</code></td><td class="py-3">"closed", "open", or "half_open".</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">configure(name, opts)</code></td><td class="py-3">{"threshold": 5, "reset_after": 30} defaults.</td></tr>
+                    <tr><td class="py-3 pr-4 align-top"><code class="text-amber-400 whitespace-nowrap">reset(name)</code></td><td class="py-3">Forget all state (ops/testing).</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">if CircuitBreaker.allow(&quot;stripe&quot;) {
+  match HTTP.post_json(url, body) rescue null {
+    null =&gt; CircuitBreaker.record_failure(&quot;stripe&quot;),
+    r =&gt; { CircuitBreaker.record_success(&quot;stripe&quot;); return r; }
+  }
+} else {
+  return fallback_response();
+}</code></pre>
+        </div>
+    </section>
+    <section id="def-circuit-breaker-scope" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Scope</h2>
+        <p class="text-gray-400 mb-4">State is process-global: every worker thread and both engines see the same circuit. Single-process by design — cross-process coordination belongs to the job system&rsquo;s atomic claiming.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">CircuitBreaker.configure(&quot;stripe&quot;, { &quot;threshold&quot;: 3, &quot;reset_after&quot;: 60 });
+CircuitBreaker.state(&quot;stripe&quot;);   # &quot;closed&quot;</code></pre>
+        </div>
+    </section>
+</div>

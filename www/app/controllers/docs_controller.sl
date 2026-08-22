@@ -563,6 +563,30 @@ def builtins_rate_limit
     render_docs("docs/builtins/rate-limit", "Rate Limiting Functions", "builtins", "rate_limit")
 end
 
+def builtins_url
+    render_docs("docs/builtins/url", "Url Class", "builtins", "url")
+end
+
+def builtins_logger
+    render_docs("docs/builtins/logger", "Logger Class", "builtins", "logger")
+end
+
+def builtins_resilience
+    render_docs("docs/builtins/resilience", "Retry & Circuit Breaker", "builtins", "resilience")
+end
+
+def builtins_toml_yaml
+    render_docs("docs/builtins/toml-yaml", "TOML / YAML Classes", "builtins", "toml_yaml")
+end
+
+def builtins_semaphore
+    render_docs("docs/builtins/semaphore", "Semaphore Class", "builtins", "semaphore")
+end
+
+def builtins_money
+    render_docs("docs/builtins/money", "Money Class", "builtins", "money")
+end
+
 def builtins_security_headers
     render_docs("docs/builtins/security-headers", "Security Headers Functions", "builtins", "security_headers")
 end

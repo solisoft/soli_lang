@@ -2307,11 +2307,30 @@ impl Interpreter {
                 receiver: Box::new(Value::DateTime(ts)),
                 method_name: name.to_string(),
             })),
-            None => Err(RuntimeError::NoSuchProperty {
-                value_type: "DateTime".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            // Universal members every other value answers. A DateTime answered
+            // only its own registered methods, so `inspect`, `to_s`, `class`,
+            // `nil?`, `blank?` and `present?` were all hard errors — which is
+            // why the REPL's result echo (it calls `inspect`) failed on
+            // `DateTime.now()`. Checked after `datetime_method` so a registered
+            // method of the same name still wins.
+            None => match name {
+                "class" => Ok(Value::String("datetime".into())),
+                "nil?" | "blank?" => Ok(Value::Bool(false)),
+                "present?" => Ok(Value::Bool(true)),
+                "inspect" | "to_s" => {
+                    crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
+                        ts,
+                        "to_string",
+                        &[],
+                        span,
+                    )
+                }
+                _ => Err(RuntimeError::NoSuchProperty {
+                    value_type: "DateTime".to_string(),
+                    property: name.to_string(),
+                    span,
+                }),
+            },
         }
     }
 

@@ -74,6 +74,7 @@ pub mod json;
 pub mod jwt;
 pub mod kv;
 pub mod kv_log;
+pub mod logger;
 pub mod mail_outbox;
 pub mod mail_parse;
 pub mod mailer;
@@ -81,6 +82,7 @@ pub mod markdown;
 pub mod math;
 pub mod mock_http;
 pub mod model;
+pub mod money;
 pub mod named_routes;
 pub mod nanoid;
 pub mod native;
@@ -97,9 +99,11 @@ pub mod push;
 pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;
+pub mod resilience;
 pub mod resp;
 pub mod respond_to;
 pub mod response_helpers;
+pub mod retry;
 pub mod router;
 pub mod rsa_key;
 pub mod s3;
@@ -124,11 +128,13 @@ pub mod template;
 pub mod test_dsl;
 pub mod test_helpers;
 pub mod test_server;
+pub mod toml_yaml;
 pub mod trust_proxy;
 pub mod types;
 pub mod ulid;
 pub mod updater;
 pub mod uploads;
+pub mod url_class;
 pub mod uuid;
 pub mod validation;
 pub mod vapid;
@@ -458,6 +464,22 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register Encoding class (charset decode/encode: Latin-1, etc. <-> UTF-8)
     encoding::register_encoding_class(env);
+
+    // Register Url class (parse/build/join/query params without string surgery)
+    url_class::register_url_class(env);
+
+    // Register Logger class (leveled structured logging to stderr)
+    logger::register_logger_class(env);
+
+    // Register Toml/Yaml classes (config-format parse/stringify)
+    toml_yaml::register_toml_yaml_classes(env);
+
+    // Register CircuitBreaker and Semaphore (process-global concurrency guards)
+    resilience::register_circuit_breaker_class(env);
+    resilience::register_semaphore_class(env);
+
+    // Register Money class (currency-aware amounts over rust_decimal)
+    money::register_money_class(env);
 
     // Register RsaKey class (PEM private-key parsing for envelope signing)
     rsa_key::register_rsa_key_builtins(env);

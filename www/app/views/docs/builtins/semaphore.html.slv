@@ -1,0 +1,31 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Semaphore Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            A named, process-global counting semaphore: &ldquo;at most N of these running at once&rdquo; inside this process — e.g. a cron handler that must not overlap itself. Tokens are explicit; cross-process mutual exclusion belongs to job claiming. A name nobody holds any more is forgotten, so per-key names (<code>&quot;import-#{tenant}&quot;</code>) are safe to use.
+        </p>
+    </div>
+    <section id="def-semaphore-try-acquire" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Semaphore.try_acquire(name, limit)</h2>
+        <p class="text-gray-400 mb-4">Returns an Int token when a slot is free, null otherwise. The first call fixes the limit for that name; later calls reuse it.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let token = Semaphore.try_acquire(&quot;nightly-report&quot;, 1);
+if token.present? {
+  generate_nightly_report();
+  Semaphore.release(&quot;nightly-report&quot;, token);
+} else {
+  print(&quot;already running&quot;);
+}</code></pre>
+        </div>
+    </section>
+    <section id="def-semaphore-count" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Semaphore.release(name, token) / Semaphore.count(name)</h2>
+        <p class="text-gray-400 mb-4">Release returns true when the token was actually held, so double-release is detectable. Count reports current occupancy.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Semaphore.count(&quot;nightly-report&quot;);
+# { &quot;limit&quot;: 1, &quot;held&quot;: 1 }</code></pre>
+        </div>
+    </section>
+</div>

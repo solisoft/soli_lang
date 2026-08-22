@@ -1,0 +1,50 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Money Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Currency-aware amounts over decimals, stored as a plain hash so they round-trip through JSON and templates like any other data. All operations are immutable — they return new money hashes.
+        </p>
+    </div>
+    <section id="def-money-new" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Money.new(amount, currency)</h2>
+        <p class="text-gray-400 mb-4">Build from Int, Float, Decimal, or String. Strings use . for decimals and _ for grouping; a comma is rejected as ambiguous. Currency is a 3-letter ISO code; minor-unit exponents follow ISO-4217 (JPY 0, KWD 3, most others 2).</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let price = Money.new(&quot;49.90&quot;, &quot;EUR&quot;);
+price[&quot;amount&quot;];    # Decimal 49.90
+price[&quot;currency&quot;];  # &quot;EUR&quot;</code></pre>
+        </div>
+    </section>
+    <section id="def-money-arithmetic" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Arithmetic and comparison</h2>
+        <p class="text-gray-400 mb-4">add / sub combine two money values (currency mismatch is an error); mul scales by a plain scalar; compare returns -1, 0, or 1. Every result is quantized to the currency&rsquo;s minor units (half-away-from-zero), so <code>m["amount"]</code> is always exactly what <code>Money.format(m)</code> shows and repeated <code>mul</code>/<code>add</code> cannot drift away from it.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let total = Money.add(price, Money.mul(price, 2));   # 149.70 EUR
+Money.compare(total, Money.new(&quot;149.70&quot;, &quot;EUR&quot;));    # 0</code></pre>
+        </div>
+    </section>
+    <section id="def-money-allocate" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Money.allocate(m, ratios)</h2>
+        <p class="text-gray-400 mb-4">Split an amount losslessly by ratios using largest-remainder allocation — no lost cents.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">let shares = Money.allocate(Money.new(100, &quot;EUR&quot;), [1, 1, 1]);
+shares.map(fn(m) Money.format(m, { &quot;symbol&quot;: false }));
+# [&quot;33.34 EUR&quot;, &quot;33.33 EUR&quot;, &quot;33.33 EUR&quot;]</code></pre>
+        </div>
+    </section>
+    <section id="def-money-format" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Money.format(m, opts?)</h2>
+        <p class="text-gray-400 mb-4">Localized rendering. symbol omits the currency glyph; locale switches decimal separator and grouping &mdash; <code>de</code>, <code>fr</code> and <code>nl</code> group with <code>.</code> and use <code>,</code> as the decimal separator, <code>en</code> the reverse. Currencies without a known glyph render as a code suffix. Currency codes are case-insensitive.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Money.format(Money.new(1234.5, &quot;EUR&quot;));
+# &quot;1,234.50 €&quot;
+
+Money.format(Money.new(1234.5, &quot;EUR&quot;), { &quot;locale&quot;: &quot;de&quot; });
+# &quot;1.234,50 €&quot;
+
+Money.format(Money.new(-9.99, &quot;USD&quot;), { &quot;symbol&quot;: false });
+# &quot;-9.99 USD&quot;</code></pre>
+        </div>
+    </section>
+</div>

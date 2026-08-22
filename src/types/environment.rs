@@ -45,6 +45,27 @@ impl TypeEnvironment {
             env.define(name.to_string(), Type::Any);
         }
 
+        // Engine-embedded classes whose methods are not modelled here. Without
+        // these the checker rejects the documented examples outright — every
+        // script using them failed with `Undefined variable 'Money'` unless it
+        // was run with `--no-type-check`, even though `register_builtins`
+        // installs the class at runtime. Typed as Any for the same reason as
+        // the primitive class objects above: member access must not fail the
+        // check. Add a real `ClassType` when a class's surface is worth
+        // checking.
+        for name in [
+            "Money",
+            "Url",
+            "Logger",
+            "Toml",
+            "Yaml",
+            "CircuitBreaker",
+            "Semaphore",
+            "Retry",
+        ] {
+            env.define(name.to_string(), Type::Any);
+        }
+
         env
     }
 

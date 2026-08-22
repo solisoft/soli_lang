@@ -6095,6 +6095,205 @@ for file in files
 end
 ```
 
+## Url Class
+
+Parse, build, join, and manipulate URLs without string surgery. All methods are static.
+
+| Method | Description |
+|--------|-------------|
+| `Url.parse(url)` | Hash of components: `scheme`, `username`, `password`, `host`, `port` (Int or null), `path`, `query`, `fragment`. Absent parts are null. |
+| `Url.build(hash)` | String from a hash; keys `scheme/host/port/path/query/fragment` override. `query` accepts a params hash. |
+| `Url.join(base, relative)` | Resolves a relative URL against a base. |
+| `Url.params(url)` | Hash of decoded query parameters. `+` decodes to a space and undecodable escapes are kept verbatim — the same rules request params use. |
+| `Url.param(url, name)` | Decoded parameter value, or null when absent. |
+| `Url.set_param(url, name, value)` | New URL string with the param set (null removes it). Only the named param is rewritten; every other pair keeps its exact original text. |
+| `Url.encode_component(str)` / `Url.decode_component(str)` | Percent-encoding helpers. Decoding leaves an invalid escape as-is rather than blanking the string. |
+
+```soli
+let u = Url.parse("https://api.ex.com/v1/items?page=2&q=red%20shoe");
+u["host"];   # "api.ex.com"
+u["port"];   # null
+Url.param("https://api.ex.com/v1/items?page=2&q=red%20shoe", "q");  # "red shoe"
+
+Url.set_param("https://ex.com/?b=2", "a", "1");  # "https://ex.com/?b=2&a=1"
+Url.join("https://ex.com/a/b", "c");             # "https://ex.com/a/c"
+Url.build({
+  "scheme": "https", "host": "api.ex.com",
+  "path": "/v1/x", "query": { "page": 2 }
+});                                              # "https://api.ex.com/v1/x?page=2"
+```
+
+---
+
+## Logger Class
+
+Leveled structured logging to stderr. Levels are `debug < info < warn < error`;
+entries below the configured level are dropped. The initial level comes from
+`SOLI_LOG_LEVEL` (default `info`).
+
+| Method | Description |
+|--------|-------------|
+| `Logger.debug(msg, fields?)` / `.info` / `.warn` / `.error` | Emit an entry. `fields` is an optional hash merged into the entry. |
+| `Logger.configure({"level": "warn", "json": true})` | Set level and/or JSON line format at runtime. |
+| `Logger.level()` | Current level name (`"INFO"` by default). |
+| `Logger.set_capture(bool)` | Test helper: record entries into a bounded ring buffer instead of only stderr. Disabling clears it. |
+| `Logger.entries()` | Captured lines (oldest first) — assert on these in tests. |
+| `Logger.clear_entries()` | Empty the capture buffer. |
+
+Text format: `2026-08-22T10:30:00Z [INFO] order placed order_id=42`.
+JSON format: one object per line with `ts`, `level`, `message`, plus fields.
+
+```soli
+Logger.info("order placed", { "order_id": order["id"], "total": total });
+Logger.error("payment failed", { "provider": "stripe" });
+
+# In a spec:
+Logger.set_capture(true);
+do_work();
+assert(Logger.entries().length() > 0);
+Logger.set_capture(false);
+```
+
+---
+
+## Retry Functions
+
+Retry logic is engine-embedded Soli (plain natives cannot invoke blocks), with
+exponential backoff and a deadline variant.
+
+| Function | Description |
+|----------|-------------|
+| `Retry.with_backoff(block, opts?)` | Run `block()` up to `attempts` times, sleeping between attempts. Re-raises the last error when exhausted. |
+| `Retry.within(block, opts?)` | Keep retrying until `deadline` seconds pass instead of a fixed count. |
+
+Options for both: `attempts` (default 3), `base_delay` seconds (default 0.5),
+`max_delay` cap (default 8), `factor` multiplier (default 2); `within` takes
+`deadline` (default 10).
+
+```soli
+let body = Retry.with_backoff(fn() {
+  HTTP.post_json(webhook_url, payload)
+}, { "attempts": 3, "base_delay": 0.5 });
+
+# Boot work that must succeed within 10 seconds:
+Retry.within(fn() { Solidb.ping() }, { "deadline": 10 });
+```
+
+---
+
+## CircuitBreaker Class
+
+A per-name failure tracker: after `threshold` consecutive failures the circuit
+trips open and refuses calls for `reset_after` seconds (an Int, or a Float for
+sub-second cool-downs), then allows **one** probe through — concurrent callers
+are refused until that probe reports back, and a probe that never reports is
+retried after another `reset_after`. State is process-global — every worker and engine sees the same
+circuit. Single-process by design; cross-process coordination belongs to job
+claiming.
+
+Callback-free by design — record outcomes explicitly:
+
+```soli
+if CircuitBreaker.allow("stripe") {
+  match HTTP.post_json(url, body) rescue null {
+    null => CircuitBreaker.record_failure("stripe"),
+    r => { CircuitBreaker.record_success("stripe"); return r; }
+  }
+} else {
+  return fallback_response();
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `CircuitBreaker.allow(name)` | True when a call may proceed. |
+| `CircuitBreaker.record_success(name)` / `.record_failure(name)` | Feed outcomes. Success resets the failure count and closes the circuit. |
+| `CircuitBreaker.state(name)` | `"closed"`, `"open"`, or `"half_open"`. |
+| `CircuitBreaker.configure(name, {"threshold": 5, "reset_after": 30})` | Tune before first use (defaults shown). |
+| `CircuitBreaker.reset(name)` | Forget all state (ops/testing). |
+
+---
+
+## Toml / Yaml Classes
+
+Config-format parse/stringify over the same Value model as JSON.
+
+| Method | Description |
+|--------|-------------|
+| `Toml.parse(str)` | Parse TOML into a hash. Errors cleanly on malformed input. |
+| `Toml.stringify(hash)` | Serialize a hash to TOML. |
+| `Yaml.parse(str)` | Parse YAML into whatever shape the document has. |
+| `Yaml.stringify(value)` | Serialize any value to YAML. |
+
+```soli
+let config = Toml.parse(slurp("config.toml"));
+config["owner"]["name"];
+
+let spec = Yaml.parse(slurp("openapi.yaml"));
+spec["paths"]["/users"]["get"]["summary"];
+```
+
+Note: TOML cannot represent null; stringify raises on null values.
+
+---
+
+## Semaphore Class
+
+A named, process-global counting semaphore — "at most N of these running at
+once" inside this process (e.g. a cron handler that must not overlap itself).
+Tokens are explicit; single-process by design (cross-process mutual exclusion
+belongs to job claiming).
+
+| Method | Description |
+|--------|-------------|
+| `Semaphore.try_acquire(name, limit)` | Int token when a slot is free, null otherwise. The first call fixes the limit for that name. |
+| `Semaphore.release(name, token)` | Give the slot back. Returns true when the token was held; a name nobody holds any more is forgotten, so per-key names (`"import-#{tenant}"`) are safe to use. |
+| `Semaphore.count(name)` | `{ "limit": n, "held": k }`, or null if unknown. |
+
+```soli
+let token = Semaphore.try_acquire("nightly-report", 1);
+if token.present? {
+  generate_nightly_report();
+  Semaphore.release("nightly-report", token);
+} else {
+  print("already running");
+}
+```
+
+---
+
+## Money Class
+
+Currency-aware amounts over decimals, stored as a plain hash so they round-trip
+through JSON/templates like any other data. All operations are immutable —
+they return new money hashes.
+
+| Method | Description |
+|--------|-------------|
+| `Money.new(amount, currency)` | Build from Int/Float/Decimal/String. Strings use `.` for decimals and `_` for grouping; `,` is rejected as ambiguous. Currency is a 3-letter ISO code, case-insensitive (`"eur"` → `"EUR"`); anything else is rejected. |
+| `Money.add(a, b)` / `.sub(a, b)` | Arithmetic; currency mismatch is an error. |
+| `Money.mul(m, factor)` | Scale by an Int/Float scalar; the result is rounded to the currency's minor units. |
+| `Money.compare(a, b)` | `-1` / `0` / `1`; mismatching currencies error. |
+| `Money.allocate(m, ratios)` | Split losslessly (largest remainder): `allocate(Money.new(100, "EUR"), [1,1,1])` → 33.34 + 33.33 + 33.33. |
+| `Money.format(m, opts?)` | `"1,234.50 €"` style output. Options: `{"symbol": false}` to omit, `{"locale": "de"}` (also `"fr"`, `"nl"`) for `1.234,50 €` grouping. |
+
+Minor-unit exponents follow ISO-4217 for common currencies (JPY 0, KWD 3, most others 2).
+
+Amounts are **quantized to the currency's minor units** on every operation, so
+`m["amount"]` is always exactly what `Money.format(m)` displays and no chain of
+`mul`/`add` can drift away from it. Rounding is half-away-from-zero, the usual
+money convention. There is deliberately no `Money.round` — there is nothing left
+to round.
+
+```soli
+let price = Money.new("49.90", "EUR");
+let total = Money.add(price, Money.mul(price, 2));
+Money.format(total);                                  # "149.70 €"
+Money.format(total, { "locale": "de" });              # "149,70 €"
+
+let shares = Money.allocate(Money.new(100, "EUR"), [50, 25, 25]);
+```
+
 ---
 
 ## See Also
