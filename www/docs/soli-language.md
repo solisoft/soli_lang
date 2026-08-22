@@ -1023,6 +1023,17 @@ try {
 }
 ```
 
+### Depth Limits
+
+To keep a runaway program from aborting the process, recursive constructs return an error past a fixed depth instead of overflowing the stack:
+
+- **Source nesting** — expressions, statements, match patterns, and type annotations may nest at most 64 levels deep. Deeper input produces a parse error (`... nested too deeply`), not a crash.
+- **Call recursion** — a Soli-to-Soli call chain is capped (32 frames in debug builds, 256 in release). Exceeding it raises a catchable runtime error: `call stack too deep (256 frames) — unbounded recursion?`.
+- **Templates** — `<% if %>`/`<% for %>`/`content_for`/builder blocks and partial/component includes are capped at 64 levels of nesting; a partial that renders itself fails with a clean render error.
+- **JSON** — converting or serializing a structure more than 512 levels deep returns an error.
+
+All of these surface as ordinary errors your code can catch — never as process aborts.
+
 ---
 
 ## Functions
@@ -4084,6 +4095,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `idiom/prefer-blank` | Prefer `.blank?` / `.present?` over comparing to an empty string (`.blank?` also covers nil) |
 | `idiom/prefer-includes` | Replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?` |
 | `idiom/manual-find-guard` | Drop the nil-check after `Model.find` — it raises on a miss (handled as a 404); use `find_by`/`first_by` for "or nil" |
+| `security/unfiltered-mass-assignment` | `Model.create(params)` / `.update` / `.create_many` in `app/controllers/` or `app/services/` with the raw request hash. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` |
 | `component/props` | A component's `props(...)` declaration must use string-literal names with no duplicates |
 
 ### Suppressing Warnings

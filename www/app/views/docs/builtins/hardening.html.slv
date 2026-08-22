@@ -5,6 +5,8 @@
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Production-safe defaults for handling untrusted input at the request edge: trust-proxy gating for <code class="text-orange-400">X-Forwarded-*</code> headers, and a per-request body-size cap to prevent memory-exhaustion DoS.
+            The checklist of what production already does versus what you still set is on
+            <a href="/docs/security/defaults" class="text-amber-400 hover:text-amber-300">Production security defaults</a>.
         </p>
     </div>
 

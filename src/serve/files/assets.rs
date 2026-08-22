@@ -7,7 +7,8 @@
 use bytes::Bytes;
 use hyper::{Response, StatusCode};
 
-use super::{full, ResponseBody};
+use super::ResponseBody;
+use crate::serve::finish_response;
 use crate::serve::prefetch::fnv1a_64;
 
 pub(crate) const FILES_CSS: &str = include_str!("files.css");
@@ -35,21 +36,23 @@ fn asset(
     let etag = format!("\"{:x}\"", fnv1a_64(body.as_bytes()));
 
     if if_none_match.is_some_and(|client| client == etag || client == format!("W/{}", etag)) {
-        return Response::builder()
-            .status(StatusCode::NOT_MODIFIED)
-            .header("ETag", etag)
-            .body(full(Bytes::new()))
-            .unwrap();
+        return finish_response(
+            Response::builder()
+                .status(StatusCode::NOT_MODIFIED)
+                .header("ETag", etag),
+            Bytes::new(),
+        );
     }
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", content_type)
-        .header("Content-Length", body.len().to_string())
-        .header("ETag", etag)
-        .header("Cache-Control", "public, max-age=0, must-revalidate")
-        .body(full(Bytes::from_static(body.as_bytes())))
-        .unwrap()
+    finish_response(
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", content_type)
+            .header("Content-Length", body.len().to_string())
+            .header("ETag", etag)
+            .header("Cache-Control", "public, max-age=0, must-revalidate"),
+        Bytes::from_static(body.as_bytes()),
+    )
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ use std::time::SystemTime;
 use bytes::Bytes;
 use hyper::{HeaderMap, Response, StatusCode};
 
-use super::{full, server_constants, ResponseBody};
+use super::{finish_response, full, server_constants, ResponseBody};
 
 mod assets;
 mod index;
@@ -224,16 +224,13 @@ pub(crate) fn handle(
     dev_mode: bool,
 ) -> Outcome {
     if method != "GET" && method != "HEAD" {
-        return Outcome::Response(
+        return Outcome::Response(finish_response(
             Response::builder()
                 .status(StatusCode::METHOD_NOT_ALLOWED)
                 .header("Allow", "GET, HEAD")
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .body(full(Bytes::from_static(
-                    b"File mode serves GET and HEAD only",
-                )))
-                .unwrap(),
-        );
+                .header("Content-Type", "text/plain; charset=utf-8"),
+            Bytes::from_static(b"File mode serves GET and HEAD only"),
+        ));
     }
 
     let outcome = route(path, root, headers, query, dev_mode);
@@ -413,11 +410,12 @@ fn serve_static(file_path: &Path, headers: &HeaderMap, dev_mode: bool) -> Respon
     if let Some(etag) = &etag {
         if let Some(client) = headers.get("if-none-match").and_then(|v| v.to_str().ok()) {
             if client == etag || client == format!("W/{}", etag) {
-                return Response::builder()
-                    .status(StatusCode::NOT_MODIFIED)
-                    .header("ETag", etag)
-                    .body(full(Bytes::new()))
-                    .unwrap();
+                return finish_response(
+                    Response::builder()
+                        .status(StatusCode::NOT_MODIFIED)
+                        .header("ETag", etag),
+                    Bytes::new(),
+                );
             }
         }
     }
@@ -425,11 +423,12 @@ fn serve_static(file_path: &Path, headers: &HeaderMap, dev_mode: bool) -> Respon
     let content = match std::fs::read(file_path) {
         Ok(c) => c,
         Err(_) => {
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .body(full(Bytes::from_static(b"Could not read file")))
-                .unwrap()
+            return finish_response(
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "text/plain; charset=utf-8"),
+                Bytes::from_static(b"Could not read file"),
+            )
         }
     };
     let total = content.len() as u64;
@@ -438,23 +437,25 @@ fn serve_static(file_path: &Path, headers: &HeaderMap, dev_mode: bool) -> Respon
         return match server_constants::parse_range_header(range, total) {
             Some((start, end)) => {
                 let slice = &content[start as usize..=(end as usize).min(content.len() - 1)];
-                Response::builder()
-                    .status(StatusCode::PARTIAL_CONTENT)
-                    .header("Content-Type", mime_type)
-                    .header(
-                        "Content-Range",
-                        format!("bytes {}-{}/{}", start, end, total),
-                    )
-                    .header("Content-Length", (end - start + 1).to_string())
-                    .header("Accept-Ranges", "bytes")
-                    .body(full(Bytes::copy_from_slice(slice)))
-                    .unwrap()
+                finish_response(
+                    Response::builder()
+                        .status(StatusCode::PARTIAL_CONTENT)
+                        .header("Content-Type", mime_type)
+                        .header(
+                            "Content-Range",
+                            format!("bytes {}-{}/{}", start, end, total),
+                        )
+                        .header("Content-Length", (end - start + 1).to_string())
+                        .header("Accept-Ranges", "bytes"),
+                    Bytes::copy_from_slice(slice),
+                )
             }
-            None => Response::builder()
-                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                .header("Content-Range", format!("bytes */{}", total))
-                .body(full(Bytes::new()))
-                .unwrap(),
+            None => finish_response(
+                Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header("Content-Range", format!("bytes */{}", total)),
+                Bytes::new(),
+            ),
         };
     }
 
@@ -472,35 +473,41 @@ fn serve_static(file_path: &Path, headers: &HeaderMap, dev_mode: bool) -> Respon
             builder = builder.header("Cache-Control", "public, max-age=0, must-revalidate");
         }
     }
-    builder.body(full(Bytes::from(content))).unwrap()
+    finish_response(builder, Bytes::from(content))
 }
 
 fn forbidden() -> Response<ResponseBody> {
-    Response::builder()
-        .status(StatusCode::FORBIDDEN)
-        .header("Content-Type", "text/plain; charset=utf-8")
-        .body(full(Bytes::from_static(b"Forbidden")))
-        .unwrap()
+    finish_response(
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "text/plain; charset=utf-8"),
+        Bytes::from_static(b"Forbidden"),
+    )
 }
 
 fn redirect(location: &str) -> Response<ResponseBody> {
-    Response::builder()
-        .status(StatusCode::MOVED_PERMANENTLY)
-        .header("Location", location)
-        .header("Content-Length", "0")
-        .body(full(Bytes::new()))
-        .unwrap()
+    // `Location` is path-derived; a crafted path that poisons the builder
+    // must not unwrap into a worker panic.
+    finish_response(
+        Response::builder()
+            .status(StatusCode::MOVED_PERMANENTLY)
+            .header("Location", location)
+            .header("Content-Length", "0"),
+        Bytes::new(),
+    )
 }
 
 /// Render `bytes` as an HTML page response with an explicit Content-Length.
 fn html_page(html: String, status: StatusCode) -> Response<ResponseBody> {
     let bytes = Bytes::from(html);
-    Response::builder()
-        .status(status)
-        .header("Content-Type", "text/html; charset=utf-8")
-        .header("Content-Length", bytes.len().to_string())
-        .body(full(bytes))
-        .unwrap()
+    let len = bytes.len().to_string();
+    finish_response(
+        Response::builder()
+            .status(status)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("Content-Length", len),
+        bytes,
+    )
 }
 
 /// Find a folder's own page (`README.md` and friends), if it has one.
@@ -978,5 +985,23 @@ mod tests {
         assert_eq!(human_size(4200), "4.1 KB");
         assert_eq!(human_size(20 * 1024), "20 KB");
         assert_eq!(human_size(3 * 1024 * 1024 / 2), "1.5 MB");
+    }
+
+    #[test]
+    fn poisoned_redirect_is_500_not_a_panic() {
+        // CR/LF in Location poisons hyper's builder. finish_response must
+        // swallow that instead of unwrap-panicking the worker.
+        let resp = redirect("https://evil.example/\r\nX-Injected: 1");
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn clean_redirect_is_301() {
+        let resp = redirect("/notes/");
+        assert_eq!(resp.status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(
+            resp.headers().get("Location").and_then(|v| v.to_str().ok()),
+            Some("/notes/")
+        );
     }
 }

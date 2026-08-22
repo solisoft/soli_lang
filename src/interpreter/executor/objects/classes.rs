@@ -131,7 +131,7 @@ impl Interpreter {
 
             // Execute constructor body (pushes a frame so coverage/stack
             // traces attribute constructor lines to the class's own file).
-            self.execute_constructor_body(ctor, ctor_env);
+            self.execute_constructor_body(ctor, ctor_env)?;
         }
 
         Ok(Value::Instance(instance))

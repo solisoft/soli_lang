@@ -61,6 +61,13 @@ impl Parser {
     }
 
     fn parse_prefix(&mut self) -> ParseResult<Expr> {
+        self.enter_depth("expression")?;
+        let result = self.parse_prefix_inner();
+        self.exit_depth();
+        result
+    }
+
+    fn parse_prefix_inner(&mut self) -> ParseResult<Expr> {
         let token = self.advance();
         let start_span = token.span;
 
@@ -1639,6 +1646,13 @@ impl Parser {
     }
 
     fn parse_match_pattern(&mut self) -> ParseResult<MatchPattern> {
+        self.enter_depth("pattern")?;
+        let result = self.parse_match_pattern_inner();
+        self.exit_depth();
+        result
+    }
+
+    fn parse_match_pattern_inner(&mut self) -> ParseResult<MatchPattern> {
         use crate::lexer::TokenKind::*;
 
         let token_kind = self.peek().kind.clone();

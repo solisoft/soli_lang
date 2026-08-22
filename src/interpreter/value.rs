@@ -1941,9 +1941,37 @@ pub(crate) fn is_sensitive_field_name(name: &str) -> bool {
         || lower.ends_with("_hash")
 }
 
-/// Implement serde::Serialize for Value to leverage serde_json's optimized writer.
+thread_local! {
+    /// Nesting depth of in-flight `Serialize for Value` recursions. Runtime
+    /// code can build arbitrarily deep structures (`loop { a = [a] }`); the
+    /// recursive serde walk would otherwise overflow the native stack — which
+    /// aborts without unwinding.
+    static SERIALIZE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Maximum Value nesting depth during serialization.
+const MAX_SERIALIZE_DEPTH: usize = 512;
+
 impl serde::Serialize for Value {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let depth = SERIALIZE_DEPTH.with(|d| {
+            d.set(d.get() + 1);
+            d.get()
+        });
+        if depth > MAX_SERIALIZE_DEPTH {
+            SERIALIZE_DEPTH.with(|d| d.set(depth - 1));
+            return Err(serde::ser::Error::custom(
+                "structure nested too deeply to serialize",
+            ));
+        }
+        let result = self.serialize_inner(serializer);
+        SERIALIZE_DEPTH.with(|d| d.set(d.get() - 1));
+        result
+    }
+}
+
+impl Value {
+    fn serialize_inner<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             // RFC 3339, matching `to_iso()`. As an `Instance` its only field was
             // `_ts`, which the `_`-prefix filter below strips — so a DateTime
@@ -2022,7 +2050,7 @@ impl serde::Serialize for Value {
             Value::Deferred(cell) => {
                 let resolved = crate::interpreter::builtins::model::batch::force(cell)
                     .map_err(serde::ser::Error::custom)?;
-                resolved.serialize(serializer)
+                serde::Serialize::serialize(&resolved, serializer)
             }
             _ => Err(serde::ser::Error::custom(format!(
                 "Cannot convert {} to JSON",

@@ -706,6 +706,7 @@ Key rules:
 - `idiom/nil-comparison`, `idiom/prefer-blank` — prefer `.nil?`/`.present?`/`.blank?` over `== null` / `== ""`
 - `idiom/prefer-includes` — replace 3+ same-value `==`/`!=` comparisons with `.includes?`
 - `idiom/manual-find-guard` — drop the nil-check after `Model.find` (it raises; use `find_by`/`first_by` for "or nil")
+- `security/unfiltered-mass-assignment` — `Model.create(params)` in controllers/services; whitelist with `permit` / `_permit_params`
 - `component/props` — a component's `props(...)` declaration must use string-literal names with no duplicates
 
 ## Common commands

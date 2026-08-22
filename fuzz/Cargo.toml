@@ -1,0 +1,41 @@
+[package]
+name = "solilang-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.solilang]
+path = ".."
+
+# Keep debuginfo for crash triage; optimization low so runs stay fast.
+[profile.fuzz]
+inherits = "dev"
+opt-level = 1
+debug = 1
+
+[[bin]]
+name = "parse_program"
+path = "fuzz_targets/parse_program.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "template_parse_render"
+path = "fuzz_targets/template_parse_render.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "json_roundtrip"
+path = "fuzz_targets/json_roundtrip.rs"
+test = false
+doc = false
+bench = false

@@ -9,6 +9,13 @@ use super::core::{ParseResult, Parser};
 
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> ParseResult<TypeAnnotation> {
+        self.enter_depth("type")?;
+        let result = self.parse_type_inner();
+        self.exit_depth();
+        result
+    }
+
+    fn parse_type_inner(&mut self) -> ParseResult<TypeAnnotation> {
         let start_span = self.current_span();
 
         let base_type = match &self.peek().kind {

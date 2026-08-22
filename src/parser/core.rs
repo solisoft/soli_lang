@@ -9,8 +9,19 @@ use std::time::Instant;
 
 pub type ParseResult<T> = Result<T, ParserError>;
 
+/// Maximum nesting depth for recursively-parsed constructs (expressions,
+/// statements, patterns, types). Recursive descent on adversarial input
+/// (`((((((...))))))`) would otherwise overflow the stack — which panics
+/// without unwinding, so `catch_unwind` fault isolation cannot contain it.
+/// 64 leaves headroom below the measured overflow threshold on 2 MB stacks
+/// in debug builds (where per-level frames are largest); real-world source
+/// nests well under half that.
+pub(crate) const MAX_PARSE_DEPTH: usize = 64;
+
 /// The parser for Solilang.
 pub struct Parser {
+    /// Current construct-nesting depth, guarded by [`MAX_PARSE_DEPTH`].
+    pub(crate) depth: usize,
     pub(crate) tokens: Vec<Token>,
     pub(crate) current: usize,
     /// When true, trailing `{` blocks are NOT consumed after call expressions.
@@ -37,11 +48,31 @@ impl Parser {
         Self {
             tokens,
             current: 0,
+            depth: 0,
             no_trailing_brace: false,
             condition_context: false,
             no_trailing_do: false,
             in_try_body: false,
         }
+    }
+
+    /// Enter a nesting level for a recursive construct. Errors once
+    /// [`MAX_PARSE_DEPTH`] is exceeded instead of overflowing the stack.
+    /// Pair with [`Parser::exit_depth`] after the recursive call returns.
+    pub(crate) fn enter_depth(&mut self, what: &str) -> ParseResult<()> {
+        self.depth += 1;
+        if self.depth > MAX_PARSE_DEPTH {
+            self.depth -= 1;
+            return Err(ParserError::general(
+                format!("{what} nested too deeply (max depth {MAX_PARSE_DEPTH})"),
+                self.current_span(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn exit_depth(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     /// Parse an expression with trailing brace blocks suppressed.

@@ -7,6 +7,13 @@ use super::core::{ParseResult, Parser};
 
 impl Parser {
     pub(crate) fn statement(&mut self) -> ParseResult<Stmt> {
+        self.enter_depth("block")?;
+        let result = self.statement_inner();
+        self.exit_depth();
+        result
+    }
+
+    fn statement_inner(&mut self) -> ParseResult<Stmt> {
         if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
             self.class_declaration()
         } else if self.check(&TokenKind::Fn) {

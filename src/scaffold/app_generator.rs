@@ -865,6 +865,11 @@ mod tests {
             content
         );
         assert!(!content.contains("SOLIDB_DATABASE=default"));
+        assert!(
+            content.contains("SOLI_CSRF_TOKENS=require"),
+            "new apps must require CSRF tokens, got:\n{}",
+            content
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

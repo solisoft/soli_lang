@@ -31,6 +31,47 @@ pub fn is_production_env() -> bool {
         .unwrap_or(false)
 }
 
+/// Minimum `SOLI_SESSION_SECRET` length in production (matches the cookie
+/// jar / cookie-session driver). Shorter secrets are guessable HMAC keys.
+pub const PRODUCTION_SESSION_SECRET_MIN_LEN: usize = 32;
+
+/// Fail closed in production unless the operator declared public hosts and
+/// a long session secret. `--dev` and non-production `APP_ENV` skip this so
+/// local `soli serve --dev` keeps working without those variables.
+///
+/// Call after `.env` is loaded. CSRF origin checks use `SOLI_APP_HOSTS`
+/// rather than a forgeable `Host` / `X-Forwarded-Host`; sealed cookies
+/// derive from `SOLI_SESSION_SECRET`.
+pub fn check_production_boot(dev_mode: bool) -> Result<(), String> {
+    if dev_mode || !is_production_env() {
+        return Ok(());
+    }
+
+    let hosts_ok = std::env::var("SOLI_APP_HOSTS")
+        .ok()
+        .map(|raw| raw.split(',').map(str::trim).any(|host| !host.is_empty()))
+        .unwrap_or(false);
+    if !hosts_ok {
+        return Err("production boot refuses to start without SOLI_APP_HOSTS \
+             (comma-separated public hostnames, e.g. app.example.com). \
+             CSRF origin checks use this list, not a forgeable Host header."
+            .to_string());
+    }
+
+    let secret = std::env::var("SOLI_SESSION_SECRET").unwrap_or_default();
+    if secret.len() < PRODUCTION_SESSION_SECRET_MIN_LEN {
+        return Err(format!(
+            "production boot refuses to start without SOLI_SESSION_SECRET \
+             of at least {} characters (got {}). Sealed cookies and the \
+             cookie session driver derive keys from it.",
+            PRODUCTION_SESSION_SECRET_MIN_LEN,
+            secret.len()
+        ));
+    }
+
+    Ok(())
+}
+
 /// Resolve HTTP worker count for `soli serve`.
 ///
 /// Priority:
@@ -483,6 +524,137 @@ mod tests {
             let n = resolve_http_workers_from_env();
             assert!(n >= 1);
             assert!(!using_production_worker_default(n));
+        });
+    }
+
+    // ---------- check_production_boot ----------
+
+    fn with_production_boot_env(
+        app_env: Option<&str>,
+        hosts: Option<&str>,
+        secret: Option<&str>,
+        f: impl FnOnce(),
+    ) {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _g = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev_app = std::env::var("APP_ENV").ok();
+        let prev_hosts = std::env::var("SOLI_APP_HOSTS").ok();
+        let prev_secret = std::env::var("SOLI_SESSION_SECRET").ok();
+        match app_env {
+            Some(v) => std::env::set_var("APP_ENV", v),
+            None => std::env::remove_var("APP_ENV"),
+        }
+        match hosts {
+            Some(v) => std::env::set_var("SOLI_APP_HOSTS", v),
+            None => std::env::remove_var("SOLI_APP_HOSTS"),
+        }
+        match secret {
+            Some(v) => std::env::set_var("SOLI_SESSION_SECRET", v),
+            None => std::env::remove_var("SOLI_SESSION_SECRET"),
+        }
+        f();
+        match prev_app {
+            Some(v) => std::env::set_var("APP_ENV", v),
+            None => std::env::remove_var("APP_ENV"),
+        }
+        match prev_hosts {
+            Some(v) => std::env::set_var("SOLI_APP_HOSTS", v),
+            None => std::env::remove_var("SOLI_APP_HOSTS"),
+        }
+        match prev_secret {
+            Some(v) => std::env::set_var("SOLI_SESSION_SECRET", v),
+            None => std::env::remove_var("SOLI_SESSION_SECRET"),
+        }
+    }
+
+    #[test]
+    fn production_missing_app_hosts_is_err() {
+        with_production_boot_env(
+            Some("production"),
+            None,
+            Some("abcdefghijklmnopqrstuvwxyz012345"),
+            || {
+                let err = check_production_boot(false).expect_err("hosts required");
+                assert!(
+                    err.contains("SOLI_APP_HOSTS"),
+                    "error must name SOLI_APP_HOSTS, got: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn production_empty_app_hosts_is_err() {
+        with_production_boot_env(
+            Some("production"),
+            Some("  ,  "),
+            Some("abcdefghijklmnopqrstuvwxyz012345"),
+            || {
+                let err = check_production_boot(false).expect_err("empty hosts");
+                assert!(err.contains("SOLI_APP_HOSTS"), "got: {err}");
+            },
+        );
+    }
+
+    #[test]
+    fn production_missing_session_secret_is_err() {
+        with_production_boot_env(Some("production"), Some("app.example.com"), None, || {
+            let err = check_production_boot(false).expect_err("secret required");
+            assert!(
+                err.contains("SOLI_SESSION_SECRET"),
+                "error must name SOLI_SESSION_SECRET, got: {err}"
+            );
+            assert!(
+                err.contains("32"),
+                "error must name the 32-char rule, got: {err}"
+            );
+        });
+    }
+
+    #[test]
+    fn production_short_session_secret_is_err() {
+        with_production_boot_env(
+            Some("production"),
+            Some("app.example.com"),
+            Some("too-short"),
+            || {
+                let err = check_production_boot(false).expect_err("short secret");
+                assert!(err.contains("SOLI_SESSION_SECRET"), "got: {err}");
+                assert!(err.contains("32"), "got: {err}");
+            },
+        );
+    }
+
+    #[test]
+    fn production_with_hosts_and_long_secret_is_ok() {
+        with_production_boot_env(
+            Some("production"),
+            Some("app.example.com,www.app.example.com"),
+            Some("abcdefghijklmnopqrstuvwxyz012345"),
+            || {
+                check_production_boot(false).expect("valid production boot");
+            },
+        );
+    }
+
+    #[test]
+    fn non_production_without_hosts_or_secret_is_ok() {
+        with_production_boot_env(None, None, None, || {
+            check_production_boot(false).expect("non-production boot");
+        });
+        with_production_boot_env(Some("development"), None, None, || {
+            check_production_boot(false).expect("development boot");
+        });
+    }
+
+    #[test]
+    fn dev_mode_skips_production_gate() {
+        with_production_boot_env(Some("production"), None, None, || {
+            check_production_boot(true).expect("--dev must still boot");
         });
     }
 

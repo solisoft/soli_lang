@@ -458,6 +458,60 @@ a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
         </div>
     </section>
 
+    <!-- Depth Limits -->
+    <section id="section-depth-limits" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </span>
+            Depth Limits
+        </h2>
+        <p class="text-gray-400 mb-4">To keep a runaway program from aborting the process, recursive constructs raise an ordinary, catchable error past a fixed depth instead of overflowing the stack:</p>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b border-white/10">
+                        <th class="py-3 pr-4 font-medium">Surface</th>
+                        <th class="py-3 pr-4 font-medium">Limit</th>
+                        <th class="py-3 font-medium">What happens past it</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr>
+                        <td class="py-3 pr-4">Source nesting (expressions, statements, patterns, types)</td>
+                        <td class="py-3 pr-4"><code class="text-amber-400">64</code></td>
+                        <td class="py-3">Parse error: <code>&hellip; nested too deeply</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 pr-4">Soli-to-Soli call recursion</td>
+                        <td class="py-3 pr-4"><code class="text-amber-400">32</code> debug / <code class="text-amber-400">256</code> release frames</td>
+                        <td class="py-3">Catchable error: <code>call stack too deep &hellip; unbounded recursion?</code></td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 pr-4">Template blocks and partial/component includes</td>
+                        <td class="py-3 pr-4"><code class="text-amber-400">64</code></td>
+                        <td class="py-3">Clean render error naming the template</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 pr-4">JSON conversion / serialization depth</td>
+                        <td class="py-3 pr-4"><code class="text-amber-400">512</code></td>
+                        <td class="py-3">Conversion error</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+<pre data-filename="Example"><code class="language-soli text-sm"># Runaway recursion is an ordinary catchable error
+try {
+    loop_forever();
+} catch (e) {
+    print("caught: " + str(e));  # call stack too deep (256 frames) — unbounded recursion?
+}</code></pre>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/language/control-flow" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">

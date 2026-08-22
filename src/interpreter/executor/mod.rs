@@ -33,6 +33,22 @@ use crate::span::Span;
 
 pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
 
+/// Maximum Soli call-stack depth. Runaway recursion consumes native stack
+/// (tree-walking interpreter) or unbounded heap (VM frames); a stack overflow
+/// aborts without unwinding, so it must be prevented, not caught.
+///
+/// The bounds are measured against the smallest supported context — a 2 MB
+/// thread running a build with per-frame costs at their largest:
+/// - Debug builds burn tens of KB of native stack per interpreted call, so
+///   the cap there is deliberately tiny (dev-only builds).
+/// - Release frames are far smaller; 256 keeps peak usage well under 2 MB,
+///   protecting serve/job worker threads, while still allowing legitimate
+///   application recursion (compare CPython's default limit of 1000).
+#[cfg(debug_assertions)]
+pub(crate) const MAX_CALL_DEPTH: usize = 32;
+#[cfg(not(debug_assertions))]
+pub(crate) const MAX_CALL_DEPTH: usize = 256;
+
 /// Represents a single frame in the call stack.
 #[derive(Debug, Clone)]
 pub struct StackFrame {
@@ -630,6 +646,19 @@ impl Interpreter {
         this: Option<Value>,
         arguments: Vec<Value>,
     ) -> RuntimeResult<Value> {
+        // Guard against unbounded recursion: native stack frames are consumed
+        // per call, so runaway recursion would abort the process — a stack
+        // overflow does not unwind and cannot be caught by `try`/`catch_unwind`.
+        if self.call_stack.len() >= MAX_CALL_DEPTH {
+            let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
+            return Err(RuntimeError::new(
+                format!(
+                    "call stack too deep ({MAX_CALL_DEPTH} frames) in \"{}\" — unbounded recursion?",
+                    func.name
+                ),
+                span,
+            ));
+        }
         // Push stack frame with the function's source path (where it was defined)
         let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
         self.push_frame(&func.name, span, func.source_path.clone());
@@ -779,13 +808,36 @@ impl Interpreter {
     /// file — exactly like `call_function_with_this` does for methods.
     /// Without the frame, constructor hits attribute to the *caller* and
     /// are dropped from coverage as test-directory lines.
-    pub(crate) fn execute_constructor_body(&mut self, ctor: &Function, ctor_env: Environment) {
+    pub(crate) fn execute_constructor_body(
+        &mut self,
+        ctor: &Function,
+        ctor_env: Environment,
+    ) -> RuntimeResult<()> {
         let span = ctor.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
+        if self.call_stack.len() >= MAX_CALL_DEPTH {
+            return Err(RuntimeError::new(
+                format!(
+                    "call stack too deep ({MAX_CALL_DEPTH} frames) in \"{}\" — unbounded recursion?",
+                    ctor.name
+                ),
+                span,
+            ));
+        }
         self.push_frame(&ctor.name, span, ctor.source_path.clone());
-        // Result intentionally discarded (pre-existing constructor behavior);
-        // no `?` between push and pop, so the frame is always popped.
-        let _ = self.execute_block(&ctor.body, ctor_env);
+        // No `?` between push and pop, so the frame is always popped — but
+        // real errors must propagate: discarding them here silently swallowed
+        // failures raised inside constructor bodies (e.g. the call-depth
+        // guard), turning runaway recursion into a silent no-op.
+        let result = self.execute_block(&ctor.body, ctor_env);
         self.pop_frame();
+        match result {
+            // A real error (e.g. the call-depth guard) must propagate — the
+            // old unconditional discard silently swallowed failures raised
+            // inside constructor bodies. Ordinary completion, `return`, and
+            // user `throw` control flow all collapse to `Ok(())` here.
+            Err(e) => Err(e),
+            Ok(_) => Ok(()),
+        }
     }
 }
 
@@ -808,6 +860,36 @@ mod return_type_enforcement_tests {
         let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
         let mut interpreter = Interpreter::new();
         interpreter.interpret(&program).map_err(|e| e.to_string())
+    }
+
+    /// Infinite recursion through the tree-walking interpreter must yield a
+    /// catchable error, never a native stack overflow (which aborts without
+    /// unwinding).
+    #[test]
+    fn unbounded_recursion_errors_instead_of_overflowing() {
+        let source = r#"
+            fn loop_forever() {
+                loop_forever();
+            }
+            loop_forever();
+        "#;
+        let err = run(source).expect_err("unbounded recursion must error");
+        assert!(err.contains("too deep"), "unexpected error: {err}");
+    }
+
+    /// Constructor recursion (`new` inside its own `new`) must be caught too.
+    #[test]
+    fn unbounded_constructor_recursion_errors_instead_of_overflowing() {
+        let source = r#"
+            class Rec {
+                new() {
+                    let again = Rec();
+                }
+            }
+            Rec();
+        "#;
+        let err = run(source).expect_err("unbounded constructor recursion must error");
+        assert!(err.contains("too deep"), "unexpected error: {err}");
     }
 
     #[test]

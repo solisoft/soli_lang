@@ -1629,3 +1629,75 @@ mod parser_tests {
         Parser::new(tokens).parse().expect("annotated fields parse");
     }
 }
+
+mod depth_limit_tests {
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    fn parse(source: &str) -> Result<(), String> {
+        let tokens = Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        Parser::new(tokens)
+            .parse()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Deeply nested groupings must produce a clean parser error, never a
+    /// native stack overflow (which aborts without unwinding, beyond the
+    /// reach of the server's `catch_unwind` fault isolation).
+    #[test]
+    fn deep_paren_nesting_errors_instead_of_overflowing() {
+        let source = format!("{}1{}", "(".repeat(100_000), ")".repeat(100_000));
+        let err = parse(&source).expect_err("must refuse absurd nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn deep_unary_chain_errors_instead_of_overflowing() {
+        let source = format!("{}x", "!".repeat(100_000));
+        let err = parse(&source).expect_err("must refuse absurd nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn deep_array_literal_nesting_errors_instead_of_overflowing() {
+        let source = format!("{}{}", "[".repeat(50_000), "]".repeat(50_000));
+        let err = parse(&source).expect_err("must refuse absurd nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn deep_match_pattern_nesting_errors_instead_of_overflowing() {
+        // Patterns recurse independently of expressions.
+        let mut pattern = "x".to_string();
+        for _ in 0..2_000 {
+            pattern = format!("[{}]", pattern);
+        }
+        let source = format!(
+            "let result = match value {{ {} => \"deep\", _ => \"other\" }};",
+            pattern
+        );
+        let err = parse(&source).expect_err("must refuse absurd pattern nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn deep_nested_type_annotations_error_instead_of_overflowing() {
+        // Function types recurse via their parameter and return types.
+        let mut ty = "Int".to_string();
+        for _ in 0..2_000 {
+            ty = format!("Fn({ty}) -> Int");
+        }
+        let source = format!("let callback: {ty} = fn(x) {{ x }};");
+        let err = parse(&source).expect_err("must refuse absurd type nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+    /// Legitimate nesting well under the limit still parses.
+    #[test]
+    fn moderate_nesting_still_parses() {
+        let source = format!("{}1{}", "(".repeat(40), ")".repeat(40));
+        parse(&source).expect("40-deep grouping parses");
+    }
+}

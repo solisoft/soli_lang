@@ -13,6 +13,11 @@ impl Linter {
             self.file_path.as_deref(),
             &mut self.diagnostics,
         );
+        rules::security::check_unfiltered_mass_assignment(
+            expr,
+            self.file_path.as_deref(),
+            &mut self.diagnostics,
+        );
 
         match &expr.kind {
             ExprKind::IntLiteral(_)

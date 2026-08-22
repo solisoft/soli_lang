@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
+use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
 use crate::span::Span;
 
@@ -162,6 +163,21 @@ fn bind_named_arguments(
 }
 
 impl Vm {
+    /// Refuse calls past [`MAX_CALL_DEPTH`]. The bytecode loop itself is
+    /// iterative (deep recursion grows `frames` on the heap), but builtins
+    /// that call back into Soli recurse natively — and a stack overflow
+    /// aborts without unwinding, so it must be prevented, not caught.
+    #[inline]
+    pub(crate) fn ensure_call_depth(&self, span: Span) -> Result<(), RuntimeError> {
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            return Err(RuntimeError::new(
+                format!("call stack too deep ({MAX_CALL_DEPTH} frames) — unbounded recursion?"),
+                span,
+            ));
+        }
+        Ok(())
+    }
+
     /// Call a value with the given number of argument slots on the stack.
     /// The callee is below the arguments on the stack.
     #[inline]
@@ -230,6 +246,8 @@ impl Vm {
 
         let stack_base = self.stack.len() - total_params - 1;
 
+        self.ensure_call_depth(span)?;
+
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -261,6 +279,7 @@ impl Vm {
             self.push(value);
         }
         let stack_base = self.stack.len() - total_params - 1;
+        self.ensure_call_depth(self.current_span())?;
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -1569,6 +1588,7 @@ impl Vm {
                 self.stack.push(Value::Null);
             }
             let stack_base = self.stack.len() - total_params - 1;
+            self.ensure_call_depth(self.current_span())?;
             self.frames.push(CallFrame::new(
                 closure,
                 stack_base,

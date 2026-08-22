@@ -474,9 +474,14 @@ fn add_header_checked(
 }
 
 /// Finish a response, falling back to a static 500 if the builder is somehow in
-/// an error state. Prevents the `panic = "abort"` whole-process crash that a
-/// bare `.body(..).unwrap()` would cause on a poisoned builder.
-fn finish_response(builder: hyper::http::response::Builder, body: Bytes) -> Response<ResponseBody> {
+/// an error state. Prevents the whole-process crash that a bare
+/// `.body(..).unwrap()` would cause on a poisoned builder (invalid header
+/// names/values). File-mode and other `src/serve/` helpers must use this
+/// instead of unwrapping `.body()`.
+pub(crate) fn finish_response(
+    builder: hyper::http::response::Builder,
+    body: Bytes,
+) -> Response<ResponseBody> {
     builder.body(full(body)).unwrap_or_else(|_| {
         Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -600,6 +605,13 @@ pub fn serve_folder_with_options_and_hooks(
     // and SolidB 401s.
     load_env_files(folder);
     boot_trace("env loaded");
+
+    if let Err(message) = server_constants::check_production_boot(dev_mode) {
+        return Err(RuntimeError::General {
+            message,
+            span: Span::default(),
+        });
+    }
 
     // Multi-DB: load config/database.toml when present (else env → primary).
     if let Err(e) = crate::db::init_from_app_path(folder) {

@@ -284,6 +284,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `idiom/prefer-blank` - prefer `.blank?` / `.present?` over comparing to `""`
 - `idiom/prefer-includes` - replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?`
 - `idiom/manual-find-guard` - drop the nil-check after `Model.find` (it raises on a miss; use `find_by`/`first_by` for "or nil")
+- `security/unfiltered-mass-assignment` - `Model.create(params)` / `update` / `create_many` in `app/controllers/` or `app/services/` with raw request params; whitelist with `permit` first
 - `component/props` - a component's `props(...)` declaration must use string-literal names with no duplicates
 
 ## MVC Pattern
@@ -482,7 +483,7 @@ In `--dev`, every response also carries `X-Soli-Route: <controller#action>`, `X-
 **Every user-facing change MUST be documented in BOTH places:**
 
 1. **`www/docs/*.md`** — the markdown source-of-truth for each topic (e.g. `models.md`, `database.md`, `controllers.md`, `live-reload.md`).
-2. **`www/app/views/docs/**/*.html.slv`** — the rendered HTML pages served by `docs#*` controller actions. These are NOT auto-generated from the `.md` files — they are hand-maintained Tailwind/HTML and must be updated in parallel.
+2. **`www/app/views/docs/**/*.html.slv`** — the rendered HTML pages served by `docs#*` controller actions. These are NOT auto-generated from the `.md` files — they are hand-maintained Tailwind/HTML and must be updated in parallel. **Exception:** contributor internals (`www/docs/internals/*.md`) are **Markdown views** — `render("docs/internals/…")` resolves `.md` via a symlink into `app/views`. Do not add a parallel `.html.slv` there.
 
 When you add, change, or remove a feature visible to Soli users (a new builtin, a new DSL helper, a config option, a CLI flag, behavior change), update both surfaces in the same change. Skipping either leaves the docs site or the markdown reference stale.
 
@@ -530,7 +531,7 @@ let single  = r"C:\Users\name";   // raw, single-line
 cargo build --release
 ./target/release/soli run script.sl
 soli test tests/
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo fmt
 ```
 

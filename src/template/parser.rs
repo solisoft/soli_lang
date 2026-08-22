@@ -254,6 +254,37 @@ pub fn parse_template(source: &str) -> Result<Vec<TemplateNode>, String> {
     parse_tokens(&tokens)
 }
 
+/// Maximum nesting depth for template block constructs (`<% if %>`, `<% for %>`,
+/// `content_for`, `form_with`/component blocks). Recursive block parsing on an
+/// adversarial template (`<% if %><% if %>...`) would otherwise overflow the
+/// stack, which aborts the process without unwinding — beyond the reach of the
+/// server's `catch_unwind` fault isolation. Kept at 64 so even debug builds
+/// (with their much larger frames) stay safely under 2 MB stacks.
+const MAX_TEMPLATE_BLOCK_DEPTH: usize = 64;
+
+thread_local! {
+    static BLOCK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Enter a nested template-block level; errors past [`MAX_TEMPLATE_BLOCK_DEPTH`].
+fn enter_template_block(line: usize) -> Result<(), String> {
+    let next = BLOCK_DEPTH.with(|d| {
+        d.set(d.get() + 1);
+        d.get()
+    });
+    if next > MAX_TEMPLATE_BLOCK_DEPTH {
+        exit_template_block();
+        return Err(format!(
+            "template blocks nested too deeply (max depth {MAX_TEMPLATE_BLOCK_DEPTH}) at line {line}"
+        ));
+    }
+    Ok(())
+}
+
+fn exit_template_block() {
+    BLOCK_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+}
+
 /// Rewrite a Ruby-style block-iteration opener — `xs.each do |x|` or
 /// `xs.each do |x, i|` — into the engine's `for` form (`for x in xs` /
 /// `for x, i in xs`). Returns `None` when the code isn't that shape (a
@@ -644,6 +675,17 @@ fn parse_if_block(
     condition: crate::ast::expr::Expr,
     if_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
+    enter_template_block(if_line)?;
+    let result = parse_if_block_inner(tokens, condition, if_line);
+    exit_template_block();
+    result
+}
+
+fn parse_if_block_inner(
+    tokens: &[Token],
+    condition: crate::ast::expr::Expr,
+    if_line: usize,
+) -> Result<(TemplateNode, usize), String> {
     let mut body = Vec::new();
     let mut else_body = None;
     let mut i = 1; // Skip the initial `if` token
@@ -764,6 +806,16 @@ fn parse_if_block(
 /// Parse a for block starting at the given position.
 /// Returns the ForNode and the number of tokens consumed.
 fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, usize), String> {
+    enter_template_block(for_line)?;
+    let result = parse_for_block_inner(tokens, for_line);
+    exit_template_block();
+    result
+}
+
+fn parse_for_block_inner(
+    tokens: &[Token],
+    for_line: usize,
+) -> Result<(TemplateNode, usize), String> {
     // First token should be the `for` code
     let (var, index_var, iterable) = match &tokens[0] {
         Token::Code(code, _line) => {
@@ -1044,6 +1096,16 @@ fn parse_form_with_block(
     tokens: &[Token],
     open_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
+    enter_template_block(open_line)?;
+    let result = parse_form_with_block_inner(tokens, open_line);
+    exit_template_block();
+    result
+}
+
+fn parse_form_with_block_inner(
+    tokens: &[Token],
+    open_line: usize,
+) -> Result<(TemplateNode, usize), String> {
     let (head, var, wraps_output) = match &tokens[0] {
         Token::Code(code, _) => form_with_block_parts(code)
             .ok_or_else(|| format!("Expected form_with block at line {}", open_line))?,
@@ -1126,6 +1188,16 @@ fn parse_form_with_block(
 /// Parse a `<% component "name", props do %> ... <% end %>` block starting at
 /// the given position. The body is captured as the default slot content.
 fn parse_component_block(
+    tokens: &[Token],
+    open_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    enter_template_block(open_line)?;
+    let result = parse_component_block_inner(tokens, open_line);
+    exit_template_block();
+    result
+}
+
+fn parse_component_block_inner(
     tokens: &[Token],
     open_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
@@ -1357,6 +1429,16 @@ fn content_for_block_open(code: &str) -> Option<&str> {
 /// given position. Returns the ContentFor node and the tokens consumed.
 /// Mirrors `parse_for_block`.
 fn parse_content_for_block(
+    tokens: &[Token],
+    cf_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    enter_template_block(cf_line)?;
+    let result = parse_content_for_block_inner(tokens, cf_line);
+    exit_template_block();
+    result
+}
+
+fn parse_content_for_block_inner(
     tokens: &[Token],
     cf_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
@@ -2111,6 +2193,30 @@ fn parse_function_args(args_str: &str) -> Vec<Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A template with absurdly nested `<% if %>` blocks must produce a clean
+    /// parse error, never a native stack overflow (which aborts without
+    /// unwinding — beyond the reach of the server's fault isolation).
+    #[test]
+    fn deeply_nested_if_blocks_error_instead_of_overflowing() {
+        let source = format!(
+            "{}{}",
+            "<% if true %>".repeat(100_000),
+            "<% end %>".repeat(100_000)
+        );
+        let err = parse_template(&source).expect_err("must refuse absurd nesting");
+        assert!(err.contains("too deeply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn moderately_nested_blocks_still_parse() {
+        let source = format!(
+            "a {}b{} c",
+            "<% if true %>".repeat(40),
+            "<% end %>".repeat(40)
+        );
+        parse_template(&source).expect("40-deep block nesting parses");
+    }
 
     #[test]
     fn test_tokenize_simple() {

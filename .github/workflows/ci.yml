@@ -172,6 +172,13 @@ jobs:
         # that should not be the only thing to discover a broken cfg.
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+      - name: Unwrap-count ratchet (parser/template/JSON)
+        # Freezes `.unwrap()`/`.expect()` counts in modules that process
+        # untrusted input. Every one of them is a potential panic the fuzzing
+        # workflow will eventually reach; this gate keeps the number from
+        # growing while fixes land. See scripts/lint_unwraps.sh.
+        run: scripts/lint_unwraps.sh
+
   fmt:
     runs-on: ubuntu-latest
     steps:

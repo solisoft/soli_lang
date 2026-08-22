@@ -200,7 +200,7 @@
             </table>
         </div>
         <p class="text-gray-400 mb-4">
-            To make tokens mandatory for browser form posts, set <code class="text-amber-300">SOLI_CSRF_TOKENS=require</code> — form posts without a valid token get a <code>403</code>. JSON traffic is never token-gated; <code class="text-amber-300">skip_csrf("/path")</code> and <code class="text-amber-300">SOLI_DISABLE_CSRF</code> opt-outs apply to both layers. For htmx, wire the header once:
+            To make tokens mandatory for browser form posts, set <code class="text-amber-300">SOLI_CSRF_TOKENS=require</code> — form posts without a valid token get a <code>403</code>. <code class="text-amber-300">soli new</code> writes this into <code>.env</code>; existing apps stay Origin-only until they set it. JSON traffic is never token-gated; <code class="text-amber-300">skip_csrf("/path")</code> and <code class="text-amber-300">SOLI_DISABLE_CSRF</code> opt-outs apply to both layers. For htmx, wire the header once:
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">

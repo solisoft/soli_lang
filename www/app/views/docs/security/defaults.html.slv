@@ -1,0 +1,67 @@
+<div class="space-y-12">
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-x">
+                Production security defaults
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-3xl leading-relaxed">
+            What production already does, what you still have to set, and what the hardening program will fail closed. The long-term goal is that <code class="text-cyan-400">soli new</code> + <code class="text-cyan-400">soli serve</code> is safe on the public internet without a checklist.
+        </p>
+    </div>
+
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-4">Already on by default (production)</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10 text-left text-gray-400">
+                        <th class="py-3 px-4">Control</th>
+                        <th class="py-3 px-4">What it does</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4 text-white">Auto-escaped templates</td><td class="py-3 px-4"><code>&lt;%= %&gt;</code> HTML-escapes, including non-String values</td></tr>
+                    <tr><td class="py-3 px-4 text-white">CSRF Origin/Referer gate</td><td class="py-3 px-4">Cross-site state-changing requests without a matching origin fail</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Security headers</td><td class="py-3 px-4">Standard preset in production (nosniff, frame options, HSTS)</td></tr>
+                    <tr><td class="py-3 px-4 text-white">SSRF on <code>HTTP.*</code></td><td class="py-3 px-4">Loopback and private ranges refused; exceptions are literal <code>host:port</code> in <code>SOLI_HTTP_ALLOW_HOSTS</code></td></tr>
+                    <tr><td class="py-3 px-4 text-white">Request body cap</td><td class="py-3 px-4">8 MiB (<code>SOLI_MAX_BODY_SIZE</code>); 413 when exceeded</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Attachment types</td><td class="py-3 px-4">Default allowlist excludes <code>text/html</code>, SVG, XML; blob route sends <code>nosniff</code> + disposition</td></tr>
+                    <tr><td class="py-3 px-4 text-white">SQL TLS</td><td class="py-3 px-4">Postgres/MySQL via rustls; default <code>prefer</code></td></tr>
+                    <tr><td class="py-3 px-4 text-white">Panic containment</td><td class="py-3 px-4">A panicking handler is a 500; the worker stays up</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Log redaction</td><td class="py-3 px-4">Credential-looking params, binds, locals, and HTTP URLs are redacted</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Jobs dashboard</td><td class="py-3 px-4">404 in production unless jobs credentials are set</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Production boot gate</td><td class="py-3 px-4"><code>APP_ENV=production</code> (or <code>prod</code>) <strong class="text-white">refuses to start</strong> without <code>SOLI_APP_HOSTS</code> (at least one hostname) and <code>SOLI_SESSION_SECRET</code> of 32+ characters. <code>--dev</code> and non-production env skip the gate</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-4">You still set (today)</h2>
+        <p class="text-gray-400 mb-4">Not implied by a bare <code class="text-cyan-400">soli serve</code>. Required for a public host:</p>
+        <ul class="list-disc pl-6 text-gray-400 space-y-2">
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_APP_HOSTS</code></strong> &mdash; required at production boot. CSRF origin checks use this list, not a forgeable <code>Host</code> header.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_SESSION_SECRET</code></strong> (32+ chars) &mdash; required at production boot; sealed cookies and the cookie session driver derive keys from it.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_CSRF_TOKENS=require</code></strong> &mdash; tokens are always verified when present; this makes a missing token a 403 for browser form posts. <strong class="text-white"><code class="text-cyan-400">soli new</code> writes this into <code>.env</code>.</strong> Existing apps stay optional until they set it.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">permit(...)</code> / <code class="text-cyan-400">attr_accessible</code></strong> &mdash; <code>Model.create(params)</code> is not blocked unless you whitelist.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">sslmode=require</code></strong> (or <code>verify-full</code>) &mdash; default <code>prefer</code> still allows cleartext if the server offers none.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_TRUST_PROXY=1</code></strong> &mdash; only behind a proxy that strips inbound <code>X-Forwarded-*</code> then sets its own.</li>
+            <li><strong class="text-white">Reverse-proxy TLS</strong> &mdash; <code>soli serve</code> is HTTP.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-4">Target (hardening program)</h2>
+        <p class="text-gray-400 mb-4">Not shipped as defaults yet &mdash; do not assume they already fail closed:</p>
+        <ul class="list-disc pl-6 text-gray-400 space-y-2">
+            <li>Stricter CSP that matches vendored htmx + Alpine</li>
+            <li><code>DATABASE_URL</code> examples using <code>sslmode=require</code></li>
+        </ul>
+        <p class="text-gray-400 mt-6">
+            Edge knobs: <a href="/docs/builtins/hardening" class="text-amber-400 hover:underline">Server Hardening</a>.
+            Headers: <a href="/docs/builtins/security-headers" class="text-amber-400 hover:underline">Security Headers</a>.
+            Forms: <a href="/docs/core-concepts/forms" class="text-amber-400 hover:underline">Forms &amp; CSRF</a>.
+        </p>
+    </section>
+</div>

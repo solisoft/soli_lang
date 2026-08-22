@@ -67,6 +67,16 @@ get("/docs/security/authorization", "docs#security_authorization")
 get("/docs/security/oidc-provider", "docs#security_oidc_provider")
 get("/docs/security/oauth-client", "docs#security_oauth_client")
 get("/docs/security/sessions", "docs#security_sessions")
+get("/docs/security/defaults", "docs#security_defaults")
+
+# Internals (Markdown views — www/docs/internals/*.md)
+get("/docs/internals", "docs#internals_index")
+get("/docs/internals/pipeline", "docs#internals_pipeline")
+get("/docs/internals/interpreter", "docs#internals_interpreter")
+get("/docs/internals/vm", "docs#internals_vm")
+get("/docs/internals/serve", "docs#internals_serve")
+get("/docs/internals/database", "docs#internals_database")
+get("/docs/internals/rust-api", "docs#internals_rust_api")
 
 # Development Tools
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload")

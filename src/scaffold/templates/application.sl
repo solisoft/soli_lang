@@ -51,6 +51,11 @@ enable_trust_proxy
 #       # skip_csrf("/webhooks/stripe")    # exact path
 #       # skip_csrf("/api/*")              # everything under /api/
 #
+# New apps also set `SOLI_CSRF_TOKENS=require` in `.env`, so a browser
+# form post without `_csrf_token` / `X-CSRF-Token` is 403 even when
+# Origin matches. `form_with` embeds the token. JSON bodies are not
+# token-gated. Unset that env var only if you have a reason.
+#
 # Operator-level kill switch for API-only deployments where no
 # cookie session is ever in play:  `SOLI_DISABLE_CSRF=true` in the env.
 # Don't reach for this on a cookie-authenticated app — it disables the

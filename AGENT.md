@@ -8,7 +8,7 @@ All code changes must pass linting and formatting checks before submission:
 
 ```bash
 # Run clippy with deny warnings
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 
 # Format code
 cargo fmt
@@ -34,7 +34,7 @@ On each modification, agents must verify:
 
 ```bash
 # Run clippy with deny warnings
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 
 # Format code
 cargo fmt

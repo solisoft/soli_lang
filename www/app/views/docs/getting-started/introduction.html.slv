@@ -27,6 +27,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">What is Soli?</h2>
     <p class="text-gray-400 mb-6">
         Soli is two things in one: a <strong>dynamically-typed language</strong> with optional type annotations, and a <strong>batteries-included MVC web framework</strong> built on top of it. No compile step gates execution &mdash; but <code class="text-amber-300">soli check</code> will static type-check the parts you've annotated.
+        Changing the Rust crate? Start at <a href="/docs/internals" class="text-amber-400 hover:underline">Internals</a>.
     </p>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">

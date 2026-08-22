@@ -9,7 +9,7 @@
 //! migrations, tests, and helpers are out of scope: those layers
 //! legitimately use these APIs against operator-supplied data.
 
-use crate::ast::expr::{Expr, ExprKind};
+use crate::ast::expr::{Argument, Expr, ExprKind};
 use crate::lint::{LintDiagnostic, Severity};
 use crate::span::Span;
 
@@ -96,6 +96,120 @@ fn classify(expr: &Expr) -> Option<(&'static str, Span)> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// `security/unfiltered-mass-assignment` — `Model.create(params)` (and
+/// `update` / `create_many`) in a controller persist every posted key.
+/// Scaffolded apps whitelist through `permit` / `_permit_params`; this
+/// flags the unfiltered shape.
+pub fn check_unfiltered_mass_assignment(
+    expr: &Expr,
+    file_path: Option<&str>,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    let Some(file) = file_path else {
+        return;
+    };
+    if !is_controller_or_service_path(file) {
+        return;
+    }
+    let ExprKind::Call { callee, arguments } = &expr.kind else {
+        return;
+    };
+    let ExprKind::Member { name: method, .. } = &callee.kind else {
+        return;
+    };
+    let Some(payload) = mass_assignment_payload(method, arguments) else {
+        return;
+    };
+    if !is_raw_request_payload(payload) {
+        return;
+    }
+    diagnostics.push(LintDiagnostic {
+        rule: "security/unfiltered-mass-assignment",
+        message: format!(
+            "`{method}(...)` is given the raw request params — unlisted keys \
+             persist. Whitelist with `permit(params, {{ \"field\": true }})` \
+             or `this._permit_params(params)` first"
+        ),
+        span: payload.span,
+        severity: Severity::Warning,
+    });
+}
+
+fn is_controller_or_service_path(file: &str) -> bool {
+    let normalised = file.replace('\\', "/");
+    let dirs = ["app/controllers/", "app/services/"];
+    dirs.iter()
+        .any(|d| normalised.contains(&format!("/{}", d)) || normalised.starts_with(d))
+}
+
+fn mass_assignment_payload<'a>(method: &str, arguments: &'a [Argument]) -> Option<&'a Expr> {
+    let positional: Vec<&Expr> = arguments
+        .iter()
+        .filter_map(|a| match a {
+            Argument::Positional(e) => Some(e),
+            _ => None,
+        })
+        .collect();
+    match method {
+        "create" | "create_many" => positional.first().copied(),
+        "update" => {
+            // Class form `Model.update(id, hash)` — second arg.
+            // Instance form `record.update(hash)` — first arg.
+            if positional.len() >= 2 {
+                Some(positional[1])
+            } else {
+                positional.first().copied()
+            }
+        }
+        _ => None,
+    }
+}
+
+/// True when `expr` is the whole (or a subscript of the) request params
+/// hash, and has not been wrapped in `permit` / `_permit_params`.
+fn is_raw_request_payload(expr: &Expr) -> bool {
+    if is_permit_wrap(expr) {
+        return false;
+    }
+    match &expr.kind {
+        ExprKind::Variable(name) if name == "params" || name == "json" => true,
+        ExprKind::Member { object, name } => match &object.kind {
+            ExprKind::Variable(obj) if is_request_object(obj) && is_params_field(name) => true,
+            _ => is_raw_request_payload(object),
+        },
+        ExprKind::Index { object, index } => {
+            if let ExprKind::Variable(obj) = &object.kind {
+                if is_request_object(obj) {
+                    if let ExprKind::StringLiteral(key) = &index.kind {
+                        return is_params_field(key);
+                    }
+                }
+            }
+            is_raw_request_payload(object)
+        }
+        _ => false,
+    }
+}
+
+fn is_request_object(name: &str) -> bool {
+    name == "req" || name == "request"
+}
+
+fn is_params_field(name: &str) -> bool {
+    name == "params" || name == "json" || name == "body"
+}
+
+fn is_permit_wrap(expr: &Expr) -> bool {
+    let ExprKind::Call { callee, .. } = &expr.kind else {
+        return false;
+    };
+    match &callee.kind {
+        ExprKind::Variable(name) if name == "permit" => true,
+        ExprKind::Member { name, .. } if name == "permit" || name == "_permit_params" => true,
+        _ => false,
     }
 }
 
@@ -253,6 +367,132 @@ mod tests {
         // can't tell which directory it would land in.
         let mut d = Vec::new();
         check_dangerous_server_builtin(&call(variable("db_query_raw")), None, &mut d);
+        assert!(d.is_empty());
+    }
+
+    fn call_args(callee: Expr, args: Vec<Expr>) -> Expr {
+        Expr::new(
+            ExprKind::Call {
+                callee: Box::new(callee),
+                arguments: args.into_iter().map(Argument::Positional).collect(),
+            },
+            span(),
+        )
+    }
+
+    fn index(object: Expr, key: &str) -> Expr {
+        Expr::new(
+            ExprKind::Index {
+                object: Box::new(object),
+                index: Box::new(Expr::new(ExprKind::StringLiteral(key.to_string()), span())),
+            },
+            span(),
+        )
+    }
+
+    #[test]
+    fn flags_create_params_in_controller() {
+        let mut d = Vec::new();
+        let expr = call_args(member(variable("Post"), "create"), vec![variable("params")]);
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].rule, "security/unfiltered-mass-assignment");
+        assert!(d[0].message.contains("permit"), "{}", d[0].message);
+    }
+
+    #[test]
+    fn flags_create_req_json() {
+        let mut d = Vec::new();
+        let expr = call_args(
+            member(variable("Post"), "create"),
+            vec![index(variable("req"), "json")],
+        );
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+    }
+
+    #[test]
+    fn flags_class_update_second_arg() {
+        let mut d = Vec::new();
+        let expr = call_args(
+            member(variable("Post"), "update"),
+            vec![variable("id"), variable("params")],
+        );
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+    }
+
+    #[test]
+    fn flags_instance_update() {
+        let mut d = Vec::new();
+        let expr = call_args(member(variable("post"), "update"), vec![variable("params")]);
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+    }
+
+    #[test]
+    fn does_not_flag_permit_wrap() {
+        let mut d = Vec::new();
+        let permitted = call_args(variable("permit"), vec![variable("params")]);
+        let expr = call_args(member(variable("Post"), "create"), vec![permitted]);
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_permit_params_helper() {
+        let mut d = Vec::new();
+        let permitted = call_args(
+            member(Expr::new(ExprKind::This, span()), "_permit_params"),
+            vec![variable("params")],
+        );
+        let expr = call_args(member(variable("Post"), "create"), vec![permitted]);
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_hash_literal() {
+        let mut d = Vec::new();
+        let hash = Expr::new(ExprKind::Hash(vec![]), span());
+        let expr = call_args(member(variable("Post"), "create"), vec![hash]);
+        check_unfiltered_mass_assignment(
+            &expr,
+            Some("app/controllers/posts_controller.sl"),
+            &mut d,
+        );
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_create_in_models() {
+        let mut d = Vec::new();
+        let expr = call_args(member(variable("Post"), "create"), vec![variable("params")]);
+        check_unfiltered_mass_assignment(&expr, Some("app/models/post.sl"), &mut d);
         assert!(d.is_empty());
     }
 }

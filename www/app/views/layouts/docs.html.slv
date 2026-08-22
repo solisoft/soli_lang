@@ -304,6 +304,12 @@
             margin-right: 0.25rem;
         }
 
+        .prose-docs img {
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin: 1.5rem 0;
+        }
+
         .prose-docs p { color: #9ca3af; line-height: 1.8; margin-bottom: 1.5rem; }
         .prose-docs ul, .prose-docs ol { color: #9ca3af; margin-bottom: 1.5rem; }
         .prose-docs li { margin-top: 0.5rem; margin-bottom: 0.5rem; }

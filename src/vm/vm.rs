@@ -697,6 +697,8 @@ impl Vm {
                             self.stack.push(Value::Null);
                         }
                         let stack_base = self.stack.len() - total_params - 1;
+                        let call_span = self.current_span();
+                        self.ensure_call_depth(call_span)?;
                         self.frames.push(CallFrame::new(
                             closure,
                             stack_base,
@@ -3579,6 +3581,24 @@ mod tests {
     use crate::lexer::Scanner;
     use crate::parser::Parser;
     use crate::vm::compiler::Compiler;
+
+    /// Infinite Soli recursion must yield a catchable RuntimeError, never a
+    /// native stack overflow (which aborts without unwinding).
+    #[test]
+    fn unbounded_recursion_returns_error_not_crash() {
+        let source = r#"
+            fn loop_forever() {
+                loop_forever();
+            }
+            loop_forever();
+        "#;
+        let result = compile_and_run(source);
+        let err = result.expect_err("unbounded recursion must error");
+        assert!(
+            err.to_string().contains("too deep"),
+            "unexpected error: {err}"
+        );
+    }
 
     #[allow(dead_code)]
     fn compile_and_run(source: &str) -> Result<Value, crate::error::RuntimeError> {

@@ -1,0 +1,71 @@
+name: Fuzz
+
+# libFuzzer runs against the lexer/parser, template engine, and JSON
+# conversion. Any panic (including stack overflow) in these surfaces is a
+# bug: they process untrusted input in every deployment. Crash artifacts are
+# uploaded for triage; the minimizing repro lands in fuzz/artifacts.
+
+on:
+  # Nightly: give each target a real time budget.
+  schedule:
+    - cron: "0 3 * * *"
+  # Fast smoke (20s/target) when the fuzzed surfaces change.
+  pull_request:
+    paths:
+      - "src/lexer/**"
+      - "src/parser/**"
+      - "src/template/**"
+      - "src/interpreter/value_json.rs"
+      - "src/interpreter/value_stringify.rs"
+      - "fuzz/**"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - parse_program
+          - template_parse_render
+          - json_roundtrip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Restore cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: ${{ runner.os }}-cargo-fuzz-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-fuzz-${{ matrix.target }}-
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz (${{ github.event_name == 'schedule' && '10 min' || 'smoke' }})
+        id: fuzz
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            MAX_TIME=600
+          else
+            MAX_TIME=20
+          fi
+          cargo fuzz run "$TARGET" --fuzz-dir fuzz -- \
+            -max_total_time=$MAX_TIME -rss_limit_mb=4096 -timeout=25
+        env:
+          TARGET: ${{ matrix.target }}
+
+      - name: Upload crash artifacts
+        if: failure() && steps.fuzz.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-${{ matrix.target }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

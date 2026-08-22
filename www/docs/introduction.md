@@ -11,6 +11,8 @@ Soli is two things in one:
 - **A language** — dynamically typed, with *optional* type annotations you can add where they help (documentation, IDE support, runtime validation). No compile step gates execution, but `soli check` will static type-check the parts you've annotated.
 - **A web framework** — a batteries-included MVC stack (routing, ORM, views, jobs, mailer, WebSockets, auth) built on top of it, following convention over configuration.
 
+Changing the Rust implementation? See [Internals](/docs/internals) (crate map, dual engines, type/method catalog). These pages are Markdown views — edit `www/docs/internals/*.md` only.
+
 | | |
 |---|---|
 | **170,000+ req/s** | Single-server throughput on the built-in HTTP server |

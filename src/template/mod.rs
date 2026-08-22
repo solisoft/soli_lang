@@ -59,6 +59,16 @@ const PATH_CACHE_MAX_SIZE: usize = 1000;
 /// Maximum size for template cache to prevent unbounded memory growth.
 const TEMPLATE_CACHE_MAX_SIZE: usize = 500;
 
+/// Maximum nesting depth for partial/component includes. A partial that
+/// renders itself (directly or through a cycle) would otherwise recurse
+/// until the stack overflows — which aborts the process without unwinding,
+/// beyond the reach of the server's `catch_unwind` fault isolation.
+const MAX_INCLUDE_DEPTH: usize = 64;
+
+thread_local! {
+    static INCLUDE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Template cache that stores parsed templates and tracks file changes.
 ///
 /// Shared across worker threads via `Arc<TemplateCache>`; a template parsed by
@@ -281,6 +291,29 @@ impl TemplateCache {
     /// span kind; everything else (content_for frame join, markdown conversion,
     /// view-log + metrics) is identical.
     fn render_include(
+        &self,
+        name: &str,
+        data: &Value,
+        kind: IncludeKind,
+    ) -> Result<String, String> {
+        // Guard against include cycles (`_self.slv` rendering itself) — stack
+        // overflows abort rather than unwind, so containment can't save us.
+        let depth = INCLUDE_DEPTH.with(|d| {
+            d.set(d.get() + 1);
+            d.get()
+        });
+        if depth > MAX_INCLUDE_DEPTH {
+            INCLUDE_DEPTH.with(|d| d.set(depth - 1));
+            return Err(format!(
+                "partials/components nested too deeply (max depth {MAX_INCLUDE_DEPTH}) at \"{name}\""
+            ));
+        }
+        let result = self.render_include_inner(name, data, kind);
+        INCLUDE_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        result
+    }
+
+    fn render_include_inner(
         &self,
         name: &str,
         data: &Value,

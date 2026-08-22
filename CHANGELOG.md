@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Docs
+
+- **Rust internals guide** (`/docs/internals`) — crate map, lexer/parser/AST, interpreter, VM, serve, SQL adapters, and a type/method catalog for junior Rust contributors. Pages are **Markdown views** (`www/docs/internals/*.md`), not duplicated `.html.slv`.
+
+### Hardening
+
+- **Stack-overflow proofing across the language runtime.** A stack overflow aborts the process without unwinding — beyond the reach of the per-request `catch_unwind` fault isolation — so every recursive surface now has a depth guard that returns a catchable error instead: the lexer→parser pipeline (expressions, statements, match patterns, type annotations; max depth 64), template block parsing (`<% if %>`/`<% for %>`/`content_for`/builder blocks) and partial/component includes (max 64), Soli-to-Soli call recursion in both engines (32 debug / 256 release frames), and JSON conversion + serialization of runtime-built deep structures (512 levels). Deeply nested source or templates now yields a clean parse/render error; runaway recursion raises `call stack too deep …`, which `try/catch` can intercept.
+- **Constructor-body errors are no longer swallowed.** The tree-walking executor discarded any error raised inside a constructor body (including the new depth guard), so a failing constructor silently produced a half-initialized instance. Errors now propagate.
+- **Fuzzing infrastructure.** Three libFuzzer targets under `fuzz/` — `parse_program`, `template_parse_render`, `json_roundtrip` — seeded from `tests/`, `examples/`, `evals/`, and shipped views; a `fuzz.yml` workflow runs them nightly (10 min/target) and as a 20 s smoke on PRs touching lexer/parser/template/JSON paths, uploading crash artifacts on failure.
+- **Unwrap-count ratchet in CI.** `scripts/lint_unwraps.sh` freezes `.unwrap()`/`.expect()` counts per exposed module (template engine, lexer, parser, JSON conversion); CI fails when a count grows and lowers the bar permanently when fixes land.
+- **Production `soli serve` fails closed without `SOLI_APP_HOSTS` and a 32+ character `SOLI_SESSION_SECRET`.** When `APP_ENV` is `production` or `prod`, boot refuses to start if the public-hostname list is missing/empty or the session secret is missing/short; the error names the variable. `--dev` and non-production env still boot without them.
+- **`soli new` requires per-form CSRF tokens.** The generated `.env` sets `SOLI_CSRF_TOKENS=require`, so a browser form post without `_csrf_token` / `X-CSRF-Token` is 403. Existing apps are unchanged (runtime default stays unset). JSON APIs are not token-gated; `skip_csrf` still opts a path out.
+- **`security/unfiltered-mass-assignment` lint.** `Model.create(params)` / `.update` / `.create_many` in `app/controllers/` or `app/services/` with the raw request hash is a warning; `permit` / `_permit_params` / a hash literal is clean.
+- **File-mode HTTP responses no longer unwrap a poisoned builder.** `soli serve` on a plain directory built `Location` / body responses with `.body(..).unwrap()`. A path that injected CR/LF into `Location` panics the worker. Those sites now go through `finish_response` and return 500. Inventory: `scripts/inventory_panics.sh`. Defaults vs. remaining operator knobs: [Production security defaults](www/docs/security/defaults.md).
+
 ### Language / VM
 
 - **Sub-expression comprehensions and binding `match` compile on the VM** by wrapping the construct in a zero-arg lambda so the result/subject sits at a real local slot. Nested `[x for x in xs]` and `out.push(match i { n => … })` no longer demote the whole handler.

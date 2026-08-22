@@ -192,6 +192,42 @@ def security_oauth_client
     render_docs("docs/security/oauth-client", "OAuth Client", "security", "oauth_client")
 end
 
+def security_defaults
+    render_docs("docs/security/defaults", "Production security defaults", "security", "defaults")
+end
+
+# ============================================================================
+# Internals (Markdown templates under docs/internals/)
+# ============================================================================
+
+def internals_index
+    render_docs("docs/internals/index", "Rust internals", "internals", "index")
+end
+
+def internals_pipeline
+    render_docs("docs/internals/pipeline", "Lexer, parser, AST", "internals", "pipeline")
+end
+
+def internals_interpreter
+    render_docs("docs/internals/interpreter", "Interpreter", "internals", "interpreter")
+end
+
+def internals_vm
+    render_docs("docs/internals/vm", "Bytecode VM", "internals", "vm")
+end
+
+def internals_serve
+    render_docs("docs/internals/serve", "Serve / HTTP", "internals", "serve")
+end
+
+def internals_database
+    render_docs("docs/internals/database", "Database adapters", "internals", "database")
+end
+
+def internals_rust_api
+    render_docs("docs/internals/rust-api", "Rust API catalog", "internals", "rust_api")
+end
+
 # Development Tools
 # ============================================================================
 

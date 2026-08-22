@@ -241,6 +241,8 @@ SOLI_CSRF_TOKENS=require   # form posts without a valid token → 403
                            #  Basic auth, so no session token to embed)
 ```
 
+`soli new` writes this into `.env` so a new app is token-required from the first request. Existing apps stay on the Origin-only posture until they set the same variable. JSON/API traffic is never token-gated.
+
 JSON/API traffic is never token-gated; `skip_csrf("/path")` and
 `SOLI_DISABLE_CSRF` opt-outs apply to both layers.
 

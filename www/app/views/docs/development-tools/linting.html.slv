@@ -225,6 +225,18 @@ status == "up" || status == "late" || status == "overdue"
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-amber-400 font-mono text-sm">security/unfiltered-mass-assignment</code>
+                <p class="text-gray-400 mt-2"><code>Model.create(params)</code>, <code>.update</code>, and <code>.create_many</code> in <code>app/controllers/</code> or <code>app/services/</code> persist every posted key. Whitelist first. Does not fire on a hash literal or on <code>permit</code> / <code>_permit_params</code>.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
+Post.create(params)
+Post.create(req["json"])
+
+# Good
+Post.create(permit(params, {"title": true, "body": true}))
+Post.create(this._permit_params(params))</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">idiom/manual-find-guard</code>
                 <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-amber-400">find_by</code> / <code class="text-amber-400">first_by</code> when you want a nil result.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad - dead code: .find already raised
