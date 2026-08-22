@@ -100,7 +100,7 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
     ))
 }
 
-fn is_class_reflection_member(name: &str) -> bool {
+pub(crate) fn is_class_reflection_member(name: &str) -> bool {
     matches!(
         name,
         "define_method"
@@ -199,27 +199,9 @@ impl Vm {
                 // Check native methods — bind to the instance so the wrapper
                 // prepends the receiver (e.g. `DateTime.year` reads `args[0]`
                 // as the instance). Same binding the tree-walker performs.
-                //
-                // EXCEPT Model subclasses: lifecycle callbacks (`before_save`
-                // etc.) only fire through the tree-walker's interceptors in
-                // `executor/calls/function.rs`. If the VM ran `record.save()`
-                // natively it would silently skip them — so leave model
-                // instance natives unbound: the call errors and serve mode
-                // falls back to the tree-walker, which fires the callbacks.
-                // Remove this carve-out once callbacks run inside the natives
-                // (Bug B in the vm-model-callback-gaps plan).
+                // Model persist/delete wrappers run on CallMethod (`save()`),
+                // not on this bound-value path (`m = record.save`).
                 if let Some(native) = inst_ref.class.find_native_method(name) {
-                    if inst_ref.class.is_model_subclass() {
-                        // Deliberate VM punt (see the comment above): an
-                        // EngineFallback error bypasses try/rescue routing so
-                        // a user-level catch can't swallow it — serve mode
-                        // re-runs the handler on the tree-walker, where the
-                        // lifecycle callbacks fire.
-                        return Err(RuntimeError::EngineFallback(
-                            format!("model instance method '{}'", name),
-                            span,
-                        ));
-                    }
                     let class_name = inst_ref.class.name.clone();
                     let native = native.clone();
                     drop(inst_ref);
@@ -261,22 +243,6 @@ impl Vm {
                     }
                     _ => {}
                 }
-                // State machine events / predicates (`order.pay`, `order.paid?`,
-                // `order.can_pay?`). The VM can't run guard/transition closures
-                // (`op_get_property` is `&self`), so hand the request back to the
-                // tree-walker, which owns the full machinery — same EngineFallback
-                // route the model-instance-method carve-out above uses.
-                if inst_ref.class.is_model_subclass()
-                    && crate::interpreter::builtins::model::state_machine::is_sm_member(
-                        &inst_ref.class.name,
-                        name,
-                    )
-                {
-                    return Err(RuntimeError::EngineFallback(
-                        format!("state machine member '{}'", name),
-                        span,
-                    ));
-                }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: inst_ref.class.name.clone(),
                     property: name.to_string(),
@@ -317,18 +283,6 @@ impl Vm {
                 if let Some(nested) = class.nested_classes.borrow().get(name) {
                     return Ok(Value::Class(nested.clone()));
                 }
-                // Class-level `method_missing` is dispatched only by the
-                // tree-walker (see executor/access/member.rs). When the class
-                // (or a superclass) defines one, punt to the interpreter via
-                // EngineFallback — serve mode re-runs the request there. This
-                // is what makes `UserMailer.welcome(user)` work in production,
-                // mirroring the model instance-method punt above.
-                if class.find_static_method("method_missing").is_some() {
-                    return Err(RuntimeError::EngineFallback(
-                        format!("class method_missing for '{}'", name),
-                        span,
-                    ));
-                }
                 // Class reflection (`define_method`, `class_eval`, `send`, …) is
                 // implemented only in the tree-walker's member access, which owns
                 // the primitive-overlay and method-cache bookkeeping. The VM used
@@ -356,6 +310,27 @@ impl Vm {
                         format!("class reflection member '{}'", name),
                         span,
                     ));
+                }
+                // Dynamic finders resolve BEFORE `method_missing`, matching
+                // `class_member_access`. Resolving `method_missing` first sent
+                // `User.find_by_email("x")` into the class's `method_missing`
+                // on any model that defines one (the `Mailer` prelude shape),
+                // which returned a wrong value instead of the record.
+                if class.is_model_subclass() && name.starts_with("find_by_") {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("dynamic finder '{}'", name),
+                        span,
+                    ));
+                }
+                // Class-level `method_missing` is the LAST resort — after
+                // statics, reflection and dynamic finders — exactly as the
+                // tree-walker orders it.
+                if let Some(bound) =
+                    crate::interpreter::executor::access::member::bind_class_method_missing(
+                        class, object, name,
+                    )
+                {
+                    return Ok(bound);
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
@@ -470,7 +445,8 @@ impl Vm {
         // fields shadow methods, matching op_get_property's lookup order.
         if let Value::Instance(inst) = object {
             let inst_ref = inst.borrow();
-            if !inst_ref.fields.contains_key(name) {
+            let field_hit = inst_ref.fields.contains_key(name);
+            if !field_hit {
                 let lookup = {
                     let class = inst_ref.class.clone();
                     class.find_vm_method_with_class(name)
@@ -492,6 +468,14 @@ impl Vm {
                         })();
                         self.return_depth = saved_depth;
                         return result;
+                    }
+                    if let Some(result) = self.try_sm_dispatch(inst, name, span)? {
+                        return Ok(result);
+                    }
+                } else {
+                    drop(inst_ref);
+                    if let Some(result) = self.try_sm_dispatch(inst, name, span)? {
+                        return Ok(result);
                     }
                 }
             }
@@ -900,6 +884,27 @@ mod deferred_force_tests {
             ("rec", instance_holding("posts", two_posts())),
         );
         assert_eq!(out, Value::Int(2));
+    }
+
+    /// The property fast paths (`GetProperty` / `GetLocalProperty`) push a
+    /// field value straight onto the stack without reaching
+    /// `op_get_property`, so they need their own force. Putting the field into
+    /// a container is the case that has no other force to fall back on —
+    /// `render("posts/index", { "posts": @posts })` in real code.
+    #[test]
+    fn instance_field_deferred_forces_into_a_container() {
+        let out = run(
+            "let out = [rec.posts]",
+            ("rec", instance_holding("posts", two_posts())),
+        );
+        let Value::Array(outer) = out else {
+            panic!("expected an array, got {out:?}");
+        };
+        let inner = outer.borrow()[0].clone();
+        assert!(
+            matches!(&inner, Value::Array(a) if a.borrow().len() == 2),
+            "the deferred must be materialised, not pushed as a placeholder: {inner:?}"
+        );
     }
 
     #[test]

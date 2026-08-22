@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -527,6 +527,824 @@ impl Vm {
         Ok(())
     }
 
+    /// Compile `method` as a standalone *method* — slot 0 reserved for `this` —
+    /// and cache the proto on `method.jit_cache`.
+    ///
+    /// Defining `this` in a bound `Environment` (the old `bind_callback_method`)
+    /// did not survive the call: `invoke_callable` routes a `Value::Function`
+    /// through `jit_compile_function`, which recompiles `params`/`body` as a
+    /// plain `FunctionType::Function` and discards the environment entirely.
+    /// `compile_this` then emitted `GetLocal(0)`, which in a non-method frame is
+    /// the *callee* slot — so `this.field = x` in a callback failed with
+    /// "Cannot set property on Function". Compiling as a method is what
+    /// `call_method_bound` already does for controller actions.
+    ///
+    /// The cache also keeps this off the per-invocation compile path: a fresh
+    /// `Rc<Function>` with an empty `jit_cache` meant a full AST walk on every
+    /// `save()`.
+    fn callback_proto(
+        &self,
+        method: &Function,
+        span: Span,
+    ) -> Result<Arc<FunctionProto>, RuntimeError> {
+        // Scope the borrow to the `let` so the else arm can `borrow_mut()`.
+        let cached = method.jit_cache.borrow().clone();
+        if let Some(cached) = cached {
+            return Ok(cached);
+        }
+        let compiled = Compiler::compile_method_standalone(method, self.globals.keys().cloned())
+            .map_err(|e| {
+                RuntimeError::EngineFallback(
+                    format!("a model callback the VM cannot compile ({})", e),
+                    span,
+                )
+            })?;
+        let arc = Arc::new(compiled);
+        *method.jit_cache.borrow_mut() = Some(arc.clone());
+        Ok(arc)
+    }
+
+    /// Refuse the whole operation *before* it touches the row when any callback
+    /// for these events cannot run correctly on the VM.
+    ///
+    /// Two cases refuse: a closure-form callback (`before_save do … end`) needs
+    /// the environment it captured, which the bytecode path cannot reconstruct;
+    /// and a method whose body the compiler rejects. Both must be detected here
+    /// rather than at invocation time, because an `after_*` callback runs when
+    /// the native write has already happened — demoting then re-runs the whole
+    /// handler on the tree-walker and writes the row a second time. Refusing up
+    /// front is side-effect-free, and the tree-walker runs these correctly.
+    fn ensure_callbacks_vm_ready(
+        &self,
+        class: &Rc<Class>,
+        event_sets: &[&[&str]],
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        use crate::interpreter::executor::calls::function::{
+            callback_names_for, has_closure_callbacks,
+        };
+        for events in event_sets {
+            if has_closure_callbacks(&class.name, events) {
+                return Err(RuntimeError::EngineFallback(
+                    format!("closure-form model callback on '{}'", class.name),
+                    span,
+                ));
+            }
+            for cb_name in callback_names_for(&class.name, events) {
+                if class.find_vm_method_with_class(&cb_name).is_some() {
+                    continue;
+                }
+                if let Some(method) = class.find_method(&cb_name) {
+                    self.callback_proto(&method, span)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn invoke_zero_arg_instance_method(
+        &mut self,
+        instance: &Rc<RefCell<Instance>>,
+        closure: Rc<VmClosure>,
+        defining_class: Rc<Class>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.push(Value::Instance(instance.clone()));
+        self.call_closure_in_class(closure, 0, span, Some(defining_class))?;
+        let result = if self.frames.len() == frames_before {
+            Ok(self.pop())
+        } else {
+            self.return_depth = frames_before;
+            self.run()
+        };
+        self.return_depth = saved_depth;
+        result
+    }
+
+    /// Run method-name and closure model callbacks with `this` bound to
+    /// `instance`. `Ok(false)` is a `before_*` veto (first `false` wins).
+    fn run_model_callbacks_vm(
+        &mut self,
+        class: &Rc<Class>,
+        instance: &Rc<RefCell<Instance>>,
+        callback_names: &[String],
+        events: &[&str],
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        for cb_name in callback_names {
+            if let Some((closure, defining)) = class.find_vm_method_with_class(cb_name) {
+                let result =
+                    self.invoke_zero_arg_instance_method(instance, closure, defining, span)?;
+                if matches!(result, Value::Bool(false)) {
+                    return Ok(false);
+                }
+                continue;
+            }
+            if let Some(method) = class.find_method(cb_name) {
+                // Compiled as a method with the instance in the callee slot, so
+                // `this` inside the callback is the record — see `callback_proto`.
+                let proto = self.callback_proto(&method, span)?;
+                let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+                let result =
+                    self.invoke_zero_arg_instance_method(instance, closure, class.clone(), span)?;
+                if matches!(result, Value::Bool(false)) {
+                    return Ok(false);
+                }
+            }
+        }
+        // Closure-form callbacks need the environment they captured, which the
+        // bytecode path cannot reconstruct. `ensure_callbacks_vm_ready` refuses
+        // before any write happens, so reaching this is a bug — refuse rather
+        // than run the body against the wrong scope.
+        for ev in events {
+            if !crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
+                &class.name,
+                ev,
+            )
+            .is_empty()
+            {
+                return Err(RuntimeError::EngineFallback(
+                    format!("closure-form model callback on '{}'", class.name),
+                    span,
+                ));
+            }
+        }
+        Ok(true)
+    }
+
+    fn persist_wrap_needed(class_name: &str, before: &[&str], after: &[&str]) -> bool {
+        use crate::interpreter::executor::calls::function::{
+            callback_names_for, has_closure_callbacks,
+        };
+        !callback_names_for(class_name, before).is_empty()
+            || !callback_names_for(class_name, after).is_empty()
+            || has_closure_callbacks(class_name, before)
+            || has_closure_callbacks(class_name, after)
+    }
+
+    /// Call a Model instance native, firing lifecycle callbacks when any are
+    /// registered. No `EngineFallback`: handlers stay on the VM.
+    pub(crate) fn call_model_instance_native(
+        &mut self,
+        inst: Rc<RefCell<Instance>>,
+        native: Rc<NativeFunction>,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        use crate::interpreter::executor::calls::function::{
+            callback_names_for, persist_events_for, set_callback_aborted_error,
+        };
+
+        if let Some(expected) = native.arity {
+            if argc != expected {
+                return Err(RuntimeError::wrong_arity(expected, argc, span));
+            }
+        }
+
+        let class = inst.borrow().class.clone();
+        let user_args: Vec<Value> = self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+
+        let has_key = matches!(inst.borrow().get("_key"), Some(Value::String(_)));
+        if let Some((before_events, after_events)) = persist_events_for(name, has_key) {
+            if Self::persist_wrap_needed(&class.name, before_events, after_events) {
+                // Refuse before the write when any callback can't run here: an
+                // after_* refusal would arrive with the row already written.
+                self.ensure_callbacks_vm_ready(&class, &[before_events, after_events], span)?;
+                let before_names = callback_names_for(&class.name, before_events);
+                if !self.run_model_callbacks_vm(
+                    &class,
+                    &inst,
+                    &before_names,
+                    before_events,
+                    span,
+                )? {
+                    let kind = if before_events.contains(&"before_create") {
+                        "before_create / before_save"
+                    } else {
+                        "before_update / before_save"
+                    };
+                    set_callback_aborted_error(&inst, kind);
+                    self.stack.truncate(receiver_idx);
+                    self.stack.push(Value::Bool(false));
+                    return Ok(());
+                }
+                let result =
+                    crate::interpreter::executor::access::member::call_native_instance_method(
+                        &inst, &native, &user_args,
+                    )
+                    .map_err(|e| RuntimeError::new(e, span))?;
+                let failed = matches!(&result, Value::Bool(false));
+                if !failed {
+                    let after_names = callback_names_for(&class.name, after_events);
+                    self.run_model_callbacks_vm(&class, &inst, &after_names, after_events, span)?;
+                }
+                self.stack.truncate(receiver_idx);
+                self.stack.push(result);
+                return Ok(());
+            }
+        }
+
+        if name == "delete"
+            && argc == 0
+            && self.try_wrap_model_delete(&class, &inst, &native, receiver_idx, span)?
+        {
+            return Ok(());
+        }
+
+        let result = crate::interpreter::executor::access::member::call_native_instance_method(
+            &inst, &native, &user_args,
+        )
+        .map_err(|e| RuntimeError::new(e, span))?;
+        self.stack.truncate(receiver_idx);
+        self.stack.push(result);
+        Ok(())
+    }
+
+    /// Full instance-delete wrap: cycle guard, before_delete, cascades,
+    /// attachment purge, native, after_delete. Returns `false` when this
+    /// delete has no callbacks/dependents/attachments (plain native).
+    fn try_wrap_model_delete(
+        &mut self,
+        class: &Rc<Class>,
+        inst: &Rc<RefCell<Instance>>,
+        native: &Rc<NativeFunction>,
+        receiver_idx: usize,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::executor::calls::cascade;
+        use crate::interpreter::executor::calls::function::{
+            callback_names_for, has_closure_callbacks, set_callback_aborted_error,
+        };
+
+        let before_events: &[&str] = &["before_delete"];
+        let after_events: &[&str] = &["after_delete"];
+        let has_dependents = cascade::class_declares_dependents(&class.name);
+        let has_attachments =
+            !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
+        if !Self::persist_wrap_needed(&class.name, before_events, after_events)
+            && !has_closure_callbacks(&class.name, before_events)
+            && !has_closure_callbacks(&class.name, after_events)
+            && !has_dependents
+            && !has_attachments
+        {
+            return Ok(false);
+        }
+
+        let mut _cascade_guard = None;
+        if has_dependents {
+            let (collection, key) = {
+                let inst_ref = inst.borrow();
+                let collection = crate::interpreter::builtins::model::class_name_to_collection(
+                    &inst_ref.class.name,
+                );
+                let key = match inst_ref.get("_key") {
+                    Some(Value::String(s)) => Some(s.to_string()),
+                    _ => None,
+                };
+                (collection, key)
+            };
+            if let Some(key) = key {
+                match cascade::enter_cascade(&collection, &key) {
+                    Some(guard) => _cascade_guard = Some(guard),
+                    None => {
+                        self.stack.truncate(receiver_idx);
+                        self.stack.push(Value::Bool(true));
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        // Same up-front refusal as the persist path: after_delete runs once the
+        // row (and its cascades) are gone, so it is too late to demote there.
+        self.ensure_callbacks_vm_ready(class, &[before_events, after_events], span)?;
+        let before_names = callback_names_for(&class.name, before_events);
+        if !self.run_model_callbacks_vm(class, inst, &before_names, before_events, span)? {
+            set_callback_aborted_error(inst, "before_delete");
+            self.stack.truncate(receiver_idx);
+            self.stack.push(Value::Bool(false));
+            return Ok(true);
+        }
+
+        if has_dependents && !crate::interpreter::builtins::model::is_soft_delete(&class.name) {
+            cascade::run_dependent_cascades_with(inst, span, |child, span| {
+                self.delete_model_instance_vm(child, span)
+            })?;
+        }
+
+        if has_attachments {
+            if let Some(helper) = self.globals.get("detach_all_uploads").cloned() {
+                let _ = self.invoke_callable(helper, &[Value::Instance(inst.clone())], span)?;
+            }
+        }
+
+        let result = crate::interpreter::executor::access::member::call_native_instance_method(
+            inst,
+            native,
+            &[],
+        )
+        .map_err(|e| RuntimeError::new(e, span))?;
+        let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
+            || matches!(&result, Value::Bool(false));
+        if !failed {
+            let after_names = callback_names_for(&class.name, after_events);
+            self.run_model_callbacks_vm(class, inst, &after_names, after_events, span)?;
+        }
+        self.stack.truncate(receiver_idx);
+        self.stack.push(result);
+        Ok(true)
+    }
+
+    fn delete_model_instance_vm(
+        &mut self,
+        instance_value: &Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let inst = match instance_value {
+            Value::Instance(i) => i.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    "dependent delete expected a model instance",
+                    span,
+                ))
+            }
+        };
+        let native = inst
+            .borrow()
+            .class
+            .find_native_method("delete")
+            .ok_or_else(|| {
+                RuntimeError::new(
+                    format!(
+                        "dependent delete: {} has no delete method",
+                        inst.borrow().class.name
+                    ),
+                    span,
+                )
+            })?;
+        let receiver_idx = self.stack.len();
+        self.push(instance_value.clone());
+        self.call_model_instance_native(inst, native, receiver_idx, 0, "delete", span)?;
+        Ok(self.pop())
+    }
+
+    /// `Model.create(data)` / `Model.update(id, data)` with before/after
+    /// callbacks. Returns `false` when this call should use the ordinary
+    /// native-static path (no callbacks, or the args aren't a data hash).
+    /// Reject the inherited document-API statics on a columnar model.
+    ///
+    /// `bind_native_static_to_model_class` documents itself as "the one choke
+    /// point shared by the tree-walker and the VM" for this rule, but the
+    /// callback-wrapping paths below call the native (and `crud`) directly and
+    /// therefore skip it. Without repeating the check, a columnar model that
+    /// happens to declare a save callback silently ran the document API instead
+    /// of raising.
+    fn reject_columnar_document_api(
+        class: &Rc<Class>,
+        name: &str,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        use crate::interpreter::builtins::model::columnar;
+        if columnar::is_document_api_method(name)
+            && crate::interpreter::builtins::model::is_columnar_model(&class.name)
+        {
+            return Err(RuntimeError::new(
+                columnar::columnar_no_document_api_error(&class.name, name),
+                span,
+            ));
+        }
+        Ok(())
+    }
+
+    fn try_call_model_class_persist(
+        &mut self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::executor::calls::function::{
+            callback_names_for, has_closure_callbacks, set_callback_aborted_error,
+        };
+
+        let data_index = if name == "create" { 0 } else { 1 };
+        if argc <= data_index {
+            return Ok(false);
+        }
+        let class = match &self.stack[receiver_idx] {
+            Value::Class(c) => c.clone(),
+            _ => return Ok(false),
+        };
+        let before_events: &[&str] = if name == "create" {
+            &["before_save", "before_create"]
+        } else {
+            &["before_save", "before_update"]
+        };
+        let after_events: &[&str] = if name == "create" {
+            &["after_create", "after_save"]
+        } else {
+            &["after_update", "after_save"]
+        };
+        let before_names = callback_names_for(&class.name, before_events);
+        let after_names = callback_names_for(&class.name, after_events);
+        if before_names.is_empty()
+            && after_names.is_empty()
+            && !has_closure_callbacks(&class.name, before_events)
+            && !has_closure_callbacks(&class.name, after_events)
+        {
+            return Ok(false);
+        }
+
+        let Some(native) = class.find_native_static_method(name) else {
+            return Ok(false);
+        };
+        // Both checks run before any callback or write: a columnar model must
+        // raise rather than reach the document API, and a callback the VM can't
+        // run correctly must demote while the row is still untouched (an
+        // after_* refusal would arrive with the row already written, and the
+        // handler would write it again on the tree-walker).
+        Self::reject_columnar_document_api(&class, name, span)?;
+        self.ensure_callbacks_vm_ready(&class, &[before_events, after_events], span)?;
+        let mut user_args: Vec<Value> =
+            self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+        let data_hash = match &user_args[data_index] {
+            Value::Hash(h) => h.clone(),
+            _ => return Ok(false),
+        };
+
+        let mut instance = Instance::new(class.clone());
+        for (k, v) in data_hash.borrow().iter() {
+            if let HashKey::String(field) = k {
+                instance.set(field.clone().to_string(), v.clone());
+            }
+        }
+        let inst_rc = Rc::new(RefCell::new(instance));
+
+        if !self.run_model_callbacks_vm(&class, &inst_rc, &before_names, before_events, span)? {
+            let kind = if name == "create" {
+                "before_create / before_save"
+            } else {
+                "before_update / before_save"
+            };
+            set_callback_aborted_error(&inst_rc, kind);
+            self.stack.truncate(receiver_idx);
+            self.stack.push(Value::Instance(inst_rc));
+            return Ok(true);
+        }
+
+        let inst_ref = inst_rc.borrow();
+        let mut new_pairs = crate::interpreter::value::HashPairs::default();
+        for (k, v) in &inst_ref.fields {
+            new_pairs.insert(HashKey::String(k.clone()), v.clone());
+        }
+        drop(inst_ref);
+        user_args[data_index] = Value::Hash(Rc::new(RefCell::new(new_pairs)));
+
+        let mut native_args = Vec::with_capacity(user_args.len() + 1);
+        native_args.push(Value::Class(class.clone()));
+        native_args.extend(user_args);
+        let result = (native.func)(&native_args).map_err(|e| RuntimeError::new(e, span))?;
+
+        if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
+            if let Value::Hash(result_hash) = &result {
+                let valid = result_hash
+                    .borrow()
+                    .get(&HashKey::String("valid".into()))
+                    .cloned();
+                let record = result_hash
+                    .borrow()
+                    .get(&HashKey::String("record".into()))
+                    .cloned();
+                if matches!(valid, Some(Value::Bool(true))) {
+                    if let Some(Value::Instance(inst)) = record {
+                        self.run_model_callbacks_vm(
+                            &class,
+                            &inst,
+                            &after_names,
+                            after_events,
+                            span,
+                        )?;
+                    }
+                }
+            }
+        }
+
+        self.stack.truncate(receiver_idx);
+        self.stack.push(result);
+        Ok(true)
+    }
+
+    /// `Model.delete(id)` when the class has dependents or attachments:
+    /// load the row and run the instance-delete wrap. Returns `false` when
+    /// the class has neither, so the ordinary native static runs.
+    fn try_call_model_class_delete(
+        &mut self,
+        receiver_idx: usize,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::builtins::model::{
+            class_name_to_collection, crud, get_model_class,
+        };
+        use crate::interpreter::executor::calls::cascade;
+
+        let class = match &self.stack[receiver_idx] {
+            Value::Class(c) => c.clone(),
+            _ => return Ok(false),
+        };
+        let has_dependents = cascade::class_declares_dependents(&class.name);
+        let has_attachments =
+            !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
+        if !has_dependents && !has_attachments {
+            return Ok(false);
+        }
+        // This path reaches `crud::exec_get` directly, bypassing the bound
+        // native's columnar check — raise here instead of reading a document
+        // out of a columnar store.
+        Self::reject_columnar_document_api(&class, "delete", span)?;
+        let id_val = self.stack[receiver_idx + 1].clone();
+        let id = match &id_val {
+            Value::String(s) => s.to_string(),
+            other => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "Model.delete() expects string id, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+
+        let instance_value = if let Some(inst) = cascade::take_test_loaded_instance(&id) {
+            inst
+        } else {
+            let collection = class_name_to_collection(&class.name);
+            let doc = match crud::exec_get(&collection, &id) {
+                Ok(doc) => doc,
+                Err(e) => {
+                    self.stack.truncate(receiver_idx);
+                    self.stack
+                        .push(Value::String(format!("Error: {}", e).into()));
+                    return Ok(true);
+                }
+            };
+            let model_class = get_model_class(&class.name).unwrap_or(class);
+            crud::json_doc_to_instance(&model_class, &doc)
+        };
+        let result = self.delete_model_instance_vm(&instance_value, span)?;
+        self.stack.truncate(receiver_idx);
+        self.stack.push(result);
+        Ok(true)
+    }
+
+    fn sm_current_tag(
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+    ) -> Option<String> {
+        let b = inst.borrow();
+        match b.fields.get(machine.field.as_str()) {
+            Some(Value::Instance(e)) => e.borrow().fields.get("__variant").and_then(|v| match v {
+                Value::String(s) => Some(s.to_string()),
+                _ => None,
+            }),
+            Some(Value::String(s)) => Some(s.to_string()),
+            _ => machine.initial.clone(),
+        }
+    }
+
+    /// State-machine guards and transition hooks are closures declared in the
+    /// model body, so they carry a captured environment the bytecode path cannot
+    /// reconstruct — the same reason `ensure_callbacks_vm_ready` refuses
+    /// closure-form model callbacks. Refuse so the tree-walker runs them, which
+    /// is what happened before instance methods ran on the VM at all.
+    ///
+    /// Guards and `before_transition` hooks run before the state is written, so
+    /// refusing here costs nothing. `after_transition` runs after the write, so
+    /// `sm_fire_event_vm` checks for those up front instead.
+    fn run_sm_closure_vm(
+        &mut self,
+        _inst: &Rc<RefCell<Instance>>,
+        closure: &Function,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::EngineFallback(
+            format!("state-machine closure '{}'", closure.name),
+            span,
+        ))
+    }
+
+    /// State-machine event/predicate on a model instance (`pay`, `pay!`,
+    /// `can_pay?`, `paid?`). `None` if this isn't an SM member.
+    pub(crate) fn try_sm_dispatch(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        name: &str,
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let class = inst.borrow().class.clone();
+        if !class.is_model_subclass() {
+            return Ok(None);
+        }
+        let machines = sm::machines_for(&class.name);
+        if machines.is_empty() {
+            return Ok(None);
+        }
+        if class.find_method(name).is_some() || class.find_vm_method(name).is_some() {
+            return Ok(None);
+        }
+
+        for machine in &machines {
+            if let Some(stem) = name.strip_suffix('?') {
+                if let Some(event) = stem.strip_prefix("can_") {
+                    if machine.event(event).is_some() {
+                        let ok = self.sm_can_vm(inst, machine, event, span)?;
+                        return Ok(Some(Value::Bool(ok)));
+                    }
+                }
+                if let Some(tag) = machine.states.iter().find(|t| sm::snake_case(t) == stem) {
+                    let current = Self::sm_current_tag(inst, machine);
+                    return Ok(Some(Value::Bool(current.as_deref() == Some(tag.as_str()))));
+                }
+            }
+            let (event_name, persist) = match name.strip_suffix('!') {
+                Some(stem) => (stem, true),
+                None => (name, false),
+            };
+            if machine.event(event_name).is_some() {
+                let result = self.sm_fire_event_vm(inst, machine, event_name, persist, span)?;
+                return Ok(Some(result));
+            }
+        }
+        Ok(None)
+    }
+
+    fn sm_can_vm(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+        event: &str,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+        let Some(current) = Self::sm_current_tag(inst, machine) else {
+            return Ok(false);
+        };
+        if machine.target_for(event, &current).is_none() {
+            return Ok(false);
+        }
+        let class_name = inst.borrow().class.name.clone();
+        if let Some(guard) = sm::lookup_guard(&class_name, event) {
+            let v = self.run_sm_closure_vm(inst, &guard, span)?;
+            return Ok(!matches!(v, Value::Bool(false) | Value::Null));
+        }
+        Ok(true)
+    }
+
+    fn sm_fire_event_vm(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+        event: &str,
+        persist: bool,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let class_name = inst.borrow().class.name.clone();
+        let current = Self::sm_current_tag(inst, machine).ok_or_else(|| RuntimeError::General {
+            message: format!(
+                "{}: state field '{}' is unset and the machine has no initial state",
+                class_name, machine.field
+            ),
+            span,
+        })?;
+        let to_tag = match machine.target_for(event, &current) {
+            Some(t) => t.to_string(),
+            None => {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "{}: cannot '{}' from state '{}'",
+                        class_name, event, current
+                    ),
+                    span,
+                })
+            }
+        };
+
+        // `after_transition` hooks run once the new state is written (and, with
+        // `!`, persisted), so a refusal from inside that loop would arrive with
+        // the row already changed and the handler would repeat the write on the
+        // tree-walker. Decide now, while nothing has been mutated.
+        if !sm::lookup_after(&class_name, &to_tag).is_empty() {
+            return Err(RuntimeError::EngineFallback(
+                format!("after_transition hook on '{}'", class_name),
+                span,
+            ));
+        }
+
+        if let Some(guard) = sm::lookup_guard(&class_name, event) {
+            let v = self.run_sm_closure_vm(inst, &guard, span)?;
+            if matches!(v, Value::Bool(false) | Value::Null) {
+                return Err(RuntimeError::General {
+                    message: format!("{}: guard for '{}' failed", class_name, event),
+                    span,
+                });
+            }
+        }
+
+        for hook in sm::lookup_before(&class_name, &to_tag) {
+            let r = self.run_sm_closure_vm(inst, &hook, span)?;
+            if matches!(r, Value::Bool(false)) {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "{}: before_transition to '{}' vetoed '{}'",
+                        class_name, to_tag, event
+                    ),
+                    span,
+                });
+            }
+        }
+
+        let new_value =
+            sm::build_state_value(&class_name, &machine.field, &to_tag).ok_or_else(|| {
+                RuntimeError::General {
+                    message: format!(
+                        "{}: state_machine field '{}' is not declared with enum_field",
+                        class_name, machine.field
+                    ),
+                    span,
+                }
+            })?;
+        inst.borrow_mut().set(machine.field.clone(), new_value);
+
+        if persist {
+            if let Some(native) = inst.borrow().class.find_native_method("save") {
+                let receiver_idx = self.stack.len();
+                self.push(Value::Instance(inst.clone()));
+                self.call_model_instance_native(
+                    inst.clone(),
+                    native,
+                    receiver_idx,
+                    0,
+                    "save",
+                    span,
+                )?;
+                let _ = self.pop();
+            }
+        }
+
+        for hook in sm::lookup_after(&class_name, &to_tag) {
+            self.run_sm_closure_vm(inst, &hook, span)?;
+        }
+
+        Ok(Value::Bool(true))
+    }
+
+    fn call_class_method_missing(
+        &mut self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let class = match &self.stack[receiver_idx] {
+            Value::Class(c) => c.clone(),
+            _ => unreachable!(),
+        };
+        let user_args: Vec<Value> = self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+        let name_val = Value::String(name.to_string().into());
+        let args_arr = Value::Array(Rc::new(RefCell::new(user_args.clone())));
+
+        if let Some(closure) = class.find_vm_static_method("method_missing") {
+            self.stack.truncate(receiver_idx);
+            self.push(Value::Class(class));
+            self.push(name_val);
+            self.push(args_arr);
+            return self.call_closure(closure, 2, span);
+        }
+
+        let class_val = Value::Class(class.clone());
+        let Some(bound) = crate::interpreter::executor::access::member::bind_class_method_missing(
+            &class, &class_val, name,
+        ) else {
+            return Err(RuntimeError::NoSuchProperty {
+                value_type: class.name.clone(),
+                property: name.to_string(),
+                span,
+            });
+        };
+        let result = self.invoke_callable(bound, &user_args, span)?;
+        self.stack.truncate(receiver_idx);
+        self.stack.push(result);
+        Ok(())
+    }
+
     fn call_native_wrapper(
         &mut self,
         func: &Function,
@@ -671,14 +1489,56 @@ impl Vm {
         argc: usize,
         name: &str,
     ) -> Result<(), RuntimeError> {
-        if name == "transaction" && argc == 1 {
-            if let Value::Class(class) = &self.stack[receiver_idx] {
-                if class.is_model_subclass()
+        let class_receiver = match &self.stack[receiver_idx] {
+            Value::Class(class) => Some(class.clone()),
+            _ => None,
+        };
+        if let Some(class) = class_receiver {
+            let is_model = class.is_model_subclass();
+            if is_model {
+                if name == "transaction"
+                    && argc == 1
                     && Self::is_callable_block(&self.stack[receiver_idx + 1])
                 {
                     let span = self.current_span();
                     return self.call_model_transaction_block(receiver_idx, span);
                 }
+                if matches!(name, "create" | "update") {
+                    let span = self.current_span();
+                    if self.try_call_model_class_persist(receiver_idx, argc, name, span)? {
+                        return Ok(());
+                    }
+                }
+                if name == "delete" && argc == 1 {
+                    let span = self.current_span();
+                    if self.try_call_model_class_delete(receiver_idx, span)? {
+                        return Ok(());
+                    }
+                }
+            }
+            // Class-level `method_missing` is the LAST resort, matching
+            // `class_member_access`: statics, then the reflection surface
+            // (`send`, `methods`, `define_method`, …), then dynamic finders.
+            // Consulting it first meant that on any class defining a static
+            // `method_missing` — the `Mailer` prelude shape — `Foo.send("bar")`
+            // and `User.find_by_email("x")` dispatched into `method_missing`
+            // and returned a wrong value instead of the reflection result.
+            //
+            // `known` short-circuits, and `method_missing` is looked up only
+            // when nothing else matched, so a resolved static (`User.where`)
+            // costs one superclass walk rather than the five this used to do on
+            // every class-receiver call.
+            let known = class.find_vm_static_method(name).is_some()
+                || class.find_static_method(name).is_some()
+                || class.find_native_static_method(name).is_some()
+                || crate::vm::vm_classes::is_class_reflection_member(name)
+                || (is_model && name.starts_with("find_by_"));
+            if !known
+                && (class.find_static_method("method_missing").is_some()
+                    || class.find_vm_static_method("method_missing").is_some())
+            {
+                let span = self.current_span();
+                return self.call_class_method_missing(receiver_idx, argc, name, span);
             }
         }
         let compiled = match &self.stack[receiver_idx] {
@@ -722,11 +1582,8 @@ impl Vm {
         // Direct native instance-method call: skip bind_native_method_to_instance
         // (which allocated a fresh NativeFunction + closure on every call).
         // Fields shadow methods — same order as instance_member_access.
-        //
-        // Model subclasses are excluded: lifecycle callbacks (`before_save`,
-        // …) only fire through the tree-walker's interceptors. Calling the
-        // native here would silently skip them — same EngineFallback carve-out
-        // as `op_get_property` (see vm_classes.rs).
+        // Model persist/delete natives go through `call_model_instance_native`
+        // so lifecycle callbacks, cascades, and attachment purge run here.
         // Resolve the native method and release the borrow on the value stack
         // before calling, so the arguments can be passed as a *slice* of the
         // stack rather than copied into a fresh `Vec`. That copy ran on every
@@ -749,10 +1606,14 @@ impl Vm {
         if let Some((native, is_model, inst)) = resolved {
             let span = self.current_span();
             if is_model {
-                return Err(RuntimeError::EngineFallback(
-                    format!("model instance method '{}'", name),
+                return self.call_model_instance_native(
+                    inst,
+                    native,
+                    receiver_idx,
+                    argc,
+                    name,
                     span,
-                ));
+                );
             }
             if let Some(expected) = native.arity {
                 if argc != expected {
@@ -774,6 +1635,16 @@ impl Vm {
         }
 
         let span = self.current_span();
+        if argc == 0 {
+            if let Value::Instance(inst) = &self.stack[receiver_idx] {
+                let inst = inst.clone();
+                if let Some(result) = self.try_sm_dispatch(&inst, name, span)? {
+                    self.stack.truncate(receiver_idx);
+                    self.stack.push(result);
+                    return Ok(());
+                }
+            }
+        }
         let object = self.stack[receiver_idx].clone();
         let method_val = self.op_get_property(&object, name, span)?;
         if argc == 0 && !method_val.is_callable() {
@@ -1104,6 +1975,55 @@ pub struct CallableBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A model callback must see the record as `this`.
+    ///
+    /// The previous `bind_callback_method` defined `this` in a bound
+    /// `Environment`, but `invoke_callable` recompiled the body as a plain
+    /// function and dropped that environment, so `this` resolved to the callee
+    /// slot and `this.touched = 1` failed with "Cannot set property on
+    /// Function". For an `after_save` callback the row was already written when
+    /// that error surfaced, so the handler demoted and wrote it a second time.
+    #[test]
+    fn callback_binds_this_to_the_record() {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let body = Parser::new(
+            Scanner::new("this.touched = 1")
+                .scan_tokens()
+                .expect("lexer error"),
+        )
+        .parse()
+        .expect("parser error")
+        .statements;
+        let method = Function {
+            name: "stamp".to_string(),
+            body: body.into(),
+            is_method: true,
+            ..Function::default()
+        };
+
+        let class = Rc::new(Class {
+            name: "Rec".to_string(),
+            ..Default::default()
+        });
+        let inst = Rc::new(RefCell::new(Instance::new(class.clone())));
+
+        let mut vm = Vm::new();
+        let proto = vm
+            .callback_proto(&method, Span::default())
+            .expect("callback should compile as a method");
+        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        vm.invoke_zero_arg_instance_method(&inst, closure, class, Span::default())
+            .expect("callback should run with `this` bound to the instance");
+
+        assert_eq!(
+            inst.borrow().get("touched"),
+            Some(Value::Int(1)),
+            "the callback must write to the record, not to its own callee slot"
+        );
+    }
 
     #[test]
     fn jit_compile_function_caches_proto() {

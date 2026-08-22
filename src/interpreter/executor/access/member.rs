@@ -181,6 +181,50 @@ pub(crate) fn bind_native_static_to_model_class(
     Value::NativeFunction(bound_func)
 }
 
+/// Class-level `method_missing` as a bound native so `UserMailer.welcome(user)`
+/// works from both engines. The body still runs on a fresh tree-walker (it
+/// needs `&mut Interpreter`); the important part is the VM no longer demotes
+/// the whole handler just to reach this wrapper.
+pub(crate) fn bind_class_method_missing(
+    class: &Class,
+    class_val: &Value,
+    name: &str,
+) -> Option<Value> {
+    let mm_method = class.find_static_method("method_missing")?;
+    let class_val = class_val.clone();
+    let class_name = class.name.clone();
+    let method_name = name.to_string();
+    Some(Value::NativeFunction(NativeFunction::new(
+        format!("{}.method_missing", class_name),
+        None,
+        move |args: &[Value]| -> Result<Value, String> {
+            let mm_args = [
+                Value::String(method_name.clone().into()),
+                Value::Array(Rc::new(RefCell::new(args.to_vec()))),
+            ];
+            let mut env_inner = Environment::with_enclosing(mm_method.closure.clone());
+            env_inner.define("this".to_string(), class_val.clone());
+            env_inner.define("self".to_string(), class_val.clone());
+            for (i, param) in mm_method.params.iter().enumerate() {
+                let value = mm_args.get(i).cloned().unwrap_or(Value::Null);
+                env_inner.define(param.name.clone(), value);
+            }
+            let env_clone = env_inner.clone();
+            let mut interpreter = Interpreter::default();
+            match interpreter.execute_block(&mm_method.body, env_clone) {
+                Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                Ok(crate::interpreter::executor::ControlFlow::Continue)
+                | Ok(crate::interpreter::executor::ControlFlow::Break) => Ok(Value::Null),
+                Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                    Err(format!("Exception in method_missing: {}", e))
+                }
+                Err(e) => Err(format!("Error in method_missing: {}", e)),
+            }
+        },
+    )))
+}
+
 /// Auto-generated method on a model with `uploader(field, ...)`. Maps a
 /// member name like `attach_photo` to `(UploaderMethod::Attach, "photo")`,
 /// `photo_url` to `(UploaderMethod::Url, "photo")`, etc. Returns `None` if
@@ -1932,53 +1976,8 @@ impl Interpreter {
         // `UserMailer.welcome(user)` dispatch through `Mailer.method_missing`.
         // Only fires for classes that opt in by defining the method, so classes
         // without one still hit the `NoSuchProperty` error below unchanged.
-        if let Some(mm_method) = class.find_static_method("method_missing") {
-            let class_val = class_val.clone();
-            let class_name = class.name.clone();
-            let method_name = name.to_string();
-            return Ok(Value::NativeFunction(NativeFunction::new(
-                format!("{}.method_missing", class_name),
-                None, // Variable arity
-                move |args: &[Value]| -> Result<Value, String> {
-                    // Ruby-style handler signature: `method_missing(name, args)`,
-                    // where `name` is the called method's name and `args` is an
-                    // Array of the original call arguments. (The instance-level
-                    // path predates this and instead spreads the args; the
-                    // class-level contract is the cleaner `*args`-as-array form,
-                    // which lets a handler forward any arity — e.g. a mailer
-                    // dispatching to an action with multiple parameters.)
-                    let mm_args = [
-                        Value::String(method_name.clone().into()),
-                        Value::Array(Rc::new(RefCell::new(args.to_vec()))),
-                    ];
-
-                    let mut env_inner = Environment::with_enclosing(mm_method.closure.clone());
-                    env_inner.define("this".to_string(), class_val.clone());
-                    env_inner.define("self".to_string(), class_val.clone());
-
-                    // Bind declared params positionally; any declared param
-                    // without a matching argument defaults to null so the
-                    // handler never trips an undefined-variable error.
-                    for (i, param) in mm_method.params.iter().enumerate() {
-                        let value = mm_args.get(i).cloned().unwrap_or(Value::Null);
-                        env_inner.define(param.name.clone(), value);
-                    }
-                    let call_env_rc = Rc::new(RefCell::new(env_inner));
-                    let env_clone = call_env_rc.borrow().clone();
-
-                    let mut interpreter = Interpreter::default();
-                    match interpreter.execute_block(&mm_method.body, env_clone) {
-                        Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
-                        Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                        Ok(crate::interpreter::executor::ControlFlow::Continue)
-                        | Ok(crate::interpreter::executor::ControlFlow::Break) => Ok(Value::Null),
-                        Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
-                            Err(format!("Exception in method_missing: {}", e))
-                        }
-                        Err(e) => Err(format!("Error in method_missing: {}", e)),
-                    }
-                },
-            )));
+        if let Some(bound) = bind_class_method_missing(class, class_val, name) {
+            return Ok(bound);
         }
 
         Err(RuntimeError::NoSuchProperty {

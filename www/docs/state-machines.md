@@ -178,4 +178,4 @@ The machine is validated when the model loads (at server boot, and under `soli t
 
 ## Production Note
 
-Under the production VM, state machine event methods transparently fall back to the tree-walking interpreter — the same mechanism model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.
+Under the production VM, a machine with no guard and no transition hooks runs its event methods on the bytecode path. A machine that declares a `guard`, a `before_transition` or an `after_transition` transparently falls back to the tree-walking interpreter for the whole handler — those hooks are closures that need the scope they were declared in, which only the interpreter can reconstruct. It is the same mechanism closure-form model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.

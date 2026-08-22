@@ -250,12 +250,33 @@ impl Drop for StandaloneServer {
 }
 
 /// Parse the footer of a standalone artifact: (payload_offset, payload_len).
+///
+/// The footer is at EOF on ELF and PE. On a signed Mach-O it is not: `codesign`
+/// appends the code signature *after* it, so the layout is
+/// `[payload][footer][signature]` (see `src/cli/standalone.rs`). Mirror the
+/// boot-side `read_footer`: try EOF, then locate the footer ahead of the
+/// signature. Assuming EOF made these tests fail on every darwin host while the
+/// artifact itself booted fine.
 fn payload_region(exe_bytes: &[u8]) -> (usize, usize) {
     assert!(exe_bytes.len() > 16, "artifact too small for a footer");
-    let footer = &exe_bytes[exe_bytes.len() - 16..];
-    assert_eq!(&footer[..8], FOOTER_MAGIC, "missing SOLIXEC1 footer");
-    let payload_len = u64::from_le_bytes(footer[8..16].try_into().unwrap()) as usize;
-    let payload_off = exe_bytes.len() - 16 - payload_len;
+    let footer_start = if &exe_bytes[exe_bytes.len() - 16..exe_bytes.len() - 8] == FOOTER_MAGIC {
+        exe_bytes.len() - 16
+    } else {
+        // Search only the tail: the signature is far smaller than this, and a
+        // full scan of a ~250 MB debug artifact is needlessly slow.
+        let tail_start = exe_bytes.len().saturating_sub(1 << 20);
+        let rel = exe_bytes[tail_start..]
+            .windows(FOOTER_MAGIC.len())
+            .rposition(|w| w == FOOTER_MAGIC)
+            .expect("missing SOLIXEC1 footer");
+        tail_start + rel
+    };
+    let payload_len = u64::from_le_bytes(
+        exe_bytes[footer_start + 8..footer_start + 16]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let payload_off = footer_start - payload_len;
     (payload_off, payload_len)
 }
 
@@ -268,7 +289,11 @@ fn plain_standalone_serves_http() {
     let fx = fixtures();
     let bytes = std::fs::read(&fx.plain_exe).unwrap();
 
-    // Structure: bigger than the runtime alone, footer at EOF, SOLB payload.
+    // Structure: footer present, SOLB payload. On ELF/PE the artifact is the
+    // runtime plus the payload, so it is strictly bigger; on darwin the
+    // inherited signature is stripped and `__LINKEDIT` rewritten before the
+    // payload is appended, so it can come out smaller than the runtime.
+    #[cfg(not(target_os = "macos"))]
     assert!(bytes.len() as u64 > std::fs::metadata(soli_binary()).unwrap().len());
     let (off, len) = payload_region(&bytes);
     assert_eq!(&bytes[off..off + 4], b"SOLB", "plain payload magic");

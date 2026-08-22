@@ -306,19 +306,27 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
 }
 
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::delete_all(q),
         super::mysql::delete_all(q),
         super::sqlite::delete_all(q)
-    )
+    );
+    if result.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
+    }
+    result
 }
 
 pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::update_all(q, patch),
         super::mysql::update_all(q, patch),
         super::sqlite::update_all(q, patch)
-    )
+    );
+    if result.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
+    }
+    result
 }
 
 pub fn ensure_table(table: &str) -> Result<(), String> {
@@ -398,6 +406,11 @@ pub fn insert_many(rows_table: &str, rows: &[(String, serde_json::Value)]) -> Re
     if !joined && !single_chunk {
         commit_transaction()?;
     }
+    // This path runs (and commits) its own transaction through
+    // `sql::commit_transaction`, so it never reaches the tripwire that
+    // `crud::commit_transaction` arms. Mark it here or a bulk insert followed
+    // by an `EngineFallback` re-runs the handler and inserts the batch twice.
+    crate::interpreter::builtins::model::crud::mark_durable_write();
     Ok(total)
 }
 

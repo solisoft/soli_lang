@@ -303,7 +303,7 @@ end</code></pre>
 
     <h3 class="text-lg font-semibold text-white mb-4">Firing order per persistence method</h3>
     <p class="text-gray-400 mb-4">
-        Both class-level methods (<code>Model.create</code>, <code>Model.update</code>) and instance-level mutators run the matching callbacks. Rails-style: <code>_save</code> callbacks fire on every persistence path, plus the more specific event for the operation. After-callbacks only fire when the persist call succeeds &mdash; if the native method returns <code>false</code> (validation or DB error) the after-callbacks are skipped and the instance carries <code>_errors</code>.
+        Both class-level methods (<code>Model.create</code>, <code>Model.update</code>) and instance-level mutators run the matching callbacks. Rails-style: <code>_save</code> callbacks fire on every persistence path, plus the more specific event for the operation. After-callbacks only fire when the persist call succeeds &mdash; if the native method returns <code>false</code> (validation or DB error) the after-callbacks are skipped and the instance carries <code>_errors</code>. Every callback in the table fires on both engines: a callback declared as a <em>method name</em> runs on the bytecode VM in production, while a <em>closure-form</em> callback (<code class="text-cyan-400">before_save do &hellip; end</code>) runs on the tree-walking interpreter because it needs the scope it was declared in. The handler falls back automatically, and before any write happens &mdash; so the only difference is speed.
     </p>
     <div class="overflow-x-auto mb-12">
         <table class="w-full text-sm">

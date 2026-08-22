@@ -786,6 +786,13 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
+Every callback in the table fires on both engines. A callback declared as a
+*method name* runs on the bytecode VM in production; a **closure-form**
+callback (`before_save do … end`) runs on the tree-walking interpreter, because
+it needs the scope it was declared in. The handler falls back automatically and
+before any write happens, so the only difference is speed — the callbacks
+themselves, and their ordering, are identical either way.
+
 On hard deletes, [`dependent:` cascades](#cascade-deletes) run between
 `before_delete` and the owner row's removal — a `before_delete` veto skips
 them, and a failing cascade aborts the owner delete before `after_delete`.

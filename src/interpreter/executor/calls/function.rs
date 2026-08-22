@@ -15,7 +15,7 @@ use std::rc::Rc;
 /// Check whether any closure-based callbacks are registered for any of `events`
 /// on `class_name`. Used to decide whether to enter the after-callback block
 /// even when no method-name callbacks exist.
-fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
+pub(crate) fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
     events.iter().any(|ev| {
         !crate::interpreter::builtins::model::callbacks::closure_callbacks_for(class_name, ev)
             .is_empty()
@@ -27,7 +27,7 @@ fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
 /// validation-failure / DB-failure shape (`Array<Hash>`) that
 /// `instance.update`, `Model.create`, etc. already use, so callers
 /// inspecting `instance._errors` see a single uniform contract.
-fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &str) {
+pub(crate) fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &str) {
     let mut entry = crate::interpreter::value::HashPairs::default();
     entry.insert(
         HashKey::String("message".into()),
@@ -53,7 +53,7 @@ fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &
 /// All other instance mutators (`update`, `restore`, `increment`,
 /// `decrement`, `touch`) run the update chain regardless. Returns
 /// `None` for method names this interceptor doesn't handle.
-fn persist_events_for(
+pub(crate) fn persist_events_for(
     method_name: &str,
     has_key: bool,
 ) -> Option<(&'static [&'static str], &'static [&'static str])> {
@@ -77,6 +77,26 @@ fn persist_events_for(
         )),
         _ => None,
     }
+}
+
+/// Method-name callbacks registered for `events` on `class_name`.
+pub(crate) fn callback_names_for(class_name: &str, events: &[&str]) -> Vec<String> {
+    use crate::interpreter::builtins::model::get_or_create_metadata;
+    let metadata = get_or_create_metadata(class_name);
+    events
+        .iter()
+        .flat_map(|ev| match *ev {
+            "before_save" => metadata.callbacks.before_save.clone(),
+            "before_create" => metadata.callbacks.before_create.clone(),
+            "before_update" => metadata.callbacks.before_update.clone(),
+            "after_save" => metadata.callbacks.after_save.clone(),
+            "after_create" => metadata.callbacks.after_create.clone(),
+            "after_update" => metadata.callbacks.after_update.clone(),
+            "before_delete" => metadata.callbacks.before_delete.clone(),
+            "after_delete" => metadata.callbacks.after_delete.clone(),
+            _ => Vec::new(),
+        })
+        .collect()
 }
 
 /// Member names handled inline by `instance_member_access` before any
@@ -389,9 +409,26 @@ impl Interpreter {
         // double evaluation.
         if let ExprKind::Member { object, name } = &callee.kind {
             if name == "transaction" && arguments.len() == 1 {
+                // A bare identifier is accepted alongside the literal forms so
+                // `Order.transaction(run_it)` opens a transaction here too. The
+                // VM intercepts on the *runtime value* (any callable), so
+                // keying purely on a literal lambda meant that call committed a
+                // real transaction in production while `--dev` fell through to
+                // plain native dispatch and ran the block untransacted.
+                //
+                // Only re-evaluable shapes qualify: when the value turns out not
+                // to be callable, `try_evaluate_model_transaction` returns
+                // `Ok(None)` and normal dispatch evaluates the argument again —
+                // harmless for a lambda literal or a variable read, not for an
+                // arbitrary expression. A computed callee (`transaction(make())`)
+                // therefore still differs between the engines.
                 let block_expr = match &arguments[0] {
                     Argument::Block(e) => Some(e),
-                    Argument::Positional(e) if matches!(e.kind, ExprKind::Lambda { .. }) => Some(e),
+                    Argument::Positional(e)
+                        if matches!(e.kind, ExprKind::Lambda { .. } | ExprKind::Variable(_)) =>
+                    {
+                        Some(e)
+                    }
                     _ => None,
                 };
                 if let Some(block_expr) = block_expr {
@@ -782,9 +819,23 @@ impl Interpreter {
         } else {
             &["before_save", "before_update"]
         };
-        // If neither method-name callbacks nor closure callbacks are
-        // registered, fall through to normal dispatch (no-op interception).
-        if callback_names.is_empty() && !has_closure_callbacks(&class.name, before_events) {
+        // Intercept when EITHER the before or the after set is non-empty.
+        //
+        // Gating on before-callbacks alone silently skipped an `after_create`-
+        // only model's callback here, while the VM path (which gates on either)
+        // ran it — so the same model behaved differently under `--dev` and in
+        // production. The after-callback block further down already handles
+        // this case; it was just never reached.
+        let after_events_gate: &[&str] = if method_name == "create" {
+            &["after_create", "after_save"]
+        } else {
+            &["after_update", "after_save"]
+        };
+        if callback_names.is_empty()
+            && callback_names_for(&class.name, after_events_gate).is_empty()
+            && !has_closure_callbacks(&class.name, before_events)
+            && !has_closure_callbacks(&class.name, after_events_gate)
+        {
             return Ok(None);
         }
 

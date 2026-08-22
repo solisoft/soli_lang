@@ -2,11 +2,11 @@
 
 pub mod array_ops;
 pub(crate) mod bool_methods;
-mod cascade;
+pub(crate) mod cascade;
 pub(crate) mod datetime_methods;
 pub(crate) mod decimal_methods;
 pub(crate) mod float_methods;
-mod function;
+pub(crate) mod function;
 mod hash_methods;
 pub(crate) mod int_methods;
 mod method;

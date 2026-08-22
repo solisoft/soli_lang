@@ -160,6 +160,25 @@ pub struct Vm {
 }
 
 impl Vm {
+    /// Materialise a `grouped {}` deferred result read out of an instance
+    /// field.
+    ///
+    /// The `GetProperty` / `GetLocalProperty` field fast paths push the stored
+    /// value straight onto the stack, so they never reach `op_get_property`'s
+    /// force. That left the placeholder in play whenever the value went into a
+    /// container or a native that matches `Value::Array` directly — including
+    /// `render("posts/index", { "posts": @posts })`, the documented shape.
+    /// The span is computed only on the rare deferred branch.
+    #[inline]
+    fn force_field_hit(&mut self, val: Value) -> Result<Value, RuntimeError> {
+        if let Value::Deferred(cell) = &val {
+            let span = self.current_span();
+            return crate::interpreter::builtins::model::batch::force(cell)
+                .map_err(|e| RuntimeError::General { message: e, span });
+        }
+        Ok(val)
+    }
+
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(256),
@@ -1790,6 +1809,7 @@ impl Vm {
                             }
                         };
                         if let Some(val) = hit {
+                            let val = self.force_field_hit(val)?;
                             self.stack.push(val);
                             continue;
                         }
@@ -1968,34 +1988,37 @@ impl Vm {
                         let result = self.run_jit_method_to_completion(&method, argc, span)?;
                         self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
-                        // Direct native call — same helper as CallMethod, no
-                        // per-call bound-wrapper allocation. Model subclasses
-                        // still EngineFallback so lifecycle callbacks fire in
-                        // the tree-walker (see op_get_property carve-out).
                         let receiver = self.stack[receiver_idx].clone();
                         if let Value::Instance(ref inst) = receiver {
                             if inst.borrow().class.is_model_subclass() {
-                                return Err(RuntimeError::EngineFallback(
-                                    format!("model instance method '{}'", name),
+                                self.call_model_instance_native(
+                                    inst.clone(),
+                                    native,
+                                    receiver_idx,
+                                    argc,
+                                    &name,
                                     span,
-                                ));
-                            }
-                            if let Some(expected) = native.arity {
-                                if argc != expected {
-                                    return Err(RuntimeError::wrong_arity(expected, argc, span));
+                                )?;
+                            } else {
+                                if let Some(expected) = native.arity {
+                                    if argc != expected {
+                                        return Err(RuntimeError::wrong_arity(
+                                            expected, argc, span,
+                                        ));
+                                    }
                                 }
+                                let user_args: Vec<Value> =
+                                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                                let _native_span =
+                                    crate::serve::span_log::maybe_instrument_native(&native.name);
+                                let result = crate::interpreter::executor::access::member::call_native_instance_method(
+                                    inst, &native, &user_args,
+                                )
+                                .map_err(|e| RuntimeError::new(e, span))?;
+                                drop(_native_span);
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
                             }
-                            let user_args: Vec<Value> =
-                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
-                            let _native_span =
-                                crate::serve::span_log::maybe_instrument_native(&native.name);
-                            let result = crate::interpreter::executor::access::member::call_native_instance_method(
-                                inst, &native, &user_args,
-                            )
-                            .map_err(|e| RuntimeError::new(e, span))?;
-                            drop(_native_span);
-                            self.stack.truncate(receiver_idx);
-                            self.stack.push(result);
                         } else {
                             return Err(RuntimeError::type_error(
                                 "super method called on non-instance",
@@ -2821,6 +2844,7 @@ impl Vm {
                         }
                     };
                     if let Some(val) = hit {
+                        let val = self.force_field_hit(val)?;
                         self.stack.push(val);
                         continue;
                     }
@@ -4400,12 +4424,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vm_model_instance_method_is_uncatchable_fallback() {
-        // Model instance mutators are deliberately punted to the
-        // tree-walker (lifecycle callbacks only fire there). The punt must
-        // be an EngineFallback error that try/rescue CANNOT swallow —
-        // otherwise `try { record.save() } catch` would skip the fallback
-        // and the callbacks with it.
+    fn test_vm_model_instance_save_runs_on_vm() {
         use crate::interpreter::value::{Class, Instance};
         use std::collections::HashMap;
 
@@ -4428,22 +4447,724 @@ mod tests {
         });
         let record = Value::Instance(Rc::new(RefCell::new(Instance::new(record_class))));
 
-        for source in [
-            "let x = record.save();",
-            "let x = \"start\"\ntry { record.save() } catch (e) { x = \"caught\" }",
-            "let x = record.save() rescue \"caught\";",
-        ] {
-            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
-            let program = Parser::new(tokens).parse().expect("parser error");
-            let module = Compiler::compile(&program).expect("compile error");
-            let mut vm = Vm::new();
-            vm.globals.insert("record".to_string(), record.clone());
-            let result = vm.execute(&module.main);
-            match result {
-                Err(err) => assert!(err.is_engine_fallback(), "{}: {}", source, err),
-                Ok(_) => panic!("{}: expected EngineFallback, got Ok", source),
-            }
+        let source = "let x = record.save();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), record);
+        vm.execute(&module.main).expect("save should run on the VM");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_vm_model_before_save_veto_skips_native() {
+        use crate::interpreter::builtins::model::callbacks::register_callback;
+        use crate::interpreter::value::{Class, Function, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static NATIVE_RAN: AtomicBool = AtomicBool::new(false);
+        NATIVE_RAN.store(false, Ordering::SeqCst);
+
+        let body_tokens = Scanner::new("return false")
+            .scan_tokens()
+            .expect("lex veto");
+        let body = Parser::new(body_tokens)
+            .parse()
+            .expect("parse veto")
+            .statements;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_methods.insert(
+            "save".to_string(),
+            Rc::new(NativeFunction::new("Model.save", None, |_| {
+                NATIVE_RAN.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let record_class = Rc::new(Class {
+            name: "VetoUser".to_string(),
+            superclass: Some(model_base),
+            native_methods,
+            ..Default::default()
+        });
+        record_class.methods.borrow_mut().insert(
+            "veto".to_string(),
+            Rc::new(Function {
+                name: "veto".to_string(),
+                body: body.into(),
+                ..Function::default()
+            }),
+        );
+        register_callback("VetoUser", "before_save", "veto");
+        let record = Value::Instance(Rc::new(RefCell::new(Instance::new(record_class))));
+
+        let source = "let x = record.save();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), record);
+        vm.execute(&module.main).expect("veto save");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(false)));
+        assert!(
+            !NATIVE_RAN.load(Ordering::SeqCst),
+            "before_save veto must skip the native"
+        );
+    }
+
+    #[test]
+    fn test_vm_model_class_create_runs_on_vm() {
+        use crate::interpreter::value::Class;
+        use std::collections::HashMap;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_static_methods.insert(
+            "create".to_string(),
+            Rc::new(NativeFunction::new("Model.create", None, |_| {
+                let mut pairs = crate::interpreter::value::HashPairs::default();
+                pairs.insert(
+                    crate::interpreter::value::HashKey::String("valid".into()),
+                    Value::Bool(true),
+                );
+                Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+            })),
+        );
+        let user_class = Rc::new(Class {
+            name: "CreateUser".to_string(),
+            superclass: Some(model_base),
+            native_static_methods,
+            ..Default::default()
+        });
+        let source = "let x = CreateUser.create({\"n\": 1});";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals
+            .insert("CreateUser".to_string(), Value::Class(user_class));
+        vm.execute(&module.main).expect("create on VM");
+        let x = vm.globals.get("x").expect("x");
+        match x {
+            Value::Hash(h) => assert_eq!(
+                h.borrow()
+                    .get(&crate::interpreter::value::HashKey::String("valid".into())),
+                Some(&Value::Bool(true))
+            ),
+            other => panic!("expected hash, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_vm_model_class_create_veto_returns_instance() {
+        use crate::interpreter::builtins::model::callbacks::register_callback;
+        use crate::interpreter::value::{Class, Function};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static NATIVE_RAN: AtomicBool = AtomicBool::new(false);
+        NATIVE_RAN.store(false, Ordering::SeqCst);
+
+        let body_tokens = Scanner::new("return false")
+            .scan_tokens()
+            .expect("lex veto");
+        let body = Parser::new(body_tokens)
+            .parse()
+            .expect("parse veto")
+            .statements;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_static_methods.insert(
+            "create".to_string(),
+            Rc::new(NativeFunction::new("Model.create", None, |_| {
+                NATIVE_RAN.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let user_class = Rc::new(Class {
+            name: "CreateVeto".to_string(),
+            superclass: Some(model_base),
+            native_static_methods,
+            ..Default::default()
+        });
+        user_class.methods.borrow_mut().insert(
+            "veto".to_string(),
+            Rc::new(Function {
+                name: "veto".to_string(),
+                body: body.into(),
+                ..Function::default()
+            }),
+        );
+        register_callback("CreateVeto", "before_save", "veto");
+
+        let source = "let x = CreateVeto.create({\"n\": 1});";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals
+            .insert("CreateVeto".to_string(), Value::Class(user_class));
+        vm.execute(&module.main).expect("veto create");
+        assert!(matches!(vm.globals.get("x"), Some(Value::Instance(_))));
+        assert!(!NATIVE_RAN.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_vm_model_delete_with_dependent_runs_on_vm() {
+        use crate::interpreter::builtins::model::relations::{
+            register_relation, DependentStrategy, RelationDef, RelationType,
+        };
+        use crate::interpreter::executor::calls::cascade;
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static CHILD_DELETED: AtomicBool = AtomicBool::new(false);
+        static OWNER_DELETED: AtomicBool = AtomicBool::new(false);
+        CHILD_DELETED.store(false, Ordering::SeqCst);
+        OWNER_DELETED.store(false, Ordering::SeqCst);
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut child_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        child_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                CHILD_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let child_class = Rc::new(Class {
+            name: "CascadePost".to_string(),
+            superclass: Some(model_base.clone()),
+            native_methods: child_natives,
+            ..Default::default()
+        });
+        let mut owner_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        owner_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                OWNER_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "CascadeUser".to_string(),
+            superclass: Some(model_base),
+            native_methods: owner_natives,
+            ..Default::default()
+        });
+        register_relation(
+            "CascadeUser",
+            RelationDef {
+                name: "posts".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "CascadePost".to_string(),
+                collection: "cascade_posts".to_string(),
+                foreign_key: "user_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+
+        let mut child_inst = Instance::new(child_class);
+        child_inst.set("_key", Value::String("post-1".into()));
+        let child = Value::Instance(Rc::new(RefCell::new(child_inst)));
+        cascade::set_test_cascade_children("user-1", vec![child]);
+
+        let mut owner_inst = Instance::new(owner_class);
+        owner_inst.set("_key", Value::String("user-1".into()));
+        let owner = Value::Instance(Rc::new(RefCell::new(owner_inst)));
+
+        let source = "let x = record.delete();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), owner);
+        vm.execute(&module.main)
+            .expect("dependent delete must stay on the VM");
+        cascade::clear_test_cascade_children();
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+        assert!(CHILD_DELETED.load(Ordering::SeqCst), "child delete native");
+        assert!(OWNER_DELETED.load(Ordering::SeqCst), "owner delete native");
+    }
+
+    #[test]
+    fn test_vm_model_delete_cycle_is_noop_not_fallback() {
+        use crate::interpreter::builtins::model::relations::{
+            register_relation, DependentStrategy, RelationDef, RelationType,
+        };
+        use crate::interpreter::executor::calls::cascade;
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static OWNER_DELETES: AtomicUsize = AtomicUsize::new(0);
+        OWNER_DELETES.store(0, Ordering::SeqCst);
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut owner_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        owner_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                OWNER_DELETES.fetch_add(1, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "CycleUser".to_string(),
+            superclass: Some(model_base.clone()),
+            native_methods: owner_natives,
+            ..Default::default()
+        });
+        let mut child_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        child_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                Ok(Value::Bool(true))
+            })),
+        );
+        let child_class = Rc::new(Class {
+            name: "CyclePost".to_string(),
+            superclass: Some(model_base),
+            native_methods: child_natives,
+            ..Default::default()
+        });
+        register_relation(
+            "CycleUser",
+            RelationDef {
+                name: "posts".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "CyclePost".to_string(),
+                collection: "cycle_posts".to_string(),
+                foreign_key: "user_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+        register_relation(
+            "CyclePost",
+            RelationDef {
+                name: "user".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "CycleUser".to_string(),
+                collection: "cycle_users".to_string(),
+                foreign_key: "post_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+
+        let mut owner_inst = Instance::new(owner_class);
+        owner_inst.set("_key", Value::String("cycle-u".into()));
+        let owner = Value::Instance(Rc::new(RefCell::new(owner_inst)));
+        let mut child_inst = Instance::new(child_class);
+        child_inst.set("_key", Value::String("cycle-p".into()));
+        let child = Value::Instance(Rc::new(RefCell::new(child_inst)));
+        cascade::set_test_cascade_children("cycle-u", vec![child.clone()]);
+        cascade::set_test_cascade_children("cycle-p", vec![owner.clone()]);
+
+        let source = "let x = record.delete();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), owner);
+        vm.execute(&module.main)
+            .expect("cycle delete must stay on the VM");
+        cascade::clear_test_cascade_children();
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+        assert_eq!(OWNER_DELETES.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_vm_model_delete_dependent_veto_skips_natives() {
+        use crate::interpreter::builtins::model::callbacks::register_callback;
+        use crate::interpreter::builtins::model::relations::{
+            register_relation, DependentStrategy, RelationDef, RelationType,
+        };
+        use crate::interpreter::executor::calls::cascade;
+        use crate::interpreter::value::{Class, Function, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static CHILD_DELETED: AtomicBool = AtomicBool::new(false);
+        static OWNER_DELETED: AtomicBool = AtomicBool::new(false);
+        CHILD_DELETED.store(false, Ordering::SeqCst);
+        OWNER_DELETED.store(false, Ordering::SeqCst);
+
+        let body_tokens = Scanner::new("return false")
+            .scan_tokens()
+            .expect("lex veto");
+        let body = Parser::new(body_tokens)
+            .parse()
+            .expect("parse veto")
+            .statements;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut owner_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        owner_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                OWNER_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "VetoCascadeUser".to_string(),
+            superclass: Some(model_base.clone()),
+            native_methods: owner_natives,
+            ..Default::default()
+        });
+        owner_class.methods.borrow_mut().insert(
+            "veto".to_string(),
+            Rc::new(Function {
+                name: "veto".to_string(),
+                body: body.into(),
+                ..Function::default()
+            }),
+        );
+        register_callback("VetoCascadeUser", "before_delete", "veto");
+        register_relation(
+            "VetoCascadeUser",
+            RelationDef {
+                name: "posts".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "CascadePost".to_string(),
+                collection: "cascade_posts".to_string(),
+                foreign_key: "user_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+
+        let mut child_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        child_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                CHILD_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let child_class = Rc::new(Class {
+            name: "VetoCascadePost".to_string(),
+            superclass: Some(model_base),
+            native_methods: child_natives,
+            ..Default::default()
+        });
+        let mut child_inst = Instance::new(child_class);
+        child_inst.set("_key", Value::String("post-v".into()));
+        cascade::set_test_cascade_children(
+            "user-v",
+            vec![Value::Instance(Rc::new(RefCell::new(child_inst)))],
+        );
+
+        let mut owner_inst = Instance::new(owner_class);
+        owner_inst.set("_key", Value::String("user-v".into()));
+        let owner = Value::Instance(Rc::new(RefCell::new(owner_inst)));
+
+        let source = "let x = record.delete();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), owner);
+        vm.execute(&module.main).expect("veto delete on VM");
+        cascade::clear_test_cascade_children();
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(false)));
+        assert!(!CHILD_DELETED.load(Ordering::SeqCst));
+        assert!(!OWNER_DELETED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_vm_model_delete_purges_attachments_on_vm() {
+        use crate::interpreter::builtins::model::uploaders::{register_uploader, UploaderConfig};
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static DETACHED: AtomicBool = AtomicBool::new(false);
+        static OWNER_DELETED: AtomicBool = AtomicBool::new(false);
+        DETACHED.store(false, Ordering::SeqCst);
+        OWNER_DELETED.store(false, Ordering::SeqCst);
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                OWNER_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "AttachUser".to_string(),
+            superclass: Some(model_base),
+            native_methods: natives,
+            ..Default::default()
+        });
+        register_uploader(
+            "AttachUser",
+            UploaderConfig {
+                name: "avatar".to_string(),
+                multiple: false,
+                content_types: vec!["image/png".to_string()],
+                max_size: 1_000_000,
+                collection: "attach_user_avatars".to_string(),
+                format: None,
+                quality: None,
+                max_width: None,
+                max_height: None,
+                service: "disk".to_string(),
+            },
+        );
+        let mut owner_inst = Instance::new(owner_class);
+        owner_inst.set("_key", Value::String("attach-1".into()));
+        let owner = Value::Instance(Rc::new(RefCell::new(owner_inst)));
+
+        let source = "let x = record.delete();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), owner);
+        vm.globals.insert(
+            "detach_all_uploads".to_string(),
+            Value::NativeFunction(NativeFunction::new("detach_all_uploads", Some(1), |_| {
+                DETACHED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        vm.execute(&module.main)
+            .expect("attachment delete must stay on the VM");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+        assert!(DETACHED.load(Ordering::SeqCst), "detach_all_uploads ran");
+        assert!(OWNER_DELETED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_vm_model_class_delete_loads_and_cascades() {
+        use crate::interpreter::builtins::model::relations::{
+            register_relation, DependentStrategy, RelationDef, RelationType,
+        };
+        use crate::interpreter::executor::calls::cascade;
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static CHILD_DELETED: AtomicBool = AtomicBool::new(false);
+        static OWNER_DELETED: AtomicBool = AtomicBool::new(false);
+        CHILD_DELETED.store(false, Ordering::SeqCst);
+        OWNER_DELETED.store(false, Ordering::SeqCst);
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut child_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        child_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                CHILD_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let child_class = Rc::new(Class {
+            name: "ClassDelPost".to_string(),
+            superclass: Some(model_base.clone()),
+            native_methods: child_natives,
+            ..Default::default()
+        });
+        let mut owner_natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        owner_natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                OWNER_DELETED.store(true, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "ClassDelUser".to_string(),
+            superclass: Some(model_base),
+            native_methods: owner_natives,
+            ..Default::default()
+        });
+        register_relation(
+            "ClassDelUser",
+            RelationDef {
+                name: "posts".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "ClassDelPost".to_string(),
+                collection: "class_del_posts".to_string(),
+                foreign_key: "user_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+
+        let mut child_inst = Instance::new(child_class);
+        child_inst.set("_key", Value::String("p-class".into()));
+        cascade::set_test_cascade_children(
+            "u-class",
+            vec![Value::Instance(Rc::new(RefCell::new(child_inst)))],
+        );
+
+        let mut owner_inst = Instance::new(owner_class.clone());
+        owner_inst.set("_key", Value::String("u-class".into()));
+        cascade::set_test_loaded_instance(
+            "u-class",
+            Value::Instance(Rc::new(RefCell::new(owner_inst))),
+        );
+
+        let source = "let x = ClassDelUser.delete(\"u-class\");";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals
+            .insert("ClassDelUser".to_string(), Value::Class(owner_class));
+        vm.execute(&module.main)
+            .expect("class delete must stay on the VM");
+        cascade::clear_test_cascade_children();
+        cascade::clear_test_loaded_instances();
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+        assert!(CHILD_DELETED.load(Ordering::SeqCst));
+        assert!(OWNER_DELETED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_vm_model_delete_try_rescue_is_not_fallback() {
+        use crate::interpreter::builtins::model::relations::{
+            register_relation, DependentStrategy, RelationDef, RelationType,
+        };
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model.delete", None, |_| {
+                Ok(Value::Bool(true))
+            })),
+        );
+        let owner_class = Rc::new(Class {
+            name: "RescueDelUser".to_string(),
+            superclass: Some(model_base),
+            native_methods: natives,
+            ..Default::default()
+        });
+        register_relation(
+            "RescueDelUser",
+            RelationDef {
+                name: "posts".to_string(),
+                relation_type: RelationType::HasMany,
+                class_name: "RescueDelPost".to_string(),
+                collection: "rescue_posts".to_string(),
+                foreign_key: "user_id".to_string(),
+                polymorphic_type_field: None,
+                polymorphic_type_value: None,
+                join_table: None,
+                association_foreign_key: None,
+                dependent: Some(DependentStrategy::Delete),
+                through: None,
+                source: None,
+                counter_cache: None,
+            },
+        );
+        let mut owner_inst = Instance::new(owner_class);
+        owner_inst.set("_key", Value::String("rescue-1".into()));
+        let owner = Value::Instance(Rc::new(RefCell::new(owner_inst)));
+        crate::interpreter::executor::calls::cascade::set_test_cascade_children("rescue-1", vec![]);
+
+        let source =
+            "let x = \"start\"\ntry { record.delete() } catch (e) { x = \"caught\" }\nlet y = record.delete() rescue \"caught\";";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), owner);
+        vm.execute(&module.main)
+            .expect("try/rescue must not see EngineFallback");
+        crate::interpreter::executor::calls::cascade::clear_test_cascade_children();
+        assert_eq!(vm.globals.get("x"), Some(&Value::String("start".into())));
+        assert_eq!(vm.globals.get("y"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_vm_class_method_missing_runs_on_vm() {
+        let source = r#"
+class Mailer {
+  def self.method_missing(name, args) {
+    return name
+  }
+}
+let x = Mailer.welcome()
+"#;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("method_missing on VM");
+        assert_eq!(vm.globals.get("x"), Some(&Value::String("welcome".into())));
     }
 
     #[test]

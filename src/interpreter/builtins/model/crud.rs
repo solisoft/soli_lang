@@ -181,9 +181,28 @@ pub fn clear_durable_commit() {
     DURABLE_COMMIT.with(|c| c.set(false));
 }
 
-/// Whether a transaction committed since the last [`clear_durable_commit`].
+/// Whether a durable write happened since the last [`clear_durable_commit`] —
+/// a committed transaction, or any write made outside one.
 pub fn had_durable_commit() -> bool {
     DURABLE_COMMIT.with(|c| c.get())
+}
+
+/// Note a write that is durable the moment it succeeds: one made outside any
+/// transaction.
+///
+/// Inside a transaction the commit is what makes writes durable, and
+/// `commit_transaction` marks that — marking here too would suppress the retry
+/// for writes a later rollback discards.
+///
+/// Without this the tripwire only caught `Model.transaction { … }`, so a bare
+/// `user.save()` / `Post.create(...)` on the VM followed by an `EngineFallback`
+/// later in the same handler was re-run on the tree-walker with the row already
+/// written — inserting it twice. That became reachable once model writes ran on
+/// the VM at all.
+pub(crate) fn mark_durable_write() {
+    if !has_active_tx() {
+        DURABLE_COMMIT.with(|c| c.set(true));
+    }
 }
 
 /// Run `run` inside a model-class transaction (begin on the receiver's
@@ -1361,7 +1380,20 @@ fn sql_write_in_tx_error(collection: &str) -> String {
 }
 
 /// Execute an insert with automatic collection creation.
+/// Insert a document, arming the durable-write tripwire on success.
 pub fn exec_insert(
+    collection: &str,
+    key: Option<&str>,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let result = exec_insert_inner(collection, key, document);
+    if result.is_ok() {
+        mark_durable_write();
+    }
+    result
+}
+
+fn exec_insert_inner(
     collection: &str,
     key: Option<&str>,
     mut document: serde_json::Value,
@@ -1480,7 +1512,21 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
 ///
 /// `merge == true` (Model.update / soft_delete / touch / restore) patches the
 /// provided fields into the existing document. `merge == false` replaces.
+/// Update a document, arming the durable-write tripwire on success.
 pub fn exec_update(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    let result = exec_update_inner(collection, key, document, merge);
+    if result.is_ok() {
+        mark_durable_write();
+    }
+    result
+}
+
+fn exec_update_inner(
     collection: &str,
     key: &str,
     mut document: serde_json::Value,
@@ -1537,7 +1583,21 @@ pub fn exec_update(
 /// Conditional PUT with an `If-Match: <expected_rev>` header. SoliDB returns
 /// HTTP 409 with a "has been modified" message when the revision no longer
 /// matches; callers use that to drive a CAS retry loop.
+/// Compare-and-swap update, arming the durable-write tripwire on success.
 pub fn exec_update_if_match(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+    expected_rev: &str,
+) -> Result<serde_json::Value, String> {
+    let result = exec_update_if_match_inner(collection, key, document, expected_rev);
+    if result.is_ok() {
+        mark_durable_write();
+    }
+    result
+}
+
+fn exec_update_if_match_inner(
     collection: &str,
     key: &str,
     document: serde_json::Value,
@@ -1625,7 +1685,16 @@ pub fn cas_field_delta(
 }
 
 /// Execute a delete with automatic collection creation.
+/// Delete a document, arming the durable-write tripwire on success.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    let result = exec_delete_inner(collection, key);
+    if result.is_ok() {
+        mark_durable_write();
+    }
+    result
+}
+
+fn exec_delete_inner(collection: &str, key: &str) -> Result<serde_json::Value, String> {
     // SQL-bound collections dispatch before the tx check — see exec_insert.
     if collection_is_sql(collection) {
         if get_current_tx_id().is_some() {

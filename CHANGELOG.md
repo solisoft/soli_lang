@@ -20,6 +20,44 @@
   `SOLI_ENGINE_LOG=1` still logs every demotion. Note the bytecode VM only runs outside
   `--dev`, so neither applies to `soli serve --dev` or `soli test`.
 - **Command substitution (backticks) compiles on the VM** as `System.shell`. Property access on a `Future` or a `grouped` `Deferred` auto-resolves, matching the tree-walker, so `` `printf hello`.stdout `` stays on the bytecode path.
+- **Model instance methods run on the VM.** `record.save()` / `update` / `touch` and the rest no longer
+  demote the handler so `before_save` can fire in the tree-walker. Method-name lifecycle callbacks are
+  compiled as methods with the record bound as `this`. A **closure-form** callback (`before_save do … end`)
+  still falls back: it needs the scope it captured, which the bytecode path cannot reconstruct. The
+  refusal is decided *before* the write, so a handler never demotes with the row already written.
+- **`Model.create` / `Model.update` run on the VM** with the same before/after callback wrap (temp
+  instance, hash round-trip, veto returns an instance with `_errors`).
+- **Class `method_missing` and model state-machine members run on the VM.** `UserMailer.welcome(user)`
+  no longer demotes the handler; `order.pay` / `paid?` / `can_pay?` dispatch on the bytecode path for a
+  machine with no `guard` and no transition hooks. A machine that declares any of those falls back,
+  for the same captured-scope reason as closure-form callbacks — checked before the state is written.
+  `pay!` persists through the same `save` wrap as a normal write.
+- **`record.delete()` / `Model.delete(id)` with `dependent:` or attachments stay on the VM.** Cascades
+  (including nested child callbacks and cycle no-ops) and `detach_all_uploads` run from the bytecode
+  wrap instead of demoting the handler.
+- **A handler is no longer re-run on the tree-walker once it has written to the database.** The
+  no-retry tripwire covered `Model.transaction { … }` commits only; it now also covers any write made
+  outside a transaction (`create` / `save` / `update` / `delete`, plus the bulk SQL paths that commit
+  on their own). A bare `Post.create(params)` followed later in the same handler by a construct the VM
+  refuses used to insert the record twice.
+- **`after_create`-only (and `after_update`-only) callbacks now fire.** A model declaring an `after_*`
+  callback with no matching `before_*` one silently skipped it in the tree-walker — so it ran in
+  production and not under `--dev` or `soli test`. Both engines now run it, matching the documented
+  callback table.
+- **Class `method_missing` no longer shadows reflection and dynamic finders.** On a class defining a
+  static `method_missing` (the `Mailer` shape), `Foo.send("bar")`, `Foo.methods()`, `Foo.class_eval(…)`
+  and `User.find_by_email("x")` dispatched into `method_missing` on the VM and returned a wrong value.
+  `method_missing` is now the last resort on both engines, as the tree-walker always ordered it.
+- **Columnar models still refuse the document API on the VM.** `create` / `update` / `delete` on a
+  columnar model raised through the shared choke point, but the new callback- and cascade-wrapping
+  paths called the native directly and skipped it, silently running the document API.
+- **A `grouped` deferred result materialises when read into a container.** The property fast paths
+  pushed the placeholder straight onto the stack, so `render("posts/index", { "posts": @posts })`
+  handed a deferred to the template even though iterating or indexing it resolved correctly.
+- **`Model.transaction(some_fn)` opens a transaction on both engines.** The VM intercepts any callable,
+  while the tree-walker only recognised a literal lambda or a `do … end` block — so that call committed
+  a real transaction in production and ran untransacted under `--dev`. A bare identifier is now
+  recognised too (a computed callee still differs, and is documented as such).
 
 ### SQL connection security
 

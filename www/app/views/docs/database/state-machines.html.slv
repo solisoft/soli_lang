@@ -253,7 +253,7 @@ Order.states()   # ["Pending", "Paid", "Shipped", "Delivered", "Cancelled"]</cod
             Production note
         </h4>
         <p class="text-amber-200/80 text-sm">
-            Under the production VM, state machine event methods transparently fall back to the tree-walking interpreter &mdash; the same mechanism model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.
+            Under the production VM, a machine with no guard and no transition hooks runs its event methods on the bytecode path. A machine that declares a <code class="text-cyan-400">guard</code>, a <code class="text-cyan-400">before_transition</code> or an <code class="text-cyan-400">after_transition</code> transparently falls back to the tree-walking interpreter for the whole handler &mdash; those hooks are closures that need the scope they were declared in, which only the interpreter can reconstruct. It is the same mechanism closure-form model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.
         </p>
     </div>
 
