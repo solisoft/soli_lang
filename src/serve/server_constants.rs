@@ -379,6 +379,7 @@ pub fn read_file_range(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
 
     // ---------- response wait timeout ----------
@@ -471,29 +472,36 @@ mod tests {
 
     // ---------- resolve_http_workers_from_env ----------
 
+    /// One process-wide lock for every env-mutating test helper in this
+    /// module. Two separate locks would not serialize against each other —
+    /// both helpers mutate `APP_ENV`, so concurrent libtest threads raced
+    /// and a worker-resolution test could observe another test's env
+    /// mid-restore (flaky only under some thread schedules, e.g. Windows).
+    static ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn set_env(name: &str, value: Option<&str>) {
+        match value {
+            Some(v) => std::env::set_var(name, v),
+            None => std::env::remove_var(name),
+        }
+    }
+
     fn with_worker_env(app_env: Option<&str>, soli_workers: Option<&str>, f: impl FnOnce()) {
-        use std::sync::{Mutex, OnceLock};
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _g = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _g = lock_env();
         let prev_app = std::env::var("APP_ENV").ok();
         let prev_workers = std::env::var("SOLI_WORKERS").ok();
-        match app_env {
-            Some(v) => std::env::set_var("APP_ENV", v),
-            None => std::env::remove_var("APP_ENV"),
-        }
-        match soli_workers {
-            Some(v) => std::env::set_var("SOLI_WORKERS", v),
-            None => std::env::remove_var("SOLI_WORKERS"),
-        }
+        set_env("APP_ENV", app_env);
+        set_env("SOLI_WORKERS", soli_workers);
         f();
-        match prev_app {
-            Some(v) => std::env::set_var("APP_ENV", v),
-            None => std::env::remove_var("APP_ENV"),
-        }
-        match prev_workers {
-            Some(v) => std::env::set_var("SOLI_WORKERS", v),
-            None => std::env::remove_var("SOLI_WORKERS"),
-        }
+        set_env("APP_ENV", prev_app.as_deref());
+        set_env("SOLI_WORKERS", prev_workers.as_deref());
     }
 
     #[test]
@@ -535,40 +543,17 @@ mod tests {
         secret: Option<&str>,
         f: impl FnOnce(),
     ) {
-        use std::sync::{Mutex, OnceLock};
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _g = LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _g = lock_env();
         let prev_app = std::env::var("APP_ENV").ok();
         let prev_hosts = std::env::var("SOLI_APP_HOSTS").ok();
         let prev_secret = std::env::var("SOLI_SESSION_SECRET").ok();
-        match app_env {
-            Some(v) => std::env::set_var("APP_ENV", v),
-            None => std::env::remove_var("APP_ENV"),
-        }
-        match hosts {
-            Some(v) => std::env::set_var("SOLI_APP_HOSTS", v),
-            None => std::env::remove_var("SOLI_APP_HOSTS"),
-        }
-        match secret {
-            Some(v) => std::env::set_var("SOLI_SESSION_SECRET", v),
-            None => std::env::remove_var("SOLI_SESSION_SECRET"),
-        }
+        set_env("APP_ENV", app_env);
+        set_env("SOLI_APP_HOSTS", hosts);
+        set_env("SOLI_SESSION_SECRET", secret);
         f();
-        match prev_app {
-            Some(v) => std::env::set_var("APP_ENV", v),
-            None => std::env::remove_var("APP_ENV"),
-        }
-        match prev_hosts {
-            Some(v) => std::env::set_var("SOLI_APP_HOSTS", v),
-            None => std::env::remove_var("SOLI_APP_HOSTS"),
-        }
-        match prev_secret {
-            Some(v) => std::env::set_var("SOLI_SESSION_SECRET", v),
-            None => std::env::remove_var("SOLI_SESSION_SECRET"),
-        }
+        set_env("APP_ENV", prev_app.as_deref());
+        set_env("SOLI_APP_HOSTS", prev_hosts.as_deref());
+        set_env("SOLI_SESSION_SECRET", prev_secret.as_deref());
     }
 
     #[test]
