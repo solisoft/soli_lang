@@ -32,7 +32,13 @@ __pycache__/
 
 # libFuzzer crash/timeout repros. Transient by nature and uploaded by the Fuzz
 # workflow; a repro worth keeping becomes a case in the relevant test module
-# (see `hostile_input_errors_instead_of_panicking_or_hanging`). The curated
-# seed corpus under fuzz/corpus/ IS tracked; a fuzzing run's own corpus growth
-# is not — it reached 16 MB in one session.
+# (see `hostile_input_errors_instead_of_panicking_or_hanging`).
 /fuzz/artifacts/
+
+# A fuzzing run's own corpus growth: regenerable, and it reached 16 MB in a
+# single session — which git would keep forever. The curated seeds live in
+# fuzz/seeds/ and ARE tracked; libFuzzer reads them and writes new inputs here.
+# Across CI runs this directory is carried by the workflow cache, not by git,
+# so nightly resumes from yesterday's corpus instead of starting cold.
+# Refresh the tracked seeds occasionally with `cargo fuzz cmin <target>`.
+/fuzz/corpus/

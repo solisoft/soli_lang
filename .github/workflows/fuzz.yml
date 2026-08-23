@@ -49,6 +49,19 @@ jobs:
           key: ${{ runner.os }}-cargo-fuzz-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-fuzz-${{ matrix.target }}-
 
+      # The corpus is what makes a 10-minute budget worth anything: without it
+      # every run rediscovers basic syntax before it can reach a real bug. It is
+      # deliberately NOT in git (one session produced 16 MB, which git would keep
+      # forever), so it is carried here instead. `run_id` in the key makes every
+      # run save a fresh entry; `restore-keys` picks up the newest previous one,
+      # so the corpus accumulates across nights.
+      - name: Restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
+
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
@@ -60,7 +73,12 @@ jobs:
           else
             MAX_TIME=20
           fi
-          cargo fuzz run "$TARGET" --fuzz-dir fuzz -- \
+          # Two corpus dirs: libFuzzer writes new inputs to the FIRST and reads
+          # the rest. So the tracked seeds in fuzz/seeds/ stay read-only and the
+          # run's own growth lands in the cached, gitignored fuzz/corpus/.
+          mkdir -p "fuzz/corpus/$TARGET"
+          cargo fuzz run "$TARGET" --fuzz-dir fuzz \
+            "fuzz/corpus/$TARGET" "fuzz/seeds/$TARGET" -- \
             -max_total_time=$MAX_TIME -rss_limit_mb=4096 -timeout=25
         env:
           TARGET: ${{ matrix.target }}
