@@ -53,10 +53,34 @@ jobs:
           --health-retries 15
           --health-start-period 30s
 
+      # SoliKV speaks RESP, and every command the KV specs exercise is a
+      # standard Redis one, so Redis backs them here. Without a server the
+      # KV specs skip every test and still report a pass: `kv_spec.sl` and
+      # `kv_extended_spec.sl` contributed 0 assertions to a green suite.
+      # With this service they contribute 165.
+      #
+      # Caveat worth keeping in mind: this verifies the *client* against RESP,
+      # not SoliKV itself. Should SoliKV ever diverge on one of these commands,
+      # CI stays green while SoliKV fails. Swap in a SoliKV image once one is
+      # published.
+      solikv:
+        image: redis:8
+        ports:
+          # The client defaults to 6380 (DEFAULT_RESP_PORT); Redis listens on
+          # 6379 inside the container.
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       PG_DATABASE_URL: postgres://soli:soli@localhost:5432/soli_test
       MYSQL_URL: mysql://root:soli@127.0.0.1:3306/soli_test
       SOLI_REQUIRE_DB: "1"
+      SOLIKV_RESP_HOST: 127.0.0.1
+      SOLIKV_RESP_PORT: "6380"
 
     steps:
       - uses: actions/checkout@v5
