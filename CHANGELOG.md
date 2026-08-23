@@ -45,9 +45,47 @@
 - **`CircuitBreaker.configure` accepts fractional `reset_after`.** The Float branch scaled to
   milliseconds and then passed the number to `Duration::from_secs`, so `{"reset_after": 0.5}` held the
   circuit open for 500 *seconds*.
-- **Released semaphore names are forgotten.** Slots were created per name and never reclaimed, so a
-  per-key pattern (`"import-#{tenant}"`) permanently filled the 1000-name store, after which every
-  `try_acquire` for a new name *raised* — a 500 inside a request handler.
+- **A per-key semaphore name no longer fills the store.** Slots were created per name and never
+  reclaimed, so a pattern like `"import-#{tenant}"` permanently filled the 1000-name store, after which
+  every `try_acquire` for a new name *raised* — a 500 inside a request handler. Unheld slots are now
+  reclaimed when the store hits its cap; the slot itself survives a drain, so a name still keeps the
+  limit its first caller fixed.
+- **`Retry.within` stops at its deadline.** It checked the deadline and then slept a full delay, so
+  `{"deadline": 2, "base_delay": 1.5}` ran for 4.5s and a 10s deadline could block ~18s at the default
+  `max_delay`. The sleep is clamped to the remaining budget.
+- **A money hash read back from JSON or the database gets its currency normalized too.** Normalizing
+  only in `Money.new` left `{"currency": "jpy"}` from a payload taking the wrong minor-unit exponent
+  (2 instead of 0) and missing its symbol.
+- **A deeply nested JSON body is rejected instead of killing the worker.** `json_parse` (and the
+  request-body parser behind `req["json"]`) uses the hand-rolled parser, which recursed one frame per
+  nesting level with no cap — so `[` × 100k aborted the process outright. A native stack overflow does
+  not unwind, so the per-request `catch_unwind` never saw it. Past 512 levels the parse now returns an
+  ordinary catchable error, and the request path treats it as an unparseable body. The consuming
+  `serde_json` → Value conversion is capped too; its by-reference twin already was.
+- **A success reported while a circuit is open no longer closes it.** `record_success` closed
+  unconditionally, so a call that started before the circuit tripped and finished late reopened the
+  floodgates — defeating the half-open probe. It now closes only from half-open and clears the count
+  when closed.
+- **`configure()`d circuits survive store pressure.** The reclaim predicate dropped exactly the
+  healthy circuits, configured ones included, so boot-time tuning silently reverted to the default
+  threshold under per-tenant naming. Configured, tripped and failing circuits are never evicted, and
+  when nothing is reclaimable the store refuses to grow rather than exceeding its cap — an untracked
+  name then fails open, so a full store cannot start refusing healthy traffic.
+- **`Semaphore.reset(name)`** drops a name and every token held on it. `release` was the only way to
+  free a slot, so a token leaked by a job that raised before releasing wedged that name for the life of
+  the process — the nightly job simply stopped running until a restart.
+- **Text-mode log lines cannot be forged.** The message and each field value were spliced raw into one
+  line, so a newline in user input (`Logger.info(params["email"])`) wrote a complete extra record,
+  `[ERROR]` and all. Both are escaped now; JSON mode was already safe.
+- **`Toml.parse` no longer leaks serde's datetime marker.** A TOML date came back as
+  `{"$__toml_private_datetime": "..."}` instead of the timestamp, so `config["when"]` was a one-key
+  hash — and dates are everywhere in real TOML.
+- **`Url.build` stops losing data.** A `query` hash silently dropped arrays and nested hashes (a
+  filter URL lost its filters); they now expand to the bracket names request params use. `username` /
+  `password` are honoured, so `Url.build(Url.parse(u))` keeps credentials instead of stripping them,
+  and an unknown key is an error rather than a silent no-op that hides a typo.
+- **`DateTime` answers `is_a?`.** It was the one universal member still missing, so generic dispatch
+  (`if v.is_a?("string") { … }`) raised on a DateTime rather than answering false.
 - **`Url` decoding matches request params.** `+` now decodes to a space (so `Url.params` and
   `req["params"]` agree on the same query), and an escape that is not valid UTF-8 is kept verbatim
   instead of being replaced with an empty string. `Url.set_param` rewrites only the named param and

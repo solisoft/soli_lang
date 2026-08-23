@@ -41,7 +41,7 @@ Url.set_param(&quot;https://ex.com/?a=1&amp;b=2&quot;, &quot;a&quot;, null);  # 
     </section>
     <section id="def-url-join-build" class="mb-16 scroll-mt-20">
         <h2 class="text-2xl font-bold text-white mb-6">Url.join(base, relative) / Url.build(hash)</h2>
-        <p class="text-gray-400 mb-4">Resolve relative references and construct URLs from parts. <code>build</code> accepts <code>scheme/host/port/path/query/fragment</code>; <code>query</code> may be a string or a params hash.</p>
+        <p class="text-gray-400 mb-4">Resolve relative references and construct URLs from parts. <code>build</code> accepts <code>scheme/username/password/host/port/path/query/fragment</code>, and an unknown key is an error so a typo is not a silent no-op; <code>query</code> may be a string or a params hash, whose arrays and nested hashes expand to the bracket names request params use (<code>tags[]=a&amp;tags[]=b</code>, <code>author[name]=x</code>).</p>
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Url.join(&quot;https://ex.com/a/b&quot;, &quot;c&quot;);       # &quot;https://ex.com/a/c&quot;
 Url.join(&quot;https://ex.com/a/b&quot;, &quot;?page=2&quot;); # &quot;https://ex.com/a/b?page=2&quot;

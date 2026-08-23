@@ -2317,6 +2317,14 @@ impl Interpreter {
                 "class" => Ok(Value::String("datetime".into())),
                 "nil?" | "blank?" => Ok(Value::Bool(false)),
                 "present?" => Ok(Value::Bool(true)),
+                // Lowercase names, as every other type's `is_a?` matches (and
+                // as `.class` above reports). Omitting it meant generic
+                // dispatch — `if v.is_a?("string") { … }` — raised on a
+                // DateTime instead of answering false.
+                "is_a?" => Ok(Value::method(crate::interpreter::value::ValueMethod {
+                    receiver: Box::new(Value::DateTime(ts)),
+                    method_name: name.to_string(),
+                })),
                 "inspect" | "to_s" => {
                     crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                         ts,

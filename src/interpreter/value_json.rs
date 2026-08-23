@@ -103,6 +103,19 @@ pub fn parse_json_sonic(s: &str) -> Result<Value, String> {
 /// the hand-rolled `parse_json` path used by `JSON.parse`). Use an explicit
 /// Decimal constructor or a model field type when money values are needed.
 pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
+    json_to_value_at(json, 0)
+}
+
+/// Same as [`json_to_value`], carrying the nesting depth.
+///
+/// The by-reference twin has always been depth-guarded; this consuming path was
+/// not, so a deep `serde_json::Value` (a DB document, a session blob) recursed
+/// unbounded here. A native stack overflow aborts without unwinding, so it is
+/// not something a caller can catch.
+fn json_to_value_at(json: serde_json::Value, depth: usize) -> Result<Value, String> {
+    if depth > MAX_JSON_DEPTH {
+        return Err("JSON structure nested too deeply".to_string());
+    }
     match json {
         serde_json::Value::Null => Ok(Value::Null),
         serde_json::Value::Bool(b) => Ok(Value::Bool(b)),
@@ -119,7 +132,7 @@ pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
         serde_json::Value::Array(arr) => {
             let mut items = Vec::with_capacity(arr.len());
             for v in arr {
-                items.push(json_to_value(v)?);
+                items.push(json_to_value_at(v, depth + 1)?);
             }
             Ok(Value::Array(Rc::new(RefCell::new(items))))
         }
@@ -128,7 +141,7 @@ pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
             // are per-document and short-lived, not long-lived hash tables.
             let mut map = HashPairs::with_capacity_and_hasher(obj.len(), json_map_hasher());
             for (k, v) in obj {
-                map.insert(HashKey::String(k.into()), json_to_value(v)?);
+                map.insert(HashKey::String(k.into()), json_to_value_at(v, depth + 1)?);
             }
             Ok(Value::Hash(Rc::new(RefCell::new(map))))
         }

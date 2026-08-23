@@ -18,10 +18,19 @@
 
 class Retry
     static def with_backoff(block, opts = {})
-        let attempts = opts["attempts"] || 3;
-        let base_delay = opts["base_delay"] || 0.5;
-        let max_delay = opts["max_delay"] || 8;
-        let factor = opts["factor"] || 2;
+        # `??` (nil-coalescing), not `||`: with `||` a supplied 0 is falsey and
+        # silently became the default, so `{"attempts": 0}` ran 3 times and
+        # `{"base_delay": 0}` slept 0.5s. Config-driven zeros are ordinary.
+        let attempts = opts["attempts"] ?? 3;
+        let base_delay = opts["base_delay"] ?? 0.5;
+        let max_delay = opts["max_delay"] ?? 8;
+        let factor = opts["factor"] ?? 2;
+
+        # Now that 0 survives, say what is out of range rather than throwing a
+        # null `last_error` from a loop that never ran.
+        if attempts < 1
+            throw "Retry.with_backoff(): \"attempts\" must be >= 1, got " + str(attempts);
+        end
 
         let delay = base_delay;
         let attempt = 0;
@@ -63,10 +72,12 @@ class Retry
     # max_delay entirely and retried at a constant 0.25s, so a long deadline
     # meant hundreds of tight retries against a service that was already down.
     static def within(block, opts = {})
-        let deadline_secs = opts["deadline"] || 10;
-        let base_delay = opts["base_delay"] || 0.5;
-        let max_delay = opts["max_delay"] || 8;
-        let factor = opts["factor"] || 2;
+        # See `with_backoff`: `??` so a supplied 0 means 0. `{"deadline": 0}`
+        # used to wait the full default 10 seconds.
+        let deadline_secs = opts["deadline"] ?? 10;
+        let base_delay = opts["base_delay"] ?? 0.5;
+        let max_delay = opts["max_delay"] ?? 8;
+        let factor = opts["factor"] ?? 2;
 
         let delay = base_delay;
         let started = DateTime.microtime();
@@ -77,10 +88,20 @@ class Retry
                 return block();
             } catch e {
                 last_error = e;
-                if DateTime.microtime() - started >= deadline_secs * 1000000.0 {
+                # Sleep only as long as the deadline still allows. Checking the
+                # deadline and then sleeping a full `delay` overshot it by up to
+                # one delay: `{"deadline": 2, "base_delay": 1.5}` took 4.5s, and
+                # with the default max_delay of 8 a failing check could block
+                # ~18s for a 10s deadline — the opposite of "ready within N".
+                let remaining = deadline_secs * 1000000.0 - (DateTime.microtime() - started)
+                if remaining <= 0 {
                     throw last_error;
                 }
-                sleep(delay);
+                let nap = delay
+                if nap * 1000000.0 > remaining {
+                    nap = remaining / 1000000.0
+                }
+                sleep(nap);
                 let next = delay * factor;
                 if next > max_delay {
                     next = max_delay;

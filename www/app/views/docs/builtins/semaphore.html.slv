@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Semaphore Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            A named, process-global counting semaphore: &ldquo;at most N of these running at once&rdquo; inside this process — e.g. a cron handler that must not overlap itself. Tokens are explicit; cross-process mutual exclusion belongs to job claiming. A name nobody holds any more is forgotten, so per-key names (<code>&quot;import-#{tenant}&quot;</code>) are safe to use.
+            A named, process-global counting semaphore: &ldquo;at most N of these running at once&rdquo; inside this process — e.g. a cron handler that must not overlap itself. Tokens are explicit; cross-process mutual exclusion belongs to job claiming. <code class="text-cyan-400">Semaphore.reset(name)</code> drops a name and every token on it &mdash; the recovery path when a job raises before releasing (release in a <code class="text-cyan-400">finally</code> to avoid needing it). A name keeps the limit its first caller fixed; at the 1000-name cap, names nobody currently holds are reclaimed, so per-key names (<code>&quot;import-#{tenant}&quot;</code>) are safe to use.
         </p>
     </div>
     <section id="def-semaphore-try-acquire" class="mb-16 scroll-mt-20">

@@ -33,8 +33,9 @@ pub fn register_toml_yaml_classes(env: &mut Environment) {
                     ))
                 }
             };
-            let parsed: serde_json::Value =
+            let mut parsed: serde_json::Value =
                 toml::from_str(&text).map_err(|e| format!("Toml.parse(): {e}"))?;
+            flatten_toml_datetimes(&mut parsed);
             match json_to_value_ref(&parsed)? {
                 Value::Hash(h) => Ok(Value::Hash(h)),
                 _ => Err("Toml.parse(): document is not a table".to_string()),
@@ -128,6 +129,39 @@ pub fn register_toml_yaml_classes(env: &mut Environment) {
             ..Default::default()
         })),
     );
+}
+
+/// Replace serde's private TOML datetime marker tables with their string form.
+///
+/// TOML has native date / datetime / time types, and bridging them through
+/// `serde_json::Value` renders each as a one-key table
+/// `{"$__toml_private_datetime": "1979-05-27T07:32:00Z"}`. That marker leaked
+/// straight into user data, so `Toml.parse("when = 1979-05-27T07:32:00Z")` gave
+/// `config["when"]` a hash instead of the timestamp — and dates are everywhere
+/// in real TOML config.
+fn flatten_toml_datetimes(v: &mut serde_json::Value) {
+    const MARKER: &str = "$__toml_private_datetime";
+    match v {
+        serde_json::Value::Object(map) => {
+            // A marker table has exactly this one key; anything else is a real
+            // table the user wrote and must be left alone.
+            if map.len() == 1 {
+                if let Some(inner @ serde_json::Value::String(_)) = map.get(MARKER) {
+                    *v = inner.clone();
+                    return;
+                }
+            }
+            for child in map.values_mut() {
+                flatten_toml_datetimes(child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items.iter_mut() {
+                flatten_toml_datetimes(child);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

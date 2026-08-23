@@ -17,6 +17,9 @@ on:
       - "src/template/**"
       - "src/interpreter/value_json.rs"
       - "src/interpreter/value_stringify.rs"
+      # Owns the hand-rolled JSON parser `json_parse` uses; it was missing
+      # here, so a change to that parser never triggered the smoke run.
+      - "src/interpreter/value.rs"
       - "fuzz/**"
 
 jobs:

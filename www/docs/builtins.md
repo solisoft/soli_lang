@@ -6102,7 +6102,7 @@ Parse, build, join, and manipulate URLs without string surgery. All methods are 
 | Method | Description |
 |--------|-------------|
 | `Url.parse(url)` | Hash of components: `scheme`, `username`, `password`, `host`, `port` (Int or null), `path`, `query`, `fragment`. Absent parts are null. |
-| `Url.build(hash)` | String from a hash; keys `scheme/host/port/path/query/fragment` override. `query` accepts a params hash. |
+| `Url.build(hash)` | String from a hash; keys `scheme/username/password/host/port/path/query/fragment` override, and an unknown key is an error (so a typo is not a silent no-op). `query` accepts a params hash: arrays and nested hashes expand to the bracket names request params use (`tags[]=a&tags[]=b`, `author[name]=x`). |
 | `Url.join(base, relative)` | Resolves a relative URL against a base. |
 | `Url.params(url)` | Hash of decoded query parameters. `+` decodes to a space and undecodable escapes are kept verbatim — the same rules request params use. |
 | `Url.param(url, name)` | Decoded parameter value, or null when absent. |
@@ -6191,6 +6191,12 @@ retried after another `reset_after`. State is process-global — every worker an
 circuit. Single-process by design; cross-process coordination belongs to job
 claiming.
 
+`record_success` closes a half-open circuit and clears the failure count on a
+closed one. A success reported while the circuit is **open** is ignored: it comes
+from a call that started before the circuit tripped and finished late, and
+closing on it would send every waiting caller back at a dependency that has not
+been re-tested.
+
 Callback-free by design — record outcomes explicitly:
 
 ```soli
@@ -6244,10 +6250,15 @@ once" inside this process (e.g. a cron handler that must not overlap itself).
 Tokens are explicit; single-process by design (cross-process mutual exclusion
 belongs to job claiming).
 
+A name keeps the limit its first caller fixed. Up to 1000 names are tracked; at
+that point names nobody currently holds are reclaimed, so per-key names
+(`"import-#{tenant}"`) are safe to use.
+
 | Method | Description |
 |--------|-------------|
 | `Semaphore.try_acquire(name, limit)` | Int token when a slot is free, null otherwise. The first call fixes the limit for that name. |
-| `Semaphore.release(name, token)` | Give the slot back. Returns true when the token was held; a name nobody holds any more is forgotten, so per-key names (`"import-#{tenant}"`) are safe to use. |
+| `Semaphore.release(name, token)` | Give the slot back. Returns true when the token was held. |
+| `Semaphore.reset(name)` | Drop the name and every token held on it. Returns true when the name existed. The recovery path for a token leaked by a job that raised before releasing — release it in a `finally` to avoid needing this. |
 | `Semaphore.count(name)` | `{ "limit": n, "held": k }`, or null if unknown. |
 
 ```soli

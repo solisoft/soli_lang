@@ -32,6 +32,22 @@ pub(crate) fn call_datetime_method_impl(
     arguments: &[Value],
     span: Span,
 ) -> RuntimeResult<Value> {
+    // `is_a?` is universal rather than a registered DateTime method, so it is
+    // answered here. Lowercase names, matching every other type's `is_a?` and
+    // the `"datetime"` that `.class` reports.
+    if method_name == "is_a?" {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let Value::String(class_name) = &arguments[0] else {
+            return Err(RuntimeError::type_error(
+                "is_a? expects a string argument",
+                span,
+            ));
+        };
+        let name = class_name.as_ref();
+        return Ok(Value::Bool(name == "datetime" || name == "object"));
+    }
     let Some(func) = datetime_method(method_name) else {
         return Err(RuntimeError::type_error(
             format!("DateTime has no method '{}'", method_name),

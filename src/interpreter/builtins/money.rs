@@ -94,7 +94,12 @@ fn parts_of(v: &Value, ctx: &str) -> Result<(Decimal, String), String> {
     let Value::String(cur) = currency else {
         return Err(format!("{ctx}: money hash \"currency\" must be a string"));
     };
-    Ok((amount_of(amount, ctx)?, cur.to_string()))
+    // Normalize here too, not just in `Money.new`. Money is documented as a
+    // plain hash that round-trips through JSON and the database, so a code can
+    // arrive from a payload or a record without ever passing through the
+    // constructor — and a lowercase "jpy" then took the wrong minor-unit
+    // exponent (2 instead of 0) and missed its symbol.
+    Ok((amount_of(amount, ctx)?, normalize_currency(cur, ctx)?))
 }
 
 fn make_money(amount: Decimal, currency: &str) -> Value {

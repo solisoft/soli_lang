@@ -131,6 +131,21 @@ fn render_field_json(v: &Value) -> String {
     }
 }
 
+/// Escape the line-breaking characters so one entry can never become two.
+///
+/// The text format splices the message and each field value straight into a
+/// single line, so `Logger.info(user_input)` let a newline in that input forge a
+/// complete extra record — timestamp, `[ERROR]`, the lot. Anything reading the
+/// log then sees an event that never happened. The JSON path is already safe
+/// because `serde_json` escapes; this gives the text path the same guarantee.
+fn one_line(raw: &str) -> std::borrow::Cow<'_, str> {
+    if raw.contains(['\n', '\r']) {
+        std::borrow::Cow::Owned(raw.replace('\r', "\\r").replace('\n', "\\n"))
+    } else {
+        std::borrow::Cow::Borrowed(raw)
+    }
+}
+
 /// Emit one entry: to stderr always, and into the capture ring if enabled.
 fn emit(level: Level, message: &str, fields: Option<&HashPairs>) {
     let cfg = read_config();
@@ -165,14 +180,18 @@ fn emit(level: Level, message: &str, fields: Option<&HashPairs>) {
         }
         format!("{{{}}}", parts.join(","))
     } else {
-        let mut line = format!("{ts} [{}] {}", level.name(), message);
+        let mut line = format!("{ts} [{}] {}", level.name(), one_line(message));
         if let Some(fields) = fields {
             for (k, v) in fields.iter() {
                 let key = match k {
                     HashKey::String(s) | HashKey::Symbol(s) => s.to_string(),
                     _ => continue,
                 };
-                line.push_str(&format!(" {}={}", key, render_field(v)));
+                line.push_str(&format!(
+                    " {}={}",
+                    one_line(&key),
+                    one_line(&render_field(v))
+                ));
             }
         }
         line

@@ -61,34 +61,91 @@ pub fn decode_query(query: &str) -> HashPairs {
     pairs
 }
 
+/// Nesting cap for query encoding.
+///
+/// `encode_pair` recurses through arrays and nested hashes, and a Soli hash can
+/// contain itself (`h["self"] = h`), so the recursion is not bounded by the
+/// input's size. A native stack overflow **aborts** without unwinding, so this
+/// has to be a cap rather than something a caller can catch after the fact —
+/// the same reason `parse_json` and `value_to_json` carry one.
+const MAX_QUERY_DEPTH: usize = 32;
+
 /// Decoded param hash → encoded query string (no leading `?`). Null values
 /// render as bare keys (`flag`), matching `decode_query`.
-pub fn encode_query(pairs: &HashPairs) -> String {
+///
+/// Errors when the structure nests past [`MAX_QUERY_DEPTH`]: bracket names that
+/// deep are not a real query string, and silently truncating would be the
+/// data-losing behaviour this function was fixed to stop doing.
+pub fn encode_query(pairs: &HashPairs) -> Result<String, String> {
     let mut parts: Vec<String> = Vec::new();
     for (k, v) in pairs.iter() {
         let key = match k {
             HashKey::String(s) | HashKey::Symbol(s) => s.to_string(),
             _ => continue,
         };
-        match v {
-            Value::Null => parts.push(urlencoding::encode(&key).to_string()),
-            other => {
-                let rendered = match other {
-                    Value::String(s) => s.to_string(),
-                    Value::Int(n) => n.to_string(),
-                    Value::Float(f) => f.to_string(),
-                    Value::Bool(b) => b.to_string(),
-                    _ => continue,
-                };
-                parts.push(format!(
-                    "{}={}",
-                    urlencoding::encode(&key),
-                    urlencoding::encode(&rendered)
-                ));
+        encode_pair(&mut parts, &key, v, 0)?;
+    }
+    Ok(parts.join("&"))
+}
+
+/// Encode one `key = value` into `parts`, expanding arrays and nested hashes
+/// with the bracket names the framework's own param decoding understands
+/// (`tags[]=a&tags[]=b`, `author[name]=x`).
+///
+/// The old code matched only scalars and `continue`d on anything else, so
+/// `Url.build({"query": {"tags": ["a", "b"], "page": 2}})` silently returned
+/// `?page=2` — a pagination or filter URL quietly losing its filters.
+fn encode_pair(parts: &mut Vec<String>, key: &str, v: &Value, depth: usize) -> Result<(), String> {
+    if depth > MAX_QUERY_DEPTH {
+        return Err(format!(
+            "query parameters nested too deeply (over {MAX_QUERY_DEPTH} levels)"
+        ));
+    }
+    match v {
+        Value::Null => parts.push(urlencoding::encode(key).to_string()),
+        Value::Array(items) => {
+            let nested = format!("{key}[]");
+            // Clone the handles so the borrow is released before recursing: a
+            // hash that contains itself would otherwise hit a RefCell
+            // double-borrow panic instead of the depth error.
+            let items: Vec<Value> = items.borrow().iter().cloned().collect();
+            for item in &items {
+                encode_pair(parts, &nested, item, depth + 1)?;
             }
         }
+        Value::Hash(h) => {
+            let entries: Vec<(HashKey, Value)> = h
+                .borrow()
+                .iter()
+                .map(|(k, val)| (k.clone(), val.clone()))
+                .collect();
+            for (k, val) in &entries {
+                let sub = match k {
+                    HashKey::String(s) | HashKey::Symbol(s) => s.to_string(),
+                    _ => continue,
+                };
+                encode_pair(parts, &format!("{key}[{sub}]"), val, depth + 1)?;
+            }
+        }
+        other => {
+            let rendered = match other {
+                Value::String(s) => s.to_string(),
+                Value::Int(n) => n.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Bool(b) => b.to_string(),
+                // Decimals and the like still have a faithful text form; using
+                // it beats dropping the parameter.
+                _ => crate::interpreter::value_stringify::stringify_to_string(other)
+                    .unwrap_or_else(|_| other.type_name().to_string()),
+            };
+            parts.push(format!(
+                "{}={}",
+                urlencoding::encode(key),
+                urlencoding::encode(&rendered)
+            ));
+        }
     }
-    parts.join("&")
+    Ok(())
 }
 
 /// Serialize a parsed URL back to a string, applying overrides from an
@@ -144,7 +201,8 @@ pub fn build_from_hash(base: &url::Url, opts: &HashPairs) -> Result<String, Stri
                     u.set_query(Some(s));
                 }
                 Value::Hash(h) => {
-                    let s = encode_query(&h.borrow());
+                    let s = encode_query(&h.borrow())
+                        .map_err(|e| format!("Url.build: \"query\": {e}"))?;
                     u.set_query(if s.is_empty() { None } else { Some(&s) });
                 }
                 Value::Null => u.set_query(None),
@@ -155,7 +213,35 @@ pub fn build_from_hash(base: &url::Url, opts: &HashPairs) -> Result<String, Stri
                 Value::Null => u.set_fragment(None),
                 _ => return Err("Url.build: \"fragment\" expects a string or null".to_string()),
             },
-            _ => {}
+            // `Url.parse` emits these, so ignoring them made the natural
+            // round-trip `Url.build(Url.parse(u))` silently strip credentials
+            // from an authenticated upstream URL.
+            "username" => match v {
+                Value::String(s) => u
+                    .set_username(s)
+                    .map_err(|e| format!("Url.build: bad username: {e:?}"))?,
+                Value::Null => u
+                    .set_username("")
+                    .map_err(|e| format!("Url.build: bad username: {e:?}"))?,
+                _ => return Err("Url.build: \"username\" expects a string or null".to_string()),
+            },
+            "password" => match v {
+                Value::String(s) => u
+                    .set_password(Some(s))
+                    .map_err(|e| format!("Url.build: bad password: {e:?}"))?,
+                Value::Null => u
+                    .set_password(None)
+                    .map_err(|e| format!("Url.build: bad password: {e:?}"))?,
+                _ => return Err("Url.build: \"password\" expects a string or null".to_string()),
+            },
+            // Name every key or say so. Silently ignoring the rest turned a
+            // typo (`"pathh"`) into a no-op that looked like it worked.
+            other => {
+                return Err(format!(
+                    "Url.build: unknown key \"{other}\" (expected scheme, username, password, \
+                     host, port, path, query, or fragment)"
+                ))
+            }
         }
     }
     Ok(u.to_string())
@@ -521,7 +607,35 @@ mod tests {
             pairs.get(&HashKey::String("n".into())),
             Some(&Value::String("42".into()))
         );
-        assert_eq!(encode_query(&pairs), "name=Ann%20Lee&flag&n=42");
+        assert_eq!(
+            encode_query(&pairs).expect("flat pairs encode"),
+            "name=Ann%20Lee&flag&n=42"
+        );
+    }
+
+    /// A hash can contain itself, so the bracket expansion must be bounded.
+    ///
+    /// Recursing on arrays and nested hashes to stop `Url.build` dropping them
+    /// introduced an unbounded recursion: `h["self"] = h` aborted the process
+    /// with a stack overflow, which does not unwind and so cannot be caught.
+    #[test]
+    fn encode_query_rejects_a_self_referential_hash() {
+        let inner = Rc::new(RefCell::new(HashPairs::default()));
+        inner
+            .borrow_mut()
+            .insert(HashKey::String("a".into()), Value::Int(1));
+        // Close the cycle: the hash holds itself under "self".
+        let cyclic = Value::Hash(inner.clone());
+        inner
+            .borrow_mut()
+            .insert(HashKey::String("self".into()), cyclic);
+
+        let err = encode_query(&inner.borrow())
+            .expect_err("a cyclic hash must be refused, not overflow the stack");
+        assert!(
+            err.contains("nested too deeply"),
+            "expected a depth error, got: {err}"
+        );
     }
 
     #[test]

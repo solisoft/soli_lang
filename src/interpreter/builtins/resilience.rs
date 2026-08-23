@@ -41,6 +41,11 @@ enum State {
 }
 
 struct Circuit {
+    /// Set by `configure()`. A configured circuit is never evicted: dropping it
+    /// silently restored the default threshold, so an app that tunes its
+    /// breakers at boot and uses per-tenant names lost that tuning at runtime
+    /// with no signal.
+    configured: bool,
     threshold: u32,
     reset_after: Duration,
     consecutive_failures: u32,
@@ -59,6 +64,7 @@ struct Circuit {
 impl Circuit {
     fn new() -> Self {
         Self {
+            configured: false,
             threshold: DEFAULT_THRESHOLD,
             reset_after: Duration::from_secs(DEFAULT_RESET_AFTER_SECS),
             consecutive_failures: 0,
@@ -94,9 +100,22 @@ impl Circuit {
     }
 
     fn record_success(&mut self) {
-        self.consecutive_failures = 0;
-        self.state = State::Closed;
-        self.probe_started = None;
+        match self.current() {
+            // The probe came back healthy: close up and forget the failures.
+            State::HalfOpen => {
+                self.consecutive_failures = 0;
+                self.state = State::Closed;
+                self.probe_started = None;
+            }
+            State::Closed => self.consecutive_failures = 0,
+            // A success reported while the circuit is OPEN did not come from
+            // the admitted probe — it is a call that started before the circuit
+            // tripped and finished late. Closing on it undid the trip and sent
+            // the whole herd back at a dead dependency, which is exactly what
+            // the half-open probe exists to prevent. Leave the circuit open and
+            // let the cool-down decide.
+            State::Open { .. } => {}
+        }
     }
 
     fn record_failure(&mut self) {
@@ -130,24 +149,23 @@ lazy_static::lazy_static! {
 
 fn with_circuit<R>(name: &str, f: impl FnOnce(&mut Circuit) -> R) -> R {
     let mut guard = CIRCUITS.write().unwrap_or_else(|e| e.into_inner());
-    if !guard.contains_key(name) {
+    if !guard.contains_key(name) && guard.len() >= MAX_CIRCUITS {
         // Bound the store so hostile/rotating names cannot grow it forever.
+        //
+        // Only untouched, healthy circuits are reclaimable: one that is
+        // configured, tripped, or counting failures carries state a caller is
+        // relying on. The old predicate reclaimed exactly the healthy ones
+        // *including* configured ones, which is how boot-time tuning vanished.
+        guard.retain(|_, c| {
+            c.configured || c.consecutive_failures > 0 || !matches!(c.state, State::Closed)
+        });
         if guard.len() >= MAX_CIRCUITS {
-            // Reclaim circuits that are closed-and-idle first; if none can
-            // go, refuse rather than grow (same posture as the rate limiter).
-            guard.retain(|_, c| c.consecutive_failures > 0 || !matches!(c.state, State::Closed));
-            if guard.len() >= MAX_CIRCUITS && !guard.contains_key(name) {
-                // Fall through: creating the entry is still allowed because
-                // a fresh Circuit is Closed and reclaimable, but keep the
-                // store from exceeding the cap by evicting one closed entry.
-                if let Some(k) = guard
-                    .iter()
-                    .find(|(_, c)| matches!(c.state, State::Closed))
-                    .map(|(k, _)| k.clone())
-                {
-                    guard.remove(&k);
-                }
-            }
+            // Nothing reclaimable. Refuse to grow — every tracked circuit here
+            // is carrying real state, and silently exceeding the cap is how an
+            // unbounded store starts. `allow()` on an untracked name therefore
+            // fails OPEN (the call proceeds), which is the safe direction: a
+            // full store must not start refusing healthy traffic.
+            return f(&mut Circuit::new());
         }
     }
     let entry = guard.entry(name.to_string()).or_insert_with(Circuit::new);
@@ -260,6 +278,7 @@ pub fn register_circuit_breaker_class(env: &mut Environment) {
                     }
                 }
                 with_circuit(&name, |c| {
+                    c.configured = true;
                     if let Some(t) = threshold {
                         c.threshold = t;
                     }
@@ -492,15 +511,14 @@ pub fn register_semaphore_class(env: &mut Environment) {
                     let before = slot.held.len();
                     slot.held.retain(|t| *t != token);
                     let released = slot.held.len() != before;
-                    // Reclaim the slot once nothing holds it. Keeping an empty
-                    // slot forever meant a per-key naming pattern
-                    // ("import-#{tenant}") permanently filled the store, after
-                    // which every `try_acquire` for a new name *raised* — a 500
-                    // inside a request handler. `CIRCUITS` evicts idle entries;
-                    // this now does too.
-                    if slot.held.is_empty() {
-                        guard.remove(&name);
-                    }
+                    // The slot stays, so the name keeps the limit its first
+                    // caller fixed — dropping it here reclaimed memory but also
+                    // reset the limit, letting `try_acquire("q", 10)` silently
+                    // reconfigure a semaphore first created with limit 1.
+                    // Reclamation instead happens in `try_acquire`, which prunes
+                    // unheld slots when the store is at its cap: that is what
+                    // stops a per-key pattern ("import-#{tenant}") from filling
+                    // the store, without weakening the sticky limit.
                     Ok(Value::Bool(released))
                 }
                 None => Ok(Value::Bool(false)),
@@ -529,6 +547,22 @@ pub fn register_semaphore_class(env: &mut Environment) {
                 }
                 None => Ok(Value::Null),
             }
+        })),
+    );
+
+    // Semaphore.reset(name) — drop the name and every token held on it.
+    //
+    // `release` was the only way to free a slot, so a token leaked by a job
+    // that raised before releasing wedged that name for the life of the
+    // process: every later `try_acquire` returned null and the nightly job
+    // simply stopped running until a restart. `CircuitBreaker` already had a
+    // `reset`; this is the same escape hatch for operators and tests.
+    m.insert(
+        "reset".to_string(),
+        Rc::new(NativeFunction::new("Semaphore.reset", Some(1), |args| {
+            let name = semaphore_arg_name(&args[0], "Semaphore.reset() name")?;
+            let mut guard = SEMAPHORES.write().unwrap_or_else(|e| e.into_inner());
+            Ok(Value::Bool(guard.remove(&name).is_some()))
         })),
     );
 

@@ -23,3 +23,9 @@ node_modules
 # codegraph sub-crate build artifacts
 /codegraph/target/
 /codegraph/Cargo.lock
+
+# generated builtin API coverage audit
+/builtin_coverage_report.md
+
+# bytecode cache from scripts/builtin_audit.py
+__pycache__/

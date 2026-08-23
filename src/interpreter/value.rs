@@ -2150,7 +2150,7 @@ pub fn parse_json(s: &str) -> Result<Value, String> {
 /// Parse JSON from bytes.
 pub fn parse_json_bytes(bytes: &[u8]) -> Result<Value, String> {
     let mut pos = 0;
-    let value = parse_value(bytes, &mut pos)?;
+    let value = parse_value(bytes, &mut pos, 0)?;
     skip_ws(bytes, &mut pos);
     if pos < bytes.len() {
         return Err(format!("Trailing content at position {}", pos));
@@ -2190,12 +2190,33 @@ fn peek(b: &[u8], pos: &mut usize) -> Result<u8, String> {
     }
 }
 
+/// Nesting cap for the hand-rolled parser.
+///
+/// `[[[[…]]]]` recurses one frame per level, and a native stack overflow
+/// **aborts** the process without unwinding — so the per-request
+/// `catch_unwind` never sees it and one hostile request takes down the worker.
+/// A web payload has no legitimate reason to nest hundreds deep, so past this
+/// the parse returns an ordinary catchable error.
+///
+/// The depth guards added for JSON earlier covered only the
+/// `serde_json`↔`Value` conversion helpers in `value_json.rs`; `json_parse`
+/// uses this parser, which had no guard at all. Kept equal to
+/// `value_json::MAX_JSON_DEPTH` so parsing and serializing agree on what is
+/// representable.
+pub(crate) const MAX_JSON_PARSE_DEPTH: usize = 512;
+
 #[inline(always)]
-fn parse_value(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+fn parse_value(b: &[u8], pos: &mut usize, depth: usize) -> Result<Value, String> {
+    if depth > MAX_JSON_PARSE_DEPTH {
+        return Err(format!(
+            "JSON nested too deeply (over {MAX_JSON_PARSE_DEPTH} levels) at position {pos}",
+            pos = *pos
+        ));
+    }
     match peek(b, pos)? {
         b'"' => parse_string(b, pos).map(Value::String),
-        b'{' => parse_object(b, pos),
-        b'[' => parse_array(b, pos),
+        b'{' => parse_object(b, pos, depth),
+        b'[' => parse_array(b, pos, depth),
         b't' => parse_literal(b, pos, b"true", Value::Bool(true)),
         b'f' => parse_literal(b, pos, b"false", Value::Bool(false)),
         b'n' => parse_literal(b, pos, b"null", Value::Null),
@@ -2407,7 +2428,7 @@ fn parse_hex4(b: &[u8], pos: &mut usize) -> Result<u16, String> {
     Ok(val)
 }
 
-fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+fn parse_array(b: &[u8], pos: &mut usize, depth: usize) -> Result<Value, String> {
     *pos += 1; // skip '['
     if peek(b, pos)? == b']' {
         *pos += 1;
@@ -2416,7 +2437,7 @@ fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     // 32 covers typical API page sizes better than 16 with one fewer realloc.
     let mut items = Vec::with_capacity(32);
     loop {
-        items.push(parse_value(b, pos)?);
+        items.push(parse_value(b, pos, depth + 1)?);
         match peek(b, pos)? {
             b',' => *pos += 1,
             b']' => {
@@ -2428,7 +2449,7 @@ fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     }
 }
 
-fn parse_object(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+fn parse_object(b: &[u8], pos: &mut usize, depth: usize) -> Result<Value, String> {
     *pos += 1; // skip '{'
     if peek(b, pos)? == b'}' {
         *pos += 1;
@@ -2447,7 +2468,7 @@ fn parse_object(b: &[u8], pos: &mut usize) -> Result<Value, String> {
             return Err(format!("Expected ':' at position {}", *pos));
         }
         *pos += 1;
-        let value = parse_value(b, pos)?;
+        let value = parse_value(b, pos, depth + 1)?;
         pairs.insert(HashKey::String(key), value);
         match peek(b, pos)? {
             b',' => *pos += 1,
@@ -3152,6 +3173,39 @@ mod value_misc_tests {
     fn parse_json_nested() {
         let r = parse_json(r#"{"items": [1, {"k": "v"}], "n": null}"#);
         assert!(r.is_ok(), "nested parse failed: {:?}", r.err());
+    }
+
+    /// A hostile request body must not abort the worker.
+    ///
+    /// `[` × 100_000 recursed one frame per level in the hand-rolled parser,
+    /// and a native stack overflow aborts without unwinding — so the
+    /// per-request `catch_unwind` never saw it and one request killed the
+    /// process. The depth guards shipped for JSON earlier covered only the
+    /// `serde_json` conversion helpers, not this parser.
+    #[test]
+    fn parse_json_deeply_nested_is_an_error_not_an_abort() {
+        let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
+        let err = parse_json(&deep).expect_err("deeply nested JSON must be rejected");
+        assert!(
+            err.contains("nested too deeply"),
+            "expected a depth error, got: {err}"
+        );
+
+        // The request path swallows the error into `None` rather than crashing.
+        assert!(crate::interpreter::builtins::server::parse_json_body(&deep).is_none());
+
+        // Ordinary nesting still parses.
+        assert!(parse_json("{\"a\":[1,{\"b\":[2,3]}]}").is_ok());
+        // And so does a document just inside the cap.
+        let ok_depth = format!(
+            "{}1{}",
+            "[".repeat(MAX_JSON_PARSE_DEPTH - 1),
+            "]".repeat(MAX_JSON_PARSE_DEPTH - 1)
+        );
+        assert!(
+            parse_json(&ok_depth).is_ok(),
+            "depth just under the cap must parse"
+        );
     }
 
     #[test]
