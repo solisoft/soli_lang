@@ -129,7 +129,13 @@ impl Parser {
         if !self.is_at_end() {
             self.current += 1;
         }
-        self.tokens[self.current - 1].clone()
+        // `saturating_sub`, because `current` can still be 0 here: at EOF the
+        // cursor does not move, so a caller that reaches `advance()` while the
+        // stream is already at its Eof token computes `0 - 1`. That underflow
+        // panicked the parser on hostile input (found by the `parse_program`
+        // fuzz target). The scanner always emits a trailing Eof, so index 0 is
+        // always a real token to hand back.
+        self.tokens[self.current.saturating_sub(1)].clone()
     }
 
     pub(crate) fn peek(&self) -> &Token {
@@ -137,7 +143,8 @@ impl Parser {
     }
 
     pub(crate) fn previous(&self) -> &Token {
-        &self.tokens[self.current - 1]
+        // Same underflow as `advance`: nothing precedes the first token.
+        &self.tokens[self.current.saturating_sub(1)]
     }
 
     pub(crate) fn peek_nth(&self, n: usize) -> &Token {

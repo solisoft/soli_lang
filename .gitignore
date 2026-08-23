@@ -29,3 +29,10 @@ node_modules
 
 # bytecode cache from scripts/builtin_audit.py
 __pycache__/
+
+# libFuzzer crash/timeout repros. Transient by nature and uploaded by the Fuzz
+# workflow; a repro worth keeping becomes a case in the relevant test module
+# (see `hostile_input_errors_instead_of_panicking_or_hanging`). The curated
+# seed corpus under fuzz/corpus/ IS tracked; a fuzzing run's own corpus growth
+# is not — it reached 16 MB in one session.
+/fuzz/artifacts/

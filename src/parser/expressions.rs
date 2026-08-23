@@ -672,7 +672,14 @@ impl Parser {
                 | Some(TokenKind::Match) => {
                     return true;
                 }
-                Some(_) | None => {
+                // Running out of tokens means the braces never balanced, so the
+                // parse is going to fail regardless; treat it as a hash and let
+                // the real error surface. `None` used to fall into the `i += 1`
+                // arm below and scan past the end forever — `({{` was enough to
+                // hang the parser indefinitely, which is what the
+                // `parse_program` fuzz target reported as a timeout.
+                None => return false,
+                Some(_) => {
                     i += 1;
                 }
             }

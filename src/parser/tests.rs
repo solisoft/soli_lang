@@ -7,6 +7,36 @@ mod parser_tests {
     use crate::lexer::Scanner;
     use crate::parser::Parser;
 
+    /// Hostile input must produce a parse error, never a panic or a hang.
+    ///
+    /// Both cases came from the `parse_program` fuzz target, which had been
+    /// failing nightly:
+    ///
+    /// * `advance()` did `tokens[current - 1]`, and at EOF the cursor does not
+    ///   move — so reaching it at index 0 computed `0 - 1` and panicked with
+    ///   "attempt to subtract with overflow".
+    /// * `is_nested_block_expression`'s scan treated running off the end of the
+    ///   token stream as "keep going", so unbalanced braces looped forever.
+    ///   `({{` was enough to hang the parser indefinitely.
+    #[test]
+    fn hostile_input_errors_instead_of_panicking_or_hanging() {
+        // Each of these previously panicked or never returned. The assertion is
+        // that parsing RETURNS at all — Ok or Err are both acceptable outcomes.
+        for src in [
+            "A/ Irntpoeertnll int(\"Hel\u{7ff} #{}!\")aee",
+            "-m ({{&:  t",
+            "({{",
+            "{",
+            "(",
+            "",
+        ] {
+            let Ok(tokens) = Scanner::new(src).scan_tokens() else {
+                continue; // rejected by the lexer, which is a fine outcome
+            };
+            let _ = Parser::new(tokens).parse();
+        }
+    }
+
     fn parse_expr(source: &str) -> Expr {
         let tokens = Scanner::new(source).scan_tokens().unwrap();
         let mut parser = Parser::new(tokens);
