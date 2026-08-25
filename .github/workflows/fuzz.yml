@@ -62,8 +62,12 @@ jobs:
           key: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
+      # The cargo cache above carries ~/.cargo/bin, so a restored cache already
+      # has the binary and a plain `cargo install` aborts with "binary
+      # `cargo-fuzz` already exists in destination" (exit 101) before the fuzz
+      # step ever runs. Install only when it is genuinely missing.
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --locked
 
       - name: Fuzz (${{ github.event_name == 'schedule' && '10 min' || 'smoke' }})
         id: fuzz

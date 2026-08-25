@@ -12,8 +12,22 @@ fuzz_target!(|data: &[u8]| {
     let Ok(source) = std::str::from_utf8(data) else {
         return;
     };
-    if let Ok(nodes) = parse_template(source) {
-        let no_partials: Option<&dyn Fn(&str, &Value) -> Result<String, String>> = None;
-        let _ = render_nodes_with_path(&nodes, &Value::Null, no_partials, None);
+    let Ok(nodes) = parse_template(source) else {
+        return;
+    };
+    // `<%= ... %>` is handed to the *core* language parser and interpreter, so a
+    // backtick inside a tag is command substitution: rendering it spawns
+    // `sh -c <fuzzer bytes>` on a detached thread and returns a Future the
+    // renderer drops unread. That both runs arbitrary shell on the fuzzing host
+    // and makes LeakSanitizer report the in-flight thread's allocations as
+    // leaked, failing the run with exit 77. Rendering is meant to be
+    // side-effect free here (partials are already stubbed out), so skip any
+    // input that can reach it. Parsing such a template is still fuzzed above —
+    // only the render is skipped, and only for the whole input, since the
+    // cheap check cannot tell a backtick in an ERB tag from one in body text.
+    if source.contains('`') {
+        return;
     }
+    let no_partials: Option<&dyn Fn(&str, &Value) -> Result<String, String>> = None;
+    let _ = render_nodes_with_path(&nodes, &Value::Null, no_partials, None);
 });
