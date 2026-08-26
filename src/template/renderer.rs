@@ -685,7 +685,9 @@ mod tests {
             "<%= request %>",
             "<%= set_header %>",
         ] {
-            let nodes = parse_template(source).expect("parse");
+            let Ok(nodes) = parse_template(source) else {
+                panic!("{source:?} should parse");
+            };
             // Must not panic; rendering it either way is fine.
             let _ = render_nodes(&nodes, &Value::Null, None);
         }
@@ -695,9 +697,11 @@ mod tests {
     /// zero-argument callable is still invoked without parentheses.
     #[test]
     fn a_paren_free_zero_arg_method_is_still_called() {
-        let nodes = parse_template("<%= name.upcase %>").unwrap();
+        let Ok(nodes) = parse_template("<%= name.upcase %>") else {
+            panic!("template should parse");
+        };
         let data = make_hash(vec![("name", Value::String("ada".into()))]);
-        assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "ADA");
+        assert_eq!(render_nodes(&nodes, &data, None), Ok("ADA".to_string()));
     }
 
     #[test]
