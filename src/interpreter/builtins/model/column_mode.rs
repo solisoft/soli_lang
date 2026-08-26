@@ -23,7 +23,7 @@ pub fn bind_from_value(value: &Value) -> Result<crate::db::sql_compile::SqlBind,
         Value::Float(f) => SqlBind::F64(*f),
         Value::Bool(b) => SqlBind::Bool(*b),
         Value::Decimal(d) => SqlBind::Text(d.to_string()),
-        Value::DateTime(_) => SqlBind::Text(
+        Value::DateTime(_, _) => SqlBind::Text(
             crate::interpreter::value::value_to_json(value)
                 .ok()
                 .and_then(|j| j.as_str().map(str::to_string))
@@ -898,7 +898,8 @@ fn parse_datetime(raw: &str) -> Option<Value> {
     // writing such a value back rewrote the row with that wrong date.
     crate::interpreter::builtins::datetime::helpers::datetime_parse(raw)
         .and_then(|secs| secs.checked_mul(1_000_000_000))
-        .map(Value::DateTime)
+        // Default (local-component) view, like every other DateTime constructor.
+        .map(Value::datetime)
 }
 
 /// Introspect every declared column-aware model and validate the combination of

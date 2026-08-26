@@ -1388,6 +1388,18 @@ impl TypeEnvironment {
                 is_static: false,
             },
         );
+        // Instance view toggles (same name "utc" as the static constructor is fine
+        // for type-checking — both are zero-arg → DateTime).
+        datetime_class.methods.insert(
+            "local".to_string(),
+            MethodInfo {
+                name: "local".to_string(),
+                params: vec![],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: false,
+            },
+        );
         // Period-boundary helpers — zero-arg, return a new DateTime.
         // Keep in sync with `datetime_class.rs` registrations.
         for name in [

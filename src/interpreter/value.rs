@@ -375,7 +375,13 @@ pub enum Value {
     Instance(Rc<RefCell<Instance>>),
     /// An instant, as nanoseconds since the Unix epoch. Native rather than
     /// an `Instance` so a DateTime costs no allocation and no hash lookup.
-    DateTime(i64),
+    ///
+    /// The `bool` is a **display/component view**: `false` = process-local
+    /// zone (default), `true` = UTC. Component accessors (`year`, `hour`,
+    /// `format`, …) and string rendering honour it; equality, ordering,
+    /// `to_unix`, and `to_iso` always use the instant. Toggle with
+    /// `.utc()` / `.local()`.
+    DateTime(i64, bool),
     /// Future value (async result that auto-resolves when used)
     Future(Arc<Mutex<FutureState>>),
     /// Method on a value (array/hash) - captures receiver and method name.
@@ -541,12 +547,11 @@ impl Value {
         Value::String(s.into())
     }
 
-    /// If this value is a `DateTime` instance, return the nanosecond
-    /// timestamp stored in its private `_ts` field. Used by equality and
-    /// ordering so two distinct `DateTime` instances pointing at the same
-    /// moment compare equal and order correctly.
+    /// If this value is a `DateTime`, return the nanosecond timestamp.
+    /// Used by equality and ordering so two DateTimes pointing at the same
+    /// moment compare equal and order correctly (view flag ignored).
     pub fn datetime_ts(&self) -> Option<i64> {
-        if let Value::DateTime(ts) = self {
+        if let Value::DateTime(ts, _) = self {
             return Some(*ts);
         }
         if let Value::Instance(inst) = self {
@@ -558,6 +563,18 @@ impl Value {
             }
         }
         None
+    }
+
+    /// Construct a DateTime in the default (local-component) view.
+    #[inline]
+    pub fn datetime(nanos: i64) -> Value {
+        Value::DateTime(nanos, false)
+    }
+
+    /// Construct a DateTime whose component accessors use UTC.
+    #[inline]
+    pub fn datetime_utc_view(nanos: i64) -> Value {
+        Value::DateTime(nanos, true)
     }
 
     /// Whether calling this value with `()` can dispatch somewhere — i.e.
@@ -576,15 +593,22 @@ impl Value {
         )
     }
 
-    /// How a `DateTime` renders in string position — local wall clock, the
-    /// same format `to_string()` produces, so `str(d)` and `d.to_string()`
-    /// agree. Previously a DateTime was an `Instance` and rendered with the
+    /// How a `DateTime` renders in string position — wall clock in the
+    /// selected view (local by default, UTC after `.utc()`), the same format
+    /// `to_string()` produces, so `str(d)` and `d.to_string()` agree.
+    /// Previously a DateTime was an `Instance` and rendered with the
     /// generic object form, leaking the internal field as
     /// `<DateTime _ts: 1794744000000000000>`.
-    pub fn render_datetime(ts: i64) -> String {
-        crate::interpreter::builtins::datetime::local_zone::local_from_nanos(ts)
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string()
+    pub fn render_datetime(ts: i64, use_utc: bool) -> String {
+        if use_utc {
+            chrono::DateTime::from_timestamp_nanos(ts)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        } else {
+            crate::interpreter::builtins::datetime::local_zone::local_from_nanos(ts)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        }
     }
 
     /// How a `DateTime` serialises to JSON: RFC 3339, matching `to_iso()`.
@@ -596,7 +620,7 @@ impl Value {
 
     pub fn type_name(&self) -> String {
         match self {
-            Value::DateTime(_) => "DateTime".to_string(),
+            Value::DateTime(_, _) => "DateTime".to_string(),
             Value::Int(_) => "int".to_string(),
             Value::Float(_) => "float".to_string(),
             Value::Decimal(_) => "decimal".to_string(),
@@ -756,7 +780,7 @@ impl Value {
             // By instant, so two DateTimes built from the same moment are
             // equal. As an `Instance` this was handled by the Instance arm's
             // `datetime_ts` comparison; the native variant needs its own.
-            (Value::DateTime(a), Value::DateTime(b)) => a == b,
+            (Value::DateTime(a, _), Value::DateTime(b, _)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Decimal(a), Value::Decimal(b)) => a == b,
@@ -772,7 +796,7 @@ impl Value {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
-            Value::DateTime(ts) => Self::render_datetime(*ts).len(),
+            Value::DateTime(ts, use_utc) => Self::render_datetime(*ts, *use_utc).len(),
             // Count digits arithmetically. This used to be `n.to_string().len()`,
             // which heap-allocated a String purely to read its length and then
             // dropped it — and `join` calls this once per element to size its
@@ -852,7 +876,7 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
-            Value::DateTime(ts) => s.push_str(&Self::render_datetime(*ts)),
+            Value::DateTime(ts, use_utc) => s.push_str(&Self::render_datetime(*ts, *use_utc)),
             // itoa writes into a stack buffer; `to_string()` allocated one
             // String per element. Integers have a single decimal form, so the
             // output is byte-identical.
@@ -940,7 +964,7 @@ impl PartialEq for Value {
             // equal. While a DateTime was an `Instance` this fell to the
             // Instance arm below, which compares `datetime_ts`; the native
             // variant needs its own arm or `a == b` is always false.
-            (Value::DateTime(a), Value::DateTime(b)) => a == b,
+            (Value::DateTime(a, _), Value::DateTime(b, _)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Decimal(a), Value::Decimal(b)) => a == b,
@@ -989,7 +1013,7 @@ impl PartialEq for Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::DateTime(ts) => write!(f, "{}", Value::render_datetime(*ts)),
+            Value::DateTime(ts, use_utc) => write!(f, "{}", Value::render_datetime(*ts, *use_utc)),
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
@@ -1977,7 +2001,7 @@ impl Value {
             // `_ts`, which the `_`-prefix filter below strips — so a DateTime
             // serialised as `{}` and every timestamp in an API response was an
             // empty object.
-            Value::DateTime(ts) => serializer.serialize_str(&Value::datetime_to_rfc3339(*ts)),
+            Value::DateTime(ts, _) => serializer.serialize_str(&Value::datetime_to_rfc3339(*ts)),
             Value::Null => serializer.serialize_unit(),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Int(n) => serializer.serialize_i64(*n),

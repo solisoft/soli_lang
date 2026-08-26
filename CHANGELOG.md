@@ -1294,6 +1294,34 @@
   get, array join, model/template value conversion). See the performance
   commits since `v1.28.0`.
 
+### Added
+
+- **`soli db:migrate` auto-loads `app/models` and `app/services`.** Data
+  migrations can call `User.create(...)`, iterate `User.all()`, and use other
+  Model APIs without an explicit `import` — same recursive preamble as
+  `db:seed` and `soli serve`. Engine migrations load models from the engine
+  root the same way.
+
+### Fixed
+
+- **`DateTime` component accessors are consistent about timezone.** `hour` /
+  `minute` used to return **UTC** while `year` / `month` / `day` / `second` /
+  `format` / `to_string` used the **local** zone, so composing parts of one
+  value (e.g. `"#{t.day()} at #{t.hour()}:#{t.minute()}"`) could print a
+  wall time that never existed. Every component accessor now uses the same
+  view: **local by default**. Call `t.utc()` for a same-instant value whose
+  components are UTC (`t.utc().hour()`), or `t.local()` to switch back.
+  Equality and ordering still compare by instant only (`t == t.utc()`).
+  Static `DateTime.utc()` returns “now” with the UTC view; other constructors
+  keep the local view. **Breaking** for code that relied on bare `.hour()` /
+  `.minute()` being UTC outside a UTC timezone.
+
+### Clarified
+
+- **`Duration.humanize` is magnitude-only.** It never appends `" ago"` (even
+  for negative intervals from `Duration.between`); use `time_ago` for relative
+  past phrasing. Documented and covered by tests.
+
 ## [1.28.0] - 2026-08-05
 
 ### Added

@@ -28,6 +28,25 @@ form sorts correctly). The description after the underscore is for human
 reading; the runner only uses the prefix for ordering and the full filename
 as a tracking key.
 
+## Auto-loaded models
+
+`soli db:migrate` loads `app/models` and `app/services` before running each
+migration (recursive, same order as `soli serve`). Use model classes by name
+for data backfills — no `import` needed:
+
+```soli
+def up(db)
+  for user in User.all()
+    next unless user.slug.blank?
+    user.slug = user.name.downcase().gsub(" ", "-")
+    user.save()
+  end
+end
+```
+
+Prefer `db.*` for pure schema work; use the Model API when you need
+validations, callbacks, or associations.
+
 ## Anatomy of a migration
 
 A migration file is **top-level functions**, not a class. Define `up(db)`

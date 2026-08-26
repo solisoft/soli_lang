@@ -68,13 +68,63 @@ pub fn run_with_options(source: &str, type_check: bool) -> Result<(), SolilangEr
     run_with_path(source, None, type_check)
 }
 
+/// Execute `preamble_files` in order against an existing interpreter, so the
+/// names they define (model and service classes) are in scope for the program
+/// that follows. Shared by the test runner, `db:seed`, and both migration
+/// runners, which differ only in which interpreter they hand over.
+fn run_preamble_files(
+    interpreter: &mut interpreter::Interpreter,
+    preamble_files: &[(std::path::PathBuf, String)],
+    type_check: bool,
+) -> Result<(), SolilangError> {
+    for (preamble_path, preamble_source) in preamble_files {
+        let tokens = lexer::Scanner::new(preamble_source).scan_tokens()?;
+        let mut program = parser::Parser::new(tokens).parse()?;
+
+        if has_imports(&program) {
+            let base_dir = preamble_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let mut resolver = module::ModuleResolver::new(base_dir);
+            program = resolver.resolve(program, preamble_path).map_err(|e| {
+                error::RuntimeError::General {
+                    message: format!("Module resolution error: {}", e),
+                    span: span::Span::new(0, 0, 1, 1),
+                }
+            })?;
+        }
+
+        if type_check {
+            let mut checker = types::TypeChecker::new();
+            if let Err(errors) = checker.check(&program) {
+                return Err(errors.into_iter().next().unwrap().into());
+            }
+        }
+
+        interpreter.set_source_path(preamble_path.clone());
+        interpreter.interpret(&program)?;
+    }
+    Ok(())
+}
+
 /// Run a migration file. Same pipeline as [`run_with_options`], but the
 /// interpreter also has the SQL schema helpers (`db.execute`, `add_column`, …).
-pub(crate) fn run_migration_source(source: &str) -> Result<(), SolilangError> {
+///
+/// `preamble_files` are `app/models` / `app/services` (see
+/// [`crate::migration::collect_model_preamble_files`]) so a data migration can
+/// use the Model API without an `import`, exactly as on the SoliDB path.
+pub(crate) fn run_migration_source(
+    source: &str,
+    preamble_files: &[(std::path::PathBuf, String)],
+) -> Result<(), SolilangError> {
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let program = parser::Parser::new(tokens).parse()?;
     let mut interpreter = interpreter::Interpreter::new_for_migrations();
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
+    // Models load before the migration body, and without type-checking: a model
+    // class is application code the migration merely borrows, and `soli check`
+    // is where it gets checked.
+    run_preamble_files(&mut interpreter, preamble_files, false)?;
     interpreter.interpret(&program)?;
     Ok(())
 }
@@ -251,33 +301,7 @@ fn run_with_path_and_coverage_inner(
     }
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
 
-    for (preamble_path, preamble_source) in preamble_files {
-        let tokens = lexer::Scanner::new(preamble_source).scan_tokens()?;
-        let mut program = parser::Parser::new(tokens).parse()?;
-
-        if has_imports(&program) {
-            let base_dir = preamble_path
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new("."));
-            let mut resolver = module::ModuleResolver::new(base_dir);
-            program = resolver.resolve(program, preamble_path).map_err(|e| {
-                error::RuntimeError::General {
-                    message: format!("Module resolution error: {}", e),
-                    span: span::Span::new(0, 0, 1, 1),
-                }
-            })?;
-        }
-
-        if type_check {
-            let mut checker = types::TypeChecker::new();
-            if let Err(errors) = checker.check(&program) {
-                return Err(errors.into_iter().next().unwrap().into());
-            }
-        }
-
-        interpreter.set_source_path(preamble_path.clone());
-        interpreter.interpret(&program)?;
-    }
+    run_preamble_files(&mut interpreter, preamble_files, type_check)?;
 
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let mut program = parser::Parser::new(tokens).parse()?;

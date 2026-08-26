@@ -3039,29 +3039,8 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
 
             // Auto-load `app/models` and `app/services` as a preamble so seed
             // scripts can call `User.create({...})` without explicit imports,
-            // mirroring how the test runner preloads them.
-            let mut model_preamble_files: Vec<(std::path::PathBuf, String)> = Vec::new();
-            for sub in ["models", "services"] {
-                let dir = app_path.join("app").join(sub);
-                if !dir.is_dir() {
-                    continue;
-                }
-                let Ok(entries) = fs::read_dir(&dir) else {
-                    continue;
-                };
-                let mut sorted: Vec<_> = entries
-                    .flatten()
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "sl"))
-                    .collect();
-                sorted.sort_by_key(|e| e.path());
-                for entry in sorted {
-                    let path = entry.path();
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        let absolute = path.canonicalize().unwrap_or(path);
-                        model_preamble_files.push((absolute, content));
-                    }
-                }
-            }
+            // matching migrations and the test runner (recursive, top-down).
+            let model_preamble_files = solilang::migration::collect_model_preamble_files(app_path);
 
             println!();
             println!("  \x1b[1mSeeding database...\x1b[0m");

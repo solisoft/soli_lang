@@ -29,7 +29,7 @@ thread_local! {
     /// avoids rebuilding a Class per returned instance.
     static DATETIME_INSTANCE_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
     /// DateTime's instance methods, reachable without a receiver object.
-    /// A `DateTime` is a `Value::DateTime(i64)` rather than an `Instance`, so
+    /// A `DateTime` is a `Value::DateTime(nanos, use_utc)` rather than an `Instance`, so
     /// dispatch cannot go through a class's `native_methods` — both engines
     /// look methods up here instead. One map, so the two engines cannot drift.
     static DATETIME_METHODS: RefCell<Option<Rc<DateTimeMethodMap>>> = const { RefCell::new(None) };
@@ -110,6 +110,26 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
     }
 }
 
+/// Unpack a DateTime receiver: `(nanos, use_utc)`.
+fn recv_dt(args: &[Value], method: &str) -> Result<(i64, bool), String> {
+    match args.first() {
+        Some(Value::DateTime(t, u)) => Ok((*t, *u)),
+        _ => Err(format!("{method}() called on non-DateTime")),
+    }
+}
+
+/// Wall-clock components in the DateTime's selected view (local or UTC).
+fn wall_clock(nanos: i64, use_utc: bool) -> chrono::DateTime<chrono::FixedOffset> {
+    if use_utc {
+        chrono::DateTime::from_timestamp_nanos(nanos).fixed_offset()
+    } else {
+        local_zone::local_from_nanos(nanos)
+    }
+}
+
+/// Human-readable **magnitude** of a duration (e.g. `"1 hour 1 minute"`).
+/// Uses `seconds.abs()` so negative intervals from `Duration.between` still
+/// name the length. Never appends `" ago"` — that belongs to `time_ago`.
 fn humanize_duration(seconds: f64, locale: &str) -> String {
     let total_secs = seconds.abs();
     let (primary_unit, primary_count, secondary_count) = if total_secs < 60.0 {
@@ -225,105 +245,55 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     // Build DateTime instance methods
     let mut dt_native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
+    // Component accessors all use the same wall-clock view (local by default;
+    // UTC after `.utc()`). Previously hour/minute were hard-coded to UTC while
+    // year/month/day/second/format used local — composing parts could yield a
+    // moment that never existed.
     dt_native_methods.insert(
         "year".to_string(),
         Rc::new(NativeFunction::new("DateTime.year", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.year() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::Int(local.year() as i64))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.year")?;
+            Ok(Value::Int(wall_clock(t, use_utc).year() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "month".to_string(),
         Rc::new(NativeFunction::new("DateTime.month", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.month() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::Int(local.month() as i64))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.month")?;
+            Ok(Value::Int(wall_clock(t, use_utc).month() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "day".to_string(),
         Rc::new(NativeFunction::new("DateTime.day", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.day() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::Int(local.day() as i64))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.day")?;
+            Ok(Value::Int(wall_clock(t, use_utc).day() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.hour", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.hour() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp_nanos(t);
-                    Ok(Value::Int(dt.hour() as i64)) // Return UTC hour
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.hour")?;
+            Ok(Value::Int(wall_clock(t, use_utc).hour() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.minute", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.minute() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp_nanos(t);
-                    Ok(Value::Int(dt.minute() as i64)) // Return UTC minute
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.minute")?;
+            Ok(Value::Int(wall_clock(t, use_utc).minute() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "second".to_string(),
         Rc::new(NativeFunction::new("DateTime.second", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.second() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::Int(local.second() as i64))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.second")?;
+            Ok(Value::Int(wall_clock(t, use_utc).second() as i64))
         })),
     );
 
@@ -333,17 +303,10 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.millisecond",
             Some(0),
             |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.millisecond() called on non-DateTime".to_string()),
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        Ok(Value::Int(local.timestamp_subsec_millis() as i64))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.millisecond")?;
+                Ok(Value::Int(
+                    wall_clock(t, use_utc).timestamp_subsec_millis() as i64
+                ))
             },
         )),
     );
@@ -351,67 +314,57 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "weekday".to_string(),
         Rc::new(NativeFunction::new("DateTime.weekday", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.weekday() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::String(weekday_name(local.weekday()).into()))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.weekday")?;
+            Ok(Value::String(
+                weekday_name(wall_clock(t, use_utc).weekday()).into(),
+            ))
         })),
     );
 
     dt_native_methods.insert(
         "to_unix".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_unix", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.to_unix() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => Ok(Value::Int(t / 1_000_000_000)), // Convert to seconds
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, _) = recv_dt(args, "DateTime.to_unix")?;
+            Ok(Value::Int(t / 1_000_000_000)) // Convert to seconds
         })),
     );
 
     dt_native_methods.insert(
         "to_iso".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_iso", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.to_iso() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp_nanos(t);
-                    Ok(Value::String(dt.to_rfc3339().into()))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, _) = recv_dt(args, "DateTime.to_iso")?;
+            let dt = chrono::DateTime::from_timestamp_nanos(t);
+            Ok(Value::String(dt.to_rfc3339().into()))
         })),
     );
 
     dt_native_methods.insert(
         "to_string".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_string", Some(0), |args| {
-            let ts = match args.first() {
-                Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                _ => return Err("DateTime.to_string() called on non-DateTime".to_string()),
-            };
-            match ts {
-                Some(Value::Int(t)) => {
-                    let local = local_zone::local_from_nanos(t);
-                    Ok(Value::String(
-                        local.format("%Y-%m-%d %H:%M:%S").to_string().into(),
-                    ))
-                }
-                _ => Err("DateTime missing internal timestamp".to_string()),
-            }
+            let (t, use_utc) = recv_dt(args, "DateTime.to_string")?;
+            Ok(Value::String(
+                wall_clock(t, use_utc)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+                    .into(),
+            ))
+        })),
+    );
+
+    // View toggles — same instant, different component zone.
+    dt_native_methods.insert(
+        "utc".to_string(),
+        Rc::new(NativeFunction::new("DateTime.utc", Some(0), |args| {
+            let (t, _) = recv_dt(args, "DateTime.utc")?;
+            Ok(Value::DateTime(t, true))
+        })),
+    );
+
+    dt_native_methods.insert(
+        "local".to_string(),
+        Rc::new(NativeFunction::new("DateTime.local", Some(0), |args| {
+            let (t, _) = recv_dt(args, "DateTime.local")?;
+            Ok(Value::DateTime(t, false))
         })),
     );
 
@@ -538,30 +491,18 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         )),
     );
 
-    // Clone for use in instance methods that create new DateTime instances
-
-    // Add instance methods that create new DateTime instances
+    // Instance methods that create new DateTime instances preserve the view flag.
     dt_native_methods.insert(
         "add_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_days", Some(1), {
             move |args| {
-                let this = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
-                    _ => return Err("DateTime.add_days() called on non-DateTime".to_string()),
-                };
+                let (t, use_utc) = recv_dt(args, "DateTime.add_days")?;
                 let days = match args.get(1) {
                     Some(Value::Int(d)) => *d,
                     Some(Value::Float(d)) => *d as i64,
                     _ => return Err("DateTime.add_days() requires number".to_string()),
                 };
-                let ts = Some(Value::Int(this));
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let new_ts = t + days * 86400 * 1_000_000_000;
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                Ok(Value::DateTime(t + days * 86400 * 1_000_000_000, use_utc))
             }
         })),
     );
@@ -570,23 +511,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "add_hours".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_hours", Some(1), {
             move |args| {
-                let this = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
-                    _ => return Err("DateTime.add_hours() called on non-DateTime".to_string()),
-                };
+                let (t, use_utc) = recv_dt(args, "DateTime.add_hours")?;
                 let hours = match args.get(1) {
                     Some(Value::Int(h)) => *h,
                     Some(Value::Float(h)) => *h as i64,
                     _ => return Err("DateTime.add_hours() requires number".to_string()),
                 };
-                let ts = Some(Value::Int(this));
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let new_ts = t + hours * 3600 * 1_000_000_000;
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                Ok(Value::DateTime(t + hours * 3600 * 1_000_000_000, use_utc))
             }
         })),
     );
@@ -595,23 +526,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "add_minutes".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_minutes", Some(1), {
             move |args| {
-                let this = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
-                    _ => return Err("DateTime.add_minutes() called on non-DateTime".to_string()),
-                };
+                let (t, use_utc) = recv_dt(args, "DateTime.add_minutes")?;
                 let minutes = match args.get(1) {
                     Some(Value::Int(m)) => *m,
                     Some(Value::Float(m)) => *m as i64,
                     _ => return Err("DateTime.add_minutes() requires number".to_string()),
                 };
-                let ts = Some(Value::Int(this));
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let new_ts = t + minutes * 60 * 1_000_000_000;
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                Ok(Value::DateTime(t + minutes * 60 * 1_000_000_000, use_utc))
             }
         })),
     );
@@ -620,23 +541,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "subtract_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.subtract_days", Some(1), {
             move |args| {
-                let this = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
-                    _ => return Err("DateTime.subtract_days() called on non-DateTime".to_string()),
-                };
+                let (t, use_utc) = recv_dt(args, "DateTime.subtract_days")?;
                 let days = match args.get(1) {
                     Some(Value::Int(d)) => *d,
                     Some(Value::Float(d)) => *d as i64,
                     _ => return Err("DateTime.subtract_days() requires number".to_string()),
                 };
-                let ts = Some(Value::Int(this));
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let new_ts = t - days * 86400 * 1_000_000_000;
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                Ok(Value::DateTime(t - days * 86400 * 1_000_000_000, use_utc))
             }
         })),
     );
@@ -652,10 +563,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         args.len() - 1
                     ));
                 }
-                let this = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
-                    _ => return Err("DateTime.format() called on non-DateTime".to_string()),
-                };
+                let (t, use_utc) = recv_dt(args, "DateTime.format")?;
                 let fmt = match args.get(1) {
                     Some(Value::String(f)) => f.clone(),
                     _ => return Err("DateTime.format() requires format string".to_string()),
@@ -665,29 +573,33 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(_) => return Err("DateTime.format() locale must be a string".to_string()),
                     None => None,
                 };
-                let ts = Some(Value::Int(this));
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let formatted = local.format(&fmt).to_string();
-                        match locale {
-                            Some(ref loc) if **loc != *"en" => {
-                                use super::datetime::helpers::{get_locale_data, localize_names};
-                                let (months, days, _, _, _) = get_locale_data(loc);
-                                Ok(Value::String(
-                                    localize_names(&formatted, months, days, loc).into(),
-                                ))
-                            }
-                            _ => Ok(Value::String(formatted.into())),
-                        }
+                let wall = wall_clock(t, use_utc);
+                let formatted = wall.format(&fmt).to_string();
+                match locale {
+                    Some(ref loc) if **loc != *"en" => {
+                        use super::datetime::helpers::{get_locale_data, localize_names};
+                        let (months, days, _, _, _) = get_locale_data(loc);
+                        Ok(Value::String(
+                            localize_names(&formatted, months, days, loc).into(),
+                        ))
                     }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
+                    _ => Ok(Value::String(formatted.into())),
                 }
             }
         })),
     );
 
-    // Clone for boundary instance methods
+    // Boundary helpers operate in the DateTime's selected view and preserve it.
+    fn boundary_from_naive(naive: chrono::NaiveDateTime, use_utc: bool) -> Result<Value, String> {
+        let boundary = if use_utc {
+            use chrono::TimeZone;
+            chrono::Utc.from_utc_datetime(&naive).fixed_offset()
+        } else {
+            local_zone::resolve_local(&naive)
+        };
+        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+        Ok(Value::DateTime(new_ts, use_utc))
+    }
 
     dt_native_methods.insert(
         "beginning_of_minute".to_string(),
@@ -696,31 +608,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let this = match args.first() {
-                        Some(Value::DateTime(t)) => *t,
-                        _ => {
-                            return Err(
-                                "DateTime.beginning_of_minute() called on non-DateTime".to_string()
-                            )
-                        }
-                    };
-                    let ts = Some(Value::Int(this));
-                    match ts {
-                        Some(Value::Int(t)) => {
-                            let local = local_zone::local_from_nanos(t);
-                            let naive = local
-                                .naive_local()
-                                .with_second(0)
-                                .and_then(|d| d.with_nanosecond(0))
-                                .ok_or_else(|| {
-                                    "Failed to compute beginning_of_minute".to_string()
-                                })?;
-                            let boundary = local_zone::resolve_local(&naive);
-                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            Ok(Value::DateTime(new_ts))
-                        }
-                        _ => Err("DateTime missing internal timestamp".to_string()),
-                    }
+                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_minute")?;
+                    let wall = wall_clock(t, use_utc);
+                    let naive = wall
+                        .naive_local()
+                        .with_second(0)
+                        .and_then(|d| d.with_nanosecond(0))
+                        .ok_or_else(|| "Failed to compute beginning_of_minute".to_string())?;
+                    boundary_from_naive(naive, use_utc)
                 }
             },
         )),
@@ -730,24 +625,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_minute", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.end_of_minute() called on non-DateTime".to_string()),
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let naive = local
-                            .naive_local()
-                            .with_second(59)
-                            .and_then(|d| d.with_nanosecond(999_000_000))
-                            .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.end_of_minute")?;
+                let wall = wall_clock(t, use_utc);
+                let naive = wall
+                    .naive_local()
+                    .with_second(59)
+                    .and_then(|d| d.with_nanosecond(999_000_000))
+                    .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
@@ -759,30 +644,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let this = match args.first() {
-                        Some(Value::DateTime(t)) => *t,
-                        _ => {
-                            return Err(
-                                "DateTime.beginning_of_hour() called on non-DateTime".to_string()
-                            )
-                        }
-                    };
-                    let ts = Some(Value::Int(this));
-                    match ts {
-                        Some(Value::Int(t)) => {
-                            let local = local_zone::local_from_nanos(t);
-                            let naive = local
-                                .naive_local()
-                                .with_minute(0)
-                                .and_then(|d| d.with_second(0))
-                                .and_then(|d| d.with_nanosecond(0))
-                                .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
-                            let boundary = local_zone::resolve_local(&naive);
-                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            Ok(Value::DateTime(new_ts))
-                        }
-                        _ => Err("DateTime missing internal timestamp".to_string()),
-                    }
+                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_hour")?;
+                    let wall = wall_clock(t, use_utc);
+                    let naive = wall
+                        .naive_local()
+                        .with_minute(0)
+                        .and_then(|d| d.with_second(0))
+                        .and_then(|d| d.with_nanosecond(0))
+                        .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
+                    boundary_from_naive(naive, use_utc)
                 }
             },
         )),
@@ -792,25 +662,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_hour", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.end_of_hour() called on non-DateTime".to_string()),
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let naive = local
-                            .naive_local()
-                            .with_minute(59)
-                            .and_then(|d| d.with_second(59))
-                            .and_then(|d| d.with_nanosecond(999_000_000))
-                            .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.end_of_hour")?;
+                let wall = wall_clock(t, use_utc);
+                let naive = wall
+                    .naive_local()
+                    .with_minute(59)
+                    .and_then(|d| d.with_second(59))
+                    .and_then(|d| d.with_nanosecond(999_000_000))
+                    .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
@@ -819,28 +679,16 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "beginning_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.beginning_of_day", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => {
-                        return Err("DateTime.beginning_of_day() called on non-DateTime".to_string())
-                    }
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let naive = local
-                            .naive_local()
-                            .with_hour(0)
-                            .and_then(|d| d.with_minute(0))
-                            .and_then(|d| d.with_second(0))
-                            .and_then(|d| d.with_nanosecond(0))
-                            .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_day")?;
+                let wall = wall_clock(t, use_utc);
+                let naive = wall
+                    .naive_local()
+                    .with_hour(0)
+                    .and_then(|d| d.with_minute(0))
+                    .and_then(|d| d.with_second(0))
+                    .and_then(|d| d.with_nanosecond(0))
+                    .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
@@ -849,26 +697,16 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_day", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.end_of_day() called on non-DateTime".to_string()),
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let naive = local
-                            .naive_local()
-                            .with_hour(23)
-                            .and_then(|d| d.with_minute(59))
-                            .and_then(|d| d.with_second(59))
-                            .and_then(|d| d.with_nanosecond(999_000_000))
-                            .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.end_of_day")?;
+                let wall = wall_clock(t, use_utc);
+                let naive = wall
+                    .naive_local()
+                    .with_hour(23)
+                    .and_then(|d| d.with_minute(59))
+                    .and_then(|d| d.with_second(59))
+                    .and_then(|d| d.with_nanosecond(999_000_000))
+                    .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
@@ -880,30 +718,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let this = match args.first() {
-                        Some(Value::DateTime(t)) => *t,
-                        _ => {
-                            return Err(
-                                "DateTime.beginning_of_month() called on non-DateTime".to_string()
-                            )
-                        }
-                    };
-                    let ts = Some(Value::Int(this));
-                    match ts {
-                        Some(Value::Int(t)) => {
-                            let local = local_zone::local_from_nanos(t);
-                            let naive = NaiveDate::from_ymd_opt(local.year(), local.month(), 1)
-                                .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?
-                                .and_hms_nano_opt(0, 0, 0, 0)
-                                .ok_or_else(|| {
-                                    "Failed to compute beginning_of_month".to_string()
-                                })?;
-                            let boundary = local_zone::resolve_local(&naive);
-                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            Ok(Value::DateTime(new_ts))
-                        }
-                        _ => Err("DateTime missing internal timestamp".to_string()),
-                    }
+                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_month")?;
+                    let wall = wall_clock(t, use_utc);
+                    let naive = NaiveDate::from_ymd_opt(wall.year(), wall.month(), 1)
+                        .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?
+                        .and_hms_nano_opt(0, 0, 0, 0)
+                        .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?;
+                    boundary_from_naive(naive, use_utc)
                 }
             },
         )),
@@ -913,30 +734,20 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_month".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_month", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.end_of_month() called on non-DateTime".to_string()),
+                let (t, use_utc) = recv_dt(args, "DateTime.end_of_month")?;
+                let wall = wall_clock(t, use_utc);
+                let (next_year, next_month) = if wall.month() == 12 {
+                    (wall.year() + 1, 1)
+                } else {
+                    (wall.year(), wall.month() + 1)
                 };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let (next_year, next_month) = if local.month() == 12 {
-                            (local.year() + 1, 1)
-                        } else {
-                            (local.year(), local.month() + 1)
-                        };
-                        let last_day = NaiveDate::from_ymd_opt(next_year, next_month, 1)
-                            .ok_or_else(|| "Failed to compute end_of_month".to_string())?
-                            - Duration::days(1);
-                        let naive = last_day
-                            .and_hms_nano_opt(23, 59, 59, 999_000_000)
-                            .ok_or_else(|| "Failed to compute end_of_month".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let last_day = NaiveDate::from_ymd_opt(next_year, next_month, 1)
+                    .ok_or_else(|| "Failed to compute end_of_month".to_string())?
+                    - Duration::days(1);
+                let naive = last_day
+                    .and_hms_nano_opt(23, 59, 59, 999_000_000)
+                    .ok_or_else(|| "Failed to compute end_of_month".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
@@ -948,28 +759,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let this = match args.first() {
-                        Some(Value::DateTime(t)) => *t,
-                        _ => {
-                            return Err(
-                                "DateTime.beginning_of_year() called on non-DateTime".to_string()
-                            )
-                        }
-                    };
-                    let ts = Some(Value::Int(this));
-                    match ts {
-                        Some(Value::Int(t)) => {
-                            let local = local_zone::local_from_nanos(t);
-                            let naive = NaiveDate::from_ymd_opt(local.year(), 1, 1)
-                                .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?
-                                .and_hms_nano_opt(0, 0, 0, 0)
-                                .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?;
-                            let boundary = local_zone::resolve_local(&naive);
-                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            Ok(Value::DateTime(new_ts))
-                        }
-                        _ => Err("DateTime missing internal timestamp".to_string()),
-                    }
+                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_year")?;
+                    let wall = wall_clock(t, use_utc);
+                    let naive = NaiveDate::from_ymd_opt(wall.year(), 1, 1)
+                        .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?
+                        .and_hms_nano_opt(0, 0, 0, 0)
+                        .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?;
+                    boundary_from_naive(naive, use_utc)
                 }
             },
         )),
@@ -979,48 +775,40 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_year".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_year", Some(0), {
             move |args| {
-                let ts = match args.first() {
-                    Some(Value::DateTime(t)) => Some(Value::Int(*t)),
-                    _ => return Err("DateTime.end_of_year() called on non-DateTime".to_string()),
-                };
-                match ts {
-                    Some(Value::Int(t)) => {
-                        let local = local_zone::local_from_nanos(t);
-                        let first_of_next = NaiveDate::from_ymd_opt(local.year() + 1, 1, 1)
-                            .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
-                        let last_day = first_of_next - Duration::days(1);
-                        let naive = last_day
-                            .and_hms_nano_opt(23, 59, 59, 999_000_000)
-                            .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
-                        let boundary = local_zone::resolve_local(&naive);
-                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        Ok(Value::DateTime(new_ts))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let (t, use_utc) = recv_dt(args, "DateTime.end_of_year")?;
+                let wall = wall_clock(t, use_utc);
+                let first_of_next = NaiveDate::from_ymd_opt(wall.year() + 1, 1, 1)
+                    .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
+                let last_day = first_of_next - Duration::days(1);
+                let naive = last_day
+                    .and_hms_nano_opt(23, 59, 59, 999_000_000)
+                    .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
+                boundary_from_naive(naive, use_utc)
             }
         })),
     );
 
-    // Clone for use in static methods
-
     // Create DateTime static methods
     let mut dt_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
-    // now() - Create DateTime with current local time
+    // now() - Create DateTime with current local-view instant
     dt_static_methods.insert(
         "now".to_string(),
         Rc::new(NativeFunction::new("DateTime.now", Some(0), move |_args| {
             let now = local_zone::now_local();
-            Ok(Value::DateTime(now.timestamp() * 1_000_000_000))
+            Ok(Value::DateTime(now.timestamp() * 1_000_000_000, false))
         })),
     );
 
+    // utc() static - current instant with UTC component view
     dt_static_methods.insert(
         "utc".to_string(),
         Rc::new(NativeFunction::new("DateTime.utc", Some(0), move |_args| {
             let now = chrono::Utc::now();
-            Ok(Value::DateTime(now.timestamp_nanos_opt().unwrap_or(0)))
+            Ok(Value::DateTime(
+                now.timestamp_nanos_opt().unwrap_or(0),
+                true,
+            ))
         })),
     );
 
@@ -1035,7 +823,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("DateTime.parse() requires string".to_string()),
                 };
                 let timestamp = parse_datetime_string(&s)?;
-                Ok(Value::DateTime(timestamp))
+                Ok(Value::DateTime(timestamp, false))
             },
         )),
     );
@@ -1064,7 +852,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         Rc::new(NativeFunction::new(
             "DateTime.epoch",
             Some(0),
-            move |_args| Ok(Value::DateTime(0)),
+            move |_args| Ok(Value::DateTime(0, false)),
         )),
     );
 
@@ -1080,7 +868,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             // Use checked multiplication to avoid overflow
             let ts_nanos = ts.checked_mul(1_000_000_000)
                 .ok_or_else(|| "DateTime.from_unix(): timestamp overflow (value too large, expected seconds not milliseconds)".to_string())?;
-            Ok(Value::DateTime(ts_nanos))
+            Ok(Value::DateTime(ts_nanos, false))
         })),
     );
 
@@ -1117,25 +905,18 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.between",
             Some(2),
             move |args| {
-                let dt1 = match args.first() {
-                    Some(Value::DateTime(t)) => *t,
+                let (t1, _) = match args.first() {
+                    Some(Value::DateTime(t, u)) => (*t, *u),
                     _ => return Err("Duration.between() requires DateTime".to_string()),
                 };
-                let dt2 = match args.get(1) {
-                    Some(Value::DateTime(t)) => *t,
+                let (t2, _) = match args.get(1) {
+                    Some(Value::DateTime(t, u)) => (*t, *u),
                     _ => return Err("Duration.between() requires DateTime".to_string()),
                 };
-                let ts1 = Some(Value::Int(dt1));
-                let ts2 = Some(Value::Int(dt2));
-                match (ts1, ts2) {
-                    (Some(Value::Int(t1)), Some(Value::Int(t2))) => {
-                        let mut dur = Instance::new(duration_instance_class()?);
-                        // `_ts` is in nanoseconds; Duration stores seconds.
-                        dur.set("seconds", Value::Float((t2 - t1) as f64 / 1_000_000_000.0));
-                        Ok(Value::Instance(Rc::new(RefCell::new(dur))))
-                    }
-                    _ => Err("DateTime missing internal timestamp".to_string()),
-                }
+                let mut dur = Instance::new(duration_instance_class()?);
+                // `_ts` is in nanoseconds; Duration stores seconds.
+                dur.set("seconds", Value::Float((t2 - t1) as f64 / 1_000_000_000.0));
+                Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             },
         )),
     );

@@ -28,7 +28,7 @@ describe("DateTime Instance Methods - Extended", fn() {
     });
 
     test("weekday() is correct for known date", fn() {
-        let dt = DateTime.parse("2024-01-01T00:00:00Z");
+        let dt = DateTime.parse("2024-01-01T00:00:00Z").utc();
         let day = dt.weekday();
         assert_eq(day, "Monday");
     });
@@ -58,7 +58,7 @@ describe("DateTime Instance Methods - Extended", fn() {
     });
 
     test("all datetime components together", fn() {
-        let dt = DateTime.parse("2024-07-20T14:35:45Z");
+        let dt = DateTime.parse("2024-07-20T14:35:45Z").utc();
         assert_eq(dt.year(), 2024);
         assert_eq(dt.month(), 7);
         assert_eq(dt.day(), 20);
@@ -146,28 +146,28 @@ describe("Duration Instance Methods - Extended", fn() {
 describe("DateTime Arithmetic - Extended", fn() {
     test("add_hours() wraps across days", fn() {
         let dt = DateTime.parse("2024-01-15T20:00:00Z");
-        let later = dt.add_hours(10);
+        let later = dt.add_hours(10).utc();
         assert_eq(later.day(), 16);
         assert_eq(later.hour(), 6);
     });
 
     test("add_hours() wraps across months", fn() {
         let dt = DateTime.parse("2024-01-31T22:00:00Z");
-        let later = dt.add_hours(5);
+        let later = dt.add_hours(5).utc();
         assert_eq(later.month(), 2);
         assert_eq(later.day(), 1);
     });
 
     test("add_hours() handles leap year", fn() {
         let dt = DateTime.parse("2024-02-28T22:00:00Z");
-        let later = dt.add_hours(5);
+        let later = dt.add_hours(5).utc();
         assert_eq(later.month(), 2);
         assert_eq(later.day(), 29);
     });
 
     test("add_minutes() across hour boundary", fn() {
         let dt = DateTime.parse("2024-01-15T10:45:00Z");
-        let later = dt.add_minutes(30);
+        let later = dt.add_minutes(30).utc();
         assert_eq(later.hour(), 11);
         assert_eq(later.minute(), 15);
     });

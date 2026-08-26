@@ -397,7 +397,9 @@ impl Interpreter {
                         self.hash_member_access(&hash_ref, name, span, Value::Hash(hash_rc))
                     }
                     Value::Symbol(ref s) => Self::symbol_member_access(s, name, span),
-                    Value::DateTime(ts) => Self::datetime_member_access(ts, name, span),
+                    Value::DateTime(ts, use_utc) => {
+                        Self::datetime_member_access(ts, use_utc, name, span)
+                    }
                     Value::Int(n) => Self::int_member_access(n, name, span),
                     Value::Float(n) => Self::float_member_access(n, name, span),
                     Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -426,7 +428,7 @@ impl Interpreter {
             Value::QueryBuilder(_) => self.query_builder_member_access(name, span, obj_val),
             Value::String(ref _s) => self.string_member_access(name, span, obj_val),
             Value::Symbol(ref _s) => Self::symbol_member_access(_s, name, span),
-            Value::DateTime(ts) => Self::datetime_member_access(ts, name, span),
+            Value::DateTime(ts, use_utc) => Self::datetime_member_access(ts, use_utc, name, span),
             Value::Int(n) => Self::int_member_access(n, name, span),
             Value::Float(n) => Self::float_member_access(n, name, span),
             Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -2289,7 +2291,12 @@ impl Interpreter {
     /// Every DateTime member is a method, so this either invokes it (zero-arg,
     /// which is how `d.year` and `d.year()` both work) or hands back a bound
     /// method for the call path to invoke with its arguments.
-    pub(crate) fn datetime_member_access(ts: i64, name: &str, span: Span) -> RuntimeResult<Value> {
+    pub(crate) fn datetime_member_access(
+        ts: i64,
+        use_utc: bool,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
         use crate::interpreter::builtins::datetime_class::datetime_method;
         match datetime_method(name) {
             Some(f) if f.arity == Some(0) => {
@@ -2298,13 +2305,14 @@ impl Interpreter {
                 // "takes no user arguments" and bare access invokes it.
                 crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                     ts,
+                    use_utc,
                     name,
                     &[],
                     span,
                 )
             }
             Some(_) => Ok(Value::method(crate::interpreter::value::ValueMethod {
-                receiver: Box::new(Value::DateTime(ts)),
+                receiver: Box::new(Value::DateTime(ts, use_utc)),
                 method_name: name.to_string(),
             })),
             // Universal members every other value answers. A DateTime answered
@@ -2322,12 +2330,13 @@ impl Interpreter {
                 // dispatch — `if v.is_a?("string") { … }` — raised on a
                 // DateTime instead of answering false.
                 "is_a?" => Ok(Value::method(crate::interpreter::value::ValueMethod {
-                    receiver: Box::new(Value::DateTime(ts)),
+                    receiver: Box::new(Value::DateTime(ts, use_utc)),
                     method_name: name.to_string(),
                 })),
                 "inspect" | "to_s" => {
                     crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                         ts,
+                        use_utc,
                         "to_string",
                         &[],
                         span,

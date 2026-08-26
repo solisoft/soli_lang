@@ -156,6 +156,33 @@ println(mt)  # 1712832000000000.0</code></pre>
     <section id="section-components" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Date Components</h2>
 
+        <p class="text-gray-400 text-sm leading-relaxed mb-6">
+            All component accessors (<code class="text-cyan-400">year</code>, <code class="text-cyan-400">month</code>,
+            <code class="text-cyan-400">day</code>, <code class="text-cyan-400">hour</code>, <code class="text-cyan-400">minute</code>,
+            <code class="text-cyan-400">second</code>, <code class="text-cyan-400">format</code>, <code class="text-cyan-400">to_string</code>)
+            share one wall-clock <strong class="text-white">view</strong>:
+            <strong class="text-white">local</strong> by default (process <code class="text-cyan-400">$TZ</code> / system zone),
+            or <strong class="text-white">UTC</strong> after <code class="text-cyan-400">.utc()</code>.
+            <code class="text-cyan-400">to_unix</code> and <code class="text-cyan-400">to_iso</code> always describe the absolute
+            instant. Equality compares by instant only, so <code class="text-cyan-400">t == t.utc()</code>.
+        </p>
+
+        <section id="def-utc-view" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-utc-view" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">.utc() / .local()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Same instant, different component view. Chain with any accessor.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">t = DateTime.parse("2026-01-01T23:30:00Z")
+t.utc().hour()    # 23
+t.local().hour()  # local wall hour (e.g. 0 in Europe/Paris in winter)
+t.hour()          # same as t.local().hour() — local is the default</code></pre>
+            </div>
+        </section>
+
         <section id="def-year" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-year" class="group flex items-center gap-2 mb-3">
@@ -164,7 +191,7 @@ println(mt)  # 1712832000000000.0</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the year component (e.g., 2024).</p>
+                <p class="text-gray-400 mb-3">Get the year component in the current view (e.g., 2024).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Int</code> - The year
@@ -212,7 +239,7 @@ println(mt)  # 1712832000000000.0</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the hour component (0-23).</p>
+                <p class="text-gray-400 mb-3">Get the hour component (0-23) in the current view (local by default).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Int</code> - The hour in 24-hour format

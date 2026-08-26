@@ -12,7 +12,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::EngineContextGuard;
 use crate::interpreter::builtins::router::register_controller_action;
 use crate::interpreter::{Interpreter, Value};
-use crate::migration::{DbConfig, Migration};
+use crate::migration::{collect_model_preamble_files, DbConfig, Migration};
 use crate::serve::app_loader::{
     controller_key_from_path, execute_file as interp_execute_file, sort_controllers_by_dependency,
 };
@@ -778,8 +778,19 @@ let db = MigrationDb();
             direction = direction
         );
 
-        crate::run_with_options(&soli_code, false)
-            .map_err(|e| format!("Migration {} failed: {}", direction, e))?;
+        // Same bootstrap as app migrations: Model ORM + auto-loaded engine models.
+        crate::interpreter::builtins::model::init_db_config();
+        let preamble = collect_model_preamble_files(&self.engine.path);
+
+        let (_assertions, result) = crate::run_with_path_and_coverage(
+            &soli_code,
+            Some(&migration.path),
+            false,
+            None,
+            Some(&migration.path),
+            &preamble,
+        );
+        result.map_err(|e| format!("Migration {} failed: {}", direction, e))?;
 
         Ok(())
     }

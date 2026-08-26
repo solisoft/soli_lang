@@ -57,9 +57,9 @@ impl Vm {
         // DateTime is a native value with no class to look methods up on. One
         // path covers both arities because the lookup is a map read, so the
         // zero-arg `direct` phase below has nothing extra to do.
-        if let Value::DateTime(ts) = receiver {
+        if let Value::DateTime(ts, use_utc) = receiver {
             return crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
-                *ts, name, args, span,
+                *ts, *use_utc, name, args, span,
             );
         }
         if args.is_empty() {

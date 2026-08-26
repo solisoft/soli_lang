@@ -1,9 +1,11 @@
 //! Migration module tests — exercises the parts that don't need a live
-//! SoliDB (filename parsing, file generation, name sanitization).
+//! SoliDB (filename parsing, file generation, name sanitization, model
+//! preamble collection).
 
+use std::fs;
 use std::path::PathBuf;
 
-use solilang::migration::{generate_migration, Migration};
+use solilang::migration::{collect_model_preamble_files, generate_migration, Migration};
 
 #[test]
 fn from_path_parses_well_formed_filename() {
@@ -93,5 +95,85 @@ fn migrations_with_consecutive_timestamps_sort_lexicographically() {
         versions,
         vec![&m1.version, &m2.version, &m3.version],
         "string-sortable timestamps should produce chronological order"
+    );
+}
+
+#[test]
+fn collect_model_preamble_files_is_empty_without_app_dirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let files = collect_model_preamble_files(tmp.path());
+    assert!(files.is_empty());
+}
+
+#[test]
+fn collect_model_preamble_files_loads_models_and_services_recursively() {
+    let tmp = tempfile::tempdir().unwrap();
+    let models = tmp.path().join("app/models");
+    let nested = models.join("billing");
+    let services = tmp.path().join("app/services");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir_all(&services).unwrap();
+
+    // Top-level model first alphabetically, then nested, then service.
+    fs::write(models.join("user.sl"), "class User < Model\nend\n").unwrap();
+    fs::write(models.join("account.sl"), "class Account < Model\nend\n").unwrap();
+    fs::write(nested.join("invoice.sl"), "class Invoice < Model\nend\n").unwrap();
+    fs::write(services.join("mailer.sl"), "class Mailer\nend\n").unwrap();
+    // Non-.sl files are ignored.
+    fs::write(models.join("README.md"), "ignore me").unwrap();
+
+    let files = collect_model_preamble_files(tmp.path());
+    let names: Vec<String> = files
+        .iter()
+        .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+
+    // Models (top-level alphabetical, then subdirs) then services.
+    assert_eq!(
+        names,
+        vec![
+            "account.sl".to_string(),
+            "user.sl".to_string(),
+            "invoice.sl".to_string(),
+            "mailer.sl".to_string(),
+        ]
+    );
+    assert!(files.iter().any(|(_, src)| src.contains("class Invoice")));
+}
+
+#[test]
+fn migration_preamble_exposes_model_classes_without_import() {
+    // End-to-end of the auto-load path used by execute_migration: models
+    // land in the interpreter before the migration source runs.
+    let tmp = tempfile::tempdir().unwrap();
+    let models = tmp.path().join("app/models");
+    fs::create_dir_all(&models).unwrap();
+    fs::write(
+        models.join("user.sl"),
+        r#"
+class User < Model
+end
+"#,
+    )
+    .unwrap();
+
+    let preamble = collect_model_preamble_files(tmp.path());
+    assert_eq!(preamble.len(), 1);
+
+    // Migration body that only checks the class is bound — no live DB.
+    let source = r#"
+fn up(db) {
+  # Would raise "undefined variable: User" if models were not preloaded.
+  assert(User != null)
+}
+up(null)
+"#;
+
+    let (_assertions, result) =
+        solilang::run_with_path_and_coverage(source, None, false, None, None, &preamble);
+    assert!(
+        result.is_ok(),
+        "model class should be available in migration scope: {:?}",
+        result.err()
     );
 }

@@ -108,7 +108,7 @@ That's it! No need to manually specify collection names or field definitions.
 
 ## Auto-Loading
 
-Every `.sl` file under `app/models/` is loaded automatically at startup — by `soli serve` (in each worker) and by the REPL. Model classes are therefore available everywhere (controllers, views, other models, the REPL) without an `import` statement.
+Every `.sl` file under `app/models/` is loaded automatically at startup — by `soli serve` (in each worker), the REPL, `soli db:migrate`, and `soli db:seed`. Model classes are therefore available everywhere (controllers, views, other models, migrations, seeds, the REPL) without an `import` statement.
 
 ```soli
 # app/controllers/users_controller.sl — no import needed

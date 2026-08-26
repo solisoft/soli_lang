@@ -283,9 +283,63 @@ pub fn strip_connection_declaration(source: &str) -> String {
     out.join("\n")
 }
 
+/// Collect `.sl` files under `app/models` and `app/services` for use as
+/// interpreter preambles when running migrations (or seeds).
+///
+/// Walk is recursive and top-down: within each directory, files load in
+/// alphabetical order *before* subdirectories, matching `soli serve` so a
+/// base class at an equal-or-shallower depth is defined first.
+pub fn collect_model_preamble_files(app_path: &Path) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    for sub in ["models", "services"] {
+        collect_sl_dir_recursive(&app_path.join("app").join(sub), &mut out);
+    }
+    out
+}
+
+fn collect_sl_dir_recursive(dir: &Path, out: &mut Vec<(PathBuf, String)>) {
+    if !dir.is_dir() {
+        return;
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Prefer `file_type()` over `is_dir()` so symlinked directories are not
+        // followed into a possible cycle (same rule as the serve auto-loader).
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            subdirs.push(path);
+        } else if path.extension().is_some_and(|ext| ext == "sl") {
+            files.push(path);
+        }
+    }
+
+    files.sort();
+    subdirs.sort();
+
+    for path in files {
+        if let Ok(content) = fs::read_to_string(&path) {
+            let absolute = path.canonicalize().unwrap_or(path);
+            out.push((absolute, content));
+        }
+    }
+    for subdir in subdirs {
+        collect_sl_dir_recursive(&subdir, out);
+    }
+}
+
 /// Migration runner that handles up/down/status operations
 pub struct MigrationRunner {
     config: DbConfig,
+    app_path: PathBuf,
     migrations_path: PathBuf,
     /// `--connection NAME` from the CLI: restricts the run to that database.
     connection_filter: Option<String>,
@@ -295,6 +349,7 @@ impl MigrationRunner {
     pub fn new(config: DbConfig, app_path: &Path) -> Self {
         Self {
             config,
+            app_path: app_path.to_path_buf(),
             migrations_path: app_path.join("db/migrations"),
             connection_filter: None,
         }
@@ -691,9 +746,24 @@ let db = MigrationDb();
             source, config.host, config.database, auth_snippet, direction
         );
 
-        // Run using tree-walk interpreter
-        crate::run_with_options(&full_source, false)
-            .map_err(|e| format!("Migration {} failed: {}", direction, e))?;
+        // Cache SOLIDB_* so the Model ORM can reach SoliDB (same bootstrap as
+        // `db:seed`). JWT is acquired lazily on first authenticated call.
+        crate::interpreter::builtins::model::init_db_config();
+
+        // Auto-load `app/models` and `app/services` so migrations can call
+        // `User.create(...)`, run data backfills through the Model API, etc.
+        // without explicit imports — mirrors seeds and the test runner.
+        let preamble = collect_model_preamble_files(&self.app_path);
+
+        let (_assertions, result) = crate::run_with_path_and_coverage(
+            &full_source,
+            Some(&migration.path),
+            false,
+            None,
+            Some(&migration.path),
+            &preamble,
+        );
+        result.map_err(|e| format!("Migration {} failed: {}", direction, e))?;
 
         Ok(())
     }
@@ -786,7 +856,11 @@ let db = MigrationDb();
 "#
         );
 
-        crate::run_migration_source(&full_source)
+        // Auto-load `app/models` and `app/services`, same as the SoliDB path, so
+        // a data migration can use the Model API without an explicit `import`.
+        let preamble = collect_model_preamble_files(&self.app_path);
+
+        crate::run_migration_source(&full_source, &preamble)
             .map_err(|e| format!("Migration {direction} failed: {e}"))?;
         Ok(())
     }
@@ -1409,6 +1483,44 @@ end
                 names.contains(&"author"),
                 "add_column must have run: {names:?}"
             );
+        });
+    }
+
+    #[test]
+    fn a_sql_migration_sees_auto_loaded_models() {
+        // The SQL path runs through `run_migration_source`, a different runner
+        // than the SoliDB path — it needs the model preamble of its own or a
+        // data migration on Postgres/MySQL/SQLite raises "Undefined variable".
+        with_sqlite_app(&["models"], |app| {
+            let models = app.join("app/models");
+            fs::create_dir_all(&models).expect("app/models");
+            fs::write(
+                models.join("note.sl"),
+                r#"
+class Note < Model
+end
+"#,
+            )
+            .expect("write model");
+
+            write_migration(
+                app,
+                "20260813000004_uses_model.sl",
+                r#"
+def up(db)
+  db.create_table("notes", { "id": "pk", "body": "text" })
+  # Would raise "Undefined variable: Note" if models were not preloaded.
+  assert(Note != null)
+end
+
+def down(db)
+  db.drop_table("notes")
+end
+"#,
+            );
+            runner(app)
+                .migrate_up()
+                .expect("model class must be in scope");
         });
     }
 
