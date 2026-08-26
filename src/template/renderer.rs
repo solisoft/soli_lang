@@ -616,14 +616,21 @@ pub fn url_escape(s: &str) -> Cow<'_, str> {
 
 /// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
 /// This allows templates to omit parentheses for no-arg method calls: `<%= now.to_iso %>`.
+///
+/// Only callables that actually accept zero arguments are invoked — the same
+/// rule the interpreter applies to a bare name. This used to call *every*
+/// callable, so a template naming a helper that needs arguments
+/// (`<%= patch %>`) ran its body with an empty argument slice; helpers that
+/// read `args[0]` directly then panicked instead of raising. A callable that
+/// cannot take zero arguments is left alone and renders as its value.
 #[inline]
 fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<Value, String> {
-    match &value {
-        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => interpreter
+    if crate::interpreter::executor::can_auto_invoke_with_no_args(&value) {
+        return interpreter
             .call_value(value, vec![], Span::default())
-            .map_err(|e| format!("Evaluation error: {}", e)),
-        _ => Ok(value),
+            .map_err(|e| format!("Evaluation error: {}", e));
     }
+    Ok(value)
 }
 
 /// Check if a value is truthy
@@ -662,6 +669,35 @@ mod tests {
                 resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
             },
         )))
+    }
+
+    /// Found by the `template_parse_render` fuzz target: `<%= patch %>` named a
+    /// request helper without calling it, the renderer auto-called every
+    /// callable regardless of arity, and `patch`'s body indexed `args[0]` on an
+    /// empty slice — an abort, not a catchable error. The paren-free form is
+    /// only for callables that accept zero arguments.
+    #[test]
+    fn a_paren_free_helper_that_needs_arguments_does_not_panic() {
+        for source in [
+            "<%= patch%>",
+            "<%= get %>",
+            "<%= post %>",
+            "<%= request %>",
+            "<%= set_header %>",
+        ] {
+            let nodes = parse_template(source).expect("parse");
+            // Must not panic; rendering it either way is fine.
+            let _ = render_nodes(&nodes, &Value::Null, None);
+        }
+    }
+
+    /// The guard above must not cost the feature it guards: a genuinely
+    /// zero-argument callable is still invoked without parentheses.
+    #[test]
+    fn a_paren_free_zero_arg_method_is_still_called() {
+        let nodes = parse_template("<%= name.upcase %>").unwrap();
+        let data = make_hash(vec![("name", Value::String("ada".into()))]);
+        assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "ADA");
     }
 
     #[test]
