@@ -18,13 +18,17 @@ fuzz_target!(|data: &[u8]| {
     // `<%= ... %>` is handed to the *core* language parser and interpreter, so a
     // backtick inside a tag is command substitution: rendering it spawns
     // `sh -c <fuzzer bytes>` on a detached thread and returns a Future the
-    // renderer drops unread. That both runs arbitrary shell on the fuzzing host
-    // and makes LeakSanitizer report the in-flight thread's allocations as
-    // leaked, failing the run with exit 77. Rendering is meant to be
-    // side-effect free here (partials are already stubbed out), so skip any
-    // input that can reach it. Parsing such a template is still fuzzed above —
-    // only the render is skipped, and only for the whole input, since the
-    // cheap check cannot tell a backtick in an ERB tag from one in body text.
+    // renderer drops unread — arbitrary shell, from fuzzer bytes, on the host.
+    // Rendering is meant to be side-effect free here (partials are already
+    // stubbed out), so skip any input that can reach it. Parsing such a template
+    // is still fuzzed above — only the render is skipped, and only for the whole
+    // input, since the cheap check cannot tell a backtick in an ERB tag from one
+    // in body text.
+    //
+    // This skip also used to be what kept LeakSanitizer from failing the run on
+    // the in-flight thread's allocations. Leak detection is off now
+    // (`ASAN_OPTIONS=detect_leaks=0` in `.github/workflows/fuzz.yml`), but the
+    // shell-execution reason above stands on its own — do not drop the guard.
     if source.contains('`') {
         return;
     }

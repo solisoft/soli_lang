@@ -13,6 +13,10 @@ pub use variables::{
     set_current_env, template_lenient_vars_enabled, TemplateLenientVarsGuard,
 };
 
+/// The paren-free auto-invoke rule, shared with the template renderer so the
+/// two surfaces cannot disagree about which callables take zero arguments.
+pub(crate) use expressions::can_auto_invoke_with_no_args;
+
 pub mod access;
 pub mod calls;
 pub mod control;

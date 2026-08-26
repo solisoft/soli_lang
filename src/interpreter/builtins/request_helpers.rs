@@ -41,7 +41,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "get".to_string(),
         Value::NativeFunction(NativeFunction::new("get", None, |args| {
-            let path = extract_string(&args[0], "get(path)")?;
+            let path = arg_string(args, 0, "get(path)")?;
             let options = args.get(2).cloned();
             http_request("GET", &path, None, None, options)
         })),
@@ -50,7 +50,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "post".to_string(),
         Value::NativeFunction(NativeFunction::new("post", None, |args| {
-            let path = extract_string(&args[0], "post(path, data)")?;
+            let path = arg_string(args, 0, "post(path, data)")?;
             let data = args.get(1).cloned();
             let options = args.get(2).cloned();
             http_request("POST", &path, None, data, options)
@@ -60,7 +60,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "put".to_string(),
         Value::NativeFunction(NativeFunction::new("put", None, |args| {
-            let path = extract_string(&args[0], "put(path, data)")?;
+            let path = arg_string(args, 0, "put(path, data)")?;
             let data = args.get(1).cloned();
             let options = args.get(2).cloned();
             http_request("PUT", &path, None, data, options)
@@ -70,7 +70,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "patch".to_string(),
         Value::NativeFunction(NativeFunction::new("patch", None, |args| {
-            let path = extract_string(&args[0], "patch(path, data)")?;
+            let path = arg_string(args, 0, "patch(path, data)")?;
             let data = args.get(1).cloned();
             let options = args.get(2).cloned();
             http_request("PATCH", &path, None, data, options)
@@ -80,7 +80,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "delete".to_string(),
         Value::NativeFunction(NativeFunction::new("delete", None, |args| {
-            let path = extract_string(&args[0], "delete(path)")?;
+            let path = arg_string(args, 0, "delete(path)")?;
             let options = args.get(1).cloned();
             http_request("DELETE", &path, None, None, options)
         })),
@@ -89,7 +89,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "head".to_string(),
         Value::NativeFunction(NativeFunction::new("head", None, |args| {
-            let path = extract_string(&args[0], "head(path)")?;
+            let path = arg_string(args, 0, "head(path)")?;
             let options = args.get(1).cloned();
             http_request("HEAD", &path, None, None, options)
         })),
@@ -98,7 +98,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "options".to_string(),
         Value::NativeFunction(NativeFunction::new("options", None, |args| {
-            let path = extract_string(&args[0], "options(path)")?;
+            let path = arg_string(args, 0, "options(path)")?;
             let options = args.get(1).cloned();
             http_request("OPTIONS", &path, None, None, options)
         })),
@@ -107,8 +107,8 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "request".to_string(),
         Value::NativeFunction(NativeFunction::new("request", None, |args| {
-            let method = extract_string(&args[0], "request(method, path)")?;
-            let path = extract_string(&args[1], "request(method, path)")?;
+            let method = arg_string(args, 0, "request(method, path)")?;
+            let path = arg_string(args, 1, "request(method, path)")?;
             let body = args.get(2).cloned();
             let options = args.get(3).cloned();
             http_request(&method, &path, None, body, options)
@@ -118,8 +118,8 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "set_header".to_string(),
         Value::NativeFunction(NativeFunction::new("set_header", Some(2), |args| {
-            let name = extract_string(&args[0], "set_header(name, value)")?;
-            let value = extract_string(&args[1], "set_header(name, value)")?;
+            let name = arg_string(args, 0, "set_header(name, value)")?;
+            let value = arg_string(args, 1, "set_header(name, value)")?;
             REQUEST_HEADERS.with(|cell| {
                 let mut headers = cell.borrow_mut();
                 headers.insert(name, value);
@@ -143,7 +143,7 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "set_authorization".to_string(),
         Value::NativeFunction(NativeFunction::new("set_authorization", Some(1), |args| {
-            let token = extract_string(&args[0], "set_authorization(token)")?;
+            let token = arg_string(args, 0, "set_authorization(token)")?;
             AUTH_HEADERS.with(|cell| {
                 let mut headers = cell.borrow_mut();
                 headers.insert("Authorization".to_string(), format!("Bearer {}", token));
@@ -169,8 +169,8 @@ pub fn register_request_helpers(env: &mut Environment) {
     env.define(
         "set_request_cookie".to_string(),
         Value::NativeFunction(NativeFunction::new("set_request_cookie", Some(2), |args| {
-            let name = extract_string(&args[0], "set_request_cookie(name, value)")?;
-            let value = extract_string(&args[1], "set_request_cookie(name, value)")?;
+            let name = arg_string(args, 0, "set_request_cookie(name, value)")?;
+            let value = arg_string(args, 1, "set_request_cookie(name, value)")?;
             COOKIES.with(|cell| {
                 let mut cookies = cell.borrow_mut();
                 if !cookies.is_empty() {
@@ -459,10 +459,17 @@ fn http_request(
     Ok(response)
 }
 
-fn extract_string(value: &Value, context: &str) -> Result<String, String> {
-    match value {
-        Value::String(s) => Ok(s.clone().to_string()),
-        _ => Err(format!("{} expects string argument", context)),
+/// Read `args[index]` as a string, or raise.
+///
+/// The bounds check is the point: these helpers are registered variadic
+/// (`arity: None`) so callers can tack on an options hash, which means nothing
+/// upstream verifies the count — `patch()` with no arguments, or a template
+/// naming one bare, used to index an empty slice and panic the process.
+fn arg_string(args: &[Value], index: usize, context: &str) -> Result<String, String> {
+    match args.get(index) {
+        Some(Value::String(s)) => Ok(s.clone().to_string()),
+        Some(_) => Err(format!("{} expects string argument", context)),
+        None => Err(format!("{} is missing a required argument", context)),
     }
 }
 

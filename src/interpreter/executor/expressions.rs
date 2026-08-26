@@ -688,10 +688,10 @@ impl Interpreter {
         let should_auto_invoke = match &val {
             // For member access, only auto-invoke class methods, not lambda fields
             Value::Function(func) => {
-                (matches!(ctx, AutoInvokeContext::Variable) || func.is_method) && func.arity() == 0
+                (matches!(ctx, AutoInvokeContext::Variable) || func.is_method)
+                    && can_auto_invoke_with_no_args(&val)
             }
-            Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
-            _ => false,
+            _ => can_auto_invoke_with_no_args(&val),
         };
         if should_auto_invoke {
             return self.call_value(val, vec![], span);
@@ -743,6 +743,25 @@ impl Interpreter {
 /// Check if a built-in method can be called with zero arguments.
 fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
     super::calls::method_registry::is_zero_arg_method(method_name, receiver)
+}
+
+/// Whether `value` is a callable that can be invoked with **no arguments** —
+/// the paren-free `<%= now.to_iso %>` / bare-name form.
+///
+/// A variadic native (`arity: None`) is deliberately *not* included: variadic
+/// only means "the runtime does not check the count", and most such natives
+/// read `args[0]` directly, so calling one with an empty slice panics. The
+/// template renderer used to auto-call every callable unconditionally, which is
+/// how `<%= patch %>` reached `patch`'s body with zero arguments and indexed
+/// out of bounds. Keep this the single definition of the rule so the renderer
+/// and [`Interpreter::try_auto_invoke`] cannot drift apart.
+pub(crate) fn can_auto_invoke_with_no_args(value: &Value) -> bool {
+    match value {
+        Value::Method(method) => is_zero_arg_builtin_method(&method.method_name, &method.receiver),
+        Value::Function(func) => func.arity() == 0,
+        Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
