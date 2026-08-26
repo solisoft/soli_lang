@@ -1699,7 +1699,7 @@ impl Vm {
             | Value::Bool(_)
             | Value::Null
             | Value::Decimal(_)
-            | Value::DateTime(_) => {
+            | Value::DateTime(_, _) => {
                 self.vm_call_primitive_method(&receiver, method_name, &args, span)?
             }
             _ => {

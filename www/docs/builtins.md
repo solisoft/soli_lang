@@ -3006,52 +3006,78 @@ println(mt)  # 1712832000000000.0
 
 ### Instance Methods - Components
 
+All component accessors (`year`, `month`, `day`, `hour`, `minute`, `second`,
+`millisecond`, `weekday`) and `format` / `to_string` use the **same wall-clock
+view**:
+
+- **local** (default) — the process timezone (`$TZ` / system zone)
+- **UTC** — after calling `.utc()` on the value
+
+`to_unix` and `to_iso` always describe the absolute instant (UTC / epoch),
+independent of the view. Equality and ordering also compare by instant only,
+so `t == t.utc()` is always true for the same moment.
+
 #### .year()
 
-Gets the year component (e.g., 2024).
+Gets the year component in the current view (e.g., 2024).
 
 **Returns:** Int
 
 #### .month()
 
-Gets the month component (1-12).
+Gets the month component (1-12) in the current view.
 
 **Returns:** Int - 1 = January, 12 = December
 
 #### .day()
 
-Gets the day of month (1-31).
+Gets the day of month (1-31) in the current view.
 
 **Returns:** Int
 
 #### .hour()
 
-Gets the hour component (0-23).
+Gets the hour component (0-23) in the current view (local by default).
 
 **Returns:** Int
 
 #### .minute()
 
-Gets the minute component (0-59).
+Gets the minute component (0-59) in the current view.
 
 **Returns:** Int
 
 #### .second()
 
-Gets the second component (0-59).
+Gets the second component (0-59) in the current view.
 
 **Returns:** Int
 
+#### .utc() / .local()
+
+Return a DateTime for the **same instant** with the component view set to UTC
+or the process-local zone. Chainable with any component accessor:
+
+```soli
+t = DateTime.parse("2026-01-01T23:30:00Z")
+t.utc().hour()    # 23  (UTC)
+t.local().hour()  # local wall hour (e.g. 0 in Europe/Paris in winter)
+t.hour()          # same as t.local().hour() — local is the default
+```
+
+Static `DateTime.utc()` still means “now, with the UTC view”; instance
+`.utc()` only switches the view of an existing value.
+
 #### .weekday()
 
-Gets the day of the week as a string.
+Gets the day of the week as a string in the current view.
 
-**Returns:** String - Lowercase weekday name (e.g., "monday", "tuesday")
+**Returns:** String - Weekday name (e.g., "Monday", "Tuesday")
 
 **Example:**
 ```soli
 dt = DateTime.parse("2024-01-15")
-println(dt.weekday())  # "monday"
+println(dt.weekday())  # "Monday" (local); use dt.utc().weekday() for UTC
 ```
 
 ### Instance Methods - Formatting
@@ -3582,7 +3608,17 @@ println(duration.to_string)  # "3661s"
 
 #### .humanize(locale?)
 
-Gets the duration as a human-readable compound string (e.g., "1 hour 1 minute"). Selects the most appropriate unit(s) based on the duration length — for sub-hour durations it combines minutes + seconds; for sub-day it combines hours + minutes; for longer durations it combines days + hours. The optional locale parameter overrides the current I18n locale for translation.
+Gets the duration as a human-readable **magnitude** string (e.g., `"1 hour 1 minute"`).
+Selects the most appropriate unit(s) based on the duration length — for sub-hour
+durations it combines minutes + seconds; for sub-day it combines hours + minutes;
+for longer durations it combines days + hours.
+
+Uses the absolute value of the duration: a negative interval from
+`Duration.between(later, earlier)` still humanizes as `"1 hour"`, not
+`"1 hour ago"`. Relative past phrasing belongs to `time_ago(...)`, not
+`Duration.humanize`.
+
+The optional locale parameter overrides the current I18n locale for translation.
 
 **Parameters:**
 - `locale` (String, optional) - Locale code for translation (defaults to current I18n locale)
@@ -3596,7 +3632,11 @@ Duration.seconds(1000).humanize()   # "16 minutes 40 seconds"
 Duration.seconds(7200).humanize()   # "2 hours"
 Duration.seconds(90).humanize()     # "1 minute 30 seconds"
 Duration.minutes(5).humanize()       # "5 minutes"
-Duration.humanize("fr")             # respects fr locale if translations exist
+Duration.seconds(3600).humanize("fr")  # respects fr locale if translations exist
+
+# Negative intervals still describe length — no "ago" suffix
+past = Duration.between(DateTime.now(), DateTime.now().add_hours(-1))
+past.humanize()  # "1 hour"
 ```
 
 ### Complete Example

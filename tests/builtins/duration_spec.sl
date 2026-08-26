@@ -143,3 +143,26 @@ describe("Duration Between", fn() {
         assert_eq(dur.total_seconds(), 0);
     });
 });
+
+describe("Duration.humanize", fn() {
+    # humanize describes magnitude only — never appends " ago".
+    # Relative past phrasing is `time_ago(...)`, not Duration.humanize.
+    test("humanize formats compound units without ago suffix", fn() {
+        assert_eq(Duration.seconds(3661).humanize("en"), "1 hour 1 minute");
+        assert_eq(Duration.seconds(90).humanize("en"), "1 minute 30 seconds");
+        assert_eq(Duration.minutes(5).humanize("en"), "5 minutes");
+        let text = Duration.seconds(3661).humanize("en");
+        assert(!text.includes?("ago"));
+    });
+
+    test("humanize uses absolute magnitude for negative intervals", fn() {
+        # Duration.between(later, earlier) is negative; humanize still names the length.
+        let earlier = DateTime.parse("2024-01-15T10:00:00Z");
+        let later = DateTime.parse("2024-01-15T11:00:00Z");
+        let past = Duration.between(later, earlier);
+        assert(past.total_seconds() < 0);
+        let text = past.humanize("en");
+        assert_eq(text, "1 hour");
+        assert(!text.includes?("ago"));
+    });
+});

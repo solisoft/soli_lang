@@ -48,6 +48,35 @@ end</code></pre>
         </p>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Auto-loaded models</h2>
+    <p class="text-gray-400 mb-6">
+        Migrations run with your <code>app/models</code> (and <code>app/services</code>) auto-loaded &mdash;
+        the same recursive walk as <code>soli serve</code> and <code>db:seed</code>. Model classes are
+        available by name without an <code>import</code>, so data migrations can use the Model API:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260301120000_backfill_user_slugs.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def up(db)
+  for user in User.all()
+    next unless user.slug.blank?
+    user.slug = user.name.downcase().gsub(" ", "-")
+    user.save()
+  end
+end
+
+def down(db)
+  # irreversible backfill
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        This works on every backend &mdash; SoliDB and the SQL adapters alike. Schema work still uses the
+        <code>db</code> handle (<code>create_collection</code> / <code>create_table</code>,
+        <code>create_index</code>, <code>query</code>, &hellip;). Prefer <code>db.*</code> for pure schema
+        changes and the Model API when you need validations, callbacks, or associations during a data migration.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">CLI Commands</h2>
 
     <div class="space-y-6 mb-12">

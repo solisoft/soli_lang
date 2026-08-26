@@ -89,14 +89,15 @@ describe("DateTime Instance Methods", fn() {
     test("add_hours() adds hours", fn() {
         let dt = DateTime.parse("2024-01-15T10:00:00Z");
         let later = dt.add_hours(5);
-        assert_eq(later.hour(), 15);
+        # Absolute hour of a Z timestamp: pin to UTC view (local hour shifts with TZ).
+        assert_eq(later.utc().hour(), 15);
     });
 
     test("add_minutes() adds minutes", fn() {
         let dt = DateTime.parse("2024-01-15T10:30:00Z");
         let later = dt.add_minutes(30);
-        assert_eq(later.minute(), 0);
-        assert_eq(later.hour(), 11);
+        assert_eq(later.utc().minute(), 0);
+        assert_eq(later.utc().hour(), 11);
     });
 
     test("subtract_days() subtracts days", fn() {
@@ -243,17 +244,42 @@ describe("DateTime Individual Accessors", fn() {
 
     test("hour() returns correct hour", fn() {
         let dt = DateTime.parse("2024-06-15T14:30:00Z");
-        assert_eq(dt.hour(), 14);
+        assert_eq(dt.utc().hour(), 14);
     });
 
     test("minute() returns correct minute", fn() {
         let dt = DateTime.parse("2024-06-15T10:45:00Z");
-        assert_eq(dt.minute(), 45);
+        assert_eq(dt.utc().minute(), 45);
     });
 
     test("second() returns correct second", fn() {
         let dt = DateTime.parse("2024-06-15T10:30:25Z");
-        assert_eq(dt.second(), 25);
+        assert_eq(dt.utc().second(), 25);
+    });
+
+    test("component accessors agree with format() (local view consistency)", fn() {
+        # Every component of one instant must describe the same wall-clock moment
+        # as format() — the bug this guards was hour/minute in UTC while day was local.
+        let t = DateTime.parse("2026-01-01T23:30:00Z");
+        let pad2 = fn(n) {
+            if n < 10 { "0" + str(n) } else { str(n) }
+        };
+        assert_eq(t.format("%Y"), str(t.year()));
+        assert_eq(t.format("%m"), pad2(t.month()));
+        assert_eq(t.format("%d"), pad2(t.day()));
+        assert_eq(t.format("%H"), pad2(t.hour()));
+        assert_eq(t.format("%M"), pad2(t.minute()));
+        assert_eq(t.format("%S"), pad2(t.second()));
+    });
+
+    test("utc() view returns UTC components; local view may differ", fn() {
+        let t = DateTime.parse("2026-01-01T23:30:00Z");
+        assert_eq(t.utc().hour(), 23);
+        assert_eq(t.utc().minute(), 30);
+        assert_eq(t.utc().day(), 1);
+        # Same instant: equality ignores the view flag.
+        assert(t == t.utc());
+        assert(t.utc().local() == t);
     });
 
     test("year() for epoch is 1970", fn() {
@@ -287,8 +313,8 @@ describe("DateTime Edge Cases", fn() {
     test("add_hours() crosses midnight", fn() {
         let dt = DateTime.parse("2024-01-15T20:00:00Z");
         let later = dt.add_hours(8);
-        assert_eq(later.hour(), 4);
-        assert_eq(later.day(), 16);
+        assert_eq(later.utc().hour(), 4);
+        assert_eq(later.utc().day(), 16);
     });
 
     test("subtract_days() goes to previous month", fn() {
@@ -322,14 +348,14 @@ describe("DateTime Error Handling", fn() {
     test("add_hours() with negative value subtracts", fn() {
         let dt = DateTime.parse("2024-01-15T10:00:00Z");
         let earlier = dt.add_hours(-5);
-        assert_eq(earlier.hour(), 5);
+        assert_eq(earlier.utc().hour(), 5);
     });
 
     test("add_minutes() with negative value subtracts", fn() {
         let dt = DateTime.parse("2024-01-15T10:30:00Z");
         let earlier = dt.add_minutes(-30);
-        assert_eq(earlier.minute(), 0);
-        assert_eq(earlier.hour(), 10);
+        assert_eq(earlier.utc().minute(), 0);
+        assert_eq(earlier.utc().hour(), 10);
     });
 });
 

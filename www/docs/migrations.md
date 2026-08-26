@@ -109,6 +109,34 @@ Output:
   2 applied, 1 pending
 ```
 
+## Auto-loaded models
+
+Migrations run with your `app/models` (and `app/services`) auto-loaded — same
+recursive walk as `soli serve` and `db:seed`. Model classes are available by
+name without an `import`, so data migrations can use the Model API:
+
+```soli
+# db/migrations/20260301120000_backfill_user_slugs.sl
+def up(db)
+  for user in User.all()
+    next unless user.slug.blank?
+    user.slug = user.name.downcase().gsub(" ", "-")
+    user.save()
+  end
+end
+
+def down(db)
+  # irreversible backfill
+end
+```
+
+This works on every backend — SoliDB and the SQL adapters alike.
+
+Schema work still uses the `db` handle (`create_collection` / `create_table`,
+`create_index`, `query`, …). Prefer `db.*` for pure schema changes and the Model
+API when you need validations, callbacks, or associations during a data
+migration.
+
 ## Collection Helpers
 
 ### create_collection
@@ -599,8 +627,8 @@ soli db:seed db/seeds/20260623161240_demo_users.sl
 soli db:seed ./myapp
 ```
 
-Seeds run with your `app/models` (and `app/services`) auto-loaded, so they can use the
-Model API directly — no imports needed:
+Seeds run with your `app/models` (and `app/services`) auto-loaded (same as migrations),
+so they can use the Model API directly — no imports needed:
 
 ```soli
 # db/seeds.sl

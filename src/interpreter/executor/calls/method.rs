@@ -241,9 +241,10 @@ impl Interpreter {
             }
             // A DateTime is a native value, not an object, so it dispatches
             // like the other primitives rather than through a class.
-            Value::DateTime(ts) => {
+            Value::DateTime(ts, use_utc) => {
                 crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                     ts,
+                    use_utc,
                     &method.method_name,
                     &arguments,
                     span,

@@ -482,7 +482,7 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
         Value::Null => {}
         // Decimal / DateTime / Symbol: same writer as join/JSON, no intermediate
         // Display String when escape is off (or escape only when needed).
-        Value::Decimal(_) | Value::DateTime(_) | Value::Symbol(_) => {
+        Value::Decimal(_) | Value::DateTime(_, _) | Value::Symbol(_) => {
             if escaped {
                 let mut tmp = String::new();
                 value.write_to_string(&mut tmp);

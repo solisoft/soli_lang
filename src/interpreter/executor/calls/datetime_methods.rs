@@ -1,8 +1,8 @@
 //! Method dispatch for `Value::DateTime`.
 //!
-//! A DateTime is a native `Value::DateTime(i64)` rather than an `Instance`, so
-//! it has no class to look methods up on. Both engines route here, and both
-//! read the same registered map, so they cannot drift apart.
+//! A DateTime is a native `Value::DateTime(nanos, use_utc)` rather than an
+//! `Instance`, so it has no class to look methods up on. Both engines route
+//! here, and both read the same registered map, so they cannot drift apart.
 //!
 //! ## Why the argument list is built on the stack
 //!
@@ -23,11 +23,12 @@ use crate::interpreter::executor::RuntimeResult;
 use crate::interpreter::value::Value;
 use crate::span::Span;
 
-/// Call one of DateTime's instance methods. `ts` is the receiver's instant in
-/// nanoseconds; it is passed as `args[0]`, matching how the methods were
+/// Call one of DateTime's instance methods. `nanos`/`use_utc` are the
+/// receiver; they are passed as `args[0]`, matching how the methods were
 /// written when the receiver was an object.
 pub(crate) fn call_datetime_method_impl(
-    ts: i64,
+    nanos: i64,
+    use_utc: bool,
     method_name: &str,
     arguments: &[Value],
     span: Span,
@@ -54,7 +55,7 @@ pub(crate) fn call_datetime_method_impl(
             span,
         ));
     };
-    let recv = Value::DateTime(ts);
+    let recv = Value::DateTime(nanos, use_utc);
     let call = |args: &[Value]| (func.func)(args).map_err(|e| RuntimeError::type_error(e, span));
     match arguments {
         [] => call(&[recv]),
