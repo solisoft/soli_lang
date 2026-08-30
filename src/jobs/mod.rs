@@ -173,6 +173,14 @@ impl JobDoc {
     }
 }
 
+/// Poll interval used when the server runs with `--dev` and the operator has
+/// not set `SOLI_JOBS_POLL_MS`. A dev box often has several apps open at once,
+/// each scaffolded with an `app/jobs/` directory it never actually uses, and
+/// every tick costs a lease-renew + cron + claim round-trip against the shared
+/// database. Five seconds keeps job work observable while cutting that idle
+/// chatter by 5x.
+pub const DEV_POLL_MS: u64 = 5_000;
+
 /// Engine tunables, read from the environment once per process.
 #[derive(Clone, Debug)]
 pub struct EngineConfig {
@@ -213,6 +221,15 @@ impl EngineConfig {
                 .filter(|s| !s.is_empty())
                 .unwrap_or(d.default_queue),
         }
+    }
+}
+
+/// Poll interval for a process running in dev mode: [`DEV_POLL_MS`] unless the
+/// operator pinned `SOLI_JOBS_POLL_MS`, which always wins.
+pub fn dev_poll_ms() -> u64 {
+    match std::env::var("SOLI_JOBS_POLL_MS") {
+        Ok(v) if v.parse::<i64>().is_ok() => config().poll_ms,
+        _ => DEV_POLL_MS,
     }
 }
 

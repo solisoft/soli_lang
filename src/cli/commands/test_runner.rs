@@ -1286,13 +1286,19 @@ pub fn run_test(
         clear_global_coverage_tracker();
     }
 
-    // Truncate the worker DBs now that the suite is done so they're left
-    // row-free for the next run and for any manual DB inspection in between.
-    // We truncate rather than drop: dropping is ~500ms/DB serialised on the
-    // server side (~4s at `--jobs 8`), whereas truncating collections is a
-    // cheap parallel range tombstone. The collections (schema) survive, which
-    // is what `ensure_test_databases` expects on the next run anyway.
-    truncate_test_databases(&worker_databases);
+    // Drop the worker DBs now that the suite is done, so a machine running
+    // many projects doesn't accumulate one empty `*_spec` database per worker
+    // per app forever. `SOLI_TEST_KEEP_DB=1` keeps them and truncates instead:
+    // the drops are serialised server-side and the next run has to recreate
+    // the schema, which costs little on a small app (both teardowns measured
+    // ~2s for a 2-collection DB) but grows with the collection count, since
+    // SoliDB drops column families one at a time (~175ms each). Use it when
+    // the tight test loop matters more than the leftovers.
+    if std::env::var("SOLI_TEST_KEEP_DB").as_deref() == Ok("1") {
+        truncate_test_databases(&worker_databases);
+    } else {
+        drop_test_databases(&worker_databases);
+    }
 
     println!();
 
@@ -1460,6 +1466,14 @@ fn ensure_test_databases(db_names: &[String]) {
     println!();
 }
 
+/// A 401 with no configured credentials is the normal state for a project that
+/// doesn't use SoliDB (a pure-language suite), not a failure — the setup path
+/// already reports it as a skip, and the teardown must agree rather than end
+/// every such run with a warning.
+fn is_missing_credentials(err: &str) -> bool {
+    err.contains("status code 401") && std::env::var("SOLIDB_USERNAME").is_err()
+}
+
 /// Outcome of preparing one worker DB: human-readable detail plus the
 /// `(name, type)` collections still to create through the sequential queue.
 type PrepareOutcome = Result<(String, Vec<(String, String)>), String>;
@@ -1479,9 +1493,7 @@ fn print_reset_outcome(database: &str, elapsed: std::time::Duration, outcome: &P
         // 401 without configured credentials is the normal state for
         // projects that don't use SoliDB (e.g. pure-language suites) —
         // note it dimly instead of flagging a failure.
-        Err(err)
-            if err.contains("status code 401") && std::env::var("SOLIDB_USERNAME").is_err() =>
-        {
+        Err(err) if is_missing_credentials(err) => {
             println!(
                 "  - {} skipped (SoliDB credentials not configured)",
                 database
@@ -1506,6 +1518,11 @@ fn print_reset_outcome(database: &str, elapsed: std::time::Duration, outcome: &P
 /// we need is "no rows", not "no collections". Set `SOLI_TEST_FRESH_DB=1`
 /// to force the old drop+recreate when a schema-level reset is wanted
 /// (e.g. after reworking migrations or indexes).
+///
+/// Since the suite now drops its worker DBs on the way out
+/// ([`drop_test_databases`]), the "already exists" branch below is reached
+/// only under `SOLI_TEST_KEEP_DB=1` — and `SOLI_TEST_FRESH_DB=1` is only
+/// meaningful in that same combination.
 fn prepare_test_database(
     host: &str,
     auth_header: &Option<String>,
@@ -1639,6 +1656,79 @@ fn truncate_collections(
     })
 }
 
+/// Drop each worker DB once the suite finishes, so a machine running many
+/// projects doesn't accumulate one empty `*_spec` database per worker per app.
+/// The drops are issued in parallel; the server still serialises them, so the
+/// tail grows with the number of worker DBs and with each one's collection
+/// count. `SOLI_TEST_KEEP_DB=1` selects [`truncate_test_databases`] instead.
+fn drop_test_databases(db_names: &[String]) {
+    // `worker_database_names` only ever produces `_test` / `_spec` names, but
+    // this is an irreversible delete against whatever `SOLIDB_HOST` points at
+    // — so the suffix is re-checked here rather than trusted.
+    let databases: Vec<&String> = db_names
+        .iter()
+        .filter(|name| *name != "default" && (name.ends_with("_test") || name.ends_with("_spec")))
+        .collect();
+    if databases.is_empty() {
+        return;
+    }
+    let host = test_db_host();
+    let auth_header = test_db_auth_header();
+    let started = std::time::Instant::now();
+
+    let errors: Vec<String> = std::thread::scope(|s| {
+        let handles: Vec<_> = databases
+            .iter()
+            .map(|database| {
+                let host = &host;
+                let auth_header = &auth_header;
+                s.spawn(move || drop_database(host, auth_header, database).err())
+            })
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| handle.join().unwrap())
+            .collect()
+    });
+
+    if errors.iter().all(|err| is_missing_credentials(err)) && !errors.is_empty() {
+        println!("  - post-suite drop skipped (SoliDB credentials not configured)");
+    } else if let Some(first_error) = errors.iter().find(|err| !is_missing_credentials(err)) {
+        // Non-fatal: the next run's `ensure_test_databases` recreates whatever
+        // survived, and a leftover DB costs nothing but disk.
+        println!(
+            "⚠ post-suite drop had {} error(s); first: {}",
+            errors
+                .iter()
+                .filter(|err| !is_missing_credentials(err))
+                .count(),
+            first_error
+        );
+    } else {
+        println!(
+            "Dropped {} test database(s) ({}ms)",
+            databases.len(),
+            started.elapsed().as_millis()
+        );
+    }
+}
+
+/// `DELETE /_api/database/<name>`. A 404 counts as success — the database was
+/// never created (a suite that ran no DB-backed spec) or a previous teardown
+/// already removed it.
+fn drop_database(host: &str, auth_header: &Option<String>, database: &str) -> Result<(), String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let url = format!("{}/_api/database/{}", host, database);
+    let mut req = agent.delete(&url);
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    match req.call() {
+        Ok(_) | Err(ureq::Error::Status(404, _)) => Ok(()),
+        Err(err) => Err(format!("{}: drop failed: {}", database, err)),
+    }
+}
+
 /// Truncate every collection in each worker DB once the suite finishes,
 /// leaving them row-free for the next run and for any manual DB inspection
 /// in between. Unlike a drop (~500ms/DB serialised on the server), truncate
@@ -1677,11 +1767,16 @@ fn truncate_test_databases(db_names: &[String]) {
             .collect()
     });
 
-    if let Some(first_error) = errors.first() {
+    if errors.iter().all(|err| is_missing_credentials(err)) && !errors.is_empty() {
+        println!("  - post-suite truncate skipped (SoliDB credentials not configured)");
+    } else if let Some(first_error) = errors.iter().find(|err| !is_missing_credentials(err)) {
         // Non-fatal: the next run's `ensure_test_databases` resets anyway.
         println!(
             "⚠ post-suite truncate had {} error(s); first: {}",
-            errors.len(),
+            errors
+                .iter()
+                .filter(|err| !is_missing_credentials(err))
+                .count(),
             first_error
         );
     } else {

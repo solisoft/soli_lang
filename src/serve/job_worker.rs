@@ -66,7 +66,9 @@ pub fn run_worker(folder: &Path, cli_workers: Option<usize>) -> Result<(), Strin
         dev_mode: false,
         num_workers: workers,
     });
-    crate::jobs::engine::start(workers, rt.handle().clone());
+    // Not dev-paced: `soli jobs` is a process an operator started *to run jobs*,
+    // so it always polls at the configured interval.
+    crate::jobs::engine::start(workers, rt.handle().clone(), false);
 
     println!(
         "Job worker ready ({} slot{}, {}) — Ctrl-C to stop",

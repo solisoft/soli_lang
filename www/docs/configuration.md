@@ -331,7 +331,7 @@ These knobs control how the request edge handles untrusted input. See the
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_JOBS_POLL_MS` | How often the job poller looks for due work, in milliseconds. | `1000` |
+| `SOLI_JOBS_POLL_MS` | How often the job poller looks for due work, in milliseconds. Under `--dev` the poller ticks every `5000` ms instead, so several dev apps don't hammer a shared database with idle claims; setting this variable overrides that too. | `1000` (`5000` in `--dev`) |
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
 | `SOLI_JOBS_LEASE_SECS` | Lease length for a claimed job. A `running` job whose lease expires is reclaimed by another poller — raise this for long jobs. | `60` |
 | `SOLI_JOBS_MAX_RETRIES` | Default retry budget per job; a job past it becomes `dead`. | `3` |

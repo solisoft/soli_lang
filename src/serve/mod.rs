@@ -2006,6 +2006,10 @@ fn run_hyper_server_worker_pool(
     // (`deliver_later` enqueues the built-in delivery job). `SOLI_JOB_WORKERS`
     // sizes the pool (default 1); 0 disables the engine entirely, leaving
     // enqueued rows for `soli jobs` (or another serve process) to pick up.
+    // Under `--dev` the poller ticks every `jobs::DEV_POLL_MS` instead of every
+    // second: `soli new` scaffolds `app/jobs/`, so every dev app starts an
+    // engine whether or not it uses one, and several open at once would
+    // otherwise hammer a shared dev database with idle claim round-trips.
     {
         let mailer_configured = std::env::var("SOLI_SMTP_HOST")
             .ok()
@@ -2026,7 +2030,7 @@ fn run_hyper_server_worker_pool(
                 dev_mode,
                 num_workers: num_job_workers,
             });
-            crate::jobs::engine::start(num_job_workers, runtime_handle.clone());
+            crate::jobs::engine::start(num_job_workers, runtime_handle.clone(), dev_mode);
         }
     }
 

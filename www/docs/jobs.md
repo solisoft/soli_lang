@@ -194,7 +194,7 @@ Set these env vars (typically in `.env`):
 |---------------------------|-------------------------------------------------------------------------------|-----------|
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied                                              | `default` |
 | `SOLI_JOB_WORKERS`        | Worker threads that run job code; `0` disables the engine in this process     | `1`       |
-| `SOLI_JOBS_POLL_MS`       | How often the poller looks for due work (milliseconds)                        | `1000`    |
+| `SOLI_JOBS_POLL_MS`       | How often the poller looks for due work (milliseconds); `--dev` uses `5000`    | `1000`    |
 | `SOLI_JOBS_LEASE_SECS`    | Lease length; a claimed job is reclaimable this long after its last heartbeat  | `60`      |
 | `SOLI_JOBS_MAX_RETRIES`   | Default retry budget per job                                                  | `3`       |
 | `SOLI_JOBS_RETENTION_SECS`| How long completed rows are kept before pruning                               | `604800`  |

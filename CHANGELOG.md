@@ -417,7 +417,26 @@
   key-release events (Windows / kitty protocol) are ignored so one press is never
   counted twice.
 
+### Testing
+
+- **`soli test` drops its worker databases when the suite finishes.** The
+  teardown used to truncate every collection and leave the databases in place,
+  so a machine running many projects accumulated one empty `*_spec` database
+  per worker per app, forever. The suite now drops them (issued in parallel,
+  still serialised server-side) and the next run recreates them from the
+  template. `SOLI_TEST_KEEP_DB=1` restores the truncate behaviour when the
+  tight test loop matters more than the leftovers —
+  `SOLI_TEST_FRESH_DB=1` is only meaningful in combination with it now.
+
 ### Jobs
+
+- **`--dev` polls the job queue every 5s instead of every second.** `soli new`
+  scaffolds `app/jobs/`, so every dev app starts the job engine whether it uses
+  jobs or not, and each tick costs a lease-renew + cron check + claim round-trip
+  against the database — several dev servers on one shared database spent most
+  of its traffic on idle polling. Production still ticks at `1000` ms, `soli
+  jobs` (a process started to run jobs) always uses the configured interval, and
+  setting `SOLI_JOBS_POLL_MS` overrides the dev pacing too.
 
 - **Production `/__soli/jobs`.** The queue dashboard (list, cancel, retry)
   is no longer `--dev` only. In production set `SOLI_JOBS_USER` +

@@ -81,15 +81,22 @@ pub fn report_outcome(job: &JobDoc, error: Option<&str>) {
 /// Start the poller thread. Returns immediately; the thread runs until the
 /// process shuts down. `runtime_handle` is the server's tokio handle — the
 /// poller's DB and HTTP calls need it (the getter is thread-local, so the
-/// handle has to be carried across the thread boundary).
-pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle) {
+/// handle has to be carried across the thread boundary). `dev_mode` slows the
+/// tick to [`super::DEV_POLL_MS`] so a laptop running several dev servers is
+/// not paying a claim round-trip per app per second.
+pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode: bool) {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
         return; // already running
     }
     set_capacity(pool_slots);
 
-    let cfg = super::config().clone();
+    let mut cfg = super::config().clone();
+    if dev_mode {
+        cfg.poll_ms = super::dev_poll_ms();
+    }
+    let poll_ms = cfg.poll_ms;
+    let lease_secs = cfg.lease_secs;
     let builder = std::thread::Builder::new().name("jobs-poller".to_string());
     let spawned = builder.spawn(move || {
         crate::serve::set_tokio_handle(runtime_handle);
@@ -98,9 +105,7 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle) {
     match spawned {
         Ok(_) => println!(
             "Job engine: polling every {}ms, {} worker slot(s), {}s lease",
-            super::config().poll_ms,
-            pool_slots,
-            super::config().lease_secs
+            poll_ms, pool_slots, lease_secs
         ),
         Err(e) => eprintln!("Failed to spawn job poller: {e}"),
     }
