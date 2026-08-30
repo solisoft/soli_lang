@@ -148,7 +148,12 @@ end)
 
 ### Transaction Rollback
 
-The test runner resets worker databases between runs (collection truncate). For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
+The test runner **drops** its worker databases when a suite finishes, so a machine
+running many projects doesn't accumulate one empty `*_spec` database per worker per
+app. Set `SOLI_TEST_KEEP_DB=1` to keep them and truncate their collections instead.
+Dropping is serialised server-side and the next run has to recreate the schema, which
+costs little on a small app but grows with the collection count — use `SOLI_TEST_KEEP_DB=1`
+when the tight test loop matters more than the leftovers. For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
 
 ```soli
 describe("User model", fn() {

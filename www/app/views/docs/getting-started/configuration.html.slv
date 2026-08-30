@@ -356,7 +356,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
                     <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_POLL_MS</code></td><td class="py-3 px-4">How often the job poller looks for due work, in milliseconds.</td><td class="py-3 px-4"><code>1000</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_POLL_MS</code></td><td class="py-3 px-4">How often the job poller looks for due work, in milliseconds. Under <code>--dev</code> the poller ticks every <code>5000</code> ms instead, so several dev apps don't hammer a shared database with idle claims; setting this variable overrides that too.</td><td class="py-3 px-4"><code>1000</code> (<code>5000</code> in <code>--dev</code>)</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_DEFAULT_QUEUE</code></td><td class="py-3 px-4">Queue used when no queue is specified.</td><td class="py-3 px-4"><code>default</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_LEASE_SECS</code></td><td class="py-3 px-4">Lease length for a claimed job. A <code>running</code> job whose lease expires is reclaimed by another poller &mdash; raise this for long jobs.</td><td class="py-3 px-4"><code>60</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_MAX_RETRIES</code></td><td class="py-3 px-4">Default retry budget per job; a job past it becomes <code>dead</code>.</td><td class="py-3 px-4"><code>3</code></td></tr>

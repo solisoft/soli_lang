@@ -447,7 +447,7 @@ end</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_POLL_MS</code></td>
-                            <td class="py-3 pr-4">How often the poller looks for due work (milliseconds)</td>
+                            <td class="py-3 pr-4">How often the poller looks for due work (milliseconds). Under <code class="text-orange-400">--dev</code> the poller ticks every <code class="text-orange-400">5000</code> ms unless this is set.</td>
                             <td class="py-3"><code class="text-orange-400">1000</code></td>
                         </tr>
                         <tr class="border-b border-white/5">

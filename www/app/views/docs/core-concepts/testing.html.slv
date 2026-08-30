@@ -870,7 +870,7 @@ expect(value).to_contain("substring")</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6" id="section-database-testing">Database Testing</h2>
 
         <h3 class="text-xl font-semibold text-white mb-4">Transaction Rollback</h3>
-        <p class="text-gray-400 mb-4">Worker databases are truncated between runs. Wrap per-example writes in <code>with_transaction</code> — it always rolls back, even on success (unlike <code>Model.transaction</code>):</p>
+        <p class="text-gray-400 mb-4">Worker databases are <strong class="text-white">dropped</strong> when a suite finishes, so a machine running many projects doesn't accumulate one empty <code>*_spec</code> database per worker per app. Set <code class="text-amber-400">SOLI_TEST_KEEP_DB=1</code> to keep them and truncate their collections instead: dropping is serialised server-side and the next run has to recreate the schema, which costs little on a small app but grows with the collection count. Wrap per-example writes in <code>with_transaction</code> &mdash; it always rolls back, even on success (unlike <code>Model.transaction</code>):</p>
 
         <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
   test("creates user", fn() {
