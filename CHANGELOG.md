@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-31
+
 ### Docs
 
 - **Rust internals guide** (`/docs/internals`) — crate map, lexer/parser/AST, interpreter, VM, serve, SQL adapters, and a type/method catalog for junior Rust contributors. Pages are **Markdown views** (`www/docs/internals/*.md`), not duplicated `.html.slv`.

@@ -39,7 +39,7 @@ def get_blog_posts()
 
     # Simple list - ordered manually (newest first)
     let blog_info = [
-        {"slug": "whats-unreleased", "file": "docs/blog/whats-unreleased.md", "desc": "A tour of everything on main since v1.29.0: SQL as a real backend, in-process jobs, LiveView rooms and hardening, unless/end, and auth that no longer helps attackers.", "tag": "Guide", "image": "whats-unreleased.svg"},
+        {"slug": "whats-unreleased", "file": "docs/blog/whats-unreleased.md", "desc": "A tour of everything that shipped in v2.0.0: SQL as a real backend, in-process jobs, LiveView rooms and hardening, unless/end, and auth that no longer helps attackers.", "tag": "Guide", "image": "whats-unreleased.svg"},
         {"slug": "stripe-checkout", "file": "docs/blog/stripe-checkout.md", "desc": "Take payments with Stripe Checkout in a Soli app — no generator. Create a session, send the buyer to Stripe, and mark the order paid only after a signed webhook. HTTP.post, Crypto.hmac, skip_csrf.", "tag": "Tutorial", "image": "stripe-checkout.svg"},
         {"slug": "liveview-desk", "file": "docs/blog/liveview-desk.md", "desc": "A live Field Desk on the page: nested live_component assigns, soli-upload, in-socket tabs, debounce, click-away, hooks, JS commands, and the hash .where / jobs snippets you would ship with it.", "tag": "Tutorial", "image": "liveview-desk.svg"},
         {"slug": "multi-database", "file": "docs/blog/multi-database.md", "desc": "Named connections in config/database.toml and per-model connection \"name\" — SoliDB for the product core, Postgres or MySQL where the data already lives. SQL document adapters, honest capability matrix, and hard errors on cross-connection includes.", "tag": "Architecture", "image": "multi-database.svg"},

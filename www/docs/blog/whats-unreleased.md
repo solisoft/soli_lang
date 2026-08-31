@@ -1,9 +1,9 @@
-# What's on `main` since v1.29.0
+# What shipped in v2.0.0
 
-v1.29.0 shipped on 9 August. Everything below is already on `main` and will
-land in the next tag. This is a tour of that cycle — not a dump of the
+v1.29.0 shipped on 9 August; everything below landed in **v2.0.0** on
+31 August. This is a tour of that cycle — not a dump of the
 changelog. The exhaustive list lives on the
-[changelog](/docs/getting-started/changelog#unreleased).
+[changelog](/docs/getting-started/changelog#v2-0-0).
 
 The short version: **SQL is a real backend**, **jobs no longer phone home**,
 **LiveView stopped leaking and leaking memory**, and **auth stopped helping
@@ -11,7 +11,7 @@ attackers**. Plus `unless … end` is a real statement, and you can take
 Stripe payments without a generator.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
-  <img src="/images/blog/whats-unreleased.svg" width="1024" height="576" alt="Unreleased cycle since v1.29.0: SQL adapters, in-process jobs, LiveView rooms, auth hardening, and unless/end." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <img src="/images/blog/whats-unreleased.svg" width="1024" height="576" alt="The v2.0.0 cycle: SQL adapters, in-process jobs, LiveView rooms, auth hardening, and unless/end." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
   <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Four backends, one Model surface. One process owns the queue. LiveView rooms share a board. Auth no longer times the miss path.</figcaption>
 </figure>
 
