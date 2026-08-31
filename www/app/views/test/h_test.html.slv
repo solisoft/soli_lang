@@ -1,2 +1,3 @@
-<h1>Test h() function</h1>
-<p>Escaped: <%= h("<script>alert('xss')</script>") %></p>
+<h1>Escaping demo</h1>
+<p>Auto-escaped by the tag: <%= "<script>alert('xss')</script>" %></p>
+<p>h() with raw output: <%- h("<script>alert('xss')</script>") %></p>

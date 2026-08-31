@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Lint
+
+- **`idiom/redundant-template-escape`.** `<%= %>` already HTML-escapes its output,
+  so `<%= h(x) %>` / `<%= attr(x) %>` / `<%= html_escape(x) %>` escape twice and the
+  page shows literal `&#x27;` / `&amp;` wherever the value has a special character
+  (e.g. any French name with an apostrophe). The new rule flags an escaped-output
+  tag whose whole expression is one of those helper calls; composed expressions
+  (`<%= h(a) + b %>`), other `h*` functions, and the legitimate raw-output form
+  (`<%- h(...) %>`) are not flagged.
+
+### Docs
+
+- **The escaping docs no longer teach the double escape.** `views.md`'s helper
+  sections (and the `mailer`/`static-server`/`models`/blog examples, plus the
+  `www` site's own views) showed `<%= h(user_input) %>` and
+  `value="<%= attr(x) %>"` — patterns that double-escape now that `<%= %>`
+  auto-escapes. They now show the bare form, state explicitly that `<%= %>`
+  covers element bodies *and* quoted attributes, and scope `h()`/`attr()` to
+  HTML strings built in code and emitted via `<%- %>`.
+
 ## [2.0.5] - 2026-09-03
 
 ### Fixed

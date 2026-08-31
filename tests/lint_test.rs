@@ -487,3 +487,47 @@ fn slv_unclosed_tag_is_a_template_error() {
         err
     );
 }
+
+#[test]
+fn slv_flags_escape_helper_inside_escaped_output() {
+    // `<%= %>` already HTML-escapes; wrapping the value in h()/attr()/
+    // html_escape() escapes twice and the page shows literal `&#x27;`.
+    let src = "<p><%= h(user.name) %></p>\n<a title=\"<%= attr(post.title) %>\">x</a>\n<span><%= html_escape(bio) %></span>\n";
+    let diags =
+        solilang::lint_file(src, "app/views/x/show.html.slv").expect("template should parse");
+    let hits: Vec<_> = diags
+        .iter()
+        .filter(|d| d.rule == "idiom/redundant-template-escape")
+        .collect();
+    assert_eq!(
+        hits.len(),
+        3,
+        "expected 3 redundant-escape hits: {:?}",
+        diags
+    );
+    assert_eq!(hits[0].span.line, 1);
+    assert_eq!(hits[1].span.line, 2);
+    assert_eq!(hits[2].span.line, 3);
+}
+
+#[test]
+fn slv_redundant_escape_skips_raw_output_and_partial_wrapping() {
+    // `<%- h(...) %>` is the legitimate use (raw output of code-built HTML);
+    // `h()` composed inside a larger expression, or another function whose
+    // name merely starts with `h`, must not be flagged.
+    let src = concat!(
+        "<%- h(chunk) %>\n",
+        "<p><%= h(a) + b %></p>\n",
+        "<p><%= hello(name) %></p>\n",
+        "<p><%= handle %></p>\n",
+    );
+    let diags =
+        solilang::lint_file(src, "app/views/x/show.html.slv").expect("template should parse");
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.rule == "idiom/redundant-template-escape"),
+        "no redundant-escape diagnostic expected: {:?}",
+        diags
+    );
+}

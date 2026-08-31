@@ -12,7 +12,7 @@
               soli-change="draft"
               style="background:#0b0a09;border:1px solid rgba(255,255,255,.08);border-radius:.6rem;color:#fff;padding:.45rem .65rem;font-size:.85rem;resize:vertical;"><%= draft_body %></textarea>
     <% if flash != null && flash != "" && composer_open %>
-      <div style="font-size:.75rem;color:#fbbf24;"><%= h(flash) %></div>
+      <div style="font-size:.75rem;color:#fbbf24;"><%= flash %></div>
     <% end %>
     <div style="display:flex;gap:.4rem;justify-content:flex-end;">
       <button type="button" soli-click="close_composer" soli-assign-composer_open="false"

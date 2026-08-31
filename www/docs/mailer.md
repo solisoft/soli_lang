@@ -42,7 +42,7 @@ available as locals, exactly like a controller view:
 
 ```erb
 <!-- app/views/user_mailer/welcome.html.slv -->
-<h1>Welcome, <%= h(user.name) %>!</h1>
+<h1>Welcome, <%= user.name %>!</h1>
 <p>Thanks for joining. <a href="https://example.com/start">Get started</a>.</p>
 ```
 
@@ -92,7 +92,7 @@ data with a leading `<%# preview: {json} %>` header — the same convention as t
 
 ```erb
 <%# preview: { "user": { "name": "Ada Lovelace" } } %>
-<h1>Welcome, <%= h(user.name) %>!</h1>
+<h1>Welcome, <%= user.name %>!</h1>
 ```
 
 Previews render the HTML part only (no layout) with built-in helpers plus the

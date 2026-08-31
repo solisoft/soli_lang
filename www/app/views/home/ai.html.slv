@@ -98,7 +98,7 @@
         </p>
         <p class="text-sm text-stone-500 mb-10">
             Methodology: <a href="/docs/development-tools/ai-evals" class="text-amber-400 hover:underline">Agents on Soli</a>.
-            Harness <code class="text-amber-200/80"><%= h(str(evals["harness"])) %></code>,
+            Harness <code class="text-amber-200/80"><%= str(evals["harness"]) %></code>,
             <%= str(evals["runs_per_model"]) %> runs per model.
         </p>
 
@@ -118,7 +118,7 @@
                 <tbody class="divide-y divide-white/5 text-stone-300">
                     <% for row in evals["models"] %>
                     <tr>
-                        <td class="px-6 py-4 font-mono text-amber-200" data-v="<%= h(str(row["id"])) %>"><%= h(str(row["id"])) %></td>
+                        <td class="px-6 py-4 font-mono text-amber-200" data-v="<%= str(row["id"]) %>"><%= str(row["id"]) %></td>
                         <td class="px-6 py-4" data-v="<%= str(row["accuracy"]) %>"><%= str(row["accuracy"]) %></td>
                         <td class="px-6 py-4" data-v="<%= str(row["speed_s"]) %>"><%= str(row["speed_s"]) %>s</td>
                         <td class="px-6 py-4" data-v="<%= str(row["tokens"]) %>"><%= str(row["tokens"]) %></td>
@@ -129,7 +129,7 @@
                 </tbody>
             </table>
         </div>
-        <p class="mt-4 text-xs text-stone-500">Last run: <%= h(str(evals["generated_at"])) %>. Click a column to sort.</p>
+        <p class="mt-4 text-xs text-stone-500">Last run: <%= str(evals["generated_at"]) %>. Click a column to sort.</p>
         <script>
         (function () {
             var table = document.getElementById("ai-evals-table");
