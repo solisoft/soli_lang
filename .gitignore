@@ -15,6 +15,9 @@ node_modules
 # on a clean checkout with "".env.test file not found". These hold no secrets.
 !tests-e2e/*/.env.test
 .claude/settings.local.json
+# Nested per-developer overrides too (e.g. www/.claude/): a pattern with a
+# slash is anchored to the repo root, so the line above never matched them.
+**/.claude/settings.local.json
 # Anchored to the repo root: the unanchored `tasks*` also matched
 # `evals/tasks/`, so the eval harness's task fixtures were never committed and
 # `scripts/evals/run.py` raised FileNotFoundError on a clean clone.

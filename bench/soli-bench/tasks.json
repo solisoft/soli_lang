@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "description": "SoliBench task manifest. See bench/soli-bench/README.md for the format.",
+  "tasks": [
+    { "id": "core.group_by_array",            "suite": "core", "name": "group_by_array",            "weight": 1.0, "tags": ["array", "higher-order"] },
+    { "id": "core.flatten_array",             "suite": "core", "name": "flatten_array",             "weight": 1.0, "tags": ["array", "recursion"] },
+    { "id": "core.dedup_preserve_order",      "suite": "core", "name": "dedup_preserve_order",      "weight": 1.0, "tags": ["array", "hash"] },
+    { "id": "core.zip_with",                  "suite": "core", "name": "zip_with",                  "weight": 1.0, "tags": ["array"] },
+    { "id": "core.count_by",                  "suite": "core", "name": "count_by",                  "weight": 1.0, "tags": ["array", "hash"] },
+    { "id": "core.pipeline_chain",            "suite": "core", "name": "pipeline_chain",            "weight": 1.0, "tags": ["pipeline"] },
+    { "id": "core.match_classify",            "suite": "core", "name": "match_classify",            "weight": 1.5, "tags": ["pattern-matching"] },
+    { "id": "core.postfix_guards",            "suite": "core", "name": "postfix_guards",            "weight": 1.5, "tags": ["if", "unless", "rescue"] },
+    { "id": "core.nullish_defaults",          "suite": "core", "name": "nullish_defaults",          "weight": 1.0, "tags": ["??"] },
+    { "id": "core.hash_merge_with_default",   "suite": "core", "name": "hash_merge_with_default",   "weight": 1.0, "tags": ["hash"] },
+    { "id": "core.class_inheritance",         "suite": "core", "name": "class_inheritance",         "weight": 2.0, "tags": ["class", "super"] },
+    { "id": "core.lambda_closure_capture",    "suite": "core", "name": "lambda_closure_capture",    "weight": 1.5, "tags": ["lambda", "closure"] },
+
+    { "id": "mvc.posts_crud",                 "suite": "mvc",  "name": "posts_crud",                "weight": 3.0, "tags": ["rest", "model", "controller"] },
+    { "id": "mvc.search_with_pagination",     "suite": "mvc",  "name": "search_with_pagination",    "weight": 3.0, "tags": ["controller", "where", "pagination"] },
+    { "id": "mvc.scoped_middleware",          "suite": "mvc",  "name": "scoped_middleware",         "weight": 2.5, "tags": ["middleware", "scope"] },
+
+    { "id": "idiom.let_overuse",              "suite": "idiom", "name": "let_overuse",               "weight": 1.0, "tags": ["style"],       "lint_rules": ["smell/undefined-local"] },
+    { "id": "idiom.nil_eq_to_dot_nil",        "suite": "idiom", "name": "nil_eq_to_dot_nil",         "weight": 1.0, "tags": ["style", "nil"],        "lint_rules": ["idiom/nil-comparison"] },
+    { "id": "idiom.blank_check",              "suite": "idiom", "name": "blank_check",               "weight": 1.0, "tags": ["style", "blank"],      "lint_rules": ["idiom/prefer-blank"] },
+    { "id": "idiom.includes_check",           "suite": "idiom", "name": "includes_check",            "weight": 1.0, "tags": ["style", "membership"], "lint_rules": ["idiom/prefer-includes"] },
+    { "id": "idiom.pipe_returns_last",        "suite": "idiom", "name": "pipe_returns_last",         "weight": 1.0, "tags": ["idiom", "pipeline"],   "lint_rules": ["smell/deep-nesting"] },
+    { "id": "idiom.no_redundant_model_import","suite": "idiom", "name": "no_redundant_model_import", "weight": 1.5, "tags": ["style", "mvc"],        "lint_rules": ["style/redundant-model-import"] },
+    { "id": "idiom.no_manual_404_after_find", "suite": "idiom", "name": "no_manual_404_after_find",  "weight": 1.5, "tags": ["style", "mvc", "find"], "lint_rules": ["idiom/manual-find-guard"] }
+  ]
+}
