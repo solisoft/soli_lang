@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### CI
+
+* **Four jobs were compiling from scratch on every run.** `test`, `clippy`,
+  `browser` and `verapdf` used `actions/cache/restore` keyed on
+  `${{ github.sha }}` with no `restore-keys` — and nothing in the repository
+  ever ran `actions/cache/save`, so that key was never written and the restore
+  missed every time. `gh cache list` confirmed it: no `Linux-cargo-<sha>` entry
+  had ever existed. All four now use `Swatinem/rust-cache`.
+* **`windows-check` had no cache at all**, and at 15.2 min it is the critical
+  path — every other job finishes inside it, so its cold rebuild set the length
+  of the whole run. It caches now too.
+* **Cache writes are restricted to `main`** on all six cargo caches (`save-if`).
+  The repository was at 12.2 GB against GitHub's 10 GB limit, which evicts in
+  LRU; letting every PR branch push a multi-GB entry is how caches start
+  displacing each other. 5.7 GB of provably superseded entries were deleted at
+  the same time — stale fuzz build caches from an old `Cargo.lock` hash,
+  superseded corpus snapshots, and tag-scoped copies from `v2.0.0`.
+
+
 ## [2.0.0] - 2026-08-31
 
 ### Docs

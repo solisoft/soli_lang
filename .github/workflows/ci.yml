@@ -93,15 +93,22 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Restore cargo cache
-        uses: actions/cache/restore@v5
+      # Swatinem/rust-cache, not actions/cache/restore. The restore-only step
+      # this replaces was keyed on ${{ github.sha }} with no restore-keys, and
+      # nothing in the repository ever ran actions/cache/save — so the key was
+      # never written and the restore missed on every single run. `gh cache
+      # list` confirmed it: zero Linux-cargo-<sha> entries had ever existed.
+      # This job and the three below it were compiling from scratch every time.
+      #
+      # save-if keeps writes to main: rust-cache saves whenever its key changes,
+      # and this repository was already at 12.2 GB against GitHub's 10 GB limit,
+      # so PR branches each pushing an entry is how caches start evicting each
+      # other.
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            target/
-          key: ${{ runner.os }}-cargo-${{ github.sha }}
+          key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The Postgres image ships with TLS off, so without this the adapter's
       # TLS path would only ever be exercised in its "server refuses TLS" arm.
@@ -147,6 +154,15 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # This job had no cache at all, and at 15.2 min it is the critical path —
+      # every other job finishes inside it, so its cold rebuild set the length
+      # of the whole run.
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Check
         run: cargo check --locked --all-targets
 
@@ -177,15 +193,12 @@ jobs:
         with:
           components: clippy
 
-      - name: Restore cargo cache
-        uses: actions/cache/restore@v5
+      # rust-cache, for the reasons spelled out on the `test` job above.
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            target/
-          key: ${{ runner.os }}-cargo-${{ github.sha }}
+          key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Clippy
         # `--all-targets` so the test code is linted too: without it the unit
@@ -234,8 +247,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Restore cargo cache
+      - name: Cargo cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: audit
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
@@ -273,7 +289,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: engine-parity
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build the release binary the sweeps run against
         run: cargo build --release --locked
@@ -321,15 +341,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Restore cargo cache
-        uses: actions/cache/restore@v5
+      # rust-cache, for the reasons spelled out on the `test` job above.
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            target/
-          key: ${{ runner.os }}-cargo-${{ github.sha }}
+          key: browser
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build
         run: cargo build --locked
@@ -372,15 +389,12 @@ jobs:
           JAR=$(ls /tmp/verapdf-greenfield-*/verapdf-izpack-installer-*.jar | head -1)
           java -jar "$JAR" scripts/verapdf-auto-install.xml
 
-      - name: Restore cargo cache
-        uses: actions/cache/restore@v5
+      # rust-cache, for the reasons spelled out on the `test` job above.
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            target/
-          key: ${{ runner.os }}-cargo-${{ github.sha }}
+          key: verapdf
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Generate sample PDFs
         run: cargo run --locked -- scripts/verapdf_samples.sl
