@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-02
+
 ### ORM
 
 - **`.timeout(secs)` on a query — raise the 10s ceiling on one slow read.**
