@@ -38,6 +38,10 @@ struct PendingQuery {
     binds: HashMap<String, serde_json::Value>,
     transform: Transform,
     cell: Rc<RefCell<DeferredCell>>,
+    /// The `.timeout(secs)` override that was in force when this query was
+    /// registered, captured because the builder's guard drops as soon as
+    /// registration returns — long before the batch flushes.
+    timeout_secs: Option<f64>,
 }
 
 struct BatchState {
@@ -170,6 +174,7 @@ pub fn register(
                 binds,
                 transform,
                 cell: cell.clone(),
+                timeout_secs: super::crud::current_db_timeout().map(|d| d.as_secs_f64()),
             });
         }
     });
@@ -196,6 +201,19 @@ pub fn flush_current() {
 /// single round-trip, run each transform, and fill the deferred cells. No-op
 /// when nothing is pending. Leaves the batch active (with an empty queue) so
 /// queries registered after an auto-flush coalesce into a fresh batch.
+/// The timeout a coalesced batch runs under: the largest `.timeout(secs)` any
+/// query in it asked for, or `None` when none did.
+///
+/// The batch is a single HTTP request, so taking the minimum would time out the
+/// very query that asked for more room, and ignoring the overrides entirely
+/// would silently cap a grouped block at the client default.
+fn batch_timeout(pending: &[PendingQuery]) -> Option<f64> {
+    pending
+        .iter()
+        .filter_map(|pq| pq.timeout_secs)
+        .fold(None, |acc, s| Some(acc.map_or(s, |a: f64| a.max(s))))
+}
+
 fn flush_inner() -> Result<(), String> {
     let pending: Vec<PendingQuery> = BATCH.with(|b| match b.borrow_mut().as_mut() {
         Some(state) => std::mem::take(&mut state.pending),
@@ -204,6 +222,8 @@ fn flush_inner() -> Result<(), String> {
     if pending.is_empty() {
         return Ok(());
     }
+
+    let _db_timeout = super::crud::scoped_db_timeout(batch_timeout(&pending));
 
     // Single query: skip the LET/RETURN wrapper — run it directly so the dev
     // query log shows the natural statement and there's no array unwrapping.
@@ -420,6 +440,7 @@ mod tests {
                 },
                 transform: Box::new(|_| Ok(Value::Null)),
                 cell: Rc::new(RefCell::new(DeferredCell::default())),
+                timeout_secs: None,
             },
             PendingQuery {
                 aql: "FOR d IN b FILTER d.k == @val RETURN d".to_string(),
@@ -430,6 +451,7 @@ mod tests {
                 },
                 transform: Box::new(|_| Ok(Value::Null)),
                 cell: Rc::new(RefCell::new(DeferredCell::default())),
+                timeout_secs: None,
             },
         ];
         let (combined, merged) = build_combined_query(&pending);
@@ -440,12 +462,53 @@ mod tests {
         assert_eq!(merged.get("b1__val"), Some(&serde_json::json!("y")));
     }
 
+    fn pending_with_timeout(secs: Option<f64>) -> PendingQuery {
+        PendingQuery {
+            aql: "RETURN 1".to_string(),
+            binds: HashMap::new(),
+            transform: Box::new(|_| Ok(Value::Null)),
+            cell: Rc::new(RefCell::new(DeferredCell::default())),
+            timeout_secs: secs,
+        }
+    }
+
+    #[test]
+    fn batch_timeout_is_none_when_no_query_asked() {
+        let pending = vec![pending_with_timeout(None), pending_with_timeout(None)];
+        assert_eq!(batch_timeout(&pending), None);
+    }
+
+    #[test]
+    fn batch_timeout_takes_the_most_patient_query() {
+        // One slow report inside a grouped block must not be capped by the
+        // faster reads sharing its request.
+        let pending = vec![
+            pending_with_timeout(None),
+            pending_with_timeout(Some(30.0)),
+            pending_with_timeout(Some(120.0)),
+            pending_with_timeout(Some(15.0)),
+        ];
+        assert_eq!(batch_timeout(&pending), Some(120.0));
+    }
+
+    #[test]
+    fn batch_timeout_ignores_queries_without_an_override() {
+        let pending = vec![pending_with_timeout(Some(90.0)), pending_with_timeout(None)];
+        assert_eq!(batch_timeout(&pending), Some(90.0));
+    }
+
+    #[test]
+    fn batch_timeout_of_an_empty_batch_is_none() {
+        assert_eq!(batch_timeout(&[]), None);
+    }
+
     fn pending(aql: &str, binds: HashMap<String, serde_json::Value>) -> PendingQuery {
         PendingQuery {
             aql: aql.to_string(),
             binds,
             transform: Box::new(|_| Ok(Value::Null)),
             cell: Rc::new(RefCell::new(DeferredCell::default())),
+            timeout_secs: None,
         }
     }
 

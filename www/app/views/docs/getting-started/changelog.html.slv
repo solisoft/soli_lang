@@ -21,7 +21,18 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
 
-        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet &mdash; changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-0" class="text-amber-400 hover:underline">v2.0.0</a> will be listed here.</p>
+        <h3 id="unreleased-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM / database</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">.timeout(secs)</code> raises the 10s ceiling on one slow query.</strong> Every read reaches SoliDB over HTTP, and that client allows a request <strong class="text-white">10 seconds</strong> &mdash; a deliberately tight backstop against a stalled connection pinning a worker, but hardcoded, with nothing to turn. A report over a large collection or a multi-aggregate <code class="text-cyan-400">group_by</code> died with <code>Error: HTTP error: error sending request for url &hellip;</code> however healthy the database was. <code class="text-cyan-400">Order.where(&hellip;).timeout(120).all()</code> now gives that one query two minutes, as does the <code class="text-cyan-400">Model.timeout(secs)</code> static entry point.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li>Chainable and position-independent like <code class="text-cyan-400">.limit</code>. Seconds as <code>Int</code> or <code>Float</code>, so <code class="text-cyan-400">.timeout(0.5)</code> is a valid half-second budget &mdash; and a zero, negative or non-numeric value <strong class="text-white">raises</strong> instead of being ignored, so a typo cannot silently leave the 10s default in place.</li>
+                    <li><strong class="text-white">Scoped to the one request</strong> and reverted the moment it finishes, error included, so a raised timeout never leaks into the next query on that thread. It lowers as well as raises: <code class="text-cyan-400">.timeout(2)</code> fails fast rather than making a user wait.</li>
+                    <li><strong class="text-white">A <code class="text-cyan-400">grouped</code> block runs under its most patient member.</strong> Coalesced reads are a single request, so the batch takes the <em>largest</em> <code class="text-cyan-400">.timeout</code> any query in it asked for &mdash; taking the minimum would have timed out the very query that asked for more room.</li>
+                    <li><strong class="text-white">No effect on the SQL adapters.</strong> Postgres, MySQL and SQLite talk over their own connection pool rather than HTTP, so the 10s cap this lifts does not exist there and there is no statement timeout to set in its place. The call is accepted so a query stays portable across adapters; bound a SQL query with the server's own <code class="text-cyan-400">statement_timeout</code> / <code class="text-cyan-400">max_execution_time</code>.</li>
+                </ul>
+                See <a href="/docs/database/query-builder#timeout" class="text-amber-400 hover:underline">Query timeouts</a>.
+            </li>
+        </ul>
     </section>
 
     <section id="v2-0-0" class="mb-16 scroll-mt-24">

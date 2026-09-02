@@ -2727,6 +2727,39 @@ impl Model {
             })),
         );
 
+        // Model.timeout(secs) - Returns a QueryBuilder whose one request may
+        // run for `secs` instead of the internal DB client's 10s default.
+        native_static_methods.insert(
+            "timeout".to_string(),
+            Rc::new(NativeFunction::new("Model.timeout", Some(2), |args| {
+                let class = get_class_rc_from_args(args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let secs = match args.get(1) {
+                    Some(Value::Int(n)) => *n as f64,
+                    Some(Value::Float(f)) => *f,
+                    Some(other) => {
+                        return Err(format!(
+                            "Model.timeout() expects a number of seconds, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("Model.timeout() requires a number".to_string()),
+                };
+                if !secs.is_finite() || secs <= 0.0 {
+                    return Err(format!(
+                        "Model.timeout() expects a positive number of seconds, got {}",
+                        secs
+                    ));
+                }
+
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
+                qb.set_timeout(secs);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
         // Model.limit(n) - Returns a QueryBuilder with a limit (no filter)
         native_static_methods.insert(
             "limit".to_string(),

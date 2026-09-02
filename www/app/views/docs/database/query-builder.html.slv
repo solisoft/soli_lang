@@ -91,6 +91,10 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                     <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.timeout(secs)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Allow this one query <code>secs</code> seconds instead of the 10s default &mdash; see <a href="#timeout" class="text-amber-400 hover:underline">Query timeouts</a></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.paginate(hash)</code></td>
                     <td class="py-3 px-4 text-gray-400">Terminal: fetch paginated results + metadata. Args: <code>page</code> (default 1), <code>per</code> (default 25). Returns <code>{"records": [...], "pagination": {"page": n, "per": n, "total": n, "total_pages": n}}</code></td>
                 </tr>
@@ -420,6 +424,50 @@ grouped(fn() {
     <p class="text-gray-400 mb-12">
         Neither can prove the reads are independent — <code>User.find(id)</code> followed by a query on <code>user._key</code> is genuinely two round-trips. When the reads must be sequential, that advisory is a false positive and the assertion is the wrong tool for that action.
     </p>
+
+    <h2 id="timeout" class="text-2xl font-bold text-white mb-6">Query timeouts (<code>timeout</code>)</h2>
+    <p class="text-gray-400 mb-6">Every read reaches SoliDB over HTTP, and that client gives a request <strong class="text-white">10 seconds</strong>. The limit is deliberately tight &mdash; it is the backstop that stops a stalled connection from pinning a worker &mdash; but a genuine long-running query outgrows it: a report over a large collection, a multi-aggregate <code>group_by</code>, an import-sized scan. Such a query fails with <code>Error: HTTP error: error sending request for url &hellip;</code> after ten seconds no matter how healthy the database is.</p>
+    <p class="text-gray-400 mb-6"><code>.timeout(secs)</code> raises the limit for one query:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># A slow report gets two minutes; every other query on the
+# process keeps the 10s default.
+let rows = Order
+    .where({ "created_at": { "gte": start_of_year } })
+    .group_by(["region", "channel"])
+    .aggregate({ "revenue": ["sum", "total"], "n": ["count"] })
+    .timeout(120)
+    .all()
+
+# Also a static entry point, so no .where is needed
+Order.timeout(120).all()</code></pre>
+        </div>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+        <li><strong class="text-white">Seconds, <code>Int</code> or <code>Float</code></strong> &mdash; <code>.timeout(0.5)</code> is a valid half-second budget. A zero, negative, or non-numeric value <strong class="text-white">raises</strong> rather than being ignored, so a typo cannot silently leave the 10s default in place.</li>
+        <li><strong class="text-white">Chainable and position-independent</strong>, like <code>.limit</code>.</li>
+        <li><strong class="text-white">Scoped to the one query.</strong> The override is installed for that request and reverted the moment it finishes, error included &mdash; it never leaks into the next query.</li>
+        <li><strong class="text-white">Lower it too.</strong> Nothing stops <code>.timeout(2)</code> on a query you would rather see fail fast than have a user wait on.</li>
+    </ul>
+
+    <p class="text-gray-400 mb-6">Inside a <a href="#grouped" class="text-amber-400 hover:underline"><code>grouped</code></a> block the reads become a single request, and the batch runs under the <strong class="text-white">largest</strong> <code>.timeout</code> any member asked for &mdash; one slow member is not capped by the fast reads sharing its round-trip.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">grouped(fn() {
+  @summary = Order.group_by(["region"]).timeout(120).all   # the slow one
+  @tags    = Tag.all                                       # rides along
+})
+# one request, 120s of room</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2">No effect on the SQL adapters</h4>
+        <p class="text-amber-200/80 text-sm">Postgres, MySQL and SQLite talk to the database over their own connection pool rather than HTTP, so the 10s cap this option lifts <strong class="text-white">does not exist there</strong> &mdash; and there is no statement timeout to set in its place. The call is accepted so a query stays portable across adapters, but on SQL the query runs as long as the server lets it. Bound it with the server's own knob: Postgres <code>statement_timeout</code>, MySQL <code>max_execution_time</code>.</p>
+    </div>
 
     <h2 id="traverse" class="text-2xl font-bold text-white mb-6">Graph Traversal (<code>traverse</code>)</h2>
     <p class="text-gray-400 mb-6">

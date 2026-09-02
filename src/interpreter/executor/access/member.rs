@@ -2194,7 +2194,7 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"
+            "where" | "order" | "limit" | "offset" | "timeout" | "includes" | "includes_count" | "join" | "select" | "fields"
             | "all" | "first" | "count" | "paginate" | "create" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
             | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"

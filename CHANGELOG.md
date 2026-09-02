@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### ORM
+
+- **`.timeout(secs)` on a query — raise the 10s ceiling on one slow read.**
+  Every read reaches SoliDB over HTTP, and that client allows a request 10s
+  (`build_internal_client`), a hardcoded backstop with no way around it: a
+  report over a large collection or a multi-aggregate `group_by` failed with
+  `Error: HTTP error: error sending request for url …` no matter how healthy
+  the database was. `Order.where(…).timeout(120).all()` now gives that one
+  query two minutes, as does the `Model.timeout(secs)` static entry point.
+  Chainable and position-independent like `.limit`; seconds as `Int` or
+  `Float` (`0.5` is valid); a zero, negative, or non-numeric value raises
+  rather than being ignored, so a typo cannot silently leave the default in
+  place. Lower it too — `.timeout(2)` fails fast instead of making a user
+  wait. The override is scoped to the one request and reverted on completion,
+  error included, so it never leaks into the next query on the thread. Inside
+  a `grouped(fn() { … })` block the reads are one request, which runs under
+  the **largest** `.timeout` any member asked for — a slow member is not
+  capped by the fast reads sharing its round-trip. **No effect on the SQL
+  adapters**: Postgres/MySQL/SQLite use their own connection pool, so the
+  10s HTTP cap does not exist there and there is no statement timeout to set
+  in its place — the call is accepted for portability, and the server's own
+  `statement_timeout` / `max_execution_time` remains the way to bound a SQL
+  query.
+
 ### CI
 
 * **Four jobs were compiling from scratch on every run.** `test`, `clippy`,

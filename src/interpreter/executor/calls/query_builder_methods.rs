@@ -63,6 +63,7 @@ impl Interpreter {
             "order" => self.qb_order(qb, arguments, span),
             "limit" => self.qb_limit(qb, arguments, span),
             "offset" => self.qb_offset(qb, arguments, span),
+            "timeout" => self.qb_timeout(qb, arguments, span),
             "includes" => self.qb_includes(qb, arguments, span),
             "includes_count" => self.qb_includes_count(qb, arguments, span),
             "select" | "fields" => self.qb_select(qb, arguments, span),
@@ -384,6 +385,50 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
 
         let mut new_qb = qb.borrow().clone();
         new_qb.set_limit(limit);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    /// `.timeout(secs)` — raise (or lower) the request timeout for this one
+    /// query, overriding the internal DB client's 10s default. Chainable and
+    /// position-independent like `.limit`; the value travels with the builder
+    /// and is applied when a terminal method actually issues the request.
+    fn qb_timeout(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        // Same contract as the Http class's `{"timeout": n}` option: seconds,
+        // Int or Float, and a non-positive or non-finite value is a hard error
+        // so a typo fails loudly instead of silently keeping the 10s default.
+        let secs = match &arguments[0] {
+            Value::Int(n) => *n as f64,
+            Value::Float(f) => *f,
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!(
+                        "timeout() expects a number of seconds, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+        if !secs.is_finite() || secs <= 0.0 {
+            return Err(RuntimeError::type_error(
+                format!(
+                    "timeout() expects a positive number of seconds, got {}",
+                    secs
+                ),
+                span,
+            ));
+        }
+
+        let mut new_qb = qb.borrow().clone();
+        new_qb.set_timeout(secs);
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 

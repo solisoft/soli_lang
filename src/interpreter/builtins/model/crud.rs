@@ -69,10 +69,84 @@ fn format_query_http_failure(status: reqwest::StatusCode, body: &str) -> String 
     }
 }
 
+thread_local! {
+    /// Per-query override for the internal client's request timeout, in force
+    /// for the duration of one DB call.
+    ///
+    /// The internal client's 10s `.timeout()` is baked into a shared singleton
+    /// (`http_class::build_internal_client`) that every DB request on the
+    /// process reuses, so it cannot be raised for one query by rebuilding the
+    /// client. reqwest lets a `RequestBuilder` override the client default per
+    /// request, which is what `apply_db_timeout` does — this cell is how the
+    /// value reaches it without threading an `Option<Duration>` through every
+    /// query signature.
+    ///
+    /// A thread-local is sound here because `http_class::block_on_db` drives a
+    /// DB future on the *calling* thread in all four of its branches (see its
+    /// docs: one thread means one runtime, one client, one pool). The future is
+    /// never spawned onto another worker, so the value set by the interpreter
+    /// thread is the value the request build sees.
+    static DB_TIMEOUT_OVERRIDE: std::cell::Cell<Option<std::time::Duration>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// RAII guard restoring the previous DB timeout override on drop, so an early
+/// return, an error, or a panic mid-query cannot leak a raised timeout into
+/// the next query on this thread.
+pub struct DbTimeoutGuard(Option<std::time::Duration>);
+
+impl Drop for DbTimeoutGuard {
+    fn drop(&mut self) {
+        let prev = self.0;
+        DB_TIMEOUT_OVERRIDE.with(|c| c.set(prev));
+    }
+}
+
+/// Install a per-query timeout for as long as the returned guard lives.
+/// `None` is a no-op that still restores on drop, so callers can pass a
+/// builder's `timeout_secs` straight through.
+#[must_use = "the override is reverted as soon as the guard is dropped"]
+pub fn scoped_db_timeout(secs: Option<f64>) -> DbTimeoutGuard {
+    let next = secs.and_then(|s| {
+        if s.is_finite() && s > 0.0 {
+            Some(std::time::Duration::from_secs_f64(s))
+        } else {
+            None
+        }
+    });
+    let prev = DB_TIMEOUT_OVERRIDE.with(|c| c.get());
+    if next.is_some() {
+        DB_TIMEOUT_OVERRIDE.with(|c| c.set(next));
+    }
+    DbTimeoutGuard(prev)
+}
+
+/// The per-query timeout currently in force on this thread, if any.
+///
+/// `grouped(fn() { … })` registers a query instead of running it, so the
+/// builder's guard has already dropped by the time the batch flushes. The
+/// registration captures this value while the guard is still live and the
+/// flush reinstalls it — see `batch::flush_inner`.
+pub fn current_db_timeout() -> Option<std::time::Duration> {
+    DB_TIMEOUT_OVERRIDE.with(|c| c.get())
+}
+
+/// Apply the active per-query timeout to a DB request, leaving the client
+/// default in place when none is set.
+fn apply_db_timeout(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    match DB_TIMEOUT_OVERRIDE.with(|c| c.get()) {
+        Some(d) => builder.timeout(d),
+        None => builder,
+    }
+}
+
 async fn send_with_db_auth_retry<F>(make_request: F) -> Result<reqwest::Response, reqwest::Error>
 where
     F: Fn() -> reqwest::RequestBuilder,
 {
+    // Wrap the caller's builder factory so every attempt below — including the
+    // two auth retries — carries the override, not just the first.
+    let make_request = || apply_db_timeout(make_request());
     let resp = apply_db_auth(make_request()).send().await?;
     if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
         return Ok(resp);
@@ -1847,6 +1921,76 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scoped_db_timeout_sets_and_restores() {
+        assert_eq!(current_db_timeout(), None);
+        {
+            let _g = scoped_db_timeout(Some(120.0));
+            assert_eq!(
+                current_db_timeout(),
+                Some(std::time::Duration::from_secs(120))
+            );
+        }
+        // The guard must revert on drop, or a raised timeout leaks into the
+        // next query on this thread.
+        assert_eq!(current_db_timeout(), None);
+    }
+
+    #[test]
+    fn scoped_db_timeout_nests_innermost_wins_then_restores() {
+        let _outer = scoped_db_timeout(Some(30.0));
+        assert_eq!(
+            current_db_timeout(),
+            Some(std::time::Duration::from_secs(30))
+        );
+        {
+            let _inner = scoped_db_timeout(Some(90.0));
+            assert_eq!(
+                current_db_timeout(),
+                Some(std::time::Duration::from_secs(90))
+            );
+        }
+        assert_eq!(
+            current_db_timeout(),
+            Some(std::time::Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn scoped_db_timeout_none_leaves_an_outer_override_alone() {
+        let _outer = scoped_db_timeout(Some(45.0));
+        {
+            // A builder with no `.timeout()` must not clear a timeout an
+            // enclosing scope established.
+            let _inner = scoped_db_timeout(None);
+            assert_eq!(
+                current_db_timeout(),
+                Some(std::time::Duration::from_secs(45))
+            );
+        }
+        assert_eq!(
+            current_db_timeout(),
+            Some(std::time::Duration::from_secs(45))
+        );
+    }
+
+    #[test]
+    fn scoped_db_timeout_ignores_non_positive_and_non_finite() {
+        for bad in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+            let _g = scoped_db_timeout(Some(bad));
+            assert_eq!(current_db_timeout(), None, "{bad} should not be installed");
+        }
+    }
+
+    #[test]
+    fn scoped_db_timeout_accepts_sub_second_values() {
+        let _g = scoped_db_timeout(Some(0.25));
+        assert_eq!(
+            current_db_timeout(),
+            Some(std::time::Duration::from_millis(250))
+        );
+    }
 
     #[test]
     fn test_normalize_key_composite_id() {

@@ -525,6 +525,10 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Start a query chain with offset</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.timeout(secs)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Start a query chain allowed <code>secs</code> seconds instead of the 10s default &mdash; see <a href="/docs/database/query-builder#timeout" class="text-amber-400 hover:underline">Query timeouts</a></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.paginate(hash)</code></td>
                     <td class="py-3 px-4 text-gray-400">Terminal: fetch paginated results + metadata. Args: <code>page</code> (default 1), <code>per</code> (default 25)</td>
                 </tr>

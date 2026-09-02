@@ -376,6 +376,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
 | `Model.offset(n)` | Offset results (returns QueryBuilder) |
+| `Model.timeout(secs)` | Raise this query's request timeout (returns QueryBuilder). See [Query timeouts](#query-timeouts). |
 | `Model.paginate(hash)` | Terminal: fetch paginated results + metadata. See [Pagination](#pagination) below. |
 | `Model.time_bucket(interval, aggs?)` | Timeseries models only: bucketed aggregation (returns QueryBuilder, chain `.all`). See [Timeseries Models](#timeseries-models). |
 | `Model.prune(cutoff?)` | Timeseries models only: delete rows older than a duration (`"30d"`) or RFC3339 cutoff; without an argument uses the declared `retention:`. Returns the number deleted. |
@@ -478,6 +479,7 @@ Migrations can create the same thing with a `doc.` prefix —
 | `.order(field, direction)` | Set sort order ("asc" or "desc") |
 | `.limit(n)` | Limit results to n documents |
 | `.offset(n)` | Skip first n documents |
+| `.timeout(secs)` | Allow this one query `secs` seconds instead of the 10s default. See [Query timeouts](#query-timeouts). |
 | `.includes(rel, ...)` | Eager load relations via subqueries |
 | `.includes(rel, filter, binds)` | Eager load with filter and optional `"fields"` key |
 | `.includes({ rel: [fields] })` | Eager load with field projection |
@@ -520,6 +522,59 @@ ordered field sort first.
 | `.to_query` | Return the generated SDBQL string (for debugging) |
 | `record.traverse(EdgeModel, opts?)` | Instance method: start a graph-traversal QueryBuilder from a saved record. See [Graph Models](#graph-models-edges-and-traversal). |
 | `record.shortest_path(other, via:, direction?)` | Instance method, executes immediately: vertices along the shortest path (`[]` when unconnected). |
+
+## Query timeouts
+
+Every read reaches SoliDB over HTTP, and that client gives a request **10 seconds**.
+The limit is deliberately tight — it is the backstop that keeps a stalled
+connection from pinning a worker — but a genuine long-running query outgrows it:
+a report over a large collection, a multi-aggregate `group_by`, a `db:import`-sized
+scan. Such a query fails with `Error: HTTP error: error sending request for url …`
+after ten seconds, no matter how healthy the database is.
+
+`.timeout(secs)` raises the limit for one query:
+
+```soli
+# A slow report gets two minutes; every other query on the process
+# keeps the 10s default.
+let rows = Order
+    .where({ "created_at": { "gte": start_of_year } })
+    .group_by(["region", "channel"])
+    .aggregate({ "revenue": ["sum", "total"], "n": ["count"] })
+    .timeout(120)
+    .all()
+```
+
+- **Seconds, `Int` or `Float`** — `.timeout(0.5)` is a valid half-second budget.
+  A zero, negative, or non-numeric value raises rather than being ignored, so a
+  typo cannot silently leave the 10s default in place.
+- **Chainable and position-independent**, like `.limit`. It also exists as a
+  static entry point, so `Order.timeout(120).all()` works without a `.where`.
+- **Scoped to the one query.** The override is installed for that request and
+  reverted as soon as it finishes, including on error — it never leaks into the
+  next query.
+- **Lower it too.** Nothing stops `.timeout(2)` on a query you would rather see
+  fail fast than have a user wait on.
+
+Inside a `grouped(fn() { … })` block the reads become a single request, and the
+batch runs under the **largest** `.timeout` any member asked for — one slow
+member is not capped by the fast reads sharing its round-trip.
+
+```soli
+grouped(fn() {
+  @summary = Order.group_by(["region"]).timeout(120).all   # the slow one
+  @tags    = Tag.all                                       # rides along
+})
+# one request, 120s of room
+```
+
+**On the SQL adapters (Postgres / MySQL / SQLite) `.timeout` has no effect.**
+Those adapters talk to the database over their own connection pool rather than
+HTTP, so the 10s cap this option lifts does not exist there and there is no
+statement timeout to set in its place. The call is accepted so a query stays
+portable across adapters, but on SQL the query runs as long as the server lets
+it. Use the server's own knob — Postgres `statement_timeout`, MySQL
+`max_execution_time` — to bound it.
 
 ## Pagination
 

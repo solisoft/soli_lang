@@ -159,6 +159,12 @@ pub struct QueryBuilder {
     pub sti_types: Option<Vec<String>>,
     /// Named multi-DB connection for this builder (from model `connection "…"`).
     pub connection_name: Option<String>,
+    /// Per-query HTTP timeout in seconds — set by `.timeout(secs)`. `None`
+    /// leaves the internal client's default (10s) in place. A long analytical
+    /// query or a big aggregation legitimately outlives that default, and the
+    /// client-wide timeout is baked into a shared singleton, so the override
+    /// travels with the builder and is applied to the one request it issues.
+    pub timeout_secs: Option<f64>,
 }
 
 /// The join-subquery filter a `through:` accessor seeds:
@@ -213,6 +219,7 @@ impl QueryBuilder {
             assoc_seed: None,
             sti_types: None,
             connection_name: None,
+            timeout_secs: None,
         }
     }
 
@@ -257,6 +264,7 @@ impl QueryBuilder {
             assoc_seed: None,
             sti_types,
             connection_name,
+            timeout_secs: None,
         }
     }
 
@@ -370,6 +378,10 @@ impl QueryBuilder {
 
     pub fn set_offset(&mut self, offset: usize) {
         self.offset_val = Some(offset);
+    }
+
+    pub fn set_timeout(&mut self, secs: f64) {
+        self.timeout_secs = Some(secs);
     }
 
     /// Register a count-only eager load. Returns Err for singular relations
@@ -1033,6 +1045,9 @@ impl QueryBuilder {
 
 /// Execute a QueryBuilder and return results (as instances if class is available).
 pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let run = || execute_query_builder_inner(qb);
     if let Some(ref name) = qb.connection_name {
         crate::db::with_connection(name, run)
@@ -2363,6 +2378,9 @@ fn execute_similar_pushdown(
 
 /// Execute a QueryBuilder for first result only (as instance if class is available).
 pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     // Reuse .all machinery under the same multi-DB connection, then take first.
     let mut q = qb.clone();
     q.set_limit(1);
@@ -2413,6 +2431,9 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
 
 /// Execute a QueryBuilder for count.
 pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let run = || execute_query_builder_count_inner(qb);
     if let Some(ref name) = qb.connection_name {
         crate::db::with_connection(name, run)
@@ -2519,6 +2540,9 @@ fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
 /// ignored — they don't compose with REMOVE. Soft-deleted models still get
 /// a real REMOVE here (this is a hard delete, not a soft-delete shortcut).
 pub fn execute_query_builder_delete_all(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let run = || execute_query_builder_delete_all_inner(qb);
     if let Some(ref name) = qb.connection_name {
         crate::db::with_connection(name, run)
@@ -2599,6 +2623,9 @@ pub fn execute_query_builder_update_all(
     qb: &QueryBuilder,
     update_data: serde_json::Value,
 ) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let run = || execute_query_builder_update_all_inner(qb, update_data.clone());
     if let Some(ref name) = qb.connection_name {
         crate::db::with_connection(name, run)
@@ -2671,6 +2698,9 @@ fn execute_query_builder_update_all_inner(
 
 /// Execute a QueryBuilder for exists check - returns boolean.
 pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let run = || execute_query_builder_exists_inner(qb);
     if let Some(ref name) = qb.connection_name {
         crate::db::with_connection(name, run)
@@ -2884,6 +2914,9 @@ pub fn execute_query_builder_aggregate(
     func: AggregationFunc,
     field: &str,
 ) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
@@ -2927,6 +2960,9 @@ pub fn execute_query_builder_group_by(
     func: AggregationFunc,
     agg_field: &str,
 ) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     if crate::db::is_sql() {
         let mut qb = qb.clone();
         qb.group_by_info = Some((group_field.to_string(), func, agg_field.to_string()));
@@ -3397,6 +3433,9 @@ impl QueryBuilder {
 /// Execute a grouped (group_fields/aggregate_specs) QueryBuilder. Returns
 /// raw hash rows — one per group, keyed by group fields + aliases.
 pub fn execute_query_builder_grouped(qb: &QueryBuilder) -> Result<Value, String> {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     if crate::db::is_sql() {
         // `.having` is compiled into the GROUP BY statement (see
         // `sql_compile::compile_having`), in the portable comparison shape.
@@ -3441,6 +3480,9 @@ pub fn execute_query_builder_grouped(qb: &QueryBuilder) -> Result<Value, String>
 /// Execute a time_bucket QueryBuilder. Returns raw hash rows
 /// ({bucket, <alias>...}) like group_by — buckets aren't documents.
 pub fn execute_query_builder_time_bucket(qb: &QueryBuilder) -> Value {
+    // Raise/lower the DB request timeout for this query only when
+    // `.timeout(secs)` asked for it; reverted when the guard drops.
+    let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
@@ -3478,6 +3520,28 @@ mod tests {
 
     fn make_qb(class: &str, collection: &str) -> QueryBuilder {
         QueryBuilder::new(class.to_string(), collection.to_string())
+    }
+
+    #[test]
+    fn timeout_defaults_to_none_and_survives_a_chain() {
+        let qb = make_qb("User", "users");
+        assert_eq!(qb.timeout_secs, None);
+
+        // `.timeout` is transport-level, so it must ride along on the clone
+        // every chained builder method makes — and must not leak into the
+        // generated statement.
+        let mut chained = qb.clone();
+        chained.set_timeout(120.0);
+        let mut chained = chained.clone();
+        chained.set_limit(5);
+        assert_eq!(chained.timeout_secs, Some(120.0));
+
+        let (query, _) = chained.build_query();
+        assert_eq!(query, "FOR doc IN users LIMIT 5 RETURN doc");
+        assert!(
+            !query.contains("120"),
+            "timeout must not reach the statement"
+        );
     }
 
     #[test]

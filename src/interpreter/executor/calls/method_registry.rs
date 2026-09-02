@@ -1783,6 +1783,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "timeout",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "to_a",
         zero_arg: true,
         ret: "array",
