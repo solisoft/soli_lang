@@ -115,6 +115,58 @@ describe("SolidB offline configuration builtins", fn() {
         end
         assert(raised)
     })
+
+    test("timeout() returns the client so it chains into query()", fn() {
+        let client = spec_db()
+        let chained = client.timeout(60)
+        assert_eq(chained, client)
+    })
+
+    test("timeout() rejects zero, negative, and non-numeric values", fn() {
+        let client = spec_db()
+        for bad in [0, -1, "60", null]
+            let raised = false
+            try
+                client.timeout(bad)
+            catch e
+                raised = str(e).contains("timeout")
+            end
+            assert(raised)
+        end
+    })
+
+    test("query() rejects a third argument that is not an options hash", fn() {
+        let client = spec_db()
+        let raised = false
+        try
+            client.query("RETURN 1", {}, 60)
+        catch e
+            raised = str(e).contains("options hash")
+        end
+        assert(raised)
+    })
+
+    test("query() rejects an unknown options key", fn() {
+        let client = spec_db()
+        let raised = false
+        try
+            client.query("RETURN 1", {}, {"typo": 1})
+        catch e
+            raised = str(e).contains("unknown option")
+        end
+        assert(raised)
+    })
+
+    test("query() rejects a non-positive timeout option", fn() {
+        let client = spec_db()
+        let raised = false
+        try
+            client.query("RETURN 1", {}, {"timeout": 0})
+        catch e
+            raised = str(e).contains("timeout")
+        end
+        assert(raised)
+    })
 })
 
 # ============================================================================

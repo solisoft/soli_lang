@@ -219,6 +219,9 @@ results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
 });
 
+# Raise the 10s HTTP ceiling on a slow statement (also: db.timeout(60).query(sdbql))
+rows = db.query(sdbql, binds, { "timeout": 60 });
+
 # Insert
 db.query("INSERT { name: @name, email: @email } INTO users", {
   "name": "Bob",

@@ -42,6 +42,217 @@ where
     Ok(crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null))
 }
 
+/// Seconds stored on a Solidb instance by `db.timeout(secs)`.
+const TIMEOUT_FIELD: &str = "_timeout_secs";
+
+/// Parse a positive finite number of seconds from an Int or Float.
+/// Same contract as `Model.timeout` / HTTP `{"timeout": n}`: a typo raises
+/// rather than silently keeping the 10s client default.
+fn parse_positive_secs(value: &Value, what: &str) -> Result<f64, String> {
+    let secs = match value {
+        Value::Int(n) => *n as f64,
+        Value::Float(f) => *f,
+        other => {
+            return Err(format!(
+                "{} expects a number of seconds, got {}",
+                what,
+                other.type_name()
+            ))
+        }
+    };
+    if !secs.is_finite() || secs <= 0.0 {
+        return Err(format!(
+            "{} expects a positive number of seconds, got {}",
+            what, secs
+        ));
+    }
+    Ok(secs)
+}
+
+fn instance_timeout_secs(instance: &Instance) -> Option<f64> {
+    match instance.get(TIMEOUT_FIELD) {
+        Some(Value::Float(f)) => Some(f),
+        Some(Value::Int(n)) => Some(n as f64),
+        _ => None,
+    }
+}
+
+/// Options hash for `db.query(sdbql, binds, { "timeout": n })`.
+/// Unknown keys raise so a typo cannot silently do nothing.
+fn parse_query_options(value: &Value) -> Result<Option<f64>, String> {
+    let Value::Hash(hash) = value else {
+        return Err(format!(
+            "query() expects an options hash as the third argument, got {}",
+            value.type_name()
+        ));
+    };
+    let mut timeout_secs = None;
+    for (k, v) in hash.borrow().iter() {
+        let HashKey::String(key) = k else {
+            continue;
+        };
+        match key.as_ref() {
+            "timeout" => {
+                if !matches!(v, Value::Null) {
+                    timeout_secs = Some(parse_positive_secs(v, "query() timeout")?);
+                }
+            }
+            other => {
+                return Err(format!(
+                    "query() unknown option '{}'; expected timeout",
+                    other
+                ))
+            }
+        }
+    }
+    Ok(timeout_secs)
+}
+
+/// True when `sdbql` is a data-modification (or DDL) statement.
+///
+/// `grouped` only coalesces reads — a write via `db.query` must still run
+/// immediately, matching Model `create`/`update`/`delete`. Strings and
+/// comments are skipped so `FILTER doc.status == "INSERT"` is not a write.
+fn sdbql_is_data_modification(sdbql: &str) -> bool {
+    let bytes = sdbql.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        // `//` line comment
+        if c == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        // `/* … */` block comment
+        if c == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = i.saturating_add(2);
+            continue;
+        }
+        // Quoted string — skip contents, including escaped quotes.
+        if c == b'"' || c == b'\'' {
+            let quote = c;
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' {
+                    i = i.saturating_add(2);
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        if c.is_ascii_alphabetic() || c == b'_' {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            if is_write_keyword(&sdbql[start..i]) {
+                return true;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+fn is_write_keyword(word: &str) -> bool {
+    word.eq_ignore_ascii_case("INSERT")
+        || word.eq_ignore_ascii_case("UPDATE")
+        || word.eq_ignore_ascii_case("REMOVE")
+        || word.eq_ignore_ascii_case("DELETE")
+        || word.eq_ignore_ascii_case("UPSERT")
+        || word.eq_ignore_ascii_case("REPLACE")
+        || word.eq_ignore_ascii_case("CREATE")
+        || word.eq_ignore_ascii_case("DROP")
+        || word.eq_ignore_ascii_case("TRUNCATE")
+        || word.eq_ignore_ascii_case("GRANT")
+        || word.eq_ignore_ascii_case("REVOKE")
+        || word.eq_ignore_ascii_case("ALTER")
+}
+
+/// Whether this Solidb instance talks to the same host + database the ORM
+/// uses, so a `db.query` inside `grouped` can join the coalesced batch.
+fn targets_orm_endpoint(host: &str, database: &str) -> bool {
+    if crate::db::is_sql() {
+        return false;
+    }
+    if database != crate::interpreter::builtins::model::db_config::get_database_name() {
+        return false;
+    }
+    let Ok(client) = SoliDBClient::connect(host) else {
+        return false;
+    };
+    let orm = format!(
+        "{}{}",
+        crate::interpreter::builtins::model::DB_CONFIG.scheme,
+        crate::interpreter::builtins::model::DB_CONFIG.host
+    );
+    client.base_url().trim_end_matches('/') == orm.trim_end_matches('/')
+}
+
+fn should_coalesce_raw_query(host: &str, database: &str, sdbql: &str) -> bool {
+    crate::interpreter::builtins::model::batch::is_active()
+        && !sdbql_is_data_modification(sdbql)
+        && targets_orm_endpoint(host, database)
+}
+
+fn rows_to_array(rows: Vec<serde_json::Value>) -> Value {
+    let values: Vec<Value> = rows
+        .into_iter()
+        .map(crate::interpreter::builtins::model::json_to_value_owned)
+        .collect();
+    Value::Array(Rc::new(RefCell::new(values)))
+}
+
+/// Run `db.query`: apply the per-call/instance timeout, join a live `grouped`
+/// batch when this is a read against the ORM endpoint, otherwise hit SoliDB
+/// through this instance's own client.
+fn run_solidb_query(
+    host: String,
+    database: String,
+    auth_username: Option<String>,
+    auth_password: Option<String>,
+    sdbql: String,
+    bind_vars: Option<HashMap<String, serde_json::Value>>,
+    timeout_secs: Option<f64>,
+) -> Result<Value, String> {
+    let _db_timeout = crate::interpreter::builtins::model::crud::scoped_db_timeout(timeout_secs);
+
+    if should_coalesce_raw_query(&host, &database, &sdbql) {
+        return Ok(crate::interpreter::builtins::model::batch::register(
+            sdbql,
+            bind_vars.unwrap_or_default(),
+            Box::new(|rows| Ok(rows_to_array(rows))),
+        ));
+    }
+
+    exec_db_json(move || {
+        let mut client =
+            SoliDBClient::connect(&host).map_err(|e| format!("Failed to connect: {}", e))?;
+        client.set_database(&database);
+        if let (Some(u), Some(p)) = (auth_username.as_deref(), auth_password.as_deref()) {
+            client = client.with_basic_auth(u, p);
+        }
+        let results = client
+            .query(&sdbql, bind_vars)
+            .map_err(|e| format!("Query failed: {}", e))?;
+        Ok(serde_json::Value::Array(results))
+    })
+}
+
 lazy_static::lazy_static! {
     static ref SOLIDB_STATES: RwLock<HashMap<usize, SolidbState>> = RwLock::new(HashMap::new());
     static ref SOLIDB_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -257,6 +468,7 @@ fn register_solidb_class(env: &mut Environment) {
     let method_definitions = vec![
         ("auth", 2),
         ("query", 1),
+        ("timeout", 1),
         ("get", 2),
         ("insert", 3),
         ("update", 3),
@@ -290,8 +502,8 @@ fn register_solidb_class(env: &mut Environment) {
         let method = method_name.to_string();
         let arity = min_args + 1;
         // `create_collection` accepts an optional `collection_type` arg;
-        // `query` accepts an optional `bind_vars` hash. Both register
-        // variadic and validate arg counts inside the dispatch arm.
+        // `query` accepts optional `bind_vars` and `options` hashes. Both
+        // register variadic and validate arg counts inside the dispatch arm.
         let variadic = matches!(
             method_name,
             "create_collection" | "query" | "create_columnar"
@@ -381,10 +593,23 @@ fn register_solidb_class(env: &mut Environment) {
                             Ok("Authenticated".to_string())
                         })
                     }
-                    "query" => {
-                        if args.len() < 2 || args.len() > 3 {
+                    "timeout" => {
+                        if args.len() != 2 {
                             return Err(format!(
-                                "query() expects 1 or 2 arguments (sdbql[, bind_vars]), got {}",
+                                "timeout() expects 1 argument (seconds), got {}",
+                                args.len() - 1
+                            ));
+                        }
+                        let secs = parse_positive_secs(&args[1], "timeout()")?;
+                        instance_rc
+                            .borrow_mut()
+                            .set(TIMEOUT_FIELD, Value::Float(secs));
+                        Ok(Value::Instance(instance_rc))
+                    }
+                    "query" => {
+                        if args.len() < 2 || args.len() > 4 {
+                            return Err(format!(
+                                "query() expects 1 to 3 arguments (sdbql[, bind_vars[, options]]), got {}",
                                 args.len() - 1
                             ));
                         }
@@ -408,28 +633,33 @@ fn register_solidb_class(env: &mut Environment) {
                                     }
                                     Some(map)
                                 }
-                                _ => None,
+                                Value::Null => None,
+                                other => {
+                                    return Err(format!(
+                                        "query() expects a bind-vars hash, got {}",
+                                        other.type_name()
+                                    ))
+                                }
                             }
                         } else {
                             None
                         };
-                        let auth_username = auth_username.clone();
-                        let auth_password = auth_password.clone();
-                        exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
-                            let results = client
-                                .query(&sdbql, bind_vars)
-                                .map_err(|e| format!("Query failed: {}", e))?;
-                            // Return directly as JSON array - skip string serialization
-                            Ok(serde_json::Value::Array(results))
-                        })
+                        let options_timeout = if args.len() > 3 {
+                            parse_query_options(&args[3])?
+                        } else {
+                            None
+                        };
+                        let timeout_secs = options_timeout
+                            .or_else(|| instance_timeout_secs(&instance_rc.borrow()));
+                        run_solidb_query(
+                            host,
+                            database,
+                            auth_username,
+                            auth_password,
+                            sdbql.to_string(),
+                            bind_vars,
+                            timeout_secs,
+                        )
                     }
                     "get" => {
                         let collection = match &args[1] {
@@ -1443,3 +1673,88 @@ fn register_solidb_class(env: &mut Environment) {
 
 // Use centralized value_to_json from value module
 use crate::interpreter::value::value_to_json;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn secs(v: Value) -> Result<f64, String> {
+        parse_positive_secs(&v, "timeout()")
+    }
+
+    #[test]
+    fn parse_positive_secs_accepts_int_and_float() {
+        assert_eq!(secs(Value::Int(120)).unwrap(), 120.0);
+        assert_eq!(secs(Value::Float(0.5)).unwrap(), 0.5);
+    }
+
+    #[test]
+    fn parse_positive_secs_rejects_zero_negative_non_finite_and_non_numeric() {
+        for bad in [
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Float(0.0),
+            Value::Float(-0.25),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::String("60".into()),
+            Value::Null,
+        ] {
+            assert!(
+                secs(bad.clone()).is_err(),
+                "{bad:?} should not be a valid timeout"
+            );
+        }
+    }
+
+    #[test]
+    fn sdbql_reads_are_not_data_modification() {
+        for q in [
+            "FOR d IN users RETURN d",
+            "RETURN 1",
+            "LET x = 1 RETURN x",
+            "FOR d IN users FILTER d.status == \"INSERT\" RETURN d",
+            "// INSERT is a comment\nFOR d IN users RETURN d",
+            "/* UPDATE */ FOR d IN users RETURN d",
+            "FOR d IN updates RETURN d",
+        ] {
+            assert!(
+                !sdbql_is_data_modification(q),
+                "{q:?} should be treated as a read"
+            );
+        }
+    }
+
+    #[test]
+    fn sdbql_writes_and_ddl_are_data_modification() {
+        for q in [
+            "INSERT { name: \"x\" } INTO users",
+            "FOR d IN users INSERT d INTO archive",
+            "UPDATE u WITH { seen: true } IN users",
+            "REMOVE u IN users",
+            "UPSERT { _key: \"k\" } INSERT { n: 1 } UPDATE { n: OLD.n + 1 } IN hits",
+            "CREATE COLLECTION extra",
+            "DROP COLLECTION extra",
+        ] {
+            assert!(
+                sdbql_is_data_modification(q),
+                "{q:?} should run immediately inside grouped"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_query_options_reads_timeout_and_rejects_unknown_keys() {
+        use crate::interpreter::value::{HashKey, HashPairs};
+        let mut ok = HashPairs::default();
+        ok.insert(HashKey::String("timeout".into()), Value::Int(60));
+        let hash = Value::Hash(Rc::new(RefCell::new(ok)));
+        assert_eq!(parse_query_options(&hash).unwrap(), Some(60.0));
+
+        let mut bad = HashPairs::default();
+        bad.insert(HashKey::String("typo".into()), Value::Int(1));
+        let hash = Value::Hash(Rc::new(RefCell::new(bad)));
+        let err = parse_query_options(&hash).unwrap_err();
+        assert!(err.contains("unknown option"), "{err}");
+    }
+}

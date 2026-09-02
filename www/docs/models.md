@@ -558,15 +558,31 @@ let rows = Order
 
 Inside a `grouped(fn() { … })` block the reads become a single request, and the
 batch runs under the **largest** `.timeout` any member asked for — one slow
-member is not capped by the fast reads sharing its round-trip.
+member is not capped by the fast reads sharing its round-trip. A raw
+`db.query` **read** against the same host and database joins that batch, so a
+sibling `Model.timeout(120)` covers it; a write via `db.query` still runs
+immediately, like Model `create`/`update`/`delete`.
 
 ```soli
 grouped(fn() {
   @summary = Order.group_by(["region"]).timeout(120).all   # the slow one
   @tags    = Tag.all                                       # rides along
+  @heavy   = db.query("FOR d IN orders COLLECT … RETURN d") # joins the batch
 })
 # one request, 120s of room
 ```
+
+The QueryBuilder form does not apply to a `Solidb` client. Raise that path
+with `db.timeout(secs).query(sdbql)` (persists on the client until you change
+it) or a per-call options hash:
+
+```soli
+rows = db.timeout(60).query(sdbql)
+rows = db.query(sdbql, binds, { "timeout": 60 })
+```
+
+In `--dev`, `grouped` does not coalesce (so the query log stays one row per
+read). Put `.timeout` on each slow query, including `db.query`.
 
 **On the SQL adapters (Postgres / MySQL / SQLite) `.timeout` has no effect.**
 Those adapters talk to the database over their own connection pool rather than

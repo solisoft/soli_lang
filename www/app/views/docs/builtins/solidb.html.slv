@@ -74,6 +74,10 @@ db.auth("admin", "secret")</code></pre>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.connected()</code></td>
                             <td class="py-3">Whether <code class="text-emerald-400">auth</code> has been called on this instance. Returns <code class="text-orange-400">Bool</code>.</td>
                         </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.timeout(secs)</code></td>
+                            <td class="py-3">Raise the HTTP timeout for subsequent <code class="text-emerald-400">query</code> calls (seconds, <code>Int</code> or <code>Float</code>). Returns this client. See <a href="/docs/database/query-builder#timeout" class="text-amber-400 hover:underline">Query timeouts</a>.</td>
+                        </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.close()</code></td>
                             <td class="py-3">Drop the per-instance state. Optional &mdash; instances are GC'd normally.</td>
@@ -91,16 +95,19 @@ db.auth("admin", "secret")</code></pre>
         <section id="def-query" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-query" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">db.query(sdbql, bindvars?)</code>
+                    <code class="text-lg font-mono text-amber-400">db.query(sdbql, bindvars?, options?)</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">parameterized</span>
                 </a>
-                <p class="text-gray-400 mb-3">Run an SDBQL statement. <code class="text-emerald-400">bindvars</code> values fill <code class="text-emerald-400">@param</code> placeholders &mdash; they are bound on the server, never concatenated. Returns a <code class="text-orange-400">Array</code> of result rows.</p>
+                <p class="text-gray-400 mb-3">Run an SDBQL statement. <code class="text-emerald-400">bindvars</code> values fill <code class="text-emerald-400">@param</code> placeholders &mdash; they are bound on the server, never concatenated. <code class="text-emerald-400">options</code> accepts <code>{ "timeout": secs }</code> to raise the 10s HTTP ceiling for this one call. Returns a <code class="text-orange-400">Array</code> of result rows. A read inside <code class="text-emerald-400">grouped</code> joins the coalesced batch when this client targets the ORM database.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">db.query("FOR u IN users FILTER u.active RETURN u")
 
 db.query(
   "FOR u IN users FILTER u.age &gt; @min_age RETURN u",
   { "min_age": 18 }
-)</code></pre>
+)
+
+db.query(sdbql, binds, { "timeout": 60 })
+db.timeout(60).query(sdbql)</code></pre>
                 <p class="text-gray-500 text-xs mt-3">For inline interpolation in multi-line queries, prefer the <code class="text-emerald-400">@sdbql{ }</code> block &mdash; see <a href="/docs/database/advanced#section-raw-queries" class="text-emerald-400 hover:underline">Raw queries</a>.</p>
             </div>
         </section>

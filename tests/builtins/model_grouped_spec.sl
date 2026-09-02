@@ -98,6 +98,29 @@ describe("grouped coalesces reads", fn() {
         assert_eq(result["items"].length, baseline_all.length);
     });
 
+    test("db.query inside grouped returns the same rows as a Model read", fn() {
+        # A raw read against the ORM database joins the coalesced batch, so
+        # Model.timeout on a sibling covers it and it is not a second 10s
+        # round-trip. Writes still run immediately (not asserted here).
+        let db = Solidb(env("SOLIDB_HOST") || "http://localhost:6745", db_name());
+        let baseline = GroupItem.all();
+        let result = grouped(fn() {
+            let items = GroupItem.timeout(30).all();
+            let raw = db.query("FOR d IN group_items RETURN d");
+            return { "items": items, "raw": raw };
+        });
+        assert_eq(result["items"].length, baseline.length);
+        assert_eq(result["raw"].length, baseline.length);
+    });
+
+    test("db.timeout().query and query(..., {timeout}) accept the timeout forms", fn() {
+        let db = Solidb(env("SOLIDB_HOST") || "http://localhost:6745", db_name());
+        let via_chain = db.timeout(30).query("FOR d IN group_items RETURN d");
+        let via_opts = db.query("FOR d IN group_items RETURN d", {}, {"timeout": 30});
+        assert_eq(via_chain.length, via_opts.length);
+        assert(via_chain.length >= 3);
+    });
+
     test("find_by inside grouped resolves to the right record", fn() {
         let result = grouped(fn() {
             let found = GroupItem.find_by("name", "g2");

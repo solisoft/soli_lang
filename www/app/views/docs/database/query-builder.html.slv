@@ -452,17 +452,29 @@ Order.timeout(120).all()</code></pre>
         <li><strong class="text-white">Lower it too.</strong> Nothing stops <code>.timeout(2)</code> on a query you would rather see fail fast than have a user wait on.</li>
     </ul>
 
-    <p class="text-gray-400 mb-6">Inside a <a href="#grouped" class="text-amber-400 hover:underline"><code>grouped</code></a> block the reads become a single request, and the batch runs under the <strong class="text-white">largest</strong> <code>.timeout</code> any member asked for &mdash; one slow member is not capped by the fast reads sharing its round-trip.</p>
+    <p class="text-gray-400 mb-6">Inside a <a href="#grouped" class="text-amber-400 hover:underline"><code>grouped</code></a> block the reads become a single request, and the batch runs under the <strong class="text-white">largest</strong> <code>.timeout</code> any member asked for &mdash; one slow member is not capped by the fast reads sharing its round-trip. A raw <code>db.query</code> <strong class="text-white">read</strong> against the same host and database joins that batch, so a sibling <code>Model.timeout(120)</code> covers it; a write via <code>db.query</code> still runs immediately, like Model <code>create</code> / <code>update</code> / <code>delete</code>.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">grouped(fn() {
   @summary = Order.group_by(["region"]).timeout(120).all   # the slow one
   @tags    = Tag.all                                       # rides along
+  @heavy   = db.query("FOR d IN orders COLLECT &hellip; RETURN d") # joins the batch
 })
 # one request, 120s of room</code></pre>
         </div>
     </div>
+
+    <p class="text-gray-400 mb-6">The QueryBuilder form does not apply to a <code>Solidb</code> client. Raise that path with <code>db.timeout(secs).query(sdbql)</code> (persists on the client until you change it) or a per-call options hash:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">rows = db.timeout(60).query(sdbql)
+rows = db.query(sdbql, binds, { "timeout": 60 })</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">In <code>--dev</code>, <code>grouped</code> does not coalesce (so the query log stays one row per read). Put <code>.timeout</code> on each slow query, including <code>db.query</code>.</p>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
         <h4 class="text-lg font-semibold text-amber-400 mb-2">No effect on the SQL adapters</h4>

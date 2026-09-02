@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### ORM
+
+- **`db.timeout(secs)` and `db.query(sdbql, binds, {timeout})` — the 10s ceiling on raw SDBQL too.**
+  `.timeout` on a QueryBuilder already raised the HTTP cap for one Model
+  read; a `Solidb` client had no equivalent, so `db.query` of a heavy
+  aggregation died at ~10s (`query() expects 1 or 2 arguments` if you
+  passed an options hash; `Cannot access property 'timeout'` if you
+  chained). `db.timeout(60).query(sdbql)` sets the budget on the client
+  (chainable, persists until changed); `db.query(sdbql, binds, {"timeout": 60})`
+  overrides one call. Seconds as `Int` or `Float`; a zero, negative,
+  non-numeric, or unknown option key raises. Inside `grouped(fn() { … })` a
+  **read** `db.query` against the same host and database joins the coalesced
+  batch, so the largest `.timeout` any member asked for covers it — a write
+  via `db.query` still runs immediately.
+
 ## [2.0.1] - 2026-09-02
 
 ### ORM

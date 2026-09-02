@@ -664,8 +664,8 @@ SOLIDB_PASSWORD=secret</code></pre>
                     <td class="py-3 px-4 text-gray-400">List indexes for a collection</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql, bind_vars?)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Execute a raw SDBQL query, optionally with a hash of bind variables</td>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql, bind_vars?, options?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute a raw SDBQL query. <code>options</code> accepts <code>{ "timeout": secs }</code>; <code>db.timeout(secs)</code> sets it on the client</td>
                 </tr>
             </tbody>
         </table>

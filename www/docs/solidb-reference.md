@@ -350,7 +350,8 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `db.query(sdbql, binds?)` | `Array` | Run a statement. `binds` fill `@param` placeholders (bound, never concatenated). |
+| `db.timeout(secs)` | `Solidb` | Raise the HTTP timeout for subsequent `query` calls on this client (seconds, `Int` or `Float`; chainable). Same 10s ceiling as the ORM — see [Query timeouts](models.md#query-timeouts). |
+| `db.query(sdbql, binds?, options?)` | `Array` | Run a statement. `binds` fill `@param` placeholders (bound, never concatenated). `options` accepts `{ "timeout": secs }` for one call. A read inside `grouped` joins the coalesced batch when this client targets the ORM database. |
 | `db.explain(sdbql, binds?)` | `Hash` | Planner output without executing — confirm an index is picked up. |
 
 **Document CRUD**

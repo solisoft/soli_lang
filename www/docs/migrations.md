@@ -669,4 +669,4 @@ database connection. A seed that throws stops the run and exits non-zero.
 | `db.drop_vector_index(collection, name)` | Drop a vector index |
 | `db.drop_index(collection, name)` | Drop an index |
 | `db.list_indexes(collection)` | List indexes for a collection |
-| `db.query(sdbql, bind_vars?)` | Execute a raw SDBQL query, optionally with a hash of bind variables |
+| `db.query(sdbql, bind_vars?, options?)` | Execute a raw SDBQL query. `options` accepts `{ "timeout": secs }`; `db.timeout(secs)` sets it on the client |

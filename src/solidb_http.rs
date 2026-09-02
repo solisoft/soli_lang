@@ -133,6 +133,12 @@ impl SoliDBClient {
         self.database = Some(database.to_string());
     }
 
+    /// Scheme + host this client talks to, without a trailing slash.
+    /// Used to decide whether a `db.query` can join the ORM's `grouped` batch.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     fn get_db(&self) -> Result<&str, SoliDBError> {
         self.database.as_deref().ok_or_else(|| SoliDBError {
             message: "No database specified".to_string(),
@@ -180,6 +186,12 @@ impl SoliDBClient {
 
         request = request.header("Accept", "application/json");
 
+        // An explicit per-call timeout (readiness probe) wins; otherwise the
+        // ORM's thread-local `.timeout(secs)` / `db.timeout(secs)` override
+        // applies so a Solidb query raised the same way as a Model query is
+        // not stuck on the shared client's 10s default.
+        let timeout =
+            timeout.or_else(crate::interpreter::builtins::model::crud::current_db_timeout);
         if let Some(t) = timeout {
             request = request.timeout(t);
         }
