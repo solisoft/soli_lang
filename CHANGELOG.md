@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-09-02
+
 ### ORM
 
 - **`db.timeout(secs)` and `db.query(sdbql, binds, {timeout})` — the 10s ceiling on raw SDBQL too.**
