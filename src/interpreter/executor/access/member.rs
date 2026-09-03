@@ -1248,6 +1248,7 @@ impl Interpreter {
                         // → empty).
                         _ => {
                             qb.set_filter("1 == 0".to_string(), std::collections::HashMap::new());
+                            qb.never_matches = true;
                         }
                     }
                     return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));

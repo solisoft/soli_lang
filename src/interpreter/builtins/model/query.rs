@@ -165,6 +165,13 @@ pub struct QueryBuilder {
     /// client-wide timeout is baked into a shared singleton, so the override
     /// travels with the builder and is applied to the one request it issues.
     pub timeout_secs: Option<f64>,
+    /// A builder that can never match a row: the `has_many` accessor of an
+    /// owner that is not persisted yet (no key to filter on). Terminal
+    /// operations answer without a round-trip — `delete_all`/`update_all`
+    /// are no-ops, `count` is 0, `exists?` is false — which is also what the
+    /// filter `1 == 0` they carry would produce, minus the request that a
+    /// missing database turned into an error.
+    pub never_matches: bool,
 }
 
 /// The join-subquery filter a `through:` accessor seeds:
@@ -220,6 +227,7 @@ impl QueryBuilder {
             sti_types: None,
             connection_name: None,
             timeout_secs: None,
+            never_matches: false,
         }
     }
 
@@ -265,6 +273,7 @@ impl QueryBuilder {
             sti_types,
             connection_name,
             timeout_secs: None,
+            never_matches: false,
         }
     }
 
@@ -2431,6 +2440,9 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
 
 /// Execute a QueryBuilder for count.
 pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
+    if qb.never_matches {
+        return Value::Int(0);
+    }
     // Raise/lower the DB request timeout for this query only when
     // `.timeout(secs)` asked for it; reverted when the guard drops.
     let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
@@ -2540,6 +2552,9 @@ fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
 /// ignored — they don't compose with REMOVE. Soft-deleted models still get
 /// a real REMOVE here (this is a hard delete, not a soft-delete shortcut).
 pub fn execute_query_builder_delete_all(qb: &QueryBuilder) -> Value {
+    if qb.never_matches {
+        return Value::Null;
+    }
     // Raise/lower the DB request timeout for this query only when
     // `.timeout(secs)` asked for it; reverted when the guard drops.
     let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
@@ -2633,6 +2648,9 @@ pub fn execute_query_builder_update_all(
     qb: &QueryBuilder,
     update_data: serde_json::Value,
 ) -> Value {
+    if qb.never_matches {
+        return Value::Null;
+    }
     // Raise/lower the DB request timeout for this query only when
     // `.timeout(secs)` asked for it; reverted when the guard drops.
     let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);
@@ -2712,6 +2730,9 @@ fn execute_query_builder_update_all_inner(
 
 /// Execute a QueryBuilder for exists check - returns boolean.
 pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
+    if qb.never_matches {
+        return Value::Bool(false);
+    }
     // Raise/lower the DB request timeout for this query only when
     // `.timeout(secs)` asked for it; reverted when the guard drops.
     let _db_timeout = super::crud::scoped_db_timeout(qb.timeout_secs);

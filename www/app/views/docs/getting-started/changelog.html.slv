@@ -20,9 +20,18 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-4" class="text-amber-400 hover:underline">v2.0.4</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-5" class="text-amber-400 hover:underline">v2.0.5</a>.</p>
 
         <p class="text-gray-500 text-sm leading-relaxed mb-10">Nothing yet.</p>
+    </section>
+
+    <section id="v2-0-5" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.0.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-03</span></h2>
+
+        <h3 class="text-xl font-semibold text-white mt-8 mb-3">Fixes</h3>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">has_many</code> on an unsaved owner no longer hits the database.</strong> Its builder can never match a row, so <code class="text-cyan-400">update_all</code>, <code class="text-cyan-400">delete_all</code>, <code class="text-cyan-400">count</code> and <code class="text-cyan-400">exists?</code> answer without a round-trip instead of sending a query that, with no database reachable, came back as an error.</li>
+        </ul>
     </section>
 
     <section id="v2-0-4" class="mb-16 scroll-mt-24">

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-09-03
+
+### Fixed
+
+- **`has_many` on an unsaved owner no longer hits the database.** The accessor
+  returns a builder carrying the always-false filter `1 == 0`, but
+  `update_all`, `delete_all`, `count` and `exists?` still sent the query. With
+  no database reachable that surfaced as an error instead of the documented
+  no-op, which is what failed the 2.0.3 and 2.0.4 CI test job. The builder now
+  answers those without a round-trip.
+
 ## [2.0.4] - 2026-09-03
 
 ### Fixed
