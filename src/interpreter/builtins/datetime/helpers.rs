@@ -45,9 +45,39 @@ pub fn datetime_now() -> i64 {
 /// Formatted date string, or empty string if timestamp is invalid.
 pub fn datetime_format(timestamp: i64, format: &str) -> String {
     match DateTime::from_timestamp(timestamp, 0) {
-        Some(dt) => dt.format(format).to_string(),
+        Some(dt) => format_or_empty(&dt.format(format)),
         None => String::new(),
     }
+}
+
+/// Render a chrono format, returning `""` rather than panicking on a bad
+/// pattern.
+///
+/// `chrono`'s `DelayedFormat` returns `fmt::Error` for an invalid strftime item
+/// and `to_string()` turns that into a panic — "a Display implementation
+/// returned an error unexpectedly". `DateTime.format("%")` was enough, so any
+/// app that let a user pick a format (a `?fmt=` parameter, a per-locale
+/// setting) had a one-character 500.
+pub fn format_or_empty<T: std::fmt::Display>(formatted: &T) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    match write!(out, "{formatted}") {
+        Ok(()) => out,
+        Err(_) => String::new(),
+    }
+}
+
+/// Reject a strftime pattern chrono cannot render, before it is used.
+///
+/// Returns the offending pattern in the error so the caller knows what to fix.
+pub fn validate_strftime(format: &str) -> Result<(), String> {
+    use chrono::format::{Item, StrftimeItems};
+    if StrftimeItems::new(format).any(|item| matches!(item, Item::Error)) {
+        return Err(format!(
+            "invalid date format {format:?}: unrecognised strftime directive"
+        ));
+    }
+    Ok(())
 }
 
 /// Parse a date string to Unix timestamp.
@@ -395,8 +425,9 @@ pub fn localize_date(timestamp: i64, locale: &str, format: &str) -> String {
         other => other, // Use as strftime format directly
     };
 
-    // Format the date
-    let formatted = dt.format(strftime_format).to_string();
+    // Format the date. `format_or_empty` rather than `to_string()`: chrono
+    // panics on an invalid pattern.
+    let formatted = format_or_empty(&dt.format(strftime_format));
 
     // Replace English month/day names with localized versions
     localize_names(&formatted, months, days, locale)

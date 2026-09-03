@@ -60,6 +60,44 @@ pub fn register_liveview_route(component: &str, handler_name: &str) {
     );
 }
 
+/// Components that may be mounted in a shared room.
+///
+/// A room instance is deliberately shared: every visitor who names it gets the
+/// same state and the same rendered HTML, which is what makes public demos and
+/// shared boards work. That also means `?room=` on a component that was never
+/// meant to be shared hands its full current markup — and the right to drive
+/// its events — to anyone who guesses the name. Rooms are therefore opt-in per
+/// component.
+static ROOM_COMPONENTS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+fn room_components() -> std::sync::MutexGuard<'static, Option<std::collections::HashSet<String>>> {
+    match ROOM_COMPONENTS.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// Declare a component room-shareable (`live_rooms("desk")` in `routes.sl`).
+pub fn register_room_component(component: &str) {
+    let mut guard = room_components();
+    guard
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(component.to_string());
+}
+
+/// Forget every room declaration (hot reload re-runs `routes.sl`).
+pub fn clear_room_components() {
+    *room_components() = None;
+}
+
+/// May this component be mounted in a shared room?
+pub fn is_room_component(component: &str) -> bool {
+    room_components()
+        .as_ref()
+        .is_some_and(|set| set.contains(component))
+}
+
 /// Get the handler for a LiveView component.
 pub fn get_liveview_handler(component: &str) -> Option<String> {
     let routes = LIVEVIEW_ROUTES.lock().unwrap();
@@ -130,8 +168,38 @@ fn desk_initial_state(component: &str) -> serde_json::Value {
 pub fn liveview_instance_id(session_id: &str, component: &str, room: Option<&str>) -> String {
     match room {
         Some(name) if !name.is_empty() => format!("room:{name}:{component}"),
-        _ => format!("{session_id}:{component}"),
+        _ => format!("{}:{component}", session_handle(session_id)),
     }
+}
+
+/// A stable, opaque handle for a session id.
+///
+/// The instance id is sent to the browser in every `Render` message and kept in
+/// `this.liveviewId`, so embedding the raw session id there handed page
+/// JavaScript the value the `HttpOnly` flag exists to keep away from it: any
+/// XSS, or any third-party script on a LiveView page, could read the session
+/// cookie straight out of the socket traffic. It was printed to the server log
+/// too. A truncated SHA-256 keeps the id stable per session (which is all the
+/// registry needs) while carrying nothing back.
+///
+/// Synthetic `sess-<uuid>` handles, minted per socket when no cookie is
+/// present, are not credentials and pass through unchanged — hashing them would
+/// only make debugging harder.
+fn session_handle(session_id: &str) -> String {
+    if session_id.starts_with("sess-") {
+        return session_id.to_string();
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(session_id.as_bytes());
+    // 128 bits of a SHA-256: collision-free in practice for live sockets, and
+    // short enough to stay readable in a log line.
+    let mut out = String::with_capacity(3 + 32);
+    out.push_str("lv-");
+    for byte in &digest[..16] {
+        use std::fmt::Write;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 /// Accept a client `mid` / `room` only when it is a short token (UUID / slug).
@@ -432,5 +500,76 @@ mod tests {
         assert_eq!(inst.senders.len(), 2, "both sessions stay attached");
         drop(rx_a);
         drop(rx_b);
+    }
+}
+
+#[cfg(test)]
+mod session_handle_tests {
+    use super::*;
+
+    /// The instance id is sent to the browser in every render and stored in
+    /// `this.liveviewId`, so it must not carry the session cookie.
+    #[test]
+    fn a_real_session_id_never_appears_in_the_instance_id() {
+        let session = "0193f0a1-2b3c-7d4e-8f90-abcdef123456";
+        let id = liveview_instance_id(session, "board", None);
+        assert!(
+            !id.contains(session),
+            "the session id leaked into the instance id: {id}"
+        );
+        assert!(id.starts_with("lv-"), "{id}");
+        assert!(id.ends_with(":board"), "{id}");
+    }
+
+    /// The registry keys on this, so the same session must always map to the
+    /// same handle (reconnects and second tabs attach to one instance), and two
+    /// sessions must never collide.
+    #[test]
+    fn the_handle_is_stable_per_session_and_distinct_across_sessions() {
+        let a = liveview_instance_id("session-a", "board", None);
+        assert_eq!(a, liveview_instance_id("session-a", "board", None));
+        assert_ne!(a, liveview_instance_id("session-b", "board", None));
+        assert_ne!(a, liveview_instance_id("session-a", "chat", None));
+    }
+
+    /// Cookie-less sockets mint their own `sess-<uuid>` handle. It is not a
+    /// credential, and hashing it would only make logs harder to read.
+    #[test]
+    fn synthetic_handles_pass_through_unchanged() {
+        let id = liveview_instance_id("sess-1234", "board", None);
+        assert_eq!(id, "sess-1234:board");
+    }
+
+    /// Rooms are shared by design and never include a session at all.
+    #[test]
+    fn a_room_id_is_unchanged() {
+        let id = liveview_instance_id(
+            "0193f0a1-2b3c-7d4e-8f90-abcdef123456",
+            "desk",
+            Some("field"),
+        );
+        assert_eq!(id, "room:field:desk");
+    }
+}
+
+#[cfg(test)]
+mod room_opt_in_tests {
+    use super::*;
+
+    #[test]
+    fn a_component_is_not_room_shareable_until_declared() {
+        clear_room_components();
+        assert!(
+            !is_room_component("admin_board"),
+            "rooms must be opt-in: an undeclared component is never shared"
+        );
+
+        register_room_component("desk");
+        assert!(is_room_component("desk"));
+        // Declaring one component must not open the others.
+        assert!(!is_room_component("admin_board"));
+
+        clear_room_components();
+        assert!(!is_room_component("desk"), "clearing forgets declarations");
     }
 }

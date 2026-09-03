@@ -749,18 +749,30 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             } else {
                 1
             };
+            // Bounded before allocating: `range(0, params["n"])` used to ask
+            // the allocator for gigabytes, and an allocation failure aborts the
+            // whole process rather than failing the request. `checked_add` on
+            // the cursor closes the other end of it — `i += step` wraps in
+            // release, which turns a near-i64::MAX bound into an endless loop.
+            crate::interpreter::limits::check_range_with_step(start, end, step, "range()")?;
             let mut values = Vec::new();
             if step > 0 {
                 let mut i = start;
                 while i < end {
                     values.push(Value::Int(i));
-                    i += step;
+                    match i.checked_add(step) {
+                        Some(next) => i = next,
+                        None => break,
+                    }
                 }
             } else {
                 let mut i = start;
                 while i > end {
                     values.push(Value::Int(i));
-                    i += step;
+                    match i.checked_add(step) {
+                        Some(next) => i = next,
+                        None => break,
+                    }
                 }
             }
             Ok(Value::Array(Rc::new(RefCell::new(values))))
@@ -2373,18 +2385,30 @@ pub fn register_template_builtins(env: &mut Environment) {
                 1
             };
 
+            // Bounded before allocating: `range(0, params["n"])` used to ask
+            // the allocator for gigabytes, and an allocation failure aborts the
+            // whole process rather than failing the request. `checked_add` on
+            // the cursor closes the other end of it — `i += step` wraps in
+            // release, which turns a near-i64::MAX bound into an endless loop.
+            crate::interpreter::limits::check_range_with_step(start, end, step, "range()")?;
             let mut values = Vec::new();
             if step > 0 {
                 let mut i = start;
                 while i < end {
                     values.push(Value::Int(i));
-                    i += step;
+                    match i.checked_add(step) {
+                        Some(next) => i = next,
+                        None => break,
+                    }
                 }
             } else {
                 let mut i = start;
                 while i > end {
                     values.push(Value::Int(i));
-                    i += step;
+                    match i.checked_add(step) {
+                        Some(next) => i = next,
+                        None => break,
+                    }
                 }
             }
 

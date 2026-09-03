@@ -98,7 +98,12 @@ fn normalize_path(path: &str) -> String {
         p.insert(0, '/');
     }
     // Block scheme-relative and protocol-relative abuse after mapping.
-    if p.starts_with("//") {
+    //
+    // `//` was covered; `/\` was not, and browsers normalise a `Location` of
+    // `/\evil.com` to `//evil.com` — the same open redirect through a
+    // different spelling. A backslash has no meaning in a URL path here, so
+    // refuse the whole shape rather than try to rewrite it.
+    if p.starts_with("//") || p.starts_with("/\\") || p.contains('\\') {
         return "/".to_string();
     }
     p
@@ -136,5 +141,30 @@ mod tests {
         assert_eq!(peek_pending_path().as_deref(), Some("/a"));
         assert_eq!(take_pending_path().as_deref(), Some("/a"));
         assert_eq!(take_pending_path(), None);
+    }
+}
+
+#[cfg(test)]
+mod backslash_redirect_tests {
+    use super::*;
+
+    /// `//host` was blocked; `/\host` was not, and browsers normalise a
+    /// `Location: /\evil.com` to `//evil.com` — the same off-site redirect.
+    #[test]
+    fn backslash_forms_cannot_become_a_protocol_relative_url() {
+        assert_eq!(normalize_path("/\\evil.com"), "/");
+        assert_eq!(normalize_path("\\\\evil.com"), "/");
+        assert_eq!(normalize_path("/a\\b"), "/");
+    }
+
+    #[test]
+    fn ordinary_paths_are_unchanged() {
+        assert_eq!(normalize_path("/dashboard"), "/dashboard");
+        assert_eq!(normalize_path("posts/7"), "/posts/7");
+    }
+
+    #[test]
+    fn protocol_relative_urls_are_still_blocked() {
+        assert_eq!(normalize_path("//evil.com"), "/");
     }
 }

@@ -54,17 +54,37 @@ fn value_to_raw_bytes(value: &Value, what: &str) -> Result<Vec<u8>, String> {
     }
 }
 
+/// Bytes past which non-UTF-8 inflate output comes back base64-encoded instead
+/// of as a `Value::Int` per byte.
+///
+/// A `Value` is a 24-byte tagged enum, so `Array<Int>` costs ~24× the payload:
+/// the 64 MiB output cap was respected and the process still reached 1.8 GB
+/// resident, from a 65 KB request. `inflate` is the documented decoder for SAML
+/// `SAMLRequest`/`SAMLResponse` — unauthenticated network input — so a handful
+/// of concurrent requests were an out-of-memory kill.
+///
+/// Small binary results keep the historical byte-array shape, which is what
+/// existing code indexes into; only sizes that would blow up switch to base64,
+/// with the same reasoning SEC-031 used for uploads.
+const MAX_BYTE_ARRAY_BYTES: usize = 256 * 1024;
+
 /// Return decompressed bytes as a `String` if valid UTF-8, else a byte `Array`
-/// — the same shape `Base64.decode` uses.
+/// — the same shape `Base64.decode` uses — or, past
+/// [`MAX_BYTE_ARRAY_BYTES`], a base64 string.
 fn bytes_to_text_value(bytes: Vec<u8>) -> Value {
     match String::from_utf8(bytes) {
         Ok(s) => Value::String(s.into()),
         Err(e) => {
-            let values: Vec<Value> = e
-                .into_bytes()
-                .into_iter()
-                .map(|b| Value::Int(b as i64))
-                .collect();
+            let bytes = e.into_bytes();
+            if bytes.len() > MAX_BYTE_ARRAY_BYTES {
+                use base64::Engine;
+                return Value::String(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(&bytes)
+                        .into(),
+                );
+            }
+            let values: Vec<Value> = bytes.into_iter().map(|b| Value::Int(b as i64)).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
     }
@@ -85,7 +105,10 @@ fn do_deflate(data: &[u8]) -> Result<Vec<u8>, String> {
 /// binding), and a few-KB highly-repetitive payload can inflate to many GB — a
 /// decompression bomb. Cap the output and fail closed; raise via
 /// `SOLI_DEFLATE_MAX_BYTES` for legitimately large payloads.
-const DEFAULT_INFLATE_MAX_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+/// 8 MiB. SAML assertions are kilobytes; the previous 64 MiB left a wide margin
+/// for a payload nobody sends, and every byte of it was memory an unauthenticated
+/// caller could make a worker allocate.
+const DEFAULT_INFLATE_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 fn inflate_max_bytes() -> u64 {
     std::env::var("SOLI_DEFLATE_MAX_BYTES")
@@ -208,5 +231,57 @@ mod tests {
             }
             other => panic!("expected byte array, got {:?}", other),
         }
+    }
+}
+
+#[cfg(test)]
+mod inflate_memory_tests {
+    use super::*;
+
+    /// Small binary output keeps the historical `Array<Int>` shape that
+    /// existing code indexes into.
+    #[test]
+    fn small_binary_output_stays_a_byte_array() {
+        let value = bytes_to_text_value(vec![0xff, 0x00, 0xfe]);
+        let Value::Array(items) = value else {
+            panic!("small binary output should stay an array");
+        };
+        assert_eq!(items.borrow().len(), 3);
+    }
+
+    /// Valid UTF-8 is a string, as before.
+    #[test]
+    fn text_output_is_a_string() {
+        let value = bytes_to_text_value(b"hello".to_vec());
+        assert!(matches!(value, Value::String(ref s) if &**s == "hello"));
+    }
+
+    /// The amplification: one `Value::Int` per byte is ~24 bytes each, so a
+    /// large binary result cost 24× its size in memory — 64 MiB of output
+    /// reached 1.8 GB resident from a 65 KB request. Past the threshold the
+    /// bytes come back base64-encoded instead.
+    #[test]
+    fn large_binary_output_is_base64_rather_than_one_value_per_byte() {
+        let big = vec![0xffu8; MAX_BYTE_ARRAY_BYTES + 1];
+        let value = bytes_to_text_value(big.clone());
+        let Value::String(encoded) = value else {
+            panic!("large binary output should be base64, not a byte array");
+        };
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&*encoded)
+            .expect("valid base64");
+        assert_eq!(decoded, big, "the bytes must round-trip");
+        // And the representation must actually be smaller than the array form.
+        assert!(encoded.len() < big.len() * 24);
+    }
+
+    /// A decompression bomb must fail closed rather than allocate.
+    #[test]
+    fn output_past_the_cap_is_refused() {
+        let bomb = do_deflate(&vec![0u8; 32 * 1024 * 1024]).expect("compress");
+        let err = do_inflate(&bomb).expect_err("a 32 MiB payload is over the 8 MiB cap");
+        assert!(err.contains("exceeds the"), "{err}");
+        assert!(err.contains("SOLI_DEFLATE_MAX_BYTES"), "{err}");
     }
 }

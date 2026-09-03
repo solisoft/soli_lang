@@ -636,6 +636,9 @@ impl TypeChecker {
                 Ok(*value_type.clone())
             }
             Type::Any | Type::Unknown => Ok(Type::Any),
+            // A Future resolves transparently at runtime (`HTTP.get(url)["status"]`),
+            // the same way member access on one is permissive above.
+            Type::Future(_) => Ok(Type::Any),
             _ => Err(TypeError::General {
                 message: format!("cannot index {}", obj_type),
                 span,
@@ -655,5 +658,63 @@ fn collapse_zero_arg_method(ty: Type) -> Type {
             return_type,
         } if params.is_empty() => *return_type,
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod http_class_typing_tests {
+    use crate::types::TypeChecker;
+
+    fn check(source: &str) -> Result<(), String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("lexes");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parses");
+        TypeChecker::new()
+            .check(&program)
+            .map_err(|errs| errs.into_iter().next().unwrap().to_string())
+    }
+
+    /// Every `HTTP.*` verb the runtime registers must type-check with its
+    /// trailing options hash, and the Future it returns must be indexable —
+    /// `HTTP.get(url, {"timeout": 5})` used to fail with "expected 1, got 2"
+    /// and `HTTP.get_json` was not declared at all.
+    #[test]
+    fn every_http_verb_accepts_a_trailing_options_hash() {
+        let opts = r#"{"headers": {"Authorization": "Bearer t"}, "timeout": 5}"#;
+        let calls = [
+            format!(r#"HTTP.get("https://x", {opts})"#),
+            format!(r#"HTTP.post("https://x", {{"a": 1}}, {opts})"#),
+            format!(r#"HTTP.put("https://x", "b", {opts})"#),
+            format!(r#"HTTP.patch("https://x", "b", {opts})"#),
+            format!(r#"HTTP.delete("https://x", {opts})"#),
+            format!(r#"HTTP.head("https://x", {opts})"#),
+            format!(r#"HTTP.get_json("https://x", {opts})"#),
+            format!(r#"HTTP.get_jsonp("https://x", {opts})"#),
+            format!(r#"HTTP.post_json("https://x", {{"a": 1}}, {opts})"#),
+            format!(r#"HTTP.put_json("https://x", {{"a": 1}}, {opts})"#),
+            format!(r#"HTTP.patch_json("https://x", {{"a": 1}}, {opts})"#),
+            format!(r#"HTTP.get_all(["https://x"], {opts})"#),
+            format!(r#"HTTP.get_all_json(["https://x"], {opts})"#),
+            format!(r#"HTTP.request("GET", "https://x", {opts}, "body")"#),
+        ];
+        for call in &calls {
+            check(&format!("r = {call}\nprint(r)\n"))
+                .unwrap_or_else(|e| panic!("{call} should type-check: {e}"));
+        }
+        // The verbs without options still work bare.
+        check(r#"print(HTTP.get("https://x"))"#).unwrap();
+        check(r#"print(HTTP.get_json("https://x"))"#).unwrap();
+    }
+
+    #[test]
+    fn indexing_an_http_future_is_permissive() {
+        check(
+            r#"r = HTTP.get("https://x", {"timeout": 5})
+print(r["status"])
+print(HTTP.get_json("https://x")["body"]["name"])
+"#,
+        )
+        .expect("indexing the returned Future must type-check");
     }
 }

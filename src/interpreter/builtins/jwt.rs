@@ -74,6 +74,15 @@ fn current_timestamp() -> u64 {
 }
 
 /// Register JWT builtins in the given environment.
+/// Does this string look like a key, rather than a shared secret?
+///
+/// PEM armour and OpenSSH keys are unmistakable, and nobody types either as an
+/// HMAC password.
+fn looks_like_key_material(secret: &str) -> bool {
+    let trimmed = secret.trim_start();
+    trimmed.starts_with("-----BEGIN") || trimmed.starts_with("ssh-")
+}
+
 pub fn register_jwt_builtins(env: &mut Environment) {
     // jwt_sign(payload, secret, options?) -> token string
     env.define(
@@ -379,6 +388,28 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 algs.iter()
                     .any(|a| !matches!(a, Algorithm::RS256 | Algorithm::EdDSA))
             };
+
+            // Key material passed where a shared secret belongs is refused.
+            //
+            // SEC-091 pinned the algorithm from the caller's *options*, which
+            // closes the confusion attack when a `key` is supplied. It leaves
+            // one step: `jwt_verify(token, <RSA public PEM>)` — the pre-SEC-091
+            // habit, and an easy misreading of the docs — falls into the
+            // HMAC-only branch and keys an HMAC verifier with public bytes. Any
+            // PEM is well over the 32-byte floor, so nothing else catches it,
+            // and an attacker who has the public key (it is public) can forge an
+            // HS256 token that verifies. Legitimate RS256 tokens fail against
+            // such a call anyway, so refusing costs no working code.
+            if header_carries_hmac(&allowed_algorithms) && looks_like_key_material(&secret) {
+                return Err(
+                    "jwt_verify(): the second argument looks like key material, not a shared \
+                     secret. Verifying an asymmetric token needs the algorithm named: \
+                     jwt_verify(token, {\"algorithm\": \"RS256\", \"key\": pem}). Passing a \
+                     public key as an HMAC secret would let anyone holding that key forge a \
+                     token."
+                        .to_string(),
+                );
+            }
 
             // SEC-054: enforce the HMAC secret floor when an HMAC algorithm
             // is in the allowed set. A weak secret must be a hard reject

@@ -103,7 +103,6 @@ the code you are writing — they are properties of the runtime.
 | `find_uploaded_file` wants `req`, not `params` | Returns nil with `params`, despite the bundled docs' example | `find_uploaded_file(req, "field")` |
 | `String.index_of` takes **no start offset** | `index_of("/", 1)` raises `Wrong number of arguments` | Slice first, then search |
 | `before_action` hooks are wired by a **startup scan** | `--dev` reloads the action but keeps the old guard — a changed auth rule silently doesn't apply | Restart the process, not just the file |
-| `HTTP.post_json` / `patch_json` **silently drop** `options.headers` | The request goes out unauthenticated; the cause is invisible | `HTTP.request(method, url, headers, body)` — headers are the 3rd positional arg |
 | `HTTP.*_json` **raise** on a non-2xx status | `try/catch` gets the whole error page as a string; the status branch is dead | `HTTP.request` returns the response — read `response["status"]` |
 | A `.md` view runs through the **template engine first** | Writing a template tag in prose *executes* it; `<%%` does not escape it | Name the tags instead of quoting them |
 

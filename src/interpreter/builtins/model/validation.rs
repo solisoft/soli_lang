@@ -568,6 +568,22 @@ fn lookup_field(data: &Value, field: &str) -> Option<Value> {
 /// If `exclude_key` is provided (for updates), that record is excluded from
 /// uniqueness checks — and the run counts as an `update` for `on:` matching;
 /// `None` counts as a `create`.
+/// Does this class declare any validation rules?
+///
+/// Used to decide whether a static `Model.update` needs to pre-read the stored
+/// document: validating a partial patch on its own would fail every `presence`
+/// rule for a field the patch did not touch, so the record has to be merged
+/// first — which costs a read, and is only worth paying when there is something
+/// to validate.
+pub fn class_has_validations(class_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| !m.validations.is_empty())
+        .unwrap_or(false)
+        || !custom_validators_for(class_name).is_empty()
+}
+
 pub fn run_validations(
     class_name: &str,
     data: &Value,

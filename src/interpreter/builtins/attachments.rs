@@ -42,7 +42,12 @@ fn sanitize_part(raw: &str) -> String {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
         .take(128)
         .collect();
-    if cleaned.is_empty() {
+    // `.` survives the filter, so `..` survived sanitisation whole: an id taken
+    // from a request param and handed to `read_attachment` / `delete_attachment`
+    // resolved to `<root>/<collection>/../{data,meta.json}`, and a collection of
+    // `".."` climbed another level. The built-in controller never does this, but
+    // a function named `sanitize_part` must not hand back a traversal.
+    if cleaned.is_empty() || cleaned.chars().all(|c| c == '.') {
         "blob".to_string()
     } else {
         cleaned
@@ -370,5 +375,42 @@ mod tests {
         assert!(read_disk("avatars", &id).is_err());
         let _ = fs::remove_dir_all(&dir);
         std::env::remove_var("SOLI_ATTACHMENTS_PATH");
+    }
+}
+
+#[cfg(test)]
+mod sanitize_part_tests {
+    use super::*;
+
+    /// `.` passed the character filter, so `..` came through whole and
+    /// `<root>/<collection>/../data` escaped the attachment directory.
+    #[test]
+    fn dot_segments_never_survive() {
+        assert_eq!(sanitize_part(".."), "blob");
+        assert_eq!(sanitize_part("."), "blob");
+        assert_eq!(sanitize_part("..."), "blob");
+        // Separators are stripped first, so this collapses to one harmless
+        // segment rather than a traversal — assert it stays a single component.
+        let flattened = sanitize_part("../../etc/passwd");
+        assert!(!flattened.contains('/'), "{flattened}");
+        assert!(!flattened.contains('\\'), "{flattened}");
+        assert_ne!(flattened, "..");
+    }
+
+    #[test]
+    fn ordinary_ids_are_unchanged() {
+        assert_eq!(
+            sanitize_part("019329ab-7c4d-7e00-8000-1f2b3c4d5e6f"),
+            "019329ab-7c4d-7e00-8000-1f2b3c4d5e6f"
+        );
+        assert_eq!(sanitize_part("avatar.png"), "avatar.png");
+        assert_eq!(sanitize_part("posts"), "posts");
+    }
+
+    /// Path separators were already stripped; keep it that way.
+    #[test]
+    fn separators_are_stripped() {
+        assert_eq!(sanitize_part("a/b"), "ab");
+        assert_eq!(sanitize_part("a\\b"), "ab");
     }
 }

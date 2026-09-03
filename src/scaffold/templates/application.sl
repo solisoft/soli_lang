@@ -6,24 +6,31 @@
 # pick whichever fits your flow.
 
 # ---------------------------------------------------------------------
-# enable_trust_proxy — ON BY DEFAULT in scaffolded apps.
+# enable_trust_proxy — OFF by default. Turn it on when you deploy.
 # ---------------------------------------------------------------------
 # Makes the server honour `X-Forwarded-Host` / `X-Forwarded-Proto` /
-# etc. from inbound requests for CSRF, redirects, `request.host`, and
-# the cookie `Secure` flag. This is the right default for the typical
-# deployment shape (app behind nginx / Caddy / an ALB / fly-proxy).
+# `X-Forwarded-For` from inbound requests for CSRF, redirects,
+# `request.host`, per-IP rate limiting, and the cookie `Secure` flag.
 #
-# SECURITY: only safe when the proxy in front of the app strips
-# client-supplied `X-Forwarded-*` headers and rewrites them with the
-# values it observed itself. Without that, a remote client can spoof
-# the request authority and scheme — downgrading CSRF / origin checks
-# and producing phishing-shaped redirects from `*_url` helpers.
+# It is off here because an `X-Forwarded-*` header is only trustworthy
+# when a proxy you control strips the client's copy and rewrites it
+# with what it observed. On an app reachable directly, any client can
+# send those headers, which spoofs the request authority and scheme —
+# downgrading the CSRF / origin checks, flipping the cookie `Secure`
+# flag, aiming `*_url` helpers at a phishing host, and handing every
+# request a fresh identity so per-IP rate limits (including the login
+# throttle) never trip.
 #
-# If you're exposing the app DIRECTLY to the internet with no proxy in
-# front, comment the next line out (or set `SOLI_TRUST_PROXY=0` in the
-# env) so spoofed `X-Forwarded-*` headers can't be trusted.
+# Behind nginx / Caddy / an ALB / fly-proxy, uncomment the line below
+# (or set `SOLI_TRUST_PROXY=1`). Also name the hops you trust, so the
+# headers are honoured only for requests that really came from them:
+#
+#   SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1
+#
+# With that list set, a client reaching the app directly is not trusted
+# even while the flag is on. Leaving it unset trusts every peer.
 
-enable_trust_proxy
+# enable_trust_proxy
 
 # ---------------------------------------------------------------------
 # CSRF / same-origin policy.

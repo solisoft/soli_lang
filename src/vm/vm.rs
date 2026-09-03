@@ -447,7 +447,15 @@ impl Vm {
                 Op::Add => {
                     let (a, b) = self.pop2();
                     let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "+", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
                         (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
                         (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
@@ -468,7 +476,15 @@ impl Vm {
                 Op::Subtract => {
                     let (a, b) = self.pop2();
                     let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_sub(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "-", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
                         (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 - y),
                         (Value::Float(x), Value::Int(y)) => Value::Float(x - *y as f64),
@@ -482,7 +498,15 @@ impl Vm {
                 Op::Multiply => {
                     let (a, b) = self.pop2();
                     let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_mul(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "*", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
                         (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 * y),
                         (Value::Float(x), Value::Int(y)) => Value::Float(x * *y as f64),
@@ -500,7 +524,17 @@ impl Vm {
                             if *y == 0 {
                                 return Err(RuntimeError::division_by_zero(self.current_span()));
                             }
-                            Value::Int(x / y)
+                            match x.checked_div(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "/", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         (Value::Float(x), Value::Float(y)) => {
                             if *y == 0.0 {
@@ -522,7 +556,17 @@ impl Vm {
                             if *y == 0 {
                                 return Err(RuntimeError::division_by_zero(self.current_span()));
                             }
-                            Value::Int(x % y)
+                            match x.checked_rem(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "%", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         _ => {
                             let span = self.current_span();
@@ -656,6 +700,15 @@ impl Vm {
                     }
                 }
                 Op::Loop(offset) => {
+                    // The one instruction a program cannot avoid to run
+                    // forever, so it is where the handler budget is enforced.
+                    // Reads the clock only every few thousand iterations.
+                    if crate::interpreter::deadline::expired() {
+                        return Err(RuntimeError::General {
+                            message: crate::interpreter::deadline::timeout_message(),
+                            span: self.current_span(),
+                        });
+                    }
                     self.frames.last_mut().unwrap().ip -= offset as usize;
                 }
                 Op::JumpIfFalseNoPop(offset) => {
@@ -1731,7 +1784,18 @@ impl Vm {
                     match (&start, &end) {
                         (Value::Int(a), Value::Int(b)) => {
                             // Exclusive of the end, matching the tree-walking
-                            // interpreter's `eval_range` (`start..end`).
+                            // interpreter's `eval_range` (`start..end`). Bounded
+                            // for the same reason: an eager collect from a
+                            // request-supplied bound is an allocation failure,
+                            // which aborts the process instead of the request.
+                            // (`GetIterRange` needs no check — it iterates
+                            // lazily and allocates nothing.)
+                            crate::interpreter::limits::check_range(*a, *b, "range (..)").map_err(
+                                |message| RuntimeError::General {
+                                    message,
+                                    span: self.current_span(),
+                                },
+                            )?;
                             let arr: Vec<Value> = (*a..*b).map(Value::Int).collect();
                             self.stack.push(Value::Array(Rc::new(RefCell::new(arr))));
                         }
@@ -2301,7 +2365,15 @@ impl Vm {
                     let a = &self.stack[base + slot_a as usize];
                     let b = &self.stack[base + slot_b as usize];
                     let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "+", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
                         _ => {
                             let a = a.clone();
@@ -2358,7 +2430,15 @@ impl Vm {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
                     let result = match (local, constant) {
-                        (Value::Int(x), Constant::Int(y)) => Value::Int(x + y),
+                        (Value::Int(x), Constant::Int(y)) => match x.checked_add(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "+", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Constant::Float(y)) => Value::Float(x + y),
                         _ => {
                             let a = local.clone();
@@ -2379,7 +2459,15 @@ impl Vm {
                     let a = &self.stack[base + slot_a as usize];
                     let b = &self.stack[base + slot_b as usize];
                     let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_sub(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "-", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
                         _ => {
                             let a = a.clone();
@@ -2395,7 +2483,15 @@ impl Vm {
                     let a = &self.stack[base + slot_a as usize];
                     let b = &self.stack[base + slot_b as usize];
                     let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
+                        (Value::Int(x), Value::Int(y)) => match x.checked_mul(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "*", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
                         _ => {
                             let a = a.clone();
@@ -2415,7 +2511,17 @@ impl Vm {
                             if *y == 0 {
                                 return Err(RuntimeError::division_by_zero(self.current_span()));
                             }
-                            Value::Int(x / y)
+                            match x.checked_div(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "/", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         (Value::Float(x), Value::Float(y)) => {
                             if *y == 0.0 {
@@ -2441,7 +2547,17 @@ impl Vm {
                             if *y == 0 {
                                 return Err(RuntimeError::division_by_zero(self.current_span()));
                             }
-                            Value::Int(x % y)
+                            match x.checked_rem(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "%", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         _ => {
                             let a = a.clone();
@@ -2458,7 +2574,15 @@ impl Vm {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
                     let result = match (local, constant) {
-                        (Value::Int(x), Constant::Int(y)) => Value::Int(x - y),
+                        (Value::Int(x), Constant::Int(y)) => match x.checked_sub(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "-", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Constant::Float(y)) => Value::Float(x - y),
                         _ => {
                             let a = local.clone();
@@ -2475,7 +2599,15 @@ impl Vm {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
                     let result = match (local, constant) {
-                        (Value::Int(x), Constant::Int(y)) => Value::Int(x * y),
+                        (Value::Int(x), Constant::Int(y)) => match x.checked_mul(*y) {
+                            Some(result) => Value::Int(result),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "*", *y, span,
+                                ));
+                            }
+                        },
                         (Value::Float(x), Constant::Float(y)) => Value::Float(x * y),
                         _ => {
                             let a = local.clone();
@@ -2496,7 +2628,17 @@ impl Vm {
                             if *y == 0 {
                                 return Err(RuntimeError::division_by_zero(self.current_span()));
                             }
-                            Value::Int(x / y)
+                            match x.checked_div(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "/", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         (Value::Float(x), Constant::Float(y)) => {
                             if *y == 0.0 {
@@ -3149,6 +3291,8 @@ impl Vm {
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
             (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
+                crate::interpreter::limits::check_string_repeat(s.len(), *n, "string * count")
+                    .map_err(|message| RuntimeError::General { message, span })?;
                 Ok(Value::String(s.repeat(*n as usize)))
             }
             _ => Err(RuntimeError::type_error(

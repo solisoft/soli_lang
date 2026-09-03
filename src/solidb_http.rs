@@ -87,6 +87,21 @@ fn is_loopback_solidb_host(host: &str) -> bool {
     false
 }
 
+/// Percent-encode one URL path segment.
+///
+/// Every `/_api/...` path in this client is built with `format!`, and the
+/// collection/key/name arguments reach it straight from Soli code — often from
+/// a request param. The `url` crate normalises `..` while resolving, so an
+/// unencoded key rewrote the whole path: `db.delete("posts", "../../../databases/production")`
+/// became `DELETE /_api/databases/production`, sent with the app's own
+/// credentials, and `"../../other_db/document/users/admin"` read or overwrote a
+/// document in another database. `?` and `#` likewise smuggled in a query
+/// string or fragment. The Model layer already encoded its keys
+/// (`encode_key_for_url`); the raw client did not.
+fn seg(value: &str) -> String {
+    urlencoding::encode(value).into_owned()
+}
+
 impl SoliDBClient {
     pub fn connect(host: &str) -> Result<Self, SoliDBError> {
         let trimmed = host.trim().trim_end_matches('/');
@@ -289,7 +304,7 @@ impl SoliDBClient {
     ) -> Result<bool, SoliDBError> {
         // Do a simple query to check connectivity
         let db = self.database.as_deref().unwrap_or("solidb");
-        let path = format!("/_api/database/{}/cursor", db);
+        let path = format!("/_api/database/{}/cursor", seg(db));
         let _ = self.request_with_timeout(
             reqwest::Method::POST,
             &path,
@@ -328,7 +343,7 @@ impl SoliDBClient {
     pub fn delete_database(&self, name: &str) -> Result<(), SoliDBError> {
         self.request(
             reqwest::Method::DELETE,
-            &format!("/_api/databases/{}", name),
+            &format!("/_api/databases/{}", seg(name)),
             None,
         )?;
         Ok(())
@@ -338,7 +353,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let response: Value = self.request(
             reqwest::Method::GET,
-            &format!("/_api/database/{}/collection", db),
+            &format!("/_api/database/{}/collection", seg(db)),
             None,
         )?;
         Ok(response
@@ -360,7 +375,7 @@ impl SoliDBClient {
         }
         self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/collection", db),
+            &format!("/_api/database/{}/collection", seg(db)),
             Some(&body),
         )?;
         Ok(())
@@ -370,7 +385,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         self.request(
             reqwest::Method::DELETE,
-            &format!("/_api/database/{}/collection/{}", db, name),
+            &format!("/_api/database/{}/collection/{}", seg(db), seg(name)),
             None,
         )?;
         Ok(())
@@ -392,7 +407,7 @@ impl SoliDBClient {
         }
         self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/columnar", db),
+            &format!("/_api/database/{}/columnar", seg(db)),
             Some(&body),
         )
     }
@@ -401,7 +416,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         self.request(
             reqwest::Method::DELETE,
-            &format!("/_api/database/{}/columnar/{}", db, name),
+            &format!("/_api/database/{}/columnar/{}", seg(db), seg(name)),
             None,
         )?;
         Ok(())
@@ -411,7 +426,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let response: Value = self.request(
             reqwest::Method::GET,
-            &format!("/_api/database/{}/columnar", db),
+            &format!("/_api/database/{}/columnar", seg(db)),
             None,
         )?;
         Ok(response
@@ -428,7 +443,7 @@ impl SoliDBClient {
         let body = serde_json::json!({ "older_than": older_than_iso });
         let response: Value = self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/collection/{}/prune", db, name),
+            &format!("/_api/database/{}/collection/{}/prune", seg(db), seg(name)),
             Some(&body),
         )?;
         Ok(response
@@ -449,13 +464,18 @@ impl SoliDBClient {
                 obj.insert("_key".to_string(), serde_json::json!(k));
             }
         }
-        let path = format!("/_api/database/{}/document/{}", db, collection);
+        let path = format!("/_api/database/{}/document/{}", seg(db), seg(collection));
         self.request(reqwest::Method::POST, &path, Some(&document))
     }
 
     pub fn get(&self, collection: &str, key: &str) -> Result<Option<Value>, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, key);
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(key)
+        );
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
         Ok(Some(response))
     }
@@ -468,14 +488,24 @@ impl SoliDBClient {
         _merge: bool,
     ) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, key);
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(key)
+        );
         let response: Value = self.request(reqwest::Method::PUT, &path, Some(&document))?;
         Ok(response)
     }
 
     pub fn delete(&self, collection: &str, key: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, key);
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(key)
+        );
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
@@ -511,7 +541,7 @@ impl SoliDBClient {
         if let Some(bv) = bind_vars {
             payload["bindVars"] = serde_json::json!(bv);
         }
-        let path = format!("/_api/database/{}/cursor", db);
+        let path = format!("/_api/database/{}/cursor", seg(db));
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
 
         // Drain the cursor to completion. SolidB caps each batch at `batchSize`
@@ -535,8 +565,11 @@ impl SoliDBClient {
             let Some(id) = cursor_id.as_deref() else {
                 break;
             };
-            let batch =
-                self.request(reqwest::Method::PUT, &format!("/_api/cursor/{}", id), None)?;
+            let batch = self.request(
+                reqwest::Method::PUT,
+                &format!("/_api/cursor/{}", seg(id)),
+                None,
+            )?;
             results.extend(cursor_result_rows(&batch));
             has_more = batch
                 .get("has_more")
@@ -559,7 +592,7 @@ impl SoliDBClient {
         if let Some(bv) = bind_vars {
             payload["bindVars"] = serde_json::json!(bv);
         }
-        let path = format!("/_api/database/{}/explain", db);
+        let path = format!("/_api/database/{}/explain", seg(db));
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
         Ok(response)
     }
@@ -628,7 +661,7 @@ impl SoliDBClient {
         // 404s, which used to silently corrupt every migration that
         // declared an index because the error was swallowed by
         // exec_db_sync into a string return value).
-        let path = format!("/_api/database/{}/index/{}", db, collection);
+        let path = format!("/_api/database/{}/index/{}", seg(db), seg(collection));
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
         Ok(response)
     }
@@ -652,7 +685,7 @@ impl SoliDBClient {
         if let Some(q) = quantization {
             payload["quantization"] = serde_json::json!(q);
         }
-        let path = format!("/_api/database/{}/vector/{}", db, collection);
+        let path = format!("/_api/database/{}/vector/{}", seg(db), seg(collection));
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
         Ok(response)
     }
@@ -686,21 +719,31 @@ impl SoliDBClient {
 
     pub fn drop_vector_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/vector/{}/{}", db, collection, name);
+        let path = format!(
+            "/_api/database/{}/vector/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(name)
+        );
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
 
     pub fn drop_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/index/{}/{}", db, collection, name);
+        let path = format!(
+            "/_api/database/{}/index/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(name)
+        );
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
 
     pub fn list_indexes(&self, collection: &str) -> Result<Vec<Value>, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/index/{}", db, collection);
+        let path = format!("/_api/database/{}/index/{}", seg(db), seg(collection));
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
         Ok(response
             .get("indexes")
@@ -711,7 +754,11 @@ impl SoliDBClient {
 
     pub fn collection_stats(&self, collection: &str) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/collection/{}/stats", db, collection);
+        let path = format!(
+            "/_api/database/{}/collection/{}/stats",
+            seg(db),
+            seg(collection)
+        );
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
         Ok(response)
     }
@@ -732,7 +779,12 @@ impl SoliDBClient {
         content_type: &str,
     ) -> Result<String, SoliDBError> {
         let db = self.get_db()?.to_string();
-        let url = format!("{}/_api/blob/{}/{}", self.base_url, db, collection);
+        let url = format!(
+            "{}/_api/blob/{}/{}",
+            self.base_url,
+            seg(&db),
+            seg(collection)
+        );
         let client = crate::interpreter::builtins::http_class::db_http_client();
 
         let data_owned = data.to_vec();
@@ -856,7 +908,12 @@ impl SoliDBClient {
         blob_id: &str,
     ) -> Result<serde_json::Value, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(blob_id)
+        );
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
 
         let mut metadata = serde_json::Map::new();
@@ -886,7 +943,12 @@ impl SoliDBClient {
 
     pub fn delete_blob(&self, collection: &str, blob_id: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg(db),
+            seg(collection),
+            seg(blob_id)
+        );
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
@@ -898,7 +960,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let response: Value = self.request(
             reqwest::Method::GET,
-            &format!("/_api/database/{}/queues", db),
+            &format!("/_api/database/{}/queues", seg(db)),
             None,
         )?;
         Ok(extract_array(&response, &["queues", "result", "data"]))
@@ -909,7 +971,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let response: Value = self.request(
             reqwest::Method::GET,
-            &format!("/_api/database/{}/queues/{}/jobs", db, queue),
+            &format!("/_api/database/{}/queues/{}/jobs", seg(db), seg(queue)),
             None,
         )?;
         Ok(extract_array(&response, &["jobs", "result", "data"]))
@@ -944,7 +1006,7 @@ impl SoliDBClient {
         }
         let response: Value = self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/queues/{}/enqueue", db, queue),
+            &format!("/_api/database/{}/queues/{}/enqueue", seg(db), seg(queue)),
             Some(&payload),
         )?;
         Ok(extract_id(&response))
@@ -983,7 +1045,7 @@ impl SoliDBClient {
         }
         let response: Value = self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/queues/{}/enqueue", db, queue),
+            &format!("/_api/database/{}/queues/{}/enqueue", seg(db), seg(queue)),
             Some(&payload),
         )?;
         Ok(extract_id(&response))
@@ -994,7 +1056,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         self.request(
             reqwest::Method::DELETE,
-            &format!("/_api/database/{}/queues/jobs/{}", db, job_id),
+            &format!("/_api/database/{}/queues/jobs/{}", seg(db), seg(job_id)),
             None,
         )?;
         Ok(())
@@ -1007,7 +1069,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let response: Value = self.request(
             reqwest::Method::GET,
-            &format!("/_api/database/{}/cron", db),
+            &format!("/_api/database/{}/cron", seg(db)),
             None,
         )?;
         Ok(extract_array(&response, &["crons", "result", "data"]))
@@ -1032,7 +1094,7 @@ impl SoliDBClient {
         });
         let response: Value = self.request(
             reqwest::Method::POST,
-            &format!("/_api/database/{}/cron", db),
+            &format!("/_api/database/{}/cron", seg(db)),
             Some(&payload),
         )?;
         Ok(extract_id(&response))
@@ -1043,7 +1105,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         self.request(
             reqwest::Method::PUT,
-            &format!("/_api/database/{}/cron/{}", db, id),
+            &format!("/_api/database/{}/cron/{}", seg(db), seg(id)),
             Some(&fields),
         )?;
         Ok(())
@@ -1054,7 +1116,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         self.request(
             reqwest::Method::DELETE,
-            &format!("/_api/database/{}/cron/{}", db, id),
+            &format!("/_api/database/{}/cron/{}", seg(db), seg(id)),
             None,
         )?;
         Ok(())
@@ -1117,5 +1179,52 @@ mod tests {
         assert_eq!(c.base_url, "http://localhost:6745");
         let c = SoliDBClient::connect("127.0.0.1:6745").unwrap();
         assert_eq!(c.base_url, "http://127.0.0.1:6745");
+    }
+}
+
+#[cfg(test)]
+mod path_encoding_tests {
+    use super::*;
+
+    /// A key is one path segment. Left raw, `..` was resolved away by the URL
+    /// parser and the request landed on a different endpoint entirely — with
+    /// the app's own SoliDB credentials attached.
+    #[test]
+    fn traversal_in_a_key_cannot_leave_its_segment() {
+        let encoded = seg("../../../databases/production");
+        assert!(!encoded.contains('/'), "{encoded}");
+        assert_eq!(encoded, "..%2F..%2F..%2Fdatabases%2Fproduction");
+
+        let path = format!(
+            "/_api/database/{}/document/{}/{}",
+            seg("app"),
+            seg("posts"),
+            encoded
+        );
+        assert_eq!(
+            path,
+            "/_api/database/app/document/posts/..%2F..%2F..%2Fdatabases%2Fproduction"
+        );
+    }
+
+    /// `?` and `#` would otherwise start a query string or fragment, silently
+    /// dropping the rest of the intended path.
+    #[test]
+    fn query_and_fragment_characters_are_encoded() {
+        assert_eq!(seg("a?b#c"), "a%3Fb%23c");
+        assert_eq!(seg("a b"), "a%20b");
+        assert_eq!(seg("100%"), "100%25");
+    }
+
+    /// Ordinary keys must survive untouched, or every existing document read
+    /// would break.
+    #[test]
+    fn ordinary_keys_are_unchanged() {
+        assert_eq!(
+            seg("019329ab-7c4d-7e00-8000-1f2b3c4d5e6f"),
+            "019329ab-7c4d-7e00-8000-1f2b3c4d5e6f"
+        );
+        assert_eq!(seg("posts"), "posts");
+        assert_eq!(seg("user_42"), "user_42");
     }
 }

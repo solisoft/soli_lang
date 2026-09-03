@@ -602,6 +602,7 @@ pub fn parse_hash_filter(
         let HashKey::String(key) = k else {
             return Err(format!("{method}() Hash filter keys must be strings"));
         };
+        reject_client_supplied_operator(v, key.as_ref(), method)?;
         map.insert(
             key.to_string(),
             value_to_json(v).map_err(|e| e.to_string())?,
@@ -610,6 +611,44 @@ pub fn parse_hash_filter(
     let pred = crate::db::hash_filter::HashFilter::from_json_map(&map, method)?;
     let (sdbql, binds) = pred.to_sdbql();
     Ok((pred, sdbql, binds))
+}
+
+/// Same as [`parse_hash_filter`], rendered in a bind-name namespace that avoids
+/// the names already on a query builder.
+///
+/// Bind names are `field__op_n` with `n` restarting per render, so chaining two
+/// `.where` hashes that touch the same field produced the same name twice and
+/// the later value quietly replaced the earlier one — turning an ownership
+/// scope into whatever the client passed. Each generation is tried in turn
+/// until the new names are disjoint from `taken`.
+pub fn parse_hash_filter_avoiding(
+    hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+    method: &str,
+    taken: &dyn Fn(&str) -> bool,
+) -> Result<
+    (
+        crate::db::hash_filter::HashFilter,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    ),
+    String,
+> {
+    let (pred, sdbql, binds) = parse_hash_filter(hash, method)?;
+    if !binds.keys().any(|name| taken(name)) {
+        return Ok((pred, sdbql, binds));
+    }
+    // A handful of generations is plenty: each one is a fresh namespace, so a
+    // collision can only repeat if the builder already holds names from that
+    // exact generation.
+    for generation in 1..=64u32 {
+        let (sdbql, binds) = pred.to_sdbql_in_generation(generation);
+        if !binds.keys().any(|name| taken(name)) {
+            return Ok((pred, sdbql, binds));
+        }
+    }
+    Err(format!(
+        "{method}(): could not find a free bind-variable namespace for this filter;          chain fewer conditions on the same fields or use the string form with          explicit bind names"
+    ))
 }
 
 /// `.join("posts")` / `.join("posts", { published: true })` /
@@ -658,6 +697,40 @@ pub fn parse_join_filter_args(
         }
         _ => Ok((None, std::collections::HashMap::new(), None)),
     }
+}
+
+/// Refuse a filter value that a client chose *and* that would act as an
+/// operator map or an `IN` list.
+///
+/// The hash form of `.where` reads a nested hash as operators (`{"gt": 10}`)
+/// and an array as `IN`. That is a documented convenience for filters the
+/// developer writes, and it is indistinguishable, by shape alone, from what a
+/// JSON body can send — so
+///
+/// ```soli
+/// User.where({ "email": params["email"], "api_token": params["token"] }).first
+/// ```
+///
+/// turned into `api_token != null` when the client posted
+/// `{"token": {"ne": null}}`, and the secret check simply vanished. (SEC-062
+/// guarded exactly this with a scalar-only rule; the hash-filter IR rewrite
+/// stopped calling it.)
+///
+/// Rather than removing the operator syntax, we ask the one question that
+/// actually separates the two cases: did this container arrive with the
+/// request? A literal written in a `.sl` file never did.
+fn reject_client_supplied_operator(value: &Value, key: &str, method: &str) -> Result<(), String> {
+    let shape = match value {
+        Value::Hash(_) => "an operator map",
+        Value::Array(_) => "an IN list",
+        _ => return Ok(()),
+    };
+    if !crate::interpreter::taint::is_request_supplied(value) {
+        return Ok(());
+    }
+    Err(format!(
+        "{method}(): the value for '{key}' came from the request and would be read as          {shape}, not compared. A client can turn an equality check into          `{{\"ne\": null}}` this way and bypass it. Compare against a scalar          (`str(params[\"{key}\"])`), or whitelist the shape first with          `permit(params, {{\"{key}\": true}})`, which drops containers from          scalar slots."
+    ))
 }
 
 /// SEC-062: enforce that user-supplied bind values are scalars (string, number,
@@ -1315,6 +1388,56 @@ fn instance_fields_to_hash(
 /// We always allocate a fresh `Value::Hash` rather than mutating in place
 /// so the caller's original input is preserved (validation and error
 /// reporting still see the request's full shape if they want it).
+/// Strip the keys a client must never choose from a document about to be
+/// persisted.
+///
+/// `attr_accessible` is opt-in, and without it `filter_mass_assign` hands the
+/// hash back untouched — so `Post.create(req["json"])`, a shape the docs
+/// present as legal, let the client pick its own `_key` (predictable ids, key
+/// squatting, 409 collisions), set `_from`/`_to` on an edge collection, forge
+/// `_id`/`_rev`, or set `type` on an STI base class so the row hydrates as a
+/// privileged subclass. `apply_hash_to_instance` already skipped `_`-prefixed
+/// keys, but only for the in-memory instance: the JSON sent to the server kept
+/// them, and the server honours a supplied `_key`.
+///
+/// Applies to `create` and the static `update` regardless of whitelists.
+/// `type` is only reserved where it is a discriminator, so ordinary models can
+/// still have a `type` column.
+/// Does this class declare any validation rules or custom validators?
+fn class_has_validations(class_name: &str) -> bool {
+    super::validation::class_has_validations(class_name)
+}
+
+/// Overlay an update patch on the stored document, so validations see the
+/// record as it will be *after* the write rather than only the changed fields.
+/// A missing stored document (a create-through-update, or a read that failed)
+/// simply validates the patch on its own.
+fn merge_json_documents(
+    stored: Option<&serde_json::Value>,
+    patch: &serde_json::Value,
+) -> serde_json::Value {
+    let mut merged = match stored {
+        Some(serde_json::Value::Object(map)) => map.clone(),
+        _ => serde_json::Map::new(),
+    };
+    if let serde_json::Value::Object(patch_map) = patch {
+        for (key, value) in patch_map {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    serde_json::Value::Object(merged)
+}
+
+fn strip_reserved_document_keys(data: &mut serde_json::Value, class_name: &str) {
+    let serde_json::Value::Object(map) = data else {
+        return;
+    };
+    map.retain(|key, _| !key.starts_with('_'));
+    if super::registry::is_sti_subclass(class_name) || super::registry::is_sti_base(class_name) {
+        map.remove("type");
+    }
+}
+
 fn filter_mass_assign(class_name: &str, data: &Value) -> Value {
     use crate::interpreter::value::{HashKey, HashPairs};
     let pairs = match data {
@@ -2197,6 +2320,20 @@ impl Model {
                     )),
                 };
                 let mut data_value = data_value?;
+                strip_reserved_document_keys(&mut data_value, &class_name);
+                // Edge endpoints go back in after the strip. They are not mass
+                // assignment: `transform_edge_data` resolved and validated them
+                // against the edge spec's declared collections just above, and
+                // an edge document without them is not an edge.
+                if let Some((ref from_ref, ref to_ref)) = edge_refs {
+                    if let serde_json::Value::Object(ref mut map) = data_value {
+                        map.insert(
+                            "_from".to_string(),
+                            serde_json::Value::String(from_ref.clone()),
+                        );
+                        map.insert("_to".to_string(), serde_json::Value::String(to_ref.clone()));
+                    }
+                }
 
                 // STI subclasses stamp their discriminator so rows in the
                 // shared base collection hydrate as the right class.
@@ -2769,6 +2906,19 @@ impl Model {
                 let collection = class_name_to_collection(&class_name);
 
                 let limit = match args.get(1) {
+                    // `*n as usize` turned a negative into `usize::MAX`, i.e.
+                    // `LIMIT 18446744073709551615` — a full-collection scan from
+                    // `?limit=-1`.
+                    Some(Value::Int(n)) if *n < 0 => {
+                        return Err(format!(
+                            "Model.limit() expects a non-negative integer, got {n}"
+                        ))
+                    }
+                    Some(Value::Float(f)) if *f < 0.0 => {
+                        return Err(format!(
+                            "Model.limit() expects a non-negative number, got {f}"
+                        ))
+                    }
                     Some(Value::Int(n)) => *n as usize,
                     Some(Value::Float(f)) => *f as usize,
                     Some(other) => {
@@ -2850,19 +3000,49 @@ impl Model {
                     )),
                     None => Err("Model.update() requires data argument".to_string()),
                 };
-                let data_value = data_value?;
+                let mut data_value = data_value?;
+                strip_reserved_document_keys(&mut data_value, &class_name);
 
-                // Counter caches / STI: pre-read the old document (only when
-                // this class declares counter-cached belongs_to or is an STI
-                // subclass) so an FK change can move parent counts and a
-                // subclass can refuse rows outside its hierarchy.
+                // Counter caches / STI / validations: pre-read the old document
+                // (only when this class declares counter-cached belongs_to, is
+                // an STI subclass, or has validations) so an FK change can move
+                // parent counts, a subclass can refuse rows outside its
+                // hierarchy, and validations see the whole record rather than
+                // just the changed fields.
+                let has_validations = class_has_validations(&class_name);
                 let needs_preread = super::counter_cache::class_has_counter_caches(&class_name)
-                    || super::registry::is_sti_subclass(&class_name);
+                    || super::registry::is_sti_subclass(&class_name)
+                    || has_validations;
                 let old_doc = if needs_preread {
                     super::crud::exec_get(&collection, &id).ok()
                 } else {
                     None
                 };
+
+                // The static update used to skip validations entirely — only
+                // `Model.create` and the instance mutators ran them — while the
+                // docs present it as the ordinary update API. So
+                // `Post.update(id, permitted)` wrote blank required fields,
+                // invalid enum values and duplicate uniqueness keys straight to
+                // the database, past the model's own rules.
+                //
+                // Validate the *merged* record: a partial update names only the
+                // fields it changes, so validating the patch alone would fail
+                // every `presence` rule for a field it did not touch.
+                if has_validations {
+                    let merged = merge_json_documents(old_doc.as_ref(), &data_value);
+                    let errors = run_validations(&class_name, &json_to_value(&merged), Some(&id))?;
+                    if !errors.is_empty() {
+                        let error_values: Vec<Value> =
+                            errors.iter().map(|e| e.to_value()).collect();
+                        let mut out = crate::interpreter::value::HashPairs::default();
+                        out.insert(
+                            HashKey::String("_errors".into()),
+                            Value::Array(Rc::new(RefCell::new(error_values))),
+                        );
+                        return Ok(Value::Hash(Rc::new(RefCell::new(out))));
+                    }
+                }
                 if super::registry::is_sti_subclass(&class_name)
                     && !old_doc
                         .as_ref()
@@ -3214,7 +3394,11 @@ impl Model {
                     };
                 let per =
                     match params.get(&crate::interpreter::value::HashKey::String("per".into())) {
-                        Some(Value::Int(n)) if *n > 0 => *n as usize,
+                        // Clamped: `per` is a request parameter, and an
+                        // unbounded page size loads the whole collection.
+                        Some(Value::Int(n)) if *n > 0 => {
+                            crate::interpreter::limits::clamp_page_size(*n as usize)
+                        }
                         _ => 25,
                     };
 
@@ -4287,7 +4471,11 @@ impl Model {
                 };
                 validate_field_name(&field, "similar")?;
                 let top_k = match args.get(3) {
-                    Some(Value::Int(n)) if *n > 0 => *n as usize,
+                    // Clamped like `paginate`'s `per`: a request-supplied
+                    // neighbour count must not scan the whole index.
+                    Some(Value::Int(n)) if *n > 0 => {
+                        crate::interpreter::limits::clamp_page_size(*n as usize)
+                    }
                     _ => 10,
                 };
                 let mut exact = false;
@@ -6948,4 +7136,154 @@ pub fn register_model_builtins(env: &mut Environment) {
             },
         )),
     );
+}
+
+#[cfg(test)]
+mod where_operator_injection_tests {
+    use super::*;
+    use crate::interpreter::value::{HashKey, HashPairs};
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Rc<RefCell<HashPairs>> {
+        let mut out = HashPairs::default();
+        for (k, v) in pairs {
+            out.insert(HashKey::String((*k).into()), v);
+        }
+        Rc::new(RefCell::new(out))
+    }
+
+    /// The reported bypass: a controller compares a secret against a request
+    /// value, and the client sends an operator map instead of a string.
+    ///
+    /// ```soli
+    /// User.where({ "email": params["email"], "api_token": params["token"] }).first
+    /// ```
+    /// with `{"email": "admin@x.com", "token": {"ne": null}}` used to compile to
+    /// `doc.api_token != @bind` (bind `null`) — the token check gone.
+    #[test]
+    fn a_request_supplied_operator_map_is_refused() {
+        crate::interpreter::taint::clear_request_values();
+
+        let operator_map = Value::Hash(hash(vec![("ne", Value::Null)]));
+        let params = Value::Hash(hash(vec![
+            ("email", Value::String("admin@x.com".into())),
+            ("token", operator_map.clone()),
+        ]));
+        crate::interpreter::taint::mark_request_value(&params);
+
+        let filter = hash(vec![
+            ("email", Value::String("admin@x.com".into())),
+            ("api_token", operator_map),
+        ]);
+        let err = parse_hash_filter(&filter, "where")
+            .expect_err("a client-supplied operator map must not build a filter");
+        assert!(err.contains("api_token"), "{err}");
+        assert!(err.contains("came from the request"), "{err}");
+        assert!(
+            err.contains("permit"),
+            "the error should say how to fix it: {err}"
+        );
+    }
+
+    /// An array from the request would silently widen an equality check into
+    /// `IN (...)`.
+    #[test]
+    fn a_request_supplied_in_list_is_refused() {
+        crate::interpreter::taint::clear_request_values();
+
+        let list = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let params = Value::Hash(hash(vec![("role", list.clone())]));
+        crate::interpreter::taint::mark_request_value(&params);
+
+        let filter = hash(vec![("role_id", list)]);
+        let err = parse_hash_filter(&filter, "where").expect_err("an IN list from a client");
+        assert!(err.contains("IN list"), "{err}");
+    }
+
+    /// The documented developer-authored operator syntax keeps working — that
+    /// is the whole reason the fix is a provenance check and not a shape check.
+    #[test]
+    fn a_literal_operator_map_still_compiles() {
+        crate::interpreter::taint::clear_request_values();
+
+        let filter = hash(vec![
+            ("age", Value::Hash(hash(vec![("gte", Value::Int(18))]))),
+            ("active", Value::Bool(true)),
+        ]);
+        let (_pred, sdbql, binds) =
+            parse_hash_filter(&filter, "where").expect("a literal filter must still compile");
+        assert!(sdbql.contains(">="), "{sdbql}");
+        assert_eq!(binds.len(), 2, "{binds:?}");
+    }
+
+    /// Scalars taken straight from the request are the normal, intended case
+    /// and must stay allowed — only containers can change the operator.
+    #[test]
+    fn request_supplied_scalars_are_still_allowed() {
+        crate::interpreter::taint::clear_request_values();
+
+        let email = Value::String("admin@x.com".into());
+        let params = Value::Hash(hash(vec![("email", email.clone())]));
+        crate::interpreter::taint::mark_request_value(&params);
+
+        let filter = hash(vec![("email", email)]);
+        let (_pred, sdbql, _binds) =
+            parse_hash_filter(&filter, "where").expect("a scalar param is a normal filter");
+        assert!(sdbql.contains("=="), "{sdbql}");
+    }
+}
+
+#[cfg(test)]
+mod reserved_document_key_tests {
+    use super::*;
+
+    /// Without `attr_accessible`, `Model.create(req["json"])` used to persist
+    /// whatever the client sent — including `_key`, which the server honours,
+    /// so a client could choose (or squat, or collide with) document ids, and
+    /// `_from`/`_to`, which are edge endpoints.
+    #[test]
+    fn underscore_keys_never_reach_the_document() {
+        let mut doc = serde_json::json!({
+            "title": "hello",
+            "_key": "attacker-chosen",
+            "_id": "other/1",
+            "_rev": "99",
+            "_from": "users/1",
+            "_to": "admins/1",
+        });
+        strip_reserved_document_keys(&mut doc, "Post");
+
+        let map = doc.as_object().expect("object");
+        assert_eq!(map.len(), 1, "only real attributes should remain: {map:?}");
+        assert_eq!(map["title"], serde_json::json!("hello"));
+    }
+
+    /// `type` is only reserved where it is an STI discriminator; an ordinary
+    /// model is free to have a `type` column.
+    #[test]
+    fn type_survives_on_a_model_that_is_not_part_of_an_sti_hierarchy() {
+        let mut doc = serde_json::json!({"type": "invoice", "total": 10});
+        strip_reserved_document_keys(&mut doc, "Document");
+        assert_eq!(doc["type"], serde_json::json!("invoice"));
+    }
+
+    /// A partial update must validate the record as it will be after the write,
+    /// not just the changed fields — otherwise every `presence` rule on an
+    /// untouched field would fail.
+    #[test]
+    fn merging_a_patch_keeps_untouched_stored_fields() {
+        let stored = serde_json::json!({"title": "old", "author": "ada", "views": 3});
+        let patch = serde_json::json!({"title": "new"});
+        let merged = merge_json_documents(Some(&stored), &patch);
+
+        assert_eq!(merged["title"], serde_json::json!("new"));
+        assert_eq!(merged["author"], serde_json::json!("ada"));
+        assert_eq!(merged["views"], serde_json::json!(3));
+    }
+
+    #[test]
+    fn merging_without_a_stored_document_validates_the_patch_alone() {
+        let patch = serde_json::json!({"title": "new"});
+        let merged = merge_json_documents(None, &patch);
+        assert_eq!(merged, patch);
+    }
 }

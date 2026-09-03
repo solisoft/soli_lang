@@ -84,6 +84,16 @@ fn resolve_path(path: &str, op: &str) -> Result<PathBuf, String> {
     resolve_with_jail(path, op, current_jail())
 }
 
+/// Resolve a read-only path through the same jail the `File` builtins use.
+///
+/// Exposed for sibling builtins that read caller-supplied paths through
+/// third-party crates (the PDF image loader, fonts, spreadsheets), so the
+/// SEC-006 containment rule is applied once rather than reimplemented — or, as
+/// it was, skipped.
+pub(crate) fn resolve_readable_path(path: &str, op: &str) -> Result<PathBuf, String> {
+    resolve_with_jail(path, op, current_jail())
+}
+
 /// Pure helper exposed for unit tests — same logic as `resolve_path` but
 /// takes the jail explicitly so tests can exercise it without mutating
 /// the process-global `OnceLock`.

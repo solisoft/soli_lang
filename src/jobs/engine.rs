@@ -261,7 +261,17 @@ fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
         .or_else(|| std::env::var("SOLI_WEBHOOK_SECRET").ok())
         .filter(|s| !s.is_empty());
 
-    let client = crate::interpreter::builtins::http_class::db_http_client();
+    // Webhook URLs are the archetypal user-supplied destination ("paste your
+    // endpoint"), and delivery used to run on `db_http_client()` — the client
+    // deliberately exempted from the SSRF blocklist because it normally only
+    // talks to SOLIDB_HOST. That combination pointed an authenticated,
+    // retrying, signature-adding POST at anything reachable from the server,
+    // with the status code echoed back through `last_error`. Validate here and
+    // send on the user-facing client, which filters DNS at connect time and
+    // re-checks every redirect hop.
+    validate_webhook_url(&spec.url)?;
+
+    let client = crate::interpreter::builtins::http_class::get_user_http_client().clone();
     let mut request = client
         .post(&spec.url)
         .header("Content-Type", "application/json")
@@ -278,6 +288,15 @@ fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
     if let Some(headers) = spec.headers.as_ref().and_then(|h| h.as_object()) {
         for (name, value) in headers {
             if let Some(v) = value.as_str() {
+                // Reserved names are refused rather than merged: `Host` retargets
+                // virtual-host routing, `Authorization`/`Cookie` would forward the
+                // app's own credentials to the caller's destination, and the
+                // framing headers desync the connection.
+                if is_reserved_webhook_header(name) {
+                    return Err(format!(
+                        "webhook header {name:?} is reserved and cannot be set"
+                    ));
+                }
                 request = request.header(name.as_str(), v);
             }
         }
@@ -294,6 +313,35 @@ fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
         spec.url,
         status.as_u16()
     ))
+}
+
+/// Header names a webhook spec may not set. `Content-Length` and
+/// `Transfer-Encoding` are derived from the body (a mismatch desyncs the
+/// upstream connection); the rest would either retarget the request or leak the
+/// app's own credentials to a destination the caller chose.
+const RESERVED_WEBHOOK_HEADERS: [&str; 7] = [
+    "host",
+    "authorization",
+    "cookie",
+    "content-length",
+    "transfer-encoding",
+    "proxy-authorization",
+    "proxy-authenticate",
+];
+
+pub(crate) fn is_reserved_webhook_header(name: &str) -> bool {
+    RESERVED_WEBHOOK_HEADERS
+        .iter()
+        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+}
+
+/// Gate a webhook destination through the SSRF blocklist. Called at enqueue
+/// (so a bad URL fails loudly where the developer can see it) and again at
+/// delivery (so a row written directly to `_jobs`, or a DNS record that moved
+/// in between, cannot slip past).
+pub(crate) fn validate_webhook_url(url: &str) -> Result<(), String> {
+    crate::interpreter::builtins::http_class::validate_url_for_ssrf(url)
+        .map_err(|e| format!("webhook URL {url:?}: {e}"))
 }
 
 /// Run a future on the shared DB/HTTP runtime for this thread. `block_on_db`

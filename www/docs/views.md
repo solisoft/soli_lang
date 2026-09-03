@@ -64,9 +64,16 @@ Controller instance fields are exposed as bare locals, but you can also referenc
 Templates have access to several built-in helper functions:
 
 ```erb
-<%= h(user_input) %>          <!-- HTML escape -->
-<%= html_escape(content) %>   <!-- Same as h() -->
+<%= user_input %>             <!-- already escaped: `<%=` escapes by default -->
+<%- raw_html %>               <!-- `<%-` writes markup verbatim -->
 ```
+
+> **`<%=` already escapes.** Wrapping a value in `h()` there escapes it twice,
+> so `<b>` reaches the reader as `&lt;b&gt;`. That broken output is what teaches
+> people to reach for `<%-`, which writes markup verbatim and is where XSS
+> actually comes from. Use a bare `<%= value %>` for text, and reserve the
+> escape helpers below for the contexts `<%=` cannot know about — attribute
+> values, script bodies, URLs — or for markup you build inside `<%- ... %>`.
 
 ## Template Helper Functions
 
@@ -99,11 +106,14 @@ Output: `/css/app.css?v=a1b2c3d4...`
 
 #### html_escape(string) / h(string)
 
-Escapes HTML special characters to prevent XSS attacks. Use `h()` for content embedded in element bodies (between tags).
+Escapes HTML special characters. **You do not need it inside `<%= %>`** — that
+tag escapes already, and applying `h()` there double-escapes (`<b>` renders as
+`&lt;b&gt;`). Reach for it when you are assembling markup yourself inside a raw
+`<%- %>` block, or in a helper that returns HTML.
 
 ```erb
-<p><%= html_escape(user_input) %></p>
-<p><%= h(user_input) %></p>
+<p><%= user_input %></p>                     <!-- escaped by `<%=` -->
+<%- "<p>" + h(user_input) + "</p>" %>        <!-- you built the markup -->
 ```
 
 #### attr(string)
@@ -135,7 +145,29 @@ Percent-encodes a string for safe use as a URL query-parameter value or path seg
 <a href="/users/<%= url(user.slug) %>">Profile</a>
 ```
 
-> **Pick the helper that matches the output context.** `h()` is for element bodies, `attr()` for attribute values, `j()` for JS string literals, `url()` for URL query/path parts. Using the wrong one — e.g. `h()` inside a `<script>` — leaves XSS gaps.
+> **Pick the helper that matches the output context.** `h()` is for element
+> bodies you assemble yourself, `attr()` for attribute values, `j()` for JS
+> string literals, `url()` for URL query/path parts, and `json_script()` for a
+> whole JSON document inside a `<script>`. Using the wrong one leaves XSS gaps:
+> `h()` inside a `<script>` corrupts the data without making it safe, and `j()`
+> inside a *quoted attribute* (`onclick="…"`) escapes for JavaScript but not for
+> the HTML tokenizer, so a `"` in the value still closes the attribute.
+
+#### json_script(value)
+
+Serializes a value as JSON that is safe to embed in a `<script>` body. `<`, `>`
+and `&` become `\uXXXX` escapes, along with U+2028/U+2029, so a string
+containing `</script>` cannot end the element and the JSON still parses back to
+exactly the original value.
+
+```erb
+<script>
+  window.__data = <%- json_script(post) %>;
+</script>
+```
+
+Plain `json_stringify()` is **not** safe here: a `</script>` in any string value
+closes the element and everything after it is parsed as markup.
 
 #### html_unescape(string)
 

@@ -612,6 +612,14 @@ pub fn is_sti_subclass(class_name: &str) -> bool {
     STI_PARENTS.with(|m| m.borrow().contains_key(class_name))
 }
 
+/// Is this class the base of an STI hierarchy — i.e. does some other model
+/// inherit from it? Used to reserve the `type` discriminator against mass
+/// assignment: a client that can set `type` on the base collection makes its
+/// row hydrate as a subclass it was never entitled to.
+pub fn is_sti_base(class_name: &str) -> bool {
+    STI_PARENTS.with(|m| m.borrow().values().any(|parent| parent == class_name))
+}
+
 /// The root of a class's STI hierarchy: the ancestor whose superclass is
 /// `Model` itself. Non-STI classes are their own base.
 pub fn sti_base(class_name: &str) -> String {

@@ -10,6 +10,7 @@
 const AUTH_RESET_TOKEN_TTL = 7200  # password-reset links live 2 hours
 const AUTH_MAX_FAILED_ATTEMPTS = 10  # failed logins before lockout
 const AUTH_LOCKOUT_SECONDS = 1800  # auto-unlock after 30 minutes
+const AUTH_CONFIRMATION_TOKEN_TTL = 172800  # confirmation links last 48 hours
 const AUTH_REMEMBER_DAYS = 30  # remember-me cookie lifetime
 const AUTH_MIN_PASSWORD_LENGTH = 12  # shortest password accepted at sign-up
 
@@ -142,7 +143,21 @@ class User < Model
     this.remember_token_digest = null
     this.failed_attempts = 0
     this.locked_at = null
+    # Invalidate every session opened before this moment.
+    #
+    # Sessions are not indexed by user, so there is nothing to delete; instead
+    # each session records the `session_version` it was opened at, and
+    # `load_current_user` refuses one that is behind. Without this, an attacker
+    # who was already signed in stayed signed in through the victim's reset —
+    # which is the one thing a password reset is supposed to stop.
+    this.session_version = (this.session_version ?? 0) + 1
     return this.update()
+  end
+
+  # Bumped whenever every existing session must be invalidated (a password
+  # reset today; add other events here as they appear).
+  def current_session_version
+    return this.session_version ?? 0
   end
 
   # --- Email confirmation -----------------------------------------------------
@@ -154,9 +169,22 @@ class User < Model
     return token
   end
 
+  # Confirmation links expire like reset links do.
+  #
+  # `confirmation_sent_at` was stored and never read, so a link stayed valid
+  # forever: a forwarded email, an archived mailbox, or a link-following
+  # security scanner could confirm the address (and, before the change below,
+  # sign in as that user) months later.
+  def confirmation_token_expired?
+    return true if this.confirmation_sent_at.nil?
+
+    return DateTime.utc().to_unix() - this.confirmation_sent_at > AUTH_CONFIRMATION_TOKEN_TTL
+  end
+
   def confirm_email
     this.confirmed_at = DateTime.utc().to_unix()
     this.confirmation_token_digest = null
+    this.confirmation_sent_at = null
     return this.update()
   end
 
@@ -213,8 +241,23 @@ class User < Model
     return true if this.locked?()
 
     this.failed_attempts = (this.failed_attempts ?? 0) + 1
-    this.locked_at = DateTime.utc().to_unix() if this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
+    just_locked = this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
+    this.locked_at = DateTime.utc().to_unix() if just_locked
     this.update()
+
+    # Tell the owner once, when the lock trips. The sign-in response says only
+    # "Invalid email or password" whether or not the account is locked, because
+    # a distinct "locked" reply during the lockout tells an attacker which guess
+    # was the right one. Delivery failures must not break sign-in.
+    if just_locked
+      try {
+        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver()
+      } catch error {
+        Logger.warn("account-locked notification failed: " + str(error))
+      }
+    end
+
+    return true
   end
 
   def clear_failed_attempts

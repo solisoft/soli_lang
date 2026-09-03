@@ -14,6 +14,9 @@ class ConfirmationsController < Controller
     token = params["token"].to_s
     let user = null
     user = User.find_by("confirmation_token_digest", Crypto.sha256(token)) unless token.blank?
+    # An expired link is indistinguishable from an invalid one to the visitor,
+    # which is right: both mean "ask for a fresh one".
+    user = null if !user.nil? && user.confirmation_token_expired?()
     if user.nil?
       return render(
         "confirmations/new",
@@ -26,10 +29,22 @@ class ConfirmationsController < Controller
     end
 
     user.confirm_email()
-    # Confirmed — sign the user straight in.
-    session_regenerate()
-    session_set("user_id", user["_key"])
-    return redirect("/")
+    # Confirm, but do not sign in.
+    #
+    # This is a GET reached from an email, so whoever (or whatever) follows the
+    # link gets the session: a corporate link scanner, a shared mailbox, or the
+    # colleague the message was forwarded to. Confirming the address from a link
+    # is fine; handing out a logged-in session from one is not. The visitor
+    # signs in normally, which is one form fill and proves they hold the
+    # password.
+    return render(
+      "confirmations/new",
+      {
+        "title": "Email confirmed",
+        "notice": "Your email address is confirmed. Sign in to continue.",
+        "error": ""
+      }
+    )
   end
 
   # GET /confirmation/resend

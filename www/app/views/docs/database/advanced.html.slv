@@ -120,7 +120,7 @@ end
 
     <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
         <p class="text-amber-300 text-sm">
-            <strong>Nesting & reads:</strong> nested <code>transaction</code> calls join the outer one — only the outermost commits/rolls back (no savepoints). Cursor queries inside the block (<code>.where(&hellip;).all()</code>, <code>find_by</code>) read <em>committed</em> state; use <code>find</code> (key lookup) to read a row written earlier in the same transaction.
+            <strong>Nesting & reads:</strong> nested <code>transaction</code> calls join the outer one — only the outermost commits/rolls back (no savepoints). Cursor queries inside the block (<code>.where(&hellip;).all()</code>, <code>find_by</code>) read <em>committed</em> state; use <code>find</code> (key lookup) to read a row written earlier in the same transaction. That also applies to the reads a <strong>uniqueness validation</strong> performs, so two records that violate a uniqueness rule can both pass validation inside one block and both commit &mdash; enforce it with a unique index where it has to hold.
         </p>
     </div>
 

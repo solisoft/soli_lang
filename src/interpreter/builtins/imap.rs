@@ -65,6 +65,20 @@ enum Piece {
     Literal(Vec<u8>),
 }
 
+/// Largest IMAP literal (`{N}`) accepted from a server.
+///
+/// The size is server-supplied and was allocated up front, so a hostile server
+/// naming a huge literal aborted the worker on the allocation before a single
+/// byte arrived. 32 MiB is far beyond any real message part.
+/// `SOLI_IMAP_MAX_LITERAL_BYTES` overrides it.
+fn max_literal_bytes() -> u64 {
+    std::env::var("SOLI_IMAP_MAX_LITERAL_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(32 * 1024 * 1024)
+}
+
 /// If a response line ends with an IMAP literal marker `{N}` or `{N+}`
 /// (non-synchronizing), return N.
 fn trailing_literal_size(line: &str) -> Option<usize> {
@@ -135,6 +149,17 @@ impl ImapConn {
             }
             let trimmed = line.trim_end_matches(['\r', '\n']);
             if let Some(size) = trailing_literal_size(trimmed) {
+                // The size comes from the server, and `vec![0u8; size]` commits
+                // it all up front — a hostile or MITM'd mailbox (or simply a
+                // user-configured `Imap.new(host)`) could name a size near
+                // `usize::MAX` and abort the worker on the allocation.
+                if size as u64 > max_literal_bytes() {
+                    return Err(format!(
+                        "IMAP literal of {size} bytes exceeds the {} byte limit \
+                         (raise SOLI_IMAP_MAX_LITERAL_BYTES if this is expected)",
+                        max_literal_bytes()
+                    ));
+                }
                 let brace = trimmed.rfind('{').unwrap();
                 pieces.push(Piece::Text(trimmed[..brace].to_string()));
                 let mut data = vec![0u8; size];

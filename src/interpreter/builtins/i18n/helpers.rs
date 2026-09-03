@@ -164,6 +164,32 @@ fn lookup_in(
 /// Substitute `{name}` placeholders in `template` with stringified values from
 /// `values` (a slice of `(name, replacement)` pairs). Unknown placeholders are
 /// left intact, so missing data is visible during development.
+/// Does this key promise HTML output?
+///
+/// Rails' convention: a key ending in `_html` (or a `.html` leaf) is rendered
+/// raw, so its interpolated values must be escaped or the translation becomes
+/// an injection point — `t("greeting_html", {"name": params["name"]})` rendered
+/// with `<%-` puts the parameter into the page verbatim. Keys without the
+/// suffix are escaped by `<%=` at the view layer as usual, so escaping them
+/// here would double-escape.
+pub fn key_promises_html(key: &str) -> bool {
+    key.ends_with("_html") || key.ends_with(".html")
+}
+
+/// Interpolate with each value HTML-escaped, for `_html` keys.
+pub fn interpolate_escaped(template: &str, values: &[(String, String)]) -> String {
+    let escaped: Vec<(String, String)> = values
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.clone(),
+                crate::template::renderer::html_escape(value).into_owned(),
+            )
+        })
+        .collect();
+    interpolate(template, &escaped)
+}
+
 pub fn interpolate(template: &str, values: &[(String, String)]) -> String {
     if values.is_empty() || !template.contains('{') {
         return template.to_string();
@@ -660,5 +686,39 @@ mod tests {
             lookup_plural("en", "delta", -3),
             Some("{count}".to_string())
         );
+    }
+}
+
+#[cfg(test)]
+mod html_key_tests {
+    use super::*;
+
+    /// Rails' `_html` convention: those translations are rendered raw, so what
+    /// is interpolated into them must be escaped here.
+    #[test]
+    fn only_html_keys_are_treated_as_html() {
+        assert!(key_promises_html("greeting_html"));
+        assert!(key_promises_html("nav.title.html"));
+        assert!(!key_promises_html("greeting"));
+        assert!(!key_promises_html("html_greeting"));
+    }
+
+    #[test]
+    fn values_interpolated_into_an_html_key_are_escaped() {
+        let values = vec![("name".to_string(), "<script>alert(1)</script>".to_string())];
+        let out = interpolate_escaped("Hello <b>{name}</b>", &values);
+        assert!(!out.contains("<script>"), "{out}");
+        assert!(out.contains("&lt;script&gt;"), "{out}");
+        // The translation's own markup is untouched — that is the point of the
+        // `_html` suffix.
+        assert!(out.contains("<b>"), "{out}");
+    }
+
+    /// A plain key must not be escaped here: `<%=` escapes it at the view
+    /// layer, and doing both renders `&amp;lt;` to the reader.
+    #[test]
+    fn plain_keys_are_not_escaped_here() {
+        let values = vec![("name".to_string(), "a & b".to_string())];
+        assert_eq!(interpolate("Hello {name}", &values), "Hello a & b");
     }
 }

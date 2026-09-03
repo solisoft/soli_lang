@@ -229,9 +229,26 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                             span,
                         ));
                 }
+                // Render in a bind namespace the builder is not already using:
+                // merging two `.where` hashes that touch the same field used to
+                // overwrite the first one's bound value with the second's.
+                let already_bound = {
+                    let existing = qb.borrow();
+                    let names: std::collections::HashSet<String> = existing
+                        .bind_vars
+                        .keys()
+                        .filter_map(|k| crate::interpreter::symbol::symbol_string(*k))
+                        .map(|k| k.to_string())
+                        .collect();
+                    names
+                };
                 let (pred, filter, binds) =
-                    crate::interpreter::builtins::model::parse_hash_filter(hash, "where")
-                        .map_err(|e| RuntimeError::General { message: e, span })?;
+                    crate::interpreter::builtins::model::parse_hash_filter_avoiding(
+                        hash,
+                        "where",
+                        &|name: &str| already_bound.contains(name),
+                    )
+                    .map_err(|e| RuntimeError::General { message: e, span })?;
                 (
                     filter,
                     binds,
@@ -912,7 +929,11 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             _ => 1,
         };
         let per = match params.get(&HashKey::String("per".into())) {
-            Some(Value::Int(n)) if *n > 0 => *n as usize,
+            // Clamped: `per` is a request parameter, and an
+            // unbounded page size loads the whole collection.
+            Some(Value::Int(n)) if *n > 0 => {
+                crate::interpreter::limits::clamp_page_size(*n as usize)
+            }
             _ => 25,
         };
 
@@ -1448,7 +1469,11 @@ through relation's records instead"
             _ => "embedding".into(),
         };
         let top_k = match arguments.get(2) {
-            Some(Value::Int(n)) if *n > 0 => *n as usize,
+            // Same reasoning as `paginate`'s `per`: a nearest-neighbour count
+            // taken from a request must not be able to ask for the whole index.
+            Some(Value::Int(n)) if *n > 0 => {
+                crate::interpreter::limits::clamp_page_size(*n as usize)
+            }
             _ => 10,
         };
         let mut exact = false;

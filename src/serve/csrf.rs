@@ -134,6 +134,41 @@ fn origin_matches_declared_host(origin_auth: &str) -> bool {
     let Ok(raw) = std::env::var("SOLI_APP_HOSTS") else {
         return false;
     };
+    host_matches_declared(&raw, origin_auth)
+}
+
+/// The first host in `SOLI_APP_HOSTS`, when it is set and non-empty.
+///
+/// Production boot refuses to start without that variable, but only the CSRF
+/// gate ever read it: absolute URLs were built from the request's own `Host`
+/// header, which any client controls. A mailer that builds a reset link with a
+/// `*_url` helper therefore emitted whatever host the request carried, so a
+/// single `POST /password/reset` with `Host: evil.example` mailed the victim a
+/// link to the attacker's site, token attached. This is the value to fall back
+/// on when the request's host is not one we declared.
+pub fn primary_declared_host() -> Option<String> {
+    let raw = std::env::var("SOLI_APP_HOSTS").ok()?;
+    raw.split(',')
+        .map(|host| host.trim())
+        .find(|host| !host.is_empty())
+        .map(|host| host.to_string())
+}
+
+/// Is `candidate` one of the declared application hosts?
+///
+/// `None` from [`primary_declared_host`] means nothing was declared, in which
+/// case every host is accepted — the pre-existing behaviour, kept so a
+/// development server with no configuration still works.
+pub fn is_declared_host(candidate: &str) -> bool {
+    match std::env::var("SOLI_APP_HOSTS") {
+        Ok(raw) if raw.split(',').any(|h| !h.trim().is_empty()) => {
+            host_matches_declared(&raw, candidate)
+        }
+        _ => true,
+    }
+}
+
+fn host_matches_declared(raw: &str, origin_auth: &str) -> bool {
     raw.split(',')
         .map(|host| host.trim())
         .filter(|host| !host.is_empty())
@@ -491,7 +526,7 @@ mod declared_host_tests {
     /// `SOLI_APP_HOSTS` is process-global and Rust runs tests in parallel, so
     /// without a lock one test's teardown clears another's setup mid-assertion
     /// — which is exactly how this helper failed the first time it was written.
-    static HOSTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(super) static HOSTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn with_hosts<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
         let _guard = HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -566,5 +601,69 @@ mod declared_host_tests {
         with_hosts(Some("app.example.com:8443"), || {
             assert!(origin_matches_declared_host("app.example.com:8443"));
         });
+    }
+}
+
+#[cfg(test)]
+mod app_host_validation_tests {
+    use super::*;
+
+    /// `SOLI_APP_HOSTS` is process-global and tests run in parallel; share the
+    /// sibling module's lock so one test's teardown cannot clear another's
+    /// setup mid-assertion.
+    use super::declared_host_tests::HOSTS_LOCK;
+
+    /// `SOLI_APP_HOSTS` is required in production but was only ever read by the
+    /// CSRF gate, so `*_url` helpers happily built links from a spoofed `Host`.
+    #[test]
+    fn a_host_outside_the_declared_list_is_rejected() {
+        with_hosts(Some("app.example.com,www.app.example.com"), || {
+            assert!(is_declared_host("app.example.com"));
+            assert!(is_declared_host("www.app.example.com"));
+            assert!(is_declared_host("app.example.com:443"));
+            assert!(!is_declared_host("evil.example"));
+            assert!(!is_declared_host("app.example.com.evil.example"));
+        });
+    }
+
+    #[test]
+    fn the_first_declared_host_is_the_fallback() {
+        with_hosts(Some("app.example.com,www.app.example.com"), || {
+            assert_eq!(primary_declared_host().as_deref(), Some("app.example.com"));
+        });
+    }
+
+    /// Nothing declared (a dev server) accepts any host, as before.
+    #[test]
+    fn an_unconfigured_server_accepts_any_host() {
+        with_hosts(None, || {
+            assert!(is_declared_host("localhost:5011"));
+            assert!(is_declared_host("anything"));
+            assert!(primary_declared_host().is_none());
+        });
+    }
+
+    /// An empty or whitespace-only value must not be read as "one host named
+    /// nothing", which would reject every real request.
+    #[test]
+    fn an_empty_declaration_behaves_as_unconfigured() {
+        with_hosts(Some("  , "), || {
+            assert!(is_declared_host("localhost:5011"));
+        });
+    }
+
+    fn with_hosts<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
+        let _guard = HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("SOLI_APP_HOSTS").ok();
+        match value {
+            Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
+            None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
+        }
+        let out = body();
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
+            None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
+        }
+        out
     }
 }

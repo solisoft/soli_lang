@@ -229,25 +229,70 @@ impl HashFilter {
 
     /// SDBQL text plus bind map for the SoliDB path.
     pub fn to_sdbql(&self) -> (String, HashMap<String, serde_json::Value>) {
+        self.to_sdbql_in_generation(0)
+    }
+
+    /// Same, in a distinct bind-name namespace.
+    ///
+    /// Bind names are derived from the field and operator (`total__eq_1`), and
+    /// the counter restarts at zero on every call — so two `.where` hashes
+    /// chained on the same field produced the *same* name twice, and merging
+    /// the second bind map over the first silently replaced the first
+    /// predicate's value:
+    ///
+    /// ```soli
+    /// Post.where({ "author_id": current_user.id })
+    ///     .where(permit(params, { "author_id": true }))
+    /// ```
+    ///
+    /// compiled to `author_id == @author_id__eq_1 AND author_id == @author_id__eq_1`
+    /// bound to the *client's* id, so the ownership scope evaluated the
+    /// attacker's value. Generation `0` keeps the original names, so a single
+    /// `.where` — the overwhelmingly common case — is byte-identical; a chained
+    /// one that would collide is re-rendered in a higher generation.
+    pub fn to_sdbql_in_generation(
+        &self,
+        generation: u32,
+    ) -> (String, HashMap<String, serde_json::Value>) {
         let mut binds = HashMap::new();
         let mut n = 0u32;
-        let sql = self.render_sdbql(&mut binds, &mut n);
+        let sql = self.render_sdbql_in(&mut binds, &mut n, generation);
         (sql, binds)
     }
 
-    fn render_sdbql(&self, binds: &mut HashMap<String, serde_json::Value>, n: &mut u32) -> String {
+    fn render_sdbql_in(
+        &self,
+        binds: &mut HashMap<String, serde_json::Value>,
+        n: &mut u32,
+        generation: u32,
+    ) -> String {
+        // Threading the generation through every recursive arm would touch a
+        // lot of lines for no behavioural gain; a thread-local read by
+        // `unique_bind` gives the same result. Restored on the way out so
+        // nested renders cannot leak a namespace to their caller.
+        let previous = BIND_GENERATION.with(|g| g.replace(generation));
+        let out = self.render_sdbql_inner(binds, n);
+        BIND_GENERATION.with(|g| g.set(previous));
+        out
+    }
+
+    fn render_sdbql_inner(
+        &self,
+        binds: &mut HashMap<String, serde_json::Value>,
+        n: &mut u32,
+    ) -> String {
         match self {
             HashFilter::And(parts) if parts.is_empty() => String::new(),
             HashFilter::And(parts) => parts
                 .iter()
-                .map(|p| p.render_sdbql(binds, n))
+                .map(|p| p.render_sdbql_inner(binds, n))
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(" AND "),
             HashFilter::Or(parts) => {
                 let inner = parts
                     .iter()
-                    .map(|p| p.render_sdbql(binds, n))
+                    .map(|p| p.render_sdbql_inner(binds, n))
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<_>>()
                     .join(" OR ");
@@ -393,9 +438,20 @@ fn like_glob(text: &str, pattern: &str) -> bool {
     rec(text.as_bytes(), pattern.as_bytes())
 }
 
+thread_local! {
+    /// Bind-name namespace for the render in progress. `0` is the historical
+    /// naming; a chained `.where` that would reuse a name renders in a higher
+    /// generation so the two bind maps can be merged without one clobbering
+    /// the other. See [`HashFilter::to_sdbql_in_generation`].
+    static BIND_GENERATION: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 fn unique_bind(field: &str, suffix: &str, n: &mut u32) -> String {
     *n += 1;
-    format!("{field}__{suffix}_{n}")
+    match BIND_GENERATION.with(|g| g.get()) {
+        0 => format!("{field}__{suffix}_{n}"),
+        generation => format!("{field}__{suffix}_g{generation}_{n}"),
+    }
 }
 
 /// Compile a hash filter against a JSON document column (`doc`).
@@ -941,5 +997,75 @@ mod tests {
         assert!(!like_match("INV-1", "inv%", false));
         assert!(like_match("abc", "a_c", false));
         assert!(!like_match("ac", "a_c", false));
+    }
+}
+
+#[cfg(test)]
+mod bind_generation_tests {
+    use super::*;
+
+    fn filter(field: &str, value: serde_json::Value) -> HashFilter {
+        let mut map = serde_json::Map::new();
+        map.insert(field.to_string(), value);
+        HashFilter::from_json_map(&map, "where").expect("parse")
+    }
+
+    /// Generation 0 must stay byte-identical: a single `.where` is the common
+    /// case and its generated SDBQL is asserted on in the test suite.
+    #[test]
+    fn generation_zero_keeps_the_historical_names() {
+        let (sql, binds) = filter("status", serde_json::json!("live")).to_sdbql();
+        assert!(sql.contains("@status__eq_1"), "{sql}");
+        assert!(binds.contains_key("status__eq_1"), "{binds:?}");
+    }
+
+    /// The collision: two `.where` hashes on the same field used to mint the
+    /// same bind name, so merging the maps left one value for both predicates.
+    #[test]
+    fn a_higher_generation_avoids_the_first_generations_names() {
+        let scope = filter("author_id", serde_json::json!(7));
+        let user_filter = filter("author_id", serde_json::json!(99));
+
+        let (_, scope_binds) = scope.to_sdbql();
+        let (sql, user_binds) = user_filter.to_sdbql_in_generation(1);
+
+        assert!(
+            scope_binds.keys().all(|k| !user_binds.contains_key(k)),
+            "generations must not share bind names: {scope_binds:?} vs {user_binds:?}"
+        );
+        // And the rendered predicate references its own namespace.
+        for name in user_binds.keys() {
+            assert!(sql.contains(&format!("@{name}")), "{sql} missing @{name}");
+        }
+    }
+
+    /// Nested groups must all render inside the generation the outer call set,
+    /// not fall back to generation 0 partway down.
+    #[test]
+    fn nested_groups_stay_in_one_generation() {
+        let mut map = serde_json::Map::new();
+        map.insert(
+            "total".to_string(),
+            serde_json::json!({"gte": 10, "lt": 50}),
+        );
+        map.insert("status".to_string(), serde_json::json!("live"));
+        let pred = HashFilter::from_json_map(&map, "where").expect("parse");
+
+        let (_, binds) = pred.to_sdbql_in_generation(2);
+        assert!(binds.len() >= 3, "{binds:?}");
+        assert!(
+            binds.keys().all(|k| k.contains("_g2_")),
+            "every bind must carry the generation: {binds:?}"
+        );
+    }
+
+    /// The generation must not leak out of a render into the next one.
+    #[test]
+    fn generation_is_restored_after_a_render() {
+        let pred = filter("status", serde_json::json!("live"));
+        let (_, _) = pred.to_sdbql_in_generation(3);
+        let (sql, binds) = pred.to_sdbql();
+        assert!(sql.contains("@status__eq_1"), "{sql}");
+        assert!(binds.contains_key("status__eq_1"), "{binds:?}");
     }
 }

@@ -56,6 +56,34 @@ SOLI_TRUST_PROXY=1</code></pre>
         <p class="text-gray-400 mt-2 text-sm">
             Truthy values: <code class="text-orange-400">1</code>, <code class="text-orange-400">true</code>, <code class="text-orange-400">yes</code> (case-insensitive). The function calls still override the env-driven default at runtime.
         </p>
+
+        <h3 class="text-xl font-semibold text-white mt-8 mb-3">Name the proxies you trust</h3>
+        <p class="text-gray-400">
+            The flag alone is all-or-nothing: with it on, an <code class="text-orange-400">X-Forwarded-*</code>
+            header is honoured no matter who sent it. <code class="text-orange-400">SOLI_TRUSTED_PROXIES</code>
+            narrows that to the hops that actually rewrite those headers, so a client
+            reaching the app directly is not trusted even while the flag is on.
+        </p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6 mt-2">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># .env.production
+SOLI_TRUST_PROXY=1
+SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1</code></pre>
+        </div>
+        <p class="text-gray-400 mt-2 text-sm">
+            Entries are IPs or CIDR blocks, comma-separated; an IPv4-mapped IPv6 peer
+            (<code class="text-orange-400">::ffff:10.0.0.5</code>, what a dual-stack listener
+            reports) matches an IPv4 rule. Leaving it unset keeps the previous behaviour:
+            every peer is trusted once the flag is on.
+        </p>
+        <div class="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-gray-300">
+            <strong class="text-white">Apps created by <code>soli new</code> ship with this off.</strong>
+            It used to be on by default, which is wrong for an app exposed directly: any
+            client could forge the request authority and scheme &mdash; downgrading the CSRF
+            and origin checks, flipping the cookie <code>Secure</code> flag, aiming
+            <code>*_url</code> helpers at a phishing host, and taking a fresh identity per
+            request so per-IP rate limits never tripped. Uncomment the line in
+            <code>config/application.sl</code> when you deploy behind a proxy.
+        </div>
     </section>
 
     <!-- Body Limit overview -->

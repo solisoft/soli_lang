@@ -21,9 +21,16 @@ lazy_static! {
 static SECURITY_HEADERS_VERSION: AtomicU64 = AtomicU64::new(0);
 
 // Thread-local cache of built security headers to avoid RwLock reads per request.
+//
+// The seed version is `u64::MAX`, NOT `0`: the global counter starts at 0 and
+// only ever increments, so a `0` seed makes the empty cache look *valid* on a
+// fresh thread and `get_security_headers()` returns nothing forever unless the
+// app happens to call a `secure_headers_*` builtin. That silently dropped the
+// SEC-056 baseline (`X-Frame-Options`, `X-Content-Type-Options`) from every
+// default-configured production app.
 thread_local! {
     static CACHED_SECURITY_HEADERS: RefCell<(u64, Vec<(String, String)>)> =
-        const { RefCell::new((0, Vec::new())) };
+        const { RefCell::new((u64::MAX, Vec::new())) };
 }
 
 /// Bump the global version to invalidate all thread-local caches.
@@ -677,9 +684,21 @@ fn build_security_headers_vec() -> Vec<(String, String)> {
     if let Some(xss) = config.xss_protection {
         headers.push(("X-XSS-Protection".to_string(), xss));
     }
-    if let Some(rp) = config.referrer_policy {
-        headers.push(("Referrer-Policy".to_string(), rp));
-    }
+    // Baseline `Referrer-Policy`, on the same footing as the two above.
+    //
+    // Without it, browsers send the full URL of the current page as the
+    // `Referer` on every outbound link and asset — so a page whose path or
+    // query carries a token, an id or a search term hands that to every third
+    // party it links to or loads a script from. `strict-origin-when-cross-origin`
+    // is the modern browser default and costs nothing: same-origin navigation
+    // keeps the full URL (so analytics and server logs are unchanged), and
+    // cross-origin requests see only the origin.
+    headers.push((
+        "Referrer-Policy".to_string(),
+        config
+            .referrer_policy
+            .unwrap_or_else(|| "strict-origin-when-cross-origin".to_string()),
+    ));
     if let Some(pp) = config.permissions_policy {
         headers.push(("Permissions-Policy".to_string(), pp));
     }
@@ -742,6 +761,43 @@ mod tests {
             *enabled = true;
         }
         invalidate_security_headers_cache();
+    }
+
+    /// Regression: the thread-local cache must not start out looking valid.
+    /// It seeded `(0, vec![])` while the global version counter also starts at
+    /// 0, so a fresh worker thread compared equal, returned the empty vector,
+    /// and every default-configured production response shipped without the
+    /// SEC-056 baseline headers. Goes through `get_security_headers()` (the
+    /// function `serve` actually calls) on a thread that has never touched the
+    /// cache — the other tests call `build_security_headers_vec()` directly and
+    /// so never exercised this path.
+    #[test]
+    fn get_security_headers_emits_baseline_on_a_fresh_thread() {
+        let _g = TEST_LOCK.lock().unwrap();
+        reset();
+
+        let headers = std::thread::spawn(get_security_headers).join().unwrap();
+
+        assert!(
+            headers
+                .iter()
+                .any(|(k, v)| k == "X-Frame-Options" && v == "SAMEORIGIN"),
+            "fresh thread got no X-Frame-Options: {headers:?}"
+        );
+        assert!(
+            headers
+                .iter()
+                .any(|(k, v)| k == "X-Content-Type-Options" && v == "nosniff"),
+            "fresh thread got no nosniff: {headers:?}"
+        );
+        assert!(
+            headers
+                .iter()
+                .any(|(k, v)| k == "Referrer-Policy" && v == "strict-origin-when-cross-origin"),
+            "fresh thread got no Referrer-Policy: {headers:?}"
+        );
+        // And the same thread must keep returning them once cached.
+        assert!(!get_security_headers().is_empty());
     }
 
     #[test]

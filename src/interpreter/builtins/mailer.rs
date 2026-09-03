@@ -158,6 +158,31 @@ fn as_string(v: &Value) -> Option<String> {
 /// injects extra MIME headers (e.g. a hidden `Bcc:`) or raw SMTP commands into
 /// the envelope dialogue — classic email header / SMTP command injection. The
 /// POP3 client applies the same guard (see `pop3.rs`).
+/// Accept only a `type/subtype` with optional `; parameters`.
+///
+/// CR/LF is the injection vector, but a value that is not a media type at all
+/// has no business in a `Content-Type` header either, and rejecting the shape
+/// is a clearer error than letting the receiving client puzzle over it.
+fn validate_mime_type(value: &str) -> Result<(), String> {
+    let media = value.split(';').next().unwrap_or("").trim();
+    let Some((kind, subtype)) = media.split_once('/') else {
+        return Err(format!(
+            "attachment content_type {value:?} must look like `type/subtype`"
+        ));
+    };
+    let valid_token = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "!#$&-^_.+".contains(c))
+    };
+    if !valid_token(kind) || !valid_token(subtype) {
+        return Err(format!(
+            "attachment content_type {value:?} must look like `type/subtype`"
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_no_crlf(field: &str, value: &str) -> Result<(), String> {
     if value
         .bytes()
@@ -269,6 +294,13 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
                 let content_type = hash_get(&att, "content_type")
                     .and_then(|v| as_string(&v))
                     .unwrap_or_else(|| "application/octet-stream".to_string());
+                // Written verbatim into the part's header block, so a CR/LF here
+                // injects extra MIME headers. `ensure_no_crlf` already guarded
+                // from/subject/recipients/envelope; the attachment type was the
+                // one string that skipped it.
+                ensure_no_crlf("attachment content_type", &content_type)?;
+                validate_mime_type(&content_type)?;
+                ensure_no_crlf("attachment filename", &filename)?;
                 // A `base64` field carries binary content (decoded to bytes);
                 // otherwise `content` is treated as a UTF-8 text body.
                 let bytes: Vec<u8> = if let Some(b64) =

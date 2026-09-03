@@ -718,6 +718,51 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // live_rooms(component, ...) — declare components that may be mounted in a
+    // shared room via `?room=<name>` / `data-live-room`.
+    //
+    // A room instance is shared by every visitor who names it: same state, same
+    // rendered HTML, same events. That is exactly right for a public demo board
+    // and exactly wrong for a per-user view, so `?room=` used to hand any
+    // component's live markup — and the right to drive it — to anyone who
+    // guessed a room name. Rooms are opt-in per component.
+    env.define(
+        "live_rooms".to_string(),
+        Value::NativeFunction(NativeFunction::new("live_rooms", None, |args| {
+            if args.is_empty() {
+                return Err(
+                    "live_rooms() expects one or more component names, e.g. live_rooms(\"desk\")"
+                        .to_string(),
+                );
+            }
+            for arg in args {
+                match arg {
+                    Value::String(name) => {
+                        crate::live::socket::register_room_component(name);
+                    }
+                    Value::Array(items) => {
+                        for item in items.borrow().iter() {
+                            let Value::String(name) = item else {
+                                return Err(format!(
+                                    "live_rooms() expects component names as strings, got {}",
+                                    item.type_name()
+                                ));
+                            };
+                            crate::live::socket::register_room_component(name);
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "live_rooms() expects component names as strings, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+            Ok(Value::Null)
+        })),
+    );
+
     // SEC-014: skip_csrf(path_pattern) — declare a path or path-prefix
     // exempt from the same-origin CSRF check. Call from `config/routes.sl`
     // (or a controller's `static` block) for webhook endpoints, public
@@ -857,6 +902,23 @@ pub fn register_router_builtins(env: &mut Environment) {
                         }
                     }
                 }
+            }
+
+            // `credentials: true` with a wildcard origin is refused, the way
+            // rack-cors refuses it. Browsers reject a literal
+            // `Access-Control-Allow-Origin: *` alongside
+            // `Allow-Credentials: true` — that refusal is the safety net — and
+            // Soli sidesteps it by echoing back whatever Origin asked. The
+            // result is a cookie-authenticated endpoint readable and writable
+            // by every website, and, because a matching rule is treated as an
+            // explicit cross-origin opt-in, one exempted from the CSRF gate
+            // too. Naming the origins is the whole security boundary here, so
+            // it has to be deliberate.
+            if rule.credentials && rule.origins.iter().any(|o| o == "*") {
+                return Err(
+                    "cors(): credentials: true cannot be combined with a wildcard origin.                      List the origins explicitly, e.g.                      cors(\"/api/*\", {\"origins\": [\"https://app.example.com\"], \"credentials\": true})"
+                        .to_string(),
+                );
             }
 
             crate::serve::cors::register_cors_rule(rule);

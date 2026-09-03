@@ -43,6 +43,24 @@ pub const PRODUCTION_SESSION_SECRET_MIN_LEN: usize = 32;
 /// rather than a forgeable `Host` / `X-Forwarded-Host`; sealed cookies
 /// derive from `SOLI_SESSION_SECRET`.
 pub fn check_production_boot(dev_mode: bool) -> Result<(), String> {
+    // `--dev` in a production environment is refused, not waved through.
+    //
+    // Passing `--dev` used to skip every check below *silently*, so
+    // `APP_ENV=production soli serve --dev` — a plausible thing to do to get the
+    // dev bar on a staging box — started with no `SOLI_APP_HOSTS`, no session
+    // secret requirement, security headers off, and the `/__solidev/*`
+    // diagnostic endpoints exposed, with nothing in the output saying so.
+    if dev_mode && is_production_env() {
+        return Err(
+            "refusing to start with --dev while APP_ENV names a production environment. \
+             Development mode disables the production boot checks (SOLI_APP_HOSTS, \
+             SOLI_SESSION_SECRET), turns off the security headers, and exposes the \
+             /__solidev diagnostic endpoints. Drop --dev, or set APP_ENV to something \
+             other than production."
+                .to_string(),
+        );
+    }
+
     if dev_mode || !is_production_env() {
         return Ok(());
     }
@@ -156,6 +174,110 @@ pub const RESPONSE_WAIT_TIMEOUT_SECS: u64 = 40;
 
 /// Heartbeat acknowledgment timeout in seconds
 pub const HEARTBEAT_TIMEOUT_SECS: u64 = 5;
+
+/// Maximum simultaneous TCP connections the server keeps open.
+///
+/// Each connection holds a task, a socket and (once a body starts arriving) a
+/// buffer, and nothing bounded how many could be open at once — so a client
+/// opening connections and trickling bodies exhausted file descriptors and
+/// memory without ever completing a request. Accepting and immediately closing
+/// past the cap keeps the listener responsive instead of letting the backlog
+/// silently absorb the flood. `SOLI_MAX_CONNECTIONS` overrides it; `0` disables
+/// the cap.
+pub fn max_connections() -> usize {
+    env_usize("SOLI_MAX_CONNECTIONS", 20_000)
+}
+
+/// How long a request body may take to arrive in full.
+///
+/// `header_read_timeout` bounded the head; the body had no deadline at all, so
+/// a client could announce a large `Content-Length` and trickle a byte every
+/// thirty seconds, holding a connection, a task and up to the body cap of
+/// buffer for as long as it liked — thousands of those exhaust file descriptors
+/// and memory without ever sending a complete request. `SOLI_BODY_READ_TIMEOUT_SECS`
+/// overrides it; a slow uploader on a bad link still has a generous window.
+pub fn body_read_timeout_secs() -> u64 {
+    env_u64("SOLI_BODY_READ_TIMEOUT_SECS", 60)
+}
+
+/// Stack size for threads that run Soli code (HTTP workers, job workers).
+///
+/// The tree-walking interpreter recurses on the native stack, and its 256-frame
+/// budget does not fit the 2 MiB a thread gets by default: measured on a
+/// release build, a plain `1 + f(n-1)` aborted around 250 frames, and one with
+/// a few nested expressions per frame aborted at 30. That is not a caught
+/// panic — a native stack overflow is a `SIGABRT` that takes down every worker
+/// and every tenant, where the request should have produced a 500.
+///
+/// The interpreter is on the production path for zero-argument controller
+/// actions, VM-demoted handlers, all template rendering, jobs, and everything
+/// under `--dev`, so this is reachable from ordinary code rather than only from
+/// deliberate recursion.
+///
+/// 64 MiB is virtual address space, not resident memory: pages are committed
+/// only as they are touched, so a worker that never recurses deeply pays
+/// nothing. `SOLI_WORKER_STACK_MB` overrides it.
+pub fn worker_stack_bytes() -> usize {
+    let mb = env_usize("SOLI_WORKER_STACK_MB", 64).clamp(2, 1024);
+    mb * 1024 * 1024
+}
+
+/// How long a WebSocket frame waits for a free slot in the realtime worker
+/// queue before the socket is closed with 1013 (Try Again Later). The wait is
+/// async (`try_send` + sleep), never a blocking `send`: a blocking enqueue from
+/// a tokio task parks a tokio worker thread, and the interpreter workers need
+/// that pool's I/O driver to finish their `block_on` DB/HTTP calls — enough
+/// parked threads and the whole server wedges. Overridable with
+/// `SOLI_WS_ENQUEUE_TIMEOUT_SECS`.
+pub fn ws_enqueue_timeout_secs() -> u64 {
+    env_u64("SOLI_WS_ENQUEUE_TIMEOUT_SECS", 5)
+}
+
+/// Maximum simultaneous WebSocket connections, all routes and IPs combined.
+/// Each connection holds a tokio task plus a 32-slot channel, so an unbounded
+/// registry is a memory/FD exhaustion primitive. `SOLI_WS_MAX_CONNECTIONS`.
+pub fn ws_max_connections() -> usize {
+    env_usize("SOLI_WS_MAX_CONNECTIONS", 10_000)
+}
+
+/// Maximum simultaneous WebSocket connections from one peer IP.
+/// `SOLI_WS_MAX_CONNECTIONS_PER_IP`; `0` disables the per-IP cap.
+pub fn ws_max_connections_per_ip() -> usize {
+    env_usize("SOLI_WS_MAX_CONNECTIONS_PER_IP", 64)
+}
+
+/// Sustained inbound frames per second allowed on one WebSocket connection
+/// before it is closed. `SOLI_WS_MAX_MESSAGES_PER_SEC`; `0` disables.
+pub fn ws_max_messages_per_sec() -> u32 {
+    env_u32("SOLI_WS_MAX_MESSAGES_PER_SEC", 100)
+}
+
+/// Burst allowance on top of [`ws_max_messages_per_sec`].
+/// `SOLI_WS_MESSAGE_BURST`.
+pub fn ws_message_burst() -> u32 {
+    env_u32("SOLI_WS_MESSAGE_BURST", 200)
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+fn env_u32(name: &str, default: u32) -> u32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(default)
+}
+
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(default)
+}
 
 /// Hot reload file check interval in seconds
 #[allow(dead_code)]
@@ -636,10 +758,28 @@ mod tests {
         });
     }
 
+    /// `--dev` used to skip the production gate silently. It now refuses to
+    /// boot in a production environment: development mode turns off the
+    /// security headers, waives the `SOLI_APP_HOSTS` / `SOLI_SESSION_SECRET`
+    /// requirements, and exposes the `/__solidev` diagnostics — an operator
+    /// reaching for the dev bar on a production box got all of that with
+    /// nothing in the output to say so.
     #[test]
-    fn dev_mode_skips_production_gate() {
+    fn dev_mode_in_a_production_environment_refuses_to_boot() {
         with_production_boot_env(Some("production"), None, None, || {
-            check_production_boot(true).expect("--dev must still boot");
+            let err = check_production_boot(true).expect_err("--dev must not boot in production");
+            assert!(err.contains("--dev"), "{err}");
+        });
+    }
+
+    /// Development itself is unaffected.
+    #[test]
+    fn dev_mode_boots_outside_production() {
+        with_production_boot_env(Some("development"), None, None, || {
+            check_production_boot(true).expect("--dev in development");
+        });
+        with_production_boot_env(None, None, None, || {
+            check_production_boot(true).expect("--dev with no APP_ENV");
         });
     }
 

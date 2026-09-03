@@ -455,7 +455,20 @@ fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<WebhookOpts, String> {
                         }
                     }
                     "secret" => secret = v.as_str().map(str::to_string),
-                    "headers" => headers = Some(v),
+                    "headers" => {
+                        // Refuse reserved names where the developer can see it,
+                        // not silently at delivery time inside a retrying job.
+                        if let Some(map) = v.as_object() {
+                            for name in map.keys() {
+                                if crate::jobs::engine::is_reserved_webhook_header(name) {
+                                    return Err(format!(
+                                        "Webhook header {name:?} is reserved and cannot be set"
+                                    ));
+                                }
+                            }
+                        }
+                        headers = Some(v)
+                    }
                     // priority / max_retries reach the engine unchanged.
                     _ => {
                         out.insert(k, v);
@@ -475,6 +488,7 @@ fn webhook_enqueue(args: &[Value]) -> Result<Value, String> {
         );
     }
     let url = arg_string(args, 0, "Webhook.enqueue")?;
+    crate::jobs::engine::validate_webhook_url(&url)?;
     let payload = arg_hash_as_json(args, 1)?;
     let (queue, opts, secret, headers) = webhook_build_opts(args.get(2))?;
     let doc = crate::jobs::engine::webhook_job(
@@ -495,6 +509,7 @@ fn webhook_enqueue_in(args: &[Value]) -> Result<Value, String> {
         );
     }
     let url = arg_string(args, 0, "Webhook.enqueue_in")?;
+    crate::jobs::engine::validate_webhook_url(&url)?;
     let secs = parse_duration(&args[1])?;
     let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts, secret, headers) = webhook_build_opts(args.get(3))?;
@@ -516,6 +531,7 @@ fn webhook_enqueue_at(args: &[Value]) -> Result<Value, String> {
         );
     }
     let url = arg_string(args, 0, "Webhook.enqueue_at")?;
+    crate::jobs::engine::validate_webhook_url(&url)?;
     let when = normalize_datetime(&arg_string(args, 1, "Webhook.enqueue_at")?)?;
     let payload = arg_hash_as_json(args, 2)?;
     let (queue, opts, secret, headers) = webhook_build_opts(args.get(3))?;

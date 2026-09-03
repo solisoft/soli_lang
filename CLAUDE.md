@@ -347,7 +347,7 @@ Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`, `find_by`
 
 <% for post in posts %>
     <article>
-        <h2><%= h(post["title"]) %></h2>
+        <h2><%= post["title"] %></h2>
         <%= content %>
     </article>
 <% end %>
@@ -523,7 +523,7 @@ let single  = r"C:\Users\name";   // raw, single-line
 - **Semicolons optional** - Statements end at line breaks (but `;` is allowed)
 - **Truthiness** - Only `false` and `null` are falsy; `0` and `""` are truthy
 - **Classes inherit from Object** - Built-in methods available on all objects
-- **HTML escaping** - Use `h()` in templates to prevent XSS
+- **HTML escaping** - `<%= %>` escapes automatically; `h()` there double-escapes. Use `<%- %>` only for markup you built yourself, and `json_script()` for JSON inside a `<script>`
 
 ## Build and Run
 

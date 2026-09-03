@@ -26,7 +26,7 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
 
     // (relative path, contents) — written only if absent so re-running never
     // clobbers a User model or policy you've already customized.
-    let files: [(&str, &str); 17] = [
+    let files: [(&str, &str); 18] = [
         ("app/models/user.sl", auth::USER_MODEL),
         (
             "app/policies/application_policy.sl",
@@ -73,6 +73,10 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
         (
             "app/views/auth_mailer/confirm_email.html.slv",
             auth::MAILER_CONFIRM_EMAIL_VIEW,
+        ),
+        (
+            "app/views/auth_mailer/account_locked.html.slv",
+            auth::MAILER_ACCOUNT_LOCKED_VIEW,
         ),
     ];
 

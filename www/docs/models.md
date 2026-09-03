@@ -2509,6 +2509,29 @@ Nested `transaction` calls **join** the outer transaction — only the outermost
 begins and commits/rolls back (SolidB has no savepoints), so a `throw` anywhere
 inside undoes every write in the whole nest.
 
+> **Query-builder reads inside a transaction are not transactional.** Document
+> operations — `create`, `save`, `update`, `delete`, and key lookups via `find`
+> — run through the transaction and see its uncommitted writes. Query-builder
+> reads (`where`, `all`, `first`, `count`, `find_by`, `first_by`) do not: they
+> go to the ordinary query endpoint and read the state as it was before the
+> block began.
+>
+> That matters for read-modify-write:
+>
+> ```soli
+> Account.transaction do
+>   Account.create({ "owner": owner_id, "balance": 0 })
+>   # Reads the pre-transaction state — the row above is not counted yet.
+>   existing = Account.where({ "owner": owner_id }).count
+> end
+> ```
+>
+> Uniqueness validations run this kind of read, so two records that violate a
+> uniqueness rule can both pass validation inside one block and both commit.
+> Where it matters, do the check with `find` / `find_by` on the key, or enforce
+> it with a unique index rather than a validation.
+
+
 > **Cursor reads see committed state.** Queries inside the block
 > (`.where(...).all()`, `find_by`, aggregations) read *committed* data — they do
 > not observe the transaction's own uncommitted writes. To read a row you wrote

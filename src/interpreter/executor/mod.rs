@@ -3,7 +3,7 @@
 mod expressions;
 pub(crate) mod literals;
 mod loop_capture;
-mod operators;
+pub(crate) mod operators;
 pub(crate) mod pattern_matching;
 mod statements;
 mod variables;
@@ -256,7 +256,16 @@ impl Interpreter {
             let json_value = if crate::redaction::looks_sensitive(name.as_str()) {
                 format!("{:?}", crate::redaction::REDACTED)
             } else {
-                self.value_to_json(&resolved_value)
+                // Nested keys too: `req`, `params` and `cookies` are globals in
+                // scope for every handler, none of those names looks sensitive,
+                // and the hash used to be serialised verbatim — so the
+                // carefully redacted `request:` snapshot was followed three
+                // lines down by `req.headers.cookie`,
+                // `req.headers.authorization` and `params.password` in the
+                // clear. Bounded against cyclic values: this runs on the error
+                // path, where a stack overflow aborts the process instead of
+                // producing the 500.
+                self.value_to_json(&crate::redaction::redact_value_for_debug(&resolved_value))
             };
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
@@ -297,7 +306,16 @@ impl Interpreter {
             let json_value = if crate::redaction::looks_sensitive(name.as_str()) {
                 format!("{:?}", crate::redaction::REDACTED)
             } else {
-                self.value_to_json(&resolved_value)
+                // Nested keys too: `req`, `params` and `cookies` are globals in
+                // scope for every handler, none of those names looks sensitive,
+                // and the hash used to be serialised verbatim — so the
+                // carefully redacted `request:` snapshot was followed three
+                // lines down by `req.headers.cookie`,
+                // `req.headers.authorization` and `params.password` in the
+                // clear. Bounded against cyclic values: this runs on the error
+                // path, where a stack overflow aborts the process instead of
+                // producing the 500.
+                self.value_to_json(&crate::redaction::redact_value_for_debug(&resolved_value))
             };
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }

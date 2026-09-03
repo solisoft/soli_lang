@@ -21,7 +21,14 @@
 // order: 20
 // scope_only: true - This middleware only runs when explicitly scoped
 
-let valid_api_key = "secret-key-123";
+// The key comes from the environment, never from source.
+//
+// This file used to carry `let valid_api_key = "secret-key-123"`. It is example
+// code, but example code is copied — and a credential in a repository is a
+// credential in every fork, every container image and every git history that
+// ever contained it. An unset variable disables the middleware rather than
+// falling back to a default everyone knows.
+let valid_api_key = getenv("API_KEY").to_s;
 
 def authenticate(req: Any) -> Any {
     let headers = req["headers"];
@@ -37,7 +44,10 @@ def authenticate(req: Any) -> Any {
         }
     }
 
-    if (provided_key == valid_api_key) {
+    // Constant-time comparison: `==` on strings returns as soon as two bytes
+    // differ, which leaks the key one byte at a time to anyone who can time the
+    // response.
+    if (!valid_api_key.blank? && secure_compare(provided_key, valid_api_key)) {
         print("[AUTH] User authenticated successfully");
         return {
             "continue": true,

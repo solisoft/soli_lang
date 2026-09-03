@@ -43,6 +43,28 @@ class SessionsController < Controller
 
     user = User.find_by("email", email)
 
+    # A locked account answers exactly like a wrong password, and its password
+    # is not verified at all.
+    #
+    # The lockout check used to run *after* `authenticate`, which left two
+    # problems. The response distinguished a correct password (403 "Account
+    # locked") from a wrong one (401) throughout the lockout, so an attacker
+    # spreading guesses across addresses could still find the password and
+    # simply wait out the window — the lockout stopped nothing it was meant to
+    # stop. And every guess against a locked account still paid for a full
+    # Argon2id verification, so knocking on one known address was a cheap way to
+    # burn server CPU.
+    #
+    # Work is still burned here so the timing matches a normal failure: the cost
+    # is what makes a locked account indistinguishable from a wrong password and
+    # from an address that was never registered. The owner learns about the lock
+    # from the notification `register_failed_attempt` sends when it trips, not
+    # from this response.
+    if !user.nil? && user.locked?()
+      User.burn_password_work(password)
+      return this._reject("Invalid email or password", email, 401)
+    end
+
     # Both branches must cost the same. `authenticate` runs Argon2id (~100ms);
     # bailing out on a missing account would return in microseconds, and that
     # difference is a reliable "is this address registered?" oracle no matter
@@ -54,19 +76,6 @@ class SessionsController < Controller
       return this._reject("Invalid email or password", email, 401)
     end
 
-    # Everything below here has already proved knowledge of the password, so a
-    # specific message leaks nothing an attacker doesn't have. This is why the
-    # lockout check sits *after* verification rather than before it: a locked
-    # account must be indistinguishable from a wrong password to someone who
-    # doesn't know the password, and self-explanatory to the owner who does.
-    if user.locked?()
-      return this._reject(
-        "Account locked after too many failed attempts. Try again later or reset your password.",
-        email,
-        403
-      )
-    end
-
     if auth_require_confirmed_email() && !user.confirmed?()
       return this._reject("Please confirm your email address first — check your inbox.", email, 403)
     end
@@ -75,6 +84,8 @@ class SessionsController < Controller
     # New session id after a successful login defeats session fixation.
     session_regenerate()
     session_set("user_id", user["_key"])
+    # Stamped so a later password reset can invalidate this session.
+    session_set("session_version", user.current_session_version())
 
     if params["remember_me"].to_s == "1"
       token = user.start_remember_me()

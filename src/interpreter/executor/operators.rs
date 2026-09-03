@@ -23,6 +23,53 @@ pub(crate) enum OrdOp {
     GreaterEqual,
 }
 
+/// Integer arithmetic that reports overflow instead of wrapping or panicking.
+///
+/// The release profile does not enable `overflow-checks`, so `+ - *` on `Int`
+/// silently **wrapped** in production while panicking in a dev build — the two
+/// disagreed, and a quantity or price computed from request data could come out
+/// negative with nothing logged. Division was worse: `i64::MIN / -1` panics
+/// regardless of profile, because only the zero divisor was checked, and
+/// reaching `i64::MIN` takes nothing more than `params["a"] + params["b"]`.
+///
+/// Every one of these is now an ordinary catchable Soli error.
+/// Decimal arithmetic that reports overflow instead of panicking.
+///
+/// `rust_decimal`'s operators panic on overflow ("Multiplication overflowed").
+/// `Money` already used the checked forms; bare `Decimal` did not, so
+/// `10000000000.0D * params["qty"]` took the handler down with a panic instead
+/// of raising. Same treatment as the Int operators above.
+fn decimal_op(
+    a: rust_decimal::Decimal,
+    op: &str,
+    b: rust_decimal::Decimal,
+    span: Span,
+) -> RuntimeResult<rust_decimal::Decimal> {
+    let result = match op {
+        "+" => a.checked_add(b),
+        "-" => a.checked_sub(b),
+        "*" => a.checked_mul(b),
+        "/" => a.checked_div(b),
+        "%" => a.checked_rem(b),
+        _ => None,
+    };
+    result.ok_or_else(|| RuntimeError::General {
+        message: format!("decimal overflow: {a} {op} {b} is out of range for a Decimal"),
+        span,
+    })
+}
+
+pub(crate) fn int_overflow(a: i64, op: &str, b: i64, span: Span) -> RuntimeError {
+    RuntimeError::General {
+        message: format!(
+            "integer overflow: {a} {op} {b} does not fit in an Int (range {}..{})",
+            i64::MIN,
+            i64::MAX
+        ),
+        span,
+    }
+}
+
 impl Interpreter {
     pub(crate) fn evaluate_binary(
         &mut self,
@@ -276,6 +323,8 @@ create the record first, or use {}.create({{...}})",
     fn eval_range(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Int(start), Value::Int(end)) => {
+                crate::interpreter::limits::check_range(*start, *end, "range (..)")
+                    .map_err(|message| RuntimeError::General { message, span })?;
                 let arr: Vec<Value> = (*start..*end).map(Value::Int).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(arr))))
             }
@@ -300,26 +349,35 @@ create the record first, or use {}.create({{...}})",
                 result.extend_from_slice(&b);
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+            (Value::Int(a), Value::Int(b)) => match a.checked_add(*b) {
+                Some(sum) => Ok(Value::Int(sum)),
+                None => Err(int_overflow(*a, "+", *b, span)),
+            },
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
             (Value::Decimal(a), Value::Decimal(b)) => {
                 use crate::interpreter::value::DecimalValue;
                 Ok(Value::Decimal(DecimalValue(
-                    a.0 + b.0,
+                    decimal_op(a.0, "+", b.0, span)?,
                     std::cmp::max(a.1, b.1),
                 )))
             }
             (Value::Decimal(a), Value::Int(b)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(a.0 + b_dec, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(a.0, "+", b_dec, span)?,
+                    a.1,
+                )))
             }
             (Value::Int(b), Value::Decimal(a)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(b_dec + a.0, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(b_dec, "+", a.0, span)?,
+                    a.1,
+                )))
             }
             (Value::Decimal(a), Value::Float(b)) => {
                 Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) + b))
@@ -353,26 +411,35 @@ create the record first, or use {}.create({{...}})",
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
+            (Value::Int(a), Value::Int(b)) => match a.checked_sub(*b) {
+                Some(diff) => Ok(Value::Int(diff)),
+                None => Err(int_overflow(*a, "-", *b, span)),
+            },
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
             (Value::Decimal(a), Value::Decimal(b)) => {
                 use crate::interpreter::value::DecimalValue;
                 Ok(Value::Decimal(DecimalValue(
-                    a.0 - b.0,
+                    decimal_op(a.0, "-", b.0, span)?,
                     std::cmp::max(a.1, b.1),
                 )))
             }
             (Value::Decimal(a), Value::Int(b)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(a.0 - b_dec, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(a.0, "-", b_dec, span)?,
+                    a.1,
+                )))
             }
             (Value::Int(b), Value::Decimal(a)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(b_dec - a.0, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(b_dec, "-", a.0, span)?,
+                    a.1,
+                )))
             }
             (Value::Decimal(a), Value::Float(b)) => {
                 Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) - b))
@@ -393,23 +460,35 @@ create the record first, or use {}.create({{...}})",
 
     fn eval_multiply(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
+            (Value::Int(a), Value::Int(b)) => match a.checked_mul(*b) {
+                Some(product) => Ok(Value::Int(product)),
+                None => Err(int_overflow(*a, "*", *b, span)),
+            },
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
             (Value::Decimal(a), Value::Decimal(b)) => {
                 use crate::interpreter::value::DecimalValue;
-                Ok(Value::Decimal(DecimalValue(a.0 * b.0, a.1 + b.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(a.0, "*", b.0, span)?,
+                    a.1 + b.1,
+                )))
             }
             (Value::Decimal(a), Value::Int(b)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(a.0 * b_dec, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(a.0, "*", b_dec, span)?,
+                    a.1,
+                )))
             }
             (Value::Int(b), Value::Decimal(a)) => {
                 use crate::interpreter::value::DecimalValue;
                 let b_dec = rust_decimal::Decimal::from(*b);
-                Ok(Value::Decimal(DecimalValue(b_dec * a.0, a.1)))
+                Ok(Value::Decimal(DecimalValue(
+                    decimal_op(b_dec, "*", a.0, span)?,
+                    a.1,
+                )))
             }
             (Value::Decimal(a), Value::Float(b)) => {
                 Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) * b))
@@ -418,6 +497,11 @@ create the record first, or use {}.create({{...}})",
                 Ok(Value::Float(a * b.value().to_f64().unwrap_or(0.0)))
             }
             (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
+                // `*n as usize` turned a negative count into `usize::MAX` and a
+                // large one into a multi-gigabyte allocation; both took the
+                // process down rather than the request.
+                crate::interpreter::limits::check_string_repeat(s.len(), *n, "string * count")
+                    .map_err(|message| RuntimeError::General { message, span })?;
                 Ok(Value::String(s.repeat(*n as usize)))
             }
             _ => Err(RuntimeError::type_error(
@@ -437,7 +521,12 @@ create the record first, or use {}.create({{...}})",
                 if *b == 0 {
                     Err(RuntimeError::division_by_zero(span))
                 } else {
-                    Ok(Value::Int(a / b))
+                    // `i64::MIN / -1` has no representable result and panics
+                    // even with overflow checks off.
+                    match a.checked_div(*b) {
+                        Some(quotient) => Ok(Value::Int(quotient)),
+                        None => Err(int_overflow(*a, "/", *b, span)),
+                    }
                 }
             }
             (Value::Float(a), Value::Float(b)) => {
@@ -467,7 +556,7 @@ create the record first, or use {}.create({{...}})",
                     Err(RuntimeError::division_by_zero(span))
                 } else {
                     Ok(Value::Decimal(DecimalValue(
-                        a.0 / b.0,
+                        decimal_op(a.0, "/", b.0, span)?,
                         std::cmp::max(a.1, b.1),
                     )))
                 }
@@ -478,7 +567,10 @@ create the record first, or use {}.create({{...}})",
                     Err(RuntimeError::division_by_zero(span))
                 } else {
                     let b_dec = rust_decimal::Decimal::from(*b);
-                    Ok(Value::Decimal(DecimalValue(a.0 / b_dec, a.1)))
+                    Ok(Value::Decimal(DecimalValue(
+                        decimal_op(a.0, "/", b_dec, span)?,
+                        a.1,
+                    )))
                 }
             }
             (Value::Int(b), Value::Decimal(a)) => {
@@ -487,7 +579,10 @@ create the record first, or use {}.create({{...}})",
                     Err(RuntimeError::division_by_zero(span))
                 } else {
                     let b_dec = rust_decimal::Decimal::from(*b);
-                    Ok(Value::Decimal(DecimalValue(b_dec / a.0, a.1)))
+                    Ok(Value::Decimal(DecimalValue(
+                        decimal_op(b_dec, "/", a.0, span)?,
+                        a.1,
+                    )))
                 }
             }
             _ => Err(RuntimeError::type_error(
@@ -507,7 +602,10 @@ create the record first, or use {}.create({{...}})",
                 if *b == 0 {
                     Err(RuntimeError::division_by_zero(span))
                 } else {
-                    Ok(Value::Int(a % b))
+                    match a.checked_rem(*b) {
+                        Some(remainder) => Ok(Value::Int(remainder)),
+                        None => Err(int_overflow(*a, "%", *b, span)),
+                    }
                 }
             }
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),

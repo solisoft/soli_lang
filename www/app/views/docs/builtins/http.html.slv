@@ -83,17 +83,28 @@ if resp["status"] == 200
   println(resp["body"])
 end
 
+# Request headers ride along in the options hash.
+me = HTTP.get("https://api.example.com/me", {
+  "headers": { "Authorization": "Bearer " + token, "X-Client": "soli" }
+})
+
 # Per-call timeout in seconds (overrides the 30s default for this request).
 resp = HTTP.get("https://api.example.com/slow", { "timeout": 5 })</code></pre>
             <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-gray-300">
-                <strong class="text-amber-300">Per-call timeout.</strong>
-                Every <code class="text-amber-400">HTTP.*</code> method accepts a
-                <code class="text-amber-400">timeout</code> key (in <strong>seconds</strong>, as an
-                <code class="text-amber-400">Int</code> or <code class="text-amber-400">Float</code>) in its trailing
-                options hash. It overrides the default 30s client timeout for that one request and must be positive;
-                a fractional value such as <code class="text-amber-400">0.5</code> is allowed. For
-                <code class="text-amber-400">HTTP.request</code>, the <code class="text-amber-400">timeout</code> key
-                lives in the headers hash and is consumed rather than sent as a header.
+                <strong class="text-amber-300">One options hash for every verb.</strong>
+                <code class="text-amber-400">get</code>, <code class="text-amber-400">post</code>,
+                <code class="text-amber-400">put</code>, <code class="text-amber-400">patch</code>,
+                <code class="text-amber-400">delete</code>, <code class="text-amber-400">head</code>, the
+                <code class="text-amber-400">*_json</code> / <code class="text-amber-400">get_jsonp</code> variants and
+                (applied to every URL) <code class="text-amber-400">get_all</code> / <code class="text-amber-400">get_all_json</code>
+                all take the same trailing options hash with two keys:
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-2">
+                    <li><code class="text-amber-400">headers</code> &mdash; a hash of <code>name =&gt; value</code>. Strings go out as-is, numbers and booleans are stringified, a <code>null</code> value skips that header. A header you set <strong>replaces</strong> the builtin's own default (<code class="text-amber-400">Content-Type</code> on <code class="text-amber-400">post</code>/<code class="text-amber-400">put</code>/<code class="text-amber-400">patch</code>, <code class="text-amber-400">Accept</code> on the JSON variants), matched case-insensitively, so you never send two. A name or value the client would refuse (spaces in the name, a CR/LF in the value) raises before anything is sent &mdash; the message names the header but never echoes the value, so a rejected token stays out of the error page and logs. <code class="text-amber-400">Content-Length</code> and <code class="text-amber-400">Transfer-Encoding</code> are refused outright: they are derived from the body, and a caller-supplied length would be sent verbatim and desync the upstream connection. <strong>Redirects:</strong> the client drops <code class="text-amber-400">Authorization</code>, <code class="text-amber-400">Cookie</code> and <code class="text-amber-400">Proxy-Authorization</code> when a redirect changes host or port, but any <em>other</em> header you set (an <code class="text-amber-400">X-Api-Key</code>, say) follows the redirect to the new host.</li>
+                    <li><code class="text-amber-400">timeout</code> &mdash; per-call timeout in <strong>seconds</strong> (<code class="text-amber-400">Int</code> or <code class="text-amber-400">Float</code>). Overrides the default 30s client timeout for that one request; must be positive, fractions such as <code class="text-amber-400">0.5</code> are allowed.</li>
+                </ul>
+                For <code class="text-amber-400">HTTP.request</code>, the third argument is a flat headers hash: its
+                <code class="text-amber-400">timeout</code> key is consumed rather than sent as a header, and a nested
+                <code class="text-amber-400">headers</code> hash is merged in, so the same options shape works there too. Flat and nested pairs go through the same validation.
             </div>
         </section>
 
@@ -116,7 +127,7 @@ println(feed["items"][0])</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body.</p>
+            <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body. A hash body is sent as JSON, a string body as <code class="text-amber-400">text/plain</code>; a <code class="text-amber-400">Content-Type</code> in <code class="text-amber-400">options.headers</code> replaces that default.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.post(
   "https://api.example.com/users",
   "name=Alice",
@@ -187,9 +198,15 @@ println(resp["headers"])</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body.</p>
+            <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body. Sends <code class="text-amber-400">Accept: application/json</code> unless <code class="text-amber-400">options.headers</code> overrides it.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">data = HTTP.get_json("https://api.example.com/users/1")
-println(data["body"]["name"])</code></pre>
+println(data["body"]["name"])
+
+# Authenticated, with a 10-second budget.
+me = HTTP.get_json("https://api.example.com/me", {
+  "headers": { "Authorization": "Bearer " + token },
+  "timeout": 10
+})</code></pre>
         </section>
 
         <section id="def-http-post-json" class="scroll-mt-20 mb-6">
@@ -355,7 +372,7 @@ resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout":
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (e.g. <code class="text-amber-400">{ "timeout": 5 }</code>) applies to every request in the batch.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code> &mdash; see <a href="#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>) applies to every request in the batch.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
@@ -377,7 +394,7 @@ responses = HTTP.get_all([
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel and parse each body as JSON. Failed requests, non-2xx responses, or unparseable bodies appear as <code>{"error": ...}</code> hashes. Accepts the same optional trailing options hash (<code class="text-amber-400">timeout</code>, in seconds) as <code class="text-amber-400">HTTP.get_all</code>.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel and parse each body as JSON. Failed requests, non-2xx responses, or unparseable bodies appear as <code>{"error": ...}</code> hashes. Accepts the same optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code>) as <code class="text-amber-400">HTTP.get_all</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all_json([
   "https://api.example.com/users.json",
   "https://api.example.com/posts.json"

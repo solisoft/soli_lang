@@ -2,6 +2,203 @@
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-09-03
+
+### Security
+
+A full-repository security audit produced 57 findings; all are fixed here.
+Details below are grouped by what an operator or app author has to know about.
+
+**Behaviour changes that may need action**
+
+- **`--dev` refuses to start when `APP_ENV` is `production`.** It used to skip
+  every production boot check silently — no `SOLI_APP_HOSTS`, no session-secret
+  floor, security headers off, `/__solidev` diagnostics exposed — with nothing
+  in the output to say so. Drop `--dev`, or set `APP_ENV` to something else.
+- **`enable_trust_proxy` is no longer on by default in new apps.** An
+  `X-Forwarded-*` header is only trustworthy behind a proxy that rewrites it;
+  on a directly-exposed app it let any client spoof the request authority and
+  scheme, and hand every request a fresh identity so per-IP rate limits (the
+  login throttle included) never tripped. Uncomment it when you deploy behind a
+  proxy, and name the hops with the new `SOLI_TRUSTED_PROXIES` (a comma-separated
+  list of IPs or CIDRs); with it set, `X-Forwarded-*` is honoured only for
+  requests that really came from those hops.
+- **`cors()` refuses `credentials: true` together with a wildcard origin**, the
+  way rack-cors does. Browsers reject `Allow-Origin: *` with credentials — that
+  refusal is the safety net — and Soli sidestepped it by echoing back whatever
+  Origin asked, making every cookie-authenticated route on the path readable and
+  writable by any website. A wildcard rule also no longer satisfies the CSRF
+  origin gate; only an explicitly listed origin does.
+- **`.where({...})` refuses a request-supplied hash or array as a value.** The
+  hash form reads a nested hash as operators (`{"gt": 10}`) and an array as
+  `IN`, which is indistinguishable by shape from what a JSON body can send: a
+  client posting `{"token": {"ne": null}}` turned an equality check on a secret
+  into `!= null` and bypassed it. Values that arrived with the request are now
+  tracked, and one that would act as an operator raises with the field named.
+  Developer-written operator hashes are unaffected.
+- **`Model.create` / `Model.update` never persist `_key`, `_id`, `_rev`,
+  `_from`, `_to`, or an STI `type` from their input**, whether or not the model
+  declares `attr_accessible`. A client could otherwise choose document ids or
+  make a row hydrate as a privileged subclass.
+- **The static `Model.update(id, hash)` now runs validations**, against the
+  merged record rather than the patch, and returns `{"_errors": [...]}` when
+  they fail. It previously wrote straight past every rule the model declared.
+- **The email-confirmation link no longer signs the visitor in**, and expires
+  after 48 hours. It is a `GET` reached from an email, so a link scanner, a
+  shared mailbox or a forwarded message received the session.
+- **A password reset now invalidates existing sessions** through a
+  `session_version` stamp checked by the generated `load_current_user`; an
+  attacker who was already signed in used to survive the victim's reset.
+- **`/_metrics` is no longer public.** With `SOLI_METRICS_TOKEN` set it requires
+  that bearer token; without it, only loopback and private-range peers.
+- **`button_to(..., {"confirm": ...})` emits `data-confirm`** instead of an
+  inline `onclick`, and `form_with({"url": ...})` / `button_to` refuse
+  `javascript:` targets.
+- **LiveView rooms are opt-in per component**: declare them with
+  `live_rooms("desk")` in `config/routes.sl`. `?room=` on an undeclared
+  component handed its full rendered HTML, and the right to drive its events,
+  to anyone who guessed the name.
+
+**Denial of service**
+
+- WebSocket frames on app-defined routes are enqueued without blocking. A
+  blocking `send` from a tokio task parked an OS thread per frame, and a few
+  flooding sockets could wedge the entire server — accepts, HTTP and health
+  checks included. Adds a per-connection message rate limit, a per-IP and
+  global WebSocket connection cap, a global TCP connection cap, and a body-read
+  timeout for trickled uploads.
+- Worker and job threads get a 64 MiB stack (`SOLI_WORKER_STACK_MB`). The
+  interpreter's 256-frame budget did not fit the default 2 MiB, so ordinary
+  recursion — or a walker over a deeply nested JSON body — aborted the whole
+  process rather than failing one request.
+- `range()`, `a..b` and `string * n` are bounded (`SOLI_MAX_RANGE_LEN`,
+  `SOLI_MAX_STRING_ALLOC_BYTES`) and reject negative counts. A request-supplied
+  bound could ask the allocator for gigabytes, and an allocation failure aborts
+  the process.
+- `str()`, string interpolation, `==`, `flatten` and the debug environment dump
+  are depth-bounded, so a cyclic value (`parent` ↔ `children`) no longer
+  overflows the native stack.
+- Integer `+ - * / %` and `Decimal` arithmetic are checked in both engines.
+  Release builds silently wrapped where debug builds panicked, and
+  `i64::MIN / -1` panicked in both.
+- `Array.sort` tolerates an inconsistent comparator instead of panicking, and
+  `DateTime.format` rejects an invalid pattern instead of panicking.
+- `Deflate.inflate` returns large binary output as base64 rather than one
+  24-byte value per byte, and its default cap drops to 8 MiB: a 65 KB SAML
+  payload reached 1.8 GB resident.
+- `paginate({"per": n})` and vector-search `top_k` are clamped
+  (`SOLI_MAX_PAGE_SIZE`), `Model.limit` rejects negatives, and query/form
+  parameter counts are capped (`SOLI_MAX_PARAM_PAIRS`).
+- A handler now has a wall-clock execution budget, 30s by default
+  (`SOLI_HANDLER_TIMEOUT_SECS`, `0` disables). A runaway loop used to remove a
+  worker permanently.
+
+**Information disclosure**
+
+- The production `[ERROR]` log no longer prints the request's globals verbatim.
+  Redaction applied only to top-level variable names, so the carefully redacted
+  `request:` snapshot was followed by `req.headers.cookie`,
+  `req.headers.authorization` and `params.password` in the clear.
+- LiveView instance ids no longer embed the raw session id, which was sent to
+  page JavaScript in every render — an `HttpOnly` bypass for any XSS on the
+  page — and written to the server log.
+- `~/.soli/credentials` is written `0600`.
+- Baseline `Referrer-Policy: strict-origin-when-cross-origin` is emitted, and
+  the SEC-056 baseline headers are emitted at all: a thread-local cache seeded
+  with the same version as the global counter looked valid and empty forever, so
+  default-configured apps shipped without `X-Frame-Options` or `nosniff`.
+
+**Server-side request forgery and path traversal**
+
+- Web Push endpoints, webhook deliveries and PDF image sources go through the
+  same SSRF gate and DNS-filtering client as `HTTP.*`. All three previously used
+  bare clients that followed redirects anywhere; webhook delivery ran on the
+  client deliberately exempted from the blocklist.
+- The `Solidb` client percent-encodes every REST path segment. An unencoded key
+  let `db.delete("posts", "../../../databases/production")` reach a different
+  endpoint entirely, with the app's own credentials.
+- `Image.plan` / `ImagePlan.save_to`, the spreadsheet readers and writers, and
+  the PDF font directories go through the SEC-006 filesystem jail.
+- The request `Host` is validated against `SOLI_APP_HOSTS` before any `*_url`
+  helper builds an absolute URL, so a spoofed `Host` cannot aim a password-reset
+  link at another site.
+
+**Realtime**
+
+- A LiveView client may only send `_assigns` keys the server rendered as
+  `soli-assign-*`, and may only address `_component`s present in its own markup.
+  Both were unrestricted: one message could overwrite any root-state key
+  (identity, tenant, price) or invoke a component handler that was never mounted.
+- WebSocket and LiveView handlers now run with the socket's session installed,
+  and the event carries the `headers`, `query` and `params` the docs already
+  promised. Previously `session_get` returned null inside them, leaving a
+  client-supplied id as the only available identity.
+
+**Other**
+
+- New `json_script(value)` for embedding JSON in a `<script>` body;
+  `json_stringify` does not escape `</script>`.
+- `t()` escapes interpolated values for keys ending in `_html`.
+- Named-route helpers percent-encode their parameters.
+- `jwt_verify(token, secret)` refuses a PEM or SSH key as the HMAC secret.
+- `KV.cmd` denies `FCALL`, `MODULE`, `MIGRATE`, `RESTORE`, `SELECT`, `SWAPDB`,
+  the replication verbs and the introspection verbs.
+- Mail attachment `content_type` is CRLF-checked and shape-validated; IMAP
+  literals and POP3 responses are size-capped.
+- An unknown `session_id` cookie no longer creates and persists an empty
+  session, and the in-memory store honours expiry on read.
+- Per-IP rate limiting aggregates IPv6 to a /64
+  (`SOLI_RATE_LIMIT_IPV6_PREFIX`) and evicts the least recently active bucket.
+- The limitation that query-builder reads inside `transaction { ... }` see
+  *committed* state (only `find` and the document verbs run through the
+  transaction) is now documented in the models reference, including its
+  consequence for uniqueness validations: two records violating a uniqueness
+  rule can both pass validation inside one block. Routing those reads through
+  the transaction would need a transactional cursor endpoint the SoliDB API does
+  not expose.
+- `delete_all` / `update_all` report database errors instead of returning null.
+- The generated OIDC provider rejects an `id_token` used as an access token,
+  rotates refresh tokens atomically, and confirms `GET /oauth/logout`.
+- A locked account is indistinguishable from a wrong password and its password
+  is not verified at all; the owner is notified by email when the lock trips.
+- Responses built as a hash get a default `Content-Type`.
+
+### HTTP client
+
+- **`headers` in the options hash of every `HTTP.*` verb.** `HTTP.get`,
+  `post`, `put`, `patch`, `delete`, `head`, `get_json`, `get_jsonp`,
+  `post_json`, `put_json`, `patch_json` and the batch helpers `get_all` /
+  `get_all_json` now honour a `"headers": { name => value }` key next to
+  `timeout` — the shape the docs already showed but the runtime silently
+  dropped, so an `Authorization` header only reached the wire through
+  `HTTP.request`. A caller header replaces the builtin's own default
+  (`Content-Type` on the body verbs, `Accept: application/json` on the JSON
+  variants), matched case-insensitively, so a request never carries two.
+  String values go out verbatim, other scalars are stringified, `null`
+  skips the header; a name or value reqwest would refuse (a space in the
+  name, CR/LF in the value) raises up-front with the offending header
+  named — never its value, which is usually the credential — instead of
+  failing at send time as an opaque builder error. `Content-Length` and
+  `Transfer-Encoding` are refused on every path (`HTTP.request`'s flat
+  hash included, which previously validated nothing): hyper sends a
+  caller-supplied length verbatim, and a mismatch desyncs the upstream
+  connection — a request-smuggling primitive when the header is forwarded
+  from an inbound request.
+  `HTTP.request(method, url, headers)` keeps its flat headers hash and
+  additionally merges a nested `headers` key, so the one options shape
+  works everywhere.
+- **The static checker knows the whole `HTTP` class.** `soli check` /
+  `soli -e` / top-level scripts type-check before running, and the typed
+  `HTTP` declaration listed only `get`/`post`/`put`/`delete`/`request`/
+  `get_all`/`get_all_json`/`get_jsonp`, each without the options
+  parameter — so `HTTP.get(url, {"timeout": 5})` failed with `Wrong number
+  of arguments: expected 1, got 2` and `HTTP.get_json(...)` with `Cannot
+  access member 'get_json' on type 'HTTP'` before a byte was sent. Every
+  runtime verb is now declared with its trailing options hash, and
+  indexing a `Future` (`HTTP.get(url)["status"]`) is accepted the same
+  way member access on one already was, instead of `cannot index
+  Future<String>`.
+
 ## [2.0.2] - 2026-09-02
 
 ### ORM

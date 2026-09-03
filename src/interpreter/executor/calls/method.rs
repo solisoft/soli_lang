@@ -1575,7 +1575,9 @@ impl Interpreter {
                 }
             };
 
-            result.sort_by(|a, b| {
+            // A user comparator can be inconsistent (it runs arbitrary Soli
+            // code); `slice::sort_by` panics on that, so use the tolerant sort.
+            crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
                 let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                 if func.params.len() >= 2 {
@@ -1600,19 +1602,23 @@ impl Interpreter {
                 }
             });
         } else {
-            result.sort_by(|a, b| match (a, b) {
-                (Value::Int(a), Value::Int(b)) => a.cmp(b),
-                (Value::Float(a), Value::Float(b)) => {
-                    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+            // The default ordering answers `Equal` across types, which is not
+            // transitive, so this needs the tolerant sort too.
+            crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
+                match (a, b) {
+                    (Value::Int(a), Value::Int(b)) => a.cmp(b),
+                    (Value::Float(a), Value::Float(b)) => {
+                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    (Value::String(a), Value::String(b)) => a.cmp(b),
+                    (Value::Int(a), Value::Float(b)) => (*a as f64)
+                        .partial_cmp(b)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Value::Float(a), Value::Int(b)) => a
+                        .partial_cmp(&(*b as f64))
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    _ => std::cmp::Ordering::Equal,
                 }
-                (Value::String(a), Value::String(b)) => a.cmp(b),
-                (Value::Int(a), Value::Float(b)) => (*a as f64)
-                    .partial_cmp(b)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-                (Value::Float(a), Value::Int(b)) => a
-                    .partial_cmp(&(*b as f64))
-                    .unwrap_or(std::cmp::Ordering::Equal),
-                _ => std::cmp::Ordering::Equal,
             });
         }
 

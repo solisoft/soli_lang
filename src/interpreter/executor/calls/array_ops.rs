@@ -196,8 +196,20 @@ pub fn find_in_entries<'a>(
 }
 
 /// Flatten `items` up to `max_depth` levels deep (`None` = fully recursive).
+/// Hard ceiling on `flatten` recursion.
+///
+/// `flatten()` with no argument means "all the way down", which on a cyclic
+/// array (`a = [a]`, or a parent/child pair) recursed forever and overflowed
+/// the native stack — an abort of the whole process, not a catchable error.
+/// Beyond this depth the remaining nesting is left as-is, exactly as an
+/// explicit `flatten(n)` would.
+const FLATTEN_DEPTH_CEILING: usize = 256;
+
 pub(crate) fn flatten_values(items: &[Value], max_depth: Option<usize>) -> Vec<Value> {
     fn recur(arr: &[Value], depth: usize, max: Option<usize>) -> Vec<Value> {
+        if depth >= FLATTEN_DEPTH_CEILING {
+            return arr.to_vec();
+        }
         if let Some(max) = max {
             if depth >= max {
                 return arr.to_vec();
@@ -478,6 +490,83 @@ pub(crate) fn tally(items: &[Value]) -> Value {
         }
     }
     Value::Hash(Rc::new(RefCell::new(out)))
+}
+
+/// Stable merge sort that tolerates a comparator which is not a total order.
+///
+/// `slice::sort_by` detects an inconsistent comparator and **panics**
+/// ("user-provided comparison function does not correctly implement a total
+/// order") since Rust 1.81. Two of Soli's comparators can be inconsistent
+/// through no fault of the runtime:
+///
+/// * `sort(fn(a, b) ...)` runs user code, which may compare on mutable state,
+///   raise (folded to `Equal`), or simply be wrong;
+/// * the default ordering answers `Equal` for values of different types, which
+///   is not transitive — in `[5, "a", 3]`, `5 ≈ "a"` and `"a" ≈ 3` but `5 > 3`.
+///
+/// Either way an ordinary `.sort()` on request data became a 500. A merge sort
+/// makes no consistency assumption: a bad comparator yields an arbitrary but
+/// well-defined order instead of a panic. It is stable, and O(n log n) with one
+/// scratch buffer.
+pub(crate) fn stable_sort_by<T, F>(items: &mut [T], mut compare: F)
+where
+    T: Clone,
+    F: FnMut(&T, &T) -> std::cmp::Ordering,
+{
+    let len = items.len();
+    if len < 2 {
+        return;
+    }
+    let mut buffer = items.to_vec();
+    merge_sort_range(items, &mut buffer, 0, len, &mut compare);
+}
+
+fn merge_sort_range<T, F>(
+    items: &mut [T],
+    buffer: &mut [T],
+    start: usize,
+    end: usize,
+    compare: &mut F,
+) where
+    T: Clone,
+    F: FnMut(&T, &T) -> std::cmp::Ordering,
+{
+    if end - start < 2 {
+        return;
+    }
+    let mid = start + (end - start) / 2;
+    merge_sort_range(items, buffer, start, mid, compare);
+    merge_sort_range(items, buffer, mid, end, compare);
+
+    // Already ordered across the seam: nothing to merge.
+    if compare(&items[mid - 1], &items[mid]) != std::cmp::Ordering::Greater {
+        return;
+    }
+
+    buffer[start..end].clone_from_slice(&items[start..end]);
+    let (mut left, mut right, mut out) = (start, mid, start);
+    while left < mid && right < end {
+        // `Less` or `Equal` takes from the left half, which is what makes the
+        // sort stable.
+        if compare(&buffer[left], &buffer[right]) == std::cmp::Ordering::Greater {
+            items[out] = buffer[right].clone();
+            right += 1;
+        } else {
+            items[out] = buffer[left].clone();
+            left += 1;
+        }
+        out += 1;
+    }
+    while left < mid {
+        items[out] = buffer[left].clone();
+        left += 1;
+        out += 1;
+    }
+    while right < end {
+        items[out] = buffer[right].clone();
+        right += 1;
+        out += 1;
+    }
 }
 
 /// Order two field values the way `sort_by` does. Canonical copy — both
@@ -1095,5 +1184,73 @@ mod tests {
         let b = vec![Value::Float(1.0)];
         assert_eq!(intersection_values(&a, &b), vec![Value::Int(1)]);
         assert_eq!(difference_values(&a, &b), vec![Value::Int(2)]);
+    }
+}
+
+#[cfg(test)]
+mod tolerant_sort_tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn it_sorts_like_the_standard_library() {
+        let mut items = vec![5, 3, 9, 1, 7, 3];
+        stable_sort_by(&mut items, |a, b| a.cmp(b));
+        assert_eq!(items, vec![1, 3, 3, 5, 7, 9]);
+    }
+
+    #[test]
+    fn it_is_stable() {
+        // Equal keys must keep their input order.
+        let mut items = vec![(1, 'a'), (0, 'b'), (1, 'c'), (0, 'd')];
+        stable_sort_by(&mut items, |a, b| a.0.cmp(&b.0));
+        assert_eq!(items, vec![(0, 'b'), (0, 'd'), (1, 'a'), (1, 'c')]);
+    }
+
+    #[test]
+    fn empty_and_single_element_inputs_are_fine() {
+        let mut empty: Vec<i32> = vec![];
+        stable_sort_by(&mut empty, |a, b| a.cmp(b));
+        assert!(empty.is_empty());
+
+        let mut one = vec![42];
+        stable_sort_by(&mut one, |a, b| a.cmp(b));
+        assert_eq!(one, vec![42]);
+    }
+
+    /// The whole point: `slice::sort_by` panics on a comparator like this since
+    /// Rust 1.81, which turned an ordinary `.sort()` on mixed-type request data
+    /// into a 500.
+    #[test]
+    fn an_inconsistent_comparator_does_not_panic() {
+        // Non-transitive by construction, the way Soli's cross-type `Equal` is:
+        // everything compares Equal to 0, but non-zero values compare normally.
+        let mut items: Vec<i32> = (0..200).map(|i| if i % 3 == 0 { 0 } else { i }).collect();
+        stable_sort_by(&mut items, |a, b| {
+            if *a == 0 || *b == 0 {
+                Ordering::Equal
+            } else {
+                a.cmp(b)
+            }
+        });
+        assert_eq!(items.len(), 200, "no elements may be lost");
+    }
+
+    /// A comparator that answers at random must still terminate and preserve
+    /// the multiset of elements.
+    #[test]
+    fn a_random_comparator_keeps_every_element() {
+        let mut counter = 0u32;
+        let mut items: Vec<i32> = (0..500).collect();
+        stable_sort_by(&mut items, |_, _| {
+            counter = counter.wrapping_mul(1103515245).wrapping_add(12345);
+            match counter % 3 {
+                0 => Ordering::Less,
+                1 => Ordering::Equal,
+                _ => Ordering::Greater,
+            }
+        });
+        items.sort();
+        assert_eq!(items, (0..500).collect::<Vec<i32>>());
     }
 }

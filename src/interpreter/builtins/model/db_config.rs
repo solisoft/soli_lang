@@ -357,6 +357,20 @@ pub fn get_database_name() -> String {
     get_db_config().database.clone()
 }
 
+/// Cursor endpoint for the current query.
+///
+/// **Reads are not transactional.** Inside a `transaction { ... }` block, writes
+/// go to `/transaction/{tx}/document/...` but query-builder reads (`where`,
+/// `all`, `first`, `count`, `find_by`) come here, to the plain cursor endpoint —
+/// so a read does not see the block's own uncommitted writes. A
+/// read-modify-write, and the uniqueness pre-check a validation runs, therefore
+/// evaluate against the pre-transaction state.
+///
+/// Routing reads through the transaction would need a transactional cursor
+/// endpoint on the SoliDB side; the server exposes `begin`, `commit`, `rollback`
+/// and the document verbs, and nothing here can assume more. Until it does, the
+/// limitation is documented rather than papered over — see
+/// `www/docs/models.md`, "Transactions".
 pub fn get_cursor_url() -> String {
     if let Some(name) = override_database() {
         // SEC-027: per-thread DB-name override still uses the same
@@ -995,5 +1009,30 @@ mod tests {
             exp_after_first, exp_after_second,
             "cache must not have been re-seeded; if exp changed, we hit /auth/login a second time"
         );
+    }
+}
+
+#[cfg(test)]
+mod cursor_url_tests {
+    use super::*;
+
+    /// Outside a transaction the URL is unchanged.
+    #[test]
+    fn a_plain_cursor_url_has_no_transaction_segment() {
+        let url = get_cursor_url();
+        assert!(url.ends_with("/cursor"), "{url}");
+        assert!(!url.contains("/transaction/"), "{url}");
+    }
+
+    /// Reads are deliberately *not* routed through an open transaction: the
+    /// SoliDB API has no transactional cursor endpoint, so inventing one would
+    /// 404 every read inside a `transaction { ... }` block. The consequence —
+    /// reads do not see the block's own uncommitted writes — is documented in
+    /// `www/docs/models.md` instead.
+    #[test]
+    fn an_open_transaction_does_not_change_the_cursor_url() {
+        let plain = get_cursor_url();
+        let _tx = crate::interpreter::builtins::model::crud::set_current_tx_for_test("tx-42");
+        assert_eq!(get_cursor_url(), plain);
     }
 }

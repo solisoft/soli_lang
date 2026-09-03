@@ -37,6 +37,12 @@ impl RateLimitBucket {
         }
     }
 
+    /// When this bucket last saw a request, for least-recently-used eviction.
+    /// An empty bucket is the best possible victim.
+    fn last_activity(&self) -> Option<Instant> {
+        self.requests.last().copied()
+    }
+
     fn is_allowed(&mut self) -> (bool, usize, Duration) {
         let now = Instant::now();
         let window_start = now - self.window;
@@ -119,8 +125,18 @@ impl RateLimitStore {
             // so counts are never mixed across keys or rate-limit rules. The
             // evicted key just restarts its window (fail-open for that one key
             // — the safe direction), and memory stays bounded at MAX_BUCKETS.
+            // Evict the least recently active bucket rather than whichever key
+            // the map happens to hand back first. An arbitrary victim meant a
+            // key-flood could reset a *live* limiter — the attacker's own, or
+            // another client's — so filling the map was itself a way past the
+            // throttle.
             while !self.buckets.contains_key(key) && self.buckets.len() >= MAX_BUCKETS {
-                let Some(victim) = self.buckets.keys().next().cloned() else {
+                let Some(victim) = self
+                    .buckets
+                    .iter()
+                    .min_by_key(|(_, bucket)| bucket.last_activity())
+                    .map(|(k, _)| k.clone())
+                else {
                     break;
                 };
                 self.buckets.remove(&victim);
@@ -472,7 +488,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 };
 
                 let ip = extract_client_ip(req).unwrap_or_default();
-                let key = format!("ip:{}", ip);
+                let key = format!("ip:{}", rate_limit_ip_key(&ip));
 
                 let mut inst = Instance::new(Rc::clone(&class_for_from_ip));
                 inst.set("key", Value::String(key.into()));
@@ -528,6 +544,61 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
         "rate_limit_ip".to_string(),
         deprecated_function("rate_limit_ip".to_string()),
     );
+}
+
+/// Prefix length an IPv6 client is aggregated to for rate limiting.
+///
+/// A residential IPv6 allocation is normally a 64-bit prefix, giving one
+/// household 2^64 addresses it can use freely. Keying on the full address
+/// therefore meant a single host could take a fresh bucket for every request,
+/// so the login and password-reset throttles in the auth scaffold simply never
+/// tripped. IPv4 has no equivalent (an address is the unit), so it is keyed
+/// whole. `SOLI_RATE_LIMIT_IPV6_PREFIX` widens or narrows this: 56 or 48
+/// aggregates a whole site.
+fn ipv6_prefix_len() -> u8 {
+    std::env::var("SOLI_RATE_LIMIT_IPV6_PREFIX")
+        .ok()
+        .and_then(|v| v.trim().parse::<u8>().ok())
+        .filter(|n| (1..=128).contains(n))
+        .unwrap_or(64)
+}
+
+/// Bucket key for a client address: IPv4 verbatim, IPv6 aggregated to a prefix.
+pub(crate) fn rate_limit_ip_key(ip: &str) -> String {
+    let trimmed = ip.trim();
+    let Ok(addr) = trimmed.parse::<std::net::IpAddr>() else {
+        // Not an address (an empty string from a non-server context, or a
+        // hostname): key it verbatim rather than silently collapsing callers.
+        return trimmed.to_string();
+    };
+    let addr = match addr {
+        // A dual-stack listener reports IPv4 peers as ::ffff:a.b.c.d; those are
+        // IPv4 clients and must not be aggregated to a /64.
+        std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => std::net::IpAddr::V4(v4),
+            None => std::net::IpAddr::V6(v6),
+        },
+        other => other,
+    };
+    match addr {
+        std::net::IpAddr::V4(v4) => v4.to_string(),
+        std::net::IpAddr::V6(v6) => {
+            let prefix_len = ipv6_prefix_len();
+            let mut octets = v6.octets();
+            let full_bytes = (prefix_len / 8) as usize;
+            let remaining_bits = prefix_len % 8;
+            if remaining_bits > 0 {
+                octets[full_bytes] &= 0xffu8 << (8 - remaining_bits);
+            }
+            for byte in octets
+                .iter_mut()
+                .skip(full_bytes + usize::from(remaining_bits > 0))
+            {
+                *byte = 0;
+            }
+            format!("{}/{}", std::net::Ipv6Addr::from(octets), prefix_len)
+        }
+    }
 }
 
 /// SEC-030: derive a stable rate-limit key from the request.
@@ -738,5 +809,76 @@ mod tests {
         // Restore.
         super::super::trust_proxy::TRUST_PROXY_ENABLED
             .store(prev, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod ip_key_tests {
+    use super::*;
+
+    /// An IPv4 address is the unit of identity and is keyed whole.
+    #[test]
+    fn ipv4_addresses_key_individually() {
+        assert_eq!(rate_limit_ip_key("203.0.113.7"), "203.0.113.7");
+        assert_ne!(
+            rate_limit_ip_key("203.0.113.7"),
+            rate_limit_ip_key("203.0.113.8")
+        );
+    }
+
+    /// The bypass: a residential IPv6 allocation is a /64, so one host could
+    /// take a fresh bucket per request and never trip the login throttle.
+    /// Every address in a /64 must now share one bucket.
+    #[test]
+    fn ipv6_addresses_in_one_slash_64_share_a_bucket() {
+        let a = rate_limit_ip_key("2001:db8:1:2::1");
+        let b = rate_limit_ip_key("2001:db8:1:2:ffff:ffff:ffff:ffff");
+        assert_eq!(a, b, "one /64 must be one bucket");
+        // A different /64 is still a different client.
+        assert_ne!(a, rate_limit_ip_key("2001:db8:1:3::1"));
+    }
+
+    /// A dual-stack listener reports IPv4 peers as ::ffff:a.b.c.d. Those are
+    /// IPv4 clients and must not be collapsed into a /64 with their neighbours.
+    #[test]
+    fn ipv4_mapped_addresses_are_treated_as_ipv4() {
+        assert_eq!(rate_limit_ip_key("::ffff:203.0.113.7"), "203.0.113.7");
+        assert_ne!(
+            rate_limit_ip_key("::ffff:203.0.113.7"),
+            rate_limit_ip_key("::ffff:203.0.113.8")
+        );
+    }
+
+    /// Anything that is not an address (no server context, a hostname) is keyed
+    /// verbatim rather than collapsed into one shared bucket.
+    #[test]
+    fn non_addresses_are_kept_verbatim() {
+        assert_eq!(rate_limit_ip_key(""), "");
+        assert_eq!(rate_limit_ip_key("not-an-ip"), "not-an-ip");
+    }
+
+    /// Eviction under a key flood must take the least recently active bucket,
+    /// not an arbitrary one — evicting a live limiter is itself a bypass.
+    #[test]
+    fn eviction_prefers_the_least_recently_active_bucket() {
+        let mut store = RateLimitStore::new();
+        let window = Duration::from_secs(60);
+
+        // Fill the store, touching each key once as it is created.
+        for i in 0..MAX_BUCKETS {
+            let key = format!("k{i}");
+            store.get_or_create(&key, 100, window).is_allowed();
+        }
+        // Re-touch one early key so it becomes the most recently active.
+        store.get_or_create("k0", 100, window).is_allowed();
+
+        // One more key forces an eviction.
+        store.get_or_create("flood", 100, window).is_allowed();
+
+        assert!(
+            store.buckets.contains_key("k0"),
+            "the freshly used bucket must survive an eviction"
+        );
+        assert!(store.buckets.len() <= MAX_BUCKETS);
     }
 }

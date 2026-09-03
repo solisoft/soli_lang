@@ -116,7 +116,16 @@ class OauthTokensController < Controller
     user = User.find_by("_key", token["user_key"])
     return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
 
-    token.mark_rotated()
+    # Claim the token atomically instead of read-then-write. Two requests
+    # presenting the same token used to pass the checks above before either
+    # wrote `rotated_at`, so both were rotated and the reuse detection this
+    # whole flow exists for never fired. Losing the race is indistinguishable
+    # from replay, and is treated as such.
+    claimed = OauthRefreshToken.claim_for_rotation(presented)
+    if claimed.nil?
+      OauthRefreshToken.revoke_chain(token["chain_id"], "refresh_token_reused")
+      return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
+    end
 
     return this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null)
   end

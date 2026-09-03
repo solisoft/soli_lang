@@ -89,6 +89,38 @@ println(json)  # {"name":"Alice","scores":[95,87]}
 
 arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]</code></pre>
+                <div class="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-gray-300">
+                    <strong class="text-white">Not safe inside a <code>&lt;script&gt;</code>.</strong>
+                    A <code>&lt;/script&gt;</code> in any string value ends the element &mdash; the
+                    HTML tokenizer does not care that it sits inside a JSON string &mdash; and
+                    everything after it is parsed as markup. Use
+                    <a href="#def-json-script" class="text-amber-400 hover:underline"><code>json_script()</code></a> there.
+                </div>
+            </div>
+        </section>
+
+        <section id="def-json-script" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-json-script" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">json_script(value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Serialize a Soli value to JSON that is safe to embed in an HTML <code>&lt;script&gt;</code> body.</p>
+                <p class="text-gray-400 mb-3"><code class="text-amber-400">&lt;</code>, <code class="text-amber-400">&gt;</code> and <code class="text-amber-400">&amp;</code> become <code>\uXXXX</code> escapes, along with U+2028 and U+2029 (valid in JSON, but line terminators in JavaScript source). A JSON parser reads those escapes back as the original characters, so the value a script receives is unchanged; what changes is that nothing in the output can end the element or be reinterpreted by the HTML parser.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">value</code> : <code class="text-orange-400">Any</code> - A JSON-compatible value
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">String</code> - JSON with the HTML-significant characters escaped
+                </div>
+                <pre data-filename="app/views/posts/show.html.slv"><code class="language-html text-sm">&lt;script&gt;
+  window.__data = &lt;%- json_script(post) %&gt;;
+&lt;/script&gt;</code></pre>
+                <p class="text-gray-400 mt-3 text-sm"><code class="text-amber-400">j()</code> is not an alternative here: it is an HTML escape, so it turns <code>&amp;</code> into <code>&amp;amp;</code> <em>inside</em> the JSON and corrupts the data.</p>
             </div>
         </section>
 

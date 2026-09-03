@@ -164,7 +164,7 @@ where
 /// `Value` holds `Rc`s, so these futures are `!Send` and can never be handed to
 /// another thread — they only ever run on the calling thread. Same two normal
 /// arms as the sendable version; the difference is the last resort.
-fn block_on_user_http_local<Fut, T>(future: Fut) -> Result<T, String>
+pub(crate) fn block_on_user_http_local<Fut, T>(future: Fut) -> Result<T, String>
 where
     Fut: std::future::Future<Output = Result<T, String>>,
 {
@@ -954,6 +954,130 @@ fn apply_timeout(
     }
 }
 
+/// Per-call request options shared by every `HTTP.<verb>` builtin: the
+/// `timeout` (seconds) and `headers` keys of the trailing options hash.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct RequestOptions {
+    timeout: Option<std::time::Duration>,
+    headers: Vec<(String, String)>,
+}
+
+impl RequestOptions {
+    /// True when the caller supplied `name` (case-insensitively) in `headers`.
+    fn has_header(&self, name: &str) -> bool {
+        self.headers
+            .iter()
+            .any(|(existing, _)| existing.eq_ignore_ascii_case(name))
+    }
+
+    /// Apply the options to a request builder. `defaults` are the headers the
+    /// builtin would normally set on its own (`Content-Type`, `Accept`); each
+    /// one is only added when the caller did not override it, so
+    /// `HTTP.post(url, body, {"headers": {"Content-Type": "..."}})` sends a
+    /// single `Content-Type`. Caller headers are added after the defaults,
+    /// then the timeout.
+    fn apply(
+        &self,
+        mut builder: reqwest::RequestBuilder,
+        defaults: &[(&str, &str)],
+    ) -> reqwest::RequestBuilder {
+        for (name, value) in defaults {
+            if !self.has_header(name) {
+                builder = builder.header(*name, *value);
+            }
+        }
+        for (name, value) in &self.headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        apply_timeout(builder, self.timeout)
+    }
+}
+
+/// Read the `headers` key of an options hash into `(name, value)` pairs.
+/// Missing / `null` yields an empty list; anything but a hash is a hard
+/// error, as is a header name or value reqwest would refuse (the failure
+/// would otherwise surface at `.send()` as an opaque "builder error").
+/// String values are sent verbatim; other scalars are stringified the same
+/// way `HTTP.request` does; a `null` value skips the header.
+fn extract_headers(options: Option<&Value>) -> Result<Vec<(String, String)>, String> {
+    let Some(Value::Hash(hash)) = options else {
+        return Ok(Vec::new());
+    };
+    let hash = hash.borrow();
+    let raw = match hash.get(&HashKey::String("headers".into())) {
+        Some(Value::Null) | None => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    let Value::Hash(headers) = raw else {
+        return Err(format!(
+            "HTTP headers must be a hash of name => value, got {}",
+            raw.type_name()
+        ));
+    };
+    let mut out = Vec::new();
+    for (key, value) in headers.borrow().iter() {
+        let name = match key {
+            HashKey::String(s) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "HTTP header names must be strings, got {:?}",
+                    other
+                ))
+            }
+        };
+        let value = match value {
+            Value::String(s) => s.to_string(),
+            Value::Null => continue,
+            other => format!("{}", other),
+        };
+        validate_header(&name, &value)?;
+        out.push((name, value));
+    }
+    Ok(out)
+}
+
+/// Message-framing headers the client derives from the body. A caller-supplied
+/// `Content-Length` is sent verbatim by hyper (a mismatch desyncs the upstream
+/// connection — request smuggling if the value came from an inbound request),
+/// so both are refused rather than silently honoured.
+const FRAMING_HEADERS: [&str; 2] = ["content-length", "transfer-encoding"];
+
+/// Validate one caller-supplied request header before it reaches the builder.
+///
+/// The value is deliberately **not** echoed in the error: the header that
+/// most often fails (a pasted token with a trailing newline) is a credential,
+/// and the message ends up in the error page, the app log and any
+/// `catch`-and-log site.
+fn validate_header(name: &str, value: &str) -> Result<(), String> {
+    reqwest::header::HeaderName::from_bytes(name.as_bytes())
+        .map_err(|_| format!("Invalid HTTP header name: {:?}", name))?;
+    if FRAMING_HEADERS
+        .iter()
+        .any(|framing| name.eq_ignore_ascii_case(framing))
+    {
+        return Err(format!(
+            "HTTP header {} is derived from the body and cannot be set",
+            name
+        ));
+    }
+    reqwest::header::HeaderValue::from_str(value).map_err(|_| {
+        format!(
+            "Invalid value for HTTP header {}: must be visible ASCII with no CR/LF",
+            name
+        )
+    })?;
+    Ok(())
+}
+
+/// Parse the trailing options hash of an `HTTP.<verb>` call: `timeout`
+/// (see [`extract_timeout`]) and `headers` (see [`extract_headers`]).
+fn extract_options(options: Option<&Value>) -> Result<RequestOptions, String> {
+    Ok(RequestOptions {
+        timeout: extract_timeout(options)?,
+        headers: extract_headers(options)?,
+    })
+}
+
 /// Send a reqwest request, recording method/url/status/duration in the
 /// per-request HTTP log when dev mode is on. Returns the response on success
 /// or the original error string on failure.
@@ -1053,15 +1177,14 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let timeout = extract_timeout(args.get(1))?;
+            let opts = extract_options(args.get(1))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
                         let resp =
-                            send_logged("GET", &url, apply_timeout(client.get(&*url), timeout))
-                                .await?;
+                            send_logged("GET", &url, opts.apply(client.get(&*url), &[])).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -1078,12 +1201,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(client.get(&*url), timeout)
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    format!("HTTP request failed: {}", describe_request_error(&e))
-                                })?;
+                            let resp =
+                                opts.apply(client.get(&*url), &[])
+                                    .send()
+                                    .await
+                                    .map_err(|e| {
+                                        format!(
+                                            "HTTP request failed: {}",
+                                            describe_request_error(&e)
+                                        )
+                                    })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1133,18 +1260,15 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = apply_timeout(
-                            client
-                                .post(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string()),
-                            timeout,
+                        let req = opts.apply(
+                            client.post(&*url).body(body.to_string()),
+                            &[("Content-Type", &content_type)],
                         );
                         let resp = send_logged("POST", &url, req).await?;
 
@@ -1163,18 +1287,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .post(&*url)
-                                    .header("Content-Type", content_type)
-                                    .body(body.to_string()),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.post(&*url).body(body.to_string()),
+                                    &[("Content-Type", &content_type)],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1224,18 +1346,15 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = apply_timeout(
-                            client
-                                .put(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string()),
-                            timeout,
+                        let req = opts.apply(
+                            client.put(&*url).body(body.to_string()),
+                            &[("Content-Type", &content_type)],
                         );
                         let resp = send_logged("PUT", &url, req).await?;
 
@@ -1254,18 +1373,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .put(&*url)
-                                    .header("Content-Type", content_type)
-                                    .body(body.to_string()),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.put(&*url).body(body.to_string()),
+                                    &[("Content-Type", &content_type)],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1315,18 +1432,15 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = apply_timeout(
-                            client
-                                .patch(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string()),
-                            timeout,
+                        let req = opts.apply(
+                            client.patch(&*url).body(body.to_string()),
+                            &[("Content-Type", &content_type)],
                         );
                         let resp = send_logged("PATCH", &url, req).await?;
 
@@ -1345,18 +1459,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .patch(&*url)
-                                    .header("Content-Type", content_type)
-                                    .body(body.to_string()),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.patch(&*url).body(body.to_string()),
+                                    &[("Content-Type", &content_type)],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1389,18 +1501,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let timeout = extract_timeout(args.get(1))?;
+            let opts = extract_options(args.get(1))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let resp = send_logged(
-                            "DELETE",
-                            &url,
-                            apply_timeout(client.delete(&*url), timeout),
-                        )
-                        .await?;
+                        let resp =
+                            send_logged("DELETE", &url, opts.apply(client.delete(&*url), &[]))
+                                .await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -1417,12 +1526,9 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(client.delete(&*url), timeout)
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    format!("HTTP request failed: {}", describe_request_error(&e))
-                                })?;
+                            let resp = opts.apply(client.delete(&*url), &[]).send().await.map_err(
+                                |e| format!("HTTP request failed: {}", describe_request_error(&e)),
+                            )?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1455,15 +1561,14 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let timeout = extract_timeout(args.get(1))?;
+            let opts = extract_options(args.get(1))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
                         let resp =
-                            send_logged("HEAD", &url, apply_timeout(client.head(&*url), timeout))
-                                .await?;
+                            send_logged("HEAD", &url, opts.apply(client.head(&*url), &[])).await?;
                         let status = resp.status().as_u16();
                         Ok(format!(
                             "{} {}",
@@ -1478,12 +1583,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(client.head(&*url), timeout)
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    format!("HTTP request failed: {}", describe_request_error(&e))
-                                })?;
+                            let resp =
+                                opts.apply(client.head(&*url), &[])
+                                    .send()
+                                    .await
+                                    .map_err(|e| {
+                                        format!(
+                                            "HTTP request failed: {}",
+                                            describe_request_error(&e)
+                                        )
+                                    })?;
                             let status = resp.status();
                             Ok(format!(
                                 "{} {}",
@@ -1516,16 +1625,13 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let timeout = extract_timeout(args.get(1))?;
+            let opts = extract_options(args.get(1))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http_local(async move {
-                        let req = apply_timeout(
-                            client.get(&*url).header("Accept", "application/json"),
-                            timeout,
-                        );
+                        let req = opts.apply(client.get(&*url), &[("Accept", "application/json")]);
                         let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();
@@ -1545,15 +1651,13 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client.get(&*url).header("Accept", "application/json"),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(client.get(&*url), &[("Accept", "application/json")])
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1589,13 +1693,13 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let timeout = extract_timeout(args.get(1))?;
+            let opts = extract_options(args.get(1))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http_local(async move {
-                        let req = apply_timeout(client.get(&*url), timeout);
+                        let req = opts.apply(client.get(&*url), &[]);
                         let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();
@@ -1616,12 +1720,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(client.get(&*url), timeout)
-                                .send()
-                                .await
-                                .map_err(|e| {
-                                    format!("HTTP request failed: {}", describe_request_error(&e))
-                                })?;
+                            let resp =
+                                opts.apply(client.get(&*url), &[])
+                                    .send()
+                                    .await
+                                    .map_err(|e| {
+                                        format!(
+                                            "HTTP request failed: {}",
+                                            describe_request_error(&e)
+                                        )
+                                    })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1656,18 +1764,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http_local(async move {
-                        let req = apply_timeout(
-                            client
-                                .post(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body),
-                            timeout,
+                        let req = opts.apply(
+                            client.post(&*url).body(json_body),
+                            &[("Content-Type", "application/json")],
                         );
                         let resp = send_logged("POST", &url, req).await?;
 
@@ -1688,18 +1793,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .post(&*url)
-                                    .header("Content-Type", "application/json")
-                                    .body(json_body),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.post(&*url).body(json_body),
+                                    &[("Content-Type", "application/json")],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1734,18 +1837,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http_local(async move {
-                        let req = apply_timeout(
-                            client
-                                .put(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body),
-                            timeout,
+                        let req = opts.apply(
+                            client.put(&*url).body(json_body),
+                            &[("Content-Type", "application/json")],
                         );
                         let resp = send_logged("PUT", &url, req).await?;
 
@@ -1766,18 +1866,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .put(&*url)
-                                    .header("Content-Type", "application/json")
-                                    .body(json_body),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.put(&*url).body(json_body),
+                                    &[("Content-Type", "application/json")],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1812,18 +1910,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            let timeout = extract_timeout(args.get(2))?;
+            let opts = extract_options(args.get(2))?;
 
             match get_tokio_handle() {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http_local(async move {
-                        let req = apply_timeout(
-                            client
-                                .patch(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body),
-                            timeout,
+                        let req = opts.apply(
+                            client.patch(&*url).body(json_body),
+                            &[("Content-Type", "application/json")],
                         );
                         let resp = send_logged("PATCH", &url, req).await?;
 
@@ -1844,18 +1939,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = apply_timeout(
-                                client
-                                    .patch(&*url)
-                                    .header("Content-Type", "application/json")
-                                    .body(json_body),
-                                timeout,
-                            )
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                format!("HTTP request failed: {}", describe_request_error(&e))
-                            })?;
+                            let resp = opts
+                                .apply(
+                                    client.patch(&*url).body(json_body),
+                                    &[("Content-Type", "application/json")],
+                                )
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("HTTP request failed: {}", describe_request_error(&e))
+                                })?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1900,10 +1993,12 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             // The 3rd arg is a flat headers hash. A `timeout` key (seconds) is
-            // pulled out as the per-call timeout rather than sent as a header.
+            // pulled out as the per-call timeout rather than sent as a header,
+            // and a nested `headers` hash is merged in so the same options
+            // shape as `HTTP.get(url, {"headers": ...})` works here too.
             let timeout = extract_timeout(args.get(2))?;
 
-            let mut headers_vec: Vec<(String, String)> = Vec::new();
+            let mut headers_vec: Vec<(String, String)> = extract_headers(args.get(2))?;
             if args.len() > 2 {
                 if let Value::Hash(headers) = &args[2] {
                     for (key, value) in headers.borrow().iter() {
@@ -1911,13 +2006,15 @@ pub fn register_http_class(env: &mut Environment) {
                             HashKey::String(s) => s.clone(),
                             _ => continue,
                         };
-                        if key_str.as_ref() == "timeout" {
+                        if key_str.as_ref() == "timeout" || key_str.as_ref() == "headers" {
                             continue;
                         }
                         let value_str = match value {
                             Value::String(s) => s.clone(),
+                            Value::Null => continue,
                             _ => format!("{}", value).into(),
                         };
+                        validate_header(&key_str, &value_str)?;
                         headers_vec.push((key_str.to_string(), value_str.to_string()));
                     }
                 }
@@ -2123,11 +2220,11 @@ pub fn register_http_class(env: &mut Environment) {
                 validate_url_for_ssrf(u)?;
             }
 
-            // Optional trailing options hash applies one timeout to every
-            // request in the batch.
-            let timeout = extract_timeout(args.get(1))?;
+            // Optional trailing options hash applies one timeout / header set
+            // to every request in the batch.
+            let opts = extract_options(args.get(1))?;
 
-            let results = run_parallel_gets(urls, timeout);
+            let results = run_parallel_gets(urls, opts);
 
             let values: Vec<Value> = results
                 .into_iter()
@@ -2185,11 +2282,11 @@ pub fn register_http_class(env: &mut Environment) {
                 validate_url_for_ssrf(u)?;
             }
 
-            // Optional trailing options hash applies one timeout to every
-            // request in the batch.
-            let timeout = extract_timeout(args.get(1))?;
+            // Optional trailing options hash applies one timeout / header set
+            // to every request in the batch.
+            let opts = extract_options(args.get(1))?;
 
-            let results = run_parallel_gets_json(urls, timeout);
+            let results = run_parallel_gets_json(urls, opts);
 
             let values: Vec<Value> = results
                 .into_iter()
@@ -2411,10 +2508,7 @@ fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
     }
 }
 
-fn run_parallel_gets(
-    urls: Vec<String>,
-    timeout: Option<std::time::Duration>,
-) -> Vec<Result<String, String>> {
+fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<String, String>> {
     // SEC-020: process at most `parallel_max_concurrency()` URLs at a time.
     // Each chunk fully completes before the next starts so we never hold
     // more than that many OS threads alive.
@@ -2431,6 +2525,7 @@ fn run_parallel_gets(
             chunk
                 .into_iter()
                 .map(|url| {
+                    let opts = opts.clone();
                     thread::spawn(move || {
                         let start = std::time::Instant::now();
                         let url_for_call = url.clone();
@@ -2440,7 +2535,8 @@ fn run_parallel_gets(
                         let (status, body): (u16, Result<String, String>) =
                             match run_user_http_request::<_, _, (u16, Result<String, String>)>(
                                 move |client| async move {
-                                    let resp = apply_timeout(client.get(&url_for_call), timeout)
+                                    let resp = opts
+                                        .apply(client.get(&url_for_call), &[])
                                         .send()
                                         .await
                                         .map_err(|e| {
@@ -2502,10 +2598,7 @@ fn run_parallel_gets(
     results
 }
 
-fn run_parallel_gets_json(
-    urls: Vec<String>,
-    timeout: Option<std::time::Duration>,
-) -> Vec<Result<Value, String>> {
+fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Value, String>> {
     // Fetch bodies on worker threads, then parse JSON on the main thread —
     // `Value` is `!Send` (contains Rc), so JSON parsing can't happen inside
     // the spawned threads.
@@ -2524,6 +2617,7 @@ fn run_parallel_gets_json(
             chunk
                 .into_iter()
                 .map(|url| {
+                    let opts = opts.clone();
                     thread::spawn(move || {
                         let start = std::time::Instant::now();
                         let url_for_call = url.clone();
@@ -2531,17 +2625,19 @@ fn run_parallel_gets_json(
                         let (status, body): (u16, Result<String, String>) =
                             match run_user_http_request::<_, _, (u16, Result<String, String>)>(
                                 move |client| async move {
-                                    let resp = apply_timeout(
-                                        client
-                                            .get(&url_for_call)
-                                            .header("Accept", "application/json"),
-                                        timeout,
-                                    )
-                                    .send()
-                                    .await
-                                    .map_err(|e| {
-                                        format!("Request failed: {}", describe_request_error(&e))
-                                    })?;
+                                    let resp = opts
+                                        .apply(
+                                            client.get(&url_for_call),
+                                            &[("Accept", "application/json")],
+                                        )
+                                        .send()
+                                        .await
+                                        .map_err(|e| {
+                                            format!(
+                                                "Request failed: {}",
+                                                describe_request_error(&e)
+                                            )
+                                        })?;
                                     let code = resp.status().as_u16();
                                     if !resp.status().is_success() {
                                         let body =
@@ -3002,7 +3098,7 @@ mod parallel_logging_tests {
         // get_all
         http_log::clear();
         let urls = vec![url("/a"), url("/b"), url("/c")];
-        let _ = run_parallel_gets(urls.clone(), None);
+        let _ = run_parallel_gets(urls.clone(), RequestOptions::default());
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 3, "get_all should record 3 entries");
         for (i, entry) in snap.iter().enumerate() {
@@ -3015,7 +3111,7 @@ mod parallel_logging_tests {
         // get_all_json
         http_log::clear();
         let urls = vec![url("/x"), url("/y")];
-        let _ = run_parallel_gets_json(urls.clone(), None);
+        let _ = run_parallel_gets_json(urls.clone(), RequestOptions::default());
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 2, "get_all_json should record 2 entries");
         for (i, entry) in snap.iter().enumerate() {
@@ -3055,7 +3151,10 @@ mod parallel_logging_tests {
         let dead_listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let dead_port = dead_listener.local_addr().unwrap().port();
         drop(dead_listener);
-        let _ = run_parallel_gets(vec![format!("http://127.0.0.1:{}/", dead_port)], None);
+        let _ = run_parallel_gets(
+            vec![format!("http://127.0.0.1:{}/", dead_port)],
+            RequestOptions::default(),
+        );
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].status, 0);
@@ -3065,7 +3164,7 @@ mod parallel_logging_tests {
         // short-circuit when neither dev log is enabled.
         http_log::set_enabled(false);
         http_log::clear();
-        let _ = run_parallel_gets(vec![url("/d1"), url("/d2")], None);
+        let _ = run_parallel_gets(vec![url("/d1"), url("/d2")], RequestOptions::default());
         let snap = http_log::snapshot();
         assert_eq!(
             snap.len(),
@@ -3387,7 +3486,13 @@ mod per_call_timeout_tests {
         let port = spawn_stalling_server();
         let url = format!("http://127.0.0.1:{}/", port);
         let started = std::time::Instant::now();
-        let results = run_parallel_gets(vec![url], Some(std::time::Duration::from_millis(300)));
+        let results = run_parallel_gets(
+            vec![url],
+            RequestOptions {
+                timeout: Some(std::time::Duration::from_millis(300)),
+                headers: vec![],
+            },
+        );
         let elapsed = started.elapsed();
 
         assert_eq!(results.len(), 1);
@@ -3477,5 +3582,212 @@ mod ssrf_allowlist_tests {
         with_allowlist(Some("127.0.0.1:9090"), || {
             assert!(validate_url_for_ssrf_impl("https://example.com/", false).is_ok());
         });
+    }
+}
+
+#[cfg(test)]
+mod request_header_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn opts(pairs: Vec<(&str, Value)>) -> Value {
+        let mut h = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(HashKey::String(k.into()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    #[test]
+    fn extract_headers_absent_or_null_is_empty() {
+        assert!(extract_headers(None).unwrap().is_empty());
+        let h = opts(vec![("timeout", Value::Int(5))]);
+        assert!(extract_headers(Some(&h)).unwrap().is_empty());
+        let h = opts(vec![("headers", Value::Null)]);
+        assert!(extract_headers(Some(&h)).unwrap().is_empty());
+        // A non-hash options arg is ignored, like `extract_timeout`.
+        assert!(extract_headers(Some(&Value::String("x".into())))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn extract_headers_reads_pairs_and_stringifies_scalars() {
+        let h = opts(vec![(
+            "headers",
+            opts(vec![
+                ("Authorization", Value::String("Bearer tok".into())),
+                ("X-Retry", Value::Int(3)),
+                ("X-Skipped", Value::Null),
+            ]),
+        )]);
+        let mut got = extract_headers(Some(&h)).unwrap();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("Authorization".to_string(), "Bearer tok".to_string()),
+                ("X-Retry".to_string(), "3".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_headers_rejects_bad_shapes() {
+        // `headers` must be a hash.
+        let h = opts(vec![("headers", Value::String("Authorization: x".into()))]);
+        let err = extract_headers(Some(&h)).unwrap_err();
+        assert!(err.contains("must be a hash"), "{err}");
+
+        // Names reqwest would refuse fail up-front with the name in the message.
+        let h = opts(vec![(
+            "headers",
+            opts(vec![("Bad Header", Value::String("v".into()))]),
+        )]);
+        let err = extract_headers(Some(&h)).unwrap_err();
+        assert!(err.contains("Invalid HTTP header name"), "{err}");
+
+        // So do values with a CR/LF (header injection).
+        let h = opts(vec![(
+            "headers",
+            opts(vec![("X-Ok", Value::String("a\r\nX-Evil: b".into()))]),
+        )]);
+        let err = extract_headers(Some(&h)).unwrap_err();
+        assert!(err.contains("Invalid value for HTTP header X-Ok"), "{err}");
+        // …without echoing the (possibly secret) value back.
+        assert!(!err.contains("X-Evil"), "value leaked into error: {err}");
+    }
+
+    /// A rejected `Authorization` value never lands in the error string —
+    /// that string reaches the error page and the app log.
+    #[test]
+    fn invalid_header_error_does_not_echo_the_value() {
+        let err = validate_header("Authorization", "Bearer s3cr3t-token\n").unwrap_err();
+        assert!(
+            err.starts_with("Invalid value for HTTP header Authorization"),
+            "{err}"
+        );
+        assert!(!err.contains("s3cr3t"), "secret leaked: {err}");
+    }
+
+    /// Framing headers are computed from the body; a caller-supplied
+    /// `Content-Length` would be sent verbatim and desync the connection.
+    #[test]
+    fn framing_headers_are_refused() {
+        for name in ["Content-Length", "content-length", "Transfer-Encoding"] {
+            let err = validate_header(name, "5").unwrap_err();
+            assert!(err.contains("derived from the body"), "{name}: {err}");
+        }
+        // Ordinary headers still pass.
+        validate_header("Content-Type", "text/plain").unwrap();
+        validate_header("X-Request-Id", "abc-123").unwrap();
+    }
+
+    #[test]
+    fn extract_options_combines_timeout_and_headers() {
+        let h = opts(vec![
+            ("timeout", Value::Float(1.5)),
+            ("headers", opts(vec![("X-A", Value::String("1".into()))])),
+        ]);
+        let got = extract_options(Some(&h)).unwrap();
+        assert_eq!(got.timeout, Some(std::time::Duration::from_millis(1500)));
+        assert_eq!(got.headers, vec![("X-A".to_string(), "1".to_string())]);
+    }
+
+    /// Caller headers override the builtin's defaults (case-insensitively)
+    /// instead of being appended alongside them, and untouched defaults
+    /// still go out.
+    #[test]
+    fn apply_lets_caller_override_default_headers() {
+        let client = reqwest::Client::new();
+        let opts = RequestOptions {
+            timeout: None,
+            headers: vec![
+                (
+                    "content-type".to_string(),
+                    "application/x-www-form-urlencoded".to_string(),
+                ),
+                ("X-Custom".to_string(), "yes".to_string()),
+            ],
+        };
+        let req = opts
+            .apply(
+                client.post("http://example.invalid/"),
+                &[
+                    ("Content-Type", "application/json"),
+                    ("Accept", "application/json"),
+                ],
+            )
+            .build()
+            .expect("valid request");
+        let headers = req.headers();
+        let content_types: Vec<_> = headers.get_all("content-type").iter().collect();
+        assert_eq!(content_types.len(), 1, "no duplicate Content-Type");
+        assert_eq!(content_types[0], "application/x-www-form-urlencoded");
+        assert_eq!(headers.get("accept").unwrap(), "application/json");
+        assert_eq!(headers.get("x-custom").unwrap(), "yes");
+    }
+
+    /// Echoes the raw request head back as the response body so the test can
+    /// assert on what actually went over the wire.
+    fn spawn_echo_server() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                thread::spawn(move || {
+                    let mut s = stream;
+                    let mut buf = [0u8; 4096];
+                    let mut head = Vec::new();
+                    loop {
+                        let n = s.read(&mut buf).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        head.extend_from_slice(&buf[..n]);
+                        if head.windows(4).any(|w| w == b"\r\n\r\n") || head.len() > 64 * 1024 {
+                            break;
+                        }
+                    }
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        head.len()
+                    );
+                    let _ = s.write_all(resp.as_bytes());
+                    let _ = s.write_all(&head);
+                });
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn headers_reach_the_wire() {
+        let port = spawn_echo_server();
+        let url = format!("http://127.0.0.1:{}/echo", port);
+        let opts = RequestOptions {
+            timeout: None,
+            headers: vec![
+                (
+                    "Authorization".to_string(),
+                    "Bearer secret-token".to_string(),
+                ),
+                ("X-Request-Source".to_string(), "soli-test".to_string()),
+            ],
+        };
+        let results = run_parallel_gets(vec![url], opts);
+        let head = results[0]
+            .as_ref()
+            .expect("echo server answered")
+            .to_lowercase();
+        assert!(
+            head.contains("authorization: bearer secret-token"),
+            "missing Authorization in request head:\n{head}"
+        );
+        assert!(
+            head.contains("x-request-source: soli-test"),
+            "missing custom header in request head:\n{head}"
+        );
     }
 }

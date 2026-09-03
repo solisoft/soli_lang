@@ -20,7 +20,57 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-10">Nothing yet &mdash; changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-2" class="text-amber-400 hover:underline">v2.0.2</a> will be listed here.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-3" class="text-amber-400 hover:underline">v2.0.3</a>.</p>
+
+        <p class="text-gray-500 text-sm leading-relaxed mb-10">Nothing yet.</p>
+    </section>
+
+    <section id="v2-0-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.0.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-03</span></h2>
+
+        <h3 id="v2-0-3-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security audit</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-4">
+            A full-repository audit produced 57 findings, all fixed in this cycle.
+            Most need nothing from you. The ones below change behaviour you may be
+            relying on &mdash; read these before upgrading.
+        </p>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-6">
+            <li><strong class="text-white"><code class="text-cyan-400">--dev</code> refuses to start when <code class="text-cyan-400">APP_ENV</code> is <code>production</code>.</strong> It used to skip every production boot check silently &mdash; no <code class="text-cyan-400">SOLI_APP_HOSTS</code>, no session-secret floor, security headers off, the <code class="text-cyan-400">/__solidev</code> diagnostics exposed &mdash; with nothing in the output to say so. Drop the flag, or set <code class="text-cyan-400">APP_ENV</code> to something else.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">enable_trust_proxy</code> is off by default in new apps.</strong> An <code class="text-cyan-400">X-Forwarded-*</code> header is only trustworthy behind a proxy that rewrites it; on a directly-exposed app it let any client spoof the request authority and scheme, and take a fresh identity per request so the login throttle never tripped. Uncomment it when you deploy behind a proxy, and name the hops with the new <code class="text-cyan-400">SOLI_TRUSTED_PROXIES</code> (IPs or CIDRs, comma-separated) so the headers are honoured only for requests that really came from them.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">cors()</code> refuses <code class="text-cyan-400">credentials: true</code> with a wildcard origin.</strong> Browsers reject <code>Allow-Origin: *</code> alongside credentials &mdash; that refusal is the safety net &mdash; and Soli sidestepped it by echoing back whatever Origin asked, so every cookie-authenticated route on the path was readable and writable by any website. List the origins explicitly. A wildcard rule also no longer waives the CSRF origin check; only a listed origin does.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">.where({...})</code> refuses a request-supplied hash or array as a value.</strong> The hash form reads a nested hash as operators (<code>{"gt": 10}</code>) and an array as <code>IN</code> &mdash; the same shape a JSON body can send. A client posting <code>{"token": {"ne": null}}</code> turned an equality check on a secret into <code>!= null</code> and walked past it. Values that arrived with the request are now tracked, and one that would act as an operator raises with the field named. Operator hashes you write in source are unaffected.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">Model.create</code> / <code class="text-cyan-400">Model.update</code> never persist <code>_key</code>, <code>_id</code>, <code>_rev</code>, <code>_from</code>, <code>_to</code> or an STI <code>type</code> from their input</strong>, with or without <code class="text-cyan-400">attr_accessible</code>. And the static <code class="text-cyan-400">Model.update(id, hash)</code> now runs validations, against the merged record rather than the patch, returning <code>{"_errors": [...]}</code> on failure &mdash; it used to write straight past every rule the model declared.</li>
+            <li><strong class="text-white">LiveView rooms are opt-in per component.</strong> Declare them with <code class="text-cyan-400">live_rooms("desk")</code> in <code class="text-cyan-400">config/routes.sl</code>. <code class="text-cyan-400">?room=</code> on an undeclared component handed its full rendered HTML, and the right to drive its events, to anyone who guessed the name. A client may also only send <code class="text-cyan-400">_assigns</code> keys the server rendered as <code class="text-cyan-400">soli-assign-*</code>, and only address components present in its own markup.</li>
+            <li><strong class="text-white">The email-confirmation link no longer signs the visitor in</strong>, and expires after 48 hours; a password reset now invalidates existing sessions. Both are in the generated auth scaffold. A confirmation link is a <code>GET</code> from an email, so a link scanner or a forwarded message received the session.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">/_metrics</code> is no longer public.</strong> With <code class="text-cyan-400">SOLI_METRICS_TOKEN</code> set it requires that bearer token; without it, only loopback and private-range peers.</li>
+        </ul>
+        <p class="text-gray-400 text-sm leading-relaxed mb-4">
+            The rest, in brief: request bodies, WebSocket frames, connections,
+            page sizes, parameter counts and handler run time are all bounded
+            now, so one client can no longer take a worker (or the process) down;
+            the production error log stops printing cookies and passwords; Web
+            Push, webhooks and PDF images go through the same request-forgery
+            gate as <code class="text-cyan-400">HTTP.*</code>; and the escaping
+            story gained <code class="text-cyan-400">json_script()</code> for JSON
+            inside a <code>&lt;script&gt;</code>. See the repository
+            <code class="text-cyan-400">CHANGELOG.md</code> for the full list.
+        </p>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">New knobs.</strong> <code class="text-cyan-400">SOLI_TRUSTED_PROXIES</code>, <code class="text-cyan-400">SOLI_METRICS_TOKEN</code>, <code class="text-cyan-400">SOLI_HANDLER_TIMEOUT_SECS</code>, <code class="text-cyan-400">SOLI_WORKER_STACK_MB</code>, <code class="text-cyan-400">SOLI_MAX_CONNECTIONS</code>, <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS</code>, <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS_PER_IP</code>, <code class="text-cyan-400">SOLI_WS_MAX_MESSAGES_PER_SEC</code>, <code class="text-cyan-400">SOLI_BODY_READ_TIMEOUT_SECS</code>, <code class="text-cyan-400">SOLI_MAX_PAGE_SIZE</code>, <code class="text-cyan-400">SOLI_MAX_PARAM_PAIRS</code>, <code class="text-cyan-400">SOLI_MAX_RANGE_LEN</code>, <code class="text-cyan-400">SOLI_MAX_STRING_ALLOC_BYTES</code>, <code class="text-cyan-400">SOLI_RATE_LIMIT_IPV6_PREFIX</code>. Every one has a working default; set them only if a limit gets in your way.</li>
+        </ul>
+
+        <h3 id="v2-0-3-api" class="text-xl font-semibold text-white mb-4 scroll-mt-24">HTTP client</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">headers</code> in the options hash of every <code class="text-cyan-400">HTTP.*</code> verb.</strong> <code class="text-cyan-400">HTTP.get(url, {"headers": {"Authorization": "Bearer " + token}})</code> now sends the header &mdash; as do <code class="text-cyan-400">post</code>, <code class="text-cyan-400">put</code>, <code class="text-cyan-400">patch</code>, <code class="text-cyan-400">delete</code>, <code class="text-cyan-400">head</code>, the <code class="text-cyan-400">*_json</code> / <code class="text-cyan-400">get_jsonp</code> variants, and <code class="text-cyan-400">get_all</code> / <code class="text-cyan-400">get_all_json</code> for every URL in the batch. That is the shape the docs already showed, but the runtime read only <code class="text-cyan-400">timeout</code> from the hash and dropped the headers on the floor, so an authenticated call went out anonymous unless you fell back to <code class="text-cyan-400">HTTP.request</code>.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">Yours replaces the default.</strong> A <code class="text-cyan-400">Content-Type</code> on the body verbs or an <code class="text-cyan-400">Accept</code> on the JSON variants overrides the builtin's own, matched case-insensitively, so a request never carries two.</li>
+                    <li>String values go out verbatim, numbers and booleans are stringified, a <code>null</code> value skips that header. A name or value the client would refuse (a space in the name, a CR/LF in the value) <strong class="text-white">raises before sending</strong>, naming the header (never its value, which is usually the credential), instead of surfacing at send time as an opaque builder error. <code class="text-cyan-400">Content-Length</code> and <code class="text-cyan-400">Transfer-Encoding</code> are refused on every path, <code class="text-cyan-400">HTTP.request</code>'s flat hash included: the client sends a caller-supplied length verbatim, and a mismatch desyncs the upstream connection.</li>
+                    <li><code class="text-cyan-400">HTTP.request(method, url, headers)</code> keeps its flat headers hash and also merges a nested <code class="text-cyan-400">headers</code> key, so the one options shape works everywhere.</li>
+                </ul>
+                See <a href="/docs/builtins/http#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>.
+            </li>
+            <li><strong class="text-white">The static checker knows the whole <code class="text-cyan-400">HTTP</code> class.</strong> A top-level script, <code class="text-cyan-400">soli check</code> and <code class="text-cyan-400">soli -e</code> type-check before running, and the typed <code class="text-cyan-400">HTTP</code> declaration was a partial list with no options parameter &mdash; so <code class="text-cyan-400">HTTP.get(url, {"timeout": 5})</code> failed with <code>Wrong number of arguments: expected 1, got 2</code> and <code class="text-cyan-400">HTTP.get_json(&hellip;)</code> with <code>Cannot access member 'get_json' on type 'HTTP'</code> before a byte was sent. Every runtime verb is now declared with its trailing options hash, and indexing a Future (<code class="text-cyan-400">HTTP.get(url)["status"]</code>) is accepted the way member access on one already was, instead of <code>cannot index Future&lt;String&gt;</code>.</li>
+        </ul>
     </section>
 
     <section id="v2-0-2" class="mb-16 scroll-mt-24">

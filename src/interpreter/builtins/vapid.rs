@@ -460,27 +460,53 @@ fn send_push(
 
     let authorization = format!("vapid t={}, k={}", jwt, public_key_b64);
 
-    let client = reqwest::blocking::Client::new();
-    let mut req = client
-        .post(endpoint)
-        .header("Authorization", authorization)
-        .header("Content-Encoding", "aes128gcm")
-        .header("Content-Type", "application/octet-stream")
-        .header("TTL", ttl.to_string())
-        .body(encrypted.body);
-    if let Some(u) = urgency {
-        req = req.header("Urgency", u);
+    // The endpoint is attacker-supplied: it arrives in the subscription object
+    // a browser (or anyone posting to the subscribe route) hands the app, and is
+    // then stored and replayed on every push. A bare client here made it a
+    // full-strength SSRF sink — `http://169.254.169.254/…` or a 302 into the
+    // private network, with the response body handed back to Soli. Go through
+    // the same gate and the same client as `HTTP.*`: blocklist up front,
+    // DNS filtered at connect time (closing the rebinding TOCTOU), and
+    // redirects re-validated per hop.
+    if !endpoint.trim().to_ascii_lowercase().starts_with("https://") {
+        return Err(format!(
+            "vapid_send(): subscription endpoint must be an https:// URL, got '{}'",
+            endpoint
+        ));
     }
-    if let Some(t) = topic {
-        req = req.header("Topic", t);
-    }
+    crate::interpreter::builtins::http_class::validate_url_for_ssrf(endpoint)
+        .map_err(|e| format!("vapid_send(): {}", e))?;
 
-    let resp = req
-        .send()
-        .map_err(|e| format!("vapid_send(): HTTP request failed: {}", e))?;
-
-    let status = resp.status().as_u16() as i64;
-    let body = resp.text().unwrap_or_default();
+    let client = crate::interpreter::builtins::http_class::get_user_http_client().clone();
+    let endpoint_owned = endpoint.to_string();
+    let ttl_header = ttl.to_string();
+    let (status, body) =
+        crate::interpreter::builtins::http_class::block_on_user_http_local(async move {
+            let mut req = client
+                .post(&endpoint_owned)
+                .header("Authorization", authorization)
+                .header("Content-Encoding", "aes128gcm")
+                .header("Content-Type", "application/octet-stream")
+                .header("TTL", ttl_header)
+                .body(encrypted.body);
+            if let Some(u) = urgency {
+                req = req.header("Urgency", u);
+            }
+            if let Some(t) = topic {
+                req = req.header("Topic", t);
+            }
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| format!("vapid_send(): HTTP request failed: {}", e))?;
+            let status = resp.status().as_u16() as i64;
+            // Bounded read: a push service replies with a short error document,
+            // so an unbounded body here only ever serves an attacker.
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
+            Ok::<(i64, String), String>((status, body))
+        })?;
 
     let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(HashKey::String("status".into()), Value::Int(status));

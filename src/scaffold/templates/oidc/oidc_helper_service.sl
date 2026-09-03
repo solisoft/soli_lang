@@ -152,6 +152,17 @@ def oidc_verify_access_token(token)
   }) rescue null
   return null if claims.nil?
   return null if claims["error"] == true
+
+  # An id_token must not pass as an access token.
+  #
+  # Both are RS256, signed with the same key and carrying the same issuer, so
+  # verifying signature and `iss` alone accepted either — an id_token handed to
+  # any relying party then worked as a bearer credential here. Requiring `jti`
+  # and `scope` (which only access tokens carry) separates them, and `jti` is
+  # also what makes the revocation check below mean anything: `revoked?(null)`
+  # silently answered "no".
+  return null if claims["jti"].blank?
+  return null if claims["scope"].nil?
   return null if OauthRevocation.revoked?(claims["jti"])
 
   return claims

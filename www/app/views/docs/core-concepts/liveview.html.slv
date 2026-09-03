@@ -250,6 +250,13 @@ def counter(event_data: Any) -> Any {
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"&gt;&lt;/div&gt;</code></pre>
+
+    <p class="text-gray-400 mb-3"><strong class="text-white">Rooms are opt-in per component.</strong> Declare them in <code class="text-cyan-400">config/routes.sl</code>:</p>
+
+<pre data-filename="config/routes.sl"><code class="language-soli text-sm">live_rooms("desk")            # one component
+live_rooms("desk", "board")   # or several</code></pre>
+
+    <p class="text-gray-400 mb-6">An undeclared component ignores <code class="text-cyan-400">?room=</code> and gets its ordinary per-session instance. This is a security boundary, not bookkeeping: a room instance is shared by everyone who names it &mdash; same state, same rendered HTML, same events &mdash; so without the declaration anyone who guessed a room name received a component's live markup and the right to drive it.</p>
         </div>
     </div>
 

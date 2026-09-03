@@ -488,14 +488,20 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
                 let mut sorted = arr.borrow().clone();
-                sorted.sort_by(|a, b| match (a, b) {
-                    (Value::Int(x), Value::Int(y)) => x.cmp(y),
-                    (Value::Float(x), Value::Float(y)) => {
-                        x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                    }
-                    (Value::String(x), Value::String(y)) => x.cmp(y),
-                    _ => std::cmp::Ordering::Equal,
-                });
+                // Tolerant sort: the default ordering answers `Equal` across
+                // types, which is not transitive, and `slice::sort_by` panics
+                // when it detects that.
+                crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                    &mut sorted,
+                    |a, b| match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => x.cmp(y),
+                        (Value::Float(x), Value::Float(y)) => {
+                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                        }
+                        (Value::String(x), Value::String(y)) => x.cmp(y),
+                        _ => std::cmp::Ordering::Equal,
+                    },
+                );
                 Ok(Value::Array(Rc::new(RefCell::new(sorted))))
             }
             // ActiveRecord-style chainable query methods that also work on a
@@ -1040,12 +1046,15 @@ impl Vm {
                     Value::String(key) => {
                         let hash_key = HashKey::String(key.clone());
                         let mut sorted = arr.borrow().clone();
-                        sorted.sort_by(|a, b| {
-                            compare_sort_values(
-                                &extract_hash_value(a, &hash_key),
-                                &extract_hash_value(b, &hash_key),
-                            )
-                        });
+                        crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                            &mut sorted,
+                            |a, b| {
+                                compare_sort_values(
+                                    &extract_hash_value(a, &hash_key),
+                                    &extract_hash_value(b, &hash_key),
+                                )
+                            },
+                        );
                         Ok(Value::Array(Rc::new(RefCell::new(sorted))))
                     }
                     cb @ (Value::Function(_) | Value::VmClosure(_)) => {

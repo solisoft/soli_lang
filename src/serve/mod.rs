@@ -300,9 +300,8 @@ static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    clear_response_cookies, ensure_session, finalize_session_cookie, get_current_session_id,
-    parse_cookie_pairs, session_id_from_cookie_pairs, set_current_session_id,
-    take_response_cookies,
+    clear_response_cookies, finalize_session_cookie, get_current_session_id, parse_cookie_pairs,
+    session_id_from_cookie_pairs, set_current_session_id, take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs, StrKey};
@@ -1189,6 +1188,16 @@ fn run_hyper_server_worker_pool(
 
             // Try the requested port, then scan for a free one
             let mut try_port = port;
+            // Bounds how many connections can be open at once (see
+            // `server_constants::max_connections`). A semaphore rather than a
+            // counter so the permit is released by `Drop` on every exit path.
+            let connection_limiter = std::sync::Arc::new(tokio::sync::Semaphore::new(
+                match server_constants::max_connections() {
+                    0 => tokio::sync::Semaphore::MAX_PERMITS,
+                    n => n,
+                },
+            ));
+
             let listener = loop {
                 let addr = SocketAddr::from((bind_host, try_port));
                 match TcpListener::bind(addr).await {
@@ -1253,6 +1262,22 @@ fn run_hyper_server_worker_pool(
                 // the peer's delayed-ACK, even when the CPU is idle. Matches the
                 // proxy/db convention which already set this on their sockets.
                 let _ = stream.set_nodelay(true);
+
+                // Global connection cap. Without one, a client that opens
+                // sockets and trickles bodies exhausts file descriptors and
+                // memory long before any per-request limit applies. Closing
+                // immediately past the cap sheds the flood while keeping the
+                // listener responsive for everyone else.
+                let connection_permit = match connection_limiter.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        // Drop the stream: a RST is the fastest possible signal
+                        // to a well-behaved client to back off.
+                        drop(stream);
+                        continue;
+                    }
+                };
+
                 let io = TokioIo::new(stream);
                 let request_tx = worker_queues_for_tokio.get_sender();
                 let reload_tx = reload_tx_for_tokio.clone();
@@ -1268,6 +1293,8 @@ fn run_hyper_server_worker_pool(
                     // last client has actually finished. Dropped on every exit
                     // path, including error and panic.
                     let _conn = shutdown::ConnectionGuard::new();
+                    // Released when this connection ends, however it ends.
+                    let _connection_permit = connection_permit;
                     let service = service_fn(move |req| {
                         let request_tx = request_tx.clone();
                         let reload_tx = reload_tx.clone();
@@ -2063,7 +2090,11 @@ fn run_hyper_server_worker_pool(
         let routes_file = routes_file.clone();
         let jobs_dir = jobs_dir.clone();
 
-        let builder = thread::Builder::new().name(format!("{}-{}", role_label, i));
+        // A big stack, because the interpreter recurses natively and a stack
+        // overflow aborts the whole process rather than failing one request.
+        let builder = thread::Builder::new()
+            .name(format!("{}-{}", role_label, i))
+            .stack_size(server_constants::worker_stack_bytes());
         let handler = builder.spawn(move || {
             // Set tokio runtime handle for this worker thread (used by HTTP builtins)
             set_tokio_handle(runtime_handle.clone());
@@ -2711,7 +2742,32 @@ struct WebSocketEventData {
     event_type: String,
     message: Option<String>,
     channel: Option<String>,
+    /// The socket's identity, captured once at the upgrade.
+    ///
+    /// Realtime handlers used to run with no session at all: `set_current_session_id`
+    /// was only ever called on the HTTP path, so `session_get` returned null and
+    /// `get_current_user()` — which the WebSocket docs show in their presence
+    /// example — could not work. The only identity left was whatever the client
+    /// put in its first message, which is no identity at all: anyone could join
+    /// `user:<id>` channels or track presence as another person. The docs also
+    /// promised `headers`, `params` and `query` on the event and none were
+    /// delivered.
+    context: Arc<WebSocketContext>,
     response_tx: oneshot::Sender<WebSocketActionData>,
+}
+
+/// What the HTTP upgrade knew about a socket, kept for the life of the
+/// connection so every event can be handled as that user.
+#[derive(Debug, Default)]
+struct WebSocketContext {
+    /// Session id resolved from the upgrade request's cookies, when it had any.
+    session_id: Option<String>,
+    /// Request headers at upgrade time, lowercased names.
+    headers: Vec<(String, String)>,
+    /// Parsed query string of the upgrade URL.
+    query: Vec<(String, String)>,
+    /// Peer address of the socket.
+    peer_ip: String,
 }
 
 /// Actions to take after processing a WebSocket event.
@@ -2867,6 +2923,20 @@ async fn handle_hyper_request(
 
     // Prometheus metrics endpoint — no CSRF check, intended for scraping
     if path == "/_metrics" && method == "GET" {
+        // Prometheus text tells anyone who reads it the request volume, timing
+        // distribution and error rate of the whole app. It was served to
+        // anybody who asked, on the same public port. `SOLI_METRICS_TOKEN`
+        // requires a bearer token; unset, access is limited to loopback and
+        // private-range peers (where a scraper normally lives), so an existing
+        // in-cluster Prometheus keeps working without configuration while the
+        // public internet stops seeing it.
+        if !metrics_request_allowed(req.headers(), peer_addr.ip()) {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(full(Bytes::from_static(b"Not Found")))
+                .unwrap());
+        }
         let body = crate::metrics::Metrics::global().render_prometheus();
         return Ok(Response::builder()
             .status(StatusCode::OK)
@@ -2965,7 +3035,21 @@ async fn handle_hyper_request(
                         (key == "room").then_some(value)
                     })
                 })
-                .and_then(sanitize_mount_id);
+                .and_then(sanitize_mount_id)
+                // Rooms are opt-in per component (`live_rooms("desk")` in
+                // routes.sl). Undeclared, `?room=` is ignored and the socket
+                // gets its own per-session instance, which is what an
+                // unshared component always meant.
+                .filter(|_| {
+                    let allowed = crate::live::socket::is_room_component(&component);
+                    if !allowed {
+                        eprintln!(
+                            "[LiveView] ignoring ?room= for component {component:?}: not declared \
+                             room-shareable (add live_rooms({component:?}) to config/routes.sl)"
+                        );
+                    }
+                    allowed
+                });
 
             start_liveview_reaper();
 
@@ -3197,7 +3281,14 @@ async fn handle_hyper_request(
         if has_ws_route {
             // Get the global WebSocket registry
             let ws_registry = crate::serve::websocket::get_ws_registry();
-            return handle_websocket_upgrade(req, ws_registry, path, ws_event_tx).await;
+            return handle_websocket_upgrade(
+                req,
+                ws_registry,
+                path,
+                ws_event_tx,
+                peer_addr.ip().to_string(),
+            )
+            .await;
         } else {
             // No WebSocket route found
             return Ok(Response::builder()
@@ -3553,6 +3644,27 @@ async fn handle_hyper_request(
 
     // Development mode endpoints
     if dev_mode {
+        // These are diagnostics, not application routes: the request inspector
+        // replays another visitor's request with their cookies, the mail inbox
+        // lists every message the app sent (password-reset links with live
+        // tokens included), and the component/mailer catalogues enumerate the
+        // app's internals. `--dev` binds 0.0.0.0 like any other run, so all of
+        // that was readable by anyone on the same network — only `/__dev/repl`
+        // and `/__dev/source` were peer-gated. Hold them to the same rule.
+        let dev_diagnostics_path = path.starts_with("/__solidev/")
+            || path == "/__soli/components"
+            || path.starts_with("/__soli/components/")
+            || path == "/__soli/mailers"
+            || path.starts_with("/__soli/mailers/")
+            || path == "/__soli/inbox"
+            || path.starts_with("/__soli/inbox/");
+        if dev_diagnostics_path && !is_trusted_dev_peer(peer_addr.ip()) {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(full(Bytes::from("Not Found")))
+                .unwrap());
+        }
+
         // REPL endpoint
         if path == "/__dev/repl" && method == "POST" {
             return handle_dev_repl(req, peer_addr).await;
@@ -3736,7 +3848,24 @@ async fn handle_hyper_request(
         if method == "GET" || method == "HEAD" {
             (String::new(), None, None, None)
         } else {
-            let collected = BodyExt::collect(Limited::new(req_body, max_body)).await;
+            // Bounded in time as well as size: `Limited` caps how much can
+            // arrive, not how long it may take, so a trickled body held a
+            // connection and its buffer indefinitely.
+            let collected = match tokio::time::timeout(
+                Duration::from_secs(server_constants::body_read_timeout_secs()),
+                BodyExt::collect(Limited::new(req_body, max_body)),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    return Ok(Response::builder()
+                        .status(StatusCode::REQUEST_TIMEOUT)
+                        .header("Content-Type", "text/plain; charset=utf-8")
+                        .body(full(Bytes::from("Request body read timed out")))
+                        .unwrap());
+                }
+            };
             let body_bytes = match collected {
                 Ok(b) => b.to_bytes().to_vec(),
                 Err(_) => {
@@ -4097,12 +4226,105 @@ pub(crate) fn websocket_request_authority(headers: &hyper::HeaderMap) -> Option<
         .filter(|host| !host.is_empty())
 }
 
+/// Clears the thread-local session when a realtime handler returns, however it
+/// returns. Worker threads are reused across sockets and requests, so a leaked
+/// session id would be read by whatever runs next on that thread.
+struct RealtimeSessionGuard;
+
+impl Drop for RealtimeSessionGuard {
+    fn drop(&mut self) {
+        set_current_session_id(None);
+    }
+}
+
+/// Build a Soli hash from `(name, value)` pairs.
+fn string_pairs_to_hash(pairs: &[(String, String)]) -> Value {
+    let mut map: HashPairs = HashPairs::default();
+    for (name, value) in pairs {
+        map.insert(
+            HashKey::String(name.clone().into()),
+            Value::String(value.clone().into()),
+        );
+    }
+    Value::Hash(Rc::new(RefCell::new(map)))
+}
+
+/// Snapshot the identity of an upgrading WebSocket: session, headers, query,
+/// peer.
+fn build_websocket_context(
+    uri: &hyper::Uri,
+    headers: &hyper::HeaderMap,
+    peer_ip: &str,
+) -> WebSocketContext {
+    let cookie_pairs = parse_cookie_pairs(header_str(headers, "cookie"));
+    let session_id = session_id_from_cookie_pairs(&cookie_pairs);
+
+    let header_pairs: Vec<(String, String)> = headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|v| (name.as_str().to_ascii_lowercase(), v.to_string()))
+        })
+        .collect();
+
+    let query = uri
+        .query()
+        .map(crate::interpreter::builtins::server::parse_query_pairs)
+        .unwrap_or_default();
+
+    WebSocketContext {
+        session_id,
+        headers: header_pairs,
+        query,
+        peer_ip: peer_ip.to_string(),
+    }
+}
+
+/// Hand a WebSocket event to the realtime workers without ever blocking the
+/// calling tokio task.
+///
+/// The blocking `send()` this replaces was a whole-server denial of service: a
+/// few sockets flooding a `/ws/*` route filled the bounded event channel, and
+/// every reader task then parked an OS thread of the tokio pool inside
+/// `send()`. The interpreter workers drive their DB and HTTP futures with
+/// `Handle::block_on` on that same pool, so once its threads were parked
+/// nothing could make progress — accepts, HTTP requests and health checks
+/// included. `try_send` with an async sleep keeps the thread free; when the
+/// queue stays full past the deadline we shed the connection instead.
+async fn enqueue_ws_event(
+    tx: &channel::Sender<WebSocketEventData>,
+    event: WebSocketEventData,
+) -> bool {
+    let deadline = tokio::time::Instant::now()
+        + Duration::from_secs(server_constants::ws_enqueue_timeout_secs());
+    let mut pending = Some(event);
+    loop {
+        let Some(data) = pending.take() else {
+            return false;
+        };
+        match tx.try_send(data) {
+            Ok(()) => return true,
+            Err(crossbeam::channel::TrySendError::Full(returned)) => {
+                if tokio::time::Instant::now() >= deadline {
+                    return false;
+                }
+                pending = Some(returned);
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            Err(crossbeam::channel::TrySendError::Disconnected(_)) => return false,
+        }
+    }
+}
+
 /// Handle WebSocket upgrade request.
 async fn handle_websocket_upgrade(
     mut req: Request<Incoming>,
     ws_registry: Arc<WebSocketRegistry>,
     path: String,
     ws_event_tx: channel::Sender<WebSocketEventData>,
+    peer_ip: String,
 ) -> Result<Response<ResponseBody>, hyper::Error> {
     // Check if this is a valid WebSocket upgrade request
     if !hyper_tungstenite::is_upgrade_request(&req) {
@@ -4115,6 +4337,35 @@ async fn handle_websocket_upgrade(
     if !websocket_origin_allowed(req.headers()) {
         return Ok(forbidden_websocket_origin_response());
     }
+
+    // Capture the socket's identity from the upgrade request. This is the only
+    // point where cookies and headers exist — after the upgrade the connection
+    // is a raw frame stream — so anything a handler needs to know about *who*
+    // is connected has to be taken now.
+    let ws_context = Arc::new(build_websocket_context(req.uri(), req.headers(), &peer_ip));
+
+    // Admission control before the upgrade: every accepted socket costs a tokio
+    // task, a 32-slot channel and a registry entry, none of which were bounded.
+    let connection_slot =
+        match crate::serve::websocket::ws_connection_limiter().try_acquire(&peer_ip) {
+            Ok(slot) => slot,
+            Err(reason) => {
+                let (status, message) = match reason {
+                    crate::serve::websocket::WsAdmission::ServerFull => (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "WebSocket connection limit reached",
+                    ),
+                    crate::serve::websocket::WsAdmission::PerIpFull => (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        "Too many WebSocket connections from this address",
+                    ),
+                };
+                return Ok(Response::builder()
+                    .status(status)
+                    .body(full(Bytes::from(message)))
+                    .unwrap());
+            }
+        };
 
     // Perform the WebSocket upgrade
     let ws_config = default_websocket_config();
@@ -4135,6 +4386,10 @@ async fn handle_websocket_upgrade(
     let path = path.clone();
 
     tokio::spawn(async move {
+        // Held for the life of the connection; dropping it frees the slot on
+        // every exit path below, handshake failure included.
+        let _connection_slot = connection_slot;
+
         // Wait for the WebSocket handshake to complete
         let stream = match websocket.await {
             Ok(ws) => ws,
@@ -4164,9 +4419,16 @@ async fn handle_websocket_upgrade(
             event_type: "connect".to_string(),
             message: None,
             channel: None,
+            context: ws_context.clone(),
             response_tx,
         };
-        let _ = ws_event_tx.send(connect_event);
+        if !enqueue_ws_event(&ws_event_tx, connect_event).await {
+            eprintln!("[WS] realtime queue saturated, dropping connection {connection_id}");
+            ws_registry.unregister(&connection_id).await;
+            return;
+        }
+
+        let mut rate_limiter = crate::serve::websocket::WsRateLimiter::from_config();
 
         // Spawn task to forward messages from channel to WebSocket
         let write_task = tokio::spawn(async move {
@@ -4190,6 +4452,14 @@ async fn handle_websocket_upgrade(
                         break;
                     }
                     if msg.is_text() || msg.is_binary() {
+                        // Per-connection budget: one socket must not be able to
+                        // monopolise the shared realtime queue.
+                        if !rate_limiter.allow() {
+                            eprintln!(
+                                "[WS] connection {connection_id} exceeded its message rate, closing"
+                            );
+                            break;
+                        }
                         if let Ok(text) = msg.to_text() {
                             let (response_tx, _) = oneshot::channel();
                             let msg_event = WebSocketEventData {
@@ -4198,9 +4468,15 @@ async fn handle_websocket_upgrade(
                                 event_type: "message".to_string(),
                                 message: Some(text.to_string()),
                                 channel: None,
+                                context: ws_context.clone(),
                                 response_tx,
                             };
-                            let _ = ws_event_tx.send(msg_event);
+                            if !enqueue_ws_event(&ws_event_tx, msg_event).await {
+                                eprintln!(
+                                    "[WS] realtime queue saturated, closing connection {connection_id}"
+                                );
+                                break;
+                            }
                         }
                     }
                 }
@@ -4218,9 +4494,10 @@ async fn handle_websocket_upgrade(
             event_type: "disconnect".to_string(),
             message: None,
             channel: None,
+            context: ws_context.clone(),
             response_tx,
         };
-        let _ = ws_event_tx.send(disconnect_event);
+        enqueue_ws_event(&ws_event_tx, disconnect_event).await;
 
         ws_registry.unregister(&connection_id).await;
         write_task.abort();
@@ -4304,7 +4581,16 @@ fn handle_websocket_event(
             }
         };
 
-    // Build event hash: {type, connection_id, message, channel?}
+    // Install the socket's session for the duration of the handler, so
+    // `session_get` / `get_current_user()` answer for the connected user
+    // instead of returning null. Cleared again below on every exit path — a
+    // worker thread is reused, and a leaked session would be read by the next
+    // request it serves.
+    set_current_session_id(data.context.session_id.clone());
+    let _session_guard = RealtimeSessionGuard;
+
+    // Build event hash: {type, connection_id, message, channel?, headers,
+    // query, peer_ip}
     let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
         HashKey::String("type".into()),
@@ -4328,6 +4614,26 @@ fn handle_websocket_event(
             Value::String(channel.clone().into()),
         );
     }
+
+    // The upgrade context the docs already promised. `headers` and `query` let
+    // a handler authenticate a socket without trusting whatever the client puts
+    // in its first message.
+    event_map.insert(
+        HashKey::String("headers".into()),
+        string_pairs_to_hash(&data.context.headers),
+    );
+    event_map.insert(
+        HashKey::String("query".into()),
+        string_pairs_to_hash(&data.context.query),
+    );
+    event_map.insert(
+        HashKey::String("params".into()),
+        string_pairs_to_hash(&data.context.query),
+    );
+    event_map.insert(
+        HashKey::String("peer_ip".into()),
+        Value::String(data.context.peer_ip.clone().into()),
+    );
 
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
@@ -4766,6 +5072,20 @@ fn handle_liveview_event(
     use crate::interpreter::value::Value;
     use crate::live::view::LIVE_REGISTRY;
 
+    // Run the handler as the socket's user. `set_current_session_id` was only
+    // called on the HTTP path, so `session_get` and `get_current_user()`
+    // returned null inside every LiveView handler — leaving a client-supplied id
+    // as the only identity available, which is no identity at all. A synthetic
+    // `sess-<uuid>` handle (a cookie-less socket) is not a session and is not
+    // installed; those handlers see no user, which is the truth.
+    let socket_session = data
+        .sender_session
+        .as_deref()
+        .filter(|id| !id.starts_with("sess-"))
+        .map(|id| id.to_string());
+    set_current_session_id(socket_session);
+    let _session_guard = RealtimeSessionGuard;
+
     // One frame at a time for this LiveView. A tick and a client event land on
     // different workers; without this they both read the same state, both render
     // from it, and the slower one overwrites the other's state and regresses
@@ -4788,6 +5108,23 @@ fn handle_liveview_event(
     // state — a typical handler returns that hash, so a pre-merge
     // snapshot would drop the child's patch.
     let mut event_params = data.params.clone();
+
+    // `_assigns` and `_component` are chosen by the socket. Constrain both to
+    // what this instance's own markup declares: the client may echo back the
+    // `soli-assign-*` attributes and drive the components the server rendered
+    // for it, and nothing else. Without this, one message could overwrite any
+    // root-state key (identity, tenant, price) or invoke a component handler
+    // that was never mounted, with a fabricated state bag.
+    let allowed_assigns = crate::live::nested::allowed_assign_keys(&instance.last_html);
+    let refused = crate::live::nested::restrict_event_assigns(&mut event_params, &allowed_assigns);
+    if !refused.is_empty() {
+        eprintln!(
+            "[LiveView] {} ignored undeclared assign(s) on event {:?}: {}",
+            component,
+            data.event,
+            refused.join(", ")
+        );
+    }
     // The session that actually sent the event owns any upload ids in it. Falling
     // back to the instance's own session keeps server-originated events working;
     // using it *first* was the bug — a room instance carries its creator's
@@ -4820,12 +5157,28 @@ fn handle_liveview_event(
         .map(|s| s.to_string())
     {
         if child_name != component {
+            let cid = event_params
+                .get("_component_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(child_name.as_str())
+                .to_string();
+            // Only components this instance actually rendered, or that already
+            // hold state here, may be addressed. `lookup_live_handler` searches
+            // every `router_live` registration in the process, so without this
+            // any socket could name any component in the app.
+            let already_mounted =
+                crate::live::nested::get_component_state(&instance.state, &cid).is_some();
+            let rendered_here = crate::live::nested::rendered_component_names(&instance.last_html)
+                .contains(&child_name);
+            if !already_mounted && !rendered_here {
+                eprintln!(
+                    "[LiveView] refused event for component {child_name:?}: not rendered in this view"
+                );
+                return Err(format!(
+                    "component '{child_name}' is not part of this LiveView"
+                ));
+            }
             if let Some(handler) = lookup_live_handler(interpreter, &child_name) {
-                let cid = event_params
-                    .get("_component_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(child_name.as_str())
-                    .to_string();
                 let mut child = crate::live::nested::get_component_state(&instance.state, &cid)
                     .cloned()
                     .unwrap_or_else(|| serde_json::json!({}));
@@ -5617,6 +5970,13 @@ fn dispatch_http_request(
 ) {
     crate::interpreter::builtins::streaming::clear_pending_stream();
 
+    // Bound how long this request may spend *executing*. The hyper side already
+    // gives up at RESPONSE_WAIT_TIMEOUT_SECS with a 504, but the worker stayed
+    // in the handler forever, so one request that reached a runaway loop
+    // removed a worker permanently. Dropped when the request ends, so the next
+    // one starts with a fresh budget.
+    let _handler_budget = crate::interpreter::deadline::enter_default();
+
     let method = data.method.to_string();
     let path = data.path.clone();
     let resp_data = run_caught(
@@ -5717,6 +6077,7 @@ fn call_handler(
                 .global_env()
                 .borrow_mut()
                 .define_or_update("params", params_value.clone());
+            crate::interpreter::taint::mark_request_value(&params_value);
             if let Some(vm_ref) = vm.as_deref_mut() {
                 vm_ref
                     .globals
@@ -5726,6 +6087,7 @@ fn call_handler(
                 .global_env()
                 .borrow_mut()
                 .define_or_update("cookies", cookies_value.clone());
+            crate::interpreter::taint::mark_request_value(&cookies_value);
             if let Some(vm_ref) = vm.as_deref_mut() {
                 vm_ref
                     .globals
@@ -5741,6 +6103,11 @@ fn call_handler(
         .global_env()
         .borrow_mut()
         .define_or_update("req", request_hash.clone());
+    // Remember that everything reachable from the request came from a client.
+    // `.where` consults this before letting a value act as an operator map:
+    // `where({"api_token": params["token"]})` must compare, not accept
+    // `{"ne": null}` and drop the predicate.
+    crate::interpreter::taint::mark_request_value(&request_hash);
     if let Some(vm_ref) = vm.as_deref_mut() {
         vm_ref
             .globals
@@ -7198,6 +7565,14 @@ fn handle_request(
         span_log::open_request_root(format!("{} {}", method, path));
     }
 
+    // Record the TCP peer for the trust-proxy gate: with SOLI_TRUSTED_PROXIES
+    // set, `X-Forwarded-*` is only honoured for requests that actually arrived
+    // from a listed hop.
+    crate::interpreter::builtins::trust_proxy::set_current_peer_ip(data.peer_ip.parse().ok());
+
+    // Drop the previous request's taint marks before this one records its own.
+    crate::interpreter::taint::clear_request_values();
+
     // Parse the Cookie header ONCE: the same parse feeds both the session-ID
     // resolution here and `req["cookies"]` in the request hash below (the
     // header used to be scanned twice per request).
@@ -7224,13 +7599,23 @@ fn handle_request(
     // SEC-077 precedence (`__Host-session_id` over `session_id`) is preserved
     // inside session_id_from_cookie_pairs.
     let cookie_session_id = session_id_from_cookie_pairs(&cookie_pairs);
-    let session_id = if let Some(ref id) = cookie_session_id {
-        let resolved = ensure_session(Some(id.as_str()));
-        set_current_session_id(Some(resolved.clone()));
-        Some(resolved)
-    } else {
-        set_current_session_id(None);
-        None
+    // Resolve without creating. A cookie naming a session we do not have used to
+    // mint and persist an empty one on every request, so any client could grow
+    // the store without limit just by sending a fresh UUID each time. An unknown
+    // cookie now takes the same lazy path a cookie-less request always did: no
+    // session exists until the app stores something.
+    let session_id = match cookie_session_id
+        .as_deref()
+        .and_then(|id| crate::interpreter::builtins::session::resolve_existing_session(Some(id)))
+    {
+        Some(resolved) => {
+            set_current_session_id(Some(resolved.clone()));
+            Some(resolved)
+        }
+        None => {
+            set_current_session_id(None);
+            None
+        }
     };
     // Clear response cookies from any previous request on this thread.
     clear_response_cookies();
@@ -7435,6 +7820,24 @@ fn handle_request(
                 .map(|v| v.to_string())
                 .unwrap_or_default()
         };
+        // Validate the host before any absolute URL is built from it.
+        //
+        // `Host` is client-controlled on every HTTP/1.1 request, and `*_url`
+        // helpers interpolated it verbatim — so a password-reset mailer sent the
+        // victim a link pointing at whatever host the attacker's request
+        // carried, with a live token in the query string. Production boot
+        // already refuses to start without `SOLI_APP_HOSTS`; this makes the
+        // rest of the app honour it. Nothing declared (a dev server) keeps the
+        // old behaviour.
+        let req_host = if crate::serve::csrf::is_declared_host(&req_host) {
+            req_host
+        } else {
+            let fallback = crate::serve::csrf::primary_declared_host().unwrap_or_default();
+            eprintln!(
+                "[WARN] request Host {req_host:?} is not in SOLI_APP_HOSTS;                  building URLs with {fallback:?} instead"
+            );
+            fallback
+        };
         let req_scheme = if is_https { "https" } else { "http" }.to_string();
         crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
     }
@@ -7493,6 +7896,7 @@ fn handle_request(
         .global_env()
         .borrow_mut()
         .define_or_update("params", middleware_params.clone());
+    crate::interpreter::taint::mark_request_value(&middleware_params);
     if let Some(vm_ref) = vm.as_mut() {
         vm_ref
             .globals
@@ -7502,6 +7906,7 @@ fn handle_request(
         .global_env()
         .borrow_mut()
         .define_or_update("cookies", cookies_value.clone());
+    crate::interpreter::taint::mark_request_value(&cookies_value);
     if let Some(vm_ref) = vm.as_mut() {
         vm_ref.globals.insert("cookies".to_string(), cookies_value);
     }
@@ -7780,6 +8185,7 @@ fn handle_request(
         }
         // Clear session context
         set_current_session_id(None);
+        crate::interpreter::builtins::trust_proxy::set_current_peer_ip(None);
         resp
     };
 
@@ -8131,6 +8537,52 @@ async fn handle_dev_repl(
 /// from my phone"). Accessing the REPL from another device is now an
 /// explicit opt-in: set `SOLI_DEV_REPL_ALLOW_REMOTE=1` *and* a stable
 /// `SOLI_DEV_REPL_SECRET` (the startup check enforces the pairing).
+/// May this request read `/_metrics`?
+///
+/// With `SOLI_METRICS_TOKEN` set, only a matching bearer token (compared in
+/// constant time). Without it, only a peer on the loopback or a private range —
+/// where a scraper actually runs — so the endpoint stops being readable from
+/// the public internet by default.
+fn metrics_request_allowed(headers: &hyper::HeaderMap, peer: std::net::IpAddr) -> bool {
+    if let Ok(expected) = std::env::var("SOLI_METRICS_TOKEN") {
+        let expected = expected.trim();
+        if !expected.is_empty() {
+            let presented = headers
+                .get(hyper::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .unwrap_or("")
+                .trim();
+            return crate::interpreter::builtins::crypto::do_secure_compare(presented, expected);
+        }
+    }
+    is_private_metrics_peer(peer)
+}
+
+/// Loopback, RFC1918, CGNAT, link-local or IPv6 unique-local: the addresses a
+/// monitoring scraper realistically comes from.
+fn is_private_metrics_peer(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_loopback() || v4.is_private() || v4.is_link_local() || {
+                // 100.64.0.0/10, the carrier-grade NAT range many container
+                // networks use.
+                let o = v4.octets();
+                o[0] == 100 && (64..128).contains(&o[1])
+            }
+        }
+        std::net::IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_private_metrics_peer(std::net::IpAddr::V4(v4));
+            }
+            v6.is_loopback()
+                // fc00::/7 unique-local, fe80::/10 link-local.
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
 pub(super) fn is_trusted_dev_peer(ip: std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(v4) => v4.is_loopback(),

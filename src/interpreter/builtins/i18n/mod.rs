@@ -220,7 +220,15 @@ pub fn register_i18n_class(env: &mut Environment) {
                 .unwrap_or_else(|| key.clone().to_string());
 
             let interp = values.as_ref().map(values_to_strings).unwrap_or_default();
-            Ok(Value::String(helpers::interpolate(&raw, &interp).into()))
+            // An `_html` key is meant to be rendered raw, so anything
+            // interpolated into it has to be escaped here — otherwise the
+            // translation is the injection point.
+            let rendered = if helpers::key_promises_html(&key) {
+                helpers::interpolate_escaped(&raw, &interp)
+            } else {
+                helpers::interpolate(&raw, &interp)
+            };
+            Ok(Value::String(rendered.into()))
         })),
     );
 
@@ -295,7 +303,12 @@ pub fn register_i18n_class(env: &mut Environment) {
             if !interp.iter().any(|(k, _)| k == "count") {
                 interp.push(("count".to_string(), n.to_string()));
             }
-            Ok(Value::String(helpers::interpolate(&raw, &interp).into()))
+            let rendered = if helpers::key_promises_html(&key) {
+                helpers::interpolate_escaped(&raw, &interp)
+            } else {
+                helpers::interpolate(&raw, &interp)
+            };
+            Ok(Value::String(rendered.into()))
         })),
     );
 

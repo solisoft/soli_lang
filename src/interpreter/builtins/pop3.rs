@@ -133,6 +133,14 @@ fn read_status_line<R: BufRead>(reader: &mut R) -> Result<String, String> {
 /// Read a dot-terminated multiline response (the body following a `+OK`),
 /// performing dot-unstuffing and preserving CRLF line endings for the parser.
 fn read_multiline<R: BufRead>(reader: &mut R) -> Result<String, String> {
+    // A dot-terminated response has no declared length: the server stops when
+    // it feels like it. Unbounded accumulation meant a hostile (or simply
+    // broken) server could grow this string until the worker was OOM-killed.
+    let max_bytes = std::env::var("SOLI_POP3_MAX_RESPONSE_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(32 * 1024 * 1024);
     let mut out = String::new();
     loop {
         let mut line = String::new();
@@ -150,6 +158,12 @@ fn read_multiline<R: BufRead>(reader: &mut R) -> Result<String, String> {
         let content = trimmed.strip_prefix('.').unwrap_or(trimmed);
         out.push_str(content);
         out.push_str("\r\n");
+        if out.len() > max_bytes {
+            return Err(format!(
+                "POP3 response exceeds the {max_bytes} byte limit \
+                 (raise SOLI_POP3_MAX_RESPONSE_BYTES if this is expected)"
+            ));
+        }
     }
     Ok(out)
 }

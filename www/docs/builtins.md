@@ -872,10 +872,30 @@ Performs an HTTP GET request.
 **Parameters:**
 - `url` (String) - The URL to fetch
 - `options` (Hash, optional) - Request options
-  - `headers` (Hash) - Custom headers
+  - `headers` (Hash) - Request headers, `name => value`. String values are
+    sent as-is; numbers and booleans are stringified; a `null` value skips
+    that header. A header you set **replaces** the one the builtin would add
+    on its own (`Content-Type` on `post`/`put`/`patch`, `Accept` on the
+    `*_json` variants), matched case-insensitively, so you never get two.
+    A name or value the HTTP client would refuse (spaces in the name, a
+    CR/LF in the value) raises before anything is sent — the message names
+    the header but never echoes the value, so a rejected token stays out
+    of the error page and logs. `Content-Length` and `Transfer-Encoding`
+    are refused outright: they are derived from the body, and a
+    caller-supplied length would be sent verbatim and desync the upstream
+    connection. **Redirects:** the client drops `Authorization`, `Cookie`
+    and `Proxy-Authorization` when a redirect changes host or port, but
+    any *other* header you set (an `X-Api-Key`, say) follows the redirect
+    to the new host — pin the URL or check `response["status"]` yourself
+    when that matters.
   - `timeout` (Int|Float) - Per-call timeout in **seconds**, overriding the
     default 30s client timeout for this request only. Fractional seconds are
     allowed (`0.5`). Must be positive.
+
+The same options hash is accepted, in the same position, by every `HTTP.*`
+verb: `get`, `post`, `put`, `patch`, `delete`, `head`, `get_json`,
+`get_jsonp`, `post_json`, `put_json`, `patch_json`, and (applied to every URL
+in the batch) `get_all` / `get_all_json`.
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
@@ -885,6 +905,11 @@ response = HTTP.get("https://api.example.com/data")
 if response["status"] == 200
   println(response["body"])
 end
+
+# Authenticated call: headers ride along in the options hash.
+me = HTTP.get_json("https://api.example.com/me", {
+  "headers": { "Authorization": "Bearer " + token, "X-Client": "soli" }
+})
 
 # Give a slow upstream at most 5 seconds before giving up.
 fast = HTTP.get("https://api.example.com/slow", { "timeout": 5 })
@@ -898,12 +923,16 @@ Performs an HTTP POST request.
 - `url` (String) - The URL to post to
 - `body` (String|Hash) - The request body
 - `options` (Hash, optional) - Request options
+  - `headers` (Hash) - Request headers (see `HTTP.get`). A `Content-Type`
+    here overrides the default one (`application/json` for a hash body,
+    `text/plain` for a string body).
   - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
 **Example:**
 ```soli
+# The Content-Type header replaces the text/plain default for a string body.
 response = HTTP.post(
   "https://api.example.com/users",
   "name=Alice&email=alice@example.com",
@@ -921,7 +950,8 @@ Performs an HTTP POST request with JSON body.
 **Parameters:**
 - `url` (String) - The URL to post to
 - `data` (Hash|Array) - Data to serialize as JSON
-- `options` (Hash, optional) - Additional options
+- `options` (Hash, optional) - Request options (`headers`, `timeout` — see
+  `HTTP.get`)
 
 **Returns:** Hash - Response with parsed JSON body if applicable
 
@@ -931,6 +961,13 @@ response = HTTP.post_json(
   "https://api.example.com/users",
   { "name": "Alice", "email": "alice@example.com" }
 )
+
+# With an API key and a 10-second budget.
+response = HTTP.post_json(
+  "https://api.example.com/users",
+  { "name": "Alice" },
+  { "headers": { "Authorization": "Bearer " + token }, "timeout": 10 }
+)
 ```
 
 ### HTTP.get_json(url, options?)
@@ -939,7 +976,9 @@ Performs an HTTP GET request and parses JSON response.
 
 **Parameters:**
 - `url` (String) - The URL to fetch
-- `options` (Hash, optional) - Request options
+- `options` (Hash, optional) - Request options (`headers`, `timeout` — see
+  `HTTP.get`). An `Accept` header here overrides the default
+  `application/json`.
 
 **Returns:** Hash - Response with parsed JSON body
 
@@ -959,7 +998,8 @@ inner JSON is parsed.
 
 **Parameters:**
 - `url` (String) - The JSONP URL (typically containing a `callback` query param)
-- `options` (Hash, optional) - Request options (e.g. `{ "timeout": 5 }`)
+- `options` (Hash, optional) - Request options (`headers`, `timeout` — see
+  `HTTP.get`)
 
 **Returns:** Any - The parsed value (Hash, Array, …). Raises if the body is not a
 valid `callback(...)` wrapper or the inner JSON is malformed.
@@ -974,6 +1014,14 @@ println(feed["items"][0])
 
 PUT / PATCH / DELETE / HEAD counterparts to `HTTP.get` and `HTTP.post`. JSON
 variants (`HTTP.put_json`, `HTTP.patch_json`) serialize the body automatically.
+All of them take the same trailing options hash (`headers`, `timeout`) as
+`HTTP.get`.
+
+```soli
+HTTP.delete("https://api.example.com/users/1", {
+  "headers": { "Authorization": "Bearer " + token }
+})
+```
 
 ### HTTP.request(method, url, headers?, body?)
 
@@ -984,7 +1032,11 @@ Performs a custom HTTP request.
 - `url` (String) - The URL
 - `headers` (Hash, optional) - Request headers. A `timeout` key (Int|Float
   seconds) in this hash is consumed as the per-call timeout rather than being
-  sent as a header.
+  sent as a header, and a nested `headers` hash is merged in — so the
+  `{ "headers": {...}, "timeout": n }` options shape the other verbs take
+  works here too. Both the flat and the nested pairs go through the same
+  validation as `HTTP.get`'s `headers` (bad name/value and framing
+  headers raise up-front, `null` skips the header).
 - `body` (String|Hash, optional) - The request body
 
 **Returns:** Hash - Response object
@@ -1037,6 +1089,7 @@ Performs multiple GET requests in parallel.
 - `urls` (Array) - Array of URLs to fetch
 - `options` (Hash, optional) - Request options applied to every request in the
   batch
+  - `headers` (Hash) - Request headers sent with every URL (see `HTTP.get`)
   - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
 
 **Returns:** Array - Array of response bodies as strings (or `{"error": ...}` hashes for failed requests)
@@ -1062,7 +1115,7 @@ Performs multiple GET requests in parallel and parses each response body as JSON
 **Parameters:**
 - `urls` (Array) - Array of URLs to fetch
 - `options` (Hash, optional) - Request options applied to every request in the
-  batch (`timeout`, in seconds)
+  batch (`headers`, `timeout` — see `HTTP.get_all`)
 
 **Returns:** Array - Array of parsed JSON values (or `{"error": ...}` hashes for failed requests / non-2xx responses / unparseable bodies)
 
@@ -1449,6 +1502,35 @@ Converts a Soli value to a JSON string.
 json = json_stringify({ "name": "Alice", "scores": [95, 87, 92] })
 println(json)  # {"name":"Alice","scores":[95,87,92]}
 ```
+
+> **Not safe inside a `<script>`.** A `</script>` in any string value ends the
+> element — the HTML tokenizer does not care that it sits inside a JSON string —
+> and everything after it is parsed as markup. Use `json_script()` there.
+
+### json_script(value)
+
+Converts a Soli value to JSON that is safe to embed in an HTML `<script>` body.
+
+`<`, `>` and `&` become `\uXXXX` escapes, along with U+2028 and U+2029 (valid in
+JSON, but line terminators in JavaScript source). A JSON parser reads those
+escapes back as the original characters, so the value a script receives is
+unchanged; what changes is that nothing in the output can end the element or be
+reinterpreted by the HTML parser.
+
+**Parameters:**
+- `value` (Any) - Value to serialize
+
+**Returns:** String - JSON with the HTML-significant characters escaped
+
+**Example:**
+```erb
+<script>
+  window.__data = <%- json_script(post) %>;
+</script>
+```
+
+`j()` is not an alternative here: it is an HTML escape, so it turns `&` into
+`&amp;` *inside* the JSON and corrupts the data.
 
 ---
 
@@ -5190,7 +5272,14 @@ strip inbound `X-Forwarded-*` headers from clients before adding its own.
 
 ### enable_trust_proxy()
 
-Enables honoring of `X-Forwarded-Proto` and `X-Forwarded-Host`.
+Enables honoring of `X-Forwarded-Proto`, `X-Forwarded-Host` and
+`X-Forwarded-For`. Off by default, including in apps created by `soli new`.
+
+Only call it when a proxy you control sits in front of the app and rewrites
+those headers. On a directly-exposed app, any client can send them, which
+downgrades the CSRF and origin checks, flips the cookie `Secure` flag, aims
+`*_url` helpers at a host of the attacker's choosing, and gives every request a
+fresh identity so per-IP rate limits (the login throttle included) never trip.
 
 **Returns:** Bool
 
@@ -5199,6 +5288,17 @@ Enables honoring of `X-Forwarded-Proto` and `X-Forwarded-Host`.
 # config/application.sl
 enable_trust_proxy()
 ```
+
+Name the hops you trust as well, so the headers are honoured only for requests
+that really came from them:
+
+```bash
+SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1
+```
+
+Entries are IPs or CIDR blocks, comma-separated. With the list set, a client
+that reaches the app directly is not trusted even while the flag is on; unset,
+every peer is trusted once the flag is on.
 
 ### disable_trust_proxy()
 

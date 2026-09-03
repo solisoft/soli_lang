@@ -66,7 +66,44 @@ pub fn save_credentials(creds: &Credentials) -> Result<(), String> {
         creds.url, creds.token
     );
 
-    fs::write(&path, content).map_err(|e| format!("Failed to write credentials: {}", e))
+    write_private(&path, &content)
+}
+
+/// Write a file only the owner can read.
+///
+/// `fs::write` creates with the process umask, which on most systems means
+/// `0644` — so the registry token, a bearer credential for publishing packages,
+/// was readable by every account on the machine. The desktop database writer
+/// already did this correctly; the credentials writer did not.
+fn write_private(path: &std::path::Path, content: &str) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        // Tighten the parent directory too: a token is no more private than the
+        // directory it sits in.
+        if let Some(parent) = path.parent() {
+            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+        }
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| format!("Failed to write credentials: {}", e))?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write credentials: {}", e))?;
+        // `mode` only applies at creation, so an existing world-readable file
+        // keeps its old bits — set them explicitly as well.
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("Failed to secure credentials file: {}", e))
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(path, content).map_err(|e| format!("Failed to write credentials: {}", e))
+    }
 }
 
 #[cfg(test)]

@@ -75,6 +75,38 @@ class OauthRefreshToken < Model
     return this.update()
   end
 
+  # Claim a refresh token for rotation, atomically.
+  #
+  # The controller used to read the row, check `reused?`/`active?`, then write
+  # `rotated_at` in a separate step. Two concurrent presentations of the same
+  # token both passed the checks before either wrote, so both were rotated into
+  # the same chain and the reuse signal — the whole point of rotation — was lost
+  # for that pair. Authorization codes were made atomic for exactly this reason
+  # (`OauthAuthorizationCode.burn`); refresh tokens were not.
+  #
+  # A single filtered UPDATE lets the database decide the winner: the loser
+  # matches no row and is treated as reuse.
+  static def claim_for_rotation(token)
+    return null if token.to_s.blank?
+
+    digest = Crypto.sha256(token.to_s)
+    now = DateTime.utc().to_unix()
+    rows = @sdbql{
+      FOR t IN oauth_refresh_tokens
+        FILTER t.token_digest == #{digest}
+          AND t.rotated_at == null
+          AND t.revoked_at == null
+          AND t.expires_at > #{now}
+        UPDATE t WITH { rotated_at: #{now} } IN oauth_refresh_tokens
+        RETURN NEW
+    }
+    # A failed query comes back as an error *string*, so anything that is not an
+    # array means "did not claim" rather than something to trust.
+    return null unless rows.is_a?("array")
+
+    return rows.first()
+  end
+
   def scopes
     return oidc_scope_list(this.scope)
   end

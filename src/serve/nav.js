@@ -247,6 +247,26 @@
         return true;
     }
 
+    // `data-confirm`: ask before a destructive submit.
+    //
+    // This replaces the inline `onclick="return confirm('...')"` the form
+    // builder used to emit. That string was JavaScript-escaped, not
+    // attribute-escaped, so a confirm message built from record data could
+    // close the attribute and open a live event handler — a stored XSS in the
+    // most ordinary "Delete <title>?" button. A data attribute is escaped once,
+    // for one context, and carries no code.
+    document.addEventListener("click", function (e) {
+        if (e.defaultPrevented) return;
+        var el = e.target.closest && e.target.closest("[data-confirm]");
+        if (!el) return;
+        var message = el.getAttribute("data-confirm");
+        if (!message) return;
+        if (!window.confirm(message)) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+
     // Bubble phase: element-level handlers (htmx, Alpine @click) run first
     // and can preventDefault() to keep us out.
     document.addEventListener("click", function (e) {

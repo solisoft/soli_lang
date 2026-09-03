@@ -20,6 +20,7 @@ pub const PASSWORDS_EDIT_VIEW: &str = include_str!("auth/passwords_edit.html.slv
 pub const CONFIRMATIONS_NEW_VIEW: &str = include_str!("auth/confirmations_new.html.slv");
 pub const MAILER_RESET_PASSWORD_VIEW: &str = include_str!("auth/mailer_reset_password.html.slv");
 pub const MAILER_CONFIRM_EMAIL_VIEW: &str = include_str!("auth/mailer_confirm_email.html.slv");
+pub const MAILER_ACCOUNT_LOCKED_VIEW: &str = include_str!("auth/mailer_account_locked.html.slv");
 pub const POLICIES_CLAUDE: &str = include_str!("auth/policies_claude.md");
 
 /// Migration creating the `users` collection with a unique index on `email`.

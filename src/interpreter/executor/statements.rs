@@ -16,6 +16,15 @@ use super::{ControlFlow, Interpreter, RuntimeResult};
 impl Interpreter {
     /// Execute a statement, returning control flow information.
     pub(crate) fn execute(&mut self, stmt: &Stmt) -> RuntimeResult<ControlFlow> {
+        // Handler budget. Every loop iteration and every call runs statements,
+        // so checking here covers all of them; the check is a counter decrement
+        // that reads the clock only every few thousand statements.
+        if crate::interpreter::deadline::expired() {
+            return Err(RuntimeError::General {
+                message: crate::interpreter::deadline::timeout_message(),
+                span: stmt.span,
+            });
+        }
         let source_path = stmt
             .source_path
             .clone()

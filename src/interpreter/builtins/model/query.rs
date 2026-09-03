@@ -2601,13 +2601,23 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
 
     query.push_str(&format!(" REMOVE doc IN {}", collection));
 
-    let _ = if bind_vars_str.is_empty() {
+    // The error was discarded and `Null` returned regardless, so a bulk delete
+    // that failed — a dropped connection, an auth failure, a rejected query —
+    // was indistinguishable from one that removed every matching row. Callers
+    // treating `delete_all` as "the rows are gone" were wrong, silently. The
+    // SQL branch already reported its errors; this one now does too.
+    let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)
     } else {
         exec_auto_collection_with_binds(query, bind_vars_str, &collection)
     };
 
-    Value::Null
+    // `exec_auto_collection*` already encodes a failure as an "Error: …" string
+    // value; pass that through instead of discarding it.
+    match result {
+        Value::String(ref message) if message.starts_with("Error: ") => result,
+        _ => Value::Null,
+    }
 }
 
 /// Execute a QueryBuilder as a bulk UPDATE — every row matching the
@@ -2691,9 +2701,13 @@ fn execute_query_builder_update_all_inner(
         collection
     ));
 
-    let _ = exec_auto_collection_with_binds(query, bind_vars_str, &collection);
-
-    Value::Null
+    // Same as `delete_all`: a swallowed error made a failed bulk update look
+    // like a successful one.
+    let result = exec_auto_collection_with_binds(query, bind_vars_str, &collection);
+    match result {
+        Value::String(ref message) if message.starts_with("Error: ") => result,
+        _ => Value::Null,
+    }
 }
 
 /// Execute a QueryBuilder for exists check - returns boolean.

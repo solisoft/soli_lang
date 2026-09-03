@@ -108,17 +108,24 @@ fn read_hash_key(value: &Value, key: &str) -> Option<String> {
     None
 }
 
-/// Convert a value to its URL path segment representation.
-/// Strings, ints, decimals, etc. all stringify naturally.
+/// Convert a value to its URL path segment representation, percent-encoded.
+///
+/// Route parameters routinely carry record ids and slugs that came from a
+/// request, and they were interpolated raw: `post_path("../admin?x=1#y")`
+/// returned that string unchanged, so a link pointed somewhere else on the same
+/// origin and a `?` started a query string the route never meant to have.
+/// Encoding each value as a single path segment makes the placeholder mean one
+/// segment, which is what the pattern says.
 fn value_to_path_segment(value: &Value) -> String {
-    match value {
+    let raw = match value {
         Value::String(s) => s.clone().to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
         Value::Decimal(d) => d.to_string(),
         Value::Bool(b) => b.to_string(),
         other => other.to_string(),
-    }
+    };
+    urlencoding::encode(&raw).into_owned()
 }
 
 /// Extract `:param`-style placeholders from a path pattern in declaration order.
@@ -514,5 +521,35 @@ mod tests {
 
         let err = build_url_for_name("posts", &[]).unwrap_err();
         assert!(err.contains("cannot resolve host"), "got: {}", err);
+    }
+}
+
+#[cfg(test)]
+mod segment_encoding_tests {
+    use super::*;
+
+    /// A route parameter is one path segment. Interpolated raw, an id from a
+    /// request could add segments, a query string or a fragment.
+    #[test]
+    fn traversal_and_query_characters_are_encoded() {
+        assert_eq!(
+            value_to_path_segment(&Value::String("../admin?x=1#y".into())),
+            "..%2Fadmin%3Fx%3D1%23y"
+        );
+        assert_eq!(value_to_path_segment(&Value::String("a b".into())), "a%20b");
+    }
+
+    /// Ordinary ids and slugs are unchanged, so existing links keep working.
+    #[test]
+    fn ordinary_values_are_unchanged() {
+        assert_eq!(value_to_path_segment(&Value::Int(42)), "42");
+        assert_eq!(
+            value_to_path_segment(&Value::String("hello-world".into())),
+            "hello-world"
+        );
+        assert_eq!(
+            value_to_path_segment(&Value::String("019329ab-7c4d-7e00".into())),
+            "019329ab-7c4d-7e00"
+        );
     }
 }

@@ -231,6 +231,31 @@ fn record_tx_write(collection: &str) {
     });
 }
 
+/// Install a fake transaction on this thread for tests, cleared when the
+/// returned guard drops.
+#[cfg(test)]
+pub fn set_current_tx_for_test(tx_id: &str) -> TestTxGuard {
+    CURRENT_TX.with(|tx| {
+        *tx.borrow_mut() = Some(TransactionState {
+            tx_id: tx_id.to_string(),
+            database: "test".to_string(),
+            host: "localhost".to_string(),
+            affected: std::collections::HashSet::new(),
+        });
+    });
+    TestTxGuard
+}
+
+#[cfg(test)]
+pub struct TestTxGuard;
+
+#[cfg(test)]
+impl Drop for TestTxGuard {
+    fn drop(&mut self) {
+        CURRENT_TX.with(|tx| *tx.borrow_mut() = None);
+    }
+}
+
 /// True when a transaction is open on this thread (SoliDB or SQL).
 pub fn has_active_tx() -> bool {
     CURRENT_TX.with(|tx| tx.borrow().is_some()) || crate::db::sql::has_active_tx()

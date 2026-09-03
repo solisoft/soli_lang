@@ -18,6 +18,7 @@ pub const OAUTH_TOKENS_CONTROLLER: &str = include_str!("oidc/oauth_tokens_contro
 pub const OAUTH_USERINFO_CONTROLLER: &str = include_str!("oidc/oauth_userinfo_controller.sl");
 pub const OAUTH_SESSIONS_CONTROLLER: &str = include_str!("oidc/oauth_sessions_controller.sl");
 pub const AUTHORIZATIONS_NEW_VIEW: &str = include_str!("oidc/oauth_authorizations_new.html.slv");
+pub const LOGOUT_CONFIRM_VIEW: &str = include_str!("oidc/oauth_logout_confirm.html.slv");
 pub const AUTHORIZATIONS_ERROR_VIEW: &str =
     include_str!("oidc/oauth_authorizations_error.html.slv");
 
@@ -94,4 +95,7 @@ get("/oauth/userinfo", "oauth_userinfo#show", name: "oauth_userinfo")
 post("/oauth/userinfo", "oauth_userinfo#show")
 post("/oauth/revoke", "oauth_tokens#revoke", name: "oauth_revoke")
 get("/oauth/logout", "oauth_sessions#end_session", name: "oauth_end_session")
+# The POST is what actually ends the session; the GET only confirms, so that a
+# cross-site link or image cannot log a visitor out.
+post("/oauth/logout", "oauth_sessions#end_session")
 "#;

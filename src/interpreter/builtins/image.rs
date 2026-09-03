@@ -297,6 +297,14 @@ fn apply_plan_op(img: DynamicImage, op: &PlanOp) -> DynamicImage {
 }
 
 fn execute_plan(plan: &ImagePlan) -> Result<PlanResult, String> {
+    // Re-checked at execution, not only where the plan was built: `process_all`
+    // replays stored plans from worker threads, and a plan value can be
+    // constructed once and run later, so the builder-time check alone is a
+    // TOCTOU.
+    validate_image_path(&plan.src, "ImagePlan.run")?;
+    if let Some(dst) = &plan.dst {
+        validate_image_path(dst, "ImagePlan.run")?;
+    }
     let mut reader =
         ImageReader::open(&plan.src).map_err(|e| format!("Failed to open image: {}", e))?;
     let detected_format = reader.format();
@@ -731,6 +739,10 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.plan requires string path".to_string()),
             };
+            // SEC-063: the plan API used to skip the jail entirely, so a
+            // user-influenced path read (and, via save_to, wrote) anywhere the
+            // process could reach, while Image.new/to_file were confined.
+            validate_image_path(&path, "Image.plan")?;
             Ok(plan_to_value(ImagePlan {
                 src: path.to_string(),
                 ops: Vec::new(),
@@ -1027,6 +1039,7 @@ fn build_image_plan_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("ImagePlan.save_to requires string path".to_string()),
             };
+            validate_image_path(&path, "ImagePlan.save_to")?;
             extend_plan(args, |p| p.dst = Some(path.to_string()))
         })),
     );

@@ -75,7 +75,35 @@ const KV_DENYLIST: &[&str] = &[
     "SCRIPT",
     "EVAL",
     "EVALSHA",
+    "EVAL_RO",
+    "EVALSHA_RO",
     "FUNCTION",
+    // Redis 7 functions are scripting by another name: FCALL runs a library
+    // registered through FUNCTION, so denying only FUNCTION left the call side
+    // open.
+    "FCALL",
+    "FCALL_RO",
+    // Loads native code into the server.
+    "MODULE",
+    // Moves keys to an arbitrary host:port — an exfiltration channel, and an
+    // SSRF one, from a command name.
+    "MIGRATE",
+    // Deserialises a DUMP payload; a forged one has historically been an RCE
+    // vector, and it can overwrite any key.
+    "RESTORE",
+    "RESTORE-ASKING",
+    // Replication control: SYNC/PSYNC stream the whole dataset to the caller.
+    "SYNC",
+    "PSYNC",
+    "REPLCONF",
+    // Switches which logical database subsequent commands address, so a keyspace
+    // the app never meant to touch becomes reachable.
+    "SELECT",
+    "SWAPDB",
+    // Server introspection that leaks other clients' commands and arguments.
+    "SLOWLOG",
+    "LATENCY",
+    "MEMORY",
 ];
 
 fn kv_admin_allowed() -> bool {

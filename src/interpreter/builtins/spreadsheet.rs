@@ -58,8 +58,19 @@ fn parse_csv_content(content: &str) -> Result<Value, String> {
 }
 
 fn parse_csv_file(path: &str) -> Result<Value, String> {
-    let file = File::open(path)
-        .map_err(|e| format!("Spreadsheet.csv_file() cannot open {}: {}", path, e))?;
+    // Through the SEC-006 jail like every other path-taking builtin. `File.*`,
+    // `slurp` and `Image.*` were confined; the spreadsheet readers and writers
+    // opened whatever string they were handed, which is the same
+    // user-influenced-path problem the jail exists for.
+    let path =
+        &crate::interpreter::builtins::file::resolve_readable_path(path, "Spreadsheet.csv_file")?;
+    let file = File::open(path).map_err(|e| {
+        format!(
+            "Spreadsheet.csv_file() cannot open {}: {}",
+            path.display(),
+            e
+        )
+    })?;
     let mut reader = ReaderBuilder::new()
         .has_headers(true)
         .flexible(true)
@@ -232,10 +243,22 @@ fn to_csv_string(data: &Rc<RefCell<Vec<Value>>>) -> Result<String, String> {
 
 fn write_csv_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value, String> {
     let csv_content = to_csv_string(data)?;
-    let mut file = std::fs::File::create(path)
-        .map_err(|e| format!("Spreadsheet.csv_write() cannot create {}: {}", path, e))?;
-    std::io::Write::write_all(&mut file, csv_content.as_bytes())
-        .map_err(|e| format!("Spreadsheet.csv_write() cannot write to {}: {}", path, e))?;
+    let path =
+        &crate::interpreter::builtins::file::resolve_readable_path(path, "Spreadsheet.csv_write")?;
+    let mut file = std::fs::File::create(path).map_err(|e| {
+        format!(
+            "Spreadsheet.csv_write() cannot create {}: {}",
+            path.display(),
+            e
+        )
+    })?;
+    std::io::Write::write_all(&mut file, csv_content.as_bytes()).map_err(|e| {
+        format!(
+            "Spreadsheet.csv_write() cannot write to {}: {}",
+            path.display(),
+            e
+        )
+    })?;
     Ok(Value::Null)
 }
 

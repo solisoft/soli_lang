@@ -1177,10 +1177,11 @@ mod tests {
             html
         );
         assert!(html.contains("name=\"_csrf_token\""), "{}", html);
+        // `data-confirm`, not an inline `onclick`: the old form JavaScript-escaped
+        // the message into a double-quoted attribute, so a quote in it closed the
+        // attribute and opened a live event handler.
         assert!(
-            html.ends_with(
-                "<button type=\"submit\" onclick=\"return confirm('Sure?')\">Delete</button></form>"
-            ),
+            html.ends_with("<button type=\"submit\" data-confirm=\"Sure?\">Delete</button></form>"),
             "{}",
             html
         );

@@ -98,6 +98,18 @@ pub trait SessionStore: Send + Sync {
     fn cleanup(&self);
     fn driver_name(&self) -> &'static str;
 
+    /// Does a session with this id exist, without creating one?
+    ///
+    /// The default probes with `get`, which every store implements as a
+    /// non-creating read, so a store that has nothing better to offer is still
+    /// correct — it simply cannot tell an existing-but-empty session from a
+    /// missing one, and treats both as missing. That is the safe direction:
+    /// worst case the session is re-created lazily on the next write, exactly
+    /// as a cookie-less request already behaves.
+    fn exists(&self, session_id: &str) -> bool {
+        self.get(session_id, "__soli_probe__").is_some()
+    }
+
     /// One read-only round-trip that exercises the backing store's pooled
     /// connection. Used both to anchor the connection at boot (via
     /// `spawn_session_readiness_probe`) and to keep it from idling out between
@@ -669,6 +681,13 @@ impl InMemorySessionStore {
 const IN_MEMORY_SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 impl SessionStore for InMemorySessionStore {
+    fn exists(&self, session_id: &str) -> bool {
+        let sessions = self.sessions.read().unwrap();
+        sessions
+            .get(session_id)
+            .is_some_and(|session| !session.is_expired(self.max_age))
+    }
+
     fn get_or_create(&self, session_id: &str) -> String {
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
         let should_cleanup_by_count = count.is_multiple_of(1000);
@@ -718,6 +737,11 @@ impl SessionStore for InMemorySessionStore {
         let sessions = self.sessions.read().unwrap();
         sessions
             .get(session_id)
+            // Expiry is checked on read, not only by the periodic sweep. The
+            // sweep runs every 30s (or every 1000th request), so a session
+            // stayed usable for up to half a minute past its TTL — the disk,
+            // SoliDB and SoliKV drivers already checked on read.
+            .filter(|session| !session.is_expired(self.max_age))
             .and_then(|s| s.data.get(key).cloned())
     }
 
@@ -956,6 +980,40 @@ pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
         Some(id) if is_valid_session_id(id) => store.get_or_create(id),
         _ => store.create_session(),
     }
+}
+
+/// Resolve the session for a request without creating one on a miss.
+///
+/// `ensure_session` answers a cookie that names no known session by minting and
+/// **persisting** a fresh empty one — an insert in memory, a file on disk, a
+/// document in SoliDB, a `SET` in SoliKV. A cookie-less request is already
+/// handled lazily (nothing exists until the first write), so the only thing a
+/// well-formed-but-unknown id bought was unauthenticated storage growth:
+/// `curl -H "Cookie: session_id=$(uuidgen)"` in a loop wrote a session per
+/// request, unbounded, with the disk driver additionally rescanning the whole
+/// directory every thousandth request.
+///
+/// Returning `None` here puts an unknown cookie on the same lazy path as no
+/// cookie at all: it costs nothing until the app actually stores something.
+pub fn resolve_existing_session(cookie_session_id: Option<&str>) -> Option<String> {
+    let cookie_session_id = cookie_session_id?;
+    let store = get_current_store();
+
+    if store.driver_name() == "cookie" {
+        // The cookie driver's "id" is the sealed payload; opening it is the
+        // whole read, and there is nothing to persist on a miss.
+        return crate::interpreter::builtins::session_cookie::is_plausible_sealed_value(
+            cookie_session_id,
+        )
+        .then(|| store.get_or_create(cookie_session_id));
+    }
+
+    if !is_valid_session_id(cookie_session_id) {
+        return None;
+    }
+    store
+        .exists(cookie_session_id)
+        .then(|| cookie_session_id.to_string())
 }
 
 /// SEC-053: a session ID must be a UUID-v4 in 36-char hyphenated form
@@ -2431,5 +2489,58 @@ mod tests {
             Value::Null => {}
             other => panic!("expected Null for deleted key, got {:?}", other),
         }
+    }
+}
+
+#[cfg(test)]
+mod unknown_cookie_tests {
+    use super::*;
+
+    /// The growth primitive: any client could send a fresh well-formed UUID per
+    /// request and have the server mint and persist an empty session each time,
+    /// with no cap. `resolve_existing_session` answers `None` instead, putting
+    /// an unknown cookie on the same lazy path as no cookie at all.
+    #[test]
+    fn an_unknown_session_id_creates_nothing() {
+        let store = InMemorySessionStore::new();
+        let unknown = Uuid::new_v4().to_string();
+
+        assert!(!store.exists(&unknown), "nothing should exist yet");
+        assert!(!store.exists(&unknown), "probing must not create it either");
+    }
+
+    /// A real session is still found, or every logged-in request would lose its
+    /// session on the next hop.
+    #[test]
+    fn a_known_session_id_is_found() {
+        let store = InMemorySessionStore::new();
+        let id = store.create_session();
+        assert!(store.exists(&id));
+    }
+
+    /// A malformed id never reaches the backend (SEC-053) and is not a session.
+    #[test]
+    fn a_malformed_session_id_is_not_a_session() {
+        assert!(!is_valid_session_id("../../etc/passwd"));
+        assert!(!is_valid_session_id(""));
+        assert!(is_valid_session_id(&Uuid::new_v4().to_string()));
+    }
+
+    /// Expiry is honoured on read, not only by the periodic sweep — the sweep
+    /// runs every 30s, so a session outlived its TTL by up to that long.
+    #[test]
+    fn an_expired_session_is_neither_readable_nor_present() {
+        let store = InMemorySessionStore::new().with_max_age(Duration::from_millis(1));
+        let id = store.create_session();
+        store.set(&id, "user_id", JsonValue::from(7));
+        assert_eq!(store.get(&id, "user_id"), Some(JsonValue::from(7)));
+
+        std::thread::sleep(Duration::from_millis(5));
+        assert_eq!(
+            store.get(&id, "user_id"),
+            None,
+            "expired data must not read"
+        );
+        assert!(!store.exists(&id), "an expired session is not present");
     }
 }

@@ -88,6 +88,101 @@ pub fn apply_event_assigns(parent: &mut JsonValue, params: &JsonValue) {
     }
 }
 
+/// Collect the assign names the server actually rendered, i.e. every
+/// `soli-assign-<name>` (or `data-soli-assign-<name>`) attribute in `html`.
+///
+/// `_assigns` is meant to carry those attributes back on the next event. It was
+/// applied to the instance's root state with no allowlist, so a socket could
+/// send `{"_assigns": {"role": "admin", "user_id": 1}}` and overwrite anything
+/// the server had seeded at connect — identity, tenant, price, quota — before
+/// the handler ran, with the forged value then handed to the handler as
+/// `event["state"]` and written back on the next render. Deriving the allowlist
+/// from the rendered markup keeps every legitimate `soli-assign-*` working
+/// while making up a key impossible: the client can only echo what it was
+/// given.
+pub fn allowed_assign_keys(html: &str) -> std::collections::HashSet<String> {
+    const MARKER: &str = "soli-assign-";
+    let mut out = std::collections::HashSet::new();
+    let bytes = html.as_bytes();
+    let mut search_from = 0usize;
+    while let Some(found) = html[search_from..].find(MARKER) {
+        let start = search_from + found + MARKER.len();
+        let mut end = start;
+        // An attribute name runs until `=`, whitespace, or the end of the tag.
+        while end < bytes.len() {
+            let c = bytes[end];
+            if c == b'=' || c == b'>' || c == b'/' || c.is_ascii_whitespace() {
+                break;
+            }
+            end += 1;
+        }
+        if end > start {
+            out.insert(html[start..end].to_string());
+        }
+        search_from = end.max(start + 1);
+    }
+    out
+}
+
+/// Drop every `_assigns` key the current markup did not declare.
+///
+/// Returns the names that were refused so the caller can log them; an empty
+/// result is the normal case.
+pub fn restrict_event_assigns(
+    params: &mut JsonValue,
+    allowed: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let Some(JsonValue::Object(assigns)) = params.get_mut("_assigns") else {
+        return Vec::new();
+    };
+    let refused: Vec<String> = assigns
+        .keys()
+        .filter(|key| !allowed.contains(key.as_str()))
+        .cloned()
+        .collect();
+    for key in &refused {
+        assigns.remove(key);
+    }
+    refused
+}
+
+/// Component names the server rendered into `html`, from `soli-component`
+/// (or `data-soli-component`) attributes.
+///
+/// A client picks the `_component` an event dispatches to. Resolving that name
+/// against every registered `router_live` handler let a viewer drive a
+/// component that was never mounted for them — sending
+/// `{"_component": "admin_panel", "_assigns": {"is_admin": true}}` ran the
+/// admin handler with a state bag the client had just fabricated, because its
+/// own `connect` (which would have set the real identity) never ran.
+pub fn rendered_component_names(html: &str) -> std::collections::HashSet<String> {
+    const MARKER: &str = "soli-component=";
+    let mut out = std::collections::HashSet::new();
+    let mut search_from = 0usize;
+    while let Some(found) = html[search_from..].find(MARKER) {
+        let after = search_from + found + MARKER.len();
+        let rest = &html[after..];
+        let quote = rest.chars().next();
+        let (value, consumed) = match quote {
+            Some(q @ ('"' | '\'')) => match rest[1..].find(q) {
+                Some(close) => (&rest[1..1 + close], 1 + close + 1),
+                None => break,
+            },
+            _ => {
+                let end = rest
+                    .find(|c: char| c.is_ascii_whitespace() || c == '>')
+                    .unwrap_or(rest.len());
+                (&rest[..end], end)
+            }
+        };
+        if !value.is_empty() {
+            out.insert(value.to_string());
+        }
+        search_from = after + consumed.max(1);
+    }
+    out
+}
+
 /// The serve event path: hydrate upload ids, merge child `_assigns`, then
 /// return the state snapshot the handler receives as `event["state"]`.
 /// Snapshotting *before* the merge would let a handler that returns that
@@ -342,5 +437,84 @@ mod tests {
         assert_eq!(child["score"], 9);
         assert_eq!(child["label"], "own");
         assert_eq!(component_cid("score", &json!({ "id": "a" })), "score:a");
+    }
+}
+
+#[cfg(test)]
+mod client_input_constraint_tests {
+    use super::*;
+
+    #[test]
+    fn assign_names_come_from_the_rendered_markup() {
+        let html = r#"<div soli-assign-tab="one" data-soli-assign-page='2'>
+            <button soli-click="go" soli-assign-sort=asc>Go</button>
+        </div>"#;
+        let allowed = allowed_assign_keys(html);
+        assert!(allowed.contains("tab"), "{allowed:?}");
+        assert!(allowed.contains("page"), "{allowed:?}");
+        assert!(allowed.contains("sort"), "{allowed:?}");
+        assert!(!allowed.contains("role"), "{allowed:?}");
+        assert_eq!(allowed.len(), 3, "{allowed:?}");
+    }
+
+    /// The reported escalation: a socket sends assigns the page never declared
+    /// and overwrites server-seeded identity before the handler runs.
+    #[test]
+    fn undeclared_assigns_are_refused_and_declared_ones_survive() {
+        let allowed = allowed_assign_keys(r#"<div soli-assign-tab="one"></div>"#);
+        let mut params = json!({
+            "_assigns": { "tab": "two", "role": "admin", "user_id": 1 }
+        });
+
+        let refused = restrict_event_assigns(&mut params, &allowed);
+        assert_eq!(refused.len(), 2, "{refused:?}");
+        assert!(refused.contains(&"role".to_string()));
+        assert!(refused.contains(&"user_id".to_string()));
+
+        let assigns = params["_assigns"].as_object().unwrap();
+        assert_eq!(assigns.len(), 1);
+        assert_eq!(assigns["tab"], json!("two"));
+    }
+
+    #[test]
+    fn an_event_without_assigns_is_untouched() {
+        let mut params = json!({"value": "x"});
+        assert!(restrict_event_assigns(&mut params, &allowed_assign_keys("")).is_empty());
+        assert_eq!(params["value"], json!("x"));
+    }
+
+    /// A forged root-state write must not survive even when the handler merges
+    /// the state it was handed.
+    #[test]
+    fn a_refused_assign_never_reaches_parent_state() {
+        let allowed = allowed_assign_keys(r#"<div soli-assign-tab="one"></div>"#);
+        let mut state = json!({"role": "viewer", "tab": "one"});
+        let mut params = json!({"_assigns": {"role": "admin", "tab": "two"}});
+
+        restrict_event_assigns(&mut params, &allowed);
+        apply_event_assigns(&mut state, &params);
+
+        assert_eq!(state["role"], json!("viewer"), "role must not be writable");
+        assert_eq!(
+            state["tab"],
+            json!("two"),
+            "a declared assign still applies"
+        );
+    }
+
+    #[test]
+    fn component_names_are_read_from_both_quote_styles_and_the_data_prefix() {
+        let html = r#"<div soli-component="score" soli-component-id="s1"></div>
+            <div data-soli-component='admin_panel'></div>"#;
+        let names = rendered_component_names(html);
+        assert!(names.contains("score"), "{names:?}");
+        assert!(names.contains("admin_panel"), "{names:?}");
+        assert!(!names.contains("billing"), "{names:?}");
+    }
+
+    #[test]
+    fn a_component_absent_from_the_markup_is_not_listed() {
+        let names = rendered_component_names(r#"<div soli-component="score"></div>"#);
+        assert!(!names.contains("admin_panel"), "{names:?}");
     }
 }

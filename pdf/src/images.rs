@@ -98,6 +98,52 @@ pub fn load_image(
     Ok(img)
 }
 
+/// Decides whether an `http(s)` image source may be fetched.
+///
+/// Installed by the host application (`soli` installs its SSRF validator).
+/// Unset, network fetches are refused outright rather than silently allowed:
+/// this crate cannot know what network it is running on, and the safe default
+/// for an image reference that may have come from user-supplied markup is not
+/// to make the request.
+pub type UrlGuard = fn(&str) -> std::result::Result<(), String>;
+
+/// Resolves a local image path, or refuses it.
+///
+/// Installed by the host application (`soli` installs its filesystem jail).
+/// Unset, local reads are refused: an image `src` can reach this from
+/// `pdf_from_markdown(user_markdown)` via `![](/etc/passwd)` or from a template
+/// field carrying user data, and an unguarded `fs::read` there is an arbitrary
+/// file read whose result is embedded in the generated document.
+pub type PathGuard = fn(&str) -> std::result::Result<std::path::PathBuf, String>;
+
+static URL_GUARD: std::sync::OnceLock<UrlGuard> = std::sync::OnceLock::new();
+static PATH_GUARD: std::sync::OnceLock<PathGuard> = std::sync::OnceLock::new();
+
+/// Install the host application's image-source policy. Idempotent; the first
+/// call wins, so a library user cannot be silently overridden later.
+pub fn set_image_source_guards(url: UrlGuard, path: PathGuard) {
+    let _ = URL_GUARD.set(url);
+    let _ = PATH_GUARD.set(path);
+}
+
+fn check_url(src: &str) -> Result<()> {
+    match URL_GUARD.get() {
+        Some(guard) => guard(src).map_err(|e| PdfError::Image(format!("{src}: {e}"))),
+        None => Err(PdfError::Image(format!(
+            "refusing to fetch {src}: no image-source policy installed"
+        ))),
+    }
+}
+
+fn resolve_path(src: &str) -> Result<std::path::PathBuf> {
+    match PATH_GUARD.get() {
+        Some(guard) => guard(src).map_err(|e| PdfError::Image(format!("{src}: {e}"))),
+        None => Err(PdfError::Image(format!(
+            "refusing to read {src}: no image-source policy installed"
+        ))),
+    }
+}
+
 fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {
         // data:[<mediatype>][;base64],<data>
@@ -123,8 +169,15 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
                 "network fetch disabled, skipping {src}"
             )));
         }
+        // The host's policy decides. Without it there is nothing sensible to
+        // check against, and an image URL is often the most user-influenced
+        // field in a document template.
+        check_url(src)?;
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
+            // Each hop would need re-validating against the policy above, and
+            // this client has no hook for that, so refuse to follow any.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| PdfError::Image(e.to_string()))?;
         let resp = client
@@ -139,7 +192,8 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
             .to_vec())
     } else {
         let path = src.strip_prefix("file://").unwrap_or(src);
-        std::fs::read(path).map_err(PdfError::from)
+        let resolved = resolve_path(path)?;
+        std::fs::read(resolved).map_err(PdfError::from)
     }
 }
 
@@ -385,5 +439,52 @@ mod tests {
         assert!(!looks_like_svg(&[
             0x89, b'P', b'N', b'G', b'<', b's', b'v', b'g'
         ]));
+    }
+}
+
+#[cfg(test)]
+mod source_guard_tests {
+    use super::*;
+
+    /// With no policy installed, a network image source must be refused rather
+    /// than fetched. This crate cannot know what network it is on, and an image
+    /// `src` is often the most user-influenced field in a document template —
+    /// `pdf_from_markdown` turns `![](url)` straight into one.
+    #[test]
+    fn network_sources_are_refused_without_a_policy() {
+        let err = fetch_bytes(
+            "http://169.254.169.254/latest/meta-data/",
+            true,
+            Duration::from_secs(1),
+        )
+        .expect_err("an unguarded fetch must not happen");
+        let message = err.to_string();
+        assert!(
+            message.contains("refusing to fetch") || message.contains("policy"),
+            "{message}"
+        );
+    }
+
+    /// Likewise a local path: an unguarded `fs::read` here is an arbitrary file
+    /// read whose result is embedded in the generated document.
+    #[test]
+    fn local_paths_are_refused_without_a_policy() {
+        let err = fetch_bytes("/etc/passwd", false, Duration::from_secs(1))
+            .expect_err("an unguarded read must not happen");
+        let message = err.to_string();
+        assert!(
+            message.contains("refusing to read") || message.contains("policy"),
+            "{message}"
+        );
+    }
+
+    /// `data:` URIs carry their own bytes and need no policy — they are the one
+    /// source that references nothing outside the document.
+    #[test]
+    fn data_uris_still_work() {
+        // "hi" base64-encoded.
+        let bytes = fetch_bytes("data:text/plain;base64,aGk=", false, Duration::from_secs(1))
+            .expect("data URIs are self-contained");
+        assert_eq!(bytes, b"hi");
     }
 }

@@ -127,6 +127,19 @@ The client is served by the soli binary itself at `/live/client.js` — no file 
 
 By default the instance key is `session:component`. Two tabs of the same browser session share that instance; a click in one patches the others. Put `data-live-room="name"` on the mount when you want a **public board** (a demo, a shared desk) that every visitor joins — the client sends `?room=name` and the server keys `room:name:component` instead of the session cookie. That also covers WebSocket upgrades that arrive with no `Cookie` header (each would otherwise mint a unique `sess-<uuid>` and look like a different session).
 
+**Rooms are opt-in per component.** Declare them in `config/routes.sl`:
+
+```soli
+live_rooms("desk")            # one component
+live_rooms("desk", "board")   # or several
+```
+
+An undeclared component ignores `?room=` and gets its ordinary per-session
+instance. This is a security boundary, not bookkeeping: a room instance is
+shared by everyone who names it — same state, same rendered HTML, same events —
+so without the declaration anyone who guessed a room name received a
+component's live markup and the right to drive it.
+
 ```html
 <div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"></div>
 ```

@@ -610,3 +610,60 @@ describe("full form assembly", fn() {
 // __soli_form_names shim above).
 class Post < Model
 end
+
+describe("form builder output safety", fn() {
+    test("button_to confirm text cannot break out of its attribute", fn() {
+        # The old form emitted onclick="return confirm('#{j(text)}')". `j()` is a
+        # JavaScript escape, so a quote became \" — which the HTML tokenizer reads
+        # as a backslash followed by the end of the attribute, opening a live
+        # event handler. Building the confirm text from a record is the ordinary
+        # idiom, so this was reachable from any titled row.
+        let html = button_to("Delete", "/posts/7", {
+            "confirm": "Delete x\" onmouseover=alert(1) y=\"?"
+        });
+        # No inline JavaScript at all, so there is no seam to break out of.
+        assert_not(html.contains("onclick"));
+        assert_contains(html, "data-confirm=");
+        # The quotes that used to terminate the attribute are escaped, so the
+        # payload stays inert text inside the value.
+        assert_not(html.contains("y=\"?\""));
+        assert_contains(html, "&quot; onmouseover=alert(1) y=&quot;");
+    });
+
+    test("button_to refuses a javascript: target", fn() {
+        let html = button_to("Visit", "javascript:alert(1)");
+        assert_not(html.contains("javascript:"));
+        assert_contains(html, "action=\"#\"");
+    });
+
+    test("button_to keeps ordinary targets", fn() {
+        assert_contains(button_to("Go", "/posts/7"), "action=\"/posts/7\"");
+        assert_contains(button_to("Go", "https://example.com/x"), "action=\"https://example.com/x\"");
+        assert_contains(button_to("Go", "posts/7"), "action=\"posts/7\"");
+    });
+
+    test("form_with refuses a javascript: url", fn() {
+        let f = form_with({"title": "x"}, {"url": "javascript:alert(1)"});
+        let html = f.open();
+        assert_not(html.contains("javascript:"));
+        assert_contains(html, "action=\"#\"");
+    });
+
+    test("an attribute name built from data cannot open a handler", fn() {
+        # Value escaping never sees the name, so a name carrying a quote used to
+        # produce a live attribute.
+        let threw = false;
+        try {
+            button_to("X", "/x", {"placeholder\" onfocus=\"alert(1)": "v"});
+        } catch e {
+            threw = true;
+        }
+        assert(threw);
+    });
+
+    test("ordinary attribute names still work", fn() {
+        let html = button_to("X", "/x", {"class": "btn", "data-role": "delete"});
+        assert_contains(html, "class=\"btn\"");
+        assert_contains(html, "data-role=\"delete\"");
+    });
+});

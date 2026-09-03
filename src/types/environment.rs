@@ -2114,97 +2114,81 @@ impl TypeEnvironment {
         self.classes.insert("X509".to_string(), x509_class);
 
         // HTTP class
+        // HTTP client. Every verb takes a trailing optional options hash
+        // (`headers`, `timeout`), so each signature ends in an `Any` param:
+        // that lifts the arity cap (see checker/expressions/calls.rs) instead
+        // of pinning a count the optional argument would fail. The list must
+        // mirror `register_http_class` in interpreter/builtins/http_class.rs
+        // — a verb missing here is a "Cannot access member" type error at
+        // `soli check` / `soli -e` time even though it runs fine.
         let mut http_class = ClassType::new("HTTP".to_string());
-        http_class.methods.insert(
-            "get".to_string(),
-            MethodInfo {
-                name: "get".to_string(),
-                params: vec![("url".to_string(), Type::String)],
-                return_type: Type::Future(Box::new(Type::String)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "post".to_string(),
-            MethodInfo {
-                name: "post".to_string(),
-                params: vec![
-                    ("url".to_string(), Type::String),
-                    ("body".to_string(), Type::Any),
-                ],
-                return_type: Type::Future(Box::new(Type::String)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "put".to_string(),
-            MethodInfo {
-                name: "put".to_string(),
-                params: vec![
-                    ("url".to_string(), Type::String),
-                    ("body".to_string(), Type::Any),
-                ],
-                return_type: Type::Future(Box::new(Type::String)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "delete".to_string(),
-            MethodInfo {
-                name: "delete".to_string(),
-                params: vec![("url".to_string(), Type::String)],
-                return_type: Type::Future(Box::new(Type::String)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "request".to_string(),
-            MethodInfo {
-                name: "request".to_string(),
-                params: vec![
+        let url = || ("url".to_string(), Type::String);
+        let body = || ("body".to_string(), Type::Any);
+        let options = || ("options".to_string(), Type::Any);
+        let urls = || ("urls".to_string(), Type::Array(Box::new(Type::String)));
+        let future_string = || Type::Future(Box::new(Type::String));
+        let future_any = || Type::Future(Box::new(Type::Any));
+        type HttpMethodSig = (&'static str, Vec<(String, Type)>, Type);
+        let http_methods: Vec<HttpMethodSig> = vec![
+            ("get", vec![url(), options()], future_string()),
+            ("post", vec![url(), body(), options()], future_string()),
+            ("put", vec![url(), body(), options()], future_string()),
+            ("patch", vec![url(), body(), options()], future_string()),
+            ("delete", vec![url(), options()], future_string()),
+            ("head", vec![url(), options()], future_string()),
+            ("get_json", vec![url(), options()], future_any()),
+            ("get_jsonp", vec![url(), options()], future_any()),
+            ("post_json", vec![url(), body(), options()], future_any()),
+            ("put_json", vec![url(), body(), options()], future_any()),
+            ("patch_json", vec![url(), body(), options()], future_any()),
+            (
+                "request",
+                vec![
                     ("method".to_string(), Type::String),
-                    ("url".to_string(), Type::String),
-                    ("options".to_string(), Type::Any),
+                    url(),
+                    ("headers".to_string(), Type::Any),
+                    body(),
                 ],
-                return_type: Type::Future(Box::new(Type::Any)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "get_all".to_string(),
-            MethodInfo {
-                name: "get_all".to_string(),
-                params: vec![("urls".to_string(), Type::Array(Box::new(Type::String)))],
-                return_type: Type::Array(Box::new(Type::Any)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "get_all_json".to_string(),
-            MethodInfo {
-                name: "get_all_json".to_string(),
-                params: vec![("urls".to_string(), Type::Array(Box::new(Type::String)))],
-                return_type: Type::Array(Box::new(Type::Any)),
-                is_private: false,
-                is_static: true,
-            },
-        );
-        http_class.methods.insert(
-            "get_jsonp".to_string(),
-            MethodInfo {
-                name: "get_jsonp".to_string(),
-                params: vec![("url".to_string(), Type::String)],
-                return_type: Type::Future(Box::new(Type::Any)),
-                is_private: false,
-                is_static: true,
-            },
-        );
+                future_any(),
+            ),
+            (
+                "get_all",
+                vec![urls(), options()],
+                Type::Array(Box::new(Type::Any)),
+            ),
+            (
+                "get_all_json",
+                vec![urls(), options()],
+                Type::Array(Box::new(Type::Any)),
+            ),
+            (
+                "parallel",
+                vec![("requests".to_string(), Type::Any)],
+                Type::Array(Box::new(Type::Any)),
+            ),
+            (
+                "json_parse",
+                vec![("text".to_string(), Type::String)],
+                Type::Any,
+            ),
+            (
+                "json_stringify",
+                vec![("value".to_string(), Type::Any)],
+                Type::String,
+            ),
+        ];
+        for (name, params, return_type) in http_methods {
+            http_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params,
+                    return_type,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
         self.classes.insert("HTTP".to_string(), http_class);
 
         // Pop3 email-reading class: `Pop3.new(host, user, pass, opts?)` returns

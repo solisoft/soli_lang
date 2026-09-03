@@ -105,9 +105,20 @@ fn origin_allowed(rule: &CorsRule, origin: &str) -> bool {
 /// Does a registered rule allow this (path, origin)? Consulted by the CSRF
 /// origin gate: a matching `cors()` declaration is an explicit cross-origin
 /// opt-in for the path.
+///
+/// A wildcard rule does NOT count. `cors("/api/*")` with the default
+/// `origins: ["*"]` says "this path is readable cross-origin", not "any site
+/// may act as the logged-in user here", and letting it satisfy the gate turned
+/// every such path into a CSRF hole — `Origin: null` (a sandboxed iframe or a
+/// redirected form post) included, since `null` matches the wildcard. Only an
+/// explicitly listed origin is a real opt-in.
 pub fn allows_cross_origin(path: &str, origin: &str) -> bool {
     rule_for_path(path)
-        .map(|rule| origin_allowed(&rule, origin))
+        .map(|rule| {
+            rule.origins
+                .iter()
+                .any(|o| o != "*" && o.eq_ignore_ascii_case(origin))
+        })
         .unwrap_or(false)
 }
 
@@ -269,6 +280,33 @@ mod tests {
             Some("Origin")
         );
         assert!(decision.preflight.is_none());
+
+        // A wildcard rule opens the path to cross-origin *reads*. It must not
+        // also waive the CSRF origin check, which would let any site perform
+        // state-changing requests as the logged-in user.
+        assert!(
+            !allows_cross_origin("/api/users/7", "https://any.example"),
+            "a wildcard cors() rule must not satisfy the CSRF gate"
+        );
+        assert!(
+            !allows_cross_origin("/api/users/7", "null"),
+            "Origin: null must never be waived by a wildcard rule"
+        );
+    }
+
+    #[test]
+    fn an_explicitly_listed_origin_is_a_real_csrf_opt_in() {
+        let _lock = RULES_LOCK.lock().unwrap();
+        clear_cors_rules();
+        let mut r = rule("/api/*");
+        r.origins = vec!["https://app.example.com".to_string()];
+        register_cors_rule(r);
+
+        assert!(allows_cross_origin(
+            "/api/users/7",
+            "https://app.example.com"
+        ));
+        assert!(!allows_cross_origin("/api/users/7", "https://evil.example"));
     }
 
     #[test]

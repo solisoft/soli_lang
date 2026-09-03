@@ -284,7 +284,8 @@ These knobs control how the request edge handles untrusted input. See the
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_TRUST_PROXY` | Honors `X-Forwarded-Proto` / `X-Forwarded-Host` when set to `1`, `true`, or `yes`. Only enable when the deployment terminates these headers at a trusted proxy hop. | `false` |
+| `SOLI_TRUST_PROXY` | Honors `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-For` when set to `1`, `true`, or `yes`. Only enable when the deployment terminates these headers at a trusted proxy hop — on a directly-exposed app, any client can spoof them, which downgrades the CSRF and origin checks, flips the cookie `Secure` flag, aims `*_url` helpers at a phishing host, and hands every request a fresh identity so per-IP rate limits never trip. | `false` |
+| `SOLI_TRUSTED_PROXIES` | Comma-separated IPs or CIDR blocks (`10.0.0.0/8,127.0.0.1,::1`) whose requests may carry `X-Forwarded-*`. With this set, a client that reaches the app directly is not trusted even while `SOLI_TRUST_PROXY` is on. Unset, every peer is trusted when the flag is on. | unset |
 | `SOLI_FORCE_SECURE_COOKIES` | Set to `1`/`true`/`yes` to add `Secure` to **every** cookie the process emits — the framework's session cookie *and* anything the app sets through `set_cookie` — regardless of detected scheme. Use when the deployment is always on TLS but the proxy doesn't forward `X-Forwarded-Proto: https` (or `enable_trust_proxy()` isn't on). Equivalent runtime call: `enable_force_secure_cookies()`. | `false` |
 | `SOLI_MAX_BODY_SIZE` | Maximum buffered request body, in bytes. Requests over the cap return `413 Payload Too Large`. | `8388608` (8 MiB) |
 | `SOLI_DISABLE_CSRF` | Disables the same-origin CSRF check entirely when set to `true`. For API-only deployments where no cookie session is in play. Per-route opt-out via `skip_csrf("/path")` in `config/routes.sl` is preferred — see [Routing → CSRF Protection](/docs/routing#csrf-protection). | unset |
@@ -295,6 +296,23 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_PARALLEL_MAX_ITEMS` | Maximum input list length accepted by `HTTP.get_all`, `HTTP.get_all_json`, `HTTP.parallel`, and `Image.process_all`. Calls with longer arrays are rejected before any thread is spawned. | `256` |
 | `SOLI_PARALLEL_MAX_CONCURRENCY` | Maximum OS threads alive at one time inside a parallel fan-out call. The runner consumes the input list in chunks of this size. | `16` |
 | `SOLI_MAX_UPLOAD_FILES` | Maximum number of file parts accepted per multipart request. A body packed with thousands of tiny parts would otherwise allocate a per-file Soli hash for each one and OOM the worker. | `32` |
+| `SOLI_MAX_CONNECTIONS` | Maximum simultaneous TCP connections. Past the cap, new connections are closed immediately rather than queued: a client opening sockets and trickling bodies would otherwise exhaust file descriptors and memory without ever completing a request. `0` disables the cap. | `20000` |
+| `SOLI_BODY_READ_TIMEOUT_SECS` | How long a request body may take to arrive in full. The header read was already bounded; the body was not, so a byte every thirty seconds held a connection and its buffer indefinitely. | `60` |
+| `SOLI_MAX_PARAM_PAIRS` | Maximum `key=value` pairs parsed from a query string or urlencoded body. Bounded only by the body cap, `a=&a=&…` produced millions of string pairs per request. Pairs past the cap are dropped. | `4096` |
+| `SOLI_HANDLER_TIMEOUT_SECS` | Wall-clock budget for executing one request handler. A runaway loop used to hold a worker forever, since the 504 the client receives does not stop the handler. Checked on loop iterations and statements, so it costs nothing measurable. `0` disables it. | `30` |
+| `SOLI_WORKER_STACK_MB` | Stack size for threads that run Soli code. The interpreter recurses on the native stack and its 256-frame budget does not fit the 2 MiB default, where an overflow aborts the whole process instead of failing one request. Virtual address space, committed only as used. | `64` |
+| `SOLI_MAX_RANGE_LEN` | Maximum elements a single `range(a, b)` / `a..b` may materialise. Both collect eagerly, so a request-supplied bound could ask the allocator for gigabytes — and an allocation failure aborts the process rather than the request. | `16777216` |
+| `SOLI_MAX_STRING_ALLOC_BYTES` | Maximum size of a string built by `"x" * n`. Same reasoning as `SOLI_MAX_RANGE_LEN`; a negative count is refused outright. | `67108864` (64 MiB) |
+| `SOLI_MAX_PAGE_SIZE` | Ceiling on `paginate({"per": n})` and vector-search `top_k`. `per` comes straight from request params, and an unbounded page loads the whole collection into one request. | `1000` |
+| `SOLI_RATE_LIMIT_IPV6_PREFIX` | Prefix length IPv6 clients are aggregated to for per-IP rate limiting. A residential allocation is a 64-bit prefix, so keying on the full address let one host take a fresh bucket per request and never trip the login throttle. Use 56 or 48 to aggregate a whole site. | `64` |
+| `SOLI_METRICS_TOKEN` | Bearer token required to read `/_metrics`. Unset, the endpoint is limited to loopback and private-range peers instead of being world-readable. | unset |
+| `SOLI_WS_MAX_CONNECTIONS` | Maximum simultaneous WebSocket connections across all routes. Each holds a task and a channel; the registry was unbounded. | `10000` |
+| `SOLI_WS_MAX_CONNECTIONS_PER_IP` | Maximum simultaneous WebSocket connections from one peer address. `0` disables the per-IP cap. | `64` |
+| `SOLI_WS_MAX_MESSAGES_PER_SEC` | Sustained inbound frames per second allowed on one socket before it is closed, so a single connection cannot monopolise the shared realtime queue. `0` disables it. | `100` |
+| `SOLI_WS_MESSAGE_BURST` | Burst allowance on top of `SOLI_WS_MAX_MESSAGES_PER_SEC`. | `200` |
+| `SOLI_WS_ENQUEUE_TIMEOUT_SECS` | How long a WebSocket frame waits for room in the realtime worker queue before the socket is closed with 1013. | `5` |
+| `SOLI_IMAP_MAX_LITERAL_BYTES` | Maximum IMAP literal (`{N}`) accepted from a server. The size is server-supplied and allocated up front. | `33554432` (32 MiB) |
+| `SOLI_POP3_MAX_RESPONSE_BYTES` | Maximum size of a dot-terminated POP3 multiline response, which has no declared length. | `33554432` (32 MiB) |
 
 ## Database
 
@@ -391,7 +409,10 @@ which makes it the natural place for app-wide startup config:
 ```soli
 # config/application.sl
 
-# Trust X-Forwarded-* only behind a trusted proxy.
+# Trust X-Forwarded-* only behind a trusted proxy. Off by default, and
+# generated apps ship with this line commented out — on a directly-exposed
+# app any client can forge those headers. Pair it with SOLI_TRUSTED_PROXIES
+# to name the hops whose forwarded headers are honoured.
 enable_trust_proxy()
 
 # Always emit Secure session cookies — appropriate when the deployment

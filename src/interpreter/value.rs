@@ -959,6 +959,19 @@ impl PartialEq for Value {
         if self.is_deferred() || other.is_deferred() {
             return self.force_deferred() == other.force_deferred();
         }
+        // Same reason as `Display`: comparing two cyclic structures recursed
+        // forever and overflowed the native stack, aborting the process. At the
+        // limit we answer "not equal", which is the safe direction — an
+        // authorization check that compares deep structures fails closed.
+        if matches!(self, Value::Array(_) | Value::Hash(_) | Value::Instance(_)) {
+            return with_depth(&EQ_DEPTH, MAX_EQ_DEPTH, false, || self.eq_inner(other));
+        }
+        self.eq_inner(other)
+    }
+}
+
+impl Value {
+    fn eq_inner(&self, other: &Self) -> bool {
         match (self, other) {
             // By instant, so two DateTimes built from the same moment compare
             // equal. While a DateTime was an `Instance` this fell to the
@@ -1010,8 +1023,76 @@ impl PartialEq for Value {
     }
 }
 
+thread_local! {
+    /// Nesting depth of in-flight `Display for Value` recursions.
+    ///
+    /// `str(x)`, string interpolation and `print` all walk a value recursively.
+    /// Runtime graphs are routinely cyclic — `parent` ↔ `children`, a relation
+    /// cache, `h["me"] = h` — and a cycle made the walk infinite, overflowing
+    /// the native stack. That is not a catchable panic: it aborts the process,
+    /// so a single log line like `"#{node}"` could take down every worker.
+    /// Serialization was already guarded this way; formatting was not.
+    static DISPLAY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+
+    /// Same, for structural equality.
+    static EQ_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Depth at which `Display` stops descending and prints a marker.
+///
+/// Deep enough that no legitimate structure reaches it (the JSON parser caps
+/// inbound nesting at 512), shallow enough to be safe on any thread stack.
+const MAX_DISPLAY_DEPTH: usize = 256;
+
+/// Depth at which structural equality gives up and answers `false`.
+const MAX_EQ_DEPTH: usize = 256;
+
+/// Run `body` one level deeper, or return `on_overflow` at the limit.
+/// Restores the counter on every path so one guarded call cannot leave the
+/// depth raised for the next.
+fn with_depth<T>(
+    counter: &'static std::thread::LocalKey<std::cell::Cell<usize>>,
+    limit: usize,
+    on_overflow: T,
+    body: impl FnOnce() -> T,
+) -> T {
+    let depth = counter.with(|d| {
+        d.set(d.get() + 1);
+        d.get()
+    });
+    if depth > limit {
+        counter.with(|d| d.set(depth - 1));
+        return on_overflow;
+    }
+    let result = body();
+    counter.with(|d| d.set(d.get() - 1));
+    result
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Containers are the only recursive arms, so scalars skip the guard.
+        if matches!(
+            self,
+            Value::Array(_) | Value::Hash(_) | Value::Instance(_) | Value::Deferred(_)
+        ) {
+            return with_depth(&DISPLAY_DEPTH, MAX_DISPLAY_DEPTH, Ok(()), || {
+                self.fmt_inner(f)
+            })
+            .and_then(|()| {
+                if DISPLAY_DEPTH.with(|d| d.get()) >= MAX_DISPLAY_DEPTH {
+                    write!(f, "<...>")
+                } else {
+                    Ok(())
+                }
+            });
+        }
+        self.fmt_inner(f)
+    }
+}
+
+impl Value {
+    fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::DateTime(ts, use_utc) => write!(f, "{}", Value::render_datetime(*ts, *use_utc)),
             Value::Int(n) => write!(f, "{}", n),

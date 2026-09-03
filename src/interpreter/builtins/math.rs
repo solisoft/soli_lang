@@ -18,6 +18,10 @@ pub fn register_math_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("range", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::Int(start), Value::Int(end)) => {
+                    // Eager `collect`: without a ceiling, `range(0, params["n"])`
+                    // asks the allocator for gigabytes, and an allocation
+                    // failure aborts the process rather than failing the request.
+                    crate::interpreter::limits::check_range(*start, *end, "range()")?;
                     let arr: Vec<Value> = (*start..*end).map(Value::Int).collect();
                     Ok(Value::Array(Rc::new(RefCell::new(arr))))
                 }

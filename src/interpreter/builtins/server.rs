@@ -782,14 +782,36 @@ mod expand_wildcard_action_tests {
 /// key/value pairs. Order matters for bracket-array keys (`tags[]=a&tags[]=b`
 /// must keep submission order, and repeated keys must not collapse the way
 /// they do in a HashMap).
+/// Maximum number of `key=value` pairs parsed out of a query string or an
+/// urlencoded body.
+///
+/// Bounded only by the 8 MiB body cap, `a=&a=&a=…` yielded around 2.7 million
+/// `(String, String)` pairs — roughly thirty times the request's own size in
+/// allocations, per request, per worker — before the nester deduplicated them.
+/// Rack caps this the same way. `SOLI_MAX_PARAM_PAIRS` overrides it.
+fn max_param_pairs() -> usize {
+    std::env::var("SOLI_MAX_PARAM_PAIRS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(4096)
+}
+
 pub fn parse_query_pairs(query: &str) -> Vec<(String, String)> {
     let mut result = Vec::new();
     if query.is_empty() {
         return result;
     }
+    let max_pairs = max_param_pairs();
     for pair in query.split('&') {
         if pair.is_empty() {
             continue;
+        }
+        // Stop rather than error: a truncated parameter list degrades one
+        // request, where refusing it outright would turn a long-but-legitimate
+        // form into a failure.
+        if result.len() >= max_pairs {
+            break;
         }
         if let Some((key, value)) = pair.split_once('=') {
             let decoded_key = urlencoding::decode(&key.replace('+', " "))
@@ -962,7 +984,11 @@ pub fn parse_query_string(query: &str) -> HashMap<String, String> {
         return result;
     }
 
+    let max_pairs = max_param_pairs();
     for pair in query.split('&') {
+        if result.len() >= max_pairs {
+            break;
+        }
         if let Some((key, value)) = pair.split_once('=') {
             let decoded_key = urlencoding::decode(&key.replace('+', " "))
                 .unwrap_or_else(|_| key.into())
@@ -1410,6 +1436,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                 if let Some(b64) = body_b64 {
                     body = decode_body_base64(&b64);
                 }
+                default_content_type(&mut headers, &body);
                 return (status, headers, body);
             }
         };
@@ -1461,7 +1488,41 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
     if let Some(b64) = body_b64 {
         body = decode_body_base64(&b64);
     }
+    default_content_type(&mut headers, &body);
     (status, headers, body)
+}
+
+/// Give a handler-built response a `Content-Type` when it set none.
+///
+/// A hash response like `{"status": 422, "body": json_stringify(errors)}` — the
+/// idiom the docs show — went out with no `Content-Type` at all, leaving the
+/// browser to sniff. Combined with the baseline `nosniff` header not actually
+/// being emitted, a string body starting with user-supplied text could be
+/// sniffed as HTML and executed. Guessing from the body's first byte is enough
+/// here: JSON is the only structured thing these handlers produce.
+fn default_content_type(headers: &mut Vec<(String, String)>, body: &[u8]) {
+    if headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        return;
+    }
+    if body.is_empty() {
+        return;
+    }
+    let looks_like_json = body
+        .iter()
+        .find(|b| !b.is_ascii_whitespace())
+        .is_some_and(|b| *b == b'{' || *b == b'[');
+    let content_type = if looks_like_json {
+        "application/json; charset=utf-8"
+    } else {
+        // Deliberately not text/html: a handler that means to return markup
+        // says so, and defaulting to HTML is what makes an unlabelled body
+        // dangerous in the first place.
+        "text/plain; charset=utf-8"
+    };
+    headers.push(("Content-Type".to_string(), content_type.to_string()));
 }
 
 /// Decode a `body_base64` response body. Invalid base64 is a handler bug —
@@ -2176,5 +2237,58 @@ mod nested_param_tests {
         let all = all.expect("all");
         assert_eq!(as_str(&get(&all, "id")), "42");
         assert_eq!(as_str(&get(&all, "q")), "hello");
+    }
+}
+
+#[cfg(test)]
+mod default_content_type_tests {
+    use super::*;
+
+    /// The documented idiom `{"status": 422, "body": json_stringify(errors)}`
+    /// used to go out with no `Content-Type` at all.
+    #[test]
+    fn a_json_body_gets_a_json_content_type() {
+        let mut headers = Vec::new();
+        default_content_type(&mut headers, br#"{"errors":[]}"#);
+        assert_eq!(
+            headers,
+            vec![(
+                "Content-Type".to_string(),
+                "application/json; charset=utf-8".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn an_array_body_is_json_too() {
+        let mut headers = Vec::new();
+        default_content_type(&mut headers, b"  [1, 2, 3]");
+        assert!(headers[0].1.starts_with("application/json"));
+    }
+
+    /// Plain text, not HTML: defaulting an unlabelled body to HTML is exactly
+    /// what makes a sniffed response dangerous.
+    #[test]
+    fn a_non_json_body_defaults_to_plain_text() {
+        let mut headers = Vec::new();
+        default_content_type(&mut headers, b"<script>alert(1)</script>");
+        assert_eq!(headers[0].1, "text/plain; charset=utf-8");
+    }
+
+    /// A handler that set its own type keeps it.
+    #[test]
+    fn an_explicit_content_type_is_never_overridden() {
+        let mut headers = vec![("content-type".to_string(), "text/html".to_string())];
+        default_content_type(&mut headers, b"<h1>hi</h1>");
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].1, "text/html");
+    }
+
+    /// An empty body needs no type (204s, HEAD responses).
+    #[test]
+    fn an_empty_body_gets_no_header() {
+        let mut headers = Vec::new();
+        default_content_type(&mut headers, b"");
+        assert!(headers.is_empty());
     }
 }

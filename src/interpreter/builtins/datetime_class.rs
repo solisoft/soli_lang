@@ -573,8 +573,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(_) => return Err("DateTime.format() locale must be a string".to_string()),
                     None => None,
                 };
+                // A caller-supplied pattern is rejected up front: chrono
+                // returns `fmt::Error` for an unknown directive and
+                // `to_string()` turns that into a panic, so `format("%")` was a
+                // 500 on any route that let a user choose the format.
+                super::datetime::helpers::validate_strftime(&fmt)?;
                 let wall = wall_clock(t, use_utc);
-                let formatted = wall.format(&fmt).to_string();
+                let formatted = super::datetime::helpers::format_or_empty(&wall.format(&fmt));
                 match locale {
                     Some(ref loc) if **loc != *"en" => {
                         use super::datetime::helpers::{get_locale_data, localize_names};

@@ -127,7 +127,12 @@ pub fn start_pool(config: PoolConfig) {
     for id in 0..config.num_workers {
         let rx = rx.clone();
         let config = config.clone();
-        let builder = thread::Builder::new().name(format!("bg-job-{}", id));
+        // Same large stack as the HTTP workers: a job runs interpreted Soli,
+        // which recurses on the native stack, and an overflow aborts the whole
+        // process instead of failing the job.
+        let builder = thread::Builder::new()
+            .name(format!("bg-job-{}", id))
+            .stack_size(crate::serve::server_constants::worker_stack_bytes());
         if let Err(e) = builder.spawn(move || run_pool_worker(id, rx, config)) {
             eprintln!("Failed to spawn background job worker {}: {}", id, e);
         }

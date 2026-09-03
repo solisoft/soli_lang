@@ -49,7 +49,23 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 /// Register the PDF builtins.
+/// Teach the PDF renderer which image sources it may load.
+///
+/// Its loader took any `http(s)` URL through a bare client (redirects followed,
+/// no blocklist — a blind SSRF, reachable from `pdf_from_markdown` via
+/// `![](http://169.254.169.254/…)`) and read any other string straight off
+/// disk, outside the app-root jail, embedding another user's private upload in
+/// the generated document. Both now go through the same policies as the rest of
+/// the runtime.
+fn install_pdf_image_source_guards() {
+    soli_pdf::images::set_image_source_guards(
+        crate::interpreter::builtins::http_class::validate_url_for_ssrf,
+        |path| crate::interpreter::builtins::file::resolve_readable_path(path, "PDF image"),
+    );
+}
+
 pub fn register_pdf_builtins(env: &mut Environment) {
+    install_pdf_image_source_guards();
     env.define(
         "pdf_render".to_string(),
         Value::NativeFunction(NativeFunction::new("pdf_render", None, |args| {
@@ -516,13 +532,23 @@ fn arg_string(value: &Value, fn_name: &str, arg: &str) -> Result<String, String>
 /// Resolve a (possibly relative) font directory against the app-root jail, so
 /// `"font"` means `<app_root>/font` (matching `slurp`/`File`) rather than the
 /// process CWD.
+/// Resolve a font search directory, confined to the app root.
+///
+/// This used to join a relative path onto the jail root and hand an *absolute*
+/// one straight back, with no containment check — so a `fonts` option (and the
+/// letterhead/attachment paths that share this helper) read anywhere the
+/// process could. Falling back to the app root on a rejected path keeps
+/// rendering working rather than failing the document over a font search path.
 fn resolve_font_dir(dir: PathBuf) -> PathBuf {
-    if dir.is_absolute() {
-        return dir;
-    }
-    match crate::interpreter::builtins::file::jail_root() {
-        Some(root) => root.join(dir),
-        None => dir,
+    let raw = dir.to_string_lossy().to_string();
+    match crate::interpreter::builtins::file::resolve_readable_path(&raw, "PDF font directory") {
+        Ok(resolved) => resolved,
+        Err(message) => {
+            eprintln!("[WARN] ignoring font directory {raw:?}: {message}");
+            crate::interpreter::builtins::file::jail_root()
+                .map(|root| root.to_path_buf())
+                .unwrap_or(dir)
+        }
     }
 }
 

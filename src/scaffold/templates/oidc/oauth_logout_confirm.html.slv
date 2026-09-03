@@ -1,0 +1,16 @@
+<div class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md text-center">
+    <h1 class="text-2xl font-bold mb-3">Sign out?</h1>
+    <p class="text-slate-400 mb-6">
+      This will end your session on this device.
+    </p>
+    <%- form_with(null, {"url": "/oauth/logout", "method": "post"}) do |f| -%>
+      <%- f.submit("Sign out") %>
+    <%- end -%>
+    <p class="text-xs text-slate-500 mt-6">
+      You are seeing this because the sign-out was requested by a plain link.
+      Confirming here is what tells us the request was yours: without it, any
+      page you visit could sign you out just by loading an image.
+    </p>
+  </div>
+</div>

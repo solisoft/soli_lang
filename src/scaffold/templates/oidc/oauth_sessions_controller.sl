@@ -9,11 +9,33 @@ class OauthSessionsController < Controller
   # exactly the same way the authorization endpoint's would be.
   def end_session
     destination = this._post_logout_destination()
+
+    # A bare GET must not end the session: `<img src="/oauth/logout">` on any
+    # page would log the visitor out, and the same-origin CSRF gate covers only
+    # state-changing methods. A request that names a client through a valid
+    # `id_token_hint` is a real RP-initiated logout and proceeds; anything else
+    # gets a confirmation page, which is what turns the click into intent.
+    #
+    # `logout_confirmation` posts back to this same route, and the POST is
+    # covered by the CSRF gate like any other form.
+    if destination.blank? && !this._request_confirms_logout()
+      return render("oauth/logout_confirm", {})
+    end
+
     session_destroy()
 
     return redirect_external(destination) unless destination.blank?
 
     return redirect("/")
+  end
+
+  # Did this request actually ask to log out, rather than merely load a URL?
+  # Either a POST (CSRF-checked), or an RP-initiated logout carrying a hint we
+  # could resolve to a registered client.
+  def _request_confirms_logout
+    return true if req["method"].to_s.upcase() == "POST"
+
+    return false
   end
 
   def _post_logout_destination

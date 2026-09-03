@@ -17,4 +17,15 @@ class AuthMailer < Mailer
     @confirm_url = auth_base_url() + "/confirm_email?token=" + token
     return this.mail(to: user.email, subject: "Confirm your email address")
   end
+
+  # Sent once, when the lockout trips. The sign-in response deliberately says
+  # nothing about the lock — telling the browser "this account is locked" also
+  # tells whoever is guessing that they found the right password — so this is
+  # how the owner finds out.
+  def account_locked(user, lock_minutes)
+    @user = user
+    @lock_minutes = lock_minutes
+    @reset_url = auth_base_url() + "/password/new"
+    return this.mail(to: user.email, subject: "Your account is temporarily locked")
+  end
 end

@@ -108,6 +108,157 @@ impl WebSocketConnection {
     }
 }
 
+/// Admission control for WebSocket connections: a global cap plus a per-IP cap.
+///
+/// The registry itself is an unbounded `HashMap`, and every live socket costs a
+/// tokio task and a 32-slot channel, so without a cap a single peer can open
+/// sockets until the process runs out of file descriptors or memory. A slot is
+/// taken at upgrade time and released by dropping the returned guard, which
+/// happens on every exit path of the connection task (handshake failure
+/// included).
+pub struct WsConnectionLimiter {
+    per_ip: OnceLock<std::sync::Mutex<HashMap<String, usize>>>,
+    total: AtomicU64,
+}
+
+/// RAII slot returned by [`WsConnectionLimiter::try_acquire`]. Releasing on
+/// drop is what makes the counters correct across early returns and panics.
+pub struct WsConnectionSlot {
+    limiter: &'static WsConnectionLimiter,
+    ip: String,
+}
+
+impl Drop for WsConnectionSlot {
+    fn drop(&mut self) {
+        self.limiter.release(&self.ip);
+    }
+}
+
+/// Why a WebSocket upgrade was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WsAdmission {
+    /// The server-wide connection cap is reached.
+    ServerFull,
+    /// This peer IP already holds its maximum number of sockets.
+    PerIpFull,
+}
+
+impl WsConnectionLimiter {
+    const fn new() -> Self {
+        Self {
+            per_ip: OnceLock::new(),
+            total: AtomicU64::new(0),
+        }
+    }
+
+    fn per_ip(&self) -> std::sync::MutexGuard<'_, HashMap<String, usize>> {
+        let lock = self
+            .per_ip
+            .get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        match lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    /// Take a connection slot for `ip`, or say why it was refused.
+    pub fn try_acquire(&'static self, ip: &str) -> Result<WsConnectionSlot, WsAdmission> {
+        let max_total = crate::serve::server_constants::ws_max_connections();
+        let max_per_ip = crate::serve::server_constants::ws_max_connections_per_ip();
+
+        // One lock covers both counters so the check and the increment cannot
+        // interleave with another upgrade and overshoot the cap.
+        let mut per_ip = self.per_ip();
+        if max_total > 0 && self.total.load(Ordering::Relaxed) as usize >= max_total {
+            return Err(WsAdmission::ServerFull);
+        }
+        let entry = per_ip.entry(ip.to_string()).or_insert(0);
+        if max_per_ip > 0 && *entry >= max_per_ip {
+            return Err(WsAdmission::PerIpFull);
+        }
+        *entry += 1;
+        self.total.fetch_add(1, Ordering::Relaxed);
+        Ok(WsConnectionSlot {
+            limiter: self,
+            ip: ip.to_string(),
+        })
+    }
+
+    fn release(&self, ip: &str) {
+        let mut per_ip = self.per_ip();
+        if let Some(count) = per_ip.get_mut(ip) {
+            *count = count.saturating_sub(1);
+            // Drop the key at zero: the map would otherwise grow one entry per
+            // distinct source address seen since boot.
+            if *count == 0 {
+                per_ip.remove(ip);
+            }
+        }
+        // `fetch_update` rather than `fetch_sub` so a bookkeeping slip can
+        // never wrap the counter to u64::MAX and lock out every new socket.
+        let _ = self
+            .total
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                Some(n.saturating_sub(1))
+            });
+    }
+
+    /// Live connection count (test/introspection helper).
+    pub fn live_count(&self) -> u64 {
+        self.total.load(Ordering::Relaxed)
+    }
+}
+
+static WS_CONNECTION_LIMITER: WsConnectionLimiter = WsConnectionLimiter::new();
+
+/// The process-wide WebSocket admission limiter.
+pub fn ws_connection_limiter() -> &'static WsConnectionLimiter {
+    &WS_CONNECTION_LIMITER
+}
+
+/// Token bucket bounding how fast one socket may submit frames to the realtime
+/// workers. Without it a single connection can saturate the shared event queue
+/// and starve every other socket (and, before the enqueue was made
+/// non-blocking, park a tokio thread per frame).
+pub struct WsRateLimiter {
+    tokens: f64,
+    capacity: f64,
+    refill_per_sec: f64,
+    last: std::time::Instant,
+}
+
+impl WsRateLimiter {
+    /// Build a limiter from the configured rate/burst. A rate of `0` disables
+    /// it (`allow` then always returns true).
+    pub fn from_config() -> Self {
+        let rate = crate::serve::server_constants::ws_max_messages_per_sec() as f64;
+        let burst = crate::serve::server_constants::ws_message_burst().max(1) as f64;
+        Self {
+            tokens: burst,
+            capacity: burst,
+            refill_per_sec: rate,
+            last: std::time::Instant::now(),
+        }
+    }
+
+    /// Consume one token. `false` means the socket is over its budget.
+    pub fn allow(&mut self) -> bool {
+        if self.refill_per_sec <= 0.0 {
+            return true;
+        }
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + elapsed * self.refill_per_sec).min(self.capacity);
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Registry for all active WebSocket connections.
 #[derive(Clone)]
 pub struct WebSocketRegistry {
@@ -1523,5 +1674,83 @@ mod tests {
         let action = WebSocketHandlerAction::from_value(&value);
         assert_eq!(action.join, Some("room:lobby".to_string()));
         assert_eq!(action.send, Some("Welcome!".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod ws_limit_tests {
+    use super::*;
+
+    /// A fresh limiter with its own counters, so these tests never touch the
+    /// process-wide one other tests and the server share.
+    fn limiter() -> &'static WsConnectionLimiter {
+        Box::leak(Box::new(WsConnectionLimiter::new()))
+    }
+
+    #[test]
+    fn per_ip_cap_holds_and_slots_are_returned_on_drop() {
+        // The default per-IP cap is 64; take them all from one address.
+        let limiter = limiter();
+        let max = crate::serve::server_constants::ws_max_connections_per_ip();
+        let slots: Vec<_> = (0..max)
+            .map(|i| {
+                limiter
+                    .try_acquire("203.0.113.7")
+                    .unwrap_or_else(|_| panic!("slot {i} should be admitted"))
+            })
+            .collect();
+        assert_eq!(limiter.live_count() as usize, max);
+
+        assert_eq!(
+            limiter.try_acquire("203.0.113.7").err(),
+            Some(WsAdmission::PerIpFull),
+            "the cap must refuse the next socket from the same IP"
+        );
+        // A different peer is unaffected by one address filling its quota.
+        let other = limiter.try_acquire("198.51.100.4");
+        assert!(other.is_ok(), "a different IP must still be admitted");
+
+        drop(slots);
+        drop(other);
+        assert_eq!(
+            limiter.live_count(),
+            0,
+            "every slot must be released when its guard drops"
+        );
+        // And the address is admitted again once it has hung up.
+        assert!(limiter.try_acquire("203.0.113.7").is_ok());
+    }
+
+    #[test]
+    fn releasing_more_than_acquired_cannot_wrap_the_counter() {
+        // A bookkeeping slip must not underflow to u64::MAX, which would lock
+        // out every future connection.
+        let limiter = limiter();
+        limiter.release("203.0.113.9");
+        assert_eq!(limiter.live_count(), 0);
+        assert!(limiter.try_acquire("203.0.113.9").is_ok());
+    }
+
+    #[test]
+    fn rate_limiter_allows_a_burst_then_throttles() {
+        let burst = crate::serve::server_constants::ws_message_burst();
+        let mut limiter = WsRateLimiter::from_config();
+        for i in 0..burst {
+            assert!(limiter.allow(), "frame {i} of the burst must pass");
+        }
+        assert!(
+            !limiter.allow(),
+            "a flood past the burst allowance must be refused"
+        );
+    }
+
+    #[test]
+    fn rate_limiter_refills_over_time() {
+        let mut limiter = WsRateLimiter::from_config();
+        while limiter.allow() {}
+        // Hand-wind the clock rather than sleeping: one second of refill at the
+        // configured rate must hand back at least one token.
+        limiter.last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        assert!(limiter.allow(), "tokens must refill as time passes");
     }
 }

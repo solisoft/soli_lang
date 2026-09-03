@@ -17,6 +17,50 @@
 # open() embeds the per-session CSRF token; field names are flat
 # (name="title"), matching Soli's flat params model.
 
+# SEC-012, applied to form targets as well as links.
+#
+# `attr()` escapes an action for the HTML parser, but the browser still
+# *executes* `javascript:alert(1)` when the form is submitted, so escaping alone
+# never made a URL safe. `link_to` in the app scaffold has had this allowlist
+# since SEC-012; `form_with({"url": ...})` and `button_to(text, url)` did not,
+# which is exactly the inconsistency an attacker looks for — a profile website
+# field passed to `button_to` was live JavaScript.
+export def _form_safe_url(url)
+  raw = url.to_s
+  lower = raw.downcase()
+  return raw if lower.starts_with("http://") || lower.starts_with("https://")
+  return raw if lower.starts_with("/") || lower.starts_with("#") || lower.starts_with("?")
+
+  # No recognised scheme: relative only when nothing before the first /?#
+  # looks like a scheme separator. `javascript:`, `data:`, `vbscript:` and
+  # friends all fail here.
+  cut = lower.length()
+  slash = lower.index_of("/")
+  cut = slash if slash != -1 && slash < cut
+  question = lower.index_of("?")
+  cut = question if question != -1 && question < cut
+  hash_at = lower.index_of("#")
+  cut = hash_at if hash_at != -1 && hash_at < cut
+  return raw unless lower.substring(0, cut).contains(":")
+  return "#"
+end
+
+# Attribute names are emitted verbatim, so a name built from data could open a
+# new attribute (`placeholder" onfocus="alert(1)`). Only ordinary HTML attribute
+# names are allowed through.
+export def _safe_attr_name(name)
+  text = name.to_s
+  return false if text.blank?
+  for ch in text.chars()
+    next if ch >= "a" && ch <= "z"
+    next if ch >= "A" && ch <= "Z"
+    next if ch >= "0" && ch <= "9"
+    next if ["-", "_", ":", "."].includes?(ch)
+    return false
+  end
+  return true
+end
+
 export class FormBuilder
     record: Any
     url: String
@@ -46,7 +90,7 @@ export class FormBuilder
     def open()
         browser_method = "POST"
         browser_method = "GET" if this.http_method == "get"
-        action = attr(this.url)
+        action = attr(_form_safe_url(this.url))
         extra = this.attributes_without(this.form_attrs, [])
         html = "<form action=\"#{action}\" method=\"#{browser_method}\"#{extra}>"
         if !["get", "post"].includes?(this.http_method)
@@ -296,6 +340,11 @@ export class FormBuilder
         html = ""
         for name in opts.keys()
             if !excluded.includes?(name)
+                # Attribute *names* are emitted verbatim; a name built from data
+                # could open a live event handler no value escaping would catch.
+                if !_safe_attr_name(name)
+                    throw "form builder: invalid HTML attribute name #{name}"
+                end
                 value = opts[name]
                 if value == true
                     html = html + " #{name}"
@@ -385,7 +434,7 @@ export def button_to(text, target_url, options = null)
         form_class_attr = " class=\"#{form_css}\""
     end
 
-    action = attr(target_url)
+    action = attr(_form_safe_url(target_url))
     html = "<form action=\"#{action}\" method=\"#{browser_method}\"#{form_class_attr}>"
     if !["get", "post"].includes?(http_method)
         override = http_method.upcase()
@@ -396,6 +445,12 @@ export def button_to(text, target_url, options = null)
     button_attrs = ""
     for name in opts.keys()
         if !["method", "confirm", "form_class"].includes?(name)
+            # An option hash built from data (per-field config in the database,
+            # say) could otherwise inject an attribute name like
+            # `placeholder" onfocus="alert(1)`, which no value escaping catches.
+            if !_safe_attr_name(name)
+                throw "button_to(): invalid HTML attribute name #{name}"
+            end
             value = opts[name]
             if value == true
                 button_attrs = button_attrs + " #{name}"
@@ -408,8 +463,17 @@ export def button_to(text, target_url, options = null)
         end
     end
     if !opts["confirm"].nil?
-        confirm_js = j(opts["confirm"].to_s)
-        button_attrs = button_attrs + " onclick=\"return confirm('#{confirm_js}')\""
+        # `data-confirm`, not an inline `onclick`.
+        #
+        # The old form was `onclick="return confirm('#{j(text)}')"`. `j()` is a
+        # JavaScript escape: it turns `"` into `\\"`, which the HTML tokenizer
+        # reads as a backslash followed by the end of the attribute. So a
+        # confirm message built from a record — the canonical Rails idiom,
+        # `button_to("Delete", url, {"confirm": "Delete #{post.title}?"})` — let
+        # a title containing `x" onmouseover=alert(1) y="` open a live event
+        # handler. An attribute-escaped data attribute has no such seam, and the
+        # nav script picks it up.
+        button_attrs = button_attrs + " data-confirm=\"#{attr(opts["confirm"].to_s)}\""
     end
 
     caption = h(text.to_s)
