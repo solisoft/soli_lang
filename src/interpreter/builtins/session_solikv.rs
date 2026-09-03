@@ -127,6 +127,16 @@ impl SessionStore for SolikvSessionStore {
             .and_then(|s| s.data.get(key).cloned())
     }
 
+    /// See `DiskSessionStore::exists`: the trait default cannot see a session
+    /// through a per-key `get`.
+    fn exists(&self, session_id: &str) -> bool {
+        self.load_session(session_id).is_some_and(|session| {
+            let now = chrono::Utc::now().timestamp_millis();
+            let age_ms = (now - session.last_accessed).max(0) as u64;
+            Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
+        })
+    }
+
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
         if let Some(mut session) = self.load_session(session_id) {
             session.touch();

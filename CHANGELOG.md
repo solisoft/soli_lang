@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sessions on the disk, SoliDB and SoliKV drivers survived exactly one
+  request.** Since 2.0.3 the request resolver no longer mints a session for an
+  unknown cookie and asks the store `exists(id)` instead. The trait's default
+  `exists` probes a key with `get`, which on these three stores reads one entry
+  of the session's data — a key nobody ever sets — so every existing session
+  looked missing: a login wrote the session, the redirect landed, and the next
+  request started over with none. Only the in-memory store had its own
+  `exists`. Each persistent store now answers `exists` from the stored session
+  and its expiry.
+
 ## [2.0.3] - 2026-09-03
 
 ### Security

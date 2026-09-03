@@ -239,6 +239,19 @@ impl SessionStore for SolidbSessionStore {
             .and_then(|s| s.data.get(key).cloned())
     }
 
+    /// See `DiskSessionStore::exists`: the trait default cannot see a session
+    /// through a per-key `get`.
+    fn exists(&self, session_id: &str) -> bool {
+        self.load_session(session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|session| {
+                let now = chrono::Utc::now().timestamp_millis();
+                let age = (now - session.last_accessed).max(0) as u64;
+                Duration::from_millis(age) < self.max_age
+            })
+    }
+
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
         if let Ok(Some(mut session)) = self.load_session(session_id) {
             session.touch();

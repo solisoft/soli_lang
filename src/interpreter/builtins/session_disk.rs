@@ -164,6 +164,16 @@ impl SessionStore for DiskSessionStore {
             .and_then(|s| s.data.get(key).cloned())
     }
 
+    /// The trait default probes a key with `get`, which for this store reads
+    /// one entry of the session's data — a key nobody ever sets — so every
+    /// existing session looked missing, and the request resolver (which
+    /// refuses to mint a session for an unknown cookie) dropped every login
+    /// on the next request.
+    fn exists(&self, session_id: &str) -> bool {
+        self.load_session(session_id)
+            .is_some_and(|s| !s.is_expired(self.max_age.as_secs()))
+    }
+
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
         if let Some(mut session) = self.load_session(session_id) {
             session.touch();
@@ -244,6 +254,29 @@ mod tests {
 
         store.destroy(&session_id);
         assert_eq!(store.get(&session_id, "user_id"), None);
+    }
+
+    /// A login is `session_set` then a redirect; the next request resolves
+    /// the cookie through `exists`. With the trait default this was always
+    /// false for the disk driver.
+    #[test]
+    fn exists_sees_a_stored_session() {
+        let dir = tempdir().unwrap();
+        let store = DiskSessionStore::new(dir.path().to_path_buf()).unwrap();
+        let id = store.create_session();
+        assert!(store.exists(&id), "fresh session");
+        store.set(&id, "admin_ui_authenticated", JsonValue::Bool(true));
+        assert!(store.exists(&id), "session with data");
+        assert!(!store.exists("00000000-0000-4000-8000-000000000000"));
+        store.destroy(&id);
+        assert!(!store.exists(&id), "destroyed session");
+
+        let expired = DiskSessionStore::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_max_age(Duration::from_secs(0));
+        let id = expired.create_session();
+        std::thread::sleep(Duration::from_millis(1100));
+        assert!(!expired.exists(&id), "expired session");
     }
 
     #[test]
