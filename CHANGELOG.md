@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-09-03
+
 ### Fixed
 
 - **Sessions on the disk, SoliDB and SoliKV drivers survived exactly one
