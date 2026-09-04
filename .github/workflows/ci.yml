@@ -283,6 +283,13 @@ jobs:
   # Cheap enough to run on every push: three scripts over one release binary.
   engine-parity:
     runs-on: ubuntu-latest
+
+    # Every script here defaults to ./target/release/soli and honours SOLI, so
+    # pointing them at the `ci` profile is the whole change on this side. See
+    # the profile's comment in Cargo.toml for why it is not `release`.
+    env:
+      SOLI: ./target/ci/soli
+
     steps:
       - uses: actions/checkout@v5
 
@@ -295,8 +302,8 @@ jobs:
           key: engine-parity
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build the release binary the sweeps run against
-        run: cargo build --release --locked
+      - name: Build the binary the sweeps run against
+        run: cargo build --profile ci --locked
 
       - name: Engines agree
         run: ./bench/engine-parity/sweep.sh < bench/engine-parity/expressions.txt

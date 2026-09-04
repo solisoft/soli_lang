@@ -424,6 +424,29 @@ strip = "symbols"
 # Unwinding is the default; it is spelled out here only so the reason survives
 # the next binary-size or startup-time pass.
 
+# The profile CI's engine-parity sweeps build against.
+#
+# Those sweeps check semantics: that the two engines agree on an expression,
+# that `soli check` accepts calls that work, that hostile input does not panic.
+# None of that depends on how codegen is partitioned, but building it under
+# `release` did: fat LTO optimizes the whole crate graph as one serial unit, so
+# the build took 896s while the sweeps themselves took 62s — 90% of the job, and
+# the critical path of the entire CI run. `rust-cache` evicts the workspace
+# crate's own artifacts by design, so that cost was paid on every run, cache hit
+# or not.
+#
+# Inheriting from `release` is what keeps this honest. `opt-level`,
+# `debug-assertions` and `overflow-checks` are the settings that change
+# observable behavior, and they carry over untouched; `lto` and `codegen-units`
+# only decide how the work is split across cores. What the sweeps no longer test
+# is a byte-identical copy of the shipped binary, so an LTO-only miscompilation
+# would escape this job — `build-binaries` still does a true release build on
+# every tag.
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [profile.bench]
 opt-level = 3
 lto = "fat"
