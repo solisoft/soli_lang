@@ -609,6 +609,78 @@ pub fn extract_lintable_code(source: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// Escaped-output expressions whose entire value is a redundant escape-helper
+/// call. `<%= %>` already HTML-escapes its output, so `<%= h(x) %>`,
+/// `<%= html_escape(x) %>` and `<%= attr(x) %>` escape twice — the page shows
+/// literal `&#x27;` / `&amp;` wherever the value contains a special character.
+/// Returns `(template_line, helper_name)` pairs for `lint_file` to report.
+pub fn redundant_escape_helpers(source: &str) -> Result<Vec<(usize, &'static str)>, String> {
+    // `html_escape` before `h`: both start with `h`, and the paren check after
+    // the prefix keeps `h` from matching `html_escape(...)` — this order just
+    // reports the accurate helper name on the first try.
+    const HELPERS: [&str; 3] = ["html_escape", "h", "attr"];
+
+    let tokens = tokenize(source)?;
+    let mut found = Vec::new();
+    for token in &tokens {
+        let Token::OutputEscaped(expr, line) = token else {
+            continue;
+        };
+        let expr = expr.trim();
+        for helper in HELPERS {
+            let Some(rest) = expr.strip_prefix(helper) else {
+                continue;
+            };
+            // Only a call whose parenthesized arguments span the rest of the
+            // expression: `<%= h(x) %>` is flagged, `<%= h(x) + y %>` and
+            // `<%= hello(x) %>` are not.
+            if rest.starts_with('(') && paren_group_spans_whole(rest) {
+                found.push((*line, helper));
+                break;
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// True when the `(` opening `text` finds its matching `)` exactly at the last
+/// character — i.e. one parenthesized group is the entire text (`(a(b))` yes,
+/// `(a) + (b)` no). String literals are skipped so parens inside them don't
+/// count; an unterminated literal or unbalanced parens conservatively return
+/// false.
+fn paren_group_spans_whole(text: &str) -> bool {
+    let mut depth: usize = 0;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == quote {
+                in_string = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => in_string = Some(c),
+            '(' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    return false;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    return i == text.len() - 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Parse tokens into an AST.
 fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
     let mut nodes = Vec::new();

@@ -104,7 +104,7 @@
               <% if note["file"] && note["file"]["preview"] %>
                 <img class="desk-card-thumb" src="<%= note["file"]["preview"] %>" alt="">
               <% end %>
-              <div class="desk-title"><%= h(note["title"]) %></div>
+              <div class="desk-title"><%= note["title"] %></div>
               <div class="desk-menu" <% if menu_id == note["id"] %>soli-click-away="close_menu"<% end %>>
                 <button type="button" class="desk-chip" soli-click="open_menu" soli-value-id="<%= note["id"] %>">···</button>
                 <% if menu_id == note["id"] %>
@@ -134,8 +134,8 @@
       <% if selected == null %>
         <p>Pick a note, or file a new one.</p>
       <% else %>
-        <h3><%= h(selected["title"]) %></h3>
-        <p><%= h(selected["body"]) %></p>
+        <h3><%= selected["title"] %></h3>
+        <p><%= selected["body"] %></p>
         <div class="desk-actions">
           <button type="button" class="desk-btn" soli-click="cycle" soli-value-id="<%= selected["id"] %>" soli-disable-with="Updating…">
             Advance · <%= selected["status"] %>
@@ -147,16 +147,16 @@
         <%- live_component("desk_focus", { "focus": true }) %>
         <% if selected["file"] && selected["file"]["preview"] %>
           <div class="desk-file">
-            <img class="desk-preview" src="<%= selected["file"]["preview"] %>" alt="<%= h(selected["file"]["name"]) %>">
+            <img class="desk-preview" src="<%= selected["file"]["preview"] %>" alt="<%= selected["file"]["name"] %>">
             <div>
-              <strong><%= h(selected["file"]["name"]) %></strong>
+              <strong><%= selected["file"]["name"] %></strong>
               · <%= selected["file"]["size"] %> bytes
               · <%= selected["file"]["processed"] ? "ready" : "processing…" %>
             </div>
           </div>
         <% elsif selected["file"] %>
           <div class="desk-file">
-            <strong><%= h(selected["file"]["name"]) %></strong>
+            <strong><%= selected["file"]["name"] %></strong>
             · <%= selected["file"]["size"] %> bytes
             · <%= selected["file"]["processed"] ? "ready" : "processing…" %>
           </div>
@@ -178,6 +178,6 @@
 
   <div class="desk-foot">
     <div data-liveview-url="/live/socket/desk_pulse" data-live-root data-live-room="field-desk"></div>
-    <div id="desk-toast"><%= h(flash) %></div>
+    <div id="desk-toast"><%= flash %></div>
   </div>
 </div>

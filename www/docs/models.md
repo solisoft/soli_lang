@@ -2843,9 +2843,9 @@ end
     <ol>
       <% for q in queries %>
         <li>
-          <code><%= h(q["query"]) %></code>
+          <code><%= q["query"] %></code>
           <% if q["bind_vars"] != null %>
-            <small>binds: <%= h(json_stringify(q["bind_vars"])) %></small>
+            <small>binds: <%= json_stringify(q["bind_vars"]) %></small>
           <% end %>
           <span><%= q["duration_ms"] %> ms</span>
         </li>

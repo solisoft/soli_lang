@@ -309,8 +309,8 @@ In your ERB template, show the relevance score:
 ```erb
 <% for product in results %>
     <div class="product-card">
-        <h3><%= h(product["name"]) %></h3>
-        <p><%= h(product["description"]) %></p>
+        <h3><%= product["name"] %></h3>
+        <p><%= product["description"] %></p>
         <span class="price">$<%= product["price"] %></span>
         <% if product["score"] %>
             <span class="badge">Relevance: <%= round(product["score"] * 100) %>%</span>

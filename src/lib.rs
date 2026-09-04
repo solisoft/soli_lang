@@ -791,6 +791,23 @@ pub fn lint_file(source: &str, path: &str) -> Result<Vec<lint::LintDiagnostic>, 
     // HTML-only control-flow bodies (`<% if x %>…markup…<% end %>`) extract to
     // empty blocks; that isn't a real empty block in the template.
     diagnostics.retain(|d| d.rule != "style/empty-block");
+
+    // `<%= %>` already HTML-escapes its output, so wrapping the expression in
+    // an escape helper escapes twice and the page shows literal `&#x27;` /
+    // `&amp;` for any value with a special character.
+    if let Ok(redundant) = template::parser::redundant_escape_helpers(source) {
+        for (line, helper) in redundant {
+            diagnostics.push(lint::LintDiagnostic {
+                rule: "idiom/redundant-template-escape",
+                message: format!(
+                    "`<%= {helper}(...) %>` escapes twice — `<%= %>` already HTML-escapes its \
+                     output; write the expression bare, or use `<%- %>` for pre-escaped HTML"
+                ),
+                span: span::Span::new(0, 0, line, 1),
+                severity: lint::Severity::Warning,
+            });
+        }
+    }
     Ok(diagnostics)
 }
 

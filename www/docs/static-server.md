@@ -144,7 +144,7 @@ Templates receive two locals:
 
 ```erb
 <h1>About</h1>
-<p>You asked for <%= h(params["name"]) %>.</p>
+<p>You asked for <%= params["name"] %>.</p>
 ```
 
 Rendered without a layout — a plain directory has no `layouts/application`, and wrapping someone's

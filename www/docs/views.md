@@ -74,6 +74,7 @@ Templates have access to several built-in helper functions:
 > actually comes from. Use a bare `<%= value %>` for text, and reserve the
 > escape helpers below for the contexts `<%=` cannot know about — attribute
 > values, script bodies, URLs — or for markup you build inside `<%- ... %>`.
+> `soli lint` flags the double-escape form as `idiom/redundant-template-escape`.
 
 ## Template Helper Functions
 
@@ -118,11 +119,16 @@ tag escapes already, and applying `h()` there double-escapes (`<b>` renders as
 
 #### attr(string)
 
-Escapes a string for safe interpolation inside an HTML attribute value (between quotes). Encodes `"`, `'`, `<`, `>`, and `&`. Use this — not `h()` — when interpolating into attributes, since attribute context allows unquoted/single-quoted values that `h()` does not cover.
+Escapes a string for interpolation inside an HTML attribute value. Encodes
+`"`, `'`, `<`, `>`, and `&`. Like `h()`, this is for attribute values inside
+HTML you build **in code** and emit via `<%- %>`. In a template, `<%= %>`
+already encodes all five characters, so a double-quoted attribute needs no
+helper — `<%= attr(x) %>` double-escapes.
 
 ```erb
-<a title="<%= attr(post.title) %>">Read</a>
-<input value="<%= attr(form_value) %>">
+<a title="<%= post.title %>">Read</a>            <!-- correct -->
+<%- "<input value=\"" + attr(v) + "\">" %>       <!-- correct: code-built -->
+<input value="<%= attr(form_value) %>">          <!-- WRONG: double escape -->
 ```
 
 #### j(string)
@@ -1153,7 +1159,7 @@ to every item:
 ```erb
 <!-- app/views/components/post_card.html.slv -->
 <article class="post" data-n="<%= post_counter %>">
-  <h2><%= h(post["title"]) %></h2>
+  <h2><%= post["title"] %></h2>
 </article>
 ```
 
@@ -1221,7 +1227,7 @@ Both ultimately call the same rendering machinery. The difference is intent and 
 
 - Keep components small and purely presentational.
 - Start the file with a `#` comment listing the expected keys (Soli comments inside templates are `#`).
-- Always use `h()` for user data.
+- Let `<%= %>` do the escaping — no `h()` wrapper for user data.
 - Choose descriptive names: `user_avatar`, `empty_state`, `job_row`, `stat_block`.
 - Use subdirectories when you have more than a handful of components.
 - Prefer `component()` over `partial()` for anything that feels like a reusable widget.
@@ -1236,7 +1242,7 @@ Both ultimately call the same rendering machinery. The difference is intent and 
 
 <tr class="job-row <%= status_class || "" %>">
   <td class="font-mono"><%= job["id"] %></td>
-  <td><%= h(job["script"] || job["webhook_url"]) %></td>
+  <td><%= job["script"] || job["webhook_url"] %></td>
   <td><span class="status-pill"><%= job["status"] %></span></td>
   <td class="text-right"><%= job["priority"] %></td>
   <td>
