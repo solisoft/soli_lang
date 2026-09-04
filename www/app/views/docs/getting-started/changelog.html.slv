@@ -20,9 +20,38 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-5" class="text-amber-400 hover:underline">v2.0.5</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-6" class="text-amber-400 hover:underline">v2.0.6</a>.</p>
 
         <p class="text-gray-500 text-sm leading-relaxed mb-10">Nothing yet.</p>
+    </section>
+
+    <section id="v2-0-6" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.0.6 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-04</span></h2>
+
+        <h3 id="v2-0-6-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM / database</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Fixed: a <code class="text-cyan-400">Model.where(...)</code> chain inside a <code class="text-cyan-400">try/catch</code> failed on the server</strong>, with <code>Cannot access property 'limit' on QueryBuilder</code> (or <code>'first'</code>, <code>'order'</code>, &hellip;). The VM &mdash; the engine <code class="text-cyan-400">soli serve</code> uses outside <code class="text-cyan-400">--dev</code> &mdash; had no arm for query builders at all; <code class="text-cyan-400">where</code>, <code class="text-cyan-400">limit</code>, <code class="text-cyan-400">first</code>, the aggregates and scope chaining live only in the interpreter.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">Why it bit in one place rather than everywhere.</strong> The old error was catchable by application code. Normally it escapes, <code class="text-cyan-400">serve</code> demotes the handler to the interpreter, and the chain works &mdash; which is why the same code ran fine in most routes. A handler with its own <code class="text-cyan-400">try/catch</code> around the model call swallowed it and reported its own failure, so <code class="text-cyan-400">serve</code> never learned it had to demote and that route stayed broken for every request.</li>
+                    <li>The VM now hands query-builder access back through the same <code class="text-cyan-400">EngineFallback</code> route class reflection and dynamic finders use. That refusal is deliberately <strong class="text-white">not catchable</strong> by user code, so it always reaches <code class="text-cyan-400">serve</code>; the handler demotes once and is then blacklisted, costing one re-run rather than one per request. Workarounds of the shape <code class="text-cyan-400">.limit(1).all</code> written to dodge this can go back to <code class="text-cyan-400">.first</code>.</li>
+                </ul>
+            </li>
+            <li><strong class="text-white"><code class="text-cyan-400">.first(n)</code> on a query builder</strong> returns the first <code>n</code> records as an array &mdash; <code class="text-cyan-400">Post.where({"published": true}).order("created_at", "desc").first(3)</code>. It is <code class="text-cyan-400">.limit(n).all</code>, spelled the way Rails spells it; the no-argument <code class="text-cyan-400">.first</code> still returns a single record or <code>null</code>. Refused on aggregate and <code class="text-cyan-400">exists</code> queries, which return one value rather than rows, and on a negative count. See <a href="/docs/database/query-builder" class="text-amber-400 hover:underline">Query Builder</a>.</li>
+        </ul>
+
+        <h3 id="v2-0-6-devtools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A project can pin the exact soli it runs on.</strong> <code class="text-cyan-400">soli.toml</code>'s existing <code class="text-cyan-400">soli_version</code> field gains an exact form &mdash; <code class="text-cyan-400">soli_version = "=2.0.3"</code> &mdash; and <code class="text-cyan-400">soli</code> run inside that project switches to soli 2.0.3, fetching and verifying it the first time and caching it under <code class="text-cyan-400">~/.cache/soli/runtimes/</code>. The plain <code class="text-cyan-400">soli_version = "2.0.3"</code> form is unchanged and still means "at least". Same idea as <code class="text-cyan-400">.nvmrc</code> or a rustup toolchain file, resolved the same way: by walking up from the current directory. It works under soli-proxy with no proxy change, because the proxy already starts an app with the app directory as its working directory.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white"><code class="text-cyan-400">soli which</code></strong> reports which version will run here, from which manifest, and whether it has been downloaded yet. <code class="text-cyan-400">SOLI_NO_PIN=1</code> skips the switch, for CI, air-gapped machines and bisecting a version-dependent bug.</li>
+                    <li>Commands that must act on the soli you invoked ignore the pin: <code class="text-cyan-400">soli update</code>, <code class="text-cyan-400">soli new</code>, <code class="text-cyan-400">soli which</code>, <code class="text-cyan-400">--version</code> and <code class="text-cyan-400">--help</code>. <code class="text-cyan-400">soli update</code> especially &mdash; redirected, it would overwrite a cached toolchain with a different version.</li>
+                    <li>A pin is exact in both directions, and a pre-release does not satisfy the release it precedes. Pins are validated before becoming a path or a URL, because a <code class="text-cyan-400">soli.toml</code> is author-controlled content in any repository you clone.</li>
+                    <li>A pinned fetch <strong class="text-white">refuses a release that publishes no checksum</strong>, where <code class="text-cyan-400">soli build --target</code> only warns: those bytes are about to be executed rather than embedded. It also names the version and the manifest before downloading, since a cloned repository now chooses the interpreter that runs its code.</li>
+                    <li><strong class="text-white">Older soli binaries ignore a pin</strong> rather than failing on it &mdash; they read <code class="text-cyan-400">"=2.0.3"</code> as an unrecognised minimum and conclude it is satisfied. Adding a pin does not break collaborators who have not upgraded.</li>
+                </ul>
+                See <a href="/docs/language/modules#section-package-config" class="text-amber-400 hover:underline">Modules &amp; Packages</a>.
+            </li>
+        </ul>
     </section>
 
     <section id="v2-0-5" class="mb-16 scroll-mt-24">

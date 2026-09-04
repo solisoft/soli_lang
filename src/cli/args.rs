@@ -278,6 +278,8 @@ pub enum Command {
     },
     Install,
     SelfUpdate,
+    /// Report which soli version runs in this directory, and why.
+    Which,
     /// Generate a P-256 keypair for signing update manifests.
     UpdateKeygen,
     /// Sign an update manifest in place with a P-256 private key.
@@ -518,6 +520,7 @@ pub fn print_usage() {
     eprintln!(
         "  update [name]      Update a dependency (soli update = self-update to latest release)"
     );
+    eprintln!("  which                Show which soli version runs here, and why");
     eprintln!(
         "  update docs [folder]  Rewrite agent guides + docs/ from this soli binary's templates"
     );
@@ -611,6 +614,7 @@ pub fn print_usage() {
     eprintln!("  soli remove math              Remove dependency");
     eprintln!("  soli install                  Install all dependencies");
     eprintln!("  soli update                    Update soli CLI to latest release");
+    eprintln!("  soli which                     Show which soli version runs in this directory");
     eprintln!("  soli update math               Update a specific dependency");
     eprintln!("  soli update docs               Refresh project CLAUDE.md / docs/ from this soli");
     eprintln!("  soli update docs ./myapp       Same, for a project at ./myapp");
@@ -1865,6 +1869,10 @@ pub fn parse_args() -> Options {
                     process::exit(64);
                 };
                 options.command = Command::SignUpdate { manifest, key_path };
+                return options;
+            }
+            "which" => {
+                options.command = Command::Which;
                 return options;
             }
             "update" => {

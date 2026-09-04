@@ -2,6 +2,7 @@ pub mod args;
 mod commands;
 mod macho;
 mod standalone;
+mod toolchain;
 
 use args::{parse_args, Command};
 
@@ -10,6 +11,12 @@ pub fn run() {
     // app here and never reaches the soli CLI. Regular soli binaries have no
     // embedded payload and fall straight through.
     standalone::boot_if_standalone();
+
+    // A project can pin the exact soli it runs on (`soli_version = "=2.0.3"`).
+    // When the pin names another version, this replaces the process with it and
+    // never returns. Strictly after `boot_if_standalone`: a standalone artifact
+    // *is* the app and must never be redirected by a manifest in its directory.
+    toolchain::reexec_if_pinned();
 
     let options = parse_args();
 
@@ -191,6 +198,7 @@ pub fn run() {
         Command::SelfUpdate => commands::run_self_update()
             .map_err(|e| e.to_string())
             .expect("Update failed"),
+        Command::Which => toolchain::print_which(),
         Command::Login { registry, token } => {
             commands::run_login(registry.as_deref(), token.as_deref())
         }

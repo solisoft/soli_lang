@@ -418,6 +418,20 @@ impl Vm {
                     span,
                 }),
             },
+            // Query builders are the tree-walker's entirely: `where`, `limit`,
+            // `first`, `order`, the aggregates and scope chaining all live in
+            // `query_builder_member_access`, and executing them needs the
+            // interpreter. The VM had no arm at all, so any `Model.where(...)`
+            // chain inside a VM-compiled handler died with
+            // "Cannot access property 'limit' on QueryBuilder" — a hard error,
+            // not a demotion, because the catch-all below is not an
+            // `EngineFallback`. Punt via the same route class reflection and
+            // dynamic finders use; the handler demotes once and is then
+            // blacklisted, so this costs one re-run rather than one per request.
+            Value::QueryBuilder(_) => Err(RuntimeError::EngineFallback(
+                format!("query builder member '{}'", name),
+                span,
+            )),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: object.type_name().to_string(),
                 property: name.to_string(),

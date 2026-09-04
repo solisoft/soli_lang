@@ -104,7 +104,11 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.first</code></td>
-                    <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return the first record, or <code>null</code> when there is none</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.first(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return the first <code>n</code> records as an <strong class="text-white">array</strong>. Equivalent to <code>.limit(n).all</code>; an existing <code>.limit()</code> is overridden. Not available on aggregate or <code>exists</code> queries, which return a single value rather than rows.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.count</code></td>

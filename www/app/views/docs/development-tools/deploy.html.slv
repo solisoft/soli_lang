@@ -440,6 +440,25 @@ ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
         Air-gapped or mirrored environments can point <code class="text-amber-400">SOLI_RELEASE_BASE_URL</code> at their own artifact server (same layout: <code>{base}/v{version}/soli-{target}.tar.gz</code> + <code>.sha256</code>). Without <code>--target</code> the running <code>soli</code> binary itself is embedded — no network needed.
     </p>
 
+    <h3 class="text-lg font-semibold text-white mb-3">Pinned versions in production</h3>
+    <p class="text-gray-400 mb-4">
+        A project that pins its interpreter (<code class="text-amber-400">soli_version = "=2.0.3"</code>, see
+        <a href="/docs/language/modules" class="text-amber-400 hover:underline">Modules &amp; Packages</a>) switches to
+        that version wherever it runs, including under soli-proxy: the proxy starts an app with the app directory as the
+        working directory, so the pin resolves the same way it does on your machine.
+    </p>
+    <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+        <li><strong class="text-white">Provision the toolchain ahead of time, not at start-up.</strong> The proxy gives
+            a new instance 30 seconds to pass its health check. A first start after changing a pin would spend part of
+            that window downloading, and a slow link can push it over &mdash; the deploy then fails and succeeds on the
+            retry, once the cache is warm. Fetch the version during the deploy step instead, or pre-populate the cache
+            directory.</li>
+        <li><strong class="text-white">The cache must be readable by the user the app runs as.</strong> It lives under
+            <code class="text-amber-400">$XDG_CACHE_HOME/soli/runtimes</code> or <code class="text-amber-400">~/.cache/soli/runtimes</code>, so
+            <code class="text-amber-400">HOME</code> in the app's environment has to belong to that user. A shared directory pointed at
+            by <code class="text-amber-400">XDG_CACHE_HOME</code> works well when several apps run as different users.</li>
+    </ul>
+
     <h3 class="text-lg font-semibold text-white mb-3">Running a standalone app</h3>
     <p class="text-gray-400 mb-4">
         The executable accepts app-oriented flags — <code>--port</code>, <code>--host</code>, <code>--workers</code>, <code>--dev</code>, <code>--version</code>, <code>--help</code> — and reads its <code>.env</code> from the <strong>directory containing the executable</strong>, the same convention as a <code>.soli</code> bundle. For encrypted apps, provide <code>SOLI_BUNDLE_KEY</code> or <code>SOLI_BUNDLE_AUTH_URL</code> there.

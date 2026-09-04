@@ -693,40 +693,109 @@ fn resolve_runtime_template(target: Option<&str>) -> Result<(Vec<u8>, BuildTarge
     };
 
     let target = normalize_target(target)?;
-    let cache_path = runtime_cache_dir()?
-        .join(format!("v{}", VERSION))
-        .join(format!("soli-{}", target));
 
-    if cache_path.is_file() {
-        println!(
-            "  Using cached {} runtime ({})",
-            target,
-            cache_path.display()
-        );
-        let bytes = std::fs::read(&cache_path).map_err(|e| {
-            format!(
-                "cannot read cached runtime '{}': {}",
-                cache_path.display(),
-                e
-            )
-        })?;
-        return Ok((bytes, BuildTarget::Release(target)));
-    }
-
-    let bytes = download_release_runtime(&target)?;
-
-    // Cache for next time (rename-into-place from a temp sibling so a
-    // concurrent build never sees a half-written file).
-    if let Some(parent) = cache_path.parent() {
-        if std::fs::create_dir_all(parent).is_ok() {
-            let tmp = parent.join(format!(".soli-{}.tmp-{}", target, std::process::id()));
-            if std::fs::write(&tmp, &bytes).is_ok() {
-                let _ = std::fs::rename(&tmp, &cache_path);
-            }
-        }
-    }
+    // A cross-target build embeds these bytes rather than executing them, and
+    // it has always tolerated a release with no published checksum — keep both
+    // of those. The version pin, which *executes* what it downloads, asks for
+    // the strict variant instead.
+    let cache_path = ensure_cached_runtime(
+        &target,
+        VERSION,
+        FetchPolicy {
+            strict_checksum: false,
+            executable: false,
+        },
+    )?;
+    let bytes = std::fs::read(&cache_path).map_err(|e| {
+        format!(
+            "cannot read cached runtime '{}': {}",
+            cache_path.display(),
+            e
+        )
+    })?;
 
     Ok((bytes, BuildTarget::Release(target)))
+}
+
+/// How strictly to fetch a release runtime, and what to do with it afterwards.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FetchPolicy {
+    /// Refuse the download when the release publishes no `.sha256`, rather than
+    /// warning and continuing. Required whenever the bytes will be executed.
+    pub strict_checksum: bool,
+    /// Mark the cached file executable (Unix). Only meaningful for a runtime
+    /// that will be `exec`'d rather than embedded.
+    pub executable: bool,
+}
+
+/// Where a given version+target runtime lives in the cache.
+pub(crate) fn cached_runtime_path(target: &str, version: &str) -> Result<PathBuf, String> {
+    Ok(runtime_cache_dir()?
+        .join(format!("v{}", version))
+        .join(format!("soli-{}", target)))
+}
+
+/// An on-disk soli runtime for `version`/`target`, downloading and verifying it
+/// when the cache is cold.
+///
+/// The cache is keyed by version and target, so a pinned toolchain and a
+/// cross-target build of the same version share one download. Both writers go
+/// through a temp sibling plus an atomic `rename`, so neither can observe the
+/// other's half-written file.
+pub(crate) fn ensure_cached_runtime(
+    target: &str,
+    version: &str,
+    policy: FetchPolicy,
+) -> Result<PathBuf, String> {
+    let cache_path = cached_runtime_path(target, version)?;
+
+    // A zero-length entry is a miss, not a hit: that is what an interrupted
+    // write from an older soli leaves behind.
+    if cache_path.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+        if policy.executable {
+            ensure_executable(&cache_path)?;
+        }
+        return Ok(cache_path);
+    }
+
+    let bytes = download_release_runtime(target, version, policy.strict_checksum)?;
+
+    let parent = cache_path
+        .parent()
+        .ok_or_else(|| format!("cache path '{}' has no parent", cache_path.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("cannot create cache dir '{}': {}", parent.display(), e))?;
+
+    let tmp = parent.join(format!(".soli-{}.tmp-{}", target, std::process::id()));
+    std::fs::write(&tmp, &bytes).map_err(|e| format!("cannot write '{}': {}", tmp.display(), e))?;
+    if policy.executable {
+        ensure_executable(&tmp)?;
+    }
+    std::fs::rename(&tmp, &cache_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!(
+            "cannot install runtime at '{}': {}",
+            cache_path.display(),
+            e
+        )
+    })?;
+
+    Ok(cache_path)
+}
+
+/// Set the executable bit, ignoring whatever mode the tar entry carried.
+fn ensure_executable(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("cannot make '{}' executable: {}", path.display(), e))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
 }
 
 fn runtime_cache_dir() -> Result<PathBuf, String> {
@@ -753,16 +822,24 @@ fn release_base_url() -> String {
         .unwrap_or_else(|| format!("https://github.com/{}/releases/download", RELEASE_REPO))
 }
 
-/// Download `soli-{target}.tar.gz` for this soli's exact version, verify it
-/// against the published `.sha256` sibling, extract, and return the runtime
-/// bytes. Mirrors the SEC-041/SEC-042a discipline of `soli update`
-/// (`run_self_update`): TLS-1.2 floor, mode-0700 temp staging, hard-fail on
-/// checksum mismatch, warn-and-continue only when no checksum is published.
-fn download_release_runtime(target: &str) -> Result<Vec<u8>, String> {
+/// Download `soli-{target}.tar.gz` for `version`, verify it against the
+/// published `.sha256` sibling, extract, and return the runtime bytes. Mirrors
+/// the SEC-041/SEC-042a discipline of `soli update` (`run_self_update`):
+/// TLS-1.2 floor, mode-0700 temp staging, hard-fail on checksum mismatch.
+///
+/// `strict_checksum` decides the one case where callers differ: a release with
+/// no published `.sha256`. A cross-target build warns and continues (those
+/// bytes are embedded, and old releases predate the checksums). A version pin
+/// refuses, because those bytes are about to be executed.
+fn download_release_runtime(
+    target: &str,
+    version: &str,
+    strict_checksum: bool,
+) -> Result<Vec<u8>, String> {
     let tarball = format!("soli-{}.tar.gz", target);
-    let url = format!("{}/v{}/{}", release_base_url(), VERSION, tarball);
+    let url = format!("{}/v{}/{}", release_base_url(), version, tarball);
 
-    println!("  Downloading {} runtime v{} ...", target, VERSION);
+    println!("  Downloading {} runtime v{} ...", target, version);
 
     let client = reqwest::blocking::Client::builder()
         .user_agent("soli-lang-cli")
@@ -780,7 +857,7 @@ fn download_release_runtime(target: &str) -> Result<Vec<u8>, String> {
                     "soli v{} has no published {} artifact at {} (dev build or unpublished \
                      release?) — use a released soli, omit --target, or point \
                      SOLI_RELEASE_BASE_URL at a mirror",
-                    VERSION, target, url
+                    version, target, url
                 ))
             } else {
                 resp.error_for_status()
@@ -822,10 +899,18 @@ fn download_release_runtime(target: &str) -> Result<Vec<u8>, String> {
             println!("  Checksum verified.");
         }
         Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+            if strict_checksum {
+                return Err(format!(
+                    "soli {version} publishes no .sha256 for {tarball} — refusing to run \
+                     an unverified interpreter. Pin a release that publishes checksums, \
+                     or set SOLI_NO_PIN=1 to stay on soli {}.",
+                    VERSION
+                ));
+            }
             eprintln!(
                 "  \x1b[33mWarning:\x1b[0m no .sha256 published for v{} — \
                  skipping checksum verification.",
-                VERSION
+                version
             );
         }
         Ok(resp) => return Err(format!("fetching .sha256: HTTP {}", resp.status())),

@@ -859,8 +859,19 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if !arguments.is_empty() {
-            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        // `.first(n)` — the first n rows, as an array. Rails spells it the same
+        // way, and without it the only way to say "the three most recent" was
+        // `.limit(3).all`, which reads as a different intent.
+        //
+        // Deliberately a separate path from the no-argument form: `.first`
+        // returns a record or null, `.first(n)` returns an array. Collapsing
+        // them would make the return type depend on an argument's presence,
+        // which no caller can branch on cleanly.
+        if let Some(count) = arguments.first() {
+            if arguments.len() > 1 {
+                return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+            }
+            return self.qb_first_n(qb, count, span);
         }
         let qb_ref = qb.borrow();
         if qb_ref.exists_mode {
@@ -893,6 +904,66 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         } else {
             Ok(execute_query_builder_first(&qb_ref))
         }
+    }
+
+    /// `.first(n)` — the first `n` rows as an array, i.e. `.limit(n).all`.
+    ///
+    /// An existing `.limit()` is overridden rather than combined: `.limit(50).first(3)`
+    /// means three, the same way `.limit(10).limit(3)` means three.
+    fn qb_first_n(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        count: &Value,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let n = match count {
+            // `*n as usize` on a negative would wrap to a full-collection scan.
+            Value::Int(n) if *n < 0 => {
+                return Err(RuntimeError::General {
+                    message: format!("first() expects a non-negative count, got {n}"),
+                    span,
+                })
+            }
+            Value::Int(n) => crate::interpreter::limits::clamp_page_size(*n as usize),
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!(
+                        "first() expects an integer count, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+
+        // Modes where "the first n rows" has no meaning: an aggregate is one
+        // value, an existence check is a boolean. Say so rather than silently
+        // ignoring the argument.
+        {
+            let qb_ref = qb.borrow();
+            if qb_ref.exists_mode || qb_ref.aggregation.is_some() {
+                return Err(RuntimeError::General {
+                    message: "first(n) is not available on an aggregate or exists query — \
+                              it returns a single value, not rows"
+                        .to_string(),
+                    span,
+                });
+            }
+        }
+
+        if n == 0 {
+            return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+        }
+
+        // Clone so the caller's builder keeps whatever limit it had; then reuse
+        // the `.all` path wholesale, which already handles grouped, group_by
+        // and time-bucket modes plus the multi-database connection routing.
+        let limited = {
+            let mut cloned = qb.borrow().clone();
+            cloned.set_limit(n);
+            Rc::new(RefCell::new(cloned))
+        };
+        self.qb_all(limited, Vec::new(), span)
     }
 
     fn qb_count(

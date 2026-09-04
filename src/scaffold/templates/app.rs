@@ -52,13 +52,14 @@ pub const FEATURE_FLAGS_TEMPLATE: &str = include_str!("feature_flags.sl");
 pub fn soli_toml(name: &str) -> String {
     format!(
         r#"[package]
-name = "{}"
+name = "{name}"
 version = "0.1.0"
 main = "app.sl"
-# soli_version = "{}"   # uncomment to require a minimum soli version to run this project
+# soli_version = "{version}"    # minimum soli version required to run this project
+# soli_version = "={version}"   # or pin exactly: soli fetches and runs this version here
 "#,
-        name,
-        env!("CARGO_PKG_VERSION")
+        name = name,
+        version = env!("CARGO_PKG_VERSION")
     )
 }
 

@@ -502,7 +502,8 @@ ordered field sort first.
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |
 | `.pluck(field, ...)` | Return only specified fields (single or array) |
 | `.all` | Execute query, return all results |
-| `.first` | Execute query, return first result |
+| `.first` | Execute query, return the first record, or `null` when there is none |
+| `.first(n)` | Execute query, return the first `n` records as an **array**. Equivalent to `.limit(n).all`; an existing `.limit()` is overridden. Not available on aggregate or `exists` queries, which return a single value rather than rows. |
 | `.count` | Execute query, return count |
 | `.exists` | Execute query, return boolean (true if records exist) |
 | `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |

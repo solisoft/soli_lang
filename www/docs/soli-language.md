@@ -3546,6 +3546,7 @@ version = "1.0.0"
 description = "My awesome Soli application"
 main = "src/main.sl"
 soli_version = "1.16.0"   # minimum Soli version required to run this project
+# soli_version = "=1.16.0" # or pin exactly: soli switches to this version here
 authors = ["Author Name <author@example.com>"]
 
 [dependencies]
@@ -3582,6 +3583,64 @@ Upgrade with: soli update
 
 It is a bare minimum: a running version equal to or newer than the declared one
 passes. Omit the field to accept any Soli version.
+
+#### Pinning an exact version
+
+Prefix the version with `=` and the field stops being a floor and becomes a
+**pin**: `soli` run inside the project switches to that exact version.
+
+```toml
+[package]
+soli_version = "=2.0.3"   # this project runs on soli 2.0.3, whatever you typed
+```
+
+The first command in a pinned project fetches that version, verifies its
+published checksum, and caches it under `~/.cache/soli/runtimes/`. Every command
+after that runs from the cache and says nothing:
+
+```
+$ soli test
+  Fetching soli 2.0.3 pinned by /home/me/app/soli.toml ...
+  Downloading linux-amd64 runtime v2.0.3 ...
+  Checksum verified.
+167 passed, 0 failed
+```
+
+The pin is found by walking up from the **current directory**, the way `.nvmrc`
+and rustup toolchain files work. So `cd`-ing into the project is what activates
+it; `soli serve ./other-app` from outside does not adopt `other-app`'s pin.
+
+`soli which` reports what will run, and why:
+
+```
+$ soli which
+soli 2.0.3
+  binary   /home/me/.cache/soli/runtimes/v2.0.3/soli-linux-amd64
+  pinned   /home/me/app/soli.toml
+```
+
+A pin is exact in both directions — `=2.0.3` is not satisfied by 2.0.4, and a
+pre-release does not satisfy the release it precedes. Pinning an *older* version
+than the one you have installed is fine and is often the point.
+
+**Commands that ignore the pin**, because they must act on the soli you actually
+invoked: `soli update`, `soli new`, `soli which`, `--version` and `--help`.
+
+**Escape hatch.** `SOLI_NO_PIN=1` skips the switch entirely, for CI, an
+air-gapped machine, or bisecting a version-dependent bug.
+
+**Older soli binaries ignore the pin** rather than failing on it: they read
+`"=2.0.3"` as an unrecognised minimum, conclude it is satisfied, and carry on.
+So adding a pin does not break collaborators who have not upgraded — it just
+does not switch for them.
+
+> **What a pin means for trust.** A pinned toolchain is downloaded over TLS from
+> the release host and checked against the `.sha256` that host publishes. That
+> proves the bytes arrived intact; it does not prove who made them, exactly like
+> `soli update`. And there is a consequence worth naming: after cloning an
+> unfamiliar repository, `soli test` in it runs an interpreter *that repository
+> chose*. Soli therefore always prints the version and the manifest before
+> fetching, and never fetches for `--version` or `--help`.
 
 ---
 

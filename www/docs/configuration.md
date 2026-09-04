@@ -130,7 +130,9 @@ Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Prot
 | `SOLI_BUNDLE_AUTH_URL` | URL of a key server. Soli issues a `GET`; the response body (≤ 4 KB, trimmed) is the key material. Revoke the entry to lock the app out. Used only when `SOLI_BUNDLE_KEY` is unset. | unset |
 | `SOLI_BUNDLE_API_KEY` | Sent as the `x-api-key` header on the `SOLI_BUNDLE_AUTH_URL` request — this host's identity to the key server. | unset |
 | `SOLI_BUNDLE_ALLOW_DISK` | Set to `1` to allow a decrypted bundle to extract to the temp dir when `/dev/shm` (RAM-backed tmpfs) is unavailable. Without it, such a boot is refused rather than writing plaintext to persistent disk. | unset |
-| `SOLI_RELEASE_BASE_URL` | Base URL `soli build --standalone --target <t>` downloads release runtimes from (layout: `{base}/v{version}/soli-{target}.tar.gz` + `.sha256`). For mirrors and air-gapped build machines. | GitHub releases |
+| `SOLI_RELEASE_BASE_URL` | Base URL `soli build --standalone --target <t>` **and the version pin** download release runtimes from (layout: `{base}/v{version}/soli-{target}.tar.gz` + `.sha256`). For mirrors and air-gapped machines. Note the pin *executes* what it fetches, where a cross-target build only embeds it — point this at a host you trust. | GitHub releases |
+| `SOLI_NO_PIN` | Set to `1` to ignore an exact `soli_version` pin in `soli.toml` and run the soli you invoked. For CI, air-gapped machines, and bisecting a version-dependent bug. | unset |
+| `SOLI_PINNED_EXEC` | Set by soli on itself when it switches to a pinned version, carrying that version. Its presence stops the child switching again, so a toolchain whose compiled version disagrees with its release tag cannot loop. Not something you set. | unset |
 
 ### Production logging (`SOLI_LOG`)
 

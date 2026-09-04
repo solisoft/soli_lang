@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-09-04
+
 ### Lint
 
 - **`idiom/redundant-template-escape`.** `<%= %>` already HTML-escapes its output,
@@ -21,6 +23,72 @@
   auto-escapes. They now show the bare form, state explicitly that `<%= %>`
   covers element bodies *and* quoted attributes, and scope `h()`/`attr()` to
   HTML strings built in code and emitted via `<%- %>`.
+
+### Fixed
+
+- **A `Model.where(...)` chain inside a `try/catch` failed on the server**, with
+  `Cannot access property 'limit' on QueryBuilder` (or `'first'`, `'order'`, …).
+
+  The VM — the engine `soli serve` uses outside `--dev` — had no arm for query
+  builders at all: `where`, `limit`, `first`, the aggregates and scope chaining
+  live only in the interpreter, and running them needs it. The VM's catch-all
+  therefore raised an ordinary "no such property" error.
+
+  That error class is catchable by application code, which is what made this bite
+  in one place rather than everywhere. Normally the error escapes, `serve`
+  demotes the handler to the interpreter, and the chain works — which is why the
+  same code runs fine in most routes. But a handler with its own `try/catch`
+  around the model call swallowed it and reported its own failure, so `serve`
+  never learned it had to demote and the route stayed broken for every request.
+
+  The VM now hands query-builder member access back to the interpreter through
+  the same `EngineFallback` route class reflection and dynamic finders use.
+  That refusal is deliberately not catchable by user code, so it always reaches
+  `serve`; the handler demotes once and is then blacklisted, costing one re-run
+  rather than one per request. Workarounds of the shape `.limit(1).all` written
+  to dodge this can go back to `.first`.
+
+### Added
+
+- **`.first(n)` on a query builder** returns the first `n` records as an array —
+  `Post.where({ "published": true }).order("created_at", "desc").first(3)`. It
+  is `.limit(n).all`, spelled the way Rails spells it; the no-argument `.first`
+  still returns a single record or `null`. Refused on aggregate and `exists`
+  queries, which return one value rather than rows, and on a negative count.
+
+- **Per-project interpreter pinning.** `soli.toml`'s existing `soli_version`
+  field gains an exact form: `soli_version = "=2.0.3"` makes `soli` run inside
+  that project switch to soli 2.0.3, fetching and verifying it the first time
+  and caching it under `~/.cache/soli/runtimes/`. The plain
+  `soli_version = "2.0.3"` form is unchanged and still means "at least".
+
+  Same idea as `.nvmrc` or a rustup toolchain file, and it resolves the same
+  way: by walking up from the current directory. It works under soli-proxy
+  without any proxy change, because the proxy already starts an app with the app
+  directory as its working directory.
+
+  - **`soli which`** reports which version will run here, from which manifest,
+    and whether it has been downloaded yet.
+  - **`SOLI_NO_PIN=1`** skips the switch, for CI, air-gapped machines and
+    bisecting a version-dependent bug.
+  - Commands that must act on the soli you invoked ignore the pin:
+    `soli update`, `soli new`, `soli which`, `--version` and `--help`. In
+    particular `soli update` must never be redirected, or it would overwrite a
+    cached toolchain with a different version.
+  - A pin is exact in both directions, and a pre-release does not satisfy the
+    release it precedes — deliberately not using `compare_versions`, which
+    ignores pre-release suffixes.
+  - Pins are validated before becoming a path or a URL, because a `soli.toml`
+    is author-controlled content in any repository you clone.
+  - A pinned fetch refuses a release that publishes no `.sha256`, where
+    `soli build --target` only warns: those bytes are about to be executed
+    rather than embedded. It also announces the version and the manifest before
+    downloading, since a cloned repository now chooses the interpreter that runs
+    its code.
+  - **Older soli binaries ignore a pin** rather than failing on it: they read
+    `"=2.0.3"` as an unrecognised minimum and conclude it is satisfied. Adding a
+    pin does not break collaborators who have not upgraded.
+
 
 ## [2.0.5] - 2026-09-03
 

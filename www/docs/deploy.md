@@ -390,6 +390,25 @@ Air-gapped or mirrored environments can point `SOLI_RELEASE_BASE_URL` at their o
 (same layout: `{base}/v{version}/soli-{target}.tar.gz` plus `.sha256`). Without `--target` the
 running `soli` binary itself is embedded, and no network is needed.
 
+### Pinned versions in production
+
+A project that pins its interpreter (`soli_version = "=2.0.3"`, see
+[Modules & Packages](/docs/language/modules)) switches to that version wherever it runs, including
+under soli-proxy: the proxy starts an app with the app directory as the working directory, so the
+pin resolves the same way it does on your machine.
+
+Two things to get right on a server:
+
+- **Provision the toolchain ahead of time, not at start-up.** The proxy gives a new instance 30
+  seconds to pass its health check. A first start after changing a pin would spend part of that
+  window downloading, and a slow link can push it over — the deploy then fails and succeeds on the
+  retry, once the cache is warm. Fetch the version during the deploy step instead, or pre-populate
+  the cache directory.
+- **The cache must be readable by the user the app runs as.** It lives under
+  `$XDG_CACHE_HOME/soli/runtimes` or `~/.cache/soli/runtimes`, so `HOME` in the app's environment
+  has to belong to that user. A shared directory pointed at by `XDG_CACHE_HOME` works well when
+  several apps run as different users.
+
 ### Running a standalone app
 
 The executable accepts app-oriented flags — `--port`, `--host`, `--workers`, `--dev`, `--version`,

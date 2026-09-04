@@ -17,8 +17,16 @@ pub struct Package {
     pub description: Option<String>,
     /// Main entry point (default: app.sl)
     pub main: String,
-    /// Minimum required Soli interpreter version (e.g. "1.16.0").
-    /// When set, `soli serve`/`test`/`run` refuse to start on an older soli.
+    /// The Soli interpreter version this project needs, in one of two forms.
+    ///
+    /// * `"1.16.0"` — a **minimum**. An older soli refuses to start.
+    /// * `"=1.16.0"` — an **exact pin**. `soli` in this project switches to
+    ///   that version, fetching it if necessary (see [`Package::exact_pin`]).
+    ///
+    /// One field rather than two so a floor and a pin can never contradict each
+    /// other, and because the manifest parser rejects unknown `[package]` keys
+    /// outright — a *new* key would make `soli add` fail on every older soli,
+    /// where an unrecognised `=` prefix merely degrades to "floor satisfied".
     pub soli_version: Option<String>,
     /// Dependencies: name -> path or version
     pub dependencies: HashMap<String, Dependency>,
@@ -353,14 +361,53 @@ impl Package {
         out
     }
 
+    /// The exact version this manifest pins, when `soli_version` uses the `=`
+    /// form. `None` for the plain minimum form, and `None` for a pin whose
+    /// version string is not safe to use as a path or URL component.
+    ///
+    /// Validating here rather than at the use site matters: a `soli.toml` is
+    /// author-controlled content in any cloned repository, and the pin becomes
+    /// both a cache path and a download URL.
+    pub fn exact_pin(&self) -> Option<&str> {
+        let raw = self.soli_version.as_deref()?;
+        let pinned = raw.strip_prefix('=')?.trim();
+        is_valid_version(pinned).then_some(pinned)
+    }
+
     /// Check the running Soli version against this manifest's `soli_version`.
     ///
-    /// Returns `Ok` when no minimum is declared or `running` is at least the
-    /// required version; otherwise `Err` with a user-facing upgrade message.
+    /// For the minimum form, `Ok` when `running` is at least the required
+    /// version. For the exact form, `Ok` only when `running` *is* that version.
+    ///
+    /// This is the backstop for when the version switch did not happen — the
+    /// command bypassed it, `SOLI_NO_PIN` was set, or the switch is not
+    /// implemented on this platform. In the ordinary case the process has
+    /// already become the pinned version by the time this runs, and it passes.
     pub fn check_soli_version(&self, running: &str) -> Result<(), String> {
         let Some(req) = &self.soli_version else {
             return Ok(());
         };
+
+        if let Some(pin) = self.exact_pin() {
+            // String equality, deliberately not `compare_versions`: that
+            // comparator ignores pre-release suffixes, so it calls
+            // `2.1.0-rc1` and `2.1.0` equal. Fine for a floor, wrong for a
+            // reproducibility pin — an rc must not satisfy `=2.1.0`.
+            if running.trim_start_matches('v') == pin {
+                return Ok(());
+            }
+            return Err(format!(
+                "Error: this project pins soli {pin},\n\
+                 but you are running soli {running}.\n\
+                 Run soli from the project directory to switch automatically \
+                 (and check SOLI_NO_PIN is unset), or edit soli_version."
+            ));
+        }
+
+        // A malformed pin (`"=../../evil"`) reaches here as a minimum, where
+        // `compare_versions` reads its leading non-digits as 0 and the check
+        // passes. That is the intended degradation: an unusable pin is ignored
+        // rather than blocking the project.
         if compare_versions(running, req) == std::cmp::Ordering::Less {
             return Err(format!(
                 "Error: this project requires soli >= {req},\n\
@@ -370,6 +417,29 @@ impl Package {
         }
         Ok(())
     }
+}
+
+/// Is this version string safe to interpolate into a filesystem path and a URL?
+///
+/// This is a security control, not a nicety. A `soli.toml` is author-controlled
+/// content in any repository you clone, and the pinned version becomes both a
+/// cache directory name and a release URL component. Without this,
+/// `soli_version = "=../../../../tmp/evil"` escapes the cache root and the
+/// release prefix.
+///
+/// Requires: starts with a digit (which alone rejects `..`), ASCII
+/// alphanumerics plus `.` and `-` only, and a bounded length.
+pub fn is_valid_version(v: &str) -> bool {
+    const MAX_LEN: usize = 32;
+
+    if v.is_empty() || v.len() > MAX_LEN {
+        return false;
+    }
+    if !v.starts_with(|c: char| c.is_ascii_digit()) {
+        return false;
+    }
+    v.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
 }
 
 /// Compare two dotted version strings (e.g. "1.9.0", "1.10.0-rc1") numerically,
@@ -402,6 +472,25 @@ pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
         }
     }
     std::cmp::Ordering::Equal
+}
+
+/// Walk up from `start_dir` for a `soli.toml` and return the exact version it
+/// pins, with the manifest's path for use in messages.
+///
+/// `None` when there is no manifest, no `soli_version`, a minimum-only
+/// `soli_version`, an unparseable manifest, or a pin that fails
+/// [`is_valid_version`] — the same best-effort posture as
+/// [`enforce_min_soli_version`]. A project whose manifest we cannot read must
+/// keep working on the soli the user invoked.
+///
+/// **`start_dir` must be absolute.** [`Package::find`] walks by `PathBuf::pop`,
+/// which on a relative `"."` pops once and stops, so a relative argument only
+/// ever examines its own directory.
+pub fn pinned_soli_version(start_dir: &Path) -> Option<(String, PathBuf)> {
+    let manifest = Package::find(start_dir)?;
+    let pkg = Package::load(&manifest).ok()?;
+    let pin = pkg.exact_pin()?.to_string();
+    Some((pin, manifest))
 }
 
 /// Walk up from `start_dir` for a `soli.toml` and enforce its `soli_version`.
@@ -606,5 +695,150 @@ utils = { path = "../utils" }
         assert!(pkg.check_soli_version("1.16.0").is_ok());
         assert!(pkg.check_soli_version("1.20.0").is_ok());
         assert!(pkg.check_soli_version("2.0.0").is_ok());
+    }
+
+    // ---- exact version pins (`soli_version = "=X.Y.Z"`) --------------------
+
+    fn pinned(spec: &str) -> Package {
+        let mut pkg = Package::new("my-app");
+        pkg.soli_version = Some(spec.to_string());
+        pkg
+    }
+
+    #[test]
+    fn exact_pin_recognises_the_equals_prefix() {
+        assert_eq!(pinned("=2.1.0").exact_pin(), Some("2.1.0"));
+        // Whitespace after the operator is a natural thing to type.
+        assert_eq!(pinned("= 2.1.0").exact_pin(), Some("2.1.0"));
+    }
+
+    #[test]
+    fn a_plain_minimum_is_not_a_pin() {
+        assert_eq!(pinned("1.16.0").exact_pin(), None);
+        assert_eq!(Package::new("my-app").exact_pin(), None);
+    }
+
+    #[test]
+    fn an_exact_pin_accepts_only_that_version() {
+        let pkg = pinned("=2.1.0");
+
+        assert!(pkg.check_soli_version("2.1.0").is_ok());
+        // A leading `v` on the running version is tolerated, as elsewhere.
+        assert!(pkg.check_soli_version("v2.1.0").is_ok());
+
+        // Both directions are a mismatch — a pin is not a floor.
+        assert!(pkg.check_soli_version("2.1.1").is_err());
+        assert!(pkg.check_soli_version("2.0.9").is_err());
+    }
+
+    /// The reason exact pins compare by string equality rather than through
+    /// `compare_versions`: that comparator deliberately ignores pre-release
+    /// suffixes, so it calls `2.1.0-rc1` and `2.1.0` equal. Fine for a floor,
+    /// wrong for a reproducibility pin.
+    #[test]
+    fn a_prerelease_does_not_satisfy_an_exact_pin() {
+        assert_eq!(
+            compare_versions("2.1.0-rc1", "2.1.0"),
+            std::cmp::Ordering::Equal,
+            "guard: this test exists because compare_versions says they are equal"
+        );
+        assert!(pinned("=2.1.0").check_soli_version("2.1.0-rc1").is_err());
+        assert!(pinned("=2.1.0-rc1").check_soli_version("2.1.0").is_err());
+        // But an rc can be pinned exactly.
+        assert!(pinned("=2.1.0-rc1").check_soli_version("2.1.0-rc1").is_ok());
+    }
+
+    /// Pinning an *older* soli is the point of a pin, so the message must not
+    /// be the "upgrade with: soli update" one, which would be wrong advice.
+    #[test]
+    fn pinning_an_older_version_is_a_mismatch_not_an_upgrade_prompt() {
+        let err = pinned("=1.22.0")
+            .check_soli_version("2.0.5")
+            .expect_err("a newer running soli does not satisfy an exact pin");
+
+        assert!(err.contains("pins soli 1.22.0"), "{err}");
+        assert!(!err.contains("soli update"), "{err}");
+        // The message must not assume SOLI_NO_PIN is why the switch did not
+        // happen — the usual reason is being outside the project directory.
+        assert!(err.contains("project directory"), "{err}");
+    }
+
+    #[test]
+    fn is_valid_version_rejects_path_traversal_and_urls() {
+        for bad in [
+            "",
+            "..",
+            "../../etc",
+            "2.1.0/../..",
+            "/etc/passwd",
+            "https://evil.example",
+            "v2.1.0", // must start with a digit
+            "2.1.0 ", // no whitespace
+            "2.1.0;rm -rf /",
+            "2.1.0%2f..",
+        ] {
+            assert!(!is_valid_version(bad), "{bad:?} should be rejected");
+        }
+        // 33 characters, one past the cap.
+        assert!(!is_valid_version(&"1".repeat(33)));
+
+        for good in ["2.1.0", "2.1.0-rc1", "10.0.0", "0.1.0", "2"] {
+            assert!(is_valid_version(good), "{good:?} should be accepted");
+        }
+    }
+
+    /// A pin that could escape the cache directory or the release URL is
+    /// ignored rather than acted on — and, because it then falls through to the
+    /// minimum path where `compare_versions` reads its leading non-digits as
+    /// zero, it does not block the project either.
+    #[test]
+    fn a_malformed_pin_is_ignored_rather_than_obeyed() {
+        let pkg = pinned("=../../../../tmp/evil");
+
+        assert_eq!(pkg.exact_pin(), None);
+        assert!(pkg.check_soli_version("2.0.5").is_ok());
+    }
+
+    #[test]
+    fn to_toml_round_trips_an_exact_pin() {
+        let pkg = pinned("=2.1.0");
+        let reparsed = Package::parse(&pkg.to_toml()).unwrap();
+
+        assert_eq!(reparsed.soli_version.as_deref(), Some("=2.1.0"));
+        assert_eq!(reparsed.exact_pin(), Some("2.1.0"));
+    }
+
+    /// The upward walk is the whole point: you run `soli` from `app/models/`,
+    /// and the manifest is three levels up.
+    #[test]
+    fn pinned_version_is_found_from_a_nested_subdirectory() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let nested = root.path().join("app").join("models").join("deep");
+        std::fs::create_dir_all(&nested).expect("mkdir");
+        std::fs::write(
+            root.path().join("soli.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nsoli_version = \"=2.1.0\"\n",
+        )
+        .expect("write manifest");
+
+        let (pin, manifest) =
+            pinned_soli_version(&nested).expect("the walk must reach the grandparent manifest");
+
+        assert_eq!(pin, "2.1.0");
+        assert_eq!(manifest, root.path().join("soli.toml"));
+    }
+
+    #[test]
+    fn pinned_version_is_none_without_a_manifest_or_without_a_pin() {
+        let empty = tempfile::tempdir().expect("tempdir");
+        assert!(pinned_soli_version(empty.path()).is_none());
+
+        let floor_only = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            floor_only.path().join("soli.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nsoli_version = \"1.16.0\"\n",
+        )
+        .expect("write manifest");
+        assert!(pinned_soli_version(floor_only.path()).is_none());
     }
 }

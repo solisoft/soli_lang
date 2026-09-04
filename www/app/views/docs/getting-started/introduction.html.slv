@@ -403,7 +403,13 @@ soli install                    # install everything from soli.toml
 soli publish                    # publish your package to a registry</code></pre>
 
     <p class="text-gray-400 mt-4 text-sm">
-        The manifest can also pin a minimum interpreter version with <code class="bg-white/10 px-1 rounded">soli_version = "1.16.0"</code> in <code class="bg-white/10 px-1 rounded">[package]</code>; <code class="bg-white/10 px-1 rounded">soli serve</code>/<code class="bg-white/10 px-1 rounded">test</code>/<code class="bg-white/10 px-1 rounded">run</code> then refuse to start on an older <code class="bg-white/10 px-1 rounded">soli</code>.
+        The manifest also declares which interpreter the project runs on, in <code class="bg-white/10 px-1 rounded">[package]</code>.
+        <code class="bg-white/10 px-1 rounded">soli_version = "1.16.0"</code> is a <strong class="text-white">minimum</strong> &mdash;
+        <code class="bg-white/10 px-1 rounded">soli serve</code>/<code class="bg-white/10 px-1 rounded">test</code>/<code class="bg-white/10 px-1 rounded">run</code> refuse to start on an
+        older <code class="bg-white/10 px-1 rounded">soli</code>. <code class="bg-white/10 px-1 rounded">soli_version = "=1.16.0"</code> is an
+        <strong class="text-white">exact pin</strong>: <code class="bg-white/10 px-1 rounded">soli</code> run inside the project switches
+        to that version, fetching and verifying it the first time.
+        <code class="bg-white/10 px-1 rounded">soli which</code> shows what will run and why.
     </p>
 
     <p class="text-gray-400 mt-4 mb-12 text-sm">
