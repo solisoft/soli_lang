@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-09-06
+
+### Fixed
+
+- **`.where` intermittently rejected the developer's own filter literals**, with
+  an injection diagnostic naming a filter no client can reach — around 3 times
+  in 60 requests on a deployed app, concentrated on pages whose params are empty.
+
+  The request-taint table keyed its marks on `Rc::as_ptr` and stored nothing
+  else, so an address was treated as an identity for longer than the allocation
+  lived. A request with no params gets a freshly allocated empty hash, which is
+  marked and installed as `params`; dispatch then replaces that global, the hash
+  is freed, and its address stays in the table. A later
+  `ApiRequest.where({"status": {"gte": 400}})` allocates a one-entry hash, lands
+  on the recycled block, and inherits a mark it never earned — so the guard that
+  exists to stop `{"ne": null}` from erasing an equality check fired on the code
+  it was protecting.
+
+  The table now holds the `Value` beside the address, which pins the allocation
+  for as long as the mark can be consulted. The cost is one request's parsed body
+  held per worker thread between two requests, bounded by the body-size limit and
+  the thread count — a mark that is sometimes false is worse than useless.
+
+### Dependencies
+
+- **`libssh2-sys` 0.3.2 → 0.3.3.** 0.3.2 was yanked from crates.io, and a yank
+  is a warning that `cargo audit --deny warnings` turns into a failure, so `main`
+  went red on someone else's publish. Semver-compatible patch; the lockfile also
+  moves `tempfile`'s `getrandom` edge from 0.4.3 to 0.3.4 on re-resolution.
+
+### Internal
+
+- **CI's engine-parity job builds under a new `ci` profile** rather than
+  `release`. Its `cargo build` was 896s of a 16m29 job whose sweeps take 62s,
+  because `lto = "fat"` with `codegen-units = 1` optimizes the whole crate graph
+  as one serial unit. The sweeps check semantics, not codegen, and `inherits =
+  "release"` keeps `opt-level`, `debug-assertions` and `overflow-checks`
+  untouched. Measured: build 497s → 186s, job 588s → 286s on a warm cache, with
+  identical sweep results. The shipped release profile is unchanged.
+- **Every `cargo audit` waiver now lives in `.cargo/audit.toml`.** One was passed
+  as a `--ignore` flag on the CI command line instead, so `cargo audit` on a
+  developer machine failed on an advisory CI had already accepted.
+
 ## [2.0.6] - 2026-09-04
 
 ### Lint

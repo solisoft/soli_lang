@@ -20,9 +20,23 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-6" class="text-amber-400 hover:underline">v2.0.6</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-7" class="text-amber-400 hover:underline">v2.0.7</a>.</p>
 
         <p class="text-gray-500 text-sm leading-relaxed mb-10">Nothing yet.</p>
+    </section>
+
+    <section id="v2-0-7" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.0.7 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-06</span></h2>
+
+        <h3 id="v2-0-7-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">.where</code> intermittently rejected your own filter literals</strong>, raising the client-supplied-operator error on a filter no client can reach &mdash; roughly 3 requests in 60 on a deployed app, concentrated on pages whose params are empty.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">Why it looked random.</strong> The guard that stops <code class="text-cyan-400">{"ne": null}</code> from erasing an equality check remembers which containers arrived with the request. It remembered them by address only, and an address is an identity for no longer than the allocation lives. A request with no params gets a freshly allocated empty hash, marked and installed as <code class="text-cyan-400">params</code>; dispatch replaces that global, the hash is freed, and its address stays behind. A later <code class="text-cyan-400">Model.where({"status": {"gte": 400}})</code> allocates a small hash, lands on the recycled block, and inherits a mark it never earned &mdash; so the guard fired on the code it protects.</li>
+                    <li>The table now keeps the value alongside the address, which pins the allocation for as long as the mark can be consulted. The cost is one request's parsed body held per worker thread between two requests, bounded by the body-size limit and the worker count. Nothing changes in application code, and the injection guard itself is unaffected: a container that really did arrive with the request is still refused.</li>
+                </ul>
+            </li>
+        </ul>
     </section>
 
     <section id="v2-0-6" class="mb-16 scroll-mt-24">
