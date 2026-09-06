@@ -170,6 +170,13 @@ impl Encoder {
                     w.u8(0x31).varint32(n).varint32(a);
                 }
                 "emit" => { let a = atom_arg(self)?; w.u8(0x32).varint32(a); }
+                "set_style" => {
+                    let n = node_arg(self)?;
+                    let st = parts.get(2).ok_or_else(|| bad("set_style needs a style hash"))?;
+                    let record = self.style_record(st)?;
+                    let id = self.style(record);
+                    w.u8(0x33).varint32(n).varint32(id);
+                }
                 "return" => { w.u8(0x40); }
                 other => return Err(bad(&format!("unknown instruction '{other}'"))),
             }
@@ -332,9 +339,23 @@ impl Encoder {
                 let handler = match target {
                     Json::String(name) => Handler::Server(self.atom(name)),
                     Json::Object(spec) => {
-                        // {"local": [instructions], "then": "server_event"?}
-                        let program = spec.get("local").and_then(Json::as_array).ok_or("EUI: a local handler needs a \"local\" list")?;
-                        let bytes = self.assemble(program)?;
+                        // {"local": "source" | [instructions], "styles": {name: style}?, "then": "server_event"?}
+                        let mut declared: HashMap<String, u32> = HashMap::new();
+                        if let Some(styles) = spec.get("styles").and_then(Json::as_object) {
+                            for (name, st) in styles {
+                                let record = self.style_record(st)?;
+                                let id = self.style(record);
+                                declared.insert(name.clone(), id);
+                            }
+                        }
+                        let bytes = match spec.get("local") {
+                            Some(Json::String(src)) => {
+                                let mut ctx = LocalCtx { enc: self, declared: &declared, self_key: key.clone() };
+                                super::local::compile(src, &mut ctx)?
+                            }
+                            Some(Json::Array(program)) => self.assemble(program)?,
+                            _ => return Err("EUI: a local handler needs \"local\": a source string or an instruction list".into()),
+                        };
                         let chunk = self.chunk(bytes);
                         match spec.get("then").and_then(Json::as_str) {
                             Some(name) => Handler::LocalThenServer { chunk, name: self.atom(name) },
@@ -584,6 +605,25 @@ pub fn flatten(root: &TNode) -> Subtree {
     }
     walk(root, &mut out);
     out
+}
+
+/// The compiler's window onto the encoder for one handler.
+struct LocalCtx<'a> {
+    enc: &'a mut Encoder,
+    declared: &'a HashMap<String, u32>,
+    self_key: Option<String>,
+}
+
+impl super::local::Ctx for LocalCtx<'_> {
+    fn atom(&mut self, s: &str) -> u32 {
+        self.enc.atom(s)
+    }
+    fn style(&mut self, name: &str) -> Option<u32> {
+        self.declared.get(name).copied()
+    }
+    fn self_key(&self) -> Option<String> {
+        self.self_key.clone()
+    }
 }
 
 /// Wire value to JSON, atoms resolved through the encoder.

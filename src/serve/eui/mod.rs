@@ -10,6 +10,7 @@
 //! the `eui` cargo feature is on.
 
 pub mod diff;
+pub mod local;
 pub mod session;
 pub mod tree;
 

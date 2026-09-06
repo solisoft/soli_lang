@@ -15,9 +15,11 @@
   Protocol, client and documentation live in the `eui` repository; see
   `www/docs/eui.md`.
 
-  A handler can run **locally first**: `"on": {"click": {"local": [...],
-  "then": "increment"}}` is assembled by the server into a verified,
-  fuel-metered chunk that the client runs before the round trip
+  A handler can run **locally first**: `"on": {"click": {"local":
+  "state.count += 1; value.text = str(state.count)", "then": "increment"}}`
+  is compiled by the server into a verified, fuel-metered chunk that the
+  client runs before the round trip; `self.style = @hover` with a declared
+  `styles` map gives every catalogue button local hover and pressed states
   (`spec/07-bytecode.md` in the `eui` repository). The event's `params`
   carry the clicked node's `props`, so a row in a list can say which row it
   is.

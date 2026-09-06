@@ -90,13 +90,10 @@ that check.
 A handler can run on the client before the round trip. The counter's `+`:
 
 ```soli
-local_button("+", [
-  ["load", "count"], ["push", 1], ["add"], ["dup"], ["store", "count"],
-  ["to_str"], ["set_text", "value"]
-], "increment")
+local_button("+", "state.count += 1; value.text = str(state.count)", "increment")
 ```
 
-The list is assembled by Soli into a small bytecode chunk, delivered once per
+That string is a small statement language — assignments, arithmetic, `if … else`, `self.style = @hover`, `emit` — compiled by Soli to a bytecode chunk, delivered once per
 session, verified by the client before it first runs, and executed with a
 fuel budget. It reads the root node's props as local state (`with_state`),
 rewrites the node keyed `"value"`, then sends `increment`; the next batch
