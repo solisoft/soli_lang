@@ -83,6 +83,9 @@ use std::time::{Duration, Instant};
 
 use crate::virtual_fs::VirtualFileSystem;
 
+#[cfg(feature = "eui")]
+pub mod eui;
+
 // Global Virtual File System — set during server boot. When set, all
 // file reads go through this VFS. When not set, the helper functions
 // fall back to std::fs on disk.
@@ -3005,6 +3008,19 @@ async fn handle_hyper_request(
             }
         }
 
+        // EUI session socket: binary frames, one component per path. Same
+        // registry and worker channel as LiveView; only the wire differs.
+        #[cfg(feature = "eui")]
+        if let Some(component) = path.strip_prefix("/_eui/session/") {
+            if !websocket_origin_allowed(req.headers()) {
+                return Ok(forbidden_websocket_origin_response());
+            }
+            let component = component.trim_end_matches('/').to_string();
+            let cookies = req.headers().get("cookie").map(|v| v.to_str().unwrap_or(""));
+            let session_id = extract_live_session_id(cookies);
+            return eui::session::upgrade(req, component, session_id, lv_event_tx.clone());
+        }
+
         // Handle LiveView WebSocket endpoint
         if path == "/live/socket" || path.starts_with("/live/socket/") {
             if !websocket_origin_allowed(req.headers()) {
@@ -5099,6 +5115,13 @@ fn handle_liveview_event(
         .ok_or_else(|| format!("LiveView not found: {}", data.liveview_id))?;
 
     let component = instance.component.clone();
+
+    // An EUI component renders a node tree, not HTML: same handler, other
+    // wire. Decided here so the worker loop stays untouched.
+    #[cfg(feature = "eui")]
+    if eui::is_eui_component(&component) {
+        return eui::handle_eui_event(interpreter, data, &mut instance);
+    }
 
     // Try to find a registered handler for this component
     let handler_name = crate::live::socket::get_liveview_handler(&component);

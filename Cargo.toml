@@ -85,6 +85,7 @@ mysql = ["dep:mysql", "dep:r2d2_mysql", "dep:r2d2"]
 sqlite = ["dep:rusqlite", "dep:r2d2_sqlite", "dep:r2d2"]
 # Every SQL backend.
 sql = ["postgres", "mysql", "sqlite"]
+eui = ["dep:eui-proto"]
 
 [dependencies]
 thiserror = "1.0"
@@ -319,6 +320,10 @@ mail-builder = "0.4"
 # JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
 soli-pdf = { path = "pdf" }
 soli-codegraph = { path = "codegraph", optional = true }
+# EUI: the binary UI protocol. Off by default; `--features eui` adds the
+# `/_eui/session/<component>` socket and the `router_eui` builtin and changes
+# nothing else. The wire crate has no dependencies of its own.
+eui-proto = { path = "../eui/crates/eui-proto", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
 toml = "0.8"
 cms = { version = "0.2", features = ["std"] }
