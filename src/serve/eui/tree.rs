@@ -485,6 +485,7 @@ impl Encoder {
                 "underline" => r.text_decoration |= u8::from(v.as_bool().unwrap_or(false)),
                 "strike" => r.text_decoration |= u8::from(v.as_bool().unwrap_or(false)) << 1,
                 "overflow" => r.overflow = enum_of(v, &[("visible", Overflow::Visible), ("clip", Overflow::Clip), ("scroll", Overflow::Scroll)])?,
+                "transition" => r.transition = enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?,
                 "position" => r.position = enum_of(v, &[("flow", Position::Flow), ("absolute", Position::Absolute)])?,
                 "z" => r.z = u8_of(v)?,
                 "cursor" => r.cursor = enum_of(v, &[("default", Cursor::Default), ("pointer", Cursor::Pointer), ("text", Cursor::Text), ("grab", Cursor::Grab), ("grabbing", Cursor::Grabbing), ("resize_h", Cursor::ResizeH), ("resize_v", Cursor::ResizeV), ("wait", Cursor::Wait), ("not_allowed", Cursor::NotAllowed)])?,
