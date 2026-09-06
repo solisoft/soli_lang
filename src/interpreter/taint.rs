@@ -23,12 +23,41 @@
 //! contents. Recording the pointers once per request therefore gives an exact
 //! answer with no change to `Value` itself and no cost on any other path.
 //!
+//! # Why the marks hold a strong reference
+//!
+//! An address is only an identity for as long as the allocation lives. Keying
+//! marks on `Rc::as_ptr` alone was unsound: a container marked at the start of
+//! a request can be dropped *during* that request, and the allocator is then
+//! free to hand the very same block to something else — including a literal
+//! the developer wrote. That literal inherits a mark it never earned.
+//!
+//! It was not theoretical. A request with no params gets a freshly allocated
+//! empty hash, which is marked and installed as the `params` global; dispatch
+//! then replaces that global, the empty hash is freed, and its address stays
+//! in the table. `ApiRequest.where({"status": {"gte": 400}})` later allocates
+//! a one-entry hash, lands on the recycled block, and the filter is refused as
+//! client-supplied — on roughly one request in twenty, with an injection
+//! diagnostic pointing at a `GET /` whose params are empty.
+//!
+//! So the table keeps the `Value` next to the address. One `Rc` clone per
+//! marked container is enough to make the address mean one thing for as long
+//! as the mark is consulted, and `clear_request_values` releases them at the
+//! start of the next request on this thread.
+//!
+//! The cost of that is one request's worth of parsed body held per worker
+//! thread between two requests, where it used to be freed as soon as the
+//! handler let go. It is bounded by the body-size limit and by the thread
+//! count, and it buys an answer that cannot be wrong — a trade this table has
+//! to make, because a mark that is sometimes false is worse than useless: it
+//! rejects the developer's own literals.
+//!
 //! This is a *taint* marker, not a capability: it says "a client chose this",
 //! which is precisely the question `.where` needs answered before it lets a
 //! value pick an operator.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 use crate::interpreter::value::Value;
 
@@ -38,9 +67,15 @@ use crate::interpreter::value::Value;
 const MAX_MARK_DEPTH: usize = 64;
 
 thread_local! {
-    /// Addresses of container allocations that arrived with the current
-    /// request. Keyed by pointer, cleared between requests.
-    static REQUEST_CONTAINERS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+    /// Container allocations that arrived with the current request, keyed by
+    /// pointer and cleared between requests.
+    ///
+    /// The value is not decoration: holding the `Value` keeps the allocation
+    /// alive, so its address cannot be recycled while the mark is still
+    /// consulted. Keying on a pointer whose allocation may already be gone is
+    /// what made this table report literals as client-supplied.
+    static REQUEST_CONTAINERS: RefCell<HashMap<usize, Value>> =
+        RefCell::new(HashMap::new());
 }
 
 /// Pointer identity of a container value, or `None` for scalars.
@@ -58,38 +93,41 @@ fn container_addr(value: &Value) -> Option<usize> {
 /// runs. Scalars need no marking: a string or a number can only ever mean
 /// equality in a filter, which is what the developer asked for.
 pub fn mark_request_value(value: &Value) {
-    REQUEST_CONTAINERS.with(|set| {
-        let mut set = set.borrow_mut();
-        mark_into(value, &mut set, 0);
+    REQUEST_CONTAINERS.with(|marks| {
+        let mut marks = marks.borrow_mut();
+        mark_into(value, &mut marks, 0);
     });
 }
 
-fn mark_into(value: &Value, set: &mut HashSet<usize>, depth: usize) {
+/// Record this container and recurse. Returns early on an allocation already
+/// seen, which is what terminates a cyclic or diamond-shaped request tree.
+fn mark_into(value: &Value, marks: &mut HashMap<usize, Value>, depth: usize) {
     if depth >= MAX_MARK_DEPTH {
         return;
     }
+    let Some(addr) = container_addr(value) else {
+        return;
+    };
+    match marks.entry(addr) {
+        Entry::Occupied(_) => return,
+        // The clone is an `Rc` bump, and it is the whole point: it pins the
+        // allocation so no later value can be handed this address.
+        Entry::Vacant(slot) => {
+            slot.insert(value.clone());
+        }
+    }
     match value {
         Value::Hash(pairs) => {
-            let addr = std::rc::Rc::as_ptr(pairs) as *const u8 as usize;
-            // A cyclic or shared sub-tree is visited once; `insert` returning
-            // false means we have already walked this allocation.
-            if !set.insert(addr) {
-                return;
-            }
             if let Ok(borrowed) = pairs.try_borrow() {
                 for (_, val) in borrowed.iter() {
-                    mark_into(val, set, depth + 1);
+                    mark_into(val, marks, depth + 1);
                 }
             }
         }
         Value::Array(items) => {
-            let addr = std::rc::Rc::as_ptr(items) as *const u8 as usize;
-            if !set.insert(addr) {
-                return;
-            }
             if let Ok(borrowed) = items.try_borrow() {
                 for item in borrowed.iter() {
-                    mark_into(item, set, depth + 1);
+                    mark_into(item, marks, depth + 1);
                 }
             }
         }
@@ -102,16 +140,17 @@ pub fn is_request_supplied(value: &Value) -> bool {
     let Some(addr) = container_addr(value) else {
         return false;
     };
-    REQUEST_CONTAINERS.with(|set| set.borrow().contains(&addr))
+    REQUEST_CONTAINERS.with(|marks| marks.borrow().contains_key(&addr))
 }
 
 /// Forget the current request's containers. Called between requests so one
 /// visitor's marks can never be consulted while serving the next.
 pub fn clear_request_values() {
-    REQUEST_CONTAINERS.with(|set| {
-        let mut set = set.borrow_mut();
-        // `clear` keeps the allocation, which is what we want on a hot worker.
-        set.clear();
+    REQUEST_CONTAINERS.with(|marks| {
+        let mut marks = marks.borrow_mut();
+        // `clear` keeps the table's own allocation, which is what we want on a
+        // hot worker, and drops the strong references the marks were holding.
+        marks.clear();
     });
 }
 
@@ -176,6 +215,73 @@ mod tests {
 
         clear_request_values();
         assert!(!is_request_supplied(&params));
+    }
+
+    /// The regression this table exists to prevent, stated as an invariant a
+    /// test can check without racing the allocator: while a mark is live, the
+    /// allocation it names must still be alive. If it can be freed, its address
+    /// can be handed to a literal built later in the same request, and that
+    /// literal is then read as client-supplied.
+    #[test]
+    fn a_marked_container_outlives_every_other_reference() {
+        clear_request_values();
+        let weak = {
+            let params = hash(vec![("a", Value::Int(1))]);
+            mark_request_value(&params);
+            let Value::Hash(pairs) = &params else {
+                unreachable!()
+            };
+            Rc::downgrade(pairs)
+            // `params` is dropped here: the table now holds the only strong
+            // reference.
+        };
+        assert!(
+            weak.upgrade().is_some(),
+            "a marked allocation was freed while its mark was still live"
+        );
+
+        clear_request_values();
+        assert!(
+            weak.upgrade().is_none(),
+            "clearing must release the marks, not leak them for the whole worker"
+        );
+    }
+
+    /// The shape that actually happened in production: a nested container is
+    /// dropped from its parent mid-request. The parent staying alive is not
+    /// enough — each marked allocation has to be pinned on its own.
+    #[test]
+    fn a_nested_container_removed_from_its_parent_stays_pinned() {
+        clear_request_values();
+        let params = hash(vec![("filter", hash(vec![("ne", Value::Null)]))]);
+        mark_request_value(&params);
+
+        let Value::Hash(pairs) = &params else {
+            unreachable!()
+        };
+        let nested = pairs
+            .borrow()
+            .get(&HashKey::String("filter".into()))
+            .cloned()
+            .unwrap();
+        let Value::Hash(nested_pairs) = &nested else {
+            unreachable!()
+        };
+        let weak = Rc::downgrade(nested_pairs);
+
+        // The request handler replaces the sub-tree, then every local handle
+        // goes away.
+        pairs
+            .borrow_mut()
+            .insert(HashKey::String("filter".into()), Value::Int(1));
+        drop(nested);
+
+        assert!(
+            weak.upgrade().is_some(),
+            "a nested marked allocation was freed while its mark was still live"
+        );
+        clear_request_values();
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]
