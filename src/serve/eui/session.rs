@@ -168,28 +168,16 @@ pub fn upgrade(
 /// Check an event against the tree the client was last sent; on success,
 /// the server-side event name and the params the handler receives.
 fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Value)> {
-    let name = with_encoder(liveview_id, |enc| enc.handler_name(e.node, e.event))?;
-    let params = serde_json::json!({
-        "node": e.node,
-        "kind": tree::event_name(e.event),
-        "payload": wire_to_json(&e.payload),
-    });
-    Some((name, params))
-}
-
-fn wire_to_json(v: &eui_proto::Value) -> serde_json::Value {
-    use eui_proto::Value as W;
-    match v {
-        W::Null => serde_json::Value::Null,
-        W::Bool(b) => serde_json::json!(b),
-        W::Int(n) => serde_json::json!(n),
-        W::Float(f) => serde_json::json!(f),
-        W::Atom(a) => serde_json::json!({ "atom": a }),
-        W::Str(s) => serde_json::json!(s),
-        W::Asset(h) => serde_json::json!(h.iter().map(|b| format!("{b:02x}")).collect::<String>()),
-        W::Color(c) => serde_json::json!(c.0),
-        W::List(items) => serde_json::Value::Array(items.iter().map(wire_to_json).collect()),
-    }
+    with_encoder(liveview_id, |enc| {
+        let name = enc.handler_name(e.node, e.event)?;
+        let params = serde_json::json!({
+            "node": e.node,
+            "kind": tree::event_name(e.event),
+            "payload": tree::wire_to_json(enc, &e.payload),
+            "props": enc.props_of(e.node),
+        });
+        Some((name, params))
+    })
 }
 
 /// Post an event to the worker pool and wait for it to be handled, so that

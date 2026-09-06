@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **EUI sessions, behind a cargo feature.** `cargo build --features eui`
+  adds `router_eui(component, handler, view)` and the
+  `/_eui/session/<component>` socket. An EUI component is a LiveView
+  component whose view is a function of state returning a node tree as plain
+  data; the server interns atoms and styles once per session, diffs against
+  the tree it last sent, and streams binary patches to a native client that
+  draws them on the GPU — no HTML, no CSS, no JavaScript, no browser. The
+  feature is **off by default** and the default build contains none of it.
+  Protocol, client and documentation live in the `eui` repository; see
+  `www/docs/eui.md`.
+
+  Touched: `src/serve/mod.rs` (three `#[cfg(feature = "eui")]` insertions),
+  `src/interpreter/builtins/router.rs` (one builtin), and the new
+  `src/serve/eui/` module. `live/`, `template/`, `vm/` and `interpreter/`
+  are unchanged.
+
 ## [2.0.7] - 2026-09-06
 
 ### Fixed

@@ -140,6 +140,20 @@ impl Encoder {
         self.atom_name(atom).map(str::to_owned)
     }
 
+    /// A node's props with atom names resolved, as JSON, for the handler's
+    /// `params["props"]`. This is how a row in a list says which row it is.
+    pub fn props_of(&self, node: u32) -> serde_json::Map<String, Json> {
+        let mut out = serde_json::Map::new();
+        let Some(tree) = self.prev.as_ref() else { return out };
+        let Some(found) = find(tree, node) else { return out };
+        for (atom, value) in &found.props {
+            if let Some(name) = self.atom_name(*atom) {
+                out.insert(name.to_string(), wire_to_json(self, value));
+            }
+        }
+        out
+    }
+
     fn convert(&mut self, j: &Json) -> Result<TNode, String> {
         let obj = j.as_object().ok_or("EUI: a node must be a hash")?;
         let kind = match obj.get("k").and_then(Json::as_str).unwrap_or("box") {
@@ -438,6 +452,21 @@ pub fn flatten(root: &TNode) -> Subtree {
     }
     walk(root, &mut out);
     out
+}
+
+/// Wire value to JSON, atoms resolved through the encoder.
+pub fn wire_to_json(enc: &Encoder, v: &WireValue) -> Json {
+    match v {
+        WireValue::Null => Json::Null,
+        WireValue::Bool(b) => Json::Bool(*b),
+        WireValue::Int(n) => Json::from(*n),
+        WireValue::Float(f) => serde_json::json!(f),
+        WireValue::Atom(a) => enc.atom_name(*a).map(|s| Json::String(s.to_string())).unwrap_or(Json::Null),
+        WireValue::Str(s) => Json::String(s.clone()),
+        WireValue::Asset(h) => Json::String(h.iter().map(|b| format!("{b:02x}")).collect()),
+        WireValue::Color(c) => Json::from(c.0),
+        WireValue::List(items) => Json::Array(items.iter().map(|i| wire_to_json(enc, i)).collect()),
+    }
 }
 
 fn find(node: &TNode, id: u32) -> Option<&TNode> {

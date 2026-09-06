@@ -1,5 +1,8 @@
 # Live View
 
+> The same handler model without a browser: [EUI](/docs/eui) is a Live View
+> component whose view is a node tree drawn by a native client.
+
 Live View renders components on the server and pushes updates over a WebSocket. Build interactive UIs without writing JavaScript: state lives on the server, events flow over the wire, and the client **morphs the DOM in place** to match the new render — nodes are updated, not replaced, so focus, caret position, and client-side widget state survive updates (see [How patches reach the DOM](#how-patches-reach-the-dom)).
 
 **Try it.** [A Live Field Desk](/docs/blog/liveview-desk) is a tutorial with the widget on the page — nested `live_component` assigns, uploads, in-socket tabs, debounce, click-away, hooks, and JS commands.

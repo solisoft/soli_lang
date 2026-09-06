@@ -1,0 +1,111 @@
+# EUI — native interfaces without HTML
+
+EUI is Soli's protocol for delivering an application interface to a native
+client without HTML, CSS or JavaScript. The server sends an interface tree
+that is already resolved, as compact binary patches; a Rust client applies
+them, lays out, and draws on the GPU. A counter costs a few megabytes of RAM
+and no CPU at idle, because there is no document engine to keep running.
+
+It is **optional**: a `soli` built with `cargo build --features eui` has it,
+the default build does not, and nothing else changes either way.
+
+## A component is a LiveView component
+
+An EUI component uses the LiveView machinery you already know — the same
+route registration, the same `{event, params, state} -> state` handler, the
+same registry and worker pool. Two things differ: the view is a function of
+state returning a **node tree as plain data** instead of an HTML template, and
+the socket is `/_eui/session/<component>` carrying binary frames.
+
+```soli
+# config/routes.sl
+router_eui("counter", "live#counter", "live#counter_view")
+```
+
+```soli
+# app/controllers/live_controller.sl
+
+def counter(event_data)
+  event = event_data["event"]
+  count = event_data["state"]["count"] ?? 0
+  if event == "increment"
+    {"count": count + 1}
+  elsif event == "decrement"
+    {"count": count - 1}
+  else
+    {"count": count}
+  end
+end
+
+def counter_view(state)
+  count = state["count"] ?? 0
+  column({"pad": 6, "gap": 4, "align": "start", "bg": "surface.base"}, [
+    text("Counter", {"size": 4, "weight": "semibold"}),
+    text(count.to_s, {"size": 7, "weight": "bold"}),
+    row({"gap": 2}, [button("−", "decrement"), button("+", "increment")]),
+    text("Every click is a round trip.", {"fg": "text.muted", "size": 1})
+  ])
+end
+```
+
+`column`, `row`, `text`, `button` and the rest of the catalogue are ordinary
+Soli functions returning hashes — nothing native. Each node is:
+
+```
+{"k": kind, "s": style, "t": text, "c": children, "on": handlers, "key": key, "p": props}
+```
+
+The server turns that into nodes, interns every atom and every distinct style
+once per session, diffs against the tree it last sent, and encodes the patch.
+
+## Style is roles, not CSS
+
+There is no cascade and no selector. A style is a hash of the protocol's own
+vocabulary — `display`, `gap`, `pad`, `bg`, `fg`, `size`, `weight`, `radius`,
+`width`, `align`, `justify`, `cursor` — and colours are **roles**:
+`"accent.base"`, `"text.muted"`, `"surface.raised"`. The client resolves roles
+against the viewer's light or dark mode, density and font scale, so the same
+view is right in dark mode without the server knowing. A literal `"#RRGGBB"`
+is available for a brand mark and wrong for a surface.
+
+## Events carry the node's props
+
+`"on": {"click": "toggle"}` names a server event. When it fires, the handler's
+`params` carry the node id, the event kind, its payload, and — because the
+server kept the tree — the node's `props`. That is how a row in a list says
+which row it is:
+
+```soli
+checkbox(item["title"], item["done"], "toggle", {"id": item["id"]})
+# … in the handler:
+id = params["props"]["id"]
+```
+
+An event on a node that has no such handler in the tree the client was sent
+is refused and ends the session. Nothing a client sends is trusted before
+that check.
+
+## Keyed lists and virtualisation
+
+Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes
+`MoveChild` ops rather than a rebuild. A `list` with an item height is
+virtualised on the client: it lays out only the rows it can see, so ten
+thousand rows cost about what fifty do.
+
+## Running it
+
+```sh
+cargo build --features eui
+./target/debug/soli serve path/to/app --port 5011
+# the client, from the eui repository:
+EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter
+```
+
+A deployment sits behind TLS; the client refuses anything but `wss://` outside
+a debug build on loopback.
+
+## Where the rest is
+
+The protocol specification, the client crates, the widget catalogue and the
+measured budgets are in the `eui` repository and its documentation site. This
+page covers only what changed in Soli.
