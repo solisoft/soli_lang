@@ -256,15 +256,13 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      # RUSTSEC-2026-0253 (lru, unsound `LruCache::pop()` under a panicking
-      # Drop) — patched in lru >= 0.18.2, which is what our own `lru = "0.18"`
-      # already resolves to. The two flagged copies are pinned by transitive
-      # parents we don't control: ratatui 0.26 holds lru 0.12, and
-      # azul-layout / mysql 28 hold lru 0.16. Nothing here can move them.
-      # Drop this ignore once those parents release against 0.18.2 — re-check
-      # by removing the flag and reading which crate is still named.
+      # Every waiver lives in .cargo/audit.toml, with the reason and the
+      # condition that removes it. Keep them there rather than as flags here:
+      # cargo-audit reads that file, so `cargo audit` locally gives the same
+      # verdict this job does. A waiver passed only on this command line makes
+      # a developer's local run fail on something CI has already accepted.
       - name: Audit dependencies
-        run: cargo audit --deny warnings --ignore RUSTSEC-2026-0253
+        run: cargo audit --deny warnings
 
   # The two engines must agree, `soli check` must not reject working code, and
   # hostile input must not reach a Rust panic. Each is a separate failure mode

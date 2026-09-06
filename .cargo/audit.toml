@@ -21,6 +21,15 @@ ignore = [
     # Remove once we upgrade ratatui to >=0.30.
     "RUSTSEC-2026-0002",
 
+    # lru — unsound `LruCache::pop()` if an element's Drop panics. Our own
+    # `lru = "0.18"` resolves to 0.18.2, which carries the fix; the two flagged
+    # copies are held by transitive parents we cannot move (ratatui 0.26 pins
+    # lru 0.12, azul-layout and mysql 28 pin lru 0.16), and the same ratatui
+    # upgrade that clears RUSTSEC-2026-0002 above clears half of this.
+    # Remove once those parents release against >=0.18.2 — re-check by dropping
+    # this line and reading which crate `cargo audit` still names.
+    "RUSTSEC-2026-0253",
+
     # paste 1.0.15 — unmaintained proc-macro, no runtime risk. Transitive via
     # ratatui and image/ravif; no maintained replacement is wired through those
     # crates yet. Re-evaluate after the ratatui >=0.30 upgrade.
