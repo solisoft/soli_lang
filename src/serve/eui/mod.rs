@@ -9,6 +9,7 @@
 //! session's previous tree, and `eui-proto` encodes. Nothing here runs unless
 //! the `eui` cargo feature is on.
 
+pub mod assets;
 pub mod diff;
 pub mod local;
 pub mod session;

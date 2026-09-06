@@ -2988,6 +2988,16 @@ async fn handle_hyper_request(
         }
     }
 
+    // EUI assets: content-addressed and immutable, so a plain GET with no
+    // session and no cookie is the whole protocol. After the desktop gate and
+    // the origin check, before any routing.
+    #[cfg(feature = "eui")]
+    if method == "GET" {
+        if let Some(hex) = path.strip_prefix("/_eui/asset/") {
+            return Ok(eui::assets::respond(hex));
+        }
+    }
+
     // Check for WebSocket upgrade request
     if hyper_tungstenite::is_upgrade_request(&req) {
         // Handle live reload WebSocket endpoint

@@ -24,7 +24,10 @@
   carry the clicked node's `props`, so a row in a list can say which row it
   is.
 
-  Touched: `src/serve/mod.rs` (three `#[cfg(feature = "eui")]` insertions),
+  Images are files in the application, hashed with BLAKE3 and served at
+  `GET /_eui/asset/<hash>` from a bounded content-addressed store, immutable.
+
+  Touched: `src/serve/mod.rs` (four `#[cfg(feature = "eui")]` insertions),
   `src/interpreter/builtins/router.rs` (one builtin), and the new
   `src/serve/eui/` module. `live/`, `template/`, `vm/` and `interpreter/`
   are unchanged.

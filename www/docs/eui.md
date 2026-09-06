@@ -100,6 +100,18 @@ rewrites the node keyed `"value"`, then sends `increment`; the next batch
 from the server confirms or corrects. Nothing a local handler does is
 trusted, and authorisation is never local.
 
+## Images and assets
+
+```soli
+avatar("public/images/avatar.png", 32)
+```
+
+The path is a file in the application. Soli hashes it (BLAKE3), sends the
+hash in the tree, and serves the bytes at `GET /_eui/asset/<hash>` with a
+one-year immutable cache header — the same bytes for every session and every
+client, so a CDN can hold them and nothing on the path can substitute them.
+A path that resolves outside the application is refused before it is read.
+
 ## Keyed lists and virtualisation
 
 Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes

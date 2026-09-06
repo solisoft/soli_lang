@@ -81,6 +81,14 @@ id = params["props"]["id"]</code></pre>
     </div>
     <p class="text-gray-400 mb-12">That string is a small statement language — assignments, arithmetic, `if … else`, `self.style = @hover`, `emit` — compiled by Soli to a bytecode chunk, delivered once per session, verified by the client before it first runs, and executed with a fuel budget. It reads the root node's props as local state, rewrites the node keyed <code class="text-cyan-400">"value"</code>, then sends <code class="text-cyan-400">increment</code>; the next batch from the server confirms or corrects. Nothing a local handler does is trusted, and authorisation is never local.</p>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Images and assets</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">avatar("public/images/avatar.png", 32)</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">The path is a file in the application. Soli hashes it (BLAKE3), sends the hash in the tree, and serves the bytes at <code class="text-cyan-400">GET /_eui/asset/&lt;hash&gt;</code> with a one-year immutable cache header &mdash; the same bytes for every session, so a CDN can hold them and nothing on the path can substitute them. A path that resolves outside the application is refused before it is read.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Keyed lists and virtualisation</h2>
     <p class="text-gray-400 mb-12">Give repeated children a key (<code class="text-cyan-400">keyed(id, row(...))</code>) and a re-sort becomes <code class="text-cyan-400">MoveChild</code> ops rather than a rebuild. A <code class="text-cyan-400">list</code> with an item height is virtualised on the client: it lays out only the rows it can see, so ten thousand rows cost about what fifty do.</p>
 

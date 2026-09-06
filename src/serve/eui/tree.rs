@@ -329,7 +329,17 @@ impl Encoder {
         if let Some(p) = obj.get("p").and_then(Json::as_object) {
             for (name, v) in p {
                 let atom = self.atom(name);
-                props.push((atom, self.wire_value(v)?));
+                // An image's `src` is a file in the application; it goes on
+                // the wire as the hash of its bytes, served from /_eui/asset.
+                let value = if kind == NodeKind::Image && name == "src" {
+                    match v {
+                        Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
+                        other => return Err(format!("EUI: image src must be a path, got {other}")),
+                    }
+                } else {
+                    self.wire_value(v)?
+                };
+                props.push((atom, value));
             }
         }
         let mut handlers = Vec::new();
