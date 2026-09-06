@@ -22,7 +22,17 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-0-7" class="text-amber-400 hover:underline">v2.0.7</a>.</p>
 
-        <p class="text-gray-500 text-sm leading-relaxed mb-10">Nothing yet.</p>
+        <h3 id="unreleased-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">EUI sessions, behind a cargo feature.</strong> <code class="text-cyan-400">cargo build --features eui</code> adds <code class="text-cyan-400">router_eui(component, handler, view)</code> and the <code class="text-cyan-400">/_eui/session/&lt;component&gt;</code> socket. An EUI component is a Live View component whose view is a function of state returning a node tree as plain data; the server interns atoms and styles once per session, diffs against the tree it last sent, and streams binary patches to a native client that draws them on the GPU &mdash; no HTML, no CSS, no JavaScript, no browser. See <a href="/docs/core-concepts/eui" class="text-amber-400 hover:underline">EUI</a>.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">Off by default.</strong> The default build contains none of it &mdash; the session path string is absent from the binary.</li>
+                    <li><strong class="text-white">Local-first handlers.</strong> <code class="text-cyan-400">{"local": [...], "then": "increment"}</code> is assembled by the server into a verified, fuel-metered bytecode chunk the client runs before the round trip.</li>
+                    <li><strong class="text-white">Events carry the node's props</strong>, so a row in a list can say which row it is (<code class="text-cyan-400">params["props"]["id"]</code>).</li>
+                    <li><strong class="text-white">Touched:</strong> <code class="text-cyan-400">src/serve/mod.rs</code> (three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions), one builtin in <code class="text-cyan-400">router.rs</code>, and the new <code class="text-cyan-400">src/serve/eui/</code> module. <code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code> and <code class="text-cyan-400">interpreter/</code> are unchanged.</li>
+                </ul>
+            </li>
+        </ul>
     </section>
 
     <section id="v2-0-7" class="mb-16 scroll-mt-24">

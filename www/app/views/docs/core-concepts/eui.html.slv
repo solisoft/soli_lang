@@ -1,0 +1,109 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-sky-400 via-indigo-400 to-indigo-400 bg-clip-text text-transparent">EUI</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Native interfaces without HTML, CSS or JavaScript. An EUI component is a Live View component whose view returns a <strong class="text-white">node tree as plain data</strong>; Soli diffs it against the tree it last sent and streams binary patches to a native client that lays them out and draws them on the GPU. A counter costs a few megabytes and no CPU at idle, because there is no document engine to keep running.
+        </p>
+    </div>
+
+    <div class="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-5 mb-12">
+        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-indigo-300">Optional, and off by default.</strong> A <code class="text-cyan-400">soli</code> built with <code class="text-cyan-400">cargo build --features eui</code> has it; the default build contains none of it. The protocol, the client and its own documentation live in the <code class="text-cyan-400">eui</code> repository. This page covers what changed in Soli.</p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">A component is a Live View component</h2>
+    <p class="text-gray-400 mb-6">Same route registration, same <code class="text-cyan-400">{event, params, state} &rarr; state</code> handler, same registry and worker pool. Two things differ: the view is a function of state returning a tree instead of an HTML template, and the socket is <code class="text-cyan-400">/_eui/session/&lt;component&gt;</code> carrying binary frames.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">router_eui("counter", "live#counter", "live#counter_view")</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># The handler: exactly a Live View handler.
+def counter(event_data)
+  event = event_data["event"]
+  count = event_data["state"]["count"] ?? 0
+  if event == "increment"
+    {"count": count + 1}
+  elsif event == "decrement"
+    {"count": count - 1}
+  else
+    {"count": count}
+  end
+end
+
+# The view: state in, tree out. Plain data; nothing native.
+def counter_view(state)
+  count = state["count"] ?? 0
+  column({"pad": 6, "gap": 4, "align": "start", "bg": "surface.base"}, [
+    text("Counter", {"size": 4, "weight": "semibold"}),
+    text(count.to_s, {"size": 7, "weight": "bold"}),
+    row({"gap": 2}, [button("−", "decrement"), button("+", "increment")]),
+    text("Every click is a round trip.", {"fg": "text.muted", "size": 1})
+  ])
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">column</code>, <code class="text-cyan-400">row</code>, <code class="text-cyan-400">text</code>, <code class="text-cyan-400">button</code> and the rest of the catalogue are ordinary Soli functions returning hashes. Each node is:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">{"k": kind, "s": style, "t": text, "c": children, "on": handlers, "key": key, "p": props}</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Style is roles, not CSS</h2>
+    <p class="text-gray-400 mb-6">There is no cascade and no selector. A style is a hash of the protocol's own vocabulary &mdash; <code class="text-cyan-400">display</code>, <code class="text-cyan-400">gap</code>, <code class="text-cyan-400">pad</code>, <code class="text-cyan-400">bg</code>, <code class="text-cyan-400">fg</code>, <code class="text-cyan-400">size</code>, <code class="text-cyan-400">weight</code>, <code class="text-cyan-400">radius</code>, <code class="text-cyan-400">width</code>, <code class="text-cyan-400">align</code> &mdash; and colours are <strong class="text-white">roles</strong>: <code class="text-cyan-400">"accent.base"</code>, <code class="text-cyan-400">"text.muted"</code>. The client resolves roles against the viewer's light or dark mode, density and font scale, so the same view is right in dark mode without the server knowing. A literal <code class="text-cyan-400">"#RRGGBB"</code> is available for a brand mark and wrong for a surface.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Events carry the node's props</h2>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">"on": {"click": "toggle"}</code> names a server event. When it fires, the handler's <code class="text-cyan-400">params</code> carry the node id, the event kind, its payload and &mdash; because the server kept the tree &mdash; the node's <code class="text-cyan-400">props</code>. That is how a row in a list says which row it is:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">checkbox(item["title"], item["done"], "toggle", {"id": item["id"]})
+# … in the handler:
+id = params["props"]["id"]</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">An event on a node that has no such handler in the tree the client was sent is refused and ends the session. Nothing a client sends is trusted before that check.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Local-first handlers</h2>
+    <p class="text-gray-400 mb-6">A handler can run on the client before the round trip. The counter's <code class="text-cyan-400">+</code>:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">local_button("+", [
+  ["load", "count"], ["push", 1], ["add"], ["dup"], ["store", "count"],
+  ["to_str"], ["set_text", "value"]
+], "increment")</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">The list is assembled by Soli into a small bytecode chunk, delivered once per session, verified by the client before it first runs, and executed with a fuel budget. It reads the root node's props as local state, rewrites the node keyed <code class="text-cyan-400">"value"</code>, then sends <code class="text-cyan-400">increment</code>; the next batch from the server confirms or corrects. Nothing a local handler does is trusted, and authorisation is never local.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Keyed lists and virtualisation</h2>
+    <p class="text-gray-400 mb-12">Give repeated children a key (<code class="text-cyan-400">keyed(id, row(...))</code>) and a re-sort becomes <code class="text-cyan-400">MoveChild</code> ops rather than a rebuild. A <code class="text-cyan-400">list</code> with an item height is virtualised on the client: it lays out only the rows it can see, so ten thousand rows cost about what fifty do.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Running it</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">cargo build --features eui
+./target/debug/soli serve path/to/app --port 5011
+# the client, from the eui repository:
+EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">A deployment sits behind TLS; the client refuses anything but <code class="text-cyan-400">wss://</code> outside a debug build on loopback.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">What changed in Soli</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12"><table class="w-full text-left text-sm"><tbody class="text-gray-400 divide-y divide-white/10">
+<tr><td class="py-3 px-4 text-white font-medium w-56"><code class="text-cyan-400">Cargo.toml</code></td><td class="py-3 px-4">Optional <code class="text-cyan-400">eui-proto</code> dependency; feature <code class="text-cyan-400">eui</code>, not in the default set</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/mod.rs</code></td><td class="py-3 px-4">Three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions: the module, the socket branch, an early return for EUI components in the worker</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">builtins/router.rs</code></td><td class="py-3 px-4"><code class="text-cyan-400">router_eui(component, handler, view)</code></td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/eui/</code></td><td class="py-3 px-4">New: tree conversion with interned atoms and styles, the tree diff, the session socket, the local-handler assembler</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium">Untouched</td><td class="py-3 px-4"><code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code>, <code class="text-cyan-400">interpreter/</code></td></tr>
+</tbody></table></div>
+</div>
