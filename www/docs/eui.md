@@ -48,8 +48,9 @@ def counter_view(state)
 end
 ```
 
-`column`, `row`, `text`, `button` and the rest of the catalogue are ordinary
-Soli functions returning hashes — nothing native. Each node is:
+`column`, `row`, `text`, `button` and the rest of the catalogue — through
+`select`, `slider`, the date pickers and the charts — are ordinary Soli
+functions returning hashes — nothing native. Each node is:
 
 ```
 {"k": kind, "s": style, "t": text, "c": children, "on": handlers, "key": key, "p": props}

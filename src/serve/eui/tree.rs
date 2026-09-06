@@ -336,6 +336,8 @@ impl Encoder {
                         Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
                         other => return Err(format!("EUI: image src must be a path, got {other}")),
                     }
+                } else if kind == NodeKind::Canvas && name == "paths" {
+                    self.paths_value(v)?
                 } else {
                     self.wire_value(v)?
                 };
@@ -390,6 +392,23 @@ impl Encoder {
             return Err(format!("EUI: a {kind:?} node cannot have children"));
         }
         Ok(TNode { id: 0, kind, style, key, key_atom, text, props, handlers, children })
+    }
+
+    /// Spec 03 §1.1: a canvas path is `[kind, colour, numbers…]`. The colour
+    /// is written as a role name or `#RRGGBB` and goes on the wire resolved,
+    /// so the client never parses a string while painting.
+    fn paths_value(&mut self, v: &Json) -> Result<WireValue, String> {
+        let paths = v.as_array().ok_or("EUI: paths must be a list of paths")?;
+        let mut out = Vec::with_capacity(paths.len());
+        for path in paths {
+            let parts = path.as_array().ok_or("EUI: a path is a list: kind, colour, numbers")?;
+            let mut items = Vec::with_capacity(parts.len());
+            for (i, part) in parts.iter().enumerate() {
+                items.push(if i == 1 { WireValue::Color(self.color(part)?) } else { self.wire_value(part)? });
+            }
+            out.push(WireValue::List(items));
+        }
+        Ok(WireValue::List(out))
     }
 
     fn wire_value(&mut self, v: &Json) -> Result<WireValue, String> {

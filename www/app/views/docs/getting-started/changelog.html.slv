@@ -28,7 +28,8 @@
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
                     <li><strong class="text-white">Off by default.</strong> The default build contains none of it &mdash; the session path string is absent from the binary.</li>
                     <li><strong class="text-white">Local-first handlers.</strong> <code class="text-cyan-400">{"local": [...], "then": "increment"}</code> is assembled by the server into a verified, fuel-metered bytecode chunk the client runs before the round trip.</li>
-                    <li><strong class="text-white">Events carry the node's props</strong>, so a row in a list can say which row it is (<code class="text-cyan-400">params["props"]["id"]</code>).</li>
+                    <li><strong class="text-white">Events carry the node's props</strong>, so a row in a list can say which row it is (<code class="text-cyan-400">params["props"]["id"]</code>). A pointer <code class="text-cyan-400">payload</code> is local to the node holding the handler, not the leaf under the pointer.</li>
+                    <li><strong class="text-white">Canvas paths.</strong> A <code class="text-cyan-400">canvas</code> node's <code class="text-cyan-400">paths</code> prop is a list of <code class="text-cyan-400">[kind, colour, numbers&hellip;]</code>; the server resolves the colour before encoding, and the catalogue's four charts build on it.</li>
                     <li><strong class="text-white">Touched:</strong> <code class="text-cyan-400">src/serve/mod.rs</code> (three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions), one builtin in <code class="text-cyan-400">router.rs</code>, and the new <code class="text-cyan-400">src/serve/eui/</code> module. <code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code> and <code class="text-cyan-400">interpreter/</code> are unchanged.</li>
                 </ul>
             </li>

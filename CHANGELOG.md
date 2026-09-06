@@ -24,6 +24,13 @@
   carry the clicked node's `props`, so a row in a list can say which row it
   is.
 
+  A `canvas` node's `paths` prop (`spec/03-widgets.md` §1.1) is a list of
+  `[kind, colour, numbers…]` paths; the server resolves the colour — a role
+  name or `#RRGGBB` — before encoding, so the client never parses a string
+  while painting. The catalogue's `chart_line`, `chart_area`, `chart_bar`
+  and `chart_donut` build on it. A pointer event's `payload` is local to the
+  node that holds the handler, not the leaf under the pointer.
+
   Images are files in the application, hashed with BLAKE3 and served at
   `GET /_eui/asset/<hash>` from a bounded content-addressed store, immutable.
 
