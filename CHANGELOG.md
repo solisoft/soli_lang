@@ -31,6 +31,12 @@
   and `chart_donut` build on it. A pointer event's `payload` is local to the
   node that holds the handler, not the leaf under the pointer.
 
+  `GET /.well-known/eui` serves the application's manifest (EUI spec 01
+  §2.1), signed with an Ed25519 publisher key generated on first use into
+  `config/eui_publisher.pkcs8` — keep it, clients pin it, never commit it.
+  `eui_capabilities("clipboard.read", …)` in `routes.sl` says what the
+  manifest asks the client for; the person still grants each one.
+
   Images are files in the application, hashed with BLAKE3 and served at
   `GET /_eui/asset/<hash>` from a bounded content-addressed store, immutable.
 

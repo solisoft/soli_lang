@@ -12,6 +12,7 @@
 pub mod assets;
 pub mod diff;
 pub mod local;
+pub mod manifest;
 pub mod session;
 pub mod tree;
 

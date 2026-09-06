@@ -137,3 +137,13 @@ a debug build on loopback.
 The protocol specification, the client crates, the widget catalogue and the
 measured budgets are in the `eui` repository and its documentation site. This
 page covers only what changed in Soli.
+
+## The manifest
+
+With the feature on, every app also answers `GET /.well-known/eui` with a
+signed manifest. The signing key is generated the first time it is needed,
+into `config/eui_publisher.pkcs8`; a client pins the public half on its
+first visit and refuses a different key afterwards, so keep the file with
+the app's secrets and out of version control. `eui_capabilities("clipboard.read")`
+in `config/routes.sl` lists what the manifest asks the client for; nothing
+is granted by asking — the person allows each capability on their side.

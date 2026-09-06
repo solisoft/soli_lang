@@ -734,6 +734,25 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_capabilities("clipboard.read", ...) — what the EUI manifest asks the
+    // client for. The person still has to allow each one; nothing is granted
+    // by asking.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_capabilities".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_capabilities", None, |args| {
+            let mut names = Vec::new();
+            for arg in args {
+                match arg {
+                    Value::Array(items) => names.extend(items.borrow().iter().map(|i| i.to_string())),
+                    other => names.push(other.to_string()),
+                }
+            }
+            crate::serve::eui::manifest::request_capabilities(&names)?;
+            Ok(Value::Null)
+        })),
+    );
+
     // live_rooms(component, ...) — declare components that may be mounted in a
     // shared room via `?room=<name>` / `data-live-room`.
     //

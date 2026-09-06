@@ -6102,6 +6102,7 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest",
+ "ring",
  "rmp-serde",
  "rusoto_core",
  "rusoto_credential",

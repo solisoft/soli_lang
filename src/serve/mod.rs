@@ -2996,6 +2996,9 @@ async fn handle_hyper_request(
         if let Some(hex) = path.strip_prefix("/_eui/asset/") {
             return Ok(eui::assets::respond(hex));
         }
+        if path == "/.well-known/eui" {
+            return Ok(eui::manifest::respond());
+        }
     }
 
     // Check for WebSocket upgrade request
