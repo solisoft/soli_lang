@@ -85,6 +85,24 @@ An event on a node that has no such handler in the tree the client was sent
 is refused and ends the session. Nothing a client sends is trusted before
 that check.
 
+## Local-first handlers
+
+A handler can run on the client before the round trip. The counter's `+`:
+
+```soli
+local_button("+", [
+  ["load", "count"], ["push", 1], ["add"], ["dup"], ["store", "count"],
+  ["to_str"], ["set_text", "value"]
+], "increment")
+```
+
+The list is assembled by Soli into a small bytecode chunk, delivered once per
+session, verified by the client before it first runs, and executed with a
+fuel budget. It reads the root node's props as local state (`with_state`),
+rewrites the node keyed `"value"`, then sends `increment`; the next batch
+from the server confirms or corrects. Nothing a local handler does is
+trusted, and authorisation is never local.
+
 ## Keyed lists and virtualisation
 
 Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes

@@ -34,6 +34,9 @@ pub struct TNode {
     pub style: u32,
     /// Reconciliation key, if given.
     pub key: Option<String>,
+    /// The key as an atom, sent on the wire so a local handler can name the
+    /// node; `0` when unkeyed.
+    pub key_atom: u32,
     /// Text content.
     pub text: Option<TextRef>,
     /// `(name atom, value)`.
@@ -50,6 +53,7 @@ pub struct Encoder {
     atoms: HashMap<String, u32>,
     styles: HashMap<[u8; 64], u32>,
     colors: HashMap<u32, u32>,
+    chunks: HashMap<Vec<u8>, u32>,
     pending: Vec<Op>,
     next_node: u32,
     seq: u64,
@@ -80,6 +84,118 @@ impl Encoder {
         self.colors.insert(rgba, id);
         self.pending.push(Op::DefColor { id, rgba });
         ColorRef::literal(id as u16)
+    }
+
+    /// Intern a chunk by its bytes, delivering it inline on first use.
+    fn chunk(&mut self, bytes: Vec<u8>) -> u32 {
+        if let Some(id) = self.chunks.get(&bytes) {
+            return *id;
+        }
+        let id = self.chunks.len() as u32 + 1;
+        self.chunks.insert(bytes.clone(), id);
+        self.pending.push(Op::DefChunkBytes { id, bytes });
+        id
+    }
+
+    /// Assemble a local handler written as data (`spec/07-bytecode.md`):
+    ///
+    /// ```text
+    /// [["load", "count"], ["push", 1], ["add"], ["dup"], ["store", "count"],
+    ///  ["to_str"], ["set_text", "value"], ["emit", "increment"]]
+    /// ```
+    ///
+    /// Node targets are keys, sent as atoms; the client resolves them, so a
+    /// chunk does not depend on any one render's ids and is interned once.
+    /// Branches take a label: `["label", "else"]`, `["jump", "else"]`,
+    /// `["jump_if_false", "else"]`.
+    fn assemble(&mut self, program: &[Json]) -> Result<Vec<u8>, String> {
+        let bad = |what: &str| format!("EUI: local handler: {what}");
+        // Pass 1: sizes and labels, so jumps can be resolved.
+        let mut labels: HashMap<String, usize> = HashMap::new();
+        let mut sized: Vec<(Vec<u8>, Option<(u8, String)>)> = Vec::new(); // (bytes, pending jump)
+        let mut offset = 0usize;
+        for instr in program {
+            let parts = instr.as_array().ok_or_else(|| bad("each instruction is a list"))?;
+            let name = parts.first().and_then(Json::as_str).ok_or_else(|| bad("instruction name"))?;
+            let arg = parts.get(1);
+            let atom_arg = |enc: &mut Self| -> Result<u32, String> {
+                let s = arg.and_then(Json::as_str).ok_or_else(|| bad("expected a name"))?;
+                Ok(enc.atom(s))
+            };
+            let node_arg = |enc: &mut Self| -> Result<u32, String> {
+                let key = arg.ok_or_else(|| bad("expected a node key"))?;
+                let key = match key { Json::String(s) => s.clone(), other => other.to_string() };
+                Ok(enc.atom(&key))
+            };
+            let mut w = Writer::new();
+            let mut jump = None;
+            match name {
+                "push" => match arg {
+                    Some(Json::Number(n)) => { w.u8(0x01).svarint(n.as_i64().ok_or_else(|| bad("integer"))?); }
+                    Some(Json::Bool(b)) => { w.u8(0x03).u8(u8::from(*b)); }
+                    Some(Json::String(s)) => { let a = self.atom(s); w.u8(0x02).varint32(a); }
+                    _ => return Err(bad("push takes a number, bool or string")),
+                },
+                "load" => { let a = atom_arg(self)?; w.u8(0x04).varint32(a); }
+                "store" => { let a = atom_arg(self)?; w.u8(0x05).varint32(a); }
+                "dup" => { w.u8(0x06); }
+                "pop" => { w.u8(0x07); }
+                "add" => { w.u8(0x10); }
+                "sub" => { w.u8(0x11); }
+                "mul" => { w.u8(0x12); }
+                "neg" => { w.u8(0x13); }
+                "not" => { w.u8(0x14); }
+                "eq" => { w.u8(0x15); }
+                "lt" => { w.u8(0x16); }
+                "gt" => { w.u8(0x17); }
+                "and" => { w.u8(0x18); }
+                "or" => { w.u8(0x19); }
+                "to_str" => { w.u8(0x1A); }
+                "concat" => { w.u8(0x1B); }
+                "label" => {
+                    let l = arg.and_then(Json::as_str).ok_or_else(|| bad("label name"))?;
+                    labels.insert(l.to_string(), offset);
+                    continue;
+                }
+                "jump" | "jump_if_false" => {
+                    let l = arg.and_then(Json::as_str).ok_or_else(|| bad("jump label"))?;
+                    w.u8(if name == "jump" { 0x20 } else { 0x21 }).u16(0);
+                    jump = Some((if name == "jump" { 0x20 } else { 0x21 }, l.to_string()));
+                }
+                "set_text" => { let n = node_arg(self)?; w.u8(0x30).varint32(n); }
+                "set_prop" => {
+                    let n = node_arg(self)?;
+                    let p = parts.get(2).and_then(Json::as_str).ok_or_else(|| bad("set_prop needs a prop name"))?;
+                    let a = self.atom(p);
+                    w.u8(0x31).varint32(n).varint32(a);
+                }
+                "emit" => { let a = atom_arg(self)?; w.u8(0x32).varint32(a); }
+                "return" => { w.u8(0x40); }
+                other => return Err(bad(&format!("unknown instruction '{other}'"))),
+            }
+            offset += w.len();
+            sized.push((w.into_vec(), jump));
+        }
+        // Pass 2: resolve jumps relative to the next instruction.
+        let mut code = Vec::with_capacity(offset);
+        for (bytes, jump) in sized {
+            let mut bytes = bytes;
+            if let Some((_, label)) = jump {
+                let target = *labels.get(&label).ok_or_else(|| bad(&format!("unknown label '{label}'")))? as i64;
+                let next = code.len() as i64 + bytes.len() as i64;
+                let rel = i16::try_from(target - next).map_err(|_| bad("jump too far"))?;
+                bytes[1..3].copy_from_slice(&rel.to_le_bytes());
+            }
+            code.extend_from_slice(&bytes);
+        }
+        if !matches!(code.last(), Some(0x40 | 0x20)) {
+            code.push(0x40);
+        }
+        let mut out = b"EUIC".to_vec();
+        out.push(1);
+        out.push(16); // max stack; the client verifier proves the real depth fits
+        out.extend_from_slice(&code);
+        Ok(out)
     }
 
     fn style(&mut self, record: StyleRecord) -> u32 {
@@ -184,6 +300,10 @@ impl Encoder {
             Json::String(s) => s.clone(),
             other => other.to_string(),
         });
+        let key_atom = match &key {
+            Some(k) => self.atom(k),
+            None => 0,
+        };
         let text = obj.get("t").map(|t| {
             let s = match t {
                 Json::String(s) => s.clone(),
@@ -209,9 +329,21 @@ impl Encoder {
         if let Some(on) = obj.get("on").and_then(Json::as_object) {
             for (event, target) in on {
                 let kind = event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
-                let name = target.as_str().ok_or("EUI: a handler must name a server event")?;
-                let atom = self.atom(name);
-                handlers.push((kind, Handler::Server(atom)));
+                let handler = match target {
+                    Json::String(name) => Handler::Server(self.atom(name)),
+                    Json::Object(spec) => {
+                        // {"local": [instructions], "then": "server_event"?}
+                        let program = spec.get("local").and_then(Json::as_array).ok_or("EUI: a local handler needs a \"local\" list")?;
+                        let bytes = self.assemble(program)?;
+                        let chunk = self.chunk(bytes);
+                        match spec.get("then").and_then(Json::as_str) {
+                            Some(name) => Handler::LocalThenServer { chunk, name: self.atom(name) },
+                            None => Handler::Local(chunk),
+                        }
+                    }
+                    _ => return Err("EUI: a handler is a server event name or {\"local\": [...]}".into()),
+                };
+                handlers.push((kind, handler));
             }
         }
         let mut children = Vec::new();
@@ -226,7 +358,7 @@ impl Encoder {
         if kind.is_leaf() && !children.is_empty() {
             return Err(format!("EUI: a {kind:?} node cannot have children"));
         }
-        Ok(TNode { id: 0, kind, style, key, text, props, handlers, children })
+        Ok(TNode { id: 0, kind, style, key, key_atom, text, props, handlers, children })
     }
 
     fn wire_value(&mut self, v: &Json) -> Result<WireValue, String> {
@@ -440,7 +572,7 @@ pub fn flatten(root: &TNode) -> Subtree {
             kind: n.kind,
             id: n.id,
             style: n.style,
-            key: 0,
+            key: n.key_atom,
             text: n.text.clone(),
             props: (props_start, n.props.len() as u32),
             handlers: (handlers_start, n.handlers.len() as u32),

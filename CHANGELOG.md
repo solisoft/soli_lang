@@ -15,6 +15,13 @@
   Protocol, client and documentation live in the `eui` repository; see
   `www/docs/eui.md`.
 
+  A handler can run **locally first**: `"on": {"click": {"local": [...],
+  "then": "increment"}}` is assembled by the server into a verified,
+  fuel-metered chunk that the client runs before the round trip
+  (`spec/07-bytecode.md` in the `eui` repository). The event's `params`
+  carry the clicked node's `props`, so a row in a list can say which row it
+  is.
+
   Touched: `src/serve/mod.rs` (three `#[cfg(feature = "eui")]` insertions),
   `src/interpreter/builtins/router.rs` (one builtin), and the new
   `src/serve/eui/` module. `live/`, `template/`, `vm/` and `interpreter/`

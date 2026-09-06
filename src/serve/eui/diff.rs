@@ -72,17 +72,37 @@ fn diff_positional(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNo
     }
 }
 
+/// Keyed and unkeyed children can share a parent — one keyed value node
+/// among plain siblings is the common case. Unkeyed children match by their
+/// ordinal among the unkeyed ones, so they are never rebuilt just because a
+/// sibling has a key.
+fn match_key(node: &TNode, unkeyed_ordinal: &mut u32) -> String {
+    match &node.key {
+        Some(k) => format!("k:{k}"),
+        None => {
+            let o = *unkeyed_ordinal;
+            *unkeyed_ordinal += 1;
+            format!("#{o}")
+        }
+    }
+}
+
 fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNode], ops: &mut Vec<Op>) {
+    let mut ord = 0u32;
+    let old_keys: Vec<String> = old.iter().map(|n| match_key(n, &mut ord)).collect();
+    let mut ord = 0u32;
+    let new_keys: Vec<String> = new.iter().map(|n| match_key(n, &mut ord)).collect();
+
     // Current child list on the client, as ids, kept in step with each op.
     let mut live: Vec<u32> = old.iter().map(|c| c.id).collect();
 
-    // 1. Remove old children whose key is gone (or unkeyed ones: positional
-    //    matching inside a keyed list is not attempted).
-    let keep = |o: &TNode| o.key.as_ref().is_some_and(|k| new.iter().any(|n| n.key.as_ref() == Some(k)));
+    // 1. Remove old children whose match key is gone, or whose kind changed
+    //    (a kind change is a replace, done as remove + insert).
     let mut i = old.len();
     while i > 0 {
         i -= 1;
-        if !keep(&old[i]) {
+        let keep = new_keys.iter().position(|k| *k == old_keys[i]).is_some_and(|j| new[j].kind == old[i].kind);
+        if !keep {
             ops.push(Op::RemoveChild { parent, index: i as u32, count: 1 });
             live.remove(i);
         }
@@ -90,7 +110,7 @@ fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNode], 
 
     // 2. Walk the new order: matched keys move into place, new keys insert.
     for (target, child) in new.iter_mut().enumerate() {
-        let matched = child.key.as_ref().and_then(|k| old.iter().find(|o| o.key.as_ref() == Some(k)));
+        let matched = old_keys.iter().position(|k| *k == new_keys[target]).map(|i| &old[i]).filter(|o| o.kind == child.kind);
         match matched {
             Some(o) => {
                 let from = live.iter().position(|id| *id == o.id).unwrap_or(target);
@@ -107,5 +127,47 @@ fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNode], 
                 live.insert(target, child.id);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eui_proto::{NodeKind, TextRef};
+
+    fn leaf(kind: NodeKind, key: Option<&str>, text: &str) -> TNode {
+        TNode { id: 0, kind, style: 0, key: key.map(str::to_owned), key_atom: 0, text: Some(TextRef::Inline(text.to_owned())), props: vec![], handlers: vec![], children: vec![] }
+    }
+    fn parent(children: Vec<TNode>) -> TNode {
+        TNode { id: 0, kind: NodeKind::Box, style: 0, key: None, key_atom: 0, text: None, props: vec![], handlers: vec![], children }
+    }
+
+    #[test]
+    fn one_keyed_child_among_unkeyed_siblings_diffs_in_place() {
+        let mut enc = Encoder::default();
+        let mut old = parent(vec![leaf(NodeKind::Text, None, "title"), leaf(NodeKind::Text, Some("value"), "0"), leaf(NodeKind::Box, None, "row"), leaf(NodeKind::Text, None, "hint")]);
+        assign_fresh_ids(&mut enc, &mut old);
+        let mut new = parent(vec![leaf(NodeKind::Text, None, "title"), leaf(NodeKind::Text, Some("value"), "1"), leaf(NodeKind::Box, None, "row"), leaf(NodeKind::Text, None, "hint")]);
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        assert_eq!(ops.len(), 1, "{ops:?}");
+        assert!(matches!(&ops[0], Op::SetText { node, .. } if *node == old.children[1].id));
+        // Every child kept its id.
+        for (o, n) in old.children.iter().zip(new.children.iter()) {
+            assert_eq!(o.id, n.id);
+        }
+    }
+
+    #[test]
+    fn a_reversed_keyed_list_is_moves() {
+        let mut enc = Encoder::default();
+        let mut old = parent((0..5).map(|i| leaf(NodeKind::Box, Some(&i.to_string()), "")).collect());
+        assign_fresh_ids(&mut enc, &mut old);
+        let mut new = parent((0..5).rev().map(|i| leaf(NodeKind::Box, Some(&i.to_string()), "")).collect());
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        assert!(ops.iter().all(|o| matches!(o, Op::MoveChild { .. })), "{ops:?}");
+        assert_eq!(ops.len(), 4);
+        assert_eq!(new.children[0].id, old.children[4].id);
     }
 }

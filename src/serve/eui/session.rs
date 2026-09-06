@@ -131,6 +131,9 @@ pub fn upgrade(
             };
             match frame {
                 Frame::Event(e) => {
+                    if std::env::var("EUI_TRACE").is_ok() {
+                        eprintln!("[EUI trace] event node={} kind={:?} name={}", e.node, e.event, e.name);
+                    }
                     let Some((name, params)) = validate(&liveview_id, &e) else {
                         let _ = sender.try_send(Ok(Message::Binary(
                             Frame::Error { code: 300, message: "event does not match the tree".into() }.encode(),
@@ -203,7 +206,14 @@ async fn post(
         eprintln!("[EUI] worker pool saturated; dropping event {event}");
         return;
     }
-    if let Ok(Err(e)) = tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await.map(|r| r.unwrap_or(Ok(()))) {
-        eprintln!("[EUI] {component} {event}: {e}");
+    match tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await {
+        Ok(Ok(Ok(()))) => {
+            if std::env::var("EUI_TRACE").is_ok() {
+                eprintln!("[EUI trace] {component} {event}: handled");
+            }
+        }
+        Ok(Ok(Err(e))) => eprintln!("[EUI] {component} {event}: {e}"),
+        Ok(Err(_)) => eprintln!("[EUI] {component} {event}: worker dropped the response"),
+        Err(_) => eprintln!("[EUI] {component} {event}: timed out"),
     }
 }

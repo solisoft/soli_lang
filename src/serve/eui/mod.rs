@@ -97,6 +97,9 @@ pub fn handle_eui_event(
     instance: &mut LiveViewInstance,
 ) -> Result<(), String> {
     let component = instance.component.clone();
+    if std::env::var("EUI_TRACE").is_ok() {
+        eprintln!("[EUI trace] worker: {component} {} state={}", data.event, instance.state);
+    }
 
     if data.event != RESYNC_EVENT {
         let handler_name = crate::live::socket::get_liveview_handler(&component)
@@ -146,7 +149,13 @@ pub fn handle_eui_event(
 
     instance.touch();
     if !LIVE_REGISTRY.commit(instance) {
+        if std::env::var("EUI_TRACE").is_ok() {
+            eprintln!("[EUI trace] worker: commit refused (socket gone?) for {}", instance.id);
+        }
         return Ok(());
+    }
+    if std::env::var("EUI_TRACE").is_ok() {
+        eprintln!("[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)", batch.seq, batch.ops.len(), instance.senders.len());
     }
     send_frame(instance, &Frame::Batch(batch));
     Ok(())
