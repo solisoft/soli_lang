@@ -465,6 +465,13 @@ pub fn boot(
 
     println!("Starting {}...", manifest.app_name);
 
+    // One person at one window: two server workers are plenty, and each
+    // worker is an interpreter with every handler warmed — eight of them
+    // cost a desktop app fifty megabytes for nothing. `--workers` and
+    // `SOLI_WORKERS` still say otherwise when asked.
+    let explicit = std::env::var_os("SOLI_WORKERS").is_some() || std::env::args().any(|a| a == "--workers");
+    let workers = if explicit { workers } else { workers.min(2) };
+
     // Deep link / protocol handler: remember where to land after the launch token.
     if let Some(path) = solilang::desktop::deeplink::pending_from_env_and_args() {
         println!("  Opening path {}", path);

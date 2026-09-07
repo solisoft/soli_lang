@@ -269,6 +269,12 @@ Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux:
 | `--no-default-features --features eui-desktop` | 61 MB | 80 MB |
 | `--features eui-desktop`, default features, `--no-db` | 78 MB | 76 MB |
 
+A desktop artifact starts two server workers, not one per core: each
+worker is an interpreter with every handler warmed, and one person at one
+window needs no more (measured on the feed example: 117 MB of runtime at
+rest with eight workers, 68 MB with two). `--workers N` or `SOLI_WORKERS`
+override it.
+
 The EUI window costs 12 MB. `--no-db` removes the database binary (about
 20 MB of artifact) and the database process at launch; `--db-url` does the
 same for an app whose database is elsewhere. Dropping a browser does not

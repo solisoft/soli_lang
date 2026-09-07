@@ -64,6 +64,11 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **A desktop artifact starts two server workers**, not one per core,
+  unless `--workers` or `SOLI_WORKERS` say otherwise: each worker is an
+  interpreter with every handler warmed, and one person at one window
+  needs no more. Measured on the EUI feed example: 117 MB of runtime at
+  rest with eight workers, 68 MB with two.
 - **`soli desktop build --no-db` and `--db-url <url>`.** A desktop
   artifact no longer has to carry and start a database. `--no-db` embeds
   none and starts none — for an app whose state lives in memory or behind
