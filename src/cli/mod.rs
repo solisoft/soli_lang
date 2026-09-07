@@ -277,6 +277,7 @@ pub fn run() {
             scheme,
             app_name,
         } => commands::desktop::run_register_protocol(exe, scheme, app_name),
+        Command::EuiOpen { url, allow } => commands::eui::open(url, allow),
     }
 }
 

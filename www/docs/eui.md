@@ -147,3 +147,12 @@ first visit and refuses a different key afterwards, so keep the file with
 the app's secrets and out of version control. `eui_capabilities("clipboard.read")`
 in `config/routes.sl` lists what the manifest asks the client for; nothing
 is granted by asking — the person allows each capability on their side.
+
+
+## Opening an application
+
+The standalone client is `eui <wss://host/_eui/session/app>`; a soli built
+with `--features eui-desktop` also opens one itself with
+`soli eui <url> [--allow clipboard.read]`, and packages an app to open in
+its own window with `soli desktop build --eui <component>` (see
+[Desktop Apps](/docs/development-tools/desktop)).

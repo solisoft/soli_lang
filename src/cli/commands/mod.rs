@@ -1,4 +1,5 @@
 pub mod desktop;
+pub mod eui;
 mod progress;
 mod test_runner;
 

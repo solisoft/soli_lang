@@ -30,6 +30,16 @@ soli desktop register-protocol --exe ./myapp --scheme myapp --name "My App"</cod
         In-app <code class="text-cyan-400">Updater.check()</code> works when the artifact was built with <code class="text-cyan-400">--update-url</code> / <code class="text-cyan-400">--update-key</code>.
     </p>
 
+    <h2 id="eui-window" class="text-3xl font-bold text-white mb-4 scroll-mt-24">A native window instead of a browser</h2>
+    <p class="text-gray-400 mb-4">With a soli built with <code class="text-cyan-400">--features eui-desktop</code>, an app that has <a href="/docs/core-concepts/eui" class="text-amber-400 hover:underline">EUI</a> components can be packaged to open one of them in its own window &mdash; no browser, no HTML:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli desktop build ./myapp --app-id com.example.myapp --eui dashboard</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">dashboard</code> is a component name given to <code class="text-cyan-400">router_eui</code>. The artifact still carries the runtime, the encrypted app and its database; at launch the server runs on a thread and the embedded EUI client draws the component on the GPU in a window titled after the app. The loopback gate is armed with a session only that client holds, presented as a cookie on every request, so no other local process can reach the app. The EUI publisher key is generated per install in the app's state directory &mdash; a bundle never carries the developer's <code class="text-cyan-400">config/eui_publisher.pkcs8</code>, whatever the build. Capabilities the manifest asks for are granted: the person installed the app.</p>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">--eui</code> cannot be combined with <code class="text-cyan-400">--target</code> yet, because a runtime for another target is fetched prebuilt without the window. <code class="text-cyan-400">SOLI_DESKTOP_NO_WINDOW=1</code> prints the session URL and cookie and serves without opening anything. The same build also answers <code class="text-cyan-400">soli eui &lt;wss://host/_eui/session/app&gt;</code> to open any EUI application in a window.</p>
+
     <h2 id="contents" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What the artifact contains</h2>
     <pre class="mb-6"><code class="text-sm">[ soli runtime ]
 [ manifest        — app identity, versions, checksums ]

@@ -377,6 +377,12 @@ pub enum Command {
         scheme: String,
         app_name: String,
     },
+    /// `soli eui <wss://host/_eui/session/app> [--allow cap,cap]` — open an
+    /// EUI application in a native window (needs the `eui-desktop` feature).
+    EuiOpen {
+        url: String,
+        allow: Vec<String>,
+    },
     /// `soli jobs` / `soli worker` — run a standalone job worker, or
     /// inspect/retry/cancel queue rows without starting HTTP.
     Jobs(JobsCommand),
@@ -478,7 +484,7 @@ pub fn print_usage() {
     eprintln!("       soli generate app_links [--android-package P] [--sha256 H] [--apple-app-id ID] [folder]");
     eprintln!("       soli generate offline [folder]");
     eprintln!(
-        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]"
+        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]\n       soli eui <wss://host/_eui/session/app> [--allow cap,cap]"
     );
     eprintln!("       soli jobs [folder] [--workers N]");
     eprintln!("       soli jobs list [--queue NAME] [--state STATE] [folder]");
@@ -2343,6 +2349,41 @@ pub fn parse_args() -> Options {
                     browser,
                     headed,
                 };
+                return options;
+            }
+            "eui" => {
+                i += 1;
+                let mut url: Option<String> = None;
+                let mut allow: Vec<String> = Vec::new();
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--allow" => {
+                            i += 1;
+                            let list = args.get(i).cloned().unwrap_or_else(|| {
+                                eprintln!("--allow requires a value, e.g. --allow clipboard.read");
+                                process::exit(64);
+                            });
+                            allow.extend(list.split(',').map(str::trim).filter(|c| !c.is_empty()).map(String::from));
+                        }
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option '{}' for soli eui", other);
+                            process::exit(64);
+                        }
+                        other => {
+                            if url.is_some() {
+                                eprintln!("Unexpected argument '{}'", other);
+                                process::exit(64);
+                            }
+                            url = Some(other.to_string());
+                        }
+                    }
+                    i += 1;
+                }
+                let Some(url) = url else {
+                    eprintln!("Usage: soli eui <wss://host/_eui/session/app> [--allow cap,cap]");
+                    process::exit(64);
+                };
+                options.command = Command::EuiOpen { url, allow };
                 return options;
             }
             "desktop" => {
