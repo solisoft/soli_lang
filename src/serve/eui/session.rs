@@ -58,15 +58,21 @@ pub fn upgrade(
         };
         let (mut ws_write, mut ws_read) = stream.split();
 
-        // 1. Hello, or nothing.
-        let hello_ok = match ws_read.next().await {
-            Some(Ok(Message::Binary(b))) => matches!(Frame::decode(&b), Ok(Frame::Hello(h)) if h.version >= 1),
-            _ => false,
+        // 1. Hello, or nothing. The viewport it carries goes to the
+        //    application with `connect`, and again as `viewport` whenever
+        //    the client reports a change: a view that wants to be
+        //    responsive keeps it in its state.
+        let hello = match ws_read.next().await {
+            Some(Ok(Message::Binary(b))) => match Frame::decode(&b) {
+                Ok(Frame::Hello(h)) if h.version >= 1 => Some(h),
+                _ => None,
+            },
+            _ => None,
         };
-        if !hello_ok {
+        let Some(hello) = hello else {
             let _ = ws_write.send(Message::Binary(Frame::Error { code: 1, message: "expected Hello".into() }.encode())).await;
             return;
-        }
+        };
         let mut session_bytes = [0u8; 16];
         let raw = session_id.as_bytes();
         session_bytes[..raw.len().min(16)].copy_from_slice(&raw[..raw.len().min(16)]);
@@ -95,7 +101,8 @@ pub fn upgrade(
         // 3. First render: `connect` for a fresh instance, a whole-tree resend
         //    for a reconnect that found its state still there.
         let first = if already { RESYNC_EVENT } else { "connect" };
-        post(&lv_event_tx, &liveview_id, &component, first, serde_json::json!({}), &session_id).await;
+        let first_params = if already { serde_json::json!({}) } else { serde_json::json!({"viewport": viewport_json(&hello.viewport)}) };
+        post(&lv_event_tx, &liveview_id, &component, first, first_params, &session_id).await;
 
         // 4. Server frames out.
         let write_task = tokio::spawn(async move {
@@ -148,7 +155,10 @@ pub fn upgrade(
                 Frame::Ping(n) => {
                     let _ = sender.try_send(Ok(Message::Binary(Frame::Pong(n).encode())));
                 }
-                Frame::Ack { .. } | Frame::Pong(_) | Frame::Viewport(_) => {}
+                Frame::Viewport(v) => {
+                    post(&lv_event_tx, &liveview_id, &component, "viewport", serde_json::json!({"viewport": viewport_json(&v)}), &session_id).await;
+                }
+                Frame::Ack { .. } | Frame::Pong(_) => {}
                 Frame::Error { code, message } => {
                     eprintln!("[EUI] client error {code}: {message}");
                     break;
@@ -216,4 +226,16 @@ async fn post(
         Ok(Err(_)) => eprintln!("[EUI] {component} {event}: worker dropped the response"),
         Err(_) => eprintln!("[EUI] {component} {event}: timed out"),
     }
+}
+
+/// The client's viewport as the application sees it, in `params`.
+fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
+    serde_json::json!({
+        "width": v.width,
+        "height": v.height,
+        "scale": f64::from(v.scale) / 100.0,
+        "mode": match v.mode { eui_proto::ThemeMode::Light => "light", eui_proto::ThemeMode::Dark => "dark", eui_proto::ThemeMode::HighContrast => "high_contrast" },
+        "density": match v.density { eui_proto::Density::Compact => "compact", eui_proto::Density::Cozy => "cozy", eui_proto::Density::Comfortable => "comfortable" },
+        "font_scale": f64::from(v.font_scale) / 100.0
+    })
 }

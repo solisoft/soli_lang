@@ -27,6 +27,15 @@ fn install_graceful_shutdown_handler() {
             if EXITING.swap(true, Ordering::SeqCst) {
                 return;
             }
+            // An EUI window is up: exiting under a live GPU device from a
+            // signal handler segfaults in the driver's teardown. Ask the
+            // window to close instead; the main thread then shuts down in
+            // order and returns.
+            #[cfg(feature = "eui-desktop")]
+            if eui_client::app::window_is_open() {
+                eui_client::app::request_exit();
+                return;
+            }
             std::process::exit(0);
         }
 

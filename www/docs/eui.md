@@ -120,6 +120,13 @@ Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes
 virtualised on the client: it lays out only the rows it can see, so ten
 thousand rows cost about what fifty do.
 
+The client's **viewport** — width, height, scale, mode, density, font
+scale — reaches the handler as `params["viewport"]` with the `connect`
+event and again as a `viewport` event whenever it changes (a resize, a
+mode switch). A view that keeps it in the state can lay itself out by
+width: `examples/counter-app`'s music player collapses its sidebar to a
+rail under 900 px and drops it under 640.
+
 A `list` can be **windowed** (EUI spec 04 §7.1): give it `count`, the
 number of rows, `heights`, one integer per row (or rely on `item_height`),
 and a `window` handler; hand it only the children in view, each carrying

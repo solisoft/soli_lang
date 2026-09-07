@@ -64,6 +64,11 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **The viewport reaches the application.** `params["viewport"]` with
+  `connect`, and a `viewport` event on every change, so an EUI view can be
+  responsive. A desktop artifact's window now closes on `Ctrl+C` through
+  its own loop instead of the process exiting under a live GPU device,
+  which segfaulted.
 - **Windowed lists.** A `list` node with `count`, `heights` and a
   `window` handler holds only the rows in view; the client asks for a
   range as `window [first, last]` when it changes (EUI spec 04 §7.1). The

@@ -61,6 +61,15 @@ pub fn install() {
         .name("soli-shutdown".to_string())
         .spawn(|| loop {
             if is_requested() {
+                // With an EUI window up, the window closes first and its
+                // main thread runs the shutdown and returns; exiting from
+                // here would pull the GPU device out from under it.
+                #[cfg(feature = "eui-desktop")]
+                if eui_client::app::window_is_open() {
+                    eui_client::app::request_exit();
+                    std::thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
                 run();
                 std::process::exit(0);
             }
