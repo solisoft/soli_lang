@@ -73,6 +73,11 @@
   choice (`database`: `embedded`, `none`, `remote`); an older artifact
   reads as embedded. `--seed`, `--solidb` and `--solidb-version` are
   refused without an embedded database, since they describe one.
+- **A local handler can switch the viewer's palette.** `theme.toggle()`
+  (light ⇄ dark) and `theme.mode = "dark"` in a `local("…")` string compile
+  to the new `set_mode` instruction (EUI spec 07); the choice is the
+  viewer's, made through the app's own control, so it is never provisional
+  and costs no round trip — the server learns it as the next viewport.
 - **EUI renders without copying.** The view's value is converted to nodes
   directly (no JSON round trip for the tree), the previous tree is diffed
   by move rather than cloned first, and a keyed child whose view value is

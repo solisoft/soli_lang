@@ -5,6 +5,7 @@
 //! value.text = str(state.count)
 //! if state.count > 9 { badge.style = @hot } else { badge.style = @cool }
 //! self.style = @hover
+//! theme.toggle()
 //! emit("increment")
 //! ```
 //!
@@ -206,6 +207,25 @@ impl<C: Ctx> Compiler<'_, C> {
                 self.expect(")")?;
                 let a = self.ctx.atom(&name);
                 self.op_varint(0x32, a);
+                Ok(())
+            }
+            Some(Tok::Ident(k)) if k == "theme" => {
+                // theme.mode = expr | theme.toggle()
+                self.expect(".")?;
+                match self.next() {
+                    Some(Tok::Ident(w)) if w == "mode" => {
+                        self.expect("=")?;
+                        self.expr()?;
+                    }
+                    Some(Tok::Ident(w)) if w == "toggle" => {
+                        self.expect("(")?;
+                        self.expect(")")?;
+                        let a = self.ctx.atom("toggle");
+                        self.op_varint(0x02, a);
+                    }
+                    _ => return Err("expected theme.mode = … or theme.toggle()".into()),
+                }
+                self.op(0x34);
                 Ok(())
             }
             Some(Tok::Ident(k)) if k == "state" => {
