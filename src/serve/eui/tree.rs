@@ -527,6 +527,7 @@ impl Encoder {
             "overlay" => NodeKind::Overlay,
             "slot" => NodeKind::Slot,
             "sizer" => NodeKind::Sizer,
+        "audio" => NodeKind::Audio,
             other => return Err(format!("EUI: unknown node kind '{other}'")),
         };
         let style = match obj.get("s") {
@@ -564,10 +565,10 @@ impl Encoder {
                 let atom = self.atom(name);
                 // An image's `src` is a file in the application; it goes on
                 // the wire as the hash of its bytes, served from /_eui/asset.
-                let value = if kind == NodeKind::Image && name == "src" {
+                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio) && name == "src" {
                     match v {
                         Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
-                        other => return Err(format!("EUI: image src must be a path, got {other}")),
+                        other => return Err(format!("EUI: a src must be a path, got {other}")),
                     }
                 } else if kind == NodeKind::Canvas && name == "paths" {
                     self.paths_value(v)?
@@ -779,6 +780,8 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "drop" => EventKind::Drop,
         "long_press" => EventKind::LongPress,
         "window" => EventKind::Window,
+        "ended" => EventKind::Ended,
+        "time_update" => EventKind::TimeUpdate,
         _ => return None,
     })
 }
@@ -808,6 +811,8 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::Drop => "drop",
         EventKind::LongPress => "long_press",
         EventKind::Window => "window",
+        EventKind::Ended => "ended",
+        EventKind::TimeUpdate => "time_update",
     }
 }
 
