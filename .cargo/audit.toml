@@ -12,13 +12,21 @@
 # and documented. Each such entry states the scope and the exact condition that
 # unblocks its removal. Each entry — vulnerability or informational — records
 # why it is here and what unblocks removing it.
+#
+# These conditions go stale silently, because a waived advisory keeps CI
+# green whether or not the waiver is still needed. Re-check them
+# periodically by running `cargo audit` from a directory without this file
+# and confirming each entry below still applies.
+# Last verified against crates.io: 2026-09-07.
 
 [advisories]
 ignore = [
     # lru 0.12.5 — unsound `IterMut` (we don't call IterMut). Our own use is on
-    # lru 0.18; this 0.12.5 copy is pulled transitively by ratatui 0.26, which
-    # only drops lru at ratatui 0.30 (forces crossterm 0.29 + a TUI migration).
-    # Remove once we upgrade ratatui to >=0.30.
+    # lru 0.18; this 0.12.5 copy is pulled transitively by ratatui 0.26.
+    # UNBLOCKED as of 2026-09: ratatui 0.30.2 is released and drops the lru
+    # dependency entirely, which clears this and half of RUSTSEC-2026-0253.
+    # Not yet taken because the upgrade forces crossterm 0.29 and a TUI
+    # migration, and both advisories are unsound-only and confined to the TUI.
     "RUSTSEC-2026-0002",
 
     # lru — unsound `LruCache::pop()` if an element's Drop panics. Our own
@@ -30,9 +38,10 @@ ignore = [
     # this line and reading which crate `cargo audit` still names.
     "RUSTSEC-2026-0253",
 
-    # paste 1.0.15 — unmaintained proc-macro, no runtime risk. Transitive via
-    # ratatui and image/ravif; no maintained replacement is wired through those
-    # crates yet. Re-evaluate after the ratatui >=0.30 upgrade.
+    # paste 1.0.15 — unmaintained proc-macro, no runtime risk. Reached through
+    # two parents (`cargo tree -i paste@1.0.15`): ratatui 0.26 and pulp. The
+    # ratatui >=0.30 upgrade above drops its half, but pulp still pulls paste,
+    # so that upgrade alone does NOT clear this entry.
     "RUSTSEC-2024-0436",
 
     # rusoto_credential — Rusoto is unmaintained. Used by our S3 builtins.
@@ -48,45 +57,43 @@ ignore = [
     # RUSTSEC-2026-0195 unbounded namespace-decl allocation). These are the only
     # *vulnerability* (not informational) advisories waived here — see the
     # narrow-exception criteria at the top of this file. quick-xml 0.31 is pulled
-    # transitively by calamine and umya-spreadsheet (Excel/ODS parsing only);
-    # there is no upstream fix path yet — as of Jul 2026 the latest calamine
-    # (0.35) requires quick-xml ^0.39 and the latest umya-spreadsheet (3.0)
-    # requires ^0.37.1, neither of which resolves to the >=0.41 that clears them.
-    # Scope: DoS only, reachable solely via `Spreadsheet.excel*` on an *untrusted*
-    # .xlsx/.ods — treat those inputs as trusted until upstream ships. The direct
-    # quick-xml dep (the remotely-reachable SOAP / SAML XML surface) is already
-    # on 0.41 and unaffected.
-    # Remove both once calamine and umya-spreadsheet accept quick-xml >=0.41
-    # (then `cargo update -p calamine -p umya-spreadsheet && cargo audit`).
+    # transitively by calamine and umya-spreadsheet (Excel/ODS parsing only).
+    # UNBLOCKED as of 2026-09, and this is the most actionable entry in the file:
+    # calamine 0.36.1 and umya-spreadsheet 3.1.0 both require quick-xml ^0.41,
+    # which clears both advisories. It is not a lockfile bump — Cargo.toml pins
+    # `calamine = "0.26"` and `umya-spreadsheet = "1.0"`, so it needs a manifest
+    # change and whatever API churn ten and two major versions bring.
+    # Scope until then: DoS only, reachable solely via `Spreadsheet.excel*` on an
+    # *untrusted* .xlsx/.ods — treat those inputs as trusted. The direct quick-xml
+    # dep (the remotely-reachable SOAP / SAML XML surface) is already on 0.41 and
+    # unaffected.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
 
     # proc-macro-error 1.0.4 — unmaintained proc-macro (build-time only, no
-    # runtime risk). Reached transitively through the PDF font stack:
-    # printpdf → allsorts 0.16 → ouroboros 0.17 (which pins proc-macro-error;
-    # ouroboros >=0.18 switched to proc-macro-error2). Unblocked when allsorts
-    # bumps ouroboros to >=0.18.
+    # runtime risk). Reached through the PDF font stack via allsorts 0.16 →
+    # ouroboros 0.17, which pins it; ouroboros >=0.18 uses proc-macro-error2.
+    #
+    # The blocker is NOT allsorts upstream: allsorts 0.17.0 already requires
+    # ouroboros ^0.18. Our printpdf is vendored (pdf/vendor/printpdf), so its
+    # allsorts pin is ours to change — but bumping it alone does not help.
+    # Tried 2026-09: it compiles, and `azul-layout` 0.0.7 and `rust-fontconfig`
+    # 2.0.0 still require allsorts ^0.16, so the tree ends up carrying both
+    # copies and the advisory stays. Those two crates are the real blocker.
     "RUSTSEC-2024-0370",
 
     # rustybuzz 0.20.1 — unmaintained text-shaping crate, no runtime risk.
-    # Transitive via resvg/usvg 0.45 (SVG rendering for soli-pdf). Removing it
-    # means bumping the resvg/usvg stack, which risks the PDF SVG renderer.
-    # Unblocked when resvg ships a release on a maintained rustybuzz.
+    # Transitive via resvg/usvg 0.45 (SVG rendering for soli-pdf). Genuinely
+    # blocked: 0.20.1 is still the newest published rustybuzz (checked
+    # 2026-09), so there is nothing to move to. Unblocked when the crate is
+    # adopted and resvg ships against it.
     "RUSTSEC-2026-0206",
 
     # ttf-parser 0.25.1 — unmaintained font parser, no runtime risk. Transitive
-    # via resvg/usvg/fontdb and lopdf (PDF + SVG font handling). Same upgrade
-    # path (and risk) as rustybuzz above; unblocked when resvg/lopdf move to a
-    # maintained ttf-parser.
+    # via resvg/usvg/fontdb and lopdf (PDF + SVG font handling). Same situation
+    # as rustybuzz above: 0.25.1 is still the newest published version
+    # (checked 2026-09), so there is nothing to move to.
     "RUSTSEC-2026-0192",
-
-    # rkyv 0.7.46 — insufficient archive validation (OOB read with Rc/Arc).
-    # Lockfile-only: rust_decimal 1.42.1 lists optional `rkyv = "0.7.46"` and
-    # cargo-audit flags it even though we never enable that feature (our
-    # rust_decimal features are only `std` + `serde`). There is no fix on the
-    # 0.7 line (advisory wants >=0.8.17); unblocked when rust_decimal ships an
-    # optional rkyv 0.8 dep (then `cargo update -p rust_decimal && cargo audit`).
-    "RUSTSEC-2026-0235",
 
     # rustls-pemfile 2.2.0 — unmaintained; its PEM parsing moved into
     # rustls-pki-types, which we now use directly for the Postgres CA path.
@@ -95,7 +102,8 @@ ignore = [
     # control can move it. Scope: parsing a CA bundle the operator points at, so
     # the input is already trusted. Unblocked when mysql switches to
     # rustls-pki-types' own PEM reader (then `cargo update -p mysql && cargo
-    # audit`).
+    # audit`). Still blocked: mysql 28.0.2 is the newest release (checked
+    # 2026-09) and still pulls it.
     "RUSTSEC-2025-0134",
 
     # h2 0.3.27 — unbounded empty DATA frames (HTTP/2 DoS). There is no fix on
