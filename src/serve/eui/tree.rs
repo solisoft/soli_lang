@@ -60,6 +60,10 @@ pub struct Encoder {
     prev: Option<TNode>,
 }
 
+fn count_nodes(t: &TNode) -> usize {
+    1 + t.children.iter().map(count_nodes).sum::<usize>()
+}
+
 /// Ops per batch before an update is streamed as several. A slice of a
 /// thousand ops is a few hundred kilobytes of cards and a few milliseconds
 /// to apply — one frame's worth.
@@ -237,6 +241,12 @@ impl Encoder {
     /// `Mount` (first render, or resync) or the diff against the previous tree.
     pub fn render(&mut self, json: &Json, resync: bool) -> Result<Vec<Batch>, String> {
         let mut tree = self.convert(json)?;
+        // The client refuses a tree past its node limit and there is no way
+        // to send it anyway; say so here, where the application can act.
+        let nodes = count_nodes(&tree);
+        if nodes > eui_proto::limits::MAX_NODES as usize {
+            eprintln!("[EUI] the view returned {nodes} nodes; a client accepts at most {} — virtualise, paginate or trim", eui_proto::limits::MAX_NODES);
+        }
         let ops = match (&self.prev, resync) {
             (Some(prev), false) => {
                 let mut ops = Vec::new();
