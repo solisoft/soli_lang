@@ -258,6 +258,20 @@ A typical artifact is 70–80 MB, mostly the database binary (stored compressed,
 roughly a third of its size). It contains everything: runtime, application,
 database and reference data.
 
+Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux:
+
+| | runtime | artifact |
+|---|---:|---:|
+| `soli` as installed (no EUI) | 66 MB | — |
+| `--features eui-desktop`, default features | 78 MB | 96 MB |
+| `--no-default-features --features eui-desktop` | 61 MB | 80 MB |
+
+The EUI window costs 12 MB. Dropping a browser does not make the artifact
+small: the runtime and the database dominate, and the EUI project's own
+target of a ~15 MB desktop artifact needs a runtime built for it — the
+interpreter without the server features an offline app never uses. That is
+open work, and the numbers above are the honest starting point.
+
 ## Staying current
 
 A desktop artifact is a frozen binary — to ship a fix you'd otherwise ask every
