@@ -45,6 +45,30 @@ In-app `Updater.check()` / `Updater.apply()` work on desktop builds that were
 packaged with `--update-url` / `--update-key` (the outer payload descriptor is
 stashed at boot).
 
+## A native window instead of a browser
+
+With a soli built with `--features eui-desktop`, an app that has EUI
+components (see [EUI](/docs/core-concepts/eui)) can be packaged to open one
+of them in its own window — no browser, no HTML:
+
+```bash
+soli desktop build ./myapp --app-id com.example.myapp --eui dashboard
+```
+
+`dashboard` is a component name given to `router_eui`. The artifact still
+carries the runtime, the encrypted app and its database; at launch the server
+runs on a thread and the embedded EUI client draws the component on the GPU
+in a window titled after the app. The loopback gate is armed with a session
+only that client holds, presented as a cookie on every request, so no other
+local process can reach the app. The EUI publisher key is generated per
+install in the app's state directory — a bundle never carries the developer's
+`config/eui_publisher.pkcs8`, whatever the build. Capabilities the manifest
+asks for are granted: the person installed the app.
+
+`--eui` cannot be combined with `--target` yet, because a runtime for another
+target is fetched prebuilt without the window. `SOLI_DESKTOP_NO_WINDOW=1`
+prints the session URL and cookie and serves without opening anything.
+
 ## What the artifact contains
 
 ```

@@ -296,6 +296,11 @@ impl BundleBuilder {
             let file_name = entry.file_name();
             let name_str = file_name.to_string_lossy();
 
+            // The EUI publisher key is a per-deployment secret: a bundle
+            // must never carry it, whatever the build.
+            if name_str == "eui_publisher.pkcs8" && current_dir.file_name().is_some_and(|d| d == "config") {
+                continue;
+            }
             // Skip hidden files and common non-app directories
             if name_str.starts_with('.') || name_str == "node_modules" || name_str == "target" {
                 continue;
@@ -674,6 +679,20 @@ mod tests {
         let vfs = crate::virtual_fs::BundleFS::new(bundle).unwrap();
         assert!(!vfs.exists(".hidden.sl"));
         assert!(vfs.exists("visible.sl"));
+    }
+
+    #[test]
+    fn the_eui_publisher_key_never_enters_a_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("eui_publisher.pkcs8"), b"secret").unwrap();
+        fs::write(config.join("routes.sl"), b"get(\"/\", \"home#index\")\n").unwrap();
+
+        let bundle = BundleBuilder::build(dir.path()).unwrap();
+        let vfs = crate::virtual_fs::BundleFS::new(bundle).unwrap();
+        assert!(!vfs.exists("config/eui_publisher.pkcs8"));
+        assert!(vfs.exists("config/routes.sl"));
     }
 
     fn plain_fixture_bundle() -> Vec<u8> {

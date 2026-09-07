@@ -368,6 +368,8 @@ pub enum Command {
         target: Option<String>,
         update_url: Option<String>,
         update_key: Option<String>,
+        /// `--eui <component>`: open this EUI component in a native window.
+        eui: Option<String>,
     },
     /// `soli desktop register-protocol --exe <path> --scheme <s> [--name <n>]`
     DesktopRegisterProtocol {
@@ -2429,6 +2431,7 @@ pub fn parse_args() -> Options {
                 let mut target: Option<String> = None;
                 let mut update_url: Option<String> = None;
                 let mut update_key: Option<String> = None;
+                let mut eui: Option<String> = None;
 
                 // Same positional-anywhere convention as `soli build`.
                 while i < args.len() {
@@ -2451,6 +2454,7 @@ pub fn parse_args() -> Options {
                         "--target" => target = Some(take_value(&mut i, "--target")),
                         "--update-url" => update_url = Some(take_value(&mut i, "--update-url")),
                         "--update-key" => update_key = Some(take_value(&mut i, "--update-key")),
+                        "--eui" => eui = Some(take_value(&mut i, "--eui")),
                         "--protect" => protect = true,
                         other if other.starts_with('-') => {
                             eprintln!("Unknown option '{}' for desktop build", other);
@@ -2484,6 +2488,7 @@ pub fn parse_args() -> Options {
                     target,
                     update_url,
                     update_key,
+                    eui,
                 };
                 return options;
             }

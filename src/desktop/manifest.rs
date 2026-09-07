@@ -53,6 +53,11 @@ pub struct DesktopManifest {
     /// changing, not by the version string, so a rebuilt seed with an unchanged
     /// version is still detected.
     pub seed_sha256: Option<String>,
+    /// The EUI component the artifact opens in a native window instead of a
+    /// browser (`soli desktop build --eui <component>`). `None` is the
+    /// browser shell; older artifacts have no field and read as `None`.
+    #[serde(default)]
+    pub eui: Option<String>,
 }
 
 impl DesktopManifest {
@@ -81,6 +86,16 @@ impl DesktopManifest {
 mod tests {
     use super::*;
 
+    #[test]
+    fn an_artifact_without_the_eui_field_is_a_browser_one() {
+        let json = br#"{"manifest_version":1,"app_id":"x","app_name":"X","soli_version":"2","solidb_version":"0","solidb_sha256":"","seed_version":null,"seed_sha256":null}"#;
+        let m = DesktopManifest::from_json(json).unwrap();
+        assert_eq!(m.eui, None);
+        let with = DesktopManifest { eui: Some("gallery".into()), ..m };
+        let back = DesktopManifest::from_json(&with.to_json().unwrap()).unwrap();
+        assert_eq!(back.eui.as_deref(), Some("gallery"));
+    }
+
     fn sample() -> DesktopManifest {
         DesktopManifest {
             manifest_version: MANIFEST_VERSION,
@@ -92,6 +107,7 @@ mod tests {
             db_compression: Some("deflate".to_string()),
             seed_version: Some("2026-07-19".to_string()),
             seed_sha256: Some("cd".repeat(32)),
+            eui: None,
         }
     }
 

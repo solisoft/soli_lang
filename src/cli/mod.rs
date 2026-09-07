@@ -257,6 +257,7 @@ pub fn run() {
             target,
             update_url,
             update_key,
+            eui,
         } => commands::desktop::run(commands::desktop::DesktopBuildArgs {
             folder,
             app_id,
@@ -269,6 +270,7 @@ pub fn run() {
             target: target.as_deref(),
             update_url: update_url.as_deref(),
             update_key: update_key.as_deref(),
+            eui: eui.as_deref(),
         }),
         Command::DesktopRegisterProtocol {
             exe,

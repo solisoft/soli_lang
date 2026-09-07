@@ -84,6 +84,31 @@ pub fn arm(port: u16) -> String {
     url
 }
 
+/// Arm the gate for an embedded client — one that presents a cookie on
+/// every request rather than exchanging a launch token in a browser — and
+/// return that cookie's value. Nothing else can pass the gate.
+pub fn arm_session() -> String {
+    let session = random_hex(32);
+    let state = GATE.get_or_init(|| {
+        Mutex::new(GateState {
+            launch_token: None,
+            expires_at: Instant::now(),
+            session: String::new(),
+        })
+    });
+    if let Ok(mut gate) = state.lock() {
+        gate.launch_token = None;
+        gate.session = session.clone();
+    }
+    ARMED.store(true, Ordering::SeqCst);
+    session
+}
+
+/// The `Cookie` request header value an embedded client presents.
+pub fn cookie_header_value(session: &str) -> String {
+    format!("{}={}", SESSION_COOKIE, session)
+}
+
 /// Whether the gate is active.
 #[inline]
 pub fn is_armed() -> bool {
@@ -193,6 +218,22 @@ fn query_value(query: &str, name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_embedded_session_passes_the_gate_by_cookie_alone() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        let session = arm_session();
+        assert!(is_armed());
+        let cookie = cookie_header_value(&session);
+        assert_eq!(evaluate("/_eui/session/app", None, Some(&cookie)), Decision::Allow);
+        assert_eq!(evaluate("/.well-known/eui", None, Some(&cookie)), Decision::Allow);
+        assert_eq!(evaluate("/_eui/session/app", None, None), Decision::Deny);
+        assert_eq!(evaluate("/_eui/session/app", None, Some("soli_desktop=wrong")), Decision::Deny);
+        // No launch token was minted: the exchange path cannot be used at all.
+        assert_eq!(evaluate(EXCHANGE_PATH, Some("t=anything"), None), Decision::Deny);
+        reset();
+    }
 
     /// The gate is process-global, so these run under one lock and reset it
     /// between cases rather than fighting over shared state.

@@ -37,6 +37,13 @@
   `eui_capabilities("clipboard.read", …)` in `routes.sl` says what the
   manifest asks the client for; the person still grants each one.
 
+  **`soli desktop build --eui <component>`** (feature `eui-desktop`, which
+  links the EUI client into `soli`): the artifact opens the component in its
+  own GPU window instead of a browser. The server runs on a thread behind the
+  loopback gate, armed with a session the embedded client presents as a
+  cookie; the publisher key is generated per install, and a bundle never
+  carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+
   Images are files in the application, hashed with BLAKE3 and served at
   `GET /_eui/asset/<hash>` from a bounded content-addressed store, immutable.
 

@@ -47,6 +47,8 @@ pub struct DesktopBuildArgs<'a> {
     pub update_url: Option<&'a str>,
     /// Base64 P-256 public key updates are verified against.
     pub update_key: Option<&'a str>,
+    /// EUI component to open in a native window instead of a browser.
+    pub eui: Option<&'a str>,
 }
 
 pub fn run(args: DesktopBuildArgs<'_>) {
@@ -62,6 +64,25 @@ pub fn run(args: DesktopBuildArgs<'_>) {
             eprintln!("Error: {}", e);
             process::exit(1);
         }
+    }
+
+    if let Some(component) = args.eui {
+        // The window is this very binary: the artifact is stapled onto the
+        // running runtime, so the runtime has to carry the EUI client, and a
+        // cross-target runtime fetched prebuilt would not.
+        if !cfg!(feature = "eui-desktop") {
+            eprintln!("Error: --eui needs a soli built with `--features eui-desktop`; this one opens no EUI window");
+            process::exit(1);
+        }
+        if args.target.is_some() {
+            eprintln!("Error: --eui cannot be combined with --target yet: the runtime for another target is fetched without the EUI client");
+            process::exit(1);
+        }
+        if component.is_empty() {
+            eprintln!("Error: --eui needs a component name, the one given to router_eui");
+            process::exit(1);
+        }
+        println!("  EUI window: component '{}'", component);
     }
 
     // The key resolves through the same chain as `soli build --encrypt` and as
@@ -153,6 +174,7 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         db_compression: None,
         seed_version: (!seed.is_empty()).then(|| container::seed_digest(&seed)[..16].to_string()),
         seed_sha256: None,
+        eui: args.eui.map(|c| c.to_string()),
     };
 
     let payload = container::build(ContainerInputs {
@@ -501,6 +523,15 @@ pub fn boot(
     // process, and serving blocks until shutdown.
     let db_guard = db;
     let app_name = manifest.app_name.clone();
+
+    // An EUI artifact opens its own window instead of a browser: the server
+    // runs on a thread, the window on this one, and closing it stops both.
+    if let Some(component) = manifest.eui.clone() {
+        let result = boot_eui(&tmp_dir, port, dev_mode, workers, &paths, &app_name, &component);
+        drop(db_guard);
+        return result;
+    }
+
     let result = solilang::serve::serve_folder_with_options_and_hooks(
         &tmp_dir,
         port,
@@ -538,6 +569,88 @@ pub fn boot(
 
     drop(db_guard);
     result
+}
+
+/// Serve on a background thread and open the embedded EUI client on this
+/// one. The loopback gate is armed with a session the client presents as a
+/// cookie, so no other local process can reach the app; the publisher key
+/// lives in the per-install state directory, never in the bundle.
+#[cfg(feature = "eui-desktop")]
+fn boot_eui(
+    tmp_dir: &Path,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+    paths: &solilang::desktop::paths::AppPaths,
+    app_name: &str,
+    component: &str,
+) -> Result<(), String> {
+    std::env::set_var("SOLI_EUI_KEY", paths.state.join("eui_publisher.pkcs8"));
+    let (tx, rx) = std::sync::mpsc::channel::<(u16, String)>();
+    let folder = tmp_dir.to_path_buf();
+    std::thread::Builder::new()
+        .name("soli-desktop-server".to_string())
+        .spawn(move || {
+            let hook: solilang::serve::BoundPortHook = Box::new(move |bound| {
+                let session = solilang::desktop::token::arm_session();
+                let _ = tx.send((bound, session));
+            });
+            if let Err(e) =
+                solilang::serve::serve_folder_with_options_and_hooks(&folder, port, dev_mode, workers, Some(hook))
+            {
+                eprintln!("server: {}", e);
+                solilang::desktop::shutdown::request();
+            }
+        })
+        .map_err(|e| format!("cannot start the server thread: {}", e))?;
+    let (bound, session) = rx
+        .recv()
+        .map_err(|_| "the server stopped before it was bound".to_string())?;
+    let url = format!("ws://127.0.0.1:{}/_eui/session/{}", bound, component);
+    let cookie = solilang::desktop::token::cookie_header_value(&session);
+
+    // An embedding wrapper, or a headless test, may want the session
+    // without the window: it gets the URL and the cookie, and serves on.
+    if std::env::var_os(solilang::desktop::shell::NO_WINDOW_ENV).is_some_and(|v| !v.is_empty() && v != "0") {
+        println!("\n{} is serving. Session:\n  {}\nCookie:\n  {}", app_name, url, cookie);
+        loop {
+            if solilang::desktop::shutdown::is_requested() {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
+    println!("\n{} opening in its own window.", app_name);
+    let launch = eui_client::app::Launch {
+        url,
+        // An installed application gets what its manifest asks for; the
+        // person chose to install it, and there is no other prompt yet.
+        allowed: eui_proto::caps::ALL,
+        title: app_name.to_string(),
+        cookie: Some(cookie),
+        host_loopback: true,
+    };
+    let result = eui_client::app::launch(launch);
+    solilang::desktop::shutdown::request();
+    solilang::desktop::shutdown::run();
+    result
+}
+
+#[cfg(not(feature = "eui-desktop"))]
+fn boot_eui(
+    _tmp_dir: &Path,
+    _port: u16,
+    _dev_mode: bool,
+    _workers: usize,
+    _paths: &solilang::desktop::paths::AppPaths,
+    app_name: &str,
+    component: &str,
+) -> Result<(), String> {
+    Err(format!(
+        "{} opens the EUI component '{}' in a native window, but this runtime was built without the eui-desktop feature",
+        app_name, component
+    ))
 }
 
 /// Export the database address and credentials.

@@ -86,6 +86,9 @@ sqlite = ["dep:rusqlite", "dep:r2d2_sqlite", "dep:r2d2"]
 # Every SQL backend.
 sql = ["postgres", "mysql", "sqlite"]
 eui = ["dep:eui-proto", "dep:blake3", "dep:ring"]
+# The EUI window inside the soli binary, for `soli desktop build --eui`:
+# winit, wgpu and the client crates. Servers do not need it.
+eui-desktop = ["eui", "dep:eui-client"]
 
 [dependencies]
 thiserror = "1.0"
@@ -324,6 +327,7 @@ soli-codegraph = { path = "codegraph", optional = true }
 # `/_eui/session/<component>` socket and the `router_eui` builtin and changes
 # nothing else. The wire crate has no dependencies of its own.
 eui-proto = { path = "../eui/crates/eui-proto", optional = true }
+eui-client = { path = "../eui/crates/eui-client", optional = true }
 ring = { version = "0.17", optional = true }
 blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.

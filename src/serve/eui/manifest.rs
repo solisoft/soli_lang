@@ -36,7 +36,9 @@ pub fn request_capabilities(names: &[String]) -> Result<(), String> {
 fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
     static KEY: OnceLock<Result<Ed25519KeyPair, String>> = OnceLock::new();
     KEY.get_or_init(|| {
-        let path = get_app_root().join("config").join("eui_publisher.pkcs8");
+        // A desktop artifact points this at its per-install state directory:
+        // the developer's key must never travel inside a bundle.
+        let path = std::env::var_os("SOLI_EUI_KEY").map(std::path::PathBuf::from).unwrap_or_else(|| get_app_root().join("config").join("eui_publisher.pkcs8"));
         let pkcs8 = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
