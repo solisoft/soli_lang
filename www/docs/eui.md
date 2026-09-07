@@ -120,6 +120,16 @@ Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes
 virtualised on the client: it lays out only the rows it can see, so ten
 thousand rows cost about what fifty do.
 
+A `list` can be **windowed** (EUI spec 04 §7.1): give it `count`, the
+number of rows, `heights`, one integer per row (or rely on `item_height`),
+and a `window` handler; hand it only the children in view, each carrying
+a `row` prop. The client lays out and scrolls the whole extent, asks
+`window` with `[first, last]` when the rows in view change, and your
+handler stores that range in the state so the next view builds those rows
+and no other. A feed of forty thousand posts then costs the server one
+window of cards. `examples/counter-app`'s `feed` is written this way
+(`list_window` in its builders).
+
 A keyed child is also what the server memoises. When the view returns, for
 a keyed node, **the same hash object it returned last time**, Soli keeps the
 converted subtree and skips it in the diff — it is neither walked nor

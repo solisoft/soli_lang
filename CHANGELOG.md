@@ -64,6 +64,11 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **Windowed lists.** A `list` node with `count`, `heights` and a
+  `window` handler holds only the rows in view; the client asks for a
+  range as `window [first, last]` when it changes (EUI spec 04 §7.1). The
+  feed example is written this way: forty thousand posts cost the server
+  one window of cards instead of 1.2 GB of them.
 - **A desktop artifact starts two server workers**, not one per core,
   unless `--workers` or `SOLI_WORKERS` say otherwise: each worker is an
   interpreter with every handler warmed, and one person at one window

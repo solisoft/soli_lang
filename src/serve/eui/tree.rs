@@ -778,6 +778,7 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "drag_over" => EventKind::DragOver,
         "drop" => EventKind::Drop,
         "long_press" => EventKind::LongPress,
+        "window" => EventKind::Window,
         _ => return None,
     })
 }
@@ -806,6 +807,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::DragOver => "drag_over",
         EventKind::Drop => "drop",
         EventKind::LongPress => "long_press",
+        EventKind::Window => "window",
     }
 }
 
