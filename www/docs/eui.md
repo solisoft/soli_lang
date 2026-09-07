@@ -120,6 +120,17 @@ Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes
 virtualised on the client: it lays out only the rows it can see, so ten
 thousand rows cost about what fifty do.
 
+A keyed child is also what the server memoises. When the view returns, for
+a keyed node, **the same hash object it returned last time**, Soli keeps the
+converted subtree and skips it in the diff — it is neither walked nor
+compared. So build repeated children once, keep them in a cache keyed by
+whatever they depend on, and return the cached value; a change to one card
+in a feed of ten thousand then costs one card, not ten thousand. The
+contract is the usual one for a cache: a value handed back unchanged is
+assumed unchanged, so never mutate a node hash after returning it — build
+a new one instead. Unkeyed nodes and freshly built ones are converted and
+diffed as before.
+
 ## Running it
 
 ```sh

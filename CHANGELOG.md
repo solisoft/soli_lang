@@ -64,6 +64,15 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **EUI renders without copying.** The view's value is converted to nodes
+  directly (no JSON round trip for the tree), the previous tree is diffed
+  by move rather than cloned first, and a keyed child whose view value is
+  the same object as last render is kept as-is — not converted, not
+  diffed. The keyed diff is linear (a key map instead of a search per
+  child). A like on a feed of five thousand cards went from 520 ms to
+  20 ms of convert-and-diff in a debug build; the remaining cost is the
+  view itself. The contract is documented in `www/docs/eui.md`: a keyed
+  node hash returned unchanged is assumed unchanged.
   The same build answers `soli eui <wss://host/_eui/session/app>
   [--allow cap,cap]` to open any EUI application in a window.
 

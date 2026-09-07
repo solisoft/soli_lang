@@ -14,7 +14,12 @@
 //! interned once; both tables only ever grow, exactly as the wire format
 //! requires.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use crate::interpreter::value::{HashKey, Value};
 
 use eui_proto::{
     AlignItems, AlignSelf, Batch, ColorRef, Cursor, Dim, Display, EventKind, FlatNode, FontFamily, FontWeight,
@@ -44,7 +49,63 @@ pub struct TNode {
     /// `(event, handler)`.
     pub handlers: Vec<(EventKind, Handler)>,
     /// Children in order.
-    pub children: Vec<TNode>,
+    pub children: Vec<Child>,
+    /// The address of the view value this keyed node came from, `0` when
+    /// unkeyed or converted from JSON. What the memo is keyed on.
+    pub identity: usize,
+    /// Nodes in this subtree, itself included; settled when the node is
+    /// frozen, `0` before — so counting a tree costs its fresh part only.
+    pub size: u32,
+}
+
+/// A child of a tree node: freshly converted this render, or kept from the
+/// last one because the view returned the very same object for it. A kept
+/// child already carries its ids; a diff of a kept child against itself is
+/// a no-op, which is what makes a like on a feed of ten thousand cards cost
+/// one card.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Child {
+    Fresh(TNode),
+    Kept(Arc<TNode>),
+}
+
+impl Child {
+    /// The node, whichever way it is held.
+    pub fn node(&self) -> &TNode {
+        match self {
+            Child::Fresh(n) => n,
+            Child::Kept(n) => n,
+        }
+    }
+
+    /// The node for mutation: a kept one is copied first, its ids intact.
+    pub fn node_mut(&mut self) -> &mut TNode {
+        if let Child::Kept(rc) = self {
+            *self = Child::Fresh((**rc).clone());
+        }
+        match self {
+            Child::Fresh(n) => n,
+            Child::Kept(_) => unreachable!("just made fresh"),
+        }
+    }
+
+    /// Both hold the same kept node.
+    pub fn same_kept(&self, other: &Child) -> bool {
+        matches!((self, other), (Child::Kept(a), Child::Kept(b)) if Arc::ptr_eq(a, b))
+    }
+}
+
+impl std::ops::Deref for Child {
+    type Target = TNode;
+    fn deref(&self) -> &TNode {
+        self.node()
+    }
+}
+
+impl From<TNode> for Child {
+    fn from(n: TNode) -> Self {
+        Child::Fresh(n)
+    }
 }
 
 /// One session's tables and previous tree.
@@ -58,10 +119,45 @@ pub struct Encoder {
     next_node: u32,
     seq: u64,
     prev: Option<TNode>,
+    /// Which session this is, for the thread-local memo.
+    session: String,
+    generation: u32,
+}
+
+/// One session's kept subtrees, by the address of the view value each came
+/// from — with that value pinned, so the address cannot be reused by
+/// another object while the entry lives. Values are `Rc`, so this lives on
+/// the thread that evaluates the view; a render on another thread simply
+/// misses, which is safe.
+#[derive(Default)]
+struct Memo {
+    entries: HashMap<usize, (Value, Arc<TNode>, u32)>,
+}
+
+thread_local! {
+    static MEMOS: RefCell<HashMap<String, Memo>> = RefCell::new(HashMap::new());
+}
+
+fn with_memo<R>(session: &str, f: impl FnOnce(&mut Memo) -> R) -> R {
+    MEMOS.with(|m| f(m.borrow_mut().entry(session.to_owned()).or_default()))
+}
+
+/// Drop a session's memo when the session goes.
+pub fn forget_session(session: &str) {
+    MEMOS.with(|m| {
+        m.borrow_mut().remove(session);
+    });
 }
 
 fn count_nodes(t: &TNode) -> usize {
-    1 + t.children.iter().map(count_nodes).sum::<usize>()
+    1 + t
+        .children
+        .iter()
+        .map(|c| match c {
+            Child::Kept(k) if k.size != 0 => k.size as usize,
+            c => count_nodes(c),
+        })
+        .sum::<usize>()
 }
 
 /// Ops per batch before an update is streamed as several. A slice of a
@@ -240,17 +336,39 @@ impl Encoder {
     /// Turn a view result into the next batch: definitions first, then a
     /// `Mount` (first render, or resync) or the diff against the previous tree.
     pub fn render(&mut self, json: &Json, resync: bool) -> Result<Vec<Batch>, String> {
-        let mut tree = self.convert(json)?;
+        self.generation = self.generation.wrapping_add(1);
+        let tree = self.convert(json)?;
+        self.finish(tree, resync, HashMap::new())
+    }
+
+    /// [`Encoder::render`] straight from the view's value: no JSON in
+    /// between, and a keyed child that is the same object as last render
+    /// is kept — not converted, not diffed.
+    pub fn render_value(&mut self, session: &str, value: &Value, resync: bool) -> Result<Vec<Batch>, String> {
+        self.session = session.to_owned();
+        self.generation = self.generation.wrapping_add(1);
+        // The view values behind this render's keyed nodes, by identity,
+        // until `finish` pins them in the memo. Held here, not on the
+        // encoder: an interpreter value cannot cross threads.
+        let mut pins: HashMap<usize, Value> = HashMap::new();
+        let tree = match self.convert_value(value, &mut pins)? {
+            Some(Child::Fresh(n)) => n,
+            Some(Child::Kept(rc)) => (*rc).clone(),
+            None => return Err("EUI: the view returned nothing".into()),
+        };
+        self.finish(tree, resync, pins)
+    }
+
+    fn finish(&mut self, mut tree: TNode, resync: bool, mut pins: HashMap<usize, Value>) -> Result<Vec<Batch>, String> {
         // The client refuses a tree past its node limit and there is no way
         // to send it anyway; say so here, where the application can act.
         let nodes = count_nodes(&tree);
         if nodes > eui_proto::limits::MAX_NODES as usize {
             eprintln!("[EUI] the view returned {nodes} nodes; a client accepts at most {} — virtualise, paginate or trim", eui_proto::limits::MAX_NODES);
         }
-        let ops = match (&self.prev, resync) {
+        let ops = match (self.prev.take(), resync) {
             (Some(prev), false) => {
                 let mut ops = Vec::new();
-                let prev = prev.clone();
                 super::diff::diff(self, &prev, &mut tree, &mut ops);
                 ops
             }
@@ -259,6 +377,16 @@ impl Encoder {
                 vec![Op::Mount(flatten(&tree))]
             }
         };
+        // Keyed nodes converted this render are frozen behind an Arc, so the
+        // next render can keep them by the identity of their view value.
+        let generation = self.generation;
+        if !self.session.is_empty() {
+            let session = self.session.clone();
+            with_memo(&session, |memo| {
+                freeze(&mut tree, memo, &mut pins, generation);
+                memo.entries.retain(|_, (_, _, seen)| *seen == generation);
+            });
+        }
         self.prev = Some(tree);
         let mut all = std::mem::take(&mut self.pending);
         all.extend(ops);
@@ -309,8 +437,81 @@ impl Encoder {
         out
     }
 
+    /// A view value to a child: `None` for a `nil`/`false` in a child list
+    /// (an `x if cond` that read as nothing), a kept child when the keyed
+    /// value is the very object seen last render, else a fresh conversion.
+    fn convert_value(&mut self, v: &Value, pins: &mut HashMap<usize, Value>) -> Result<Option<Child>, String> {
+        let hash = match v {
+            Value::Hash(h) => h,
+            Value::Null | Value::Bool(false) => return Ok(None),
+            other => return Err(format!("EUI: a node must be a hash, got {}", other.type_name())),
+        };
+        let identity = Rc::as_ptr(hash) as *const u8 as usize;
+        let keyed = hash.borrow().contains_key(&HashKey::String("key".into()));
+        if keyed && !self.session.is_empty() {
+            let generation = self.generation;
+            let kept = with_memo(&self.session, |memo| {
+                memo.entries.get_mut(&identity).map(|(_, arc, seen)| {
+                    *seen = generation;
+                    Arc::clone(arc)
+                })
+            });
+            if let Some(arc) = kept {
+                return Ok(Some(Child::Kept(arc)));
+            }
+        }
+        // The node's own fields go through the JSON path, which knows every
+        // style key and handler shape; only the walk down `c` stays on values.
+        let mut own = serde_json::Map::new();
+        let mut kids: Vec<Value> = Vec::new();
+        {
+            let borrow = hash.borrow();
+            for (k, val) in borrow.iter() {
+                let HashKey::String(name) = k else { continue };
+                if name.as_str() == "c" {
+                    if let Value::Array(items) = val {
+                        kids = items.borrow().clone();
+                    }
+                } else {
+                    own.insert(name.to_string(), crate::interpreter::value::value_to_json(val)?);
+                }
+            }
+        }
+        let mut node = self.convert_shallow(&own)?;
+        for child in &kids {
+            if let Some(c) = self.convert_value(child, pins)? {
+                node.children.push(c);
+            }
+        }
+        if node.kind.is_leaf() && !node.children.is_empty() {
+            return Err(format!("EUI: a {:?} node cannot have children", node.kind));
+        }
+        if keyed && !self.session.is_empty() {
+            node.identity = identity;
+            pins.insert(identity, v.clone());
+        }
+        Ok(Some(Child::Fresh(node)))
+    }
+
     fn convert(&mut self, j: &Json) -> Result<TNode, String> {
         let obj = j.as_object().ok_or("EUI: a node must be a hash")?;
+        let mut node = self.convert_shallow(obj)?;
+        if let Some(c) = obj.get("c").and_then(Json::as_array) {
+            for child in c {
+                if child.is_null() || child == &Json::Bool(false) {
+                    continue; // `x if cond` in a list reads as null: skip, like a template would.
+                }
+                node.children.push(Child::Fresh(self.convert(child)?));
+            }
+        }
+        if node.kind.is_leaf() && !node.children.is_empty() {
+            return Err(format!("EUI: a {:?} node cannot have children", node.kind));
+        }
+        Ok(node)
+    }
+
+    /// A node from its own fields — everything but `c`.
+    fn convert_shallow(&mut self, obj: &serde_json::Map<String, Json>) -> Result<TNode, String> {
         let kind = match obj.get("k").and_then(Json::as_str).unwrap_or("box") {
             "box" => NodeKind::Box,
             "text" => NodeKind::Text,
@@ -411,19 +612,7 @@ impl Encoder {
                 handlers.push((kind, handler));
             }
         }
-        let mut children = Vec::new();
-        if let Some(c) = obj.get("c").and_then(Json::as_array) {
-            for child in c {
-                if child.is_null() || child == &Json::Bool(false) {
-                    continue; // `x if cond` in a list reads as null: skip, like a template would.
-                }
-                children.push(self.convert(child)?);
-            }
-        }
-        if kind.is_leaf() && !children.is_empty() {
-            return Err(format!("EUI: a {kind:?} node cannot have children"));
-        }
-        Ok(TNode { id: 0, kind, style, key, key_atom, text, props, handlers, children })
+        Ok(TNode { id: 0, kind, style, key, key_atom, text, props, handlers, children: Vec::new(), identity: 0, size: 0 })
     }
 
     /// Spec 03 §1.1: a canvas path is `[kind, colour, numbers…]`. The colour
@@ -636,11 +825,29 @@ fn role_id(name: &str) -> Option<u16> {
     ROLES.iter().position(|r| *r == name).map(|i| i as u16 + 1)
 }
 
-/// Give every node in a subtree a fresh id.
+/// Give every node in a subtree a fresh id. A kept child inside an inserted
+/// subtree is copied first: it is entering the tree anew, under new ids.
 pub fn assign_fresh_ids(enc: &mut Encoder, node: &mut TNode) {
     node.id = enc.fresh_id();
     for c in &mut node.children {
-        assign_fresh_ids(enc, c);
+        assign_fresh_ids(enc, c.node_mut());
+    }
+}
+
+/// Freeze this render's keyed, freshly converted nodes behind an `Rc` and
+/// remember them by the identity of the value they came from.
+fn freeze(node: &mut TNode, memo: &mut Memo, pins: &mut HashMap<usize, Value>, generation: u32) {
+    for child in &mut node.children {
+        if let Child::Fresh(n) = child {
+            freeze(n, memo, pins, generation);
+            if n.identity != 0 {
+                let Some(pin) = pins.remove(&n.identity) else { continue };
+                n.size = count_nodes(n) as u32;
+                let arc = Arc::new(std::mem::replace(n, TNode { id: 0, kind: NodeKind::Box, style: 0, key: None, key_atom: 0, text: None, props: Vec::new(), handlers: Vec::new(), children: Vec::new(), identity: 0, size: 0 }));
+                memo.entries.insert(arc.identity, (pin, Arc::clone(&arc), generation));
+                *child = Child::Kept(arc);
+            }
+        }
     }
 }
 
@@ -663,7 +870,7 @@ pub fn flatten(root: &TNode) -> Subtree {
             child_count: n.children.len() as u32,
         });
         for c in &n.children {
-            walk(c, out);
+            walk(c.node(), out);
         }
     }
     walk(root, &mut out);
@@ -708,5 +915,5 @@ fn find(node: &TNode, id: u32) -> Option<&TNode> {
     if node.id == id {
         return Some(node);
     }
-    node.children.iter().find_map(|c| find(c, id))
+    node.children.iter().find_map(|c| find(c.node(), id))
 }

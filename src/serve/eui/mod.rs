@@ -65,6 +65,7 @@ pub fn with_encoder<T>(liveview_id: &str, f: impl FnOnce(&mut tree::Encoder) -> 
 
 /// Forget an instance's encoder when its socket is gone for good.
 pub fn drop_encoder(liveview_id: &str) {
+    tree::forget_session(liveview_id);
     let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = g.as_mut() {
         map.remove(liveview_id);
@@ -147,16 +148,14 @@ pub fn handle_eui_event(
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;
     let view_ms = t_view.elapsed().as_secs_f64() * 1e3;
-    let t_json = std::time::Instant::now();
-    let tree_json = value_to_json(&tree_value);
-    let json_ms = t_json.elapsed().as_secs_f64() * 1e3;
 
     let resync = data.event == RESYNC_EVENT;
     let t_render = std::time::Instant::now();
-    let batches = with_encoder(&instance.id, |enc| enc.render(&tree_json, resync))?;
+    let session_id = instance.id.clone();
+    let batches = with_encoder(&instance.id, |enc| enc.render_value(&session_id, &tree_value, resync))?;
     if std::env::var("EUI_TRACE").is_ok() {
         eprintln!(
-            "[EUI trace] worker: view {view_ms:.0} ms, to json {json_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
+            "[EUI trace] worker: view {view_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
             t_render.elapsed().as_secs_f64() * 1e3,
             batches.len()
         );

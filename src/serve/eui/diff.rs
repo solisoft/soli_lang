@@ -5,9 +5,10 @@
 //! positional children are matched by index. A node whose kind changed is
 //! replaced whole.
 
+use std::collections::HashMap;
 use eui_proto::{Op, Value as WireValue};
 
-use super::tree::{assign_fresh_ids, flatten, Encoder, TNode};
+use super::tree::{Child, assign_fresh_ids, flatten, Encoder, TNode};
 
 /// Diff `old` against `new`, assigning ids into `new`, appending ops.
 pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) {
@@ -58,17 +59,21 @@ pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) 
     }
 }
 
-fn diff_positional(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNode], ops: &mut Vec<Op>) {
+fn diff_positional(enc: &mut Encoder, parent: u32, old: &[Child], new: &mut [Child], ops: &mut Vec<Op>) {
     let common = old.len().min(new.len());
     for i in 0..common {
-        diff(enc, &old[i], &mut new[i], ops);
+        if old[i].same_kept(&new[i]) {
+            continue;
+        }
+        diff(enc, old[i].node(), new[i].node_mut(), ops);
     }
     if old.len() > new.len() {
         ops.push(Op::RemoveChild { parent, index: new.len() as u32, count: (old.len() - new.len()) as u32 });
     }
     for (i, child) in new.iter_mut().enumerate().skip(common) {
-        assign_fresh_ids(enc, child);
-        ops.push(Op::InsertChild { parent, index: i as u32, subtree: flatten(child) });
+        let node = child.node_mut();
+        assign_fresh_ids(enc, node);
+        ops.push(Op::InsertChild { parent, index: i as u32, subtree: flatten(node) });
     }
 }
 
@@ -87,44 +92,61 @@ fn match_key(node: &TNode, unkeyed_ordinal: &mut u32) -> String {
     }
 }
 
-fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[TNode], new: &mut [TNode], ops: &mut Vec<Op>) {
+fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[Child], new: &mut [Child], ops: &mut Vec<Op>) {
     let mut ord = 0u32;
     let old_keys: Vec<String> = old.iter().map(|n| match_key(n, &mut ord)).collect();
     let mut ord = 0u32;
     let new_keys: Vec<String> = new.iter().map(|n| match_key(n, &mut ord)).collect();
-
-    // Current child list on the client, as ids, kept in step with each op.
-    let mut live: Vec<u32> = old.iter().map(|c| c.id).collect();
+    // Key -> first position on each side; a duplicate key matches its first
+    // occurrence, as a linear search would.
+    let mut old_index: HashMap<&str, usize> = HashMap::with_capacity(old.len());
+    for (i, k) in old_keys.iter().enumerate() {
+        old_index.entry(k.as_str()).or_insert(i);
+    }
+    let mut new_index: HashMap<&str, usize> = HashMap::with_capacity(new.len());
+    for (j, k) in new_keys.iter().enumerate() {
+        new_index.entry(k.as_str()).or_insert(j);
+    }
 
     // 1. Remove old children whose match key is gone, or whose kind changed
-    //    (a kind change is a replace, done as remove + insert).
+    //    (a kind change is a replace, done as remove + insert). Back to
+    //    front, so each index is still the client's at that point.
+    let mut removed = vec![false; old.len()];
     let mut i = old.len();
     while i > 0 {
         i -= 1;
-        let keep = new_keys.iter().position(|k| *k == old_keys[i]).is_some_and(|j| new[j].kind == old[i].kind);
+        let keep = new_index.get(old_keys[i].as_str()).is_some_and(|&j| new[j].kind == old[i].kind);
         if !keep {
             ops.push(Op::RemoveChild { parent, index: i as u32, count: 1 });
-            live.remove(i);
+            removed[i] = true;
         }
     }
+    // Current child list on the client, as ids, kept in step with each op.
+    let mut live: Vec<u32> = old.iter().zip(&removed).filter(|(_, gone)| !**gone).map(|(c, _)| c.id).collect();
 
     // 2. Walk the new order: matched keys move into place, new keys insert.
     for (target, child) in new.iter_mut().enumerate() {
-        let matched = old_keys.iter().position(|k| *k == new_keys[target]).map(|i| &old[i]).filter(|o| o.kind == child.kind);
+        let matched = old_index.get(new_keys[target].as_str()).map(|&i| &old[i]).filter(|o| o.kind == child.kind);
         match matched {
             Some(o) => {
-                let from = live.iter().position(|id| *id == o.id).unwrap_or(target);
+                // Already in place is the common case; a linear search only
+                // when something actually moved.
+                let from = if live.get(target) == Some(&o.id) { target } else { live.iter().position(|id| *id == o.id).unwrap_or(target) };
                 if from != target {
                     ops.push(Op::MoveChild { parent, from: from as u32, to: target as u32 });
                     let id = live.remove(from);
                     live.insert(target, id);
                 }
-                diff(enc, o, child, ops);
+                // The same kept node on both sides: nothing to compare.
+                if !o.same_kept(child) {
+                    diff(enc, o.node(), child.node_mut(), ops);
+                }
             }
             None => {
-                assign_fresh_ids(enc, child);
-                ops.push(Op::InsertChild { parent, index: target as u32, subtree: flatten(child) });
-                live.insert(target, child.id);
+                let node = child.node_mut();
+                assign_fresh_ids(enc, node);
+                ops.push(Op::InsertChild { parent, index: target as u32, subtree: flatten(node) });
+                live.insert(target, node.id);
             }
         }
     }
@@ -136,10 +158,10 @@ mod tests {
     use eui_proto::{NodeKind, TextRef};
 
     fn leaf(kind: NodeKind, key: Option<&str>, text: &str) -> TNode {
-        TNode { id: 0, kind, style: 0, key: key.map(str::to_owned), key_atom: 0, text: Some(TextRef::Inline(text.to_owned())), props: vec![], handlers: vec![], children: vec![] }
+        TNode { id: 0, kind, style: 0, key: key.map(str::to_owned), key_atom: 0, text: Some(TextRef::Inline(text.to_owned())), props: vec![], handlers: vec![], children: vec![], identity: 0, size: 0 }
     }
     fn parent(children: Vec<TNode>) -> TNode {
-        TNode { id: 0, kind: NodeKind::Box, style: 0, key: None, key_atom: 0, text: None, props: vec![], handlers: vec![], children }
+        TNode { id: 0, kind: NodeKind::Box, style: 0, key: None, key_atom: 0, text: None, props: vec![], handlers: vec![], children: children.into_iter().map(Child::Fresh).collect(), identity: 0, size: 0 }
     }
 
     #[test]
