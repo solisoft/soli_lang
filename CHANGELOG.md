@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Security
+
+- **`rust_decimal` 1.42.1 → 1.43.0 drops `rkyv` 0.7.46 from the tree**
+  (RUSTSEC-2026-0235, out-of-bounds reads on archives containing `Rc`/`Arc`).
+  1.43.0 demotes its optional `rkyv` to a dev-dependency on 0.8.13+, so the
+  resolved copy moves to 0.8.18 — above the >=0.8.17 the advisory requires. A
+  patch-level bump that removes three crates net; nothing in Soli used the
+  affected code path, since the `rkyv` feature was never enabled.
+
+### Internal
+
+- **The `cargo audit` waiver file records when its conditions were last
+  checked.** Each waiver states what unblocks removing it, and those conditions
+  had gone stale unnoticed — a waived advisory keeps CI green whether or not the
+  waiver is still needed. Four entries were re-verified against crates.io and
+  corrected: the `quick-xml` DoS pair is now unblocked (calamine 0.36.1 and
+  umya-spreadsheet 3.1.0 both accept `^0.41`), `ratatui` 0.30.2 now drops `lru`,
+  the `paste` entry has a second parent that the ratatui upgrade would not
+  clear, and the `proc-macro-error` entry named the wrong blocker — the crates
+  holding it back are `azul-layout` and `rust-fontconfig`, not allsorts.
+
 ## [2.0.7] - 2026-09-06
 
 ### Fixed
