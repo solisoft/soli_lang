@@ -103,6 +103,8 @@ able to revoke an installation.
 | `--target <t>` | Cross-build: `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`. |
 | `--solidb <path>` | Embed a locally built database binary instead of downloading the published release. |
 | `--solidb-version <v>` | Database release to download. Pinned by default. |
+| `--no-db` | Embed and start no database: for an app whose state lives in memory or behind an API. The artifact loses the 18 MB database binary and the launch loses its database process. |
+| `--db-url <url>` | Embed no database; at launch the app's model layer and session store point at this `solidb` address. Credentials come from the app's `.env` or the environment, as they do under `soli serve`. |
 | `--seed <dir>` | Directory of `<collection>.ndjson` reference data. |
 | `--protect` | Compile the app to a binary AST, stripping source and comments. |
 

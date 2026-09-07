@@ -58,6 +58,31 @@ pub struct DesktopManifest {
     /// browser shell; older artifacts have no field and read as `None`.
     #[serde(default)]
     pub eui: Option<String>,
+    /// Where the application's database is. Embedded by default — the shape
+    /// older artifacts have, so a manifest without the field reads as
+    /// embedded. `soli desktop build --no-db` and `--db-url <url>` set the
+    /// others.
+    #[serde(default)]
+    pub database: DatabaseMode,
+}
+
+/// Where a desktop application finds its database.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseMode {
+    /// A `solidb` binary is embedded, extracted and started next to the
+    /// app, one instance per install.
+    #[default]
+    Embedded,
+    /// No database: nothing is embedded or started. For applications whose
+    /// state lives in memory or behind an API.
+    None,
+    /// A database somewhere else. The artifact points the model layer at
+    /// `url`; credentials come from the environment or the app's `.env`.
+    Remote {
+        /// The `solidb` address, `http://host:port`.
+        url: String,
+    },
 }
 
 impl DesktopManifest {
@@ -96,6 +121,18 @@ mod tests {
         assert_eq!(back.eui.as_deref(), Some("gallery"));
     }
 
+    #[test]
+    fn a_manifest_without_a_database_field_embeds_one() {
+        let json = br#"{"manifest_version":1,"app_id":"x","app_name":"X","soli_version":"2","solidb_version":"0","solidb_sha256":"","seed_version":null,"seed_sha256":null}"#;
+        let m = DesktopManifest::from_json(json).unwrap();
+        assert_eq!(m.database, DatabaseMode::Embedded);
+        for mode in [DatabaseMode::None, DatabaseMode::Remote { url: "http://db.example:6543".into() }] {
+            let with = DesktopManifest { database: mode.clone(), ..m.clone() };
+            let back = DesktopManifest::from_json(&with.to_json().unwrap()).unwrap();
+            assert_eq!(back.database, mode);
+        }
+    }
+
     fn sample() -> DesktopManifest {
         DesktopManifest {
             manifest_version: MANIFEST_VERSION,
@@ -108,6 +145,7 @@ mod tests {
             seed_version: Some("2026-07-19".to_string()),
             seed_sha256: Some("cd".repeat(32)),
             eui: None,
+            database: DatabaseMode::Embedded,
         }
     }
 

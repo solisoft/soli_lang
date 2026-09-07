@@ -64,6 +64,15 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **`soli desktop build --no-db` and `--db-url <url>`.** A desktop
+  artifact no longer has to carry and start a database. `--no-db` embeds
+  none and starts none — for an app whose state lives in memory or behind
+  an API; `--db-url` embeds none and points the model layer and the
+  session store at a `solidb` elsewhere, credentials from the app's `.env`
+  or the environment as under `soli serve`. The manifest records the
+  choice (`database`: `embedded`, `none`, `remote`); an older artifact
+  reads as embedded. `--seed`, `--solidb` and `--solidb-version` are
+  refused without an embedded database, since they describe one.
 - **EUI renders without copying.** The view's value is converted to nodes
   directly (no JSON round trip for the tree), the previous tree is diffed
   by move rather than cloned first, and a keyed child whose view value is

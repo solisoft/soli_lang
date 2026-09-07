@@ -258,6 +258,8 @@ pub fn run() {
             update_url,
             update_key,
             eui,
+            no_db,
+            db_url,
         } => commands::desktop::run(commands::desktop::DesktopBuildArgs {
             folder,
             app_id,
@@ -271,6 +273,8 @@ pub fn run() {
             update_url: update_url.as_deref(),
             update_key: update_key.as_deref(),
             eui: eui.as_deref(),
+            no_db: *no_db,
+            db_url: db_url.as_deref(),
         }),
         Command::DesktopRegisterProtocol {
             exe,

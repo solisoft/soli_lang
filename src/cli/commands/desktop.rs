@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use solilang::desktop::container::{self, ContainerInputs};
-use solilang::desktop::manifest::{DesktopManifest, MANIFEST_VERSION};
+use solilang::desktop::manifest::{DatabaseMode, DesktopManifest, MANIFEST_VERSION};
 
 use super::resolve_bundle_key;
 
@@ -49,6 +49,10 @@ pub struct DesktopBuildArgs<'a> {
     pub update_key: Option<&'a str>,
     /// EUI component to open in a native window instead of a browser.
     pub eui: Option<&'a str>,
+    /// `--no-db`: embed and start no database.
+    pub no_db: bool,
+    /// `--db-url <url>`: no embedded database; point the app at this one.
+    pub db_url: Option<&'a str>,
 }
 
 pub fn run(args: DesktopBuildArgs<'_>) {
@@ -113,11 +117,43 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         process::exit(1);
     });
 
-    // 2. The database binary: a local build if one was named, otherwise the
-    //    published release for this target, downloaded and checksum-verified.
+    // 2. The database: embedded unless told otherwise. Embedded means a
+    //    binary — a local build if one was named, otherwise the published
+    //    release for this target, downloaded and checksum-verified.
+    let database = match (args.no_db, args.db_url) {
+        (true, Some(_)) => {
+            eprintln!("Error: --no-db and --db-url exclude each other");
+            process::exit(1);
+        }
+        (true, None) => DatabaseMode::None,
+        (false, Some(url)) => {
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                eprintln!("Error: --db-url must be an http(s):// address, got '{}'", url);
+                process::exit(1);
+            }
+            DatabaseMode::Remote { url: url.trim_end_matches('/').to_string() }
+        }
+        (false, None) => DatabaseMode::Embedded,
+    };
+    if database != DatabaseMode::Embedded && args.seed.is_some() {
+        eprintln!("Error: --seed ships reference data into the embedded database; there is none with --no-db or --db-url");
+        process::exit(1);
+    }
+    if database != DatabaseMode::Embedded && (args.db_binary.is_some() || args.db_version.is_some()) {
+        eprintln!("Error: --solidb and --solidb-version name the embedded database; there is none with --no-db or --db-url");
+        process::exit(1);
+    }
     let db_version = args.db_version.unwrap_or(DEFAULT_DB_VERSION);
-    let (db_binary, db_version_label) = match args.db_binary {
-        Some(path) => {
+    let (db_binary, db_version_label) = match (&database, args.db_binary) {
+        (DatabaseMode::None, _) => {
+            println!("  No database: none embedded, none started");
+            (Vec::new(), "none".to_string())
+        }
+        (DatabaseMode::Remote { url }, _) => {
+            println!("  Database at {} (none embedded)", url);
+            (Vec::new(), format!("remote {}", url))
+        }
+        (DatabaseMode::Embedded, Some(path)) => {
             let path = Path::new(path);
             if !path.is_file() {
                 eprintln!("Error: database binary '{}' not found", path.display());
@@ -129,7 +165,7 @@ pub fn run(args: DesktopBuildArgs<'_>) {
             });
             (bytes, read_db_version(path))
         }
-        None => {
+        (DatabaseMode::Embedded, None) => {
             // Without --target this is a host build, so fetch the host's own
             // artifact name.
             let target = args
@@ -144,10 +180,12 @@ pub fn run(args: DesktopBuildArgs<'_>) {
             (bytes, format!("solidb {}", db_version))
         }
     };
-    println!(
-        "  Embedding database binary ({:.1} MB)",
-        db_binary.len() as f64 / (1024.0 * 1024.0)
-    );
+    if database == DatabaseMode::Embedded {
+        println!(
+            "  Embedding database binary ({:.1} MB)",
+            db_binary.len() as f64 / (1024.0 * 1024.0)
+        );
+    }
 
     // 3. Reference data.
     let seed = args
@@ -175,8 +213,10 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         seed_version: (!seed.is_empty()).then(|| container::seed_digest(&seed)[..16].to_string()),
         seed_sha256: None,
         eui: args.eui.map(|c| c.to_string()),
+        database,
     };
 
+    let manifest_database = manifest.database.clone();
     let payload = container::build(ContainerInputs {
         encrypted_app,
         db_binary,
@@ -239,7 +279,14 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         output_path.display(),
         size as f64 / (1024.0 * 1024.0)
     );
-    println!("Run it directly; it starts its own database and opens the app.");
+    println!(
+        "Run it directly; it {} and opens the app.",
+        match manifest_database {
+            DatabaseMode::Embedded => "starts its own database".to_string(),
+            DatabaseMode::None => "needs no database".to_string(),
+            DatabaseMode::Remote { url } => format!("uses the database at {}", url),
+        }
+    );
 
     // Deep-link install helpers next to the artifact (Linux .desktop, Windows ps1).
     let scheme = scheme_from_app_id(args.app_id);
@@ -452,25 +499,36 @@ pub fn boot(
         resolve_bundle_key().map_err(|e| format!("'{}' could not be unlocked — {}", origin, e))?;
     println!("  Unlocked ({})", key_source);
 
-    // 3. The database binary, extracted once and reused. `container::open`
-    //    already verified it against the manifest, which is what makes reusing
-    //    a copy from a user-writable cache safe.
-    let db_binary_path = extract_db_binary(&paths.cache, &container.db_binary, &manifest)?;
-
-    // 4. Start the database and point the model layer at it.
-    let options = solilang::desktop::db::DbOptions::new(
-        db_binary_path,
-        paths.data.clone(),
-        paths.state.clone(),
-    );
-    let db = solilang::desktop::db::start(&options)?;
-    println!("  Database ready on port {}", db.port);
-    export_db_environment(&db);
+    // 3. The database. Embedded: the binary, extracted once and reused
+    //    (`container::open` already verified it against the manifest, which
+    //    is what makes reusing a copy from a user-writable cache safe), then
+    //    started and the model layer pointed at it. Remote: pointed at the
+    //    address the artifact was built with. None: nothing.
+    let db = match &manifest.database {
+        DatabaseMode::Embedded => {
+            let db_binary_path = extract_db_binary(&paths.cache, &container.db_binary, &manifest)?;
+            let options = solilang::desktop::db::DbOptions::new(
+                db_binary_path,
+                paths.data.clone(),
+                paths.state.clone(),
+            );
+            let db = solilang::desktop::db::start(&options)?;
+            println!("  Database ready on port {}", db.port);
+            export_db_environment(&db);
+            Some(db)
+        }
+        DatabaseMode::Remote { url } => {
+            println!("  Database at {}", url);
+            export_remote_db_environment(url);
+            None
+        }
+        DatabaseMode::None => None,
+    };
 
     // 4b. Reference data, only when it differs from what is installed. This
     //     replaces collections wholesale, so it runs before the app can serve
     //     a request against half-imported data.
-    if solilang::desktop::seed::needs_import(&paths.state, &manifest) {
+    if let (Some(db), true) = (&db, solilang::desktop::seed::needs_import(&paths.state, &manifest)) {
         let owned: Vec<(String, Vec<u8>)> = container
             .seed
             .iter()
@@ -511,7 +569,7 @@ pub fn boot(
     // From here on a stop must close the database cleanly and take the
     // decrypted tree with it. Registered only once both exist, so shutdown
     // never races a half-built state.
-    solilang::desktop::shutdown::register(db.child_pid(), &tmp_dir);
+    solilang::desktop::shutdown::register(db.as_ref().map_or(0, |d| d.child_pid()), &tmp_dir);
     solilang::desktop::shutdown::install();
 
     // 6. Loopback only. A desktop app has no business listening on the
@@ -675,6 +733,15 @@ fn export_db_environment(db: &solilang::desktop::db::DbHandle) {
         "SOLI_PROTECT_ENV",
         "SOLIDB_HOST,SOLIDB_USERNAME,SOLIDB_PASSWORD,SOLIDB_DATABASE,SOLI_SOLIDB_HOST",
     );
+}
+
+/// Point the model layer and the session store at a database elsewhere.
+/// Credentials are the application's business — its `.env`, or the
+/// environment — so only the address is pinned against a shipped `.env`.
+fn export_remote_db_environment(url: &str) {
+    std::env::set_var("SOLIDB_HOST", url);
+    std::env::set_var("SOLI_SOLIDB_HOST", url);
+    std::env::set_var("SOLI_PROTECT_ENV", "SOLIDB_HOST,SOLI_SOLIDB_HOST");
 }
 
 /// Write the database binary to the cache, reusing an identical existing copy.
