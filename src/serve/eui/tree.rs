@@ -60,6 +60,11 @@ pub struct Encoder {
     prev: Option<TNode>,
 }
 
+/// Ops per batch before an update is streamed as several. A slice of a
+/// thousand ops is a few hundred kilobytes of cards and a few milliseconds
+/// to apply — one frame's worth.
+pub const MAX_OPS_PER_BATCH: usize = 1000;
+
 impl Encoder {
     /// Intern a string, emitting its definition on first use.
     pub fn atom(&mut self, s: &str) -> u32 {
@@ -230,7 +235,7 @@ impl Encoder {
 
     /// Turn a view result into the next batch: definitions first, then a
     /// `Mount` (first render, or resync) or the diff against the previous tree.
-    pub fn render(&mut self, json: &Json, resync: bool) -> Result<Batch, String> {
+    pub fn render(&mut self, json: &Json, resync: bool) -> Result<Vec<Batch>, String> {
         let mut tree = self.convert(json)?;
         let ops = match (&self.prev, resync) {
             (Some(prev), false) => {
@@ -245,10 +250,27 @@ impl Encoder {
             }
         };
         self.prev = Some(tree);
-        self.seq += 1;
         let mut all = std::mem::take(&mut self.pending);
         all.extend(ops);
-        Ok(Batch { seq: self.seq, ops: all })
+        // A big update streams: every prefix of the op list is valid on its
+        // own (definitions come first, ops apply in order), so a batch of
+        // thousands of inserts goes out in slices the client paints between.
+        // The first slice is on screen long before the last is encoded.
+        let mut batches = Vec::new();
+        if all.len() <= MAX_OPS_PER_BATCH {
+            self.seq += 1;
+            batches.push(Batch { seq: self.seq, ops: all });
+        } else {
+            let mut rest = all;
+            while !rest.is_empty() {
+                let take = rest.len().min(MAX_OPS_PER_BATCH);
+                let tail = rest.split_off(take);
+                self.seq += 1;
+                batches.push(Batch { seq: self.seq, ops: rest });
+                rest = tail;
+            }
+        }
+        Ok(batches)
     }
 
     /// The server-side name of the handler for `(node, event)` in the tree

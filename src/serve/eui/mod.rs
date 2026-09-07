@@ -142,13 +142,25 @@ pub fn handle_eui_event(
     let view_name = view_action(&component).ok_or_else(|| format!("EUI: no view for component '{component}'"))?;
     let view = resolve(interpreter, &view_name)?;
     let state_value = json_to_value(&instance.state);
+    let t_view = std::time::Instant::now();
     let tree_value = interpreter
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;
+    let view_ms = t_view.elapsed().as_secs_f64() * 1e3;
+    let t_json = std::time::Instant::now();
     let tree_json = value_to_json(&tree_value);
+    let json_ms = t_json.elapsed().as_secs_f64() * 1e3;
 
     let resync = data.event == RESYNC_EVENT;
-    let batch = with_encoder(&instance.id, |enc| enc.render(&tree_json, resync))?;
+    let t_render = std::time::Instant::now();
+    let batches = with_encoder(&instance.id, |enc| enc.render(&tree_json, resync))?;
+    if std::env::var("EUI_TRACE").is_ok() {
+        eprintln!(
+            "[EUI trace] worker: view {view_ms:.0} ms, to json {json_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
+            t_render.elapsed().as_secs_f64() * 1e3,
+            batches.len()
+        );
+    }
 
     instance.touch();
     if !LIVE_REGISTRY.commit(instance) {
@@ -157,9 +169,11 @@ pub fn handle_eui_event(
         }
         return Ok(());
     }
-    if std::env::var("EUI_TRACE").is_ok() {
-        eprintln!("[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)", batch.seq, batch.ops.len(), instance.senders.len());
+    for batch in batches {
+        if std::env::var("EUI_TRACE").is_ok() {
+            eprintln!("[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)", batch.seq, batch.ops.len(), instance.senders.len());
+        }
+        send_frame(instance, &Frame::Batch(batch));
     }
-    send_frame(instance, &Frame::Batch(batch));
     Ok(())
 }
