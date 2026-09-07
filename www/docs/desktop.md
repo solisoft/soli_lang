@@ -267,9 +267,12 @@ Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux:
 | `soli` as installed (no EUI) | 66 MB | — |
 | `--features eui-desktop`, default features | 78 MB | 96 MB |
 | `--no-default-features --features eui-desktop` | 61 MB | 80 MB |
+| `--features eui-desktop`, default features, `--no-db` | 78 MB | 76 MB |
 
-The EUI window costs 12 MB. Dropping a browser does not make the artifact
-small: the runtime and the database dominate, and the EUI project's own
+The EUI window costs 12 MB. `--no-db` removes the database binary (about
+20 MB of artifact) and the database process at launch; `--db-url` does the
+same for an app whose database is elsewhere. Dropping a browser does not
+make the artifact small: the runtime and the database dominate, and the EUI project's own
 target of a ~15 MB desktop artifact needs a runtime built for it — the
 interpreter without the server features an offline app never uses. That is
 open work, and the numbers above are the honest starting point.

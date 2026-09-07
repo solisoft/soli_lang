@@ -196,6 +196,7 @@ soli desktop build ./myapp --app-id com.example.myapp --target windows-amd64</co
 <tr><td class="py-3 px-4"><code class="text-cyan-400">soli</code> as installed (no EUI)</td><td class="py-3 px-4 text-right">66 MB</td><td class="py-3 px-4 text-right">&mdash;</td></tr>
 <tr><td class="py-3 px-4"><code class="text-cyan-400">--features eui-desktop</code>, default features</td><td class="py-3 px-4 text-right">78 MB</td><td class="py-3 px-4 text-right">96 MB</td></tr>
 <tr><td class="py-3 px-4"><code class="text-cyan-400">--no-default-features --features eui-desktop</code></td><td class="py-3 px-4 text-right">61 MB</td><td class="py-3 px-4 text-right">80 MB</td></tr>
+<tr><td class="py-3 px-4"><code class="text-cyan-400">--features eui-desktop</code>, default features, <code class="text-cyan-400">--no-db</code></td><td class="py-3 px-4 text-right">78 MB</td><td class="py-3 px-4 text-right">76 MB</td></tr>
 </tbody></table></div>
     <p class="text-gray-400 mb-12">The EUI window costs 12 MB. Dropping a browser does not make the artifact small: the runtime and the database dominate, and the EUI project's own target of a ~15 MB desktop artifact needs a runtime built for it &mdash; the interpreter without the server features an offline app never uses. That is open work; these numbers are the honest starting point.</p>
 
