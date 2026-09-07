@@ -120,6 +120,12 @@ Give repeated children a key (`keyed(id, row(...))`) and a re-sort becomes
 virtualised on the client: it lays out only the rows it can see, so ten
 thousand rows cost about what fifty do.
 
+**Moving pictures.** `video(path, props, style, handlers)` puts a GIF or
+an animated WebP in the tree (EUI spec 03 §8). It sizes itself to its
+frames, `playing`, `loop` and `position` say what it should be doing, and
+`ended` comes back. The client decodes it in its sandboxed worker and
+advances it on its own clock, waking exactly when the next frame is due.
+
 The client's **viewport** — width, height, scale, mode, density, font
 scale — reaches the handler as `params["viewport"]` with the `connect`
 event and again as a `viewport` event whenever it changes (a resize, a

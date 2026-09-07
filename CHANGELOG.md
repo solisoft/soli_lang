@@ -64,6 +64,18 @@
   loopback gate, armed with a session the embedded client presents as a
   cookie; the publisher key is generated per install, and a bundle never
   carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **Moving pictures in EUI.** A `video` node (EUI spec 03 §8) plays a GIF
+  or an animated WebP named the way an image is named: a path, hashed,
+  served from `/_eui/asset`. `playing`, `loop` and `position` say what it
+  does and `ended` comes back; the client decodes it in its sandboxed
+  worker, sizes the node by its frames, and wakes exactly when the next
+  frame is due. `video(...)` is in the example builders, with a loop in
+  the gallery.
+- **Sound in EUI.** An `audio` node (EUI spec 03 §7) names a sound the way
+  an image names a picture, with `playing`, `volume`, `loop` and
+  `position` props and `ended` / `time_update` events. Decoded and mixed
+  in the sandboxed worker; only the window opens an audio device. Playing
+  needs no capability; the client bounds it and owns the viewer's volume.
 - **The viewport reaches the application.** `params["viewport"]` with
   `connect`, and a `viewport` event on every change, so an EUI view can be
   responsive. A desktop artifact's window now closes on `Ctrl+C` through

@@ -528,6 +528,7 @@ impl Encoder {
             "slot" => NodeKind::Slot,
             "sizer" => NodeKind::Sizer,
         "audio" => NodeKind::Audio,
+        "video" => NodeKind::Video,
             other => return Err(format!("EUI: unknown node kind '{other}'")),
         };
         let style = match obj.get("s") {
@@ -565,7 +566,7 @@ impl Encoder {
                 let atom = self.atom(name);
                 // An image's `src` is a file in the application; it goes on
                 // the wire as the hash of its bytes, served from /_eui/asset.
-                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio) && name == "src" {
+                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video) && name == "src" {
                     match v {
                         Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
                         other => return Err(format!("EUI: a src must be a path, got {other}")),
