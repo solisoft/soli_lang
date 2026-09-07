@@ -67,6 +67,16 @@ fn is_internal_test_runner_token(value: &str) -> bool {
 }
 
 fn main() {
+    // Spawned by an EUI window as its confined worker: take that role and
+    // nothing else, before anything here touches a file or a signal.
+    #[cfg(feature = "eui-desktop")]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if let Some(code) = eui_client::worker::entry(&args) {
+            std::process::exit(code);
+        }
+    }
+
     install_graceful_shutdown_handler();
 
     // SEC-017 / SEC-084: the test runner (`soli test`) signals child
