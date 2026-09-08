@@ -362,8 +362,17 @@ soli-codegraph = { path = "codegraph", optional = true }
 # EUI: the binary UI protocol. Off by default; `--features eui` adds the
 # `/_eui/session/<component>` socket and the `router_eui` builtin and changes
 # nothing else. The wire crate has no dependencies of its own.
-eui-proto = { path = "../eui/crates/eui-proto", optional = true }
-eui-client = { path = "../eui/crates/eui-client", optional = true }
+# Fetched from the public eui repository, not from a sibling checkout. Cargo
+# loads a path dependency's manifest even when its feature is off, so a path
+# here made `cargo build` fail for anyone without ../eui — CI included, which is
+# how it broke every build job on the v2.1.0 tag. Pinned by rev; Cargo.lock
+# records the same commit. To work on the protocol locally, patch it back to the
+# checkout in a local (untracked) .cargo/config.toml rather than here:
+#   [patch."https://github.com/solisoft/eui"]
+#   eui-proto  = { path = "../eui/crates/eui-proto" }
+#   eui-client = { path = "../eui/crates/eui-client" }
+eui-proto = { git = "https://github.com/solisoft/eui", rev = "f61a5b6", optional = true }
+eui-client = { git = "https://github.com/solisoft/eui", rev = "f61a5b6", optional = true }
 ring = { version = "0.17", optional = true }
 blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
