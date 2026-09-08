@@ -22,9 +22,9 @@ use std::sync::Arc;
 use crate::interpreter::value::{HashKey, Value};
 
 use eui_proto::{
-    AlignItems, AlignSelf, Batch, ColorRef, Cursor, Dim, Display, EventKind, FlatNode, FontFamily, FontWeight,
-    Handler, Justify, NodeKind, Op, Overflow, Position, StyleRecord, Subtree, TextAlign, TextRef, Value as WireValue,
-    Wrap, Writer,
+    AlignItems, AlignSelf, Batch, ColorRef, Cursor, Dim, Display, EventKind, FlatNode, FontFamily,
+    FontWeight, Handler, Justify, NodeKind, Op, Overflow, Position, StyleRecord, Subtree,
+    TextAlign, TextRef, Value as WireValue, Wrap, Writer,
 };
 use serde_json::Value as Json;
 
@@ -173,12 +173,18 @@ impl Encoder {
         }
         let id = self.atoms.len() as u32 + 1;
         self.atoms.insert(s.to_string(), id);
-        self.pending.push(Op::DefAtom { id, value: s.to_string() });
+        self.pending.push(Op::DefAtom {
+            id,
+            value: s.to_string(),
+        });
         id
     }
 
     fn atom_name(&self, id: u32) -> Option<&str> {
-        self.atoms.iter().find(|(_, v)| **v == id).map(|(k, _)| k.as_str())
+        self.atoms
+            .iter()
+            .find(|(_, v)| **v == id)
+            .map(|(k, _)| k.as_str())
     }
 
     fn color_literal(&mut self, rgba: u32) -> ColorRef {
@@ -220,69 +226,138 @@ impl Encoder {
         let mut sized: Vec<(Vec<u8>, Option<(u8, String)>)> = Vec::new(); // (bytes, pending jump)
         let mut offset = 0usize;
         for instr in program {
-            let parts = instr.as_array().ok_or_else(|| bad("each instruction is a list"))?;
-            let name = parts.first().and_then(Json::as_str).ok_or_else(|| bad("instruction name"))?;
+            let parts = instr
+                .as_array()
+                .ok_or_else(|| bad("each instruction is a list"))?;
+            let name = parts
+                .first()
+                .and_then(Json::as_str)
+                .ok_or_else(|| bad("instruction name"))?;
             let arg = parts.get(1);
             let atom_arg = |enc: &mut Self| -> Result<u32, String> {
-                let s = arg.and_then(Json::as_str).ok_or_else(|| bad("expected a name"))?;
+                let s = arg
+                    .and_then(Json::as_str)
+                    .ok_or_else(|| bad("expected a name"))?;
                 Ok(enc.atom(s))
             };
             let node_arg = |enc: &mut Self| -> Result<u32, String> {
                 let key = arg.ok_or_else(|| bad("expected a node key"))?;
-                let key = match key { Json::String(s) => s.clone(), other => other.to_string() };
+                let key = match key {
+                    Json::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
                 Ok(enc.atom(&key))
             };
             let mut w = Writer::new();
             let mut jump = None;
             match name {
                 "push" => match arg {
-                    Some(Json::Number(n)) => { w.u8(0x01).svarint(n.as_i64().ok_or_else(|| bad("integer"))?); }
-                    Some(Json::Bool(b)) => { w.u8(0x03).u8(u8::from(*b)); }
-                    Some(Json::String(s)) => { let a = self.atom(s); w.u8(0x02).varint32(a); }
+                    Some(Json::Number(n)) => {
+                        w.u8(0x01)
+                            .svarint(n.as_i64().ok_or_else(|| bad("integer"))?);
+                    }
+                    Some(Json::Bool(b)) => {
+                        w.u8(0x03).u8(u8::from(*b));
+                    }
+                    Some(Json::String(s)) => {
+                        let a = self.atom(s);
+                        w.u8(0x02).varint32(a);
+                    }
                     _ => return Err(bad("push takes a number, bool or string")),
                 },
-                "load" => { let a = atom_arg(self)?; w.u8(0x04).varint32(a); }
-                "store" => { let a = atom_arg(self)?; w.u8(0x05).varint32(a); }
-                "dup" => { w.u8(0x06); }
-                "pop" => { w.u8(0x07); }
-                "add" => { w.u8(0x10); }
-                "sub" => { w.u8(0x11); }
-                "mul" => { w.u8(0x12); }
-                "neg" => { w.u8(0x13); }
-                "not" => { w.u8(0x14); }
-                "eq" => { w.u8(0x15); }
-                "lt" => { w.u8(0x16); }
-                "gt" => { w.u8(0x17); }
-                "and" => { w.u8(0x18); }
-                "or" => { w.u8(0x19); }
-                "to_str" => { w.u8(0x1A); }
-                "concat" => { w.u8(0x1B); }
+                "load" => {
+                    let a = atom_arg(self)?;
+                    w.u8(0x04).varint32(a);
+                }
+                "store" => {
+                    let a = atom_arg(self)?;
+                    w.u8(0x05).varint32(a);
+                }
+                "dup" => {
+                    w.u8(0x06);
+                }
+                "pop" => {
+                    w.u8(0x07);
+                }
+                "add" => {
+                    w.u8(0x10);
+                }
+                "sub" => {
+                    w.u8(0x11);
+                }
+                "mul" => {
+                    w.u8(0x12);
+                }
+                "neg" => {
+                    w.u8(0x13);
+                }
+                "not" => {
+                    w.u8(0x14);
+                }
+                "eq" => {
+                    w.u8(0x15);
+                }
+                "lt" => {
+                    w.u8(0x16);
+                }
+                "gt" => {
+                    w.u8(0x17);
+                }
+                "and" => {
+                    w.u8(0x18);
+                }
+                "or" => {
+                    w.u8(0x19);
+                }
+                "to_str" => {
+                    w.u8(0x1A);
+                }
+                "concat" => {
+                    w.u8(0x1B);
+                }
                 "label" => {
-                    let l = arg.and_then(Json::as_str).ok_or_else(|| bad("label name"))?;
+                    let l = arg
+                        .and_then(Json::as_str)
+                        .ok_or_else(|| bad("label name"))?;
                     labels.insert(l.to_string(), offset);
                     continue;
                 }
                 "jump" | "jump_if_false" => {
-                    let l = arg.and_then(Json::as_str).ok_or_else(|| bad("jump label"))?;
+                    let l = arg
+                        .and_then(Json::as_str)
+                        .ok_or_else(|| bad("jump label"))?;
                     w.u8(if name == "jump" { 0x20 } else { 0x21 }).u16(0);
                     jump = Some((if name == "jump" { 0x20 } else { 0x21 }, l.to_string()));
                 }
-                "set_text" => { let n = node_arg(self)?; w.u8(0x30).varint32(n); }
+                "set_text" => {
+                    let n = node_arg(self)?;
+                    w.u8(0x30).varint32(n);
+                }
                 "set_prop" => {
                     let n = node_arg(self)?;
-                    let p = parts.get(2).and_then(Json::as_str).ok_or_else(|| bad("set_prop needs a prop name"))?;
+                    let p = parts
+                        .get(2)
+                        .and_then(Json::as_str)
+                        .ok_or_else(|| bad("set_prop needs a prop name"))?;
                     let a = self.atom(p);
                     w.u8(0x31).varint32(n).varint32(a);
                 }
-                "emit" => { let a = atom_arg(self)?; w.u8(0x32).varint32(a); }
+                "emit" => {
+                    let a = atom_arg(self)?;
+                    w.u8(0x32).varint32(a);
+                }
                 "set_style" => {
                     let n = node_arg(self)?;
-                    let st = parts.get(2).ok_or_else(|| bad("set_style needs a style hash"))?;
+                    let st = parts
+                        .get(2)
+                        .ok_or_else(|| bad("set_style needs a style hash"))?;
                     let record = self.style_record(st)?;
                     let id = self.style(record);
                     w.u8(0x33).varint32(n).varint32(id);
                 }
-                "return" => { w.u8(0x40); }
+                "return" => {
+                    w.u8(0x40);
+                }
                 other => return Err(bad(&format!("unknown instruction '{other}'"))),
             }
             offset += w.len();
@@ -293,7 +368,10 @@ impl Encoder {
         for (bytes, jump) in sized {
             let mut bytes = bytes;
             if let Some((_, label)) = jump {
-                let target = *labels.get(&label).ok_or_else(|| bad(&format!("unknown label '{label}'")))? as i64;
+                let target = *labels
+                    .get(&label)
+                    .ok_or_else(|| bad(&format!("unknown label '{label}'")))?
+                    as i64;
                 let next = code.len() as i64 + bytes.len() as i64;
                 let rel = i16::try_from(target - next).map_err(|_| bad("jump too far"))?;
                 bytes[1..3].copy_from_slice(&rel.to_le_bytes());
@@ -344,7 +422,12 @@ impl Encoder {
     /// [`Encoder::render`] straight from the view's value: no JSON in
     /// between, and a keyed child that is the same object as last render
     /// is kept — not converted, not diffed.
-    pub fn render_value(&mut self, session: &str, value: &Value, resync: bool) -> Result<Vec<Batch>, String> {
+    pub fn render_value(
+        &mut self,
+        session: &str,
+        value: &Value,
+        resync: bool,
+    ) -> Result<Vec<Batch>, String> {
         self.session = session.to_owned();
         self.generation = self.generation.wrapping_add(1);
         // The view values behind this render's keyed nodes, by identity,
@@ -359,7 +442,12 @@ impl Encoder {
         self.finish(tree, resync, pins)
     }
 
-    fn finish(&mut self, mut tree: TNode, resync: bool, mut pins: HashMap<usize, Value>) -> Result<Vec<Batch>, String> {
+    fn finish(
+        &mut self,
+        mut tree: TNode,
+        resync: bool,
+        mut pins: HashMap<usize, Value>,
+    ) -> Result<Vec<Batch>, String> {
         // The client refuses a tree past its node limit and there is no way
         // to send it anyway; say so here, where the application can act.
         let nodes = count_nodes(&tree);
@@ -397,14 +485,20 @@ impl Encoder {
         let mut batches = Vec::new();
         if all.len() <= MAX_OPS_PER_BATCH {
             self.seq += 1;
-            batches.push(Batch { seq: self.seq, ops: all });
+            batches.push(Batch {
+                seq: self.seq,
+                ops: all,
+            });
         } else {
             let mut rest = all;
             while !rest.is_empty() {
                 let take = rest.len().min(MAX_OPS_PER_BATCH);
                 let tail = rest.split_off(take);
                 self.seq += 1;
-                batches.push(Batch { seq: self.seq, ops: rest });
+                batches.push(Batch {
+                    seq: self.seq,
+                    ops: rest,
+                });
                 rest = tail;
             }
         }
@@ -416,10 +510,14 @@ impl Encoder {
     pub fn handler_name(&self, node: u32, event: EventKind) -> Option<String> {
         let tree = self.prev.as_ref()?;
         let found = find(tree, node)?;
-        let atom = found.handlers.iter().find(|(e, _)| *e == event).and_then(|(_, h)| match h {
-            Handler::Server(a) | Handler::LocalThenServer { name: a, .. } => Some(*a),
-            Handler::Local(_) => None,
-        })?;
+        let atom = found
+            .handlers
+            .iter()
+            .find(|(e, _)| *e == event)
+            .and_then(|(_, h)| match h {
+                Handler::Server(a) | Handler::LocalThenServer { name: a, .. } => Some(*a),
+                Handler::Local(_) => None,
+            })?;
         self.atom_name(atom).map(str::to_owned)
     }
 
@@ -427,8 +525,12 @@ impl Encoder {
     /// `params["props"]`. This is how a row in a list says which row it is.
     pub fn props_of(&self, node: u32) -> serde_json::Map<String, Json> {
         let mut out = serde_json::Map::new();
-        let Some(tree) = self.prev.as_ref() else { return out };
-        let Some(found) = find(tree, node) else { return out };
+        let Some(tree) = self.prev.as_ref() else {
+            return out;
+        };
+        let Some(found) = find(tree, node) else {
+            return out;
+        };
         for (atom, value) in &found.props {
             if let Some(name) = self.atom_name(*atom) {
                 out.insert(name.to_string(), wire_to_json(self, value));
@@ -440,11 +542,20 @@ impl Encoder {
     /// A view value to a child: `None` for a `nil`/`false` in a child list
     /// (an `x if cond` that read as nothing), a kept child when the keyed
     /// value is the very object seen last render, else a fresh conversion.
-    fn convert_value(&mut self, v: &Value, pins: &mut HashMap<usize, Value>) -> Result<Option<Child>, String> {
+    fn convert_value(
+        &mut self,
+        v: &Value,
+        pins: &mut HashMap<usize, Value>,
+    ) -> Result<Option<Child>, String> {
         let hash = match v {
             Value::Hash(h) => h,
             Value::Null | Value::Bool(false) => return Ok(None),
-            other => return Err(format!("EUI: a node must be a hash, got {}", other.type_name())),
+            other => {
+                return Err(format!(
+                    "EUI: a node must be a hash, got {}",
+                    other.type_name()
+                ))
+            }
         };
         let identity = Rc::as_ptr(hash) as *const u8 as usize;
         let keyed = hash.borrow().contains_key(&HashKey::String("key".into()));
@@ -473,7 +584,10 @@ impl Encoder {
                         kids = items.borrow().clone();
                     }
                 } else {
-                    own.insert(name.to_string(), crate::interpreter::value::value_to_json(val)?);
+                    own.insert(
+                        name.to_string(),
+                        crate::interpreter::value::value_to_json(val)?,
+                    );
                 }
             }
         }
@@ -527,8 +641,8 @@ impl Encoder {
             "overlay" => NodeKind::Overlay,
             "slot" => NodeKind::Slot,
             "sizer" => NodeKind::Sizer,
-        "audio" => NodeKind::Audio,
-        "video" => NodeKind::Video,
+            "audio" => NodeKind::Audio,
+            "video" => NodeKind::Video,
             other => return Err(format!("EUI: unknown node kind '{other}'")),
         };
         let style = match obj.get("s") {
@@ -566,7 +680,9 @@ impl Encoder {
                 let atom = self.atom(name);
                 // An image's `src` is a file in the application; it goes on
                 // the wire as the hash of its bytes, served from /_eui/asset.
-                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video) && name == "src" {
+                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
+                    && name == "src"
+                {
                     match v {
                         Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
                         other => return Err(format!("EUI: a src must be a path, got {other}")),
@@ -582,7 +698,8 @@ impl Encoder {
         let mut handlers = Vec::new();
         if let Some(on) = obj.get("on").and_then(Json::as_object) {
             for (event, target) in on {
-                let kind = event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
+                let kind =
+                    event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
                 let handler = match target {
                     Json::String(name) => Handler::Server(self.atom(name)),
                     Json::Object(spec) => {
@@ -605,16 +722,35 @@ impl Encoder {
                         };
                         let chunk = self.chunk(bytes);
                         match spec.get("then").and_then(Json::as_str) {
-                            Some(name) => Handler::LocalThenServer { chunk, name: self.atom(name) },
+                            Some(name) => Handler::LocalThenServer {
+                                chunk,
+                                name: self.atom(name),
+                            },
                             None => Handler::Local(chunk),
                         }
                     }
-                    _ => return Err("EUI: a handler is a server event name or {\"local\": [...]}".into()),
+                    _ => {
+                        return Err(
+                            "EUI: a handler is a server event name or {\"local\": [...]}".into(),
+                        )
+                    }
                 };
                 handlers.push((kind, handler));
             }
         }
-        Ok(TNode { id: 0, kind, style, key, key_atom, text, props, handlers, children: Vec::new(), identity: 0, size: 0 })
+        Ok(TNode {
+            id: 0,
+            kind,
+            style,
+            key,
+            key_atom,
+            text,
+            props,
+            handlers,
+            children: Vec::new(),
+            identity: 0,
+            size: 0,
+        })
     }
 
     /// Spec 03 §1.1: a canvas path is `[kind, colour, numbers…]`. The colour
@@ -624,10 +760,16 @@ impl Encoder {
         let paths = v.as_array().ok_or("EUI: paths must be a list of paths")?;
         let mut out = Vec::with_capacity(paths.len());
         for path in paths {
-            let parts = path.as_array().ok_or("EUI: a path is a list: kind, colour, numbers")?;
+            let parts = path
+                .as_array()
+                .ok_or("EUI: a path is a list: kind, colour, numbers")?;
             let mut items = Vec::with_capacity(parts.len());
             for (i, part) in parts.iter().enumerate() {
-                items.push(if i == 1 { WireValue::Color(self.color(part)?) } else { self.wire_value(part)? });
+                items.push(if i == 1 {
+                    WireValue::Color(self.color(part)?)
+                } else {
+                    self.wire_value(part)?
+                });
             }
             out.push(WireValue::List(items));
         }
@@ -656,7 +798,9 @@ impl Encoder {
     }
 
     fn color(&mut self, v: &Json) -> Result<ColorRef, String> {
-        let s = v.as_str().ok_or("EUI: a colour is a role name or #RRGGBB")?;
+        let s = v
+            .as_str()
+            .ok_or("EUI: a colour is a role name or #RRGGBB")?;
         if let Some(hex) = s.strip_prefix('#') {
             let rgba = match hex.len() {
                 6 => u32::from_str_radix(hex, 16).map_err(|_| "EUI: bad hex colour")? << 8 | 0xFF,
@@ -668,7 +812,9 @@ impl Encoder {
         if s == "none" {
             return Ok(ColorRef::NONE);
         }
-        role_id(s).map(ColorRef::role).ok_or_else(|| format!("EUI: unknown colour role '{s}'"))
+        role_id(s)
+            .map(ColorRef::role)
+            .ok_or_else(|| format!("EUI: unknown colour role '{s}'"))
     }
 
     fn style_record(&mut self, s: &Json) -> Result<StyleRecord, String> {
@@ -676,11 +822,66 @@ impl Encoder {
         let mut r = StyleRecord::default();
         for (k, v) in obj {
             match k.as_str() {
-                "display" => r.display = enum_of(v, &[("row", Display::Row), ("column", Display::Column), ("stack", Display::Stack), ("grid", Display::Grid), ("none", Display::None)])?,
-                "wrap" => r.wrap = enum_of(v, &[("nowrap", Wrap::NoWrap), ("wrap", Wrap::Wrap), ("wrap_reverse", Wrap::WrapReverse)])?,
-                "justify" => r.justify = enum_of(v, &[("start", Justify::Start), ("center", Justify::Center), ("end", Justify::End), ("between", Justify::Between), ("around", Justify::Around), ("evenly", Justify::Evenly)])?,
-                "align" => r.align_items = enum_of(v, &[("start", AlignItems::Start), ("center", AlignItems::Center), ("end", AlignItems::End), ("stretch", AlignItems::Stretch), ("baseline", AlignItems::Baseline)])?,
-                "self" => r.align_self = enum_of(v, &[("start", AlignSelf::Start), ("center", AlignSelf::Center), ("end", AlignSelf::End), ("stretch", AlignSelf::Stretch), ("baseline", AlignSelf::Baseline), ("auto", AlignSelf::Auto)])?,
+                "display" => {
+                    r.display = enum_of(
+                        v,
+                        &[
+                            ("row", Display::Row),
+                            ("column", Display::Column),
+                            ("stack", Display::Stack),
+                            ("grid", Display::Grid),
+                            ("none", Display::None),
+                        ],
+                    )?
+                }
+                "wrap" => {
+                    r.wrap = enum_of(
+                        v,
+                        &[
+                            ("nowrap", Wrap::NoWrap),
+                            ("wrap", Wrap::Wrap),
+                            ("wrap_reverse", Wrap::WrapReverse),
+                        ],
+                    )?
+                }
+                "justify" => {
+                    r.justify = enum_of(
+                        v,
+                        &[
+                            ("start", Justify::Start),
+                            ("center", Justify::Center),
+                            ("end", Justify::End),
+                            ("between", Justify::Between),
+                            ("around", Justify::Around),
+                            ("evenly", Justify::Evenly),
+                        ],
+                    )?
+                }
+                "align" => {
+                    r.align_items = enum_of(
+                        v,
+                        &[
+                            ("start", AlignItems::Start),
+                            ("center", AlignItems::Center),
+                            ("end", AlignItems::End),
+                            ("stretch", AlignItems::Stretch),
+                            ("baseline", AlignItems::Baseline),
+                        ],
+                    )?
+                }
+                "self" => {
+                    r.align_self = enum_of(
+                        v,
+                        &[
+                            ("start", AlignSelf::Start),
+                            ("center", AlignSelf::Center),
+                            ("end", AlignSelf::End),
+                            ("stretch", AlignSelf::Stretch),
+                            ("baseline", AlignSelf::Baseline),
+                            ("auto", AlignSelf::Auto),
+                        ],
+                    )?
+                }
                 "grow" => r.grow = u8_of(v)?,
                 "shrink" => r.shrink = u8_of(v)?,
                 "gap" => r.gap = u8_of(v)?,
@@ -700,19 +901,74 @@ impl Encoder {
                 "radius" => r.radius = u8_of(v)?,
                 "shadow" => r.shadow = u8_of(v)?,
                 "opacity" => r.opacity = u8_of(v)?,
-                "font" => r.font_family = enum_of(v, &[("sans", FontFamily::Sans), ("mono", FontFamily::Mono)])?,
+                "font" => {
+                    r.font_family =
+                        enum_of(v, &[("sans", FontFamily::Sans), ("mono", FontFamily::Mono)])?
+                }
                 "size" => r.font_size = u8_of(v)?,
-                "weight" => r.font_weight = enum_of(v, &[("regular", FontWeight::Regular), ("medium", FontWeight::Medium), ("semibold", FontWeight::Semibold), ("bold", FontWeight::Bold)])?,
-                "text_align" => r.text_align = enum_of(v, &[("start", TextAlign::Start), ("center", TextAlign::Center), ("end", TextAlign::End), ("justify", TextAlign::Justify)])?,
+                "weight" => {
+                    r.font_weight = enum_of(
+                        v,
+                        &[
+                            ("regular", FontWeight::Regular),
+                            ("medium", FontWeight::Medium),
+                            ("semibold", FontWeight::Semibold),
+                            ("bold", FontWeight::Bold),
+                        ],
+                    )?
+                }
+                "text_align" => {
+                    r.text_align = enum_of(
+                        v,
+                        &[
+                            ("start", TextAlign::Start),
+                            ("center", TextAlign::Center),
+                            ("end", TextAlign::End),
+                            ("justify", TextAlign::Justify),
+                        ],
+                    )?
+                }
                 "clamp" => r.line_clamp = u8_of(v)?,
                 "underline" => r.text_decoration |= u8::from(v.as_bool().unwrap_or(false)),
                 "strike" => r.text_decoration |= u8::from(v.as_bool().unwrap_or(false)) << 1,
-                "overflow" => r.overflow = enum_of(v, &[("visible", Overflow::Visible), ("clip", Overflow::Clip), ("scroll", Overflow::Scroll)])?,
-                "transition" => r.transition = enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?,
+                "overflow" => {
+                    r.overflow = enum_of(
+                        v,
+                        &[
+                            ("visible", Overflow::Visible),
+                            ("clip", Overflow::Clip),
+                            ("scroll", Overflow::Scroll),
+                        ],
+                    )?
+                }
+                "transition" => {
+                    r.transition =
+                        enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?
+                }
                 "animation" => r.animation = enum_of(v, &[("none", 0), ("spin", 1)])?,
-                "position" => r.position = enum_of(v, &[("flow", Position::Flow), ("absolute", Position::Absolute)])?,
+                "position" => {
+                    r.position = enum_of(
+                        v,
+                        &[("flow", Position::Flow), ("absolute", Position::Absolute)],
+                    )?
+                }
                 "z" => r.z = u8_of(v)?,
-                "cursor" => r.cursor = enum_of(v, &[("default", Cursor::Default), ("pointer", Cursor::Pointer), ("text", Cursor::Text), ("grab", Cursor::Grab), ("grabbing", Cursor::Grabbing), ("resize_h", Cursor::ResizeH), ("resize_v", Cursor::ResizeV), ("wait", Cursor::Wait), ("not_allowed", Cursor::NotAllowed)])?,
+                "cursor" => {
+                    r.cursor = enum_of(
+                        v,
+                        &[
+                            ("default", Cursor::Default),
+                            ("pointer", Cursor::Pointer),
+                            ("text", Cursor::Text),
+                            ("grab", Cursor::Grab),
+                            ("grabbing", Cursor::Grabbing),
+                            ("resize_h", Cursor::ResizeH),
+                            ("resize_v", Cursor::ResizeV),
+                            ("wait", Cursor::Wait),
+                            ("not_allowed", Cursor::NotAllowed),
+                        ],
+                    )?
+                }
                 other => return Err(format!("EUI: unknown style key '{other}'")),
             }
         }
@@ -722,21 +978,44 @@ impl Encoder {
 
 fn enum_of<T: Copy>(v: &Json, table: &[(&str, T)]) -> Result<T, String> {
     let s = v.as_str().ok_or("EUI: expected a name")?;
-    table.iter().find(|(n, _)| *n == s).map(|(_, t)| *t).ok_or_else(|| format!("EUI: unknown value '{s}'"))
+    table
+        .iter()
+        .find(|(n, _)| *n == s)
+        .map(|(_, t)| *t)
+        .ok_or_else(|| format!("EUI: unknown value '{s}'"))
 }
 
 fn u8_of(v: &Json) -> Result<u8, String> {
-    v.as_u64().and_then(|n| u8::try_from(n).ok()).ok_or_else(|| format!("EUI: expected 0–255, got {v}"))
+    v.as_u64()
+        .and_then(|n| u8::try_from(n).ok())
+        .ok_or_else(|| format!("EUI: expected 0–255, got {v}"))
 }
 
 /// `"auto"`, `12` (px), `"50%"`, `"sp:4"` (space index), `"1fr"`.
 fn dim_of(v: &Json) -> Result<Dim, String> {
     match v {
-        Json::Number(n) => n.as_u64().and_then(|n| u16::try_from(n).ok()).map(Dim::Px).ok_or_else(|| "EUI: px must be 0–65535".to_string()),
+        Json::Number(n) => n
+            .as_u64()
+            .and_then(|n| u16::try_from(n).ok())
+            .map(Dim::Px)
+            .ok_or_else(|| "EUI: px must be 0–65535".to_string()),
         Json::String(s) if s == "auto" => Ok(Dim::Auto),
-        Json::String(s) if s.ends_with('%') => s.trim_end_matches('%').parse::<f64>().ok().map(|p| Dim::Percent((p * 100.0).round() as u16)).ok_or_else(|| "EUI: bad percent".into()),
-        Json::String(s) if s.ends_with("fr") => s.trim_end_matches("fr").parse::<f64>().ok().map(|f| Dim::Fr((f * 100.0).round() as u16)).ok_or_else(|| "EUI: bad fr".into()),
-        Json::String(s) if s.starts_with("sp:") => s[3..].parse::<u8>().map(Dim::Space).map_err(|_| "EUI: bad space index".into()),
+        Json::String(s) if s.ends_with('%') => s
+            .trim_end_matches('%')
+            .parse::<f64>()
+            .ok()
+            .map(|p| Dim::Percent((p * 100.0).round() as u16))
+            .ok_or_else(|| "EUI: bad percent".into()),
+        Json::String(s) if s.ends_with("fr") => s
+            .trim_end_matches("fr")
+            .parse::<f64>()
+            .ok()
+            .map(|f| Dim::Fr((f * 100.0).round() as u16))
+            .ok_or_else(|| "EUI: bad fr".into()),
+        Json::String(s) if s.starts_with("sp:") => s[3..]
+            .parse::<u8>()
+            .map(Dim::Space)
+            .map_err(|_| "EUI: bad space index".into()),
         other => Err(format!("EUI: cannot read a length from {other}")),
     }
 }
@@ -748,12 +1027,16 @@ fn edges_of(v: &Json) -> Result<[u8; 4], String> {
             let n = u8_of(v)?;
             Ok([n; 4])
         }
-        Json::Array(a) if a.len() == 4 => Ok([u8_of(&a[0])?, u8_of(&a[1])?, u8_of(&a[2])?, u8_of(&a[3])?]),
+        Json::Array(a) if a.len() == 4 => {
+            Ok([u8_of(&a[0])?, u8_of(&a[1])?, u8_of(&a[2])?, u8_of(&a[3])?])
+        }
         Json::Array(a) if a.len() == 2 => {
             let (y, x) = (u8_of(&a[0])?, u8_of(&a[1])?);
             Ok([y, x, y, x])
         }
-        other => Err(format!("EUI: edges are one index or [t, r, b, l], got {other}")),
+        other => Err(format!(
+            "EUI: edges are one index or [t, r, b, l], got {other}"
+        )),
     }
 }
 
@@ -821,14 +1104,34 @@ pub fn event_name(kind: EventKind) -> &'static str {
 
 /// `spec/05-theme.md` §1, by name.
 const ROLES: [&str; 28] = [
-    "surface.base", "surface.raised", "surface.sunken", "surface.overlay",
-    "text.default", "text.muted", "text.inverted", "text.disabled",
-    "accent.base", "accent.hover", "accent.active", "accent.on",
-    "success.base", "success.subtle", "success.on",
-    "warning.base", "warning.subtle", "warning.on",
-    "danger.base", "danger.subtle", "danger.on",
-    "info.base", "info.subtle", "info.on",
-    "border.subtle", "border.default", "border.strong", "focus.ring",
+    "surface.base",
+    "surface.raised",
+    "surface.sunken",
+    "surface.overlay",
+    "text.default",
+    "text.muted",
+    "text.inverted",
+    "text.disabled",
+    "accent.base",
+    "accent.hover",
+    "accent.active",
+    "accent.on",
+    "success.base",
+    "success.subtle",
+    "success.on",
+    "warning.base",
+    "warning.subtle",
+    "warning.on",
+    "danger.base",
+    "danger.subtle",
+    "danger.on",
+    "info.base",
+    "info.subtle",
+    "info.on",
+    "border.subtle",
+    "border.default",
+    "border.strong",
+    "focus.ring",
 ];
 
 fn role_id(name: &str) -> Option<u16> {
@@ -851,10 +1154,28 @@ fn freeze(node: &mut TNode, memo: &mut Memo, pins: &mut HashMap<usize, Value>, g
         if let Child::Fresh(n) = child {
             freeze(n, memo, pins, generation);
             if n.identity != 0 {
-                let Some(pin) = pins.remove(&n.identity) else { continue };
+                let Some(pin) = pins.remove(&n.identity) else {
+                    continue;
+                };
                 n.size = count_nodes(n) as u32;
-                let arc = Arc::new(std::mem::replace(n, TNode { id: 0, kind: NodeKind::Box, style: 0, key: None, key_atom: 0, text: None, props: Vec::new(), handlers: Vec::new(), children: Vec::new(), identity: 0, size: 0 }));
-                memo.entries.insert(arc.identity, (pin, Arc::clone(&arc), generation));
+                let arc = Arc::new(std::mem::replace(
+                    n,
+                    TNode {
+                        id: 0,
+                        kind: NodeKind::Box,
+                        style: 0,
+                        key: None,
+                        key_atom: 0,
+                        text: None,
+                        props: Vec::new(),
+                        handlers: Vec::new(),
+                        children: Vec::new(),
+                        identity: 0,
+                        size: 0,
+                    },
+                ));
+                memo.entries
+                    .insert(arc.identity, (pin, Arc::clone(&arc), generation));
                 *child = Child::Kept(arc);
             }
         }
@@ -913,7 +1234,10 @@ pub fn wire_to_json(enc: &Encoder, v: &WireValue) -> Json {
         WireValue::Bool(b) => Json::Bool(*b),
         WireValue::Int(n) => Json::from(*n),
         WireValue::Float(f) => serde_json::json!(f),
-        WireValue::Atom(a) => enc.atom_name(*a).map(|s| Json::String(s.to_string())).unwrap_or(Json::Null),
+        WireValue::Atom(a) => enc
+            .atom_name(*a)
+            .map(|s| Json::String(s.to_string()))
+            .unwrap_or(Json::Null),
         WireValue::Str(s) => Json::String(s.clone()),
         WireValue::Asset(h) => Json::String(h.iter().map(|b| format!("{b:02x}")).collect()),
         WireValue::Color(c) => Json::from(c.0),

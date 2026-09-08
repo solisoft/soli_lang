@@ -1687,11 +1687,7 @@ pub fn register_http_class(env: &mut Environment) {
             };
 
             let written = bytes.len();
-            crate::interpreter::builtins::file::write_bytes_jailed(
-                &path,
-                "HTTP.download",
-                &bytes,
-            )?;
+            crate::interpreter::builtins::file::write_bytes_jailed(&path, "HTTP.download", &bytes)?;
             Ok(Value::Int(i64::try_from(written).unwrap_or(i64::MAX)))
         })),
     );

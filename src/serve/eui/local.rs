@@ -42,7 +42,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
     let mut i = 0;
     let mut out = Vec::new();
     let sym2 = ["==", "!=", "<=", ">=", "&&", "||", "+=", "-="];
-    let sym1 = ["+", "-", "*", "<", ">", "!", "=", "(", ")", "{", "}", ".", ";", ","];
+    let sym1 = [
+        "+", "-", "*", "<", ">", "!", "=", "(", ")", "{", "}", ".", ";", ",",
+    ];
     while i < b.len() {
         let c = b[i] as char;
         if c.is_whitespace() {
@@ -60,7 +62,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             while i < b.len() && b[i].is_ascii_digit() {
                 i += 1;
             }
-            out.push(Tok::Int(src[s..i].parse().map_err(|_| "integer too large")?));
+            out.push(Tok::Int(
+                src[s..i].parse().map_err(|_| "integer too large")?,
+            ));
             continue;
         }
         if c.is_ascii_alphabetic() || c == '_' {
@@ -146,7 +150,11 @@ impl<C: Ctx> Compiler<'_, C> {
         }
     }
     fn expect(&mut self, s: &str) -> Result<(), String> {
-        if self.eat(s) { Ok(()) } else { Err(format!("expected '{s}'")) }
+        if self.eat(s) {
+            Ok(())
+        } else {
+            Err(format!("expected '{s}'"))
+        }
     }
     fn op(&mut self, opcode: u8) {
         self.code.push(Emit::Bytes(vec![opcode]));
@@ -277,9 +285,16 @@ impl<C: Ctx> Compiler<'_, C> {
                     "style" => {
                         let name = match self.next() {
                             Some(Tok::At(n)) => n,
-                            _ => return Err("a style is @name, declared in the handler's styles".into()),
+                            _ => {
+                                return Err(
+                                    "a style is @name, declared in the handler's styles".into()
+                                )
+                            }
                         };
-                        let id = self.ctx.style(&name).ok_or_else(|| format!("undeclared style @{name}"))?;
+                        let id = self
+                            .ctx
+                            .style(&name)
+                            .ok_or_else(|| format!("undeclared style @{name}"))?;
                         let mut w = Writer::new();
                         w.u8(0x33).varint32(key_atom).varint32(id);
                         self.code.push(Emit::Bytes(w.into_vec()));
@@ -397,7 +412,8 @@ impl<C: Ctx> Compiler<'_, C> {
                 Ok(())
             }
             Some(Tok::Ident(i)) if i == "true" || i == "false" => {
-                self.code.push(Emit::Bytes(vec![0x03, u8::from(i == "true")]));
+                self.code
+                    .push(Emit::Bytes(vec![0x03, u8::from(i == "true")]));
                 Ok(())
             }
             Some(Tok::Ident(i)) if i == "state" => {
@@ -467,8 +483,15 @@ impl<C: Ctx> Compiler<'_, C> {
 /// Compile a `local("…")` program.
 pub fn compile<C: Ctx>(src: &str, ctx: &mut C) -> Result<Vec<u8>, String> {
     let toks = lex(src).map_err(|e| format!("EUI: local handler: {e}"))?;
-    let mut c = Compiler { toks, pos: 0, ctx, code: Vec::new(), labels: 0 };
-    c.program().map_err(|e| format!("EUI: local handler: {e}"))?;
+    let mut c = Compiler {
+        toks,
+        pos: 0,
+        ctx,
+        code: Vec::new(),
+        labels: 0,
+    };
+    c.program()
+        .map_err(|e| format!("EUI: local handler: {e}"))?;
     c.finish().map_err(|e| format!("EUI: local handler: {e}"))
 }
 
@@ -498,29 +521,56 @@ mod tests {
 
     #[test]
     fn the_counter_compiles_to_the_expected_bytes() {
-        let mut ctx = TestCtx { atoms: vec![], styles: HashMap::new() };
+        let mut ctx = TestCtx {
+            atoms: vec![],
+            styles: HashMap::new(),
+        };
         let bytes = compile("state.count += 1\nvalue.text = str(state.count)", &mut ctx).unwrap();
         // count=1, value=2
         assert_eq!(&bytes[..6], b"EUIC\x01\x10");
-        assert_eq!(&bytes[6..], &[0x04, 1, 0x01, 2, 0x10, 0x05, 1, 0x04, 1, 0x1A, 0x30, 2, 0x40]);
+        assert_eq!(
+            &bytes[6..],
+            &[0x04, 1, 0x01, 2, 0x10, 0x05, 1, 0x04, 1, 0x1A, 0x30, 2, 0x40]
+        );
     }
 
     #[test]
     fn if_else_and_styles_and_self() {
-        let mut ctx = TestCtx { atoms: vec![], styles: HashMap::from([("hot".into(), 7u32), ("cool".into(), 8)]) };
-        let bytes = compile("if state.n > 9 { self.style = @hot } else { self.style = @cool }; emit(\"ping\")", &mut ctx).unwrap();
+        let mut ctx = TestCtx {
+            atoms: vec![],
+            styles: HashMap::from([("hot".into(), 7u32), ("cool".into(), 8)]),
+        };
+        let bytes = compile(
+            "if state.n > 9 { self.style = @hot } else { self.style = @cool }; emit(\"ping\")",
+            &mut ctx,
+        )
+        .unwrap();
         // Ends with a return, contains both set_style ops and one emit.
         assert_eq!(*bytes.last().unwrap(), 0x40);
         assert_eq!(bytes.iter().filter(|b| **b == 0x33).count(), 2);
-        assert!(bytes.windows(2).any(|w| w == [0x32, 3]), "emit atom 3 = ping (n=1, me=2)");
+        assert!(
+            bytes.windows(2).any(|w| w == [0x32, 3]),
+            "emit atom 3 = ping (n=1, me=2)"
+        );
     }
 
     #[test]
     fn errors_are_named() {
-        let mut ctx = TestCtx { atoms: vec![], styles: HashMap::new() };
-        assert!(compile("value.style = @nope", &mut ctx).unwrap_err().contains("undeclared style"));
-        assert!(compile("value.colour = 1", &mut ctx).unwrap_err().contains("only .text and .style"));
-        assert!(compile("state.x = \"open", &mut ctx).unwrap_err().contains("unterminated"));
-        assert!(compile("state.x = 1 +", &mut ctx).unwrap_err().contains("unexpected"));
+        let mut ctx = TestCtx {
+            atoms: vec![],
+            styles: HashMap::new(),
+        };
+        assert!(compile("value.style = @nope", &mut ctx)
+            .unwrap_err()
+            .contains("undeclared style"));
+        assert!(compile("value.colour = 1", &mut ctx)
+            .unwrap_err()
+            .contains("only .text and .style"));
+        assert!(compile("state.x = \"open", &mut ctx)
+            .unwrap_err()
+            .contains("unterminated"));
+        assert!(compile("state.x = 1 +", &mut ctx)
+            .unwrap_err()
+            .contains("unexpected"));
     }
 }

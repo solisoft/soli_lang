@@ -15,9 +15,9 @@ use hyper::{header, Response, StatusCode};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
-use crate::serve::ResponseBody;
 use crate::live::component::get_app_root;
 use crate::serve::full;
+use crate::serve::ResponseBody;
 
 /// Capabilities the application requests, set by `eui_capabilities(...)`.
 static CAPABILITIES: Mutex<u32> = Mutex::new(0);
@@ -27,7 +27,8 @@ static CAPABILITIES: Mutex<u32> = Mutex::new(0);
 pub fn request_capabilities(names: &[String]) -> Result<(), String> {
     let mut mask = 0;
     for n in names {
-        mask |= eui_proto::caps::from_name(n).ok_or_else(|| format!("eui_capabilities: unknown capability '{n}'"))?;
+        mask |= eui_proto::caps::from_name(n)
+            .ok_or_else(|| format!("eui_capabilities: unknown capability '{n}'"))?;
     }
     *CAPABILITIES.lock().unwrap_or_else(|e| e.into_inner()) |= mask;
     Ok(())
@@ -38,26 +39,35 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
     KEY.get_or_init(|| {
         // A desktop artifact points this at its per-install state directory:
         // the developer's key must never travel inside a bundle.
-        let path = std::env::var_os("SOLI_EUI_KEY").map(std::path::PathBuf::from).unwrap_or_else(|| get_app_root().join("config").join("eui_publisher.pkcs8"));
+        let path = std::env::var_os("SOLI_EUI_KEY")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| get_app_root().join("config").join("eui_publisher.pkcs8"));
         let pkcs8 = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).map_err(|_| "EUI: cannot generate a publisher key".to_string())?;
+                let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+                    .map_err(|_| "EUI: cannot generate a publisher key".to_string())?;
                 if let Some(dir) = path.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| format!("EUI: {}: {e}", dir.display()))?;
+                    std::fs::create_dir_all(dir)
+                        .map_err(|e| format!("EUI: {}: {e}", dir.display()))?;
                 }
-                std::fs::write(&path, doc.as_ref()).map_err(|e| format!("EUI: {}: {e}", path.display()))?;
+                std::fs::write(&path, doc.as_ref())
+                    .map_err(|e| format!("EUI: {}: {e}", path.display()))?;
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
                     let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
                 }
-                eprintln!("[EUI] generated the publisher key at {} — keep it, clients pin it", path.display());
+                eprintln!(
+                    "[EUI] generated the publisher key at {} — keep it, clients pin it",
+                    path.display()
+                );
                 doc.as_ref().to_vec()
             }
             Err(e) => return Err(format!("EUI: {}: {e}", path.display())),
         };
-        Ed25519KeyPair::from_pkcs8(&pkcs8).map_err(|_| format!("EUI: {} is not an Ed25519 PKCS#8 key", path.display()))
+        Ed25519KeyPair::from_pkcs8(&pkcs8)
+            .map_err(|_| format!("EUI: {} is not an Ed25519 PKCS#8 key", path.display()))
     })
     .as_ref()
     .map_err(Clone::clone)
@@ -67,7 +77,11 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
 pub fn bytes() -> Result<Vec<u8>, String> {
     let key = key_pair()?;
     let root = get_app_root();
-    let app_id = root.canonicalize().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "app".into());
+    let app_id = root
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "app".into());
     let mut publisher_key = [0u8; 32];
     publisher_key.copy_from_slice(key.public_key().as_ref());
     let manifest = Manifest {

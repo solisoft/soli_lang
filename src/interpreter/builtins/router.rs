@@ -744,7 +744,9 @@ pub fn register_router_builtins(env: &mut Environment) {
             let mut names = Vec::new();
             for arg in args {
                 match arg {
-                    Value::Array(items) => names.extend(items.borrow().iter().map(|i| i.to_string())),
+                    Value::Array(items) => {
+                        names.extend(items.borrow().iter().map(|i| i.to_string()))
+                    }
                     other => names.push(other.to_string()),
                 }
             }

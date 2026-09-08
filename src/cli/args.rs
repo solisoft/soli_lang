@@ -2367,7 +2367,12 @@ pub fn parse_args() -> Options {
                                 eprintln!("--allow requires a value, e.g. --allow clipboard.read");
                                 process::exit(64);
                             });
-                            allow.extend(list.split(',').map(str::trim).filter(|c| !c.is_empty()).map(String::from));
+                            allow.extend(
+                                list.split(',')
+                                    .map(str::trim)
+                                    .filter(|c| !c.is_empty())
+                                    .map(String::from),
+                            );
                         }
                         other if other.starts_with('-') => {
                             eprintln!("Unknown option '{}' for soli eui", other);

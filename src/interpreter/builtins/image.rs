@@ -313,8 +313,7 @@ fn execute_plan(plan: &ImagePlan) -> Result<PlanResult, String> {
         Some(dst) => Some(validate_image_path(dst, "ImagePlan.run")?),
         None => None,
     };
-    let mut reader =
-        ImageReader::open(&src).map_err(|e| format!("Failed to open image: {}", e))?;
+    let mut reader = ImageReader::open(&src).map_err(|e| format!("Failed to open image: {}", e))?;
     let detected_format = reader.format();
     // SEC-019: refuse to allocate more than `image_max_alloc_bytes` for a
     // single decode; refuse images whose declared dimensions exceed the
@@ -695,9 +694,9 @@ fn build_image_class() -> Rc<Class> {
             };
             let resolved = validate_image_path(&path, "Image.to_file")?;
             with_image_data(args, |data| {
-                let format = data
-                    .format
-                    .unwrap_or_else(|| ImageFormat::from_path(&resolved).unwrap_or(ImageFormat::Png));
+                let format = data.format.unwrap_or_else(|| {
+                    ImageFormat::from_path(&resolved).unwrap_or(ImageFormat::Png)
+                });
                 if format == ImageFormat::Jpeg {
                     let buffer = encode_image(data, format)?;
                     std::fs::write(&resolved, buffer)

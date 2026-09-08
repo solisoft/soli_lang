@@ -27,7 +27,9 @@ use sha2::{Digest, Sha256};
 
 use crate::bundle::BundleReader;
 
-use super::manifest::{DatabaseMode, DesktopManifest, APP_ENTRY, DB_BINARY_ENTRY, MANIFEST_ENTRY, SEED_PREFIX};
+use super::manifest::{
+    DatabaseMode, DesktopManifest, APP_ENTRY, DB_BINARY_ENTRY, MANIFEST_ENTRY, SEED_PREFIX,
+};
 
 /// Inputs for assembling a desktop payload.
 pub struct ContainerInputs {
@@ -95,7 +97,10 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
         return Err("desktop container needs a database binary".to_string());
     }
     if !embedded && !inputs.db_binary.is_empty() {
-        return Err("desktop container without an embedded database was given a database binary".to_string());
+        return Err(
+            "desktop container without an embedded database was given a database binary"
+                .to_string(),
+        );
     }
 
     // The checksum covers the *uncompressed* bytes — what actually gets
@@ -289,16 +294,33 @@ mod tests {
     fn a_container_without_a_database_carries_none_and_opens() {
         let mut m = manifest();
         m.database = DatabaseMode::None;
-        let payload = build(ContainerInputs { encrypted_app: b"app".to_vec(), db_binary: Vec::new(), seed: Vec::new(), manifest: m.clone() }).unwrap();
+        let payload = build(ContainerInputs {
+            encrypted_app: b"app".to_vec(),
+            db_binary: Vec::new(),
+            seed: Vec::new(),
+            manifest: m.clone(),
+        })
+        .unwrap();
         let c = open(&payload).unwrap();
         assert!(c.db_binary.is_empty());
         assert_eq!(c.manifest.database, DatabaseMode::None);
         assert_eq!(c.manifest.solidb_sha256, "");
-        assert!(BundleReader::new(&payload).unwrap().get(DB_BINARY_ENTRY).is_none());
+        assert!(BundleReader::new(&payload)
+            .unwrap()
+            .get(DB_BINARY_ENTRY)
+            .is_none());
         // A binary handed to a database-less build is a mistake, not a feature.
         let mut m2 = manifest();
-        m2.database = DatabaseMode::Remote { url: "http://db:6543".into() };
-        assert!(build(ContainerInputs { encrypted_app: b"app".to_vec(), db_binary: b"x".to_vec(), seed: Vec::new(), manifest: m2 }).is_err());
+        m2.database = DatabaseMode::Remote {
+            url: "http://db:6543".into(),
+        };
+        assert!(build(ContainerInputs {
+            encrypted_app: b"app".to_vec(),
+            db_binary: b"x".to_vec(),
+            seed: Vec::new(),
+            manifest: m2
+        })
+        .is_err());
     }
 
     fn manifest() -> DesktopManifest {

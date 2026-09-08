@@ -298,7 +298,9 @@ impl BundleBuilder {
 
             // The EUI publisher key is a per-deployment secret: a bundle
             // must never carry it, whatever the build.
-            if name_str == "eui_publisher.pkcs8" && current_dir.file_name().is_some_and(|d| d == "config") {
+            if name_str == "eui_publisher.pkcs8"
+                && current_dir.file_name().is_some_and(|d| d == "config")
+            {
                 continue;
             }
             // Skip hidden files and common non-app directories

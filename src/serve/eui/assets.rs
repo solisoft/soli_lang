@@ -34,7 +34,11 @@ static STORE: Mutex<Option<Store>> = Mutex::new(None);
 
 fn with_store<T>(f: impl FnOnce(&mut Store) -> T) -> T {
     let mut g = STORE.lock().unwrap_or_else(|e| e.into_inner());
-    let store = g.get_or_insert_with(|| Store { by_hash: HashMap::new(), by_path: HashMap::new(), bytes: 0 });
+    let store = g.get_or_insert_with(|| Store {
+        by_hash: HashMap::new(),
+        by_path: HashMap::new(),
+        bytes: 0,
+    });
     f(store)
 }
 
@@ -42,7 +46,11 @@ fn with_store<T>(f: impl FnOnce(&mut Store) -> T) -> T {
 /// or one that would push the store over its budget.
 pub fn put(bytes: Vec<u8>) -> Result<Hash, String> {
     if bytes.len() > MAX_ASSET_BYTES {
-        return Err(format!("EUI: asset of {} bytes exceeds the {} byte limit", bytes.len(), MAX_ASSET_BYTES));
+        return Err(format!(
+            "EUI: asset of {} bytes exceeds the {} byte limit",
+            bytes.len(),
+            MAX_ASSET_BYTES
+        ));
     }
     let hash: Hash = *blake3::hash(&bytes).as_bytes();
     with_store(|s| {
@@ -67,12 +75,21 @@ pub fn get(hash: &Hash) -> Option<Arc<Vec<u8>>> {
 /// The resolved path MUST stay inside the root; anything else is refused
 /// before it is read. Re-reads when the file's mtime changes.
 pub fn from_file(rel: &str) -> Result<Hash, String> {
-    let root = get_app_root().canonicalize().map_err(|e| format!("EUI: app root: {e}"))?;
-    let path = root.join(rel).canonicalize().map_err(|_| format!("EUI: asset '{rel}' not found"))?;
+    let root = get_app_root()
+        .canonicalize()
+        .map_err(|e| format!("EUI: app root: {e}"))?;
+    let path = root
+        .join(rel)
+        .canonicalize()
+        .map_err(|_| format!("EUI: asset '{rel}' not found"))?;
     if !path.starts_with(&root) {
-        return Err(format!("EUI: asset '{rel}' resolves outside the application"));
+        return Err(format!(
+            "EUI: asset '{rel}' resolves outside the application"
+        ));
     }
-    let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).map_err(|e| format!("EUI: asset '{rel}': {e}"))?;
+    let mtime = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("EUI: asset '{rel}': {e}"))?;
     if let Some(hit) = with_store(|s| s.by_path.get(&path).copied()) {
         if hit.0 == mtime {
             return Ok(hit.1);

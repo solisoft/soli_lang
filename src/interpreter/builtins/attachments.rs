@@ -34,7 +34,8 @@ const DEFAULT_DISK_ROOT: &str = "./storage/attachments";
 /// What a build without the `cloud` feature says when an application asks
 /// for the `s3` service.
 #[cfg(not(feature = "cloud"))]
-const NO_CLOUD: &str = "this build of soli has no S3 attachment service: it was built without the `cloud` feature";
+const NO_CLOUD: &str =
+    "this build of soli has no S3 attachment service: it was built without the `cloud` feature";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BlobMeta {

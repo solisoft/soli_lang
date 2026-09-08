@@ -226,12 +226,24 @@ mod tests {
         let session = arm_session();
         assert!(is_armed());
         let cookie = cookie_header_value(&session);
-        assert_eq!(evaluate("/_eui/session/app", None, Some(&cookie)), Decision::Allow);
-        assert_eq!(evaluate("/.well-known/eui", None, Some(&cookie)), Decision::Allow);
+        assert_eq!(
+            evaluate("/_eui/session/app", None, Some(&cookie)),
+            Decision::Allow
+        );
+        assert_eq!(
+            evaluate("/.well-known/eui", None, Some(&cookie)),
+            Decision::Allow
+        );
         assert_eq!(evaluate("/_eui/session/app", None, None), Decision::Deny);
-        assert_eq!(evaluate("/_eui/session/app", None, Some("soli_desktop=wrong")), Decision::Deny);
+        assert_eq!(
+            evaluate("/_eui/session/app", None, Some("soli_desktop=wrong")),
+            Decision::Deny
+        );
         // No launch token was minted: the exchange path cannot be used at all.
-        assert_eq!(evaluate(EXCHANGE_PATH, Some("t=anything"), None), Decision::Deny);
+        assert_eq!(
+            evaluate(EXCHANGE_PATH, Some("t=anything"), None),
+            Decision::Deny
+        );
         reset();
     }
 

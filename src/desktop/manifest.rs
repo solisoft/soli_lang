@@ -116,7 +116,10 @@ mod tests {
         let json = br#"{"manifest_version":1,"app_id":"x","app_name":"X","soli_version":"2","solidb_version":"0","solidb_sha256":"","seed_version":null,"seed_sha256":null}"#;
         let m = DesktopManifest::from_json(json).unwrap();
         assert_eq!(m.eui, None);
-        let with = DesktopManifest { eui: Some("gallery".into()), ..m };
+        let with = DesktopManifest {
+            eui: Some("gallery".into()),
+            ..m
+        };
         let back = DesktopManifest::from_json(&with.to_json().unwrap()).unwrap();
         assert_eq!(back.eui.as_deref(), Some("gallery"));
     }
@@ -126,8 +129,16 @@ mod tests {
         let json = br#"{"manifest_version":1,"app_id":"x","app_name":"X","soli_version":"2","solidb_version":"0","solidb_sha256":"","seed_version":null,"seed_sha256":null}"#;
         let m = DesktopManifest::from_json(json).unwrap();
         assert_eq!(m.database, DatabaseMode::Embedded);
-        for mode in [DatabaseMode::None, DatabaseMode::Remote { url: "http://db.example:6543".into() }] {
-            let with = DesktopManifest { database: mode.clone(), ..m.clone() };
+        for mode in [
+            DatabaseMode::None,
+            DatabaseMode::Remote {
+                url: "http://db.example:6543".into(),
+            },
+        ] {
+            let with = DesktopManifest {
+                database: mode.clone(),
+                ..m.clone()
+            };
             let back = DesktopManifest::from_json(&with.to_json().unwrap()).unwrap();
             assert_eq!(back.database, mode);
         }

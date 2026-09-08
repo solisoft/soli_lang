@@ -128,10 +128,15 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         (true, None) => DatabaseMode::None,
         (false, Some(url)) => {
             if !(url.starts_with("http://") || url.starts_with("https://")) {
-                eprintln!("Error: --db-url must be an http(s):// address, got '{}'", url);
+                eprintln!(
+                    "Error: --db-url must be an http(s):// address, got '{}'",
+                    url
+                );
                 process::exit(1);
             }
-            DatabaseMode::Remote { url: url.trim_end_matches('/').to_string() }
+            DatabaseMode::Remote {
+                url: url.trim_end_matches('/').to_string(),
+            }
         }
         (false, None) => DatabaseMode::Embedded,
     };
@@ -139,7 +144,8 @@ pub fn run(args: DesktopBuildArgs<'_>) {
         eprintln!("Error: --seed ships reference data into the embedded database; there is none with --no-db or --db-url");
         process::exit(1);
     }
-    if database != DatabaseMode::Embedded && (args.db_binary.is_some() || args.db_version.is_some()) {
+    if database != DatabaseMode::Embedded && (args.db_binary.is_some() || args.db_version.is_some())
+    {
         eprintln!("Error: --solidb and --solidb-version name the embedded database; there is none with --no-db or --db-url");
         process::exit(1);
     }
@@ -469,7 +475,8 @@ pub fn boot(
     // worker is an interpreter with every handler warmed — eight of them
     // cost a desktop app fifty megabytes for nothing. `--workers` and
     // `SOLI_WORKERS` still say otherwise when asked.
-    let explicit = std::env::var_os("SOLI_WORKERS").is_some() || std::env::args().any(|a| a == "--workers");
+    let explicit =
+        std::env::var_os("SOLI_WORKERS").is_some() || std::env::args().any(|a| a == "--workers");
     let workers = if explicit { workers } else { workers.min(2) };
 
     // Deep link / protocol handler: remember where to land after the launch token.
@@ -535,7 +542,10 @@ pub fn boot(
     // 4b. Reference data, only when it differs from what is installed. This
     //     replaces collections wholesale, so it runs before the app can serve
     //     a request against half-imported data.
-    if let (Some(db), true) = (&db, solilang::desktop::seed::needs_import(&paths.state, &manifest)) {
+    if let (Some(db), true) = (
+        &db,
+        solilang::desktop::seed::needs_import(&paths.state, &manifest),
+    ) {
         let owned: Vec<(String, Vec<u8>)> = container
             .seed
             .iter()
@@ -592,7 +602,9 @@ pub fn boot(
     // An EUI artifact opens its own window instead of a browser: the server
     // runs on a thread, the window on this one, and closing it stops both.
     if let Some(component) = manifest.eui.clone() {
-        let result = boot_eui(&tmp_dir, port, dev_mode, workers, &paths, &app_name, &component);
+        let result = boot_eui(
+            &tmp_dir, port, dev_mode, workers, &paths, &app_name, &component,
+        );
         drop(db_guard);
         return result;
     }
@@ -660,9 +672,13 @@ fn boot_eui(
                 let session = solilang::desktop::token::arm_session();
                 let _ = tx.send((bound, session));
             });
-            if let Err(e) =
-                solilang::serve::serve_folder_with_options_and_hooks(&folder, port, dev_mode, workers, Some(hook))
-            {
+            if let Err(e) = solilang::serve::serve_folder_with_options_and_hooks(
+                &folder,
+                port,
+                dev_mode,
+                workers,
+                Some(hook),
+            ) {
                 eprintln!("server: {}", e);
                 solilang::desktop::shutdown::request();
             }
@@ -676,8 +692,13 @@ fn boot_eui(
 
     // An embedding wrapper, or a headless test, may want the session
     // without the window: it gets the URL and the cookie, and serves on.
-    if std::env::var_os(solilang::desktop::shell::NO_WINDOW_ENV).is_some_and(|v| !v.is_empty() && v != "0") {
-        println!("\n{} is serving. Session:\n  {}\nCookie:\n  {}", app_name, url, cookie);
+    if std::env::var_os(solilang::desktop::shell::NO_WINDOW_ENV)
+        .is_some_and(|v| !v.is_empty() && v != "0")
+    {
+        println!(
+            "\n{} is serving. Session:\n  {}\nCookie:\n  {}",
+            app_name, url, cookie
+        );
         loop {
             if solilang::desktop::shutdown::is_requested() {
                 return Ok(());

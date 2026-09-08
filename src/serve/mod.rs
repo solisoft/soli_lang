@@ -3029,7 +3029,10 @@ async fn handle_hyper_request(
                 return Ok(forbidden_websocket_origin_response());
             }
             let component = component.trim_end_matches('/').to_string();
-            let cookies = req.headers().get("cookie").map(|v| v.to_str().unwrap_or(""));
+            let cookies = req
+                .headers()
+                .get("cookie")
+                .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
             return eui::session::upgrade(req, component, session_id, lv_event_tx.clone());
         }

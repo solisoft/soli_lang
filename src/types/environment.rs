@@ -2138,11 +2138,7 @@ impl TypeEnvironment {
             ("head", vec![url(), options()], future_string()),
             (
                 "download",
-                vec![
-                    url(),
-                    ("path".to_string(), Type::String),
-                    options(),
-                ],
+                vec![url(), ("path".to_string(), Type::String), options()],
                 Type::Int,
             ),
             ("get_json", vec![url(), options()], future_any()),

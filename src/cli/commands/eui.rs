@@ -18,7 +18,11 @@ pub fn open(url: &str, allow: &[String]) {
                     eprintln!(
                         "Unknown capability '{}'. Known: {}",
                         name,
-                        eui_proto::caps::NAMES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+                        eui_proto::caps::NAMES
+                            .iter()
+                            .map(|(n, _)| *n)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     );
                     process::exit(64);
                 }

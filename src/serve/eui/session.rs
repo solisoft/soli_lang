@@ -38,15 +38,16 @@ pub fn upgrade(
             .body(full(Bytes::from("no such EUI component")))
             .unwrap());
     }
-    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(default_websocket_config())) {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(full(Bytes::from(format!("WebSocket upgrade error: {e}"))))
-                .unwrap());
-        }
-    };
+    let (response, websocket) =
+        match hyper_tungstenite::upgrade(&mut req, Some(default_websocket_config())) {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(full(Bytes::from(format!("WebSocket upgrade error: {e}"))))
+                    .unwrap());
+            }
+        };
 
     tokio::spawn(async move {
         let stream = match websocket.await {
@@ -70,14 +71,28 @@ pub fn upgrade(
             _ => None,
         };
         let Some(hello) = hello else {
-            let _ = ws_write.send(Message::Binary(Frame::Error { code: 1, message: "expected Hello".into() }.encode())).await;
+            let _ = ws_write
+                .send(Message::Binary(
+                    Frame::Error {
+                        code: 1,
+                        message: "expected Hello".into(),
+                    }
+                    .encode(),
+                ))
+                .await;
             return;
         };
         let mut session_bytes = [0u8; 16];
         let raw = session_id.as_bytes();
         session_bytes[..raw.len().min(16)].copy_from_slice(&raw[..raw.len().min(16)]);
         if ws_write
-            .send(Message::Binary(Frame::Welcome(Welcome { version: PROTOCOL_VERSION, session: session_bytes }).encode()))
+            .send(Message::Binary(
+                Frame::Welcome(Welcome {
+                    version: PROTOCOL_VERSION,
+                    session: session_bytes,
+                })
+                .encode(),
+            ))
             .await
             .is_err()
         {
@@ -96,13 +111,27 @@ pub fn upgrade(
         );
         instance.id = liveview_instance_id(&session_id, &component, None);
         let liveview_id = instance.id.clone();
-        let already = LIVE_REGISTRY.attach_or_register(instance, sender.clone()).is_some();
+        let already = LIVE_REGISTRY
+            .attach_or_register(instance, sender.clone())
+            .is_some();
 
         // 3. First render: `connect` for a fresh instance, a whole-tree resend
         //    for a reconnect that found its state still there.
         let first = if already { RESYNC_EVENT } else { "connect" };
-        let first_params = if already { serde_json::json!({}) } else { serde_json::json!({"viewport": viewport_json(&hello.viewport)}) };
-        post(&lv_event_tx, &liveview_id, &component, first, first_params, &session_id).await;
+        let first_params = if already {
+            serde_json::json!({})
+        } else {
+            serde_json::json!({"viewport": viewport_json(&hello.viewport)})
+        };
+        post(
+            &lv_event_tx,
+            &liveview_id,
+            &component,
+            first,
+            first_params,
+            &session_id,
+        )
+        .await;
 
         // 4. Server frames out.
         let write_task = tokio::spawn(async move {
@@ -124,7 +153,13 @@ pub fn upgrade(
                 Message::Binary(b) => b,
                 Message::Close(_) => break,
                 Message::Text(_) => {
-                    let _ = sender.try_send(Ok(Message::Binary(Frame::Error { code: 2, message: "binary frames only".into() }.encode())));
+                    let _ = sender.try_send(Ok(Message::Binary(
+                        Frame::Error {
+                            code: 2,
+                            message: "binary frames only".into(),
+                        }
+                        .encode(),
+                    )));
                     break;
                 }
                 _ => continue,
@@ -132,31 +167,68 @@ pub fn upgrade(
             let frame = match Frame::decode(&bytes) {
                 Ok(f) => f,
                 Err(e) => {
-                    let _ = sender.try_send(Ok(Message::Binary(Frame::Error { code: e.code(), message: e.to_string() }.encode())));
+                    let _ = sender.try_send(Ok(Message::Binary(
+                        Frame::Error {
+                            code: e.code(),
+                            message: e.to_string(),
+                        }
+                        .encode(),
+                    )));
                     break;
                 }
             };
             match frame {
                 Frame::Event(e) => {
                     if std::env::var("EUI_TRACE").is_ok() {
-                        eprintln!("[EUI trace] event node={} kind={:?} name={}", e.node, e.event, e.name);
+                        eprintln!(
+                            "[EUI trace] event node={} kind={:?} name={}",
+                            e.node, e.event, e.name
+                        );
                     }
                     let Some((name, params)) = validate(&liveview_id, &e) else {
                         let _ = sender.try_send(Ok(Message::Binary(
-                            Frame::Error { code: 300, message: "event does not match the tree".into() }.encode(),
+                            Frame::Error {
+                                code: 300,
+                                message: "event does not match the tree".into(),
+                            }
+                            .encode(),
                         )));
                         break;
                     };
-                    post(&lv_event_tx, &liveview_id, &component, &name, params, &session_id).await;
+                    post(
+                        &lv_event_tx,
+                        &liveview_id,
+                        &component,
+                        &name,
+                        params,
+                        &session_id,
+                    )
+                    .await;
                 }
                 Frame::Resync => {
-                    post(&lv_event_tx, &liveview_id, &component, RESYNC_EVENT, serde_json::json!({}), &session_id).await;
+                    post(
+                        &lv_event_tx,
+                        &liveview_id,
+                        &component,
+                        RESYNC_EVENT,
+                        serde_json::json!({}),
+                        &session_id,
+                    )
+                    .await;
                 }
                 Frame::Ping(n) => {
                     let _ = sender.try_send(Ok(Message::Binary(Frame::Pong(n).encode())));
                 }
                 Frame::Viewport(v) => {
-                    post(&lv_event_tx, &liveview_id, &component, "viewport", serde_json::json!({"viewport": viewport_json(&v)}), &session_id).await;
+                    post(
+                        &lv_event_tx,
+                        &liveview_id,
+                        &component,
+                        "viewport",
+                        serde_json::json!({"viewport": viewport_json(&v)}),
+                        &session_id,
+                    )
+                    .await;
                 }
                 Frame::Ack { .. } | Frame::Pong(_) => {}
                 Frame::Error { code, message } => {
@@ -164,7 +236,13 @@ pub fn upgrade(
                     break;
                 }
                 Frame::Hello(_) | Frame::Welcome(_) | Frame::Batch(_) => {
-                    let _ = sender.try_send(Ok(Message::Binary(Frame::Error { code: 301, message: "server-only frame".into() }.encode())));
+                    let _ = sender.try_send(Ok(Message::Binary(
+                        Frame::Error {
+                            code: 301,
+                            message: "server-only frame".into(),
+                        }
+                        .encode(),
+                    )));
                     break;
                 }
             }
@@ -176,7 +254,15 @@ pub fn upgrade(
         // device it borrowed. The post is awaited like any other event,
         // so the handler runs to its end; a component with no
         // `disconnect` branch simply returns its state unchanged.
-        post(&lv_event_tx, &liveview_id, &component, "disconnect", serde_json::json!({}), &session_id).await;
+        post(
+            &lv_event_tx,
+            &liveview_id,
+            &component,
+            "disconnect",
+            serde_json::json!({}),
+            &session_id,
+        )
+        .await;
 
         LIVE_REGISTRY.drop_sender(&liveview_id, &sender);
         write_task.abort();

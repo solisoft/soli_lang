@@ -42,7 +42,8 @@ pub const RESYNC_EVENT: &str = "__eui_resync";
 /// Register a component's view action.
 pub fn register_view(component: &str, view: &str) {
     let mut g = EUI_VIEWS.lock().unwrap_or_else(|e| e.into_inner());
-    g.get_or_insert_with(HashMap::new).insert(component.to_string(), view.to_string());
+    g.get_or_insert_with(HashMap::new)
+        .insert(component.to_string(), view.to_string());
 }
 
 /// True when `router_eui` registered this component.
@@ -102,7 +103,10 @@ pub fn handle_eui_event(
 ) -> Result<(), String> {
     let component = instance.component.clone();
     if std::env::var("EUI_TRACE").is_ok() {
-        eprintln!("[EUI trace] worker: {component} {} state={}", data.event, instance.state);
+        eprintln!(
+            "[EUI trace] worker: {component} {} state={}",
+            data.event, instance.state
+        );
     }
 
     if data.event != RESYNC_EVENT {
@@ -125,7 +129,9 @@ pub fn handle_eui_event(
                     instance.state = state;
                 }
                 if let Some(update) = unwrapped.update {
-                    if let (Some(dst), Some(src)) = (instance.state.as_object_mut(), update.as_object()) {
+                    if let (Some(dst), Some(src)) =
+                        (instance.state.as_object_mut(), update.as_object())
+                    {
                         for (k, v) in src {
                             dst.insert(k.clone(), v.clone());
                         }
@@ -133,14 +139,18 @@ pub fn handle_eui_event(
                 }
             }
             Ok(other) => {
-                return Err(format!("EUI: handler '{handler_name}' returned {}, expected a hash", other.type_name()));
+                return Err(format!(
+                    "EUI: handler '{handler_name}' returned {}, expected a hash",
+                    other.type_name()
+                ));
             }
             Err(e) => return Err(format!("EUI: handler '{handler_name}' failed: {e}")),
         }
     }
 
     // Render: the view action maps state to a tree hash.
-    let view_name = view_action(&component).ok_or_else(|| format!("EUI: no view for component '{component}'"))?;
+    let view_name = view_action(&component)
+        .ok_or_else(|| format!("EUI: no view for component '{component}'"))?;
     let view = resolve(interpreter, &view_name)?;
     let state_value = json_to_value(&instance.state);
     let t_view = std::time::Instant::now();
@@ -159,10 +169,18 @@ pub fn handle_eui_event(
     // fails the same way, and saying nothing leaves a window that looks
     // alive and answers nothing. Spec 01 §4: `Error` ends the session on
     // both sides, which is the right end for a view that will never encode.
-    let batches = match with_encoder(&instance.id, |enc| enc.render_value(&session_id, &tree_value, resync)) {
+    let batches = match with_encoder(&instance.id, |enc| {
+        enc.render_value(&session_id, &tree_value, resync)
+    }) {
         Ok(batches) => batches,
         Err(e) => {
-            send_frame(instance, &Frame::Error { code: 400, message: e.clone() });
+            send_frame(
+                instance,
+                &Frame::Error {
+                    code: 400,
+                    message: e.clone(),
+                },
+            );
             return Err(e);
         }
     };
@@ -177,13 +195,21 @@ pub fn handle_eui_event(
     instance.touch();
     if !LIVE_REGISTRY.commit(instance) {
         if std::env::var("EUI_TRACE").is_ok() {
-            eprintln!("[EUI trace] worker: commit refused (socket gone?) for {}", instance.id);
+            eprintln!(
+                "[EUI trace] worker: commit refused (socket gone?) for {}",
+                instance.id
+            );
         }
         return Ok(());
     }
     for batch in batches {
         if std::env::var("EUI_TRACE").is_ok() {
-            eprintln!("[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)", batch.seq, batch.ops.len(), instance.senders.len());
+            eprintln!(
+                "[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)",
+                batch.seq,
+                batch.ops.len(),
+                instance.senders.len()
+            );
         }
         send_frame(instance, &Frame::Batch(batch));
     }
