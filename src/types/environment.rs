@@ -2136,6 +2136,15 @@ impl TypeEnvironment {
             ("patch", vec![url(), body(), options()], future_string()),
             ("delete", vec![url(), options()], future_string()),
             ("head", vec![url(), options()], future_string()),
+            (
+                "download",
+                vec![
+                    url(),
+                    ("path".to_string(), Type::String),
+                    options(),
+                ],
+                Type::Int,
+            ),
             ("get_json", vec![url(), options()], future_any()),
             ("get_jsonp", vec![url(), options()], future_any()),
             ("post_json", vec![url(), body(), options()], future_any()),
@@ -2237,11 +2246,16 @@ impl TypeEnvironment {
 
         // System class
         let mut system_class = ClassType::new("System".to_string());
+        // `Any`, not `String`: `parse_argv` takes either a command line or
+        // an argv array, and the array is the form that needs no shell and
+        // no quoting — the one a caller should reach for. Declaring
+        // `String` here refused it before it ran, and a caller who wrapped
+        // the call in `rescue` saw nothing happen at all.
         system_class.methods.insert(
             "run".to_string(),
             MethodInfo {
                 name: "run".to_string(),
-                params: vec![("command".to_string(), Type::String)],
+                params: vec![("command".to_string(), Type::Any)],
                 return_type: Type::Future(Box::new(Type::Any)),
                 is_private: false,
                 is_static: true,
@@ -2251,7 +2265,7 @@ impl TypeEnvironment {
             "run_sync".to_string(),
             MethodInfo {
                 name: "run_sync".to_string(),
-                params: vec![("command".to_string(), Type::String)],
+                params: vec![("command".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
                 is_static: true,
