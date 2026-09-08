@@ -183,10 +183,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # libasound2-dev is here and not on the other jobs because this is the
+      # only one that passes --all-features, which turns on `eui-desktop` and so
+      # pulls eui-client -> cpal -> alsa -> alsa-sys, whose build script asks
+      # pkg-config for ALSA and fails the whole lint without it. The rest of the
+      # desktop stack needs nothing: winit resolves wayland through
+      # `wayland-dlopen`, so libwayland is opened at runtime, not linked here.
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config
+          sudo apt-get install -y libssl-dev pkg-config libasound2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
