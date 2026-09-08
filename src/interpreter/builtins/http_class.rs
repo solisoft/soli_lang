@@ -12,6 +12,7 @@
 //! - HTTP.put_json(url, data) -> Future<Value>
 //! - HTTP.patch_json(url, data) -> Future<Value>
 //! - HTTP.request(method, url, options?, body?) -> Future<HTTPResponse>
+//! - HTTP.download(url, path, options?) -> Int (bytes written, blocking)
 //! - HTTP.get_all(urls) -> Array<Future<String>>
 //! - HTTP.get_all_json(urls) -> Array<Future<Value>>
 //! - HTTP.parallel(requests) -> Array<Future<HTTPResponse>>
@@ -790,6 +791,31 @@ pub async fn read_capped_text_async(resp: reqwest::Response) -> Result<String, S
         buf.extend_from_slice(&chunk);
     }
     String::from_utf8(buf).map_err(|e| format!("invalid UTF-8 in response body: {}", e))
+}
+
+/// Read a reqwest response body into bytes, aborting once the
+/// accumulated bytes exceed [`http_max_response_bytes`].
+///
+/// The text reader above ends in `String::from_utf8`, which is right for
+/// every body Soli otherwise handles and wrong for the one thing
+/// `HTTP.download` exists for: a picture, a sound, a PDF. Same cap, same
+/// streaming, no decode.
+pub async fn read_capped_bytes_async(resp: reqwest::Response) -> Result<Vec<u8>, String> {
+    use futures_util::StreamExt;
+    let cap = http_max_response_bytes();
+    let mut buf: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        if buf.len().saturating_add(chunk.len()) > cap {
+            return Err(format!(
+                "HTTP response exceeded {} bytes (SOLI_HTTP_MAX_RESPONSE_BYTES)",
+                cap
+            ));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
 }
 
 /// Read a ureq response body into a `String`, aborting once the
@@ -1604,6 +1630,69 @@ pub fn register_http_class(env: &mut Environment) {
                     HttpFutureKind::String,
                 )),
             }
+        })),
+    );
+
+    // HTTP.download(url, path, options?) -> Int
+    //
+    // The one call in this class that does not decode: it streams the
+    // body to a file under the same cap as every other read, and writes
+    // it through the `File` jail, so a picture or a sound a server chose
+    // can become an asset the application serves. Blocking on purpose —
+    // the caller wants the file on disk before it renders the node that
+    // names it, and a future here would only move the wait.
+    http_static_methods.insert(
+        "download".to_string(),
+        Rc::new(NativeFunction::new("HTTP.download", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.download() requires a URL and a path".to_string());
+            }
+            let url = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "HTTP.download() expects string URL, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let path = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "HTTP.download() expects string path, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            validate_url_for_ssrf(&url)?;
+
+            let opts = extract_options(args.get(2))?;
+            let fetch = |client: reqwest::Client| {
+                let url = url.clone();
+                async move {
+                    let resp = send_logged("GET", &url, opts.apply(client.get(&*url), &[])).await?;
+                    let status = resp.status();
+                    if !status.is_success() {
+                        return Err(format!("HTTP {} error for {}", status.as_u16(), url));
+                    }
+                    read_capped_bytes_async(resp).await
+                }
+            };
+
+            let bytes = match get_tokio_handle() {
+                Some(_) => block_on_user_http(fetch(get_user_http_client().clone()))?,
+                _ => run_user_http_request(fetch)?,
+            };
+
+            let written = bytes.len();
+            crate::interpreter::builtins::file::write_bytes_jailed(
+                &path,
+                "HTTP.download",
+                &bytes,
+            )?;
+            Ok(Value::Int(i64::try_from(written).unwrap_or(i64::MAX)))
         })),
     );
 

@@ -185,6 +185,27 @@ println(feed["items"][0])</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.head("https://api.example.com/users")
 println(resp["headers"])</code></pre>
         </section>
+
+        <section id="def-http-download" class="scroll-mt-20 mb-6">
+            <a href="#def-http-download" class="group flex items-center gap-2 mb-3">
+                <code class="text-lg font-mono text-amber-400">HTTP.download(url, path, options?)</code>
+                <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+            </a>
+            <p class="text-gray-400 mb-3">
+                Fetch a URL and write the body to a file, returning the number of bytes written.
+                The one method here that does <strong>not</strong> decode: every other call ends in
+                UTF-8, which a picture, a sound or a PDF is not. Same SSRF check, same
+                <code class="text-amber-400">SOLI_HTTP_MAX_RESPONSE_BYTES</code> cap, and the path
+                goes through the same jail as the <code class="text-amber-400">File</code> builtins
+                &mdash; a missing parent directory is created, an escaping path is refused, and a
+                symlink standing where the file should go is not followed. Blocking: it returns when
+                the file is on disk.
+            </p>
+            <pre data-filename="Example"><code class="language-soli text-sm">bytes = HTTP.download("https://example.com/cover.jpg", "public/covers/1.jpg")
+println("wrote " + str(bytes))</code></pre>
+        </section>
     </section>
 
     <!-- JSON HTTP Methods -->

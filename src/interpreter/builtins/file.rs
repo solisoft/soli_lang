@@ -237,6 +237,31 @@ fn open_for_append(path: &Path, follow_symlinks: bool) -> std::io::Result<std::f
     opts.open(path)
 }
 
+/// Write `bytes` to a caller-supplied path through the same jail and the
+/// same symlink stance the `File` builtins use, creating the parent
+/// directory if it is missing.
+///
+/// Exposed for sibling builtins that write bytes they fetched themselves
+/// — `HTTP.download` is the first — so SEC-006's containment and
+/// SEC-050's `O_NOFOLLOW` are applied once here rather than
+/// reimplemented, and forgotten, at each call site. The parent is created
+/// inside the jail or not at all: `resolve_path` has already refused
+/// anything that resolves outside it.
+pub(crate) fn write_bytes_jailed(path: &str, op: &str, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let resolved = resolve_path(path, op)?;
+    if let Some(parent) = resolved.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("{}() could not create {}: {}", op, parent.display(), e))?;
+        }
+    }
+    let mut file = open_for_write_truncate(&resolved, JAILED.follow_symlinks)
+        .map_err(|e| format!("{}() could not open {}: {}", op, resolved.display(), e))?;
+    file.write_all(bytes)
+        .map_err(|e| format!("{}() could not write {}: {}", op, resolved.display(), e))
+}
+
 /// Read whole-file contents as a `String` through `open_for_read`.
 fn read_to_string_policy(path: &Path, follow_symlinks: bool) -> std::io::Result<String> {
     use std::io::Read;
@@ -1259,5 +1284,31 @@ mod tests {
         assert!(link_meta.file_type().is_symlink());
         let target_meta = metadata_policy(&link, true).unwrap();
         assert!(target_meta.is_file() && !target_meta.file_type().is_symlink());
+    }
+
+    /// `write_bytes_jailed` makes the parent it needs and refuses to
+    /// follow a symlink standing where the file should go — the two
+    /// things it adds over `resolve_path`, which has its own tests above.
+    #[test]
+    fn write_bytes_jailed_creates_the_parent_and_refuses_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("soli-wbj-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let nested = dir.join("covers").join("a.jpg");
+        write_bytes_jailed(nested.to_str().unwrap(), "test", b"jpeg").unwrap();
+        assert_eq!(std::fs::read(&nested).unwrap(), b"jpeg");
+
+        #[cfg(unix)]
+        {
+            let elsewhere = dir.join("elsewhere.txt");
+            std::fs::write(&elsewhere, b"untouched").unwrap();
+            let link = dir.join("link.jpg");
+            std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
+            assert!(write_bytes_jailed(link.to_str().unwrap(), "test", b"new").is_err());
+            assert_eq!(std::fs::read(&elsewhere).unwrap(), b"untouched");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
