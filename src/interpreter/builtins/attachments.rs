@@ -6,22 +6,35 @@
 //! The existing `uploader(...)` DSL still defaults to SoliDB blobs.
 
 use std::fs;
+#[cfg(feature = "cloud")]
 use std::io::Read;
 use std::path::PathBuf;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+// The S3 half of this module is the `cloud` feature: a build without it
+// keeps disk attachments and answers plainly for the other service rather
+// than pretending to store anything.
+#[cfg(feature = "cloud")]
 use rusoto_core::Region;
+#[cfg(feature = "cloud")]
 use rusoto_credential::StaticProvider;
+#[cfg(feature = "cloud")]
 use rusoto_s3::{DeleteObjectRequest, GetObjectRequest, PutObjectRequest, S3Client, S3};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(feature = "cloud")]
 use crate::serve::get_tokio_handle;
 
 const DEFAULT_DISK_ROOT: &str = "./storage/attachments";
+
+/// What a build without the `cloud` feature says when an application asks
+/// for the `s3` service.
+#[cfg(not(feature = "cloud"))]
+const NO_CLOUD: &str = "this build of soli has no S3 attachment service: it was built without the `cloud` feature";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BlobMeta {
@@ -69,7 +82,10 @@ pub fn store_bytes(
     data: Vec<u8>,
 ) -> Result<String, String> {
     match service {
+        #[cfg(feature = "cloud")]
         "s3" => store_s3(collection, filename, content_type, data),
+        #[cfg(not(feature = "cloud"))]
+        "s3" => Err(NO_CLOUD.to_string()),
         "disk" => store_disk(collection, filename, content_type, data),
         other => Err(format!(
             "unknown attachment service {other:?} (use disk, s3, or solidb)"
@@ -120,16 +136,19 @@ fn delete_disk(collection: &str, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "cloud")]
 fn s3_bucket() -> Result<String, String> {
     std::env::var("SOLI_ATTACHMENTS_BUCKET")
         .or_else(|_| std::env::var("S3_BUCKET"))
         .map_err(|_| "SOLI_ATTACHMENTS_BUCKET (or S3_BUCKET) is required for service: s3".into())
 }
 
+#[cfg(feature = "cloud")]
 fn s3_key(collection: &str, id: &str) -> String {
     format!("{}/{}", sanitize_part(collection), sanitize_part(id))
 }
 
+#[cfg(feature = "cloud")]
 fn s3_client() -> Result<S3Client, String> {
     let access_key = std::env::var("AWS_ACCESS_KEY_ID")
         .or_else(|_| std::env::var("S3_ACCESS_KEY"))
@@ -155,6 +174,7 @@ fn s3_client() -> Result<S3Client, String> {
     ))
 }
 
+#[cfg(feature = "cloud")]
 fn run_s3<F, T>(future: F) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
@@ -170,6 +190,7 @@ where
     }
 }
 
+#[cfg(feature = "cloud")]
 fn store_s3(
     collection: &str,
     filename: &str,
@@ -201,6 +222,7 @@ fn store_s3(
     })
 }
 
+#[cfg(feature = "cloud")]
 fn read_s3(collection: &str, id: &str) -> Result<(BlobMeta, Vec<u8>), String> {
     let bucket = s3_bucket()?;
     let key = s3_key(collection, id);
@@ -240,6 +262,7 @@ fn read_s3(collection: &str, id: &str) -> Result<(BlobMeta, Vec<u8>), String> {
     })
 }
 
+#[cfg(feature = "cloud")]
 fn delete_s3(collection: &str, id: &str) -> Result<(), String> {
     let bucket = s3_bucket()?;
     let key = s3_key(collection, id);
@@ -313,7 +336,10 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
             let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
             let (meta, data) = match service.as_str() {
+                #[cfg(feature = "cloud")]
                 "s3" => read_s3(&collection, &id),
+                #[cfg(not(feature = "cloud"))]
+                "s3" => Err(NO_CLOUD.to_string()),
                 "disk" => read_disk(&collection, &id),
                 _ => return Ok(Value::Null),
             }?;
@@ -349,7 +375,10 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
             let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
             let ok = match service.as_str() {
+                #[cfg(feature = "cloud")]
                 "s3" => delete_s3(&collection, &id).is_ok(),
+                #[cfg(not(feature = "cloud"))]
+                "s3" => false,
                 "disk" => delete_disk(&collection, &id).is_ok(),
                 _ => false,
             };

@@ -45,3 +45,4 @@ __pycache__/
 # so nightly resumes from yesterday's corpus instead of starting cold.
 # Refresh the tracked seeds occasionally with `cargo fuzz cmin <target>`.
 /fuzz/corpus/
+config/eui_publisher.pkcs8

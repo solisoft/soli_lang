@@ -18,10 +18,160 @@
   had gone stale unnoticed — a waived advisory keeps CI green whether or not the
   waiver is still needed. Four entries were re-verified against crates.io and
   corrected: the `quick-xml` DoS pair is now unblocked (calamine 0.36.1 and
-  umya-spreadsheet 3.1.0 both accept `^0.41`), `ratatui` 0.30.2 now drops `lru`,
-  the `paste` entry has a second parent that the ratatui upgrade would not
-  clear, and the `proc-macro-error` entry named the wrong blocker — the crates
-  holding it back are `azul-layout` and `rust-fontconfig`, not allsorts.
+  umya-spreadsheet 3.1.0 both accept `^0.41`), and the `proc-macro-error` entry
+  named the wrong blocker — the crates holding it back are `azul-layout` and
+  `rust-fontconfig`, not allsorts. Two more entries were blocked on a `ratatui`
+  upgrade and resolved a shorter way instead: ratatui was removed outright (see
+  above), which took `lru` 0.12 with it and left `paste` a single parent.
+
+### Added
+
+- **EUI sessions, behind a cargo feature.** `cargo build --features eui`
+  adds `router_eui(component, handler, view)` and the
+  `/_eui/session/<component>` socket. An EUI component is a LiveView
+  component whose view is a function of state returning a node tree as plain
+  data; the server interns atoms and styles once per session, diffs against
+  the tree it last sent, and streams binary patches to a native client that
+  draws them on the GPU — no HTML, no CSS, no JavaScript, no browser. The
+  feature is **off by default** and the default build contains none of it.
+  Protocol, client and documentation live in the `eui` repository; see
+  `www/docs/eui.md`.
+
+  A handler can run **locally first**: `"on": {"click": {"local":
+  "state.count += 1; value.text = str(state.count)", "then": "increment"}}`
+  is compiled by the server into a verified, fuel-metered chunk that the
+  client runs before the round trip; `self.style = @hover` with a declared
+  `styles` map gives every catalogue button local hover and pressed states
+  (`spec/07-bytecode.md` in the `eui` repository). The event's `params`
+  carry the clicked node's `props`, so a row in a list can say which row it
+  is.
+
+  A `canvas` node's `paths` prop (`spec/03-widgets.md` §1.1) is a list of
+  `[kind, colour, numbers…]` paths; the server resolves the colour — a role
+  name or `#RRGGBB` — before encoding, so the client never parses a string
+  while painting. The catalogue's `chart_line`, `chart_area`, `chart_bar`
+  and `chart_donut` build on it. A pointer event's `payload` is local to the
+  node that holds the handler, not the leaf under the pointer.
+
+  `GET /.well-known/eui` serves the application's manifest (EUI spec 01
+  §2.1), signed with an Ed25519 publisher key generated on first use into
+  `config/eui_publisher.pkcs8` — keep it, clients pin it, never commit it.
+  `eui_capabilities("clipboard.read", …)` in `routes.sl` says what the
+  manifest asks the client for; the person still grants each one.
+
+  **`soli desktop build --eui <component>`** (feature `eui-desktop`, which
+  links the EUI client into `soli`): the artifact opens the component in its
+  own GPU window instead of a browser. The server runs on a thread behind the
+  loopback gate, armed with a session the embedded client presents as a
+  cookie; the publisher key is generated per install, and a bundle never
+  carries `config/eui_publisher.pkcs8`. Not yet combinable with `--target`.
+- **Moving pictures in EUI.** A `video` node (EUI spec 03 §8) plays a GIF
+  or an animated WebP named the way an image is named: a path, hashed,
+  served from `/_eui/asset`. `playing`, `loop` and `position` say what it
+  does and `ended` comes back; the client decodes it in its sandboxed
+  worker, sizes the node by its frames, and wakes exactly when the next
+  frame is due. `video(...)` is in the example builders, with a loop in
+  the gallery.
+- **Sound in EUI.** An `audio` node (EUI spec 03 §7) names a sound the way
+  an image names a picture, with `playing`, `volume`, `loop` and
+  `position` props and `ended` / `time_update` events. Decoded and mixed
+  in the sandboxed worker; only the window opens an audio device. Playing
+  needs no capability; the client bounds it and owns the viewer's volume.
+- **The viewport reaches the application.** `params["viewport"]` with
+  `connect`, and a `viewport` event on every change, so an EUI view can be
+  responsive. A desktop artifact's window now closes on `Ctrl+C` through
+  its own loop instead of the process exiting under a live GPU device,
+  which segfaulted.
+- **Windowed lists.** A `list` node with `count`, `heights` and a
+  `window` handler holds only the rows in view; the client asks for a
+  range as `window [first, last]` when it changes (EUI spec 04 §7.1). The
+  feed example is written this way: forty thousand posts cost the server
+  one window of cards instead of 1.2 GB of them.
+- **A desktop artifact starts two server workers**, not one per core,
+  unless `--workers` or `SOLI_WORKERS` say otherwise: each worker is an
+  interpreter with every handler warmed, and one person at one window
+  needs no more. Measured on the EUI feed example: 117 MB of runtime at
+  rest with eight workers, 68 MB with two.
+- **`soli desktop build --no-db` and `--db-url <url>`.** A desktop
+  artifact no longer has to carry and start a database. `--no-db` embeds
+  none and starts none — for an app whose state lives in memory or behind
+  an API; `--db-url` embeds none and points the model layer and the
+  session store at a `solidb` elsewhere, credentials from the app's `.env`
+  or the environment as under `soli serve`. The manifest records the
+  choice (`database`: `embedded`, `none`, `remote`); an older artifact
+  reads as embedded. `--seed`, `--solidb` and `--solidb-version` are
+  refused without an embedded database, since they describe one.
+- **A local handler can switch the viewer's palette.** `theme.toggle()`
+  (light ⇄ dark) and `theme.mode = "dark"` in a `local("…")` string compile
+  to the new `set_mode` instruction (EUI spec 07); the choice is the
+  viewer's, made through the app's own control, so it is never provisional
+  and costs no round trip — the server learns it as the next viewport.
+- **EUI renders without copying.** The view's value is converted to nodes
+  directly (no JSON round trip for the tree), the previous tree is diffed
+  by move rather than cloned first, and a keyed child whose view value is
+  the same object as last render is kept as-is — not converted, not
+  diffed. The keyed diff is linear (a key map instead of a search per
+  child). A like on a feed of five thousand cards went from 520 ms to
+  20 ms of convert-and-diff in a debug build; the remaining cost is the
+  view itself. The contract is documented in `www/docs/eui.md`: a keyed
+  node hash returned unchanged is assumed unchanged.
+  The same build answers `soli eui <wss://host/_eui/session/app>
+  [--allow cap,cap]` to open any EUI application in a window.
+
+  Images are files in the application, hashed with BLAKE3 and served at
+  `GET /_eui/asset/<hash>` from a bounded content-addressed store, immutable.
+
+  Touched: `src/serve/mod.rs` (four `#[cfg(feature = "eui")]` insertions),
+  `src/interpreter/builtins/router.rs` (one builtin), and the new
+  `src/serve/eui/` module. `live/`, `template/`, `vm/` and `interpreter/`
+  are unchanged.
+
+- **`HTTP.download(url, path, options?)`** writes a response body to a file
+  instead of decoding it. Same SSRF check, same options and same
+  `SOLI_HTTP_MAX_RESPONSE_BYTES` cap as the rest of the class — the body is
+  streamed and abandoned the moment it passes the cap — and the file is
+  written through the `File` jail with `O_NOFOLLOW`, so a picture or a sound
+  fetched from a catalogue can become an asset the application serves.
+  It blocks: the caller wants the file on disk before it renders the node
+  that names it. Returns the number of bytes written.
+- **An EUI session posts `disconnect` when the window closes.** The event is
+  awaited like any other, before the session is torn down, so a component
+  can stop what it started — a player it spawned, a device it borrowed. A
+  component with no `disconnect` branch returns its state unchanged.
+
+### Changed
+
+- **Six subsystems became cargo features, all on by default: `ssh`,
+  `office`, `pdf`, `cloud`, `mail`, `lsp`.** A default build is the same
+  product it was; what changes is that a build can now drop what an
+  application never calls. They cover `soli deploy` (which links a vendored
+  OpenSSL through `ssh2`), the `Spreadsheet` class, the `Pdf` class and its
+  PAdES signatures, `S3` and the `s3` attachment service, `Mailer`/`Imap`/
+  `Pop3`, and the language server. A class whose feature is off is not
+  registered — an undefined variable rather than a missing symbol — and
+  `soli deploy` and `soli lsp` name the feature they were built without.
+  Measured on x86-64 Linux, release, stripped, with the EUI window
+  (`--features eui-desktop`): the runtime a packaged application embeds went
+  from 61 MB to **46 MB**, against 78 MB for the default set. See
+  `www/docs/configuration.md` → Slim binary.
+- **`ratatui` is gone from the dependency tree.** It was declared and used by
+  nothing. That drops it and its own dependencies, clears RUSTSEC-2026-0002
+  (the `lru` 0.12.5 copy came only from there) and half of RUSTSEC-2026-0253,
+  and leaves one parent behind the `paste` waiver instead of two.
+
+### Fixed
+
+- **`Image` paths are resolved against the image jail, not the process's
+  working directory.** `validate_image_path` checked one path and the caller
+  then opened another, so `Image.new("public/cover.png")` only worked when
+  the server had been started from inside the application directory, and
+  left a window between the check and the open. The validated path is now
+  the one opened.
+- **`System.run` and `System.run_sync` accept an argv array.** The
+  interpreter has always taken either a command line or `["cmd", "arg"]` —
+  the form that needs no shell and no quoting — but the type environment
+  declared `String`, so the array was refused before it ran, and a caller
+  who wrapped the call in `rescue` saw nothing happen at all.
 
 ## [2.0.7] - 2026-09-06
 

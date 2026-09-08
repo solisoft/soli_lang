@@ -257,6 +257,9 @@ pub fn run() {
             target,
             update_url,
             update_key,
+            eui,
+            no_db,
+            db_url,
         } => commands::desktop::run(commands::desktop::DesktopBuildArgs {
             folder,
             app_id,
@@ -269,12 +272,16 @@ pub fn run() {
             target: target.as_deref(),
             update_url: update_url.as_deref(),
             update_key: update_key.as_deref(),
+            eui: eui.as_deref(),
+            no_db: *no_db,
+            db_url: db_url.as_deref(),
         }),
         Command::DesktopRegisterProtocol {
             exe,
             scheme,
             app_name,
         } => commands::desktop::run_register_protocol(exe, scheme, app_name),
+        Command::EuiOpen { url, allow } => commands::eui::open(url, allow),
     }
 }
 

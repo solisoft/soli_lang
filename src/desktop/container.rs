@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256};
 
 use crate::bundle::BundleReader;
 
-use super::manifest::{DesktopManifest, APP_ENTRY, DB_BINARY_ENTRY, MANIFEST_ENTRY, SEED_PREFIX};
+use super::manifest::{DatabaseMode, DesktopManifest, APP_ENTRY, DB_BINARY_ENTRY, MANIFEST_ENTRY, SEED_PREFIX};
 
 /// Inputs for assembling a desktop payload.
 pub struct ContainerInputs {
@@ -90,26 +90,35 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
     if inputs.encrypted_app.is_empty() {
         return Err("desktop container needs an application payload".to_string());
     }
-    if inputs.db_binary.is_empty() {
+    let embedded = inputs.manifest.database == DatabaseMode::Embedded;
+    if embedded && inputs.db_binary.is_empty() {
         return Err("desktop container needs a database binary".to_string());
+    }
+    if !embedded && !inputs.db_binary.is_empty() {
+        return Err("desktop container without an embedded database was given a database binary".to_string());
     }
 
     // The checksum covers the *uncompressed* bytes — what actually gets
     // executed — so it stays meaningful regardless of how they are stored.
-    inputs.manifest.solidb_sha256 = sha256_hex(&inputs.db_binary);
-
-    // The database binary dominates artifact size; deflate takes it to roughly
-    // a third. Compressing only this entry keeps the outer bundle a plain SOLB
-    // that existing readers still parse.
-    let stored_db = {
+    // An artifact without a database carries no binary and no checksum.
+    let stored_db = if embedded {
+        inputs.manifest.solidb_sha256 = sha256_hex(&inputs.db_binary);
+        // The database binary dominates artifact size; deflate takes it to
+        // roughly a third. Compressing only this entry keeps the outer bundle
+        // a plain SOLB that existing readers still parse.
         use std::io::Write;
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder
+        let bytes = encoder
             .write_all(&inputs.db_binary)
             .and_then(|()| encoder.finish())
-            .map_err(|e| format!("cannot compress the database binary: {}", e))?
+            .map_err(|e| format!("cannot compress the database binary: {}", e))?;
+        inputs.manifest.db_compression = Some(DEFLATE.to_string());
+        Some(bytes)
+    } else {
+        inputs.manifest.solidb_sha256 = String::new();
+        inputs.manifest.db_compression = None;
+        None
     };
-    inputs.manifest.db_compression = Some(DEFLATE.to_string());
     inputs.manifest.seed_sha256 = if inputs.seed.is_empty() {
         None
     } else {
@@ -119,7 +128,9 @@ pub fn build(mut inputs: ContainerInputs) -> Result<Vec<u8>, String> {
     let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
     entries.insert(MANIFEST_ENTRY.to_string(), inputs.manifest.to_json()?);
     entries.insert(APP_ENTRY.to_string(), inputs.encrypted_app);
-    entries.insert(DB_BINARY_ENTRY.to_string(), stored_db);
+    if let Some(stored_db) = stored_db {
+        entries.insert(DB_BINARY_ENTRY.to_string(), stored_db);
+    }
 
     for (name, bytes) in inputs.seed {
         validate_seed_name(&name)?;
@@ -185,12 +196,18 @@ pub fn open(payload: &[u8]) -> Result<DesktopContainer<'_>, String> {
     let encrypted_app = reader
         .get(APP_ENTRY)
         .ok_or_else(|| format!("desktop application is missing its payload ({})", APP_ENTRY))?;
-    let db_binary = reader.get(DB_BINARY_ENTRY).ok_or_else(|| {
-        format!(
-            "desktop application is missing its database binary ({})",
-            DB_BINARY_ENTRY
-        )
-    })?;
+    // An application without an embedded database carries no binary: nothing
+    // to restore, nothing to verify, nothing to start.
+    let db_binary = if manifest.database == DatabaseMode::Embedded {
+        reader.get(DB_BINARY_ENTRY).ok_or_else(|| {
+            format!(
+                "desktop application is missing its database binary ({})",
+                DB_BINARY_ENTRY
+            )
+        })?
+    } else {
+        &[][..]
+    };
 
     // Restore the stored form before verifying: the checksum is over the bytes
     // that will be executed, not over however they happen to be packed.
@@ -216,7 +233,7 @@ pub fn open(payload: &[u8]) -> Result<DesktopContainer<'_>, String> {
     // Verify before anything executes these bytes. A mismatch means the
     // artifact was truncated or altered after it was built.
     let actual = sha256_hex(&db_binary);
-    if actual != manifest.solidb_sha256 {
+    if manifest.database == DatabaseMode::Embedded && actual != manifest.solidb_sha256 {
         return Err(format!(
             "embedded database binary failed verification: manifest expects {}, found {} \
              — this application has been modified since it was built",
@@ -268,6 +285,22 @@ mod tests {
     use super::*;
     use crate::desktop::manifest::MANIFEST_VERSION;
 
+    #[test]
+    fn a_container_without_a_database_carries_none_and_opens() {
+        let mut m = manifest();
+        m.database = DatabaseMode::None;
+        let payload = build(ContainerInputs { encrypted_app: b"app".to_vec(), db_binary: Vec::new(), seed: Vec::new(), manifest: m.clone() }).unwrap();
+        let c = open(&payload).unwrap();
+        assert!(c.db_binary.is_empty());
+        assert_eq!(c.manifest.database, DatabaseMode::None);
+        assert_eq!(c.manifest.solidb_sha256, "");
+        assert!(BundleReader::new(&payload).unwrap().get(DB_BINARY_ENTRY).is_none());
+        // A binary handed to a database-less build is a mistake, not a feature.
+        let mut m2 = manifest();
+        m2.database = DatabaseMode::Remote { url: "http://db:6543".into() };
+        assert!(build(ContainerInputs { encrypted_app: b"app".to_vec(), db_binary: b"x".to_vec(), seed: Vec::new(), manifest: m2 }).is_err());
+    }
+
     fn manifest() -> DesktopManifest {
         DesktopManifest {
             manifest_version: MANIFEST_VERSION,
@@ -280,6 +313,8 @@ mod tests {
             db_compression: None,
             seed_version: Some("v1".to_string()),
             seed_sha256: None,
+            eui: None,
+            database: DatabaseMode::Embedded,
         }
     }
 

@@ -44,6 +44,12 @@ default = [
     "postgres",
     "mysql",
     "sqlite",
+    "ssh",
+    "office",
+    "pdf",
+    "cloud",
+    "lsp",
+    "mail",
 ]
 # Kitchen-sink alias (default set + native SoliDB driver).
 full = [
@@ -54,6 +60,12 @@ full = [
     "postgres",
     "mysql",
     "sqlite",
+    "ssh",
+    "office",
+    "pdf",
+    "cloud",
+    "lsp",
+    "mail",
     "solidb-driver",
 ]
 embedding = []
@@ -85,6 +97,34 @@ mysql = ["dep:mysql", "dep:r2d2_mysql", "dep:r2d2"]
 sqlite = ["dep:rusqlite", "dep:r2d2_sqlite", "dep:r2d2"]
 # Every SQL backend.
 sql = ["postgres", "mysql", "sqlite"]
+# `soli deploy`: rsync-over-SSH to a server. It is the single most
+# expensive thing in the binary that an application never calls — `ssh2`
+# compiles OpenSSL from source and links 2 MB of it — so an offline or
+# desktop build drops it. Unix-only either way.
+ssh = ["dep:ssh2"]
+# `Spreadsheet` — reading and writing xlsx and csv. `umya-spreadsheet` is
+# a megabyte of it and brings `image` 0.24 and `exr` along for pictures in
+# a sheet, which is why an application that never opens one should not pay
+# for them.
+office = ["dep:calamine", "dep:umya-spreadsheet", "dep:csv"]
+# `Pdf` — rendering, Factur-X, and PAdES signatures. The `soli-pdf` crate
+# beside this one brings printpdf, lopdf and a full SVG stack; the
+# signature half brings CMS and X.509.
+pdf = ["dep:soli-pdf", "dep:cms", "dep:x509-cert"]
+# `S3` and the S3 attachment service. Rusoto's generated bindings are a
+# few megabytes, and the crate is unmaintained (see .cargo/audit.toml);
+# disk attachments do not need it.
+cloud = ["dep:rusoto_s3", "dep:rusoto_core", "dep:rusoto_credential"]
+# `soli lsp` — the language server an editor talks to. A packaged
+# application never starts one.
+lsp = ["dep:tower-lsp"]
+# `Mailer`, `Imap` and `Pop3` — composing, sending and reading mail.
+# Without it the mailer prelude is empty and the three classes are absent.
+mail = ["dep:mail-builder", "dep:mail-parser"]
+eui = ["dep:eui-proto", "dep:blake3", "dep:ring"]
+# The EUI window inside the soli binary, for `soli desktop build --eui`:
+# winit, wgpu and the client crates. Servers do not need it.
+eui-desktop = ["eui", "dep:eui-client"]
 
 [dependencies]
 thiserror = "1.0"
@@ -101,8 +141,8 @@ mimalloc = { version = "0.1", default-features = false }
 # Decimal type for financial calculations
 rust_decimal = { version = "1.34", features = ["std", "serde"] }
 
-# TUI support
-ratatui = "0.26"
+# The REPL's screen handling and the test runner's progress line. (There
+# was a `ratatui` here; nothing in the tree ever used it.)
 crossterm = "0.28"
 gag = "1.0"
 
@@ -251,9 +291,9 @@ pulldown-cmark = "0.12"
 ammonia = "4"
 
 # S3 support
-rusoto_s3 = "0.48"
-rusoto_core = "0.48"
-rusoto_credential = "0.48"
+rusoto_s3 = { version = "0.48", optional = true }
+rusoto_core = { version = "0.48", optional = true }
+rusoto_credential = { version = "0.48", optional = true }
 
 # Archive extraction for git archive
 flate2 = "1.0"
@@ -280,9 +320,9 @@ webp = "0.3"
 # `Spreadsheet.excel*` on an *untrusted* .xlsx/.ods — treat those inputs as
 # trusted until upstream updates. The *direct* quick-xml dep (SOAP / SAML XML,
 # the remotely-reachable surface) is already fixed on 0.41.
-calamine = "0.26"
-csv = "1.3"
-umya-spreadsheet = "1.0"
+calamine = { version = "0.26", optional = true }
+csv = { version = "1.3", optional = true }
+umya-spreadsheet = { version = "1.0", optional = true }
 
 # Pinned transitive dependency. Floor >=0.3.47 fixes RUSTSEC-2026-0009; ceiling
 # <0.3.52 keeps `cookie` 0.18.1 building — time 0.3.52 changed `Parsable::parse`
@@ -302,7 +342,7 @@ time = ">=0.3.47, <0.3.52"
 # Moved to the cfg(unix) dependency section below.
 
 # Language Server Protocol (used by `soli lsp`)
-tower-lsp = "0.20"
+tower-lsp = { version = "0.20", optional = true }
 log = "0.4"
 env_logger = "0.11"
 # POP3 email reading: sync rustls over std TcpStream + MIME parsing.
@@ -310,19 +350,26 @@ env_logger = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-pki-types = { version = "1", features = ["std"] }
 webpki-roots = "1.0.7"
-mail-parser = "0.11.3"
+mail-parser = { version = "0.11.3", optional = true }
 # Outbound email (Mailer): RFC 5322 / MIME message construction. The SMTP
 # transport itself is hand-rolled over the sync rustls stream above (see
 # builtins/mailer/smtp.rs), mirroring the POP3 client.
-mail-builder = "0.4"
+mail-builder = { version = "0.4", optional = true }
 
 # JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
-soli-pdf = { path = "pdf" }
+soli-pdf = { path = "pdf", optional = true }
 soli-codegraph = { path = "codegraph", optional = true }
+# EUI: the binary UI protocol. Off by default; `--features eui` adds the
+# `/_eui/session/<component>` socket and the `router_eui` builtin and changes
+# nothing else. The wire crate has no dependencies of its own.
+eui-proto = { path = "../eui/crates/eui-proto", optional = true }
+eui-client = { path = "../eui/crates/eui-client", optional = true }
+ring = { version = "0.17", optional = true }
+blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
 toml = "0.8"
-cms = { version = "0.2", features = ["std"] }
-x509-cert = "0.2"
+cms = { version = "0.2", features = ["std"], optional = true }
+x509-cert = { version = "0.2", optional = true }
 # SQL document adapters — features `postgres` / `mysql` (on by default).
 postgres = { version = "0.19.14", features = ["with-serde_json-1"], optional = true }
 r2d2 = { version = "0.8.10", optional = true }
@@ -373,7 +420,7 @@ windows-sys = { version = "0.59", features = [
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.5"
 nix = { version = "0.29", features = ["signal", "process"] }
-ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+ssh2 = { version = "0.9", features = ["vendored-openssl"], optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4"

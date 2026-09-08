@@ -45,6 +45,30 @@ In-app `Updater.check()` / `Updater.apply()` work on desktop builds that were
 packaged with `--update-url` / `--update-key` (the outer payload descriptor is
 stashed at boot).
 
+## A native window instead of a browser
+
+With a soli built with `--features eui-desktop`, an app that has EUI
+components (see [EUI](/docs/core-concepts/eui)) can be packaged to open one
+of them in its own window — no browser, no HTML:
+
+```bash
+soli desktop build ./myapp --app-id com.example.myapp --eui dashboard
+```
+
+`dashboard` is a component name given to `router_eui`. The artifact still
+carries the runtime, the encrypted app and its database; at launch the server
+runs on a thread and the embedded EUI client draws the component on the GPU
+in a window titled after the app. The loopback gate is armed with a session
+only that client holds, presented as a cookie on every request, so no other
+local process can reach the app. The EUI publisher key is generated per
+install in the app's state directory — a bundle never carries the developer's
+`config/eui_publisher.pkcs8`, whatever the build. Capabilities the manifest
+asks for are granted: the person installed the app.
+
+`--eui` cannot be combined with `--target` yet, because a runtime for another
+target is fetched prebuilt without the window. `SOLI_DESKTOP_NO_WINDOW=1`
+prints the session URL and cookie and serves without opening anything.
+
 ## What the artifact contains
 
 ```
@@ -79,6 +103,8 @@ able to revoke an installation.
 | `--target <t>` | Cross-build: `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`. |
 | `--solidb <path>` | Embed a locally built database binary instead of downloading the published release. |
 | `--solidb-version <v>` | Database release to download. Pinned by default. |
+| `--no-db` | Embed and start no database: for an app whose state lives in memory or behind an API. The artifact loses the 18 MB database binary and the launch loses its database process. |
+| `--db-url <url>` | Embed no database; at launch the app's model layer and session store point at this `solidb` address. Credentials come from the app's `.env` or the environment, as they do under `soli serve`. |
 | `--seed <dir>` | Directory of `<collection>.ndjson` reference data. |
 | `--protect` | Compile the app to a binary AST, stripping source and comments. |
 
@@ -233,6 +259,38 @@ A hard `kill -9` skips this; the leftover directory is swept at the next launch.
 A typical artifact is 70–80 MB, mostly the database binary (stored compressed,
 roughly a third of its size). It contains everything: runtime, application,
 database and reference data.
+
+Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux,
+and the last row on 2026-09-08:
+
+| | runtime | artifact |
+|---|---:|---:|
+| `soli` as installed (no EUI) | 66 MB | — |
+| `--features eui-desktop`, default features | 78 MB | 96 MB |
+| `--no-default-features --features eui-desktop` (2026-09-07) | 61 MB | 80 MB |
+| `--features eui-desktop`, default features, `--no-db` | 78 MB | 76 MB |
+| `--no-default-features --features eui-desktop` (2026-09-08) | **46 MB** | **52.6 MB** (`--no-db`) |
+
+A desktop artifact starts two server workers, not one per core: each
+worker is an interpreter with every handler warmed, and one person at one
+window needs no more (measured on the feed example: 117 MB of runtime at
+rest with eight workers, 68 MB with two). `--workers N` or `SOLI_WORKERS`
+override it.
+
+The EUI window costs 12 MB. `--no-db` removes the database binary (about
+20 MB of artifact) and the database process at launch; `--db-url` does the
+same for an app whose database is elsewhere.
+
+The runtime built for an offline application is the last row, and what it
+drops is now six named features — `ssh`, `office`, `pdf`, `cloud`, `mail`,
+`lsp` — on top of the database clients and the code-graph grammars
+([Configuration → Slim binary](configuration.md#slim-binary-cargo-features)).
+That took the runtime from 61 MB to 46. Dropping a browser still does not
+make the artifact small: what remains is the interpreter itself (10 MB of
+machine code before any dependency), the HTTP stack its own server runs
+on, and the window — wgpu, its shader translator, text shaping, the
+accessibility bridge. The EUI project's ~15 MB target is not reachable by
+subtraction from here, and the numbers above are what it costs today.
 
 ## Staying current
 

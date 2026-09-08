@@ -25,6 +25,7 @@ pub mod jobs;
 pub mod lexer;
 pub mod lint;
 pub mod live;
+#[cfg(feature = "lsp")]
 pub mod lsp;
 pub mod metrics;
 pub mod migration;

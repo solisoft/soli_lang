@@ -30,6 +30,16 @@ soli desktop register-protocol --exe ./myapp --scheme myapp --name "My App"</cod
         In-app <code class="text-cyan-400">Updater.check()</code> works when the artifact was built with <code class="text-cyan-400">--update-url</code> / <code class="text-cyan-400">--update-key</code>.
     </p>
 
+    <h2 id="eui-window" class="text-3xl font-bold text-white mb-4 scroll-mt-24">A native window instead of a browser</h2>
+    <p class="text-gray-400 mb-4">With a soli built with <code class="text-cyan-400">--features eui-desktop</code>, an app that has <a href="/docs/core-concepts/eui" class="text-amber-400 hover:underline">EUI</a> components can be packaged to open one of them in its own window &mdash; no browser, no HTML:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli desktop build ./myapp --app-id com.example.myapp --eui dashboard</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">dashboard</code> is a component name given to <code class="text-cyan-400">router_eui</code>. The artifact still carries the runtime, the encrypted app and its database; at launch the server runs on a thread and the embedded EUI client draws the component on the GPU in a window titled after the app. The loopback gate is armed with a session only that client holds, presented as a cookie on every request, so no other local process can reach the app. The EUI publisher key is generated per install in the app's state directory &mdash; a bundle never carries the developer's <code class="text-cyan-400">config/eui_publisher.pkcs8</code>, whatever the build. Capabilities the manifest asks for are granted: the person installed the app.</p>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">--eui</code> cannot be combined with <code class="text-cyan-400">--target</code> yet, because a runtime for another target is fetched prebuilt without the window. <code class="text-cyan-400">SOLI_DESKTOP_NO_WINDOW=1</code> prints the session URL and cookie and serves without opening anything. The same build also answers <code class="text-cyan-400">soli eui &lt;wss://host/_eui/session/app&gt;</code> to open any EUI application in a window.</p>
+
     <h2 id="contents" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What the artifact contains</h2>
     <pre class="mb-6"><code class="text-sm">[ soli runtime ]
 [ manifest        — app identity, versions, checksums ]
@@ -64,6 +74,8 @@ soli desktop register-protocol --exe ./myapp --scheme myapp --name "My App"</cod
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--target &lt;t&gt;</code></td><td class="py-3 px-4">Cross-build: <code class="text-cyan-400">linux-amd64</code>, <code class="text-cyan-400">linux-arm64</code>, <code class="text-cyan-400">darwin-amd64</code>, <code class="text-cyan-400">darwin-arm64</code>, <code class="text-cyan-400">windows-amd64</code>.</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--solidb &lt;path&gt;</code></td><td class="py-3 px-4">Embed a locally built database binary instead of downloading the published release.</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--solidb-version &lt;v&gt;</code></td><td class="py-3 px-4">Database release to download. Pinned by default.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--no-db</code></td><td class="py-3 px-4">Embed and start no database: for an app whose state lives in memory or behind an API. The artifact loses the 18 MB database binary and the launch loses its database process.</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--db-url &lt;url&gt;</code></td><td class="py-3 px-4">Embed no database; at launch the app's model layer and session store point at this <code class="text-cyan-400">solidb</code> address. Credentials come from the app's <code class="text-cyan-400">.env</code> or the environment, as under <code class="text-cyan-400">soli serve</code>.</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-cyan-400">--seed &lt;dir&gt;</code></td><td class="py-3 px-4">Directory of <code class="text-cyan-400">&lt;collection&gt;.ndjson</code> reference data.</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">--protect</code></td><td class="py-3 px-4">Compile the app to a binary AST, stripping source and comments.</td></tr>
             </tbody>
@@ -178,6 +190,15 @@ soli desktop build ./myapp --app-id com.example.myapp --target windows-amd64</co
     <p class="text-gray-400 mb-12">
         A typical artifact is 70&ndash;80&nbsp;MB, mostly the database binary (stored compressed, roughly a third of its size). It contains everything: runtime, application, database and reference data.
     </p>
+
+    <p class="text-gray-400 mb-4">Measured on 2026-09-07 for the EUI <code class="text-cyan-400">counter-app</code> example, x86-64 Linux:</p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6"><table class="w-full text-left text-sm"><thead class="text-gray-300"><tr><th class="py-3 px-4"></th><th class="py-3 px-4 text-right">runtime</th><th class="py-3 px-4 text-right">artifact</th></tr></thead><tbody class="text-gray-400 divide-y divide-white/10">
+<tr><td class="py-3 px-4"><code class="text-cyan-400">soli</code> as installed (no EUI)</td><td class="py-3 px-4 text-right">66 MB</td><td class="py-3 px-4 text-right">&mdash;</td></tr>
+<tr><td class="py-3 px-4"><code class="text-cyan-400">--features eui-desktop</code>, default features</td><td class="py-3 px-4 text-right">78 MB</td><td class="py-3 px-4 text-right">96 MB</td></tr>
+<tr><td class="py-3 px-4"><code class="text-cyan-400">--no-default-features --features eui-desktop</code></td><td class="py-3 px-4 text-right">61 MB</td><td class="py-3 px-4 text-right">80 MB</td></tr>
+<tr><td class="py-3 px-4"><code class="text-cyan-400">--features eui-desktop</code>, default features, <code class="text-cyan-400">--no-db</code></td><td class="py-3 px-4 text-right">78 MB</td><td class="py-3 px-4 text-right">76 MB</td></tr>
+</tbody></table></div>
+    <p class="text-gray-400 mb-12">The EUI window costs 12 MB. Dropping a browser does not make the artifact small: the runtime and the database dominate, and the EUI project's own target of a ~15 MB desktop artifact needs a runtime built for it &mdash; the interpreter without the server features an offline app never uses. That is open work; these numbers are the honest starting point.</p>
 
     <h2 id="staying-current" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Staying current</h2>
     <p class="text-gray-400 mb-4">

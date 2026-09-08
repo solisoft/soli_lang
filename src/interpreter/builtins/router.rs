@@ -718,6 +718,41 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // router_eui(component, handler, view) - Register an EUI component: a
+    // LiveView handler (`{event, params, state} -> state`) plus a view action
+    // (`state -> node tree hash`) served over `/_eui/session/<component>`.
+    #[cfg(feature = "eui")]
+    env.define(
+        "router_eui".to_string(),
+        Value::NativeFunction(NativeFunction::new("router_eui", Some(3), |args| {
+            let component = args[0].to_string();
+            let handler = args[1].to_string();
+            let view = args[2].to_string();
+            crate::live::socket::register_liveview_route(&component, &handler);
+            crate::serve::eui::register_view(&component, &view);
+            Ok(Value::Null)
+        })),
+    );
+
+    // eui_capabilities("clipboard.read", ...) — what the EUI manifest asks the
+    // client for. The person still has to allow each one; nothing is granted
+    // by asking.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_capabilities".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_capabilities", None, |args| {
+            let mut names = Vec::new();
+            for arg in args {
+                match arg {
+                    Value::Array(items) => names.extend(items.borrow().iter().map(|i| i.to_string())),
+                    other => names.push(other.to_string()),
+                }
+            }
+            crate::serve::eui::manifest::request_capabilities(&names)?;
+            Ok(Value::Null)
+        })),
+    );
+
     // live_rooms(component, ...) — declare components that may be mounted in a
     // shared room via `?room=<name>` / `data-live-room`.
     //

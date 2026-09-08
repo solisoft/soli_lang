@@ -233,6 +233,8 @@ mod tests {
             db_compression: None,
             seed_version: Some("v1".to_string()),
             seed_sha256: sha.map(String::from),
+            eui: None,
+            database: crate::desktop::manifest::DatabaseMode::Embedded,
         }
     }
 

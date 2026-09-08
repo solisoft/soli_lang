@@ -39,16 +39,23 @@ fn current_image_jail() -> Option<&'static PathBuf> {
     IMAGE_JAIL.get()
 }
 
-/// SEC-063: validate a user-supplied path against the image jail.
-/// Relative paths are joined to the jail root; absolute paths must
-/// be within the jail after canonicalization. Write paths (e.g.
-/// `Image.to_file`) target a file that doesn't exist yet, so we
-/// canonicalize the parent directory and re-join the file name —
-/// canonicalizing the full path would silently fall back to the
-/// raw, traversal-bearing input.
-fn validate_image_path(path: &str, op: &str) -> Result<(), String> {
+/// SEC-063: validate a user-supplied path against the image jail, and
+/// return the path to actually use. Relative paths are joined to the jail
+/// root; absolute paths must be within the jail after canonicalization.
+/// Write paths (e.g. `Image.to_file`) target a file that doesn't exist
+/// yet, so we canonicalize the parent directory and re-join the file name
+/// — canonicalizing the full path would silently fall back to the raw,
+/// traversal-bearing input.
+///
+/// The resolved path is returned, not discarded: a caller that validated
+/// one path and then opened another was resolving a relative path against
+/// the process's working directory rather than the jail — which is the
+/// application root the `File` builtins use — so `Image.new("public/x.png")`
+/// only worked when the server happened to be started from inside the
+/// application. It also left a window between the check and the open.
+fn validate_image_path(path: &str, op: &str) -> Result<PathBuf, String> {
     let Some(jail) = current_image_jail() else {
-        return Ok(());
+        return Ok(PathBuf::from(path));
     };
 
     let candidate = if std::path::Path::new(path).is_absolute() {
@@ -96,7 +103,7 @@ fn validate_image_path(path: &str, op: &str) -> Result<(), String> {
             canonical_jail.display()
         ));
     }
-    Ok(())
+    Ok(canonical_path)
 }
 
 /// SEC-019: decompression-bomb defense for the image builtins. A 100 KB
@@ -301,12 +308,13 @@ fn execute_plan(plan: &ImagePlan) -> Result<PlanResult, String> {
     // replays stored plans from worker threads, and a plan value can be
     // constructed once and run later, so the builder-time check alone is a
     // TOCTOU.
-    validate_image_path(&plan.src, "ImagePlan.run")?;
-    if let Some(dst) = &plan.dst {
-        validate_image_path(dst, "ImagePlan.run")?;
-    }
+    let src = validate_image_path(&plan.src, "ImagePlan.run")?;
+    let dst = match &plan.dst {
+        Some(dst) => Some(validate_image_path(dst, "ImagePlan.run")?),
+        None => None,
+    };
     let mut reader =
-        ImageReader::open(&plan.src).map_err(|e| format!("Failed to open image: {}", e))?;
+        ImageReader::open(&src).map_err(|e| format!("Failed to open image: {}", e))?;
     let detected_format = reader.format();
     // SEC-019: refuse to allocate more than `image_max_alloc_bytes` for a
     // single decode; refuse images whose declared dimensions exceed the
@@ -319,7 +327,7 @@ fn execute_plan(plan: &ImagePlan) -> Result<PlanResult, String> {
         img = apply_plan_op(img, op);
     }
     let final_format = plan.format.or(detected_format);
-    if let Some(dst) = &plan.dst {
+    if let Some(dst) = &dst {
         let format =
             final_format.unwrap_or_else(|| ImageFormat::from_path(dst).unwrap_or(ImageFormat::Png));
         if format == ImageFormat::Jpeg {
@@ -685,18 +693,18 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.to_file requires string path".to_string()),
             };
-            validate_image_path(&path, "Image.to_file")?;
+            let resolved = validate_image_path(&path, "Image.to_file")?;
             with_image_data(args, |data| {
                 let format = data
                     .format
-                    .unwrap_or_else(|| ImageFormat::from_path(&*path).unwrap_or(ImageFormat::Png));
+                    .unwrap_or_else(|| ImageFormat::from_path(&resolved).unwrap_or(ImageFormat::Png));
                 if format == ImageFormat::Jpeg {
                     let buffer = encode_image(data, format)?;
-                    std::fs::write(&*path, buffer)
+                    std::fs::write(&resolved, buffer)
                         .map_err(|e| format!("Failed to write file: {}", e))?;
                 } else {
                     data.image
-                        .save(&*path)
+                        .save(&resolved)
                         .map_err(|e| format!("Failed to save image: {}", e))?;
                 }
                 Ok(Value::Bool(true))
@@ -714,9 +722,9 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.new requires string path".to_string()),
             };
-            validate_image_path(&path, "Image.new")?;
+            let resolved = validate_image_path(&path, "Image.new")?;
             let mut reader =
-                ImageReader::open(&*path).map_err(|e| format!("Failed to open image: {}", e))?;
+                ImageReader::open(&resolved).map_err(|e| format!("Failed to open image: {}", e))?;
             let format = reader.format();
             // SEC-019: decompression-bomb defense.
             reader.limits(safe_image_limits());
@@ -742,9 +750,9 @@ fn build_image_class() -> Rc<Class> {
             // SEC-063: the plan API used to skip the jail entirely, so a
             // user-influenced path read (and, via save_to, wrote) anywhere the
             // process could reach, while Image.new/to_file were confined.
-            validate_image_path(&path, "Image.plan")?;
+            let resolved = validate_image_path(&path, "Image.plan")?;
             Ok(plan_to_value(ImagePlan {
-                src: path.to_string(),
+                src: resolved.to_string_lossy().into_owned(),
                 ops: Vec::new(),
                 format: None,
                 quality: 85,
@@ -1039,8 +1047,9 @@ fn build_image_plan_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("ImagePlan.save_to requires string path".to_string()),
             };
-            validate_image_path(&path, "ImagePlan.save_to")?;
-            extend_plan(args, |p| p.dst = Some(path.to_string()))
+            let resolved = validate_image_path(&path, "ImagePlan.save_to")?;
+            let dst = resolved.to_string_lossy().into_owned();
+            extend_plan(args, |p| p.dst = Some(dst.clone()))
         })),
     );
     native_methods.insert(

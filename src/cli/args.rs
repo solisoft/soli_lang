@@ -368,12 +368,24 @@ pub enum Command {
         target: Option<String>,
         update_url: Option<String>,
         update_key: Option<String>,
+        /// `--eui <component>`: open this EUI component in a native window.
+        eui: Option<String>,
+        /// `--no-db`: embed and start no database.
+        no_db: bool,
+        /// `--db-url <url>`: no embedded database; the app uses this one.
+        db_url: Option<String>,
     },
     /// `soli desktop register-protocol --exe <path> --scheme <s> [--name <n>]`
     DesktopRegisterProtocol {
         exe: String,
         scheme: String,
         app_name: String,
+    },
+    /// `soli eui <wss://host/_eui/session/app> [--allow cap,cap]` — open an
+    /// EUI application in a native window (needs the `eui-desktop` feature).
+    EuiOpen {
+        url: String,
+        allow: Vec<String>,
     },
     /// `soli jobs` / `soli worker` — run a standalone job worker, or
     /// inspect/retry/cancel queue rows without starting HTTP.
@@ -476,7 +488,7 @@ pub fn print_usage() {
     eprintln!("       soli generate app_links [--android-package P] [--sha256 H] [--apple-app-id ID] [folder]");
     eprintln!("       soli generate offline [folder]");
     eprintln!(
-        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]"
+        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--static|--app] [--assets DIR]\n       soli eui <wss://host/_eui/session/app> [--allow cap,cap]"
     );
     eprintln!("       soli jobs [folder] [--workers N]");
     eprintln!("       soli jobs list [--queue NAME] [--state STATE] [folder]");
@@ -2343,6 +2355,41 @@ pub fn parse_args() -> Options {
                 };
                 return options;
             }
+            "eui" => {
+                i += 1;
+                let mut url: Option<String> = None;
+                let mut allow: Vec<String> = Vec::new();
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--allow" => {
+                            i += 1;
+                            let list = args.get(i).cloned().unwrap_or_else(|| {
+                                eprintln!("--allow requires a value, e.g. --allow clipboard.read");
+                                process::exit(64);
+                            });
+                            allow.extend(list.split(',').map(str::trim).filter(|c| !c.is_empty()).map(String::from));
+                        }
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option '{}' for soli eui", other);
+                            process::exit(64);
+                        }
+                        other => {
+                            if url.is_some() {
+                                eprintln!("Unexpected argument '{}'", other);
+                                process::exit(64);
+                            }
+                            url = Some(other.to_string());
+                        }
+                    }
+                    i += 1;
+                }
+                let Some(url) = url else {
+                    eprintln!("Usage: soli eui <wss://host/_eui/session/app> [--allow cap,cap]");
+                    process::exit(64);
+                };
+                options.command = Command::EuiOpen { url, allow };
+                return options;
+            }
             "desktop" => {
                 i += 1;
                 match args.get(i).map(|s| s.as_str()) {
@@ -2429,6 +2476,9 @@ pub fn parse_args() -> Options {
                 let mut target: Option<String> = None;
                 let mut update_url: Option<String> = None;
                 let mut update_key: Option<String> = None;
+                let mut eui: Option<String> = None;
+                let mut no_db = false;
+                let mut db_url: Option<String> = None;
 
                 // Same positional-anywhere convention as `soli build`.
                 while i < args.len() {
@@ -2451,6 +2501,9 @@ pub fn parse_args() -> Options {
                         "--target" => target = Some(take_value(&mut i, "--target")),
                         "--update-url" => update_url = Some(take_value(&mut i, "--update-url")),
                         "--update-key" => update_key = Some(take_value(&mut i, "--update-key")),
+                        "--eui" => eui = Some(take_value(&mut i, "--eui")),
+                        "--no-db" => no_db = true,
+                        "--db-url" => db_url = Some(take_value(&mut i, "--db-url")),
                         "--protect" => protect = true,
                         other if other.starts_with('-') => {
                             eprintln!("Unknown option '{}' for desktop build", other);
@@ -2484,6 +2537,9 @@ pub fn parse_args() -> Options {
                     target,
                     update_url,
                     update_key,
+                    eui,
+                    no_db,
+                    db_url,
                 };
                 return options;
             }
