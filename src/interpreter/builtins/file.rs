@@ -89,7 +89,9 @@ fn resolve_path(path: &str, op: &str) -> Result<PathBuf, String> {
 /// Exposed for sibling builtins that read caller-supplied paths through
 /// third-party crates (the PDF image loader, fonts, spreadsheets), so the
 /// SEC-006 containment rule is applied once rather than reimplemented — or, as
-/// it was, skipped.
+/// it was, skipped. Those callers are behind the `office` and `pdf`
+/// features, so a build without either has none.
+#[cfg_attr(not(any(feature = "office", feature = "pdf")), allow(dead_code))]
 pub(crate) fn resolve_readable_path(path: &str, op: &str) -> Result<PathBuf, String> {
     resolve_with_jail(path, op, current_jail())
 }

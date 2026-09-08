@@ -998,12 +998,21 @@ pub fn run_repl() {
     solilang::repl_tui::run_tui_repl().unwrap();
 }
 
+#[cfg(feature = "lsp")]
 pub fn run_lsp() {
     // Logs go to stderr so they don't corrupt the LSP stdio framing.
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .target(env_logger::Target::Stderr)
         .try_init();
     solilang::lsp::start_lsp();
+}
+
+/// The same command in a build without the `lsp` feature: an editor gets
+/// a plain refusal on stderr instead of a server that never answers.
+#[cfg(not(feature = "lsp"))]
+pub fn run_lsp() {
+    eprintln!("This build of soli has no language server: it was built without the `lsp` feature.");
+    std::process::exit(1);
 }
 
 pub fn run_lint(paths: &[String]) {
@@ -1337,12 +1346,17 @@ fn print_unified_diff(a: &str, b: &str) {
 
 /// Deploy to a remote server over SSH.
 ///
-/// Unix-only, because it is built on ssh2 (see Cargo.toml). The non-unix arm
-/// reports that rather than failing the build, so the rest of the CLI stays
-/// available on platforms that cannot deploy.
-#[cfg(not(unix))]
+/// Unix-only, because it is built on ssh2 (see Cargo.toml), and present only
+/// with the `ssh` feature, which the default build has. The other arm reports
+/// that rather than failing the build, so the rest of the CLI stays available
+/// in a build that cannot deploy.
+#[cfg(not(all(unix, feature = "ssh")))]
 pub fn run_deploy(_folder: Option<&str>) {
-    eprintln!("`soli deploy` is only available on Unix systems.");
+    if cfg!(unix) {
+        eprintln!("This build of soli has no `deploy`: it was built without the `ssh` feature.");
+    } else {
+        eprintln!("`soli deploy` is only available on Unix systems.");
+    }
     std::process::exit(1);
 }
 
@@ -1478,7 +1492,7 @@ fn resolve_proxy_url(folder: &Path, server: Option<&str>) -> Option<String> {
         .filter(|url| !url.is_empty())
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "ssh"))]
 pub fn run_deploy(folder: Option<&str>) {
     let path = if let Some(f) = folder {
         Path::new(f).to_path_buf()

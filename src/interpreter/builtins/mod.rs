@@ -67,6 +67,7 @@ pub mod http_class;
 pub mod http_log;
 pub mod i18n;
 pub mod image;
+#[cfg(feature = "mail")]
 pub mod imap;
 pub mod job_log;
 pub mod jobs;
@@ -76,8 +77,25 @@ pub mod kv;
 pub mod kv_log;
 pub mod logger;
 pub mod mail_outbox;
+#[cfg(feature = "mail")]
 pub mod mail_parse;
+#[cfg(feature = "mail")]
 pub mod mailer;
+
+/// Without the `mail` feature there is no mailer, and the prelude it would
+/// install is empty — so the four places that install it, and the job
+/// worker, need no `cfg` of their own.
+#[cfg(not(feature = "mail"))]
+pub mod mailer {
+    use crate::interpreter::environment::Environment;
+    use crate::interpreter::Interpreter;
+
+    /// No prelude to install.
+    pub fn ensure_prelude(_interpreter: &mut Interpreter) {}
+
+    /// No builtins to register.
+    pub fn register_mailer_builtins(_env: &mut Environment) {}
+}
 pub mod markdown;
 pub mod math;
 pub mod mock_http;
@@ -86,13 +104,18 @@ pub mod money;
 pub mod named_routes;
 pub mod nanoid;
 pub mod native;
+#[cfg(feature = "pdf")]
 pub mod pades;
+#[cfg(feature = "pdf")]
 pub mod pades_tsa;
 #[cfg(feature = "paseto")]
 pub mod paseto;
+#[cfg(feature = "pdf")]
 pub mod pdf;
+#[cfg(feature = "pdf")]
 pub mod pdf_markdown;
 pub mod permit;
+#[cfg(feature = "mail")]
 pub mod pop3;
 pub mod primitives;
 pub mod push;
@@ -106,6 +129,7 @@ pub mod response_helpers;
 pub mod retry;
 pub mod router;
 pub mod rsa_key;
+#[cfg(feature = "cloud")]
 pub mod s3;
 pub mod secure_cookies;
 pub mod security_headers;
@@ -119,6 +143,7 @@ pub mod session_solikv;
 pub mod soap;
 pub mod solidb;
 pub mod solikv;
+#[cfg(feature = "office")]
 pub mod spreadsheet;
 pub mod sql_ddl;
 pub mod streaming;
@@ -445,6 +470,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     http_class::register_http_class(env);
 
     // Register S3 class
+    #[cfg(feature = "cloud")]
     s3::register_s3_class(env);
 
     // Register SOAP class
@@ -485,9 +511,11 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     rsa_key::register_rsa_key_builtins(env);
 
     // Register Pop3 email-reading class
+    #[cfg(feature = "mail")]
     pop3::register_pop3_class(env);
 
     // Register Imap email-reading class
+    #[cfg(feature = "mail")]
     imap::register_imap_class(env);
 
     // Register outbound-email (Mailer) native builtins. The `Mailer`/`Message`
@@ -612,6 +640,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     vapid::register_vapid_builtins(env);
 
     // Register PDF / Factur-X builtins
+    #[cfg(feature = "pdf")]
     pdf::register_pdf_builtins(env);
 
     // Register test-only builtins (skipped in serve mode)
@@ -696,6 +725,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     system::register_system_builtins(env);
 
     // Register spreadsheet builtins (Spreadsheet.csv, Spreadsheet.excel, etc.)
+    #[cfg(feature = "office")]
     spreadsheet::register_spreadsheet_builtins(env);
 
     // Register cookie builtins (set_cookie) — registered last so they win over

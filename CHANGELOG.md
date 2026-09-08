@@ -138,6 +138,26 @@
   can stop what it started — a player it spawned, a device it borrowed. A
   component with no `disconnect` branch returns its state unchanged.
 
+### Changed
+
+- **Six subsystems became cargo features, all on by default: `ssh`,
+  `office`, `pdf`, `cloud`, `mail`, `lsp`.** A default build is the same
+  product it was; what changes is that a build can now drop what an
+  application never calls. They cover `soli deploy` (which links a vendored
+  OpenSSL through `ssh2`), the `Spreadsheet` class, the `Pdf` class and its
+  PAdES signatures, `S3` and the `s3` attachment service, `Mailer`/`Imap`/
+  `Pop3`, and the language server. A class whose feature is off is not
+  registered — an undefined variable rather than a missing symbol — and
+  `soli deploy` and `soli lsp` name the feature they were built without.
+  Measured on x86-64 Linux, release, stripped, with the EUI window
+  (`--features eui-desktop`): the runtime a packaged application embeds went
+  from 61 MB to **46 MB**, against 78 MB for the default set. See
+  `www/docs/configuration.md` → Slim binary.
+- **`ratatui` is gone from the dependency tree.** It was declared and used by
+  nothing. That drops it and its own dependencies, clears RUSTSEC-2026-0002
+  (the `lru` 0.12.5 copy came only from there) and half of RUSTSEC-2026-0253,
+  and leaves one parent behind the `paste` waiver instead of two.
+
 ### Fixed
 
 - **`Image` paths are resolved against the image jail, not the process's

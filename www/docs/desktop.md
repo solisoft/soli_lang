@@ -260,14 +260,16 @@ A typical artifact is 70–80 MB, mostly the database binary (stored compressed,
 roughly a third of its size). It contains everything: runtime, application,
 database and reference data.
 
-Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux:
+Measured on 2026-09-07 for the EUI `counter-app` example, x86-64 Linux,
+and the last row on 2026-09-08:
 
 | | runtime | artifact |
 |---|---:|---:|
 | `soli` as installed (no EUI) | 66 MB | — |
 | `--features eui-desktop`, default features | 78 MB | 96 MB |
-| `--no-default-features --features eui-desktop` | 61 MB | 80 MB |
+| `--no-default-features --features eui-desktop` (2026-09-07) | 61 MB | 80 MB |
 | `--features eui-desktop`, default features, `--no-db` | 78 MB | 76 MB |
+| `--no-default-features --features eui-desktop` (2026-09-08) | **46 MB** | — |
 
 A desktop artifact starts two server workers, not one per core: each
 worker is an interpreter with every handler warmed, and one person at one
@@ -277,11 +279,18 @@ override it.
 
 The EUI window costs 12 MB. `--no-db` removes the database binary (about
 20 MB of artifact) and the database process at launch; `--db-url` does the
-same for an app whose database is elsewhere. Dropping a browser does not
-make the artifact small: the runtime and the database dominate, and the EUI project's own
-target of a ~15 MB desktop artifact needs a runtime built for it — the
-interpreter without the server features an offline app never uses. That is
-open work, and the numbers above are the honest starting point.
+same for an app whose database is elsewhere.
+
+The runtime built for an offline application is the last row, and what it
+drops is now six named features — `ssh`, `office`, `pdf`, `cloud`, `mail`,
+`lsp` — on top of the database clients and the code-graph grammars
+([Configuration → Slim binary](configuration.md#slim-binary-cargo-features)).
+That took the runtime from 61 MB to 46. Dropping a browser still does not
+make the artifact small: what remains is the interpreter itself (10 MB of
+machine code before any dependency), the HTTP stack its own server runs
+on, and the window — wgpu, its shader translator, text shaping, the
+accessibility bridge. The EUI project's ~15 MB target is not reachable by
+subtraction from here, and the numbers above are what it costs today.
 
 ## Staying current
 

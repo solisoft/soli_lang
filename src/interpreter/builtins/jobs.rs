@@ -311,7 +311,9 @@ fn job_queue_and_opts(arg: Option<&Value>) -> Result<(String, serde_json::Value)
 }
 
 /// Enqueue a named job class with a payload — the same path as `Job.enqueue`,
-/// exposed for built-in callers (e.g. `Mailer` `deliver_later`).
+/// exposed for built-in callers (e.g. `Mailer` `deliver_later`), which is
+/// why a build without the `mail` feature has no caller for it.
+#[cfg_attr(not(feature = "mail"), allow(dead_code))]
 pub(crate) fn enqueue(args: &[Value]) -> Result<Value, String> {
     job_enqueue(args)
 }

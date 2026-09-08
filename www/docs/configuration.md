@@ -245,6 +245,12 @@ locale tables) — with the size of that app. The levers, cheapest first:
 | `postgres` | on | PostgreSQL document adapter + client pool |
 | `mysql` | on | MySQL / MariaDB document adapter + client pool |
 | `sqlite` | on | SQLite document adapter (bundled client — no system library needed) |
+| `ssh` | on | `soli deploy` (`ssh2`, which compiles OpenSSL from source) |
+| `office` | on | `Spreadsheet` — xlsx and csv (`umya-spreadsheet`, `calamine`) |
+| `pdf` | on | `Pdf` — rendering, Factur-X, PAdES signatures (`soli-pdf`, CMS, X.509) |
+| `cloud` | on | `S3` and the `s3` attachment service (Rusoto) |
+| `mail` | on | `Mailer`, `Imap`, `Pop3` |
+| `lsp` | on | `soli lsp`, the language server (`tower-lsp`) |
 | `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
 | `solidb-driver` | off | Native SoliDB TCP driver (needs `solidb-client`) |
 | `full` | off | Default set + `solidb-driver` |
@@ -269,6 +275,35 @@ SQLite only — the client is compiled in, so the host needs no `libsqlite3`:
 cargo install --path . --locked --no-default-features \
   --features embedding,llm,codegraph,sqlite
 ```
+
+A packaged application is the case these six exist for. `soli desktop
+build` embeds the runtime it was built from, so what an application never
+calls is weight every copy of it carries. Measured on 2026-09-08, x86-64
+Linux, release with LTO, stripped, the runtime plus the EUI window
+(`--features eui-desktop`):
+
+| Build | Binary |
+|---|---:|
+| Default feature set | 78 MB |
+| `--no-default-features --features eui-desktop`, before these six existed | 61 MB |
+| the same today | **46 MB** |
+
+The six are worth 15 MB of that, `ssh` alone about 2 (it links a vendored
+OpenSSL). What remains is the interpreter itself — 10 MB of machine code
+before any dependency — the HTTP stack the app's own server runs on, and
+the window: wgpu, its shader translator, text shaping and the
+accessibility bridge.
+
+```bash
+# An offline desktop application: the interpreter, its server, the window.
+cargo build --release --no-default-features --features eui-desktop
+# …with a local SQLite database:
+cargo build --release --no-default-features --features eui-desktop,sqlite
+```
+
+A class whose feature is off is simply not registered, so calling it is an
+undefined-variable error rather than a missing symbol; `soli deploy` and
+`soli lsp` say which feature they were built without and exit non-zero.
 
 If the binary was built without an adapter and you set `SOLI_DB_ADAPTER=postgres`
 (or a `database.toml` entry for it), boot fails with a rebuild hint rather than a
