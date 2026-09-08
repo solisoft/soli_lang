@@ -28,6 +28,12 @@ use eui_proto::{
 };
 use serde_json::Value as Json;
 
+/// One instruction on its way through the two-pass assembler: the bytes it
+/// encodes to, and the jump it still owes — the opcode and the label it targets
+/// — for the branches whose offset is only known once pass 1 has sized
+/// everything ahead of them.
+type SizedInstr = (Vec<u8>, Option<(u8, String)>);
+
 /// A node with children, before ids are settled.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TNode {
@@ -223,7 +229,7 @@ impl Encoder {
         let bad = |what: &str| format!("EUI: local handler: {what}");
         // Pass 1: sizes and labels, so jumps can be resolved.
         let mut labels: HashMap<String, usize> = HashMap::new();
-        let mut sized: Vec<(Vec<u8>, Option<(u8, String)>)> = Vec::new(); // (bytes, pending jump)
+        let mut sized: Vec<SizedInstr> = Vec::new();
         let mut offset = 0usize;
         for instr in program {
             let parts = instr
