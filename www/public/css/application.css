@@ -4469,6 +4469,16 @@
       }
     }
   }
+  .hover\:border-indigo-400\/40 {
+    &:hover {
+      @media (hover: hover) {
+        border-color: color-mix(in srgb, oklch(67.3% 0.182 276.935) 40%, transparent);
+        @supports (color: color-mix(in lab, red, red)) {
+          border-color: color-mix(in oklab, var(--color-indigo-400) 40%, transparent);
+        }
+      }
+    }
+  }
   .hover\:border-orange-500\/40 {
     &:hover {
       @media (hover: hover) {
@@ -5246,6 +5256,18 @@
   .md\:flex-row {
     @media (width >= 48rem) {
       flex-direction: row;
+    }
+  }
+  .md\:border-t-0 {
+    @media (width >= 48rem) {
+      border-top-style: var(--tw-border-style);
+      border-top-width: 0px;
+    }
+  }
+  .md\:border-l {
+    @media (width >= 48rem) {
+      border-left-style: var(--tw-border-style);
+      border-left-width: 1px;
     }
   }
   .lg\:col-span-2 {
