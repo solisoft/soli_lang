@@ -170,6 +170,14 @@ pub fn upgrade(
             }
         }
 
+        // The window is gone. The application hears about it before the
+        // session is torn down, because what it started on the way in it
+        // may have to stop on the way out — a player it spawned, a
+        // device it borrowed. The post is awaited like any other event,
+        // so the handler runs to its end; a component with no
+        // `disconnect` branch simply returns its state unchanged.
+        post(&lv_event_tx, &liveview_id, &component, "disconnect", serde_json::json!({}), &session_id).await;
+
         LIVE_REGISTRY.drop_sender(&liveview_id, &sender);
         write_task.abort();
         super::drop_encoder(&liveview_id);

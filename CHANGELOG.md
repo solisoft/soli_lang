@@ -125,6 +125,33 @@
   `src/serve/eui/` module. `live/`, `template/`, `vm/` and `interpreter/`
   are unchanged.
 
+- **`HTTP.download(url, path, options?)`** writes a response body to a file
+  instead of decoding it. Same SSRF check, same options and same
+  `SOLI_HTTP_MAX_RESPONSE_BYTES` cap as the rest of the class — the body is
+  streamed and abandoned the moment it passes the cap — and the file is
+  written through the `File` jail with `O_NOFOLLOW`, so a picture or a sound
+  fetched from a catalogue can become an asset the application serves.
+  It blocks: the caller wants the file on disk before it renders the node
+  that names it. Returns the number of bytes written.
+- **An EUI session posts `disconnect` when the window closes.** The event is
+  awaited like any other, before the session is torn down, so a component
+  can stop what it started — a player it spawned, a device it borrowed. A
+  component with no `disconnect` branch returns its state unchanged.
+
+### Fixed
+
+- **`Image` paths are resolved against the image jail, not the process's
+  working directory.** `validate_image_path` checked one path and the caller
+  then opened another, so `Image.new("public/cover.png")` only worked when
+  the server had been started from inside the application directory, and
+  left a window between the check and the open. The validated path is now
+  the one opened.
+- **`System.run` and `System.run_sync` accept an argv array.** The
+  interpreter has always taken either a command line or `["cmd", "arg"]` —
+  the form that needs no shell and no quoting — but the type environment
+  declared `String`, so the array was refused before it ran, and a caller
+  who wrapped the call in `rescue` saw nothing happen at all.
+
 ## [2.0.7] - 2026-09-06
 
 ### Fixed
