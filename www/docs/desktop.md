@@ -269,7 +269,7 @@ and the last row on 2026-09-08:
 | `--features eui-desktop`, default features | 78 MB | 96 MB |
 | `--no-default-features --features eui-desktop` (2026-09-07) | 61 MB | 80 MB |
 | `--features eui-desktop`, default features, `--no-db` | 78 MB | 76 MB |
-| `--no-default-features --features eui-desktop` (2026-09-08) | **46 MB** | — |
+| `--no-default-features --features eui-desktop` (2026-09-08) | **46 MB** | **52.6 MB** (`--no-db`) |
 
 A desktop artifact starts two server workers, not one per core: each
 worker is an interpreter with every handler warmed, and one person at one
