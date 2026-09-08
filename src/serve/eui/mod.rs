@@ -152,7 +152,20 @@ pub fn handle_eui_event(
     let resync = data.event == RESYNC_EVENT;
     let t_render = std::time::Instant::now();
     let session_id = instance.id.clone();
-    let batches = with_encoder(&instance.id, |enc| enc.render_value(&session_id, &tree_value, resync))?;
+    // A handler that raises is one thing — a timeout inside an HTTP call is
+    // transient, the session survives it, and the person's next click still
+    // works. A view that cannot be *converted* is another: it names an event
+    // or a value the protocol does not have, so every later render of it
+    // fails the same way, and saying nothing leaves a window that looks
+    // alive and answers nothing. Spec 01 §4: `Error` ends the session on
+    // both sides, which is the right end for a view that will never encode.
+    let batches = match with_encoder(&instance.id, |enc| enc.render_value(&session_id, &tree_value, resync)) {
+        Ok(batches) => batches,
+        Err(e) => {
+            send_frame(instance, &Frame::Error { code: 400, message: e.clone() });
+            return Err(e);
+        }
+    };
     if std::env::var("EUI_TRACE").is_ok() {
         eprintln!(
             "[EUI trace] worker: view {view_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
