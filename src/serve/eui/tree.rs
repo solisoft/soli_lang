@@ -783,6 +783,7 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "window" => EventKind::Window,
         "ended" => EventKind::Ended,
         "time_update" => EventKind::TimeUpdate,
+        "wake" => EventKind::Wake,
         _ => return None,
     })
 }
@@ -814,6 +815,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::Window => "window",
         EventKind::Ended => "ended",
         EventKind::TimeUpdate => "time_update",
+        EventKind::Wake => "wake",
     }
 }
 
