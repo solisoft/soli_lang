@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-08
+
+### Docs
+
+- **The EUI widget catalogue is documented.** Both doc surfaces now carry a
+  reference for all 79 user-facing builders, grouped into twelve sections —
+  layout, typography, actions, input, dates, feedback, overlays, navigation,
+  data, charts, media, theme. Each entry has its signature, what it is for and a
+  Soli sample; the HTML page adds a rendered preview beside 67 of them, drawn in
+  HTML and SVG and labelled as approximations, since the real widget is painted
+  on the GPU by a native client. Signatures were read from `eui_builders.sl`
+  rather than from prose, so nothing unimplemented is listed. Both pages also
+  state that the catalogue is not a shipped library: it is one file in the
+  `counter-app` example, meant to be copied into an application and edited.
+
 ### Security
 
 - **`rust_decimal` 1.42.1 → 1.43.0 drops `rkyv` 0.7.46 from the tree**
