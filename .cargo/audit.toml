@@ -108,4 +108,15 @@ ignore = [
     # Unblocked by the rusoto -> aws-sdk-s3 migration tracked under
     # RUSTSEC-2022-0071 above; re-check with `cargo tree -i h2@0.3.27`.
     "RUSTSEC-2026-0258",
+    # instant 0.1.13 — unmaintained (a wasm-era Instant shim), build graph only
+    # under the optional `eui-desktop` feature and no runtime risk. Chain:
+    # eui-client -> notify 7 -> notify-types 1 -> instant. Absent from a default
+    # build entirely, so `cargo audit` flags it from the lockfile rather than
+    # from anything we compile.
+    #
+    # The fix is one line in another repository: notify-types 2.x dropped
+    # `instant`, and reaching it needs notify 8, which
+    # ../eui/crates/eui-client/Cargo.toml pins at "7". Remove this waiver once
+    # eui-client moves to notify 8 (then `cargo update -p notify && cargo audit`).
+    "RUSTSEC-2024-0384",
 ]
