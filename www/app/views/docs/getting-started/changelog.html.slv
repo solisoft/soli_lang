@@ -22,15 +22,16 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-0" class="text-amber-400 hover:underline">v2.1.0</a>.</p>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="unreleased-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
-            <li><strong class="text-white">An EUI local handler was thrown away whenever its style id happened to be 32 or 64.</strong> The widget kept working through the server &mdash; a hover that waits for the round trip, a toggle that flickers &mdash; but the local chunk never ran, and the only sign was one line on the window's stderr: <code>malformed chunk: code does not end in return or jump</code>.
+            <li><strong class="text-white">A dev bar for EUI, from <code class="text-cyan-400">eui_stats()</code>.</strong> An EUI window has no document to splice a bar into, so the bar is a widget the application places &mdash; an <code class="text-cyan-400">overlay</code> pinned to the bottom &mdash; and this builtin is where it gets its numbers: the <em>previous</em> render's, which is what a bar reports. What it counts is what EUI costs and nothing else: the view and the encode in milliseconds, the ops and the bytes that went on the wire, the seq, the node count, and the four tables a session interns once. It answers with an empty hash outside <code class="text-cyan-400">--dev</code> and before the first render, so a view can compose <code class="text-cyan-400">dev_bar(eui_stats())</code> unconditionally and ship it: what is not measured draws nothing.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
-                    <li><strong class="text-white">Why it moved around.</strong> A chunk must end in <code class="text-cyan-400">return</code> or a jump, and the client refuses the whole handler otherwise. The compiler appended that <code class="text-cyan-400">return</code> unless the code already ended in one &mdash; and it decided by looking at the last <em>byte</em>. A <code class="text-cyan-400">set_style</code> ends in its style-table id as a varint, so the ids 32 and 64 are the bytes <code class="text-cyan-400">0x20</code> and <code class="text-cyan-400">0x40</code>: the operand read as the <code class="text-cyan-400">jump</code> and <code class="text-cyan-400">return</code> opcodes, the terminator was skipped, and the chunk ended in the middle of an instruction. Which handler broke therefore depended on how many styles the view had interned before it, so adding an unrelated widget could break &mdash; or fix &mdash; a handler somewhere else on the page.</li>
-                    <li>The terminator is now decided from the last <em>instruction</em> the compiler emitted, which is the only thing that can answer the question. Covered by a test that compiles <code class="text-cyan-400">band.style = @lit</code> for both dangerous ids and asserts the <code class="text-cyan-400">return</code> is there.</li>
+                    <li><strong class="text-white">Nothing the window knows is in it.</strong> Frame time, quads, memory &mdash; the client prints those under <code class="text-cyan-400">EUI_TRACE</code> and reports none of them: spec 08 says a window reports nothing about the machine beyond its viewport, and a dev bar is not a reason to change that.</li>
+                    <li><strong class="text-white">One render behind, always.</strong> A bar reports the work that produced what is on the screen, which is the only honest thing it could report.</li>
                 </ul>
             </li>
         </ul>
+
     </section>
 
     <section id="v2-1-0" class="mb-16 scroll-mt-24">

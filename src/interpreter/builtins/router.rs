@@ -755,6 +755,42 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_stats() — what the previous render of this session cost, for an
+    // application's own dev bar: the view and the encode in milliseconds, the
+    // ops and bytes that went on the wire, the seq, the node count and the
+    // four tables a session interns once. Empty outside `--dev`, and empty
+    // before the first render, so a view can compose `dev_bar(eui_stats())`
+    // unconditionally and ship it: what is not measured draws nothing.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_stats".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_stats", Some(0), |_args| {
+            if !crate::interpreter::builtins::template::is_dev_mode() {
+                return Ok(crate::interpreter::value::empty_hash());
+            }
+            let Some(s) = crate::serve::eui::stats::current() else {
+                return Ok(crate::interpreter::value::empty_hash());
+            };
+            let ms = |v: f64| Value::Float((v * 10.0).round() / 10.0);
+            let n = |v: usize| Value::Int(v as i64);
+            Ok(crate::interpreter::value::hash_from_pairs([
+                ("event", Value::String(s.event.clone().into())),
+                ("view_ms", ms(s.view_ms)),
+                ("encode_ms", ms(s.encode_ms)),
+                ("batches", n(s.batches)),
+                ("ops", n(s.ops)),
+                ("bytes", n(s.bytes)),
+                ("seq", Value::Int(s.seq as i64)),
+                ("nodes", n(s.nodes)),
+                ("atoms", n(s.atoms)),
+                ("styles", n(s.styles)),
+                ("colors", n(s.colors)),
+                ("chunks", n(s.chunks)),
+                ("renders", Value::Int(s.renders as i64)),
+            ]))
+        })),
+    );
+
     // live_rooms(component, ...) — declare components that may be mounted in a
     // shared room via `?room=<name>` / `data-live-room`.
     //

@@ -14,6 +14,7 @@ pub mod diff;
 pub mod local;
 pub mod manifest;
 pub mod session;
+pub mod stats;
 pub mod tree;
 
 use std::collections::HashMap;
@@ -27,6 +28,7 @@ use crate::interpreter::Interpreter;
 use crate::live::view::{LiveViewInstance, LIVE_REGISTRY};
 use crate::span::Span;
 
+use self::stats::Stats;
 use super::{json_to_value, unwrap_handler_return, value_to_json, LiveViewEventData};
 
 /// `component -> view action`, filled by `router_eui`.
@@ -67,18 +69,23 @@ pub fn with_encoder<T>(liveview_id: &str, f: impl FnOnce(&mut tree::Encoder) -> 
 /// Forget an instance's encoder when its socket is gone for good.
 pub fn drop_encoder(liveview_id: &str) {
     tree::forget_session(liveview_id);
+    stats::forget(liveview_id);
     let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = g.as_mut() {
         map.remove(liveview_id);
     }
 }
 
-/// Send a frame to every socket attached to an instance.
-fn send_frame(instance: &LiveViewInstance, frame: &Frame) {
+/// Send a frame to every socket attached to an instance: encode once, send to
+/// each, and say how many bytes that was — the one number a dev bar cannot
+/// work out for itself.
+fn send_frame(instance: &LiveViewInstance, frame: &Frame) -> usize {
     let bytes = frame.encode();
+    let size = bytes.len();
     for sender in &instance.senders {
         let _ = sender.try_send(Ok(Message::Binary(bytes.clone())));
     }
+    size
 }
 
 fn resolve(interpreter: &Interpreter, action: &str) -> Result<Value, String> {
@@ -154,6 +161,9 @@ pub fn handle_eui_event(
     let view = resolve(interpreter, &view_name)?;
     let state_value = json_to_value(&instance.state);
     let t_view = std::time::Instant::now();
+    // Which session the view is being called for, so `eui_stats()` inside it
+    // can hand back that session's last render and no one else's.
+    stats::set_current(Some(instance.id.clone()));
     let tree_value = interpreter
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;
@@ -169,8 +179,11 @@ pub fn handle_eui_event(
     // fails the same way, and saying nothing leaves a window that looks
     // alive and answers nothing. Spec 01 §4: `Error` ends the session on
     // both sides, which is the right end for a view that will never encode.
+    let mut tables = [0usize; 5];
     let batches = match with_encoder(&instance.id, |enc| {
-        enc.render_value(&session_id, &tree_value, resync)
+        let out = enc.render_value(&session_id, &tree_value, resync);
+        tables = enc.tables();
+        out
     }) {
         Ok(batches) => batches,
         Err(e) => {
@@ -202,6 +215,19 @@ pub fn handle_eui_event(
         }
         return Ok(());
     }
+    let encode_ms = t_render.elapsed().as_secs_f64() * 1e3;
+    let mut sent = Stats {
+        event: data.event.clone(),
+        view_ms,
+        encode_ms,
+        batches: batches.len(),
+        nodes: tables[4],
+        atoms: tables[0],
+        styles: tables[1],
+        colors: tables[2],
+        chunks: tables[3],
+        ..Stats::default()
+    };
     for batch in batches {
         if std::env::var("EUI_TRACE").is_ok() {
             eprintln!(
@@ -211,7 +237,13 @@ pub fn handle_eui_event(
                 instance.senders.len()
             );
         }
-        send_frame(instance, &Frame::Batch(batch));
+        sent.ops += batch.ops.len();
+        sent.seq = batch.seq;
+        sent.bytes += send_frame(instance, &Frame::Batch(batch));
     }
+    // What this render cost, for the next one to draw. A dev bar reports the
+    // work behind what is on the screen, so it is always one render behind —
+    // which is the only honest thing it could be.
+    stats::record(&instance.id, sent);
     Ok(())
 }

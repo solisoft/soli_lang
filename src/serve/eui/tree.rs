@@ -128,6 +128,22 @@ pub struct Encoder {
     /// Which session this is, for the thread-local memo.
     session: String,
     generation: u32,
+    /// How many nodes the last tree had, for `eui_stats()`.
+    last_nodes: usize,
+}
+
+impl Encoder {
+    /// What this session has interned, and how big its last tree was:
+    /// `[atoms, styles, colours, chunks, nodes]`. A dev bar's second line.
+    pub fn tables(&self) -> [usize; 5] {
+        [
+            self.atoms.len(),
+            self.styles.len(),
+            self.colors.len(),
+            self.chunks.len(),
+            self.last_nodes,
+        ]
+    }
 }
 
 /// One session's kept subtrees, by the address of the view value each came
@@ -457,6 +473,7 @@ impl Encoder {
         // The client refuses a tree past its node limit and there is no way
         // to send it anyway; say so here, where the application can act.
         let nodes = count_nodes(&tree);
+        self.last_nodes = nodes;
         if nodes > eui_proto::limits::MAX_NODES as usize {
             eprintln!("[EUI] the view returned {nodes} nodes; a client accepts at most {} — virtualise, paginate or trim", eui_proto::limits::MAX_NODES);
         }
@@ -907,6 +924,7 @@ impl Encoder {
                 "radius" => r.radius = u8_of(v)?,
                 "shadow" => r.shadow = u8_of(v)?,
                 "opacity" => r.opacity = u8_of(v)?,
+                "blur" => r.blur = u8_of(v)?,
                 "font" => {
                     r.font_family =
                         enum_of(v, &[("sans", FontFamily::Sans), ("mono", FontFamily::Mono)])?
@@ -951,7 +969,7 @@ impl Encoder {
                     r.transition =
                         enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?
                 }
-                "animation" => r.animation = enum_of(v, &[("none", 0), ("spin", 1)])?,
+                "animation" => r.animation = enum_of(v, &[("none", 0), ("spin", 1), ("enter", 2)])?,
                 "position" => {
                     r.position = enum_of(
                         v,

@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Fixes
+### Added
 
-* **fix(eui):** a `local(...)` handler whose last statement pointed a node at style id 32 or 64 was thrown away by the client — the widget silently lost its hover, its toggle or its optimistic update, and the only sign was `malformed chunk: code does not end in return or jump` on the window's stderr. A chunk must end in `return` or a jump (spec 07 §4), and the compiler decided whether it had already emitted one by looking at the last *byte*: `set_style` ends in its style-table id as a varint, so the ids 32 and 64 are the bytes `0x20` and `0x40` — the operand read as the `jump` and `return` opcodes and the terminator was skipped. Which handler broke depended on how many styles the view had interned before it, so adding an unrelated widget could break or fix one elsewhere on the page. The terminator is now decided from the last emitted instruction
+* **feat(eui):** `eui_stats()` — what the previous render of the session cost, for an application's own dev bar: the view and the encode in milliseconds, the ops and bytes that went on the wire, the batch's seq, the node count and the four tables a session interns (atoms, styles, colours, chunks). Empty outside `--dev` and before the first render, so a view can compose `dev_bar(eui_stats())` unconditionally and ship it. The EUI window has no document to splice a bar into, so the bar is a widget the application places; nothing the client knows (frame time, memory) is in it — spec 08 says the window reports nothing beyond its viewport, and a dev bar is not a reason to change that
 
 ## [2.1.0] - 2026-09-08
 
