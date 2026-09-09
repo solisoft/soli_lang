@@ -1,0 +1,307 @@
+# Verify and deploy the documentation site (soli.solisoft.net) on every push to
+# main that touches www/.
+#
+# Server contract (soli-proxy, the same one ../pdfx uses):
+#   1. rsync www/ into <sites_dir>/<domain>/ — that folder and nothing else;
+#   2. soli db:migrate up;
+#   3. soli-proxy deploy: starts the idle slot, waits for it, moves traffic
+#      across, then stops the old one.
+#
+# The site directory must already exist on the server with its own app.infos
+# and .env. This workflow creates nothing and touches no other folder.
+name: deploy www
+
+on:
+  push:
+    branches: [main]
+    # The site is www/. A Rust-only commit changes nothing it serves, and
+    # redeploying for one would take the site through a blue-green switch for
+    # no reason.
+    paths:
+      - 'www/**'
+      - '.github/workflows/deploy-www.yml'
+  workflow_dispatch:
+
+# Two pushes close together must not interleave halfway through an rsync, and a
+# deployment already running is never cancelled — that would leave the server
+# with half a tree.
+concurrency:
+  group: deploy-www
+  cancel-in-progress: false
+
+env:
+  # The version the server runs, verified below rather than hoped for. A CI that
+  # checks the site against a different interpreter than production has not
+  # checked production.
+  SOLI_VERSION: "2.1.0"
+
+jobs:
+  verify:
+    name: the site builds and answers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: www
+    steps:
+      - uses: actions/checkout@v5
+
+      # Direct download of the pinned release: the published install.sh only
+      # knows `latest`.
+      - name: Install the pinned soli
+        working-directory: .
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl -fsSL "https://github.com/solisoft/soli_lang/releases/download/v$SOLI_VERSION/soli-linux-amd64.tar.gz" \
+            -o "$tmp/pkg.tar.gz"
+          tar -xzf "$tmp/pkg.tar.gz" -C "$tmp"
+          sudo install -m 0755 "$(find "$tmp" -type f -name soli -perm -u+x | head -1)" /usr/local/bin/soli
+          rm -rf "$tmp"
+          got="$(soli --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          [ "$got" = "$SOLI_VERSION" ] || { echo "soli $got installed, $SOLI_VERSION expected" >&2; exit 1; }
+          echo "soli $got"
+
+      # Tailwind is compiled by `soli serve --dev` on a developer machine and the
+      # result is committed; production serves public/ as-is. An empty file here
+      # means the site would go out unstyled.
+      - name: The compiled CSS is committed
+        run: test -s public/css/application.css
+
+      # The real gate. It boots the site exactly as the server will — no .env,
+      # since that file is gitignored and lives on the server — and asks for
+      # /up. Booting warms 222 handlers and 48 class methods, so a syntax error,
+      # a missing view or a broken route registration fails here rather than in
+      # production. A database is not needed to answer /up.
+      - name: The site boots and answers /up
+        run: |
+          set -euo pipefail
+          soli serve . --port 19555 --workers 1 > /tmp/boot.log 2>&1 &
+          pid=$!
+          code=000
+          for i in $(seq 1 45); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -m 2 http://127.0.0.1:19555/up || echo 000)"
+            [ "$code" = "200" ] && break
+            kill -0 $pid 2>/dev/null || { echo "the server exited before answering" >&2; break; }
+            sleep 1
+          done
+          kill -TERM $pid 2>/dev/null || true
+          wait $pid 2>/dev/null || true
+          if [ "$code" != "200" ]; then
+            echo "/up answered $code, not 200:" >&2
+            tail -40 /tmp/boot.log >&2
+            exit 1
+          fi
+          echo "/up -> 200"
+          grep -E 'warmed [0-9]+ handlers' /tmp/boot.log || true
+
+      # Advisory, deliberately not blocking. As of 2026-09, `soli fmt --check`
+      # reports ~2200 diff lines and `soli lint` 105 issues across 17 files on
+      # this site — a backlog that predates this workflow. Blocking on it would
+      # mean the docs site could never be deployed until someone clears it, so
+      # the counts are surfaced here instead and can be promoted to a gate
+      # (drop `continue-on-error`) once they reach zero.
+      - name: Formatting (advisory)
+        continue-on-error: true
+        run: soli fmt --check
+
+      - name: Lint (advisory)
+        continue-on-error: true
+        run: soli lint
+
+      # `soli test` is not run: the site's specs need a .env.test that does not
+      # exist in this repository, so the step could only ever fail. Add the file
+      # and a SoliDB service here — see ../pdfx/.github/workflows/deploy.yml for
+      # the shape — if the specs are meant to gate deployment.
+
+  deploy:
+    name: deploy the site
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: www
+      url: https://${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
+    env:
+      HOST: ${{ secrets.DEPLOY_HOST }}
+      USER: ${{ vars.DEPLOY_USER || 'rocky' }}
+      SITES_DIR: ${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}
+      DOMAIN: ${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
+      # The name in app.infos, which soli-proxy uses as the app's identifier.
+      APP: ${{ vars.DEPLOY_APP || 'soli.solisoft.net' }}
+      # The pids of the processes serving THIS site. The server hosts a dozen,
+      # so the filter is an `if` and not a `[ ... ] && echo`: a false `&&` at the
+      # end of the loop makes the `for` exit 1, and under `set -e` that kills the
+      # whole step — with the correct pid list already on stdout.
+      PIDS: |
+        for x in $(pgrep -x soli 2>/dev/null); do
+          if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
+            echo $x
+          fi
+        done
+      PROBE: |
+        p=$(for x in $(pgrep -x soli 2>/dev/null); do
+              if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
+                tr "\0" "\n" < /proc/$x/cmdline | grep -A1 -- "--port" | tail -1
+              fi
+            done | sort -u | tail -1)
+        [ -n "$p" ] || { echo 000; exit 0; }
+        curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:$p/up"
+    steps:
+      - uses: actions/checkout@v5
+
+      # Nothing is configured on this repository yet, so the job reports what is
+      # missing and stops rather than failing. Adding this workflow must not turn
+      # main red; it starts deploying the day the secrets exist.
+      - name: Is deployment configured?
+        id: cfg
+        run: |
+          set -euo pipefail
+          if [ -z "${HOST:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "DEPLOY_HOST is not set, so nothing is deployed."
+            echo ""
+            echo "To turn this on, add to the repository:"
+            echo "  secrets:   DEPLOY_HOST, SSH_DEPLOY_KEY, SSH_KNOWN_HOSTS"
+            echo "  variables: DEPLOY_DOMAIN (default soli.solisoft.net),"
+            echo "             DEPLOY_USER (rocky), DEPLOY_SITES_DIR (/home/rocky/sites),"
+            echo "             DEPLOY_APP (soli.solisoft.net)"
+            echo ""
+            echo "The site directory must already exist on the server with its"
+            echo "own app.infos and .env; this workflow creates neither."
+            exit 0
+          fi
+          case "$DOMAIN" in *.*) ;; *) echo "DEPLOY_DOMAIN must contain a dot: $DOMAIN" >&2; exit 1 ;; esac
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Target: $USER@$HOST:$SITES_DIR/$DOMAIN"
+
+      - name: Prepare SSH
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # known_hosts rather than StrictHostKeyChecking=no: host verification
+          # is not disabled on a channel that carries production code.
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: The site exists on the server
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          ssh "$USER@$HOST" "test -f '$SITES_DIR/$DOMAIN/app.infos' && test -f '$SITES_DIR/$DOMAIN/.env'" \
+            || { echo "$SITES_DIR/$DOMAIN must hold app.infos and .env" >&2; exit 1; }
+
+      # --delete-delay: what leaves the repository leaves the server. The
+      # exclusions protect what belongs to the server — the secrets (.env) and
+      # the proxy's own files (app.infos, restart.txt) — plus node_modules,
+      # which is a build input here and 200MB the server has no use for.
+      #
+      # app.infos is tracked in this repository but still excluded: it carries
+      # the port range and worker count the proxy is running with, and
+      # overwriting a live proxy's configuration mid-deploy is the riskier
+      # direction. Change it on the server when it needs to change.
+      - name: Sync the files
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          rsync -rlzv --delete-delay --delay-updates \
+            --exclude='.git/' \
+            --exclude='node_modules/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='app.infos' \
+            --exclude='restart.txt' \
+            --exclude='tmp/' \
+            --exclude='coverage/' \
+            www/ "$USER@$HOST:$SITES_DIR/$DOMAIN/"
+
+      - name: The server runs the pinned version
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          installed="$(ssh "$USER@$HOST" 'soli --version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "server: $installed — pinned: $SOLI_VERSION"
+          if [ "$installed" != "$SOLI_VERSION" ]; then
+            echo "" >&2
+            echo "The server runs Soli $installed; this workflow verified $SOLI_VERSION." >&2
+            echo "Align SOLI_VERSION here, or update the server." >&2
+            exit 1
+          fi
+
+      - name: Migrations
+        if: steps.cfg.outputs.configured == 'true'
+        run: ssh "$USER@$HOST" "set -e; cd '$SITES_DIR/$DOMAIN' && soli db:migrate up"
+
+      # `soli-proxy deploy` rather than `touch restart.txt`: the command returns
+      # an exit code and a reason. The trigger file is ignored in silence when
+      # the proxy cannot start the slot — an orphaned process holding the port,
+      # say — and the deployment looks green while the old code keeps serving.
+      - name: Blue-green switch
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          before="$(ssh "$USER@$HOST" "$PIDS")"
+          echo "processes before: ${before:-none}"
+          echo "$before" > /tmp/pids-before
+          if ! ssh "$USER@$HOST" "soli-proxy deploy -c '$SITES_DIR/config.toml' '$APP' 2>&1"; then
+            echo "" >&2
+            echo "The switch failed. Common cause: an orphaned slot still holds its port." >&2
+            echo "  ssh $USER@$HOST 'soli-proxy logs -c $SITES_DIR/config.toml $APP'" >&2
+            exit 1
+          fi
+
+      # The check is on a NEW process: a 200 from the old slot would only prove
+      # the site answers, not that it answers with what was just pushed.
+      - name: The new slot answers
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          before="$(cat /tmp/pids-before)"
+          for i in $(seq 1 30); do
+            sleep 3
+            now="$(ssh "$USER@$HOST" "$PIDS")"
+            fresh="$(comm -13 <(echo "$before" | sort) <(echo "$now" | sort) | tr -d ' ')"
+            if [ -n "$fresh" ]; then
+              code="$(ssh "$USER@$HOST" "$PROBE" 2>/dev/null | tail -1 || echo 000)"
+              echo "attempt $i: new process $fresh, /up -> $code"
+              [ "$code" = "200" ] && { echo "The new slot answers."; exit 0; }
+            else
+              echo "attempt $i: no new process yet"
+            fi
+          done
+          echo "" >&2
+          echo "No fresh slot answered 200 on /up within 90s." >&2
+          echo "  ssh $USER@$HOST 'soli-proxy logs -c $SITES_DIR/config.toml $APP'" >&2
+          exit 1
+
+      # After a switch the proxy still spreads traffic over BOTH slot ports while
+      # only one process runs, so one request in two hits a dead port and gets a
+      # 421. `restart` brings both slots up on the current code.
+      - name: Bring both slots up
+        if: steps.cfg.outputs.configured == 'true'
+        run: ssh "$USER@$HOST" "soli-proxy restart -c '$SITES_DIR/config.toml' '$APP'"
+
+      # End to end, through the proxy, with the real hostname — where the 421
+      # shows. The /up probe on the app's own port bypasses exactly the part
+      # that fails.
+      - name: The site answers through the proxy
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          want=12
+          probe="for i in \$(seq 1 $want); do curl -sk -m 8 --resolve '$DOMAIN:443:127.0.0.1' -o /dev/null -w '%{http_code} ' 'https://$DOMAIN/up'; done"
+          # Count the 200s, do not count the rest: the probe separates codes with
+          # a space including after the last one, so `tr ' ' '\n'` yields one
+          # extra empty line. Counted as "not 200" it made the check unfailable
+          # in the wrong direction.
+          for attempt in 1 2 3 4 5; do
+            sleep 4
+            codes="$(ssh "$USER@$HOST" "$probe" 2>/dev/null || true)"
+            ok="$(printf '%s' "$codes" | tr ' ' '\n' | grep -c '^200$' || true)"
+            echo "attempt $attempt: $codes(${ok:-0}/$want at 200)"
+            [ "${ok:-0}" -eq "$want" ] && { echo "$want of $want requests at 200."; exit 0; }
+          done
+          echo "" >&2
+          echo "The site did not answer $want/$want through the proxy." >&2
+          exit 1
