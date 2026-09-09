@@ -2,7 +2,9 @@
 # main that touches www/.
 #
 # Server contract (soli-proxy, the same one ../pdfx uses):
-#   1. rsync www/ into <sites_dir>/<domain>/ — that folder and nothing else;
+#   1. rsync www/ into <sites_dir>/<site_dir>/ — that folder and nothing else.
+#      The folder is NOT the domain here: the site lives in
+#      sites/lang.solisoft.net and answers on soli.solisoft.net;
 #   2. soli db:migrate up;
 #   3. soli-proxy deploy: starts the idle slot, waits for it, moves traffic
 #      across, then stops the old one.
@@ -33,7 +35,7 @@ env:
   # The version the server runs, verified below rather than hoped for. A CI that
   # checks the site against a different interpreter than production has not
   # checked production.
-  SOLI_VERSION: "2.1.0"
+  SOLI_VERSION: "2.0.6"
 
 jobs:
   verify:
@@ -124,8 +126,14 @@ jobs:
       HOST: ${{ secrets.DEPLOY_HOST }}
       USER: ${{ vars.DEPLOY_USER || 'rocky' }}
       SITES_DIR: ${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}
+      # Three separate identities, and conflating them is how this silently
+      # fails. DOMAIN is what the site answers on, used only for the HTTPS probe
+      # at the end. SITE_DIR is the folder under sites/ — here lang.solisoft.net,
+      # which is NOT the domain — and it is what rsync targets and what the pid
+      # filter matches on /proc/<pid>/cwd. APP is the `name` in app.infos, the
+      # identifier soli-proxy deploy/restart take.
       DOMAIN: ${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
-      # The name in app.infos, which soli-proxy uses as the app's identifier.
+      SITE_DIR: ${{ vars.DEPLOY_SITE_DIR || vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
       APP: ${{ vars.DEPLOY_APP || 'soli.solisoft.net' }}
       # The pids of the processes serving THIS site. The server hosts a dozen,
       # so the filter is an `if` and not a `[ ... ] && echo`: a false `&&` at the
@@ -133,13 +141,13 @@ jobs:
       # whole step — with the correct pid list already on stdout.
       PIDS: |
         for x in $(pgrep -x soli 2>/dev/null); do
-          if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
+          if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_SITE_DIR || vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
             echo $x
           fi
         done
       PROBE: |
         p=$(for x in $(pgrep -x soli 2>/dev/null); do
-              if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
+              if [ "$(readlink /proc/$x/cwd 2>/dev/null)" = "${{ vars.DEPLOY_SITES_DIR || '/home/rocky/sites' }}/${{ vars.DEPLOY_SITE_DIR || vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}" ]; then
                 tr "\0" "\n" < /proc/$x/cmdline | grep -A1 -- "--port" | tail -1
               fi
             done | sort -u | tail -1)
@@ -171,7 +179,7 @@ jobs:
           fi
           case "$DOMAIN" in *.*) ;; *) echo "DEPLOY_DOMAIN must contain a dot: $DOMAIN" >&2; exit 1 ;; esac
           echo "configured=true" >> "$GITHUB_OUTPUT"
-          echo "Target: $USER@$HOST:$SITES_DIR/$DOMAIN"
+          echo "Target: $USER@$HOST:$SITES_DIR/$SITE_DIR  (domain $DOMAIN, proxy app $APP)"
 
       - name: Prepare SSH
         if: steps.cfg.outputs.configured == 'true'
@@ -189,8 +197,8 @@ jobs:
         if: steps.cfg.outputs.configured == 'true'
         run: |
           set -euo pipefail
-          ssh "$USER@$HOST" "test -f '$SITES_DIR/$DOMAIN/app.infos' && test -f '$SITES_DIR/$DOMAIN/.env'" \
-            || { echo "$SITES_DIR/$DOMAIN must hold app.infos and .env" >&2; exit 1; }
+          ssh "$USER@$HOST" "test -f '$SITES_DIR/$SITE_DIR/app.infos' && test -f '$SITES_DIR/$SITE_DIR/.env'" \
+            || { echo "$SITES_DIR/$SITE_DIR must hold app.infos and .env" >&2; exit 1; }
 
       # --delete-delay: what leaves the repository leaves the server. The
       # exclusions protect what belongs to the server — the secrets (.env) and
@@ -201,6 +209,12 @@ jobs:
       # the port range and worker count the proxy is running with, and
       # overwriting a live proxy's configuration mid-deploy is the riskier
       # direction. Change it on the server when it needs to change.
+      #
+      # config.toml, run/ and sites/ are root-owned artefacts that a proxy run
+      # left inside the site folder. The repository has never had them, so
+      # --delete would remove them on the first deployment; they are excluded
+      # rather than deleted, because an automated deploy is the wrong place to
+      # be reaping root-owned files.
       - name: Sync the files
         if: steps.cfg.outputs.configured == 'true'
         run: |
@@ -214,7 +228,10 @@ jobs:
             --exclude='restart.txt' \
             --exclude='tmp/' \
             --exclude='coverage/' \
-            www/ "$USER@$HOST:$SITES_DIR/$DOMAIN/"
+            --exclude='config.toml' \
+            --exclude='run/' \
+            --exclude='sites/' \
+            www/ "$USER@$HOST:$SITES_DIR/$SITE_DIR/"
 
       - name: The server runs the pinned version
         if: steps.cfg.outputs.configured == 'true'
@@ -231,7 +248,7 @@ jobs:
 
       - name: Migrations
         if: steps.cfg.outputs.configured == 'true'
-        run: ssh "$USER@$HOST" "set -e; cd '$SITES_DIR/$DOMAIN' && soli db:migrate up"
+        run: ssh "$USER@$HOST" "set -e; cd '$SITES_DIR/$SITE_DIR' && soli db:migrate up"
 
       # `soli-proxy deploy` rather than `touch restart.txt`: the command returns
       # an exit code and a reason. The trigger file is ignored in silence when
