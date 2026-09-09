@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixes
+
+* **fix(eui):** a `local(...)` handler whose last statement pointed a node at style id 32 or 64 was thrown away by the client — the widget silently lost its hover, its toggle or its optimistic update, and the only sign was `malformed chunk: code does not end in return or jump` on the window's stderr. A chunk must end in `return` or a jump (spec 07 §4), and the compiler decided whether it had already emitted one by looking at the last *byte*: `set_style` ends in its style-table id as a varint, so the ids 32 and 64 are the bytes `0x20` and `0x40` — the operand read as the `jump` and `return` opcodes and the terminator was skipped. Which handler broke depended on how many styles the view had interned before it, so adding an unrelated widget could break or fix one elsewhere on the page. The terminator is now decided from the last emitted instruction
+
 ## [2.1.0] - 2026-09-08
 
 ### Docs

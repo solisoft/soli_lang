@@ -473,7 +473,17 @@ impl<C: Ctx> Compiler<'_, C> {
                 Emit::Label(_) => {}
             }
         }
-        if !matches!(out.last(), Some(0x40 | 0x20)) {
+        // Spec 07 §4: a chunk must end in `return` or a jump. What decides
+        // that is the last *instruction*, not the last byte — a `set_style`
+        // whose style id is 32 or 64 ends in a 0x20 or 0x40 operand, and
+        // reading that as the opcode left the chunk without its `return`
+        // and the client rejecting the whole handler.
+        let terminated = match self.code.last() {
+            Some(Emit::Bytes(b)) => b.first() == Some(&0x40),
+            Some(Emit::Jump(op, _)) => *op == 0x20,
+            _ => false,
+        };
+        if !terminated {
             out.push(0x40);
         }
         Ok(out)
@@ -552,6 +562,26 @@ mod tests {
             bytes.windows(2).any(|w| w == [0x32, 3]),
             "emit atom 3 = ping (n=1, me=2)"
         );
+    }
+
+    /// Spec 07 §4: the client checks that a chunk ends in `return` or a
+    /// jump, and a `set_style` whose style id is 64 ends in the byte 0x40.
+    /// Deciding on the byte rather than the instruction dropped the
+    /// `return`, and the client threw the handler away.
+    #[test]
+    fn a_style_id_that_looks_like_return_still_gets_one() {
+        for id in [0x20u32, 0x40] {
+            let mut ctx = TestCtx {
+                atoms: vec![],
+                styles: HashMap::from([("lit".into(), id)]),
+            };
+            let bytes = compile("band.style = @lit", &mut ctx).unwrap();
+            assert_eq!(
+                &bytes[6..],
+                &[0x33, 1, id as u8, 0x40],
+                "style {id:#x}: set_style, then the return the verifier wants"
+            );
+        }
     }
 
     #[test]
