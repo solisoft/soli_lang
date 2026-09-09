@@ -371,8 +371,8 @@ soli-codegraph = { path = "codegraph", optional = true }
 #   [patch."https://github.com/solisoft/eui"]
 #   eui-proto  = { path = "../eui/crates/eui-proto" }
 #   eui-client = { path = "../eui/crates/eui-client" }
-eui-proto = { git = "https://github.com/solisoft/eui", rev = "7bdfd84", optional = true }
-eui-client = { git = "https://github.com/solisoft/eui", rev = "7bdfd84", optional = true }
+eui-proto = { git = "https://github.com/solisoft/eui", rev = "579f38b", optional = true }
+eui-client = { git = "https://github.com/solisoft/eui", rev = "579f38b", optional = true }
 ring = { version = "0.17", optional = true }
 blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
