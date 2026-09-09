@@ -9,6 +9,7 @@ def up(db: Any) -> Any {
   let s_len = statuses.length()
   let batch = []
   let total = 3000
+  let already_there = 0
   for i in 0..total
     let fi = i % fn_len
     let li = (i + i / fn_len) % ln_len
@@ -27,9 +28,30 @@ def up(db: Any) -> Any {
     if batch.length() == 500 || i == total - 1
       let json = json_stringify(batch)
       let q = "FOR doc IN " + json + " INSERT doc INTO demo_users"
-      solidb_query(_db, q)
+      # demo_users carries a unique index on email, and
+      # 20260519000002_create_demo_users already seeds these very same 3000
+      # rows — so this INSERT is rejected the moment it runs, and this
+      # migration had never once succeeded, on a fresh database or an existing
+      # one. It failed every deployment before it could switch anything.
+      #
+      # The batch is kept rather than deleted so a database that somehow lacks
+      # the rows still gets them, and the rejection is tolerated because the
+      # only thing it can mean is that they are already present. Narrow on
+      # purpose: nothing else in this migration is wrapped.
+      #
+      # UPSERT would say this better, but SoliDB's AQL only accepts it at the
+      # top level, not inside a FOR — `FOR doc IN [...] UPSERT ...` is refused
+      # with "missing RETURN clause or mutation".
+      try {
+        solidb_query(_db, q)
+      } catch _ {
+        already_there = already_there + 1
+      }
       batch = []
     end
+  end
+  if already_there > 0
+    print("  seed: #{already_there} batch(es) already present, left as they were")
   end
 }
 
