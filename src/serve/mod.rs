@@ -3127,10 +3127,14 @@ async fn handle_hyper_request(
                     .body(full(Bytes::from("this component needs a session")))
                     .unwrap());
             }
+            let slot = match admit_websocket(&peer_addr.ip().to_string()) {
+                Ok(slot) => slot,
+                Err(refused) => return Ok(*refused),
+            };
             // Same registry as LiveView, same reaper — an application that
             // only ever serves EUI used to keep every instance it ever made.
             start_liveview_reaper();
-            return eui::session::upgrade(req, component, session_id, lv_event_tx.clone());
+            return eui::session::upgrade(req, component, session_id, lv_event_tx.clone(), slot);
         }
 
         // Handle LiveView WebSocket endpoint
@@ -3196,6 +3200,13 @@ async fn handle_hyper_request(
 
             start_liveview_reaper();
 
+            // The same admission every socket gets; the slot lives as long
+            // as the connection task below.
+            let slot = match admit_websocket(&peer_addr.ip().to_string()) {
+                Ok(slot) => slot,
+                Err(refused) => return Ok(*refused),
+            };
+
             // Perform the WebSocket upgrade
             let ws_config = default_websocket_config();
             let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config))
@@ -3217,6 +3228,7 @@ async fn handle_hyper_request(
             let lv_event_tx = lv_event_tx.clone();
 
             tokio::spawn(async move {
+                let _slot = slot;
                 let stream = match websocket.await {
                     Ok(ws) => ws,
                     Err(e) => {
@@ -4425,6 +4437,35 @@ fn build_websocket_context(
     }
 }
 
+/// Take a connection slot for a socket about to be upgraded, or the response
+/// that refuses it. The one gate for every kind of socket — `/ws/*`, LiveView
+/// and EUI — since each costs the same task, queue and registry entry; the
+/// caps are `SOLI_WS_MAX_CONNECTIONS` and `SOLI_WS_MAX_CONNECTIONS_PER_IP`.
+fn admit_websocket(
+    peer_ip: &str,
+) -> Result<crate::serve::websocket::WsConnectionSlot, Box<Response<ResponseBody>>> {
+    crate::serve::websocket::ws_connection_limiter()
+        .try_acquire(peer_ip)
+        .map_err(|reason| {
+            let (status, message) = match reason {
+                crate::serve::websocket::WsAdmission::ServerFull => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "WebSocket connection limit reached",
+                ),
+                crate::serve::websocket::WsAdmission::PerIpFull => (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Too many WebSocket connections from this address",
+                ),
+            };
+            Box::new(
+                Response::builder()
+                    .status(status)
+                    .body(full(Bytes::from(message)))
+                    .unwrap(),
+            )
+        })
+}
+
 /// Hand a WebSocket event to the realtime workers without ever blocking the
 /// calling tokio task.
 ///
@@ -4489,26 +4530,10 @@ async fn handle_websocket_upgrade(
 
     // Admission control before the upgrade: every accepted socket costs a tokio
     // task, a 32-slot channel and a registry entry, none of which were bounded.
-    let connection_slot =
-        match crate::serve::websocket::ws_connection_limiter().try_acquire(&peer_ip) {
-            Ok(slot) => slot,
-            Err(reason) => {
-                let (status, message) = match reason {
-                    crate::serve::websocket::WsAdmission::ServerFull => (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "WebSocket connection limit reached",
-                    ),
-                    crate::serve::websocket::WsAdmission::PerIpFull => (
-                        StatusCode::TOO_MANY_REQUESTS,
-                        "Too many WebSocket connections from this address",
-                    ),
-                };
-                return Ok(Response::builder()
-                    .status(status)
-                    .body(full(Bytes::from(message)))
-                    .unwrap());
-            }
-        };
+    let connection_slot = match admit_websocket(&peer_ip) {
+        Ok(slot) => slot,
+        Err(refused) => return Ok(*refused),
+    };
 
     // Perform the WebSocket upgrade
     let ws_config = default_websocket_config();

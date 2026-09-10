@@ -86,6 +86,14 @@ pub fn close_reason(err: &str) -> Option<&str> {
     err.strip_prefix(CLOSE_MARK)
 }
 
+/// `EUI_TRACE=1` in the environment: a line per frame on stderr. Read once;
+/// it was read from the environment several times per event.
+pub(super) fn trace() -> bool {
+    static TRACE: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var_os("EUI_TRACE").is_some());
+    *TRACE
+}
+
 /// The worker side of [`FORGET_EVENT`].
 pub fn forget_on_worker(liveview_id: &str) {
     tree::forget_session(liveview_id);
@@ -210,11 +218,17 @@ pub fn handle_eui_event(
     instance: &mut LiveViewInstance,
 ) -> Result<(), String> {
     let component = instance.component.clone();
-    if std::env::var("EUI_TRACE").is_ok() {
-        eprintln!(
-            "[EUI trace] worker: {component} {} state={}",
-            data.event, instance.state
-        );
+    if trace() {
+        // The state is the application's, secrets included: printed in
+        // --dev only, whatever the environment says.
+        if crate::interpreter::builtins::template::is_dev_mode() {
+            eprintln!(
+                "[EUI trace] worker: {component} {} state={}",
+                data.event, instance.state
+            );
+        } else {
+            eprintln!("[EUI trace] worker: {component} {}", data.event);
+        }
     }
 
     if data.event != RESYNC_EVENT {
@@ -313,7 +327,7 @@ pub fn handle_eui_event(
             return Err(e);
         }
     };
-    if std::env::var("EUI_TRACE").is_ok() {
+    if trace() {
         eprintln!(
             "[EUI trace] worker: view {view_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
             t_render.elapsed().as_secs_f64() * 1e3,
@@ -323,7 +337,7 @@ pub fn handle_eui_event(
 
     instance.touch();
     if !LIVE_REGISTRY.commit(instance) {
-        if std::env::var("EUI_TRACE").is_ok() {
+        if trace() {
             eprintln!(
                 "[EUI trace] worker: commit refused (socket gone?) for {}",
                 instance.id
@@ -346,7 +360,7 @@ pub fn handle_eui_event(
     };
     let deadline = std::time::Instant::now() + SEND_PATIENCE;
     for batch in batches {
-        if std::env::var("EUI_TRACE").is_ok() {
+        if trace() {
             eprintln!(
                 "[EUI trace] worker: sending batch seq={} ops={} to {} sender(s)",
                 batch.seq,

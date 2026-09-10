@@ -21,16 +21,43 @@ use crate::live::liveview_instance_id;
 use crate::live::view::{LiveViewInstance, LIVE_REGISTRY};
 
 use super::super::{box_full, default_websocket_config, full, LiveViewEventData, ResponseBody};
-use super::{tree, with_encoder, RESYNC_EVENT};
+use super::{trace, tree, with_encoder, RESYNC_EVENT};
+use crate::serve::websocket::{WsConnectionSlot, WsRateLimiter};
 
 type WsSender = Arc<async_channel::Sender<Result<Message, tungstenite::Error>>>;
 
-/// Upgrade the request and drive the session on a task.
+/// How long a fresh socket has to say Hello. A client that connects and
+/// says nothing used to hold its task and its file descriptor forever.
+const HELLO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How often the server pings, and how many pings may go unanswered before
+/// the client is taken for gone. The client pings too, but a half-open
+/// connection is only ever found by the side that asks.
+const HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_UNANSWERED_PINGS: u32 = 2;
+
+/// What a `Resync` costs against the socket's frame budget, in frames: the
+/// handler is skipped, but the whole view runs and the whole tree is sent
+/// again — the most expensive thing a two-byte frame can ask for.
+const RESYNC_COST: f64 = 20.0;
+
+/// A client string on its way into the log: control bytes out, length
+/// bounded — a client must not get to write our log lines.
+fn printable(s: &str) -> String {
+    s.chars()
+        .take(200)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+/// Upgrade the request and drive the session on a task. `slot` is the
+/// socket's admission, released when the task ends.
 pub fn upgrade(
     mut req: Request<Incoming>,
     component: String,
     session_id: String,
     lv_event_tx: crossbeam::channel::Sender<LiveViewEventData>,
+    slot: WsConnectionSlot,
 ) -> Result<Response<ResponseBody>, hyper::Error> {
     if !super::is_eui_component(&component) {
         return Ok(Response::builder()
@@ -50,6 +77,7 @@ pub fn upgrade(
         };
 
     tokio::spawn(async move {
+        let _slot = slot;
         let stream = match websocket.await {
             Ok(ws) => ws,
             Err(e) => {
@@ -63,8 +91,8 @@ pub fn upgrade(
         //    application with `connect`, and again as `viewport` whenever
         //    the client reports a change: a view that wants to be
         //    responsive keeps it in its state.
-        let hello = match ws_read.next().await {
-            Some(Ok(Message::Binary(b))) => match Frame::decode(&b) {
+        let hello = match tokio::time::timeout(HELLO_TIMEOUT, ws_read.next()).await {
+            Ok(Some(Ok(Message::Binary(b)))) => match Frame::decode(&b) {
                 Ok(Frame::Hello(h)) if h.version >= 1 => Some(h),
                 _ => None,
             },
@@ -156,8 +184,46 @@ pub fn upgrade(
 
         // 5. Client frames in — unless `connect` closed the session, in
         //    which case the Error frame is on its way and this is over.
-        while let Some(Ok(msg)) = ws_read.next().await {
+        //    Frames are charged against the same budget a `/ws/*` socket
+        //    has (`SOLI_WS_MAX_MESSAGES_PER_SEC`), and the server pings on
+        //    its own clock.
+        let mut budget = WsRateLimiter::from_config();
+        let mut heartbeat = tokio::time::interval(HEARTBEAT);
+        heartbeat.tick().await; // the first tick is immediate
+        let mut unanswered_pings: u32 = 0;
+        loop {
             if !connected {
+                break;
+            }
+            let msg = tokio::select! {
+                next = ws_read.next() => match next {
+                    Some(Ok(msg)) => msg,
+                    _ => break,
+                },
+                _ = heartbeat.tick() => {
+                    if unanswered_pings >= MAX_UNANSWERED_PINGS {
+                        eprintln!(
+                            "[EUI] {component}: {unanswered_pings} pings unanswered; closing"
+                        );
+                        break;
+                    }
+                    unanswered_pings += 1;
+                    let nonce = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_nanos() as u64)
+                        .to_le_bytes();
+                    let _ = sender.try_send(Ok(Message::Binary(Frame::Ping(nonce).encode())));
+                    continue;
+                }
+            };
+            if !budget.allow() {
+                let _ = sender.try_send(Ok(Message::Binary(
+                    Frame::Error {
+                        code: 429,
+                        message: "too many frames".into(),
+                    }
+                    .encode(),
+                )));
                 break;
             }
             let bytes = match msg {
@@ -190,7 +256,7 @@ pub fn upgrade(
             };
             match frame {
                 Frame::Event(e) => {
-                    if std::env::var("EUI_TRACE").is_ok() {
+                    if trace() {
                         eprintln!(
                             "[EUI trace] event node={} kind={:?} name={}",
                             e.node, e.event, e.name
@@ -220,6 +286,16 @@ pub fn upgrade(
                     }
                 }
                 Frame::Resync => {
+                    if !budget.allow_cost(RESYNC_COST - 1.0) {
+                        let _ = sender.try_send(Ok(Message::Binary(
+                            Frame::Error {
+                                code: 429,
+                                message: "too many resyncs".into(),
+                            }
+                            .encode(),
+                        )));
+                        break;
+                    }
                     if !post(
                         &lv_event_tx,
                         &liveview_id,
@@ -250,9 +326,10 @@ pub fn upgrade(
                         break;
                     }
                 }
-                Frame::Ack { .. } | Frame::Pong(_) => {}
+                Frame::Ack { .. } => {}
+                Frame::Pong(_) => unanswered_pings = 0,
                 Frame::Error { code, message } => {
-                    eprintln!("[EUI] client error {code}: {message}");
+                    eprintln!("[EUI] client error {code}: {}", printable(&message));
                     break;
                 }
                 Frame::Hello(_) | Frame::Welcome(_) | Frame::Batch(_) => {
@@ -372,7 +449,7 @@ async fn post(
     }
     match tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await {
         Ok(Ok(Ok(()))) => {
-            if std::env::var("EUI_TRACE").is_ok() {
+            if trace() {
                 eprintln!("[EUI trace] {component} {event}: handled");
             }
         }

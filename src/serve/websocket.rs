@@ -243,6 +243,12 @@ impl WsRateLimiter {
 
     /// Consume one token. `false` means the socket is over its budget.
     pub fn allow(&mut self) -> bool {
+        self.allow_cost(1.0)
+    }
+
+    /// Consume `cost` tokens: a frame that costs the server a whole render
+    /// is charged more than one that costs it a lookup.
+    pub fn allow_cost(&mut self, cost: f64) -> bool {
         if self.refill_per_sec <= 0.0 {
             return true;
         }
@@ -250,8 +256,8 @@ impl WsRateLimiter {
         let elapsed = now.duration_since(self.last).as_secs_f64();
         self.last = now;
         self.tokens = (self.tokens + elapsed * self.refill_per_sec).min(self.capacity);
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
+        if self.tokens >= cost {
+            self.tokens -= cost;
             true
         } else {
             false
