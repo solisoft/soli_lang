@@ -680,6 +680,14 @@ pub fn run_test(
                     cmd.env("SOLI_COVERAGE_TOKEN", token);
                 }
             }
+            // `ChildGuard` kills these when the suite ends, but `Drop` does
+            // not run when the runner is killed outright — a `Ctrl-C` that
+            // escalates, a `timeout`, an OOM kill. Three of these were found
+            // alive six hours after the run that spawned them died, still
+            // holding SoliDB connections and re-creating their `_test`
+            // databases the moment anything dropped them. The kernel is the
+            // only party that can promise this, so ask it.
+            arm_parent_death(&mut cmd);
             let child = cmd.spawn().expect("Failed to spawn test server subprocess");
             test_server_children.0.push(child);
         }
@@ -1721,6 +1729,27 @@ fn drop_test_databases(db_names: &[String]) {
 /// `DELETE /_api/database/<name>`. A 404 counts as success — the database was
 /// never created (a suite that ran no DB-backed spec) or a previous teardown
 /// already removed it.
+/// On Linux, ask the kernel to kill a test server when the runner dies.
+///
+/// The same guarantee `cdp::arm_parent_death` gives a browser, for the same
+/// reason: `ChildGuard`'s `Drop` covers every way the suite can *finish*,
+/// and none of the ways it can be *killed*.
+#[cfg(target_os = "linux")]
+fn arm_parent_death(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: `prctl` is async-signal-safe and this closure runs in the child
+    // between fork and exec, where only such calls are permitted.
+    unsafe {
+        command.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn arm_parent_death(_command: &mut std::process::Command) {}
+
 /// This app's worker databases that no run will reuse, out of `all` — every
 /// database the server holds — given the `current` run's names.
 ///
