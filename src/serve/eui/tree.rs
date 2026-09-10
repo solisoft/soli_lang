@@ -123,8 +123,21 @@ pub struct Encoder {
     /// rather than a walk of the whole table.
     atoms_by_id: Vec<String>,
     styles: HashMap<[u8; 64], u32>,
+    /// Style ids by a fingerprint of the view value that produced them, so
+    /// a style hash the view writes the same way every render is looked up
+    /// by hashing its fields, not by converting them to JSON, parsing that
+    /// into a record and encoding the record — which was most of what a
+    /// cold render spent per node.
+    style_fingerprints: HashMap<[u8; 16], u32>,
     colors: HashMap<u32, u32>,
     chunks: HashMap<Vec<u8>, u32>,
+    /// Chunk ids by local-handler source (and what the compile depended
+    /// on), so a `local("…")` seen once is a lookup, not a lex, a parse and
+    /// an assemble per node per render.
+    local_cache: HashMap<String, u32>,
+    /// The first table to pass a limit the client enforces; the render that
+    /// did it fails, since every later one would too.
+    overflow: Option<String>,
     pending: Vec<Op>,
     next_node: u32,
     seq: u64,
@@ -200,7 +213,10 @@ fn with_memo<R>(session: &str, f: impl FnOnce(&mut Memo) -> R) -> R {
         if due {
             memos.retain(|id, _| id == session || super::has_encoder(id));
         }
-        f(memos.entry(session.to_owned()).or_default())
+        if !memos.contains_key(session) {
+            memos.insert(session.to_owned(), Memo::default());
+        }
+        f(memos.get_mut(session).expect("just inserted"))
     })
 }
 
@@ -241,6 +257,9 @@ impl Encoder {
             return *id;
         }
         let id = self.atoms.len() as u32 + 1;
+        if id > eui_proto::limits::MAX_ATOMS {
+            self.overflowed("atoms", eui_proto::limits::MAX_ATOMS);
+        }
         self.atoms.insert(s.to_string(), id);
         if self.atoms_by_id.is_empty() {
             self.atoms_by_id.push(String::new()); // id 0 is "no atom"
@@ -260,11 +279,29 @@ impl Encoder {
         self.atoms_by_id.get(id as usize).map(String::as_str)
     }
 
+    /// Note the first table to outgrow the client's limit. The tables are
+    /// append-only — the wire format says so — so a session that has used
+    /// its last atom on a row key has no way back, and the honest thing is
+    /// to fail this render with the reason rather than send ids the client
+    /// will refuse without one.
+    fn overflowed(&mut self, table: &str, max: u32) {
+        if self.overflow.is_none() {
+            self.overflow = Some(format!(
+                "EUI: this session has interned more than {max} {table}; a key or a style \
+                 derived from data grows the table with every new value — intern less, or \
+                 reconnect"
+            ));
+        }
+    }
+
     fn color_literal(&mut self, rgba: u32) -> ColorRef {
         if let Some(id) = self.colors.get(&rgba) {
             return ColorRef::literal(*id as u16);
         }
         let id = self.colors.len() as u32 + 1;
+        if id > eui_proto::limits::MAX_COLORS {
+            self.overflowed("colours", eui_proto::limits::MAX_COLORS);
+        }
         self.colors.insert(rgba, id);
         self.pending.push(Op::DefColor { id, rgba });
         ColorRef::literal(id as u16)
@@ -276,6 +313,9 @@ impl Encoder {
             return *id;
         }
         let id = self.chunks.len() as u32 + 1;
+        if id > eui_proto::limits::MAX_CHUNKS {
+            self.overflowed("chunks", eui_proto::limits::MAX_CHUNKS);
+        }
         self.chunks.insert(bytes.clone(), id);
         self.pending.push(Op::DefChunkBytes { id, bytes });
         id
@@ -473,6 +513,9 @@ impl Encoder {
             return *id;
         }
         let id = self.styles.len() as u32 + 1;
+        if id > eui_proto::limits::MAX_STYLES {
+            self.overflowed("styles", eui_proto::limits::MAX_STYLES);
+        }
         self.styles.insert(key, id);
         self.pending.push(Op::DefStyle { id, record });
         id
@@ -488,7 +531,7 @@ impl Encoder {
     /// `Mount` (first render, or resync) or the diff against the previous tree.
     pub fn render(&mut self, json: &Json, resync: bool) -> Result<Vec<Batch>, String> {
         self.generation = self.generation.wrapping_add(1);
-        let tree = self.convert(json)?;
+        let tree = self.convert(json, 1)?;
         self.finish(tree, resync, HashMap::new())
     }
 
@@ -507,7 +550,7 @@ impl Encoder {
         // until `finish` pins them in the memo. Held here, not on the
         // encoder: an interpreter value cannot cross threads.
         let mut pins: HashMap<usize, Value> = HashMap::new();
-        let tree = match self.convert_value(value, &mut pins)? {
+        let tree = match self.convert_value(value, &mut pins, 1)? {
             Some(Child::Fresh(n)) => n,
             Some(Child::Kept(rc)) => (*rc).clone(),
             None => return Err("EUI: the view returned nothing".into()),
@@ -521,12 +564,19 @@ impl Encoder {
         resync: bool,
         mut pins: HashMap<usize, Value>,
     ) -> Result<Vec<Batch>, String> {
-        // The client refuses a tree past its node limit and there is no way
-        // to send it anyway; say so here, where the application can act.
+        // What the client would refuse is refused here, where the reason
+        // reaches the view's author: a table past its limit, or a tree past
+        // the node count — which there is no way to send anyway.
+        if let Some(reason) = self.overflow.take() {
+            return Err(reason);
+        }
         let nodes = count_nodes(&tree);
         self.last_nodes = nodes;
         if nodes > eui_proto::limits::MAX_NODES as usize {
-            eprintln!("[EUI] the view returned {nodes} nodes; a client accepts at most {} — virtualise, paginate or trim", eui_proto::limits::MAX_NODES);
+            return Err(format!(
+                "EUI: the view returned {nodes} nodes; a client accepts at most {} — virtualise, paginate or trim",
+                eui_proto::limits::MAX_NODES
+            ));
         }
         let ops = match (self.prev.take(), resync) {
             (Some(prev), false) => {
@@ -655,7 +705,9 @@ impl Encoder {
         &mut self,
         v: &Value,
         pins: &mut HashMap<usize, Value>,
+        depth: u32,
     ) -> Result<Option<Child>, String> {
+        too_deep(depth)?;
         let hash = match v {
             Value::Hash(h) => h,
             Value::Null | Value::Bool(false) => return Ok(None),
@@ -680,30 +732,21 @@ impl Encoder {
                 return Ok(Some(Child::Kept(arc)));
             }
         }
-        // The node's own fields go through the JSON path, which knows every
-        // style key and handler shape; only the walk down `c` stays on values.
-        let mut own = serde_json::Map::new();
-        let mut kids: Vec<Value> = Vec::new();
-        {
+        // The node's own fields are read off the value; `c` is walked.
+        let (mut node, kids) = {
             let borrow = hash.borrow();
-            for (k, val) in borrow.iter() {
-                let HashKey::String(name) = k else { continue };
-                if name.as_str() == "c" {
-                    if let Value::Array(items) = val {
-                        kids = items.borrow().clone();
-                    }
-                } else {
-                    own.insert(
-                        name.to_string(),
-                        crate::interpreter::value::value_to_json(val)?,
-                    );
+            let node = self.convert_shallow_value(&borrow)?;
+            let kids = match borrow.get(&HashKey::String("c".into())) {
+                Some(Value::Array(items)) => Some(Rc::clone(items)),
+                _ => None,
+            };
+            (node, kids)
+        };
+        if let Some(kids) = kids {
+            for child in kids.borrow().iter() {
+                if let Some(c) = self.convert_value(child, pins, depth + 1)? {
+                    node.children.push(c);
                 }
-            }
-        }
-        let mut node = self.convert_shallow(&own)?;
-        for child in &kids {
-            if let Some(c) = self.convert_value(child, pins)? {
-                node.children.push(c);
             }
         }
         if node.kind.is_leaf() && !node.children.is_empty() {
@@ -717,7 +760,8 @@ impl Encoder {
         Ok(Some(Child::Fresh(node)))
     }
 
-    fn convert(&mut self, j: &Json) -> Result<TNode, String> {
+    fn convert(&mut self, j: &Json, depth: u32) -> Result<TNode, String> {
+        too_deep(depth)?;
         let obj = j.as_object().ok_or("EUI: a node must be a hash")?;
         let mut node = self.convert_shallow(obj)?;
         if let Some(c) = obj.get("c").and_then(Json::as_array) {
@@ -725,7 +769,8 @@ impl Encoder {
                 if child.is_null() || child == &Json::Bool(false) {
                     continue; // `x if cond` in a list reads as null: skip, like a template would.
                 }
-                node.children.push(Child::Fresh(self.convert(child)?));
+                node.children
+                    .push(Child::Fresh(self.convert(child, depth + 1)?));
             }
         }
         if node.kind.is_leaf() && !node.children.is_empty() {
@@ -737,25 +782,7 @@ impl Encoder {
 
     /// A node from its own fields — everything but `c`.
     fn convert_shallow(&mut self, obj: &serde_json::Map<String, Json>) -> Result<TNode, String> {
-        let kind = match obj.get("k").and_then(Json::as_str).unwrap_or("box") {
-            "box" => NodeKind::Box,
-            "text" => NodeKind::Text,
-            "image" => NodeKind::Image,
-            "icon" => NodeKind::Icon,
-            "input" => NodeKind::Input,
-            "textarea" => NodeKind::TextArea,
-            "scroll" => NodeKind::Scroll,
-            "list" => NodeKind::List,
-            "canvas" => NodeKind::Canvas,
-            "spacer" => NodeKind::Spacer,
-            "divider" => NodeKind::Divider,
-            "overlay" => NodeKind::Overlay,
-            "slot" => NodeKind::Slot,
-            "sizer" => NodeKind::Sizer,
-            "audio" => NodeKind::Audio,
-            "video" => NodeKind::Video,
-            other => return Err(format!("EUI: unknown node kind '{other}'")),
-        };
+        let kind = kind_of(obj.get("k").and_then(Json::as_str).unwrap_or("box"))?;
         let style = match obj.get("s") {
             Some(s) => {
                 let record = self.style_record(s)?;
@@ -767,89 +794,88 @@ impl Encoder {
             Json::String(s) => s.clone(),
             other => other.to_string(),
         });
+        let intern = obj.get("intern").and_then(Json::as_bool).unwrap_or(false);
+        let text = match obj.get("t") {
+            Some(Json::String(s)) => Some(self.text_of(s.clone(), intern)?),
+            Some(other) => Some(self.text_of(other.to_string(), intern)?),
+            None => None,
+        };
+        let props = match obj.get("p").and_then(Json::as_object) {
+            Some(p) => self.props_from(kind, p)?,
+            None => Vec::new(),
+        };
+        let handlers = match obj.get("on").and_then(Json::as_object) {
+            Some(on) => self.handlers_from(on, &key)?,
+            None => Vec::new(),
+        };
+        Ok(self.node(kind, style, key, text, props, handlers))
+    }
+
+    /// [`convert_shallow`] straight off the view's hash: the scalar fields
+    /// are read as they are, the style is looked up by fingerprint before
+    /// anything is converted, and only `p` and `on` — small, and shaped by
+    /// the JSON parsers — go through JSON.
+    fn convert_shallow_value(
+        &mut self,
+        fields: &crate::interpreter::value::HashPairs,
+    ) -> Result<TNode, String> {
+        let field = |name: &str| fields.get(&HashKey::String(name.into()));
+        let kind = match field("k") {
+            None => NodeKind::Box,
+            Some(Value::String(name)) => kind_of(name)?,
+            Some(other) => return Err(format!("EUI: a node kind is a string, got {other}")),
+        };
+        let style = match field("s") {
+            None => 0,
+            Some(style) => self.style_of_value(style)?,
+        };
+        let key = field("key").map(|k| match k {
+            Value::String(s) => s.to_string(),
+            other => other.to_string(),
+        });
+        let intern = matches!(field("intern"), Some(Value::Bool(true)));
+        let text = match field("t") {
+            None => None,
+            Some(Value::String(s)) => Some(self.text_of(s.to_string(), intern)?),
+            Some(other) => Some(self.text_of(other.to_string(), intern)?),
+        };
+        let props = match field("p") {
+            None => Vec::new(),
+            Some(p) => {
+                let json = crate::interpreter::value::value_to_json(p)?;
+                match json.as_object() {
+                    Some(p) => self.props_from(kind, p)?,
+                    None => Vec::new(),
+                }
+            }
+        };
+        let handlers = match field("on") {
+            None => Vec::new(),
+            Some(on) => {
+                let json = crate::interpreter::value::value_to_json(on)?;
+                match json.as_object() {
+                    Some(on) => self.handlers_from(on, &key)?,
+                    None => Vec::new(),
+                }
+            }
+        };
+        Ok(self.node(kind, style, key, text, props, handlers))
+    }
+
+    fn node(
+        &mut self,
+        kind: NodeKind,
+        style: u32,
+        key: Option<String>,
+        text: Option<TextRef>,
+        props: Vec<(u32, WireValue)>,
+        handlers: Vec<(EventKind, Handler)>,
+    ) -> TNode {
         let key_atom = match &key {
             Some(k) => self.atom(k),
             None => 0,
         };
-        let text = obj.get("t").map(|t| {
-            let s = match t {
-                Json::String(s) => s.clone(),
-                other => other.to_string(),
-            };
-            // Short strings are worth interning only if they repeat; the
-            // atom table is append-only, so a unique cell value would be a
-            // permanent entry. Inline anything a row is likely to own.
-            if s.len() <= 24 && obj.get("intern").and_then(Json::as_bool).unwrap_or(false) {
-                TextRef::Atom(self.atom(&s))
-            } else {
-                TextRef::Inline(s)
-            }
-        });
-        let mut props = Vec::new();
-        if let Some(p) = obj.get("p").and_then(Json::as_object) {
-            for (name, v) in p {
-                let atom = self.atom(name);
-                // An image's `src` is a file in the application; it goes on
-                // the wire as the hash of its bytes, served from /_eui/asset.
-                let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
-                    && name == "src"
-                {
-                    match v {
-                        Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
-                        other => return Err(format!("EUI: a src must be a path, got {other}")),
-                    }
-                } else if kind == NodeKind::Canvas && name == "paths" {
-                    self.paths_value(v)?
-                } else {
-                    self.wire_value(v)?
-                };
-                props.push((atom, value));
-            }
-        }
-        let mut handlers = Vec::new();
-        if let Some(on) = obj.get("on").and_then(Json::as_object) {
-            for (event, target) in on {
-                let kind =
-                    event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
-                let handler = match target {
-                    Json::String(name) => Handler::Server(self.atom(name)),
-                    Json::Object(spec) => {
-                        // {"local": "source" | [instructions], "styles": {name: style}?, "then": "server_event"?}
-                        let mut declared: HashMap<String, u32> = HashMap::new();
-                        if let Some(styles) = spec.get("styles").and_then(Json::as_object) {
-                            for (name, st) in styles {
-                                let record = self.style_record(st)?;
-                                let id = self.style(record);
-                                declared.insert(name.clone(), id);
-                            }
-                        }
-                        let bytes = match spec.get("local") {
-                            Some(Json::String(src)) => {
-                                let mut ctx = LocalCtx { enc: self, declared: &declared, self_key: key.clone() };
-                                super::local::compile(src, &mut ctx)?
-                            }
-                            Some(Json::Array(program)) => self.assemble(program)?,
-                            _ => return Err("EUI: a local handler needs \"local\": a source string or an instruction list".into()),
-                        };
-                        let chunk = self.chunk(bytes);
-                        match spec.get("then").and_then(Json::as_str) {
-                            Some(name) => Handler::LocalThenServer {
-                                chunk,
-                                name: self.atom(name),
-                            },
-                            None => Handler::Local(chunk),
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "EUI: a handler is a server event name or {\"local\": [...]}".into(),
-                        )
-                    }
-                };
-                handlers.push((kind, handler));
-            }
-        }
-        Ok(TNode {
+        TNode {
             id: 0,
             kind,
             style,
@@ -861,7 +887,144 @@ impl Encoder {
             children: Vec::new(),
             identity: 0,
             size: 0,
+        }
+    }
+
+    /// A style id for a view value: by fingerprint when the value is a hash
+    /// seen before, else the JSON way, remembered under its fingerprint.
+    fn style_of_value(&mut self, style: &Value) -> Result<u32, String> {
+        let fingerprint = match style {
+            Value::Hash(_) => fingerprint_of(style),
+            _ => None,
+        };
+        if let Some(fp) = fingerprint {
+            if let Some(id) = self.style_fingerprints.get(&fp) {
+                return Ok(*id);
+            }
+        }
+        let json = crate::interpreter::value::value_to_json(style)?;
+        let record = self.style_record(&json)?;
+        let id = self.style(record);
+        if let Some(fp) = fingerprint {
+            self.style_fingerprints.insert(fp, id);
+        }
+        Ok(id)
+    }
+
+    /// A text as it goes on the wire. Short strings are worth interning only
+    /// if they repeat; the atom table is append-only, so a unique cell value
+    /// would be a permanent entry — inline anything a row is likely to own,
+    /// and intern only what the view asked to (`intern: true`).
+    fn text_of(&mut self, s: String, intern: bool) -> Result<TextRef, String> {
+        if s.len() > eui_proto::limits::MAX_INLINE_STR {
+            return Err(format!(
+                "EUI: a text of {} bytes; the client accepts at most {} — split it into nodes",
+                s.len(),
+                eui_proto::limits::MAX_INLINE_STR
+            ));
+        }
+        Ok(if s.len() <= 24 && intern {
+            TextRef::Atom(self.atom(&s))
+        } else {
+            TextRef::Inline(s)
         })
+    }
+
+    fn props_from(
+        &mut self,
+        kind: NodeKind,
+        p: &serde_json::Map<String, Json>,
+    ) -> Result<Vec<(u32, WireValue)>, String> {
+        let mut props = Vec::with_capacity(p.len());
+        for (name, v) in p {
+            let atom = self.atom(name);
+            // An image's `src` is a file in the application; it goes on
+            // the wire as the hash of its bytes, served from /_eui/asset.
+            let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
+                && name == "src"
+            {
+                match v {
+                    Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
+                    other => return Err(format!("EUI: a src must be a path, got {other}")),
+                }
+            } else if kind == NodeKind::Canvas && name == "paths" {
+                self.paths_value(v)?
+            } else {
+                self.wire_value(v)?
+            };
+            props.push((atom, value));
+        }
+        Ok(props)
+    }
+
+    fn handlers_from(
+        &mut self,
+        on: &serde_json::Map<String, Json>,
+        key: &Option<String>,
+    ) -> Result<Vec<(EventKind, Handler)>, String> {
+        let mut handlers = Vec::with_capacity(on.len());
+        for (event, target) in on {
+            let kind = event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
+            let handler = match target {
+                Json::String(name) => Handler::Server(self.atom(name)),
+                Json::Object(spec) => {
+                    // {"local": "source" | [instructions], "styles": {name: style}?, "then": "server_event"?}
+                    let mut declared: HashMap<String, u32> = HashMap::new();
+                    if let Some(styles) = spec.get("styles").and_then(Json::as_object) {
+                        for (name, st) in styles {
+                            let record = self.style_record(st)?;
+                            let id = self.style(record);
+                            declared.insert(name.clone(), id);
+                        }
+                    }
+                    let chunk = match spec.get("local") {
+                        Some(Json::String(src)) => {
+                            // What the compile depends on, all of it: the
+                            // source, the node's own key (`self`), and the
+                            // ids the declared styles resolved to.
+                            let mut declared_ids: Vec<(&String, &u32)> = declared.iter().collect();
+                            declared_ids.sort();
+                            let cache_key = format!("{src}\u{0}{key:?}\u{0}{declared_ids:?}");
+                            match self.local_cache.get(&cache_key) {
+                                Some(id) => *id,
+                                None => {
+                                    let bytes = {
+                                        let mut ctx = LocalCtx {
+                                            enc: self,
+                                            declared: &declared,
+                                            self_key: key.clone(),
+                                        };
+                                        super::local::compile(src, &mut ctx)?
+                                    };
+                                    let id = self.chunk(bytes);
+                                    self.local_cache.insert(cache_key, id);
+                                    id
+                                }
+                            }
+                        }
+                        Some(Json::Array(program)) => {
+                            let bytes = self.assemble(program)?;
+                            self.chunk(bytes)
+                        }
+                        _ => return Err("EUI: a local handler needs \"local\": a source string or an instruction list".into()),
+                    };
+                    match spec.get("then").and_then(Json::as_str) {
+                        Some(name) => Handler::LocalThenServer {
+                            chunk,
+                            name: self.atom(name),
+                        },
+                        None => Handler::Local(chunk),
+                    }
+                }
+                _ => {
+                    return Err(
+                        "EUI: a handler is a server event name or {\"local\": [...]}".into(),
+                    )
+                }
+            };
+            handlers.push((kind, handler));
+        }
+        Ok(handlers)
     }
 
     /// Spec 03 §1.1: a canvas path is `[kind, colour, numbers…]`. The colour
@@ -1086,6 +1249,95 @@ impl Encoder {
         }
         Ok(r)
     }
+}
+
+fn kind_of(name: &str) -> Result<NodeKind, String> {
+    Ok(match name {
+        "box" => NodeKind::Box,
+        "text" => NodeKind::Text,
+        "image" => NodeKind::Image,
+        "icon" => NodeKind::Icon,
+        "input" => NodeKind::Input,
+        "textarea" => NodeKind::TextArea,
+        "scroll" => NodeKind::Scroll,
+        "list" => NodeKind::List,
+        "canvas" => NodeKind::Canvas,
+        "spacer" => NodeKind::Spacer,
+        "divider" => NodeKind::Divider,
+        "overlay" => NodeKind::Overlay,
+        "slot" => NodeKind::Slot,
+        "sizer" => NodeKind::Sizer,
+        "audio" => NodeKind::Audio,
+        "video" => NodeKind::Video,
+        other => return Err(format!("EUI: unknown node kind '{other}'")),
+    })
+}
+
+/// The client refuses a tree nested past `MAX_TREE_DEPTH`; and every walk
+/// of a tree here recurses on the native stack, which a view over nested
+/// data could otherwise run off — and that aborts the process, not the
+/// event.
+fn too_deep(depth: u32) -> Result<(), String> {
+    if depth > eui_proto::limits::MAX_TREE_DEPTH {
+        return Err(format!(
+            "EUI: the tree is nested more than {} deep — the client accepts no more; flatten it",
+            eui_proto::limits::MAX_TREE_DEPTH
+        ));
+    }
+    Ok(())
+}
+
+/// A 128-bit fingerprint of a plain-data view value — strings, numbers,
+/// booleans, null, arrays and hashes of those — `None` for anything else.
+/// The keyed style cache lives on this: two style hashes with the same
+/// fields fingerprint the same, whatever object they are.
+fn fingerprint_of(v: &Value) -> Option<[u8; 16]> {
+    fn feed(v: &Value, h: &mut blake3::Hasher) -> bool {
+        match v {
+            Value::Null => h.update(b"n"),
+            Value::Bool(b) => h.update(if *b { b"t" } else { b"f" }),
+            Value::Int(i) => h.update(b"i").update(&i.to_le_bytes()),
+            Value::Float(f) => h.update(b"d").update(&f.to_bits().to_le_bytes()),
+            Value::String(s) | Value::Symbol(s) => h
+                .update(b"s")
+                .update(&(s.len() as u64).to_le_bytes())
+                .update(s.as_bytes()),
+            Value::Array(items) => {
+                let items = items.borrow();
+                h.update(b"a").update(&(items.len() as u64).to_le_bytes());
+                for item in items.iter() {
+                    if !feed(item, h) {
+                        return false;
+                    }
+                }
+                h
+            }
+            Value::Hash(pairs) => {
+                let pairs = pairs.borrow();
+                h.update(b"h").update(&(pairs.len() as u64).to_le_bytes());
+                for (k, val) in pairs.iter() {
+                    let HashKey::String(name) = k else {
+                        return false;
+                    };
+                    h.update(&(name.len() as u64).to_le_bytes())
+                        .update(name.as_bytes());
+                    if !feed(val, h) {
+                        return false;
+                    }
+                }
+                h
+            }
+            _ => return false,
+        };
+        true
+    }
+    let mut h = blake3::Hasher::new();
+    if !feed(v, &mut h) {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&h.finalize().as_bytes()[..16]);
+    Some(out)
 }
 
 fn enum_of<T: Copy>(v: &Json, table: &[(&str, T)]) -> Result<T, String> {
@@ -1434,6 +1686,68 @@ mod tests {
             enc.event_target(9999, EventKind::Click).is_none(),
             "no such node"
         );
+    }
+
+    #[test]
+    fn a_style_written_twice_is_one_record_and_one_fingerprint_lookup() {
+        let style = || {
+            h(vec![
+                ("display", s("row")),
+                ("gap", Value::Int(4)),
+                ("bg", s("surface.base")),
+            ])
+        };
+        let mut enc = Encoder::default();
+        let a = enc.style_of_value(&style()).unwrap();
+        assert_eq!(enc.style_fingerprints.len(), 1);
+        let b = enc.style_of_value(&style()).unwrap();
+        assert_eq!(a, b, "the same fields are the same style");
+        assert_eq!(enc.styles.len(), 1);
+        let c = enc
+            .style_of_value(&h(vec![("display", s("column"))]))
+            .unwrap();
+        assert_ne!(a, c);
+        assert_eq!(enc.style_fingerprints.len(), 2);
+    }
+
+    #[test]
+    fn a_local_handler_is_compiled_once_per_source() {
+        let mut enc = Encoder::default();
+        let tree = || {
+            json!({"k": "box", "c": [
+                {"k": "box", "key": "a", "on": {"click": {"local": "state.n += 1"}}},
+                {"k": "box", "key": "b", "on": {"click": {"local": "state.n += 1"}}}
+            ]})
+        };
+        enc.render(&tree(), false).unwrap();
+        assert_eq!(enc.local_cache.len(), 2, "keyed by source and by self key");
+        assert_eq!(enc.chunks.len(), 1, "the bytes are the same chunk");
+        enc.render(&tree(), false).unwrap();
+        assert_eq!(enc.local_cache.len(), 2);
+    }
+
+    #[test]
+    fn the_client_limits_are_the_server_limits() {
+        let mut enc = Encoder::default();
+        let long = "x".repeat(eui_proto::limits::MAX_INLINE_STR + 1);
+        let err = enc
+            .render(&json!({"k": "text", "t": long}), false)
+            .unwrap_err();
+        assert!(err.contains("bytes"), "{err}");
+
+        let mut deep = json!({"k": "box"});
+        for _ in 0..=eui_proto::limits::MAX_TREE_DEPTH {
+            deep = json!({"k": "box", "c": [deep]});
+        }
+        let err = enc.render(&deep, false).unwrap_err();
+        assert!(err.contains("nested"), "{err}");
+
+        let mut enc = Encoder::default();
+        for i in 0..=eui_proto::limits::MAX_COLORS {
+            enc.color_literal(i);
+        }
+        let err = enc.render(&json!({"k": "box"}), false).unwrap_err();
+        assert!(err.contains("colours"), "{err}");
     }
 
     #[test]

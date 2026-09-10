@@ -1,8 +1,12 @@
 //! The EUI encoder on a keyed list: what one render costs when nothing,
 //! one row, or everything changed. The regression net for `serve::eui`.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use serde_json::{json, Value};
+use solilang::interpreter::value::{HashKey, HashPairs, Value as SoliValue};
 use solilang::serve::eui::tree::Encoder;
 
 const ROWS: usize = 10_000;
@@ -36,6 +40,61 @@ fn reversed(n: usize) -> Value {
         rows.reverse();
     }
     v
+}
+
+fn sv(x: &str) -> SoliValue {
+    SoliValue::String(x.into())
+}
+
+fn sh(pairs: Vec<(&str, SoliValue)>) -> SoliValue {
+    let mut map = HashPairs::default();
+    for (k, v) in pairs {
+        map.insert(HashKey::String(k.into()), v);
+    }
+    SoliValue::Hash(Rc::new(RefCell::new(map)))
+}
+
+fn sl(items: Vec<SoliValue>) -> SoliValue {
+    SoliValue::Array(Rc::new(RefCell::new(items)))
+}
+
+/// The same list as interpreter values — what the server actually renders
+/// from. Every call builds fresh objects, as a view that rebuilds its rows
+/// each render does.
+fn value_list(n: usize) -> SoliValue {
+    let rows: Vec<SoliValue> = (0..n)
+        .map(|i| {
+            sh(vec![
+                ("k", sv("box")),
+                ("key", sv(&format!("r{i}"))),
+                (
+                    "s",
+                    sh(vec![("display", sv("row")), ("gap", SoliValue::Int(2))]),
+                ),
+                ("p", sh(vec![("id", SoliValue::Int(i as i64))])),
+                ("on", sh(vec![("click", sv("pick"))])),
+                (
+                    "c",
+                    sl(vec![sh(vec![
+                        ("k", sv("text")),
+                        ("t", sv(&format!("row {i}"))),
+                    ])]),
+                ),
+            ])
+        })
+        .collect();
+    sh(vec![
+        ("k", sv("scroll")),
+        ("c", sl(vec![sh(vec![("k", sv("box")), ("c", sl(rows))])])),
+    ])
+}
+
+/// An encoder that has already sent the base list once, as values.
+fn warm_values() -> Encoder {
+    let mut enc = Encoder::default();
+    enc.render_value("bench", &value_list(ROWS), false)
+        .expect("base render");
+    enc
 }
 
 /// An encoder that has already sent the base list once.
@@ -86,6 +145,27 @@ fn bench(c: &mut Criterion) {
         b.iter_batched(
             warm,
             |mut enc| black_box(enc.render(&empty, false).unwrap()),
+            BatchSize::LargeInput,
+        )
+    });
+    // The value path: fresh row objects each render (every row converted,
+    // styles by fingerprint), and the same row objects (every row kept).
+    group.bench_function("values_rebuilt", |b| {
+        b.iter_batched(
+            || (warm_values(), value_list(ROWS)),
+            |(mut enc, tree)| black_box(enc.render_value("bench", &tree, false).unwrap()),
+            BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("values_kept", |b| {
+        let tree = value_list(ROWS);
+        b.iter_batched(
+            || {
+                let mut enc = Encoder::default();
+                enc.render_value("bench", &tree, false).unwrap();
+                enc
+            },
+            |mut enc| black_box(enc.render_value("bench", &tree, false).unwrap()),
             BatchSize::LargeInput,
         )
     });
