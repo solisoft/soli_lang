@@ -3052,6 +3052,21 @@ async fn handle_hyper_request(
                     .to_string()
             };
 
+            // An EUI component lives on its own binary socket, where every
+            // event is checked against the tree the client was last sent
+            // before it becomes a handler call. `router_eui` registers the
+            // handler in the same registry this socket reads, so the
+            // component used to be reachable here too — with a JSON event
+            // naming any handler event and carrying whatever `params` and
+            // `props` the client cared to write. Not a LiveView; not here.
+            #[cfg(feature = "eui")]
+            if eui::is_eui_component(&component) {
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(full(Bytes::from("no such LiveView component")))
+                    .unwrap());
+            }
+
             // Extract session ID from cookies
             let cookies = req
                 .headers()
