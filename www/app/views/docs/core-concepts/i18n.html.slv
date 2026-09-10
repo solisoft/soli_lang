@@ -80,8 +80,7 @@ print(missing);  # "unknown_key"</code></pre>
   "en.item_zero" => "No items",
   "en.item_one" => "1 item",
   "en.item_other" => "{count} items",
-  "fr.item_zero" => "Aucun article",
-  "fr.item_one" => "1 article",
+  "fr.item_one" => "{count} article",
   "fr.item_other" => "{count} articles"
 }
 
@@ -319,6 +318,26 @@ form based on count.</p>
         </div>
     </div>
 
+    <h2 id="which-locale" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Which locale a request runs in</h2>
+    <p class="text-gray-400 mb-4">A request begins with a locale resolved for it, in this order:</p>
+    <ol class="list-decimal list-inside space-y-2 text-gray-400 text-sm mb-4">
+        <li>a <code class="text-cyan-400">locale</code> value in the session &mdash; the person picked it;</li>
+        <li>a <code class="text-cyan-400">locale</code> cookie;</li>
+        <li>the best match for the <code class="text-cyan-400">Accept-Language</code> header <em>among the locales you ship</em> &mdash; <code class="text-cyan-400">fr-CA</code> is served by a <code class="text-cyan-400">fr</code> you have, and a language you have no file for is skipped rather than negotiated to;</li>
+        <li><code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code>, or <code class="text-cyan-400">I18n.set_default_locale(...)</code>, defaulting to <code class="text-cyan-400">en</code>.</li>
+    </ol>
+    <p class="text-gray-400 mb-12">The locale is restored when the request ends, so it never crosses from one visitor to the next on the same worker &mdash; it used to, and a controller that never called <code class="text-cyan-400">set_locale</code> rendered in whatever language the previous visitor had asked for. Realtime frames (Live View, EUI) resolve it from the socket's session the same way. <code class="text-cyan-400">set_locale</code> still overrides it for the rest of the request.</p>
+
+    <h2 id="cldr-plurals" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Plurals follow CLDR</h2>
+    <p class="text-gray-400 mb-4">Which suffix a count selects depends on the language, not only on the number. Soli uses the CLDR categories &mdash; <code class="text-cyan-400">_zero</code>, <code class="text-cyan-400">_one</code>, <code class="text-cyan-400">_two</code>, <code class="text-cyan-400">_few</code>, <code class="text-cyan-400">_many</code>, <code class="text-cyan-400">_other</code> &mdash; and each language uses the ones it has:</p>
+    <ul class="list-disc list-inside space-y-2 text-gray-400 text-sm mb-4">
+        <li><strong class="text-white">French</strong> has no zero category: <code class="text-cyan-400">0</code> and <code class="text-cyan-400">1</code> are both <code class="text-cyan-400">_one</code> &mdash; &laquo;&nbsp;0 article&nbsp;&raquo;, singular.</li>
+        <li><strong class="text-white">English</strong> has <code class="text-cyan-400">_one</code> and <code class="text-cyan-400">_other</code>; 0 takes <code class="text-cyan-400">_other</code> (&ldquo;0 items&rdquo;).</li>
+        <li><strong class="text-white">Russian</strong> and <strong class="text-white">Polish</strong> use <code class="text-cyan-400">_few</code> and <code class="text-cyan-400">_many</code>; <strong class="text-white">Arabic</strong> uses all six; <strong class="text-white">Japanese</strong> and <strong class="text-white">Chinese</strong> use only <code class="text-cyan-400">_other</code>.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">Two conveniences on top: a <code class="text-cyan-400">_zero</code> key is still honoured for a count of 0 in <em>any</em> language when you write one, because &ldquo;No items&rdquo; is often worth saying differently; and a category your file does not declare falls back to <code class="text-cyan-400">_other</code> in the same locale before any other language is consulted.</p>
+    <p class="text-gray-400 mb-12">Before this, every language got English&rsquo;s zero/one/other. A French page with a correct <code class="text-cyan-400">fr.yml</code> asked for <code class="text-cyan-400">items_zero</code>, did not find it, and rendered the <em>English</em> string in its place.</p>
+
     <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
         <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -327,8 +346,11 @@ form based on count.</p>
             Best Practice
         </h4>
         <p class="text-yellow-200/80 text-sm">
-            Set the locale early in your request lifecycle, typically in a before filter or middleware.
-            You can detect the user's preferred language from the <code>Accept-Language</code> header or from user preferences stored in your database.
+            You no longer have to. Every request begins with a locale of its own &mdash; a
+            <code>locale</code> value in the session, else a <code>locale</code> cookie, else the best
+            match for <code>Accept-Language</code> among the locales you ship, else
+            <code>SOLI_DEFAULT_LOCALE</code>. <code>set_locale</code> is for overriding that inside a
+            request; it no longer has to be called to avoid inheriting the previous visitor's language.
         </p>
     </div>
 </div>

@@ -20,7 +20,36 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Nothing on <code class="text-cyan-400">main</code> since <a href="#v2-1-1" class="text-amber-400 hover:underline">v2.1.1</a> yet.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-1" class="text-amber-400 hover:underline">v2.1.1</a>.</p>
+
+        <h3 id="unreleased-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The locale no longer carries from one visitor to the next.</strong> The active locale lives in a thread-local, workers are reused between requests, and nothing in the request path reset it &mdash; so a controller that did not call <code class="text-cyan-400">set_locale</code> rendered in whatever language the <em>previous</em> request on that worker had asked for.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">It was a write-side bug too.</strong> <code class="text-cyan-400">Model#save</code> and <code class="text-cyan-400">#update</code> store pending translations into the slot named by the current locale, so one visitor's edit could be persisted under another visitor's language &mdash; not merely displayed in it.</li>
+                    <li><strong class="text-white">A request now begins with a locale of its own:</strong> a <code class="text-cyan-400">locale</code> value in the session, else a <code class="text-cyan-400">locale</code> cookie, else the best match for <code class="text-cyan-400">Accept-Language</code> among the locales you actually ship (<code class="text-cyan-400">fr-CA</code> is served by a <code class="text-cyan-400">fr</code> you have), else <code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code> &mdash; and it is restored when the request ends. Realtime frames (Live View, EUI) resolve it from the socket's session the same way.</li>
+                    <li>Covered by an end-to-end test that serves two requests from one worker: without the fix the second renders in the first's language.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Plurals follow CLDR, so French no longer renders English.</strong> The suffix was picked by a locale-independent ladder &mdash; <code class="text-cyan-400">0 &rarr; _zero</code>, <code class="text-cyan-400">1 &rarr; _one</code>, else <code class="text-cyan-400">_other</code> &mdash; applied to every language.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">French has no zero category:</strong> 0 and 1 are both <code class="text-cyan-400">one</code> (&laquo;&nbsp;0 article&nbsp;&raquo;). A French page with a <em>correct</em> <code class="text-cyan-400">fr.yml</code> therefore asked for <code class="text-cyan-400">items_zero</code>, did not find it, and fell back to the <strong class="text-white">English</strong> string. The repository's own test asserted that as the expected result.</li>
+                    <li>Russian and Polish could not reach <code class="text-cyan-400">_few</code> or <code class="text-cyan-400">_many</code> at all; Japanese and Chinese were given a singular/plural distinction they do not have; Arabic five of its six forms were unreachable.</li>
+                    <li>Categories are now per language, with hand-written rules for the languages the docs ship and <code class="text-cyan-400">one</code>/<code class="text-cyan-400">other</code> for the rest. A <code class="text-cyan-400">_zero</code> key is still honoured for a count of 0 in any language, and a category your file omits falls back to <code class="text-cyan-400">_other</code> in the same locale before another locale is consulted.</li>
+                </ul>
+            </li>
+            <li><strong class="text-white"><code class="text-cyan-400">t()</code> translates.</strong> It returned its own argument &mdash; <code class="text-cyan-400">t("welcome.title")</code> rendered the literal <code>welcome.title</code> &mdash; while the views documentation gives it as <em>the</em> way to translate; only <code class="text-cyan-400">I18n.translate</code> ever worked. It now resolves the key in the current locale, interpolates a values hash, and escapes interpolated values for a key promising HTML. A missing key still renders as itself, so an untranslated string is visible rather than blank.</li>
+            <li><strong class="text-white">The fallback locale is yours to choose.</strong> <code class="text-cyan-400">"en"</code> was hard-coded in six places with no way to change it, so an application whose primary language was not English fell back to one it might not even ship. <code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code> and <code class="text-cyan-400">I18n.set_default_locale(...)</code> now set it; it remains <code class="text-cyan-400">en</code> by default.</li>
+        </ul>
+
+        <h3 id="unreleased-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">I18n.set_default_locale(locale)</code> and <code class="text-cyan-400">I18n.default_locale()</code>,</strong> with the <code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code> environment variable. See <a href="/docs/core-concepts/i18n#which-locale" class="text-amber-400 hover:underline">Which locale a request runs in</a>.</li>
+        </ul>
     </section>
 
     <section id="v2-1-1" class="mb-16 scroll-mt-24">

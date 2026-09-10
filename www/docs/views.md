@@ -510,16 +510,24 @@ Returns the current locale code.
 
 #### set_locale(code)
 
-Sets the current locale for translations and formatting.
+Overrides the locale for the rest of this request.
 
 ```erb
 <% set_locale("fr") %>
 <p>Now using French: <%= locale() %></p>
 ```
 
+You rarely need it: a request already starts with a locale of its own — a
+`locale` value in the session, else a `locale` cookie, else the best match for
+`Accept-Language` among the locales you ship, else `SOLI_DEFAULT_LOCALE`. It is
+restored when the request ends, so it never carries over to the next visitor
+served by that worker.
+
 #### t(key, params)
 
 Translates a key using the current locale. Supports interpolation with parameters.
+A key with no translation renders as itself, so an untranslated string is
+visible on the page rather than silently blank.
 
 ```erb
 <h1><%= t("welcome.title") %></h1>

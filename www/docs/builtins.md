@@ -4486,9 +4486,27 @@ Gets the current locale.
 println(I18n.locale())  # "en"
 ```
 
+### I18n.set_default_locale(locale)
+
+Sets the locale a request starts from, and the one a lookup falls back to when
+the active locale has no entry for a key. Process-wide, so it is the
+application's setting rather than this request's — the counterpart of
+`SOLI_DEFAULT_LOCALE`.
+
+```soli
+I18n.set_default_locale("fr")
+println(I18n.default_locale())  # "fr"
+```
+
+### I18n.default_locale()
+
+Returns the fallback locale. `"en"` until something sets it.
+
 ### I18n.set_locale(locale)
 
-Sets the current locale.
+Overrides the locale for the rest of this request. A request already begins
+with one resolved from the session, a `locale` cookie, or `Accept-Language`,
+and it is restored when the request ends.
 
 **Parameters:**
 - `locale` (String) - Locale code (e.g., "en", "fr", "de")
@@ -4549,7 +4567,20 @@ I18n.translate("app.greeting", "fr", { name: "Alice" }) # "Bonjour, Alice !"
 
 ### I18n.plural(key, count, locale_or_values?, values?)
 
-Picks the matching plural form for a count. Resolves `<key>_zero` (count == 0), `<key>_one` (count == 1), or `<key>_other`. The same locale-or-values disambiguation as `translate` applies. `count` is auto-injected into the interpolation values, so messages can reference `{count}` directly.
+Picks the matching plural form for a count, by the **CLDR** plural category of
+that count *in that language* — `<key>_zero`, `_one`, `_two`, `_few`, `_many` or
+`_other`. Each language uses the categories it has: English has `_one` and
+`_other` (0 is `_other`); French has no zero category, so 0 and 1 are both
+`_one` — « 0 article »; Russian and Polish use `_few` and `_many`; Arabic uses
+all six; Japanese and Chinese only `_other`.
+
+Two conveniences on top: a `_zero` key is honoured for a count of 0 in any
+language when you write one, and a category your file does not declare falls
+back to `_other` in the same locale before any other locale is consulted.
+
+The same locale-or-values disambiguation as `translate` applies. `count` is
+auto-injected into the interpolation values, so messages can reference
+`{count}` directly.
 
 ```yaml
 # config/locales/en.yml
