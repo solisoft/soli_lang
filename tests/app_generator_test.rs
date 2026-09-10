@@ -76,11 +76,66 @@ fn setup_app(p: &Path) {
 fn create_routes_file_writes_template() {
     let tmp = fresh();
     setup_app(tmp.path());
-    create_routes_file(tmp.path()).expect("routes ok");
+    create_routes_file(tmp.path(), false).expect("routes ok");
     let path = tmp.path().join("config/routes.sl");
     assert!(path.exists());
     let content = fs::read_to_string(&path).unwrap();
     assert!(!content.is_empty(), "routes file empty");
+    assert!(
+        !content.contains("router_eui"),
+        "no EUI route without --eui"
+    );
+}
+
+/// `--eui` puts the component's route in the same file, and the file
+/// still parses: `write_file` formats it on the way out, and a fragment
+/// that broke the parse would come back unformatted instead.
+#[test]
+#[cfg(feature = "eui")]
+fn create_routes_file_with_eui_adds_the_component_route() {
+    let tmp = fresh();
+    setup_app(tmp.path());
+    create_routes_file(tmp.path(), true).expect("routes ok");
+    let content = fs::read_to_string(tmp.path().join("config/routes.sl")).unwrap();
+    assert!(
+        content.contains("get(\"/\", \"home#index\")"),
+        "the HTTP routes stay"
+    );
+    assert!(
+        content.contains("router_eui(\"counter\", \"eui#counter\", \"eui#counter_view\")"),
+        "the EUI route is there: {content}"
+    );
+    assert!(
+        solilang::fmt::format_source(&content).is_ok(),
+        "routes.sl parses"
+    );
+}
+
+/// The catalogue is a vendored copy, and stays one: written verbatim, so
+/// a new application can take fixes from the file it came from.
+#[test]
+#[cfg(feature = "eui")]
+fn create_eui_writes_the_catalogue_verbatim_and_a_component() {
+    use solilang::scaffold::app_generator::create_eui;
+
+    let tmp = fresh();
+    setup_app(tmp.path());
+    create_eui(tmp.path()).expect("eui ok");
+
+    let catalogue = fs::read_to_string(tmp.path().join("app/controllers/eui_builders.sl")).unwrap();
+    assert_eq!(
+        catalogue,
+        solilang::scaffold::templates::eui::EUI_BUILDERS,
+        "the catalogue is copied, not regenerated"
+    );
+
+    let controller =
+        fs::read_to_string(tmp.path().join("app/controllers/eui_controller.sl")).unwrap();
+    assert!(
+        controller.contains("def counter(event_data)"),
+        "the handler"
+    );
+    assert!(controller.contains("def counter_view(state)"), "the view");
 }
 
 #[test]

@@ -60,6 +60,9 @@ pub enum Command {
     New {
         name: String,
         template: Option<String>,
+        /// `--eui`: also write the widget catalogue and a first EUI
+        /// component. Never set together with `template`.
+        eui: bool,
     },
     Generate {
         scaffold_name: String,
@@ -619,6 +622,9 @@ pub fn print_usage() {
     eprintln!("  soli                          Start interactive REPL");
     eprintln!("  soli script.sl                Run a script file");
     eprintln!("  soli new my_app               Create a new MVC application");
+    eprintln!(
+        "  soli new my_app --eui         Same, plus the EUI widget catalogue and a component"
+    );
     eprintln!("  soli new my_app --template https://github.com/user/template/archive/main.tar.gz  Create from custom template");
     eprintln!("  soli init                     Create soli.toml in current directory");
     eprintln!("  soli add math --git https://github.com/user/soli-math --tag v1.0.0");
@@ -695,8 +701,10 @@ pub fn parse_args() -> Options {
                 let name = args[i].clone();
                 i += 1;
                 let mut template = None;
+                let mut eui = false;
                 while i < args.len() {
                     match args[i].as_str() {
+                        "--eui" => eui = true,
                         "--template" => {
                             i += 1;
                             if i >= args.len() {
@@ -719,7 +727,23 @@ pub fn parse_args() -> Options {
                     }
                     i += 1;
                 }
-                options.command = Command::New { name, template };
+                if eui && template.is_some() {
+                    eprintln!(
+                        "new: --eui and --template are exclusive; the template decides what the application holds"
+                    );
+                    process::exit(64);
+                }
+                if eui && !cfg!(feature = "eui") {
+                    eprintln!(
+                        "new: this build of soli has no EUI: it was built without the `eui` feature."
+                    );
+                    process::exit(1);
+                }
+                options.command = Command::New {
+                    name,
+                    template,
+                    eui,
+                };
                 return options;
             }
             "generate" => {

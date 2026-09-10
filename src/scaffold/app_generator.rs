@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 
-use crate::scaffold::templates::{agents, app, bundled_docs};
+use crate::scaffold::templates::{self, agents, app, bundled_docs};
 use crate::scaffold::ui::{ProgressDisplay, Spinner};
 
 /// Create directories for a new application
@@ -78,9 +78,40 @@ pub(crate) fn format_soli_source(path: &Path, content: &str) -> Option<String> {
     crate::fmt::format_source(content).ok()
 }
 
-/// Create the routes configuration file
-pub fn create_routes_file(app_path: &Path) -> Result<(), String> {
-    write_file(&app_path.join("config/routes.sl"), app::ROUTES_TEMPLATE)
+/// Create the routes configuration file.
+///
+/// With `eui`, the `router_eui` line for the generated component is part
+/// of the same write: the file goes through the formatter once, with
+/// everything it will hold.
+pub fn create_routes_file(app_path: &Path, eui: bool) -> Result<(), String> {
+    let mut routes = app::ROUTES_TEMPLATE.to_string();
+    #[cfg(feature = "eui")]
+    if eui {
+        routes.push_str(templates::eui::EUI_ROUTES);
+    }
+    let _ = eui;
+    write_file(&app_path.join("config/routes.sl"), &routes)
+}
+
+/// Write the EUI half of a new application: the reference catalogue and a
+/// first component that uses it. `config/routes.sl` carries the route,
+/// written by `create_routes_file`.
+///
+/// The catalogue is written verbatim, around `write_file` and so around
+/// the formatter. It is not generated code: it is a vendored copy of a
+/// file maintained in the EUI repository, hand-laid-out and not `soli
+/// fmt` clean there. Reformatting it here would put 3 000 lines of
+/// difference between a new application and the upstream it will want to
+/// take fixes from.
+#[cfg(feature = "eui")]
+pub fn create_eui(app_path: &Path) -> Result<(), String> {
+    let catalogue = app_path.join("app/controllers/eui_builders.sl");
+    fs::write(&catalogue, templates::eui::EUI_BUILDERS)
+        .map_err(|e| format!("Failed to write to '{}': {}", catalogue.display(), e))?;
+    write_file(
+        &app_path.join("app/controllers/eui_controller.sl"),
+        templates::eui::EUI_CONTROLLER,
+    )
 }
 
 /// Create the `db/seeds.sl` starter file. Run with `soli db:seed`; additional
@@ -664,8 +695,27 @@ pub fn print_success_message(name: &str) {
     println!();
 }
 
-/// Create a new Soli MVC application
-pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
+/// What `--eui` added, and how to see it. Printed after the box rather
+/// than inside it: the box is a fixed width, and this is two paths and a
+/// command that are not.
+pub fn print_eui_message() {
+    println!("  \x1b[1mThe window:\x1b[0m");
+    println!();
+    println!("    \x1b[2mapp/controllers/\x1b[0meui_controller.sl  \x1b[2ma component: a handler and a view\x1b[0m");
+    println!("    \x1b[2mapp/controllers/\x1b[0meui_builders.sl    \x1b[2m150 widgets, all of them plain Soli\x1b[0m");
+    println!();
+    println!("  With the server up, open the component in a native window:");
+    println!();
+    println!("    \x1b[36mEUI_ALLOW_INSECURE_LOOPBACK=1 eui-client ws://127.0.0.1:5011/_eui/session/counter\x1b[0m");
+    println!();
+}
+
+/// Create a new Soli MVC application.
+///
+/// With `eui`, it also gets the reference widget catalogue and a first
+/// EUI component: a native window this application serves over a
+/// WebSocket, beside the HTML it serves over HTTP.
+pub fn create_app(name: &str, template: Option<&str>, eui: bool) -> Result<(), String> {
     let app_path = Path::new(name);
 
     if app_path.exists() {
@@ -676,7 +726,9 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     ProgressDisplay::header(name);
 
     if let Some(template_url) = template {
-        // Use custom template from git archive
+        // Use custom template from git archive. The template decides what
+        // the application holds, `--eui` included; args.rs refuses the
+        // two together rather than writing over what was downloaded.
         return create_from_template(name, app_path, template_url);
     }
 
@@ -690,7 +742,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
 
     // Step 2: Generate configuration files
     progress.step("Generating configuration files...");
-    create_routes_file(app_path)?;
+    create_routes_file(app_path, eui)?;
     create_seeds_file(app_path)?;
     create_application_config(app_path)?;
     create_env_file(app_path, name)?;
@@ -711,6 +763,10 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_application_helper(app_path)?;
     create_sample_middleware(app_path)?;
     create_stdlib(app_path)?;
+    #[cfg(feature = "eui")]
+    if eui {
+        create_eui(app_path)?;
+    }
     ProgressDisplay::done();
 
     // Step 4: Create assets
@@ -744,7 +800,8 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m .claude/         \x1b[2m# permissions + /soli-verify, /soli-test, /soli-resource\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
     println!(
-        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m"
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers{}\x1b[0m",
+        if eui { ", + the EUI widget catalogue" } else { "" }
     );
     println!(
         "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m helpers/        \x1b[2m# View helpers\x1b[0m"

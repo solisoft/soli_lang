@@ -24,7 +24,11 @@ pub fn run() {
         Command::Repl => commands::run_repl(),
         Command::Run { file } => commands::run_file(file, &options),
         Command::Eval { code } => commands::run_eval(code, &options),
-        Command::New { name, template } => commands::run_new(name, template.as_deref()),
+        Command::New {
+            name,
+            template,
+            eui,
+        } => commands::run_new(name, template.as_deref(), *eui),
         Command::Generate {
             scaffold_name,
             fields,

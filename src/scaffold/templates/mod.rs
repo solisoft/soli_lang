@@ -8,6 +8,8 @@ pub mod bundled_docs;
 pub mod clients;
 pub mod controller;
 pub mod devices;
+#[cfg(feature = "eui")]
+pub mod eui;
 pub mod migration;
 pub mod model;
 pub mod oauth;
