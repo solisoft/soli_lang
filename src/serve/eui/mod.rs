@@ -304,7 +304,7 @@ pub fn handle_eui_event(
     let t_view = std::time::Instant::now();
     // Which session the view is being called for, so `eui_stats()` inside it
     // can hand back that session's last render and no one else's.
-    stats::set_current(Some(instance.id.clone()));
+    let _current = stats::Current::enter(instance.id.clone());
     let tree_value = interpreter
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;

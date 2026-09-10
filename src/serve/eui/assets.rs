@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::sync::Mutex;
+use std::time::{Instant, SystemTime};
 
 use bytes::Bytes;
 use hyper::{header, Response, StatusCode};
@@ -24,9 +24,20 @@ pub const MAX_ASSET_BYTES: usize = 16 * 1024 * 1024;
 /// Largest total the store will hold; past it, new assets are refused.
 pub const MAX_STORE_BYTES: usize = 256 * 1024 * 1024;
 
+/// How long a file's mtime is trusted before it is stat'ed again. A grid of
+/// a hundred thumbnails used to cost three hundred syscalls per render.
+const RECHECK_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
 struct Store {
-    by_hash: HashMap<Hash, Arc<Vec<u8>>>,
-    by_path: HashMap<PathBuf, (SystemTime, Hash)>,
+    /// The bytes, shared: a response is a refcount, not a copy.
+    by_hash: HashMap<Hash, Bytes>,
+    /// When each asset was last asked for, so the store can let go of the
+    /// least recently used when it is full instead of refusing forever.
+    last_used: HashMap<Hash, Instant>,
+    /// `path -> (mtime, hash, when the mtime was last checked)`.
+    by_path: HashMap<PathBuf, (SystemTime, Hash, Instant)>,
+    /// `app root -> canonical app root`, so the root is resolved once.
+    roots: HashMap<PathBuf, PathBuf>,
     bytes: usize,
 }
 
@@ -36,14 +47,56 @@ fn with_store<T>(f: impl FnOnce(&mut Store) -> T) -> T {
     let mut g = STORE.lock().unwrap_or_else(|e| e.into_inner());
     let store = g.get_or_insert_with(|| Store {
         by_hash: HashMap::new(),
+        last_used: HashMap::new(),
         by_path: HashMap::new(),
+        roots: HashMap::new(),
         bytes: 0,
     });
     f(store)
 }
 
-/// Store bytes, returning their hash. Refuses an asset over the size limit
-/// or one that would push the store over its budget.
+impl Store {
+    /// Keep `bytes` under `budget`, letting go of what was asked for least
+    /// recently. The store used to refuse new assets once full, for the
+    /// life of the process; an application that rotates images filled it
+    /// and could then serve nothing new.
+    fn put(&mut self, hash: Hash, bytes: Bytes, budget: usize) -> Result<(), String> {
+        if self.by_hash.contains_key(&hash) {
+            self.last_used.insert(hash, Instant::now());
+            return Ok(());
+        }
+        if bytes.len() > budget {
+            return Err("EUI: asset store is full".to_string());
+        }
+        while self.bytes.saturating_add(bytes.len()) > budget {
+            let Some(oldest) = self
+                .last_used
+                .iter()
+                .min_by_key(|(_, at)| **at)
+                .map(|(h, _)| *h)
+            else {
+                break;
+            };
+            self.evict(&oldest);
+        }
+        self.bytes = self.bytes.saturating_add(bytes.len());
+        self.by_hash.insert(hash, bytes);
+        self.last_used.insert(hash, Instant::now());
+        Ok(())
+    }
+
+    fn evict(&mut self, hash: &Hash) {
+        if let Some(gone) = self.by_hash.remove(hash) {
+            self.bytes = self.bytes.saturating_sub(gone.len());
+        }
+        self.last_used.remove(hash);
+        self.by_path.retain(|_, (_, h, _)| h != hash);
+    }
+}
+
+/// Store bytes, returning their hash. Refuses an asset over the size limit;
+/// one that does not fit the store's budget pushes out the least recently
+/// used.
 pub fn put(bytes: Vec<u8>) -> Result<Hash, String> {
     if bytes.len() > MAX_ASSET_BYTES {
         return Err(format!(
@@ -53,22 +106,19 @@ pub fn put(bytes: Vec<u8>) -> Result<Hash, String> {
         ));
     }
     let hash: Hash = *blake3::hash(&bytes).as_bytes();
-    with_store(|s| {
-        if s.by_hash.contains_key(&hash) {
-            return Ok(hash);
-        }
-        if s.bytes.saturating_add(bytes.len()) > MAX_STORE_BYTES {
-            return Err("EUI: asset store is full".to_string());
-        }
-        s.bytes = s.bytes.saturating_add(bytes.len());
-        s.by_hash.insert(hash, Arc::new(bytes));
-        Ok(hash)
-    })
+    with_store(|s| s.put(hash, Bytes::from(bytes), MAX_STORE_BYTES))?;
+    Ok(hash)
 }
 
-/// The bytes for a hash.
-pub fn get(hash: &Hash) -> Option<Arc<Vec<u8>>> {
-    with_store(|s| s.by_hash.get(hash).cloned())
+/// The bytes for a hash — a handle on them, not a copy.
+pub fn get(hash: &Hash) -> Option<Bytes> {
+    with_store(|s| {
+        let found = s.by_hash.get(hash).cloned();
+        if found.is_some() {
+            s.last_used.insert(*hash, Instant::now());
+        }
+        found
+    })
 }
 
 /// Where an asset may come from, relative to the app root. A `src` is a
@@ -88,11 +138,26 @@ pub fn from_file(rel: &str) -> Result<Hash, String> {
 
 /// [`from_file`] against an explicit application root.
 pub fn from_file_in(app_root: &Path, rel: &str) -> Result<Hash, String> {
-    let root = app_root
-        .canonicalize()
-        .map_err(|e| format!("EUI: app root: {e}"))?;
-    let path = root
-        .join(rel)
+    let root = match with_store(|s| s.roots.get(app_root).cloned()) {
+        Some(root) => root,
+        None => {
+            let root = app_root
+                .canonicalize()
+                .map_err(|e| format!("EUI: app root: {e}"))?;
+            with_store(|s| s.roots.insert(app_root.to_path_buf(), root.clone()));
+            root
+        }
+    };
+    // A path seen lately is trusted for a second before the file is
+    // stat'ed again; the joined path is looked up as written, so the
+    // canonicalisation below is only paid when the cache misses.
+    let joined = root.join(rel);
+    if let Some((_, hash, checked)) = with_store(|s| s.by_path.get(&joined).copied()) {
+        if checked.elapsed() < RECHECK_AFTER {
+            return Ok(hash);
+        }
+    }
+    let path = joined
         .canonicalize()
         .map_err(|_| format!("EUI: asset '{rel}' not found"))?;
     let allowed = ASSET_DIRS
@@ -108,14 +173,16 @@ pub fn from_file_in(app_root: &Path, rel: &str) -> Result<Hash, String> {
     let mtime = std::fs::metadata(&path)
         .and_then(|m| m.modified())
         .map_err(|e| format!("EUI: asset '{rel}': {e}"))?;
-    if let Some(hit) = with_store(|s| s.by_path.get(&path).copied()) {
-        if hit.0 == mtime {
-            return Ok(hit.1);
+    let now = Instant::now();
+    if let Some((seen, hash, _)) = with_store(|s| s.by_path.get(&joined).copied()) {
+        if seen == mtime && with_store(|s| s.by_hash.contains_key(&hash)) {
+            with_store(|s| s.by_path.insert(joined, (mtime, hash, now)));
+            return Ok(hash);
         }
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("EUI: asset '{rel}': {e}"))?;
     let hash = put(bytes)?;
-    with_store(|s| s.by_path.insert(path, (mtime, hash)));
+    with_store(|s| s.by_path.insert(joined, (mtime, hash, now)));
     Ok(hash)
 }
 
@@ -141,7 +208,7 @@ pub fn respond(hex: &str) -> Response<ResponseBody> {
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
             .header(header::CONTENT_LENGTH, bytes.len())
-            .body(full(Bytes::from(bytes.as_ref().clone())))
+            .body(full(bytes))
             .unwrap_or_else(|_| Response::new(full(Bytes::new()))),
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -171,6 +238,32 @@ mod tests {
         std::fs::write(root.join("config/eui_publisher.pkcs8"), b"secret").unwrap();
         std::fs::write(root.join("notes.txt"), b"root").unwrap();
         root
+    }
+
+    #[test]
+    fn a_full_store_lets_go_of_the_least_recently_used() {
+        let mut store = Store {
+            by_hash: HashMap::new(),
+            last_used: HashMap::new(),
+            by_path: HashMap::new(),
+            roots: HashMap::new(),
+            bytes: 0,
+        };
+        let asset = |n: u8| (([n; 32]) as Hash, Bytes::from(vec![n; 10]));
+        let (a, ab) = asset(1);
+        let (b, bb) = asset(2);
+        let (c, cb) = asset(3);
+        store.put(a, ab, 25).unwrap();
+        store.put(b, bb, 25).unwrap();
+        // Touch `a`, so `b` is the least recently used.
+        store.last_used.insert(a, Instant::now());
+        store.put(c, cb, 25).unwrap();
+        assert!(store.by_hash.contains_key(&a));
+        assert!(!store.by_hash.contains_key(&b), "b was pushed out");
+        assert!(store.by_hash.contains_key(&c));
+        assert_eq!(store.bytes, 20);
+        // Nothing fits a budget smaller than itself.
+        assert!(store.put([9; 32], Bytes::from(vec![0; 30]), 25).is_err());
     }
 
     #[test]

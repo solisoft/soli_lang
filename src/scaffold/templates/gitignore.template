@@ -32,3 +32,4 @@ Thumbs.db
 # Coverage
 coverage/
 .coverage
+\n\n# The EUI publisher key: clients pin it, and it signs the manifest. Never public.\nconfig/eui_publisher.pkcs8\n

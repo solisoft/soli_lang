@@ -118,6 +118,10 @@ pub fn clear_liveview_routes() {
 /// per-socket identifier; it does not have to be a real session UUID).
 pub fn extract_session_id(cookies: Option<&str>) -> String {
     crate::interpreter::builtins::session::extract_session_id_from_cookie(cookies)
+        // `sess-*` is the shape of the handle minted here for a socket with
+        // no session; presented in a cookie it is the client choosing its
+        // own — and two clients choosing the same one shared an instance.
+        .filter(|id| !id.starts_with("sess-"))
         .unwrap_or_else(|| format!("sess-{}", Uuid::new_v4()))
 }
 

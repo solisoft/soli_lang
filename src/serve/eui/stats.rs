@@ -49,6 +49,24 @@ pub fn set_current(session: Option<String>) {
     CURRENT.with(|c| *c.borrow_mut() = session);
 }
 
+/// The session this thread is rendering, for as long as the guard lives —
+/// then none. Left set, the next view on this worker, EUI or not, read the
+/// last session's numbers.
+pub struct Current;
+
+impl Current {
+    pub fn enter(session: String) -> Self {
+        set_current(Some(session));
+        Self
+    }
+}
+
+impl Drop for Current {
+    fn drop(&mut self) {
+        set_current(None);
+    }
+}
+
 /// Keep what a render cost. `renders` counts up from whatever was there.
 pub fn record(session: &str, mut stats: Stats) {
     let mut guard = STATS.lock().unwrap_or_else(|e| e.into_inner());

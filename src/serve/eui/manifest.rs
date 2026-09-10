@@ -51,12 +51,22 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
                     std::fs::create_dir_all(dir)
                         .map_err(|e| format!("EUI: {}: {e}", dir.display()))?;
                 }
-                std::fs::write(&path, doc.as_ref())
-                    .map_err(|e| format!("EUI: {}: {e}", path.display()))?;
+                // Created private: a write-then-chmod left the key readable
+                // by everyone for the moment between the two.
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
                 #[cfg(unix)]
                 {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                {
+                    use std::io::Write;
+                    let mut file = options
+                        .open(&path)
+                        .map_err(|e| format!("EUI: {}: {e}", path.display()))?;
+                    file.write_all(doc.as_ref())
+                        .map_err(|e| format!("EUI: {}: {e}", path.display()))?;
                 }
                 eprintln!(
                     "[EUI] generated the publisher key at {} — keep it, clients pin it",
@@ -73,8 +83,22 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
     .map_err(Clone::clone)
 }
 
-/// The manifest bytes, signed.
+/// The manifest bytes, signed — once per capability mask. Every request
+/// used to resolve the root and sign again.
 pub fn bytes() -> Result<Vec<u8>, String> {
+    static SIGNED: Mutex<Option<(u32, Vec<u8>)>> = Mutex::new(None);
+    let capabilities = *CAPABILITIES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((mask, bytes)) = SIGNED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if *mask == capabilities {
+            return Ok(bytes.clone());
+        }
+    }
+    let bytes = sign(capabilities)?;
+    *SIGNED.lock().unwrap_or_else(|e| e.into_inner()) = Some((capabilities, bytes.clone()));
+    Ok(bytes)
+}
+
+fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
     let key = key_pair()?;
     let root = get_app_root();
     let app_id = root
@@ -91,7 +115,7 @@ pub fn bytes() -> Result<Vec<u8>, String> {
         protocol_min: 1,
         protocol_max: 1,
         publisher_key,
-        capabilities: *CAPABILITIES.lock().unwrap_or_else(|e| e.into_inner()),
+        capabilities,
         theme: None,
         entry: "/_eui/session".into(),
         rotation: None,
