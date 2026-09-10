@@ -1233,14 +1233,55 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // t(key, values?) — translate in the current locale.
+    //
+    // This returned its own argument: `t("welcome.title")` rendered the
+    // literal `welcome.title`, in the shape the views documentation gives as
+    // *the* way to translate. It now does what `I18n.translate` does, with
+    // the same `_html` handling — a key promising HTML has its interpolated
+    // values escaped, since the view will render it raw.
     env.define(
         "t".to_string(),
-        Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
+        Value::NativeFunction(NativeFunction::new("t", None, |args| {
+            if args.is_empty() || args.len() > 2 {
+                return Err("t(key, values?) takes one or two arguments".to_string());
+            }
             let key = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => return Err(format!("t() expects string key, got {}", other.type_name())),
             };
-            Ok(Value::String(key))
+            let values: Vec<(String, String)> = match args.get(1) {
+                None => Vec::new(),
+                // The same shape `I18n.translate` uses: string keys only,
+                // values via Display.
+                Some(Value::Hash(h)) => h
+                    .borrow()
+                    .iter()
+                    .filter_map(|(k, v)| match k {
+                        crate::interpreter::value::HashKey::String(name) => {
+                            Some((name.to_string(), format!("{}", v)))
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                Some(other) => {
+                    return Err(format!(
+                        "t() expects a hash of values, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let locale = i18n_helpers::get_locale();
+            // A missing key renders as itself, which is what makes an
+            // untranslated string obvious on the page during development.
+            let raw =
+                i18n_helpers::lookup_translation(&locale, &key).unwrap_or_else(|| key.to_string());
+            let out = if i18n_helpers::key_promises_html(&key) {
+                i18n_helpers::interpolate_escaped(&raw, &values)
+            } else {
+                i18n_helpers::interpolate(&raw, &values)
+            };
+            Ok(Value::String(out.into()))
         })),
     );
 

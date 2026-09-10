@@ -276,14 +276,28 @@ pub fn upgrade(
                     // reactor thread.
                     let checked = tokio::task::block_in_place(|| validate(&liveview_id, &e));
                     let Some((name, params)) = checked else {
-                        let _ = sender.try_send(Ok(Message::Binary(
-                            Frame::Error {
-                                code: 300,
-                                message: "event does not match the tree".into(),
-                            }
-                            .encode(),
-                        )));
-                        break;
+                        // The node carries no handler for this event *now*.
+                        // Usually that is a race and not an attack: a
+                        // handler that a render removed is still in the
+                        // client's tree for the one round trip it takes the
+                        // new tree to arrive, and anything the pointer does
+                        // in that window arrives naming it. A split whose
+                        // drag has just ended is the everyday case -- the
+                        // release takes `pointer_move` off the container,
+                        // and a hand still moving sends one more.
+                        //
+                        // Dropping it is the whole of the defence: nothing
+                        // is looked up, nothing is run, no handler is
+                        // reachable that the tree does not offer. Ending the
+                        // session instead cost the person their application
+                        // for a mouse movement.
+                        if trace() {
+                            eprintln!(
+                                "[EUI trace] event ignored: node={} kind={:?} is not in the tree we last sent",
+                                e.node, e.event
+                            );
+                        }
+                        continue;
                     };
                     if !post(
                         &lv_event_tx,

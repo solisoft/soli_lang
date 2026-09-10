@@ -220,3 +220,23 @@ fn named_routes_probe(req: Any) -> Any {
     };
 }
 
+
+# Locale isolation between requests. `set_locale` writes a thread-local, and
+# a worker serves one request after another on the same thread, so a request
+# that never sets it must not inherit the last one's.
+def locale_set(req: Any) -> Any {
+    set_locale("fr");
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify({"locale": locale()})
+    };
+}
+
+def locale_read(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify({"locale": locale()})
+    };
+}

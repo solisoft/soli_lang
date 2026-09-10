@@ -77,39 +77,47 @@ fn has_dotted_locale_keys(hash: &HashPairs) -> bool {
 }
 
 /// Look up a key in a legacy flat translations hash (`{"en.greeting": "Hi"}`).
-/// Tries `<locale>.<key>` then `en.<key>`.
+/// Tries `<locale>.<key>` then `<default locale>.<key>`.
 fn legacy_lookup(translations: &HashPairs, locale: &str, key: &str) -> Option<String> {
     let primary = format!("{}.{}", locale, key);
     if let Some(v) = find_string(translations, &primary) {
         return Some(v);
     }
-    if locale != "en" {
-        let fallback = format!("en.{}", key);
+    let default = helpers::default_locale();
+    if locale != default {
+        let fallback = format!("{}.{}", default, key);
         return find_string(translations, &fallback);
     }
     None
 }
 
+/// The legacy flat-hash twin of [`helpers::lookup_plural`]: same CLDR
+/// categories, same `_zero` courtesy, same fallback to the default locale.
 fn legacy_lookup_plural(
     translations: &HashPairs,
     locale: &str,
     key: &str,
     n: i64,
 ) -> Option<String> {
-    let suffix = if n == 0 {
-        "_zero"
-    } else if n == 1 {
-        "_one"
-    } else {
-        "_other"
+    let in_locale = |loc: &str| -> Option<String> {
+        let category = helpers::plural_category(loc, n);
+        if n == 0 {
+            if let Some(v) = find_string(translations, &format!("{}.{}_zero", loc, key)) {
+                return Some(v);
+            }
+        }
+        find_string(
+            translations,
+            &format!("{}.{}{}", loc, key, category.suffix()),
+        )
+        .or_else(|| find_string(translations, &format!("{}.{}_other", loc, key)))
     };
-    let primary = format!("{}.{}{}", locale, key, suffix);
-    if let Some(v) = find_string(translations, &primary) {
+    if let Some(v) = in_locale(locale) {
         return Some(v);
     }
-    if locale != "en" {
-        let fallback = format!("en.{}{}", key, suffix);
-        return find_string(translations, &fallback);
+    let default = helpers::default_locale();
+    if locale != default {
+        return in_locale(&default);
     }
     None
 }
@@ -152,6 +160,35 @@ pub fn register_i18n_class(env: &mut Environment) {
                 )),
             },
         )),
+    );
+
+    // I18n.set_default_locale(locale) — the locale a request starts from and
+    // a lookup falls back to. Process-wide, unlike `set_locale`, which is
+    // this request's.
+    i18n_static_methods.insert(
+        "set_default_locale".to_string(),
+        Rc::new(NativeFunction::new(
+            "I18n.set_default_locale",
+            Some(1),
+            |args| match &args[0] {
+                Value::String(locale) => {
+                    helpers::set_default_locale(locale);
+                    Ok(Value::String(locale.clone()))
+                }
+                other => Err(format!(
+                    "I18n.set_default_locale expects a string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
+    );
+
+    // I18n.default_locale() - The fallback locale.
+    i18n_static_methods.insert(
+        "default_locale".to_string(),
+        Rc::new(NativeFunction::new("I18n.default_locale", Some(0), |_| {
+            Ok(Value::String(helpers::default_locale().into()))
+        })),
     );
 
     // I18n.translate(key, locale_or_values?, values?) - Translate a string.

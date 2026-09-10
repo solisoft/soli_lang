@@ -34,6 +34,33 @@ struct ServerProcess {
 }
 
 impl ServerProcess {
+    /// A server of our own, with one worker and an explicit default locale.
+    ///
+    /// One worker so both requests in the isolation test land on the same
+    /// thread — which is the only arrangement where the leak this guards
+    /// against was observable.
+    fn start_single_worker(default_locale: &str) -> Self {
+        let binary = PathBuf::from(env!("CARGO_BIN_EXE_soli"));
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/_e2e_app");
+        let port = pick_port();
+        let child = Command::new(&binary)
+            .arg("serve")
+            .arg(&fixture)
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--workers")
+            .arg("1")
+            .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
+            .env("SOLI_DEFAULT_LOCALE", default_locale)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn soli serve");
+        let server = ServerProcess { child, port };
+        server.wait_ready();
+        server
+    }
+
     fn start() -> Self {
         // CARGO_BIN_EXE_<name> is set by cargo at compile time for integration
         // tests, so use env! (compile-time) — std::env::var (runtime) returns
@@ -731,5 +758,57 @@ fn ephemeral_port_zero_reports_the_real_bound_port() {
         reachable,
         "announced port {} did not accept a request — the reported port is wrong",
         port
+    );
+}
+
+/// A request that never calls `set_locale` must not inherit the locale of
+/// the request before it on that worker.
+///
+/// `CURRENT_LOCALE` is a thread-local and workers are reused, and nothing in
+/// the request path reset it: one visitor asking for French left the next
+/// visitor's page in French — and `Model#save` writing its translated fields
+/// into the French slot. One worker, so both requests are served by the same
+/// thread and the leak, if it were back, would be certain rather than likely.
+#[test]
+fn locale_does_not_leak_between_requests() {
+    let server = ServerProcess::start_single_worker("de");
+
+    // The default is what the operator configured, not a hard-coded "en".
+    let first = body_string(ureq::get(&server.url("/locale/read")).call().unwrap());
+    assert!(
+        first.contains("\"de\""),
+        "a fresh request starts at the configured default, got {first}"
+    );
+
+    // A request that does set it sees its own choice.
+    let set = body_string(ureq::get(&server.url("/locale/set")).call().unwrap());
+    assert!(set.contains("\"fr\""), "set_locale must apply, got {set}");
+
+    // The next request on that same worker must not see French.
+    for _ in 0..5 {
+        let after = body_string(ureq::get(&server.url("/locale/read")).call().unwrap());
+        assert!(
+            after.contains("\"de\""),
+            "locale leaked from the previous request, got {after}"
+        );
+    }
+}
+
+/// `Accept-Language` picks among the locales the application actually ships.
+/// The fixture app has no locale files, so there is nothing to negotiate to
+/// and the default stands — which is the safe half of the behaviour and the
+/// half a regression would break first.
+#[test]
+fn accept_language_never_negotiates_to_a_locale_we_lack() {
+    let server = ServerProcess::start_single_worker("de");
+    let body = body_string(
+        ureq::get(&server.url("/locale/read"))
+            .set("Accept-Language", "fr-CA,fr;q=0.9,ja;q=0.5")
+            .call()
+            .unwrap(),
+    );
+    assert!(
+        body.contains("\"de\""),
+        "no locale files, so nothing to negotiate to, got {body}"
     );
 }

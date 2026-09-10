@@ -953,6 +953,14 @@ pub fn serve_folder_with_options_and_hooks(
     crate::interpreter::builtins::i18n::helpers::load_locales_from_config_dir(
         &folder.join("config"),
     );
+    // The locale a request starts from, and the one a lookup falls back to.
+    // Process-wide, so it is set here rather than on the boot thread's
+    // thread-local — that thread is reclaimed and never serves a request.
+    if let Ok(default) = std::env::var("SOLI_DEFAULT_LOCALE") {
+        if !default.trim().is_empty() {
+            crate::interpreter::builtins::i18n::helpers::set_default_locale(default.trim());
+        }
+    }
     boot_trace("locales loaded");
 
     // Load routes from config/routes.sl if it exists
@@ -4392,6 +4400,64 @@ impl Drop for RealtimeSessionGuard {
     }
 }
 
+/// Restores the default locale when a request or a realtime frame ends.
+///
+/// The locale is a thread-local and workers are reused, so without this a
+/// controller that never called `set_locale` rendered in whatever language
+/// the previous visitor on that worker had asked for — and `Model#save`
+/// wrote its translated fields into that visitor's locale slot.
+struct LocaleGuard;
+
+impl Drop for LocaleGuard {
+    fn drop(&mut self) {
+        crate::interpreter::builtins::i18n::helpers::set_locale("");
+    }
+}
+
+/// The locale for a request: what the session or a `locale` cookie says,
+/// else what `Accept-Language` asks for among the locales that are loaded,
+/// else the application's default.
+///
+/// The application can still override it at any point with `set_locale`;
+/// this only decides where the request *starts*.
+fn resolve_request_locale(
+    headers: &hyper::header::HeaderMap,
+    cookie_pairs: &HashPairs,
+) -> Option<String> {
+    use crate::interpreter::builtins::i18n::helpers;
+
+    // A stored choice wins: the person picked it. Read without creating a
+    // session — `get_current_session_id` is already resolved by here, and is
+    // `None` for a visitor who has never stored anything.
+    if let Some(id) = crate::interpreter::builtins::session::get_current_session_id() {
+        if let Some(stored) = crate::interpreter::builtins::session::get_current_store()
+            .get(&id, "locale")
+            .and_then(|json| json.as_str().map(str::to_owned))
+        {
+            if !stored.is_empty() {
+                return Some(stored);
+            }
+        }
+    }
+    if let Some(Value::String(value)) = cookie_pairs.get(&HashKey::String("locale".into())) {
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    // Then what the browser asks for, but only among locales we actually
+    // have — negotiating to a locale with no translations would just fall
+    // back on every key.
+    let available = helpers::available_locales();
+    if !available.is_empty() {
+        if let Some(header) = header_str(headers, "accept-language") {
+            if let Some(hit) = helpers::negotiate(header, &available) {
+                return Some(hit);
+            }
+        }
+    }
+    None
+}
+
 /// Build a Soli hash from `(name, value)` pairs.
 fn string_pairs_to_hash(pairs: &[(String, String)]) -> Value {
     let mut map: HashPairs = HashPairs::default();
@@ -5293,6 +5359,20 @@ fn handle_liveview_event(
         .map(|id| id.to_string());
     set_current_session_id(socket_session);
     let _session_guard = RealtimeSessionGuard;
+    // The socket's own locale, from its session — a realtime worker serves
+    // many sessions and would otherwise render this frame in whatever
+    // language the last frame on this thread used. An EUI session is pinned
+    // to one worker, so without this it would inherit a neighbour's locale
+    // and keep it for the life of the socket.
+    let socket_locale = crate::interpreter::builtins::session::get_current_session_id()
+        .and_then(|id| {
+            crate::interpreter::builtins::session::get_current_store()
+                .get(&id, "locale")
+                .and_then(|json| json.as_str().map(str::to_owned))
+        })
+        .unwrap_or_default();
+    crate::interpreter::builtins::i18n::helpers::set_locale(&socket_locale);
+    let _locale_guard = LocaleGuard;
 
     // One frame at a time for this LiveView. A tick and a client event land on
     // different workers; without this they both read the same state, both render
@@ -7861,6 +7941,16 @@ fn handle_request(
             None
         }
     };
+    // The locale this request starts from, now that the session is resolved
+    // (a stored choice is consulted first). `LocaleGuard` puts it back at the
+    // end of the request; see there for what it cost not to.
+    crate::interpreter::builtins::i18n::helpers::set_locale(
+        resolve_request_locale(&data.headers, &cookie_pairs)
+            .unwrap_or_default()
+            .as_str(),
+    );
+    let _locale_guard = LocaleGuard;
+
     // Clear response cookies from any previous request on this thread.
     clear_response_cookies();
     // Reset the static-page response cacheability flags so this request

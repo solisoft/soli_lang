@@ -165,7 +165,10 @@ pub fn datetime_diff(t1: i64, t2: i64) -> i64 {
 /// # Returns
 /// Human-readable string like "5 minutes ago", "2 hours ago", "3 days ago"
 pub fn time_ago(timestamp: i64) -> String {
-    time_ago_localized(timestamp, "en")
+    time_ago_localized(
+        timestamp,
+        &crate::interpreter::builtins::i18n::helpers::default_locale(),
+    )
 }
 
 /// Convert a timestamp to a localized human-readable "time ago" string.
