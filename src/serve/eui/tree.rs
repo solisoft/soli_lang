@@ -1561,6 +1561,13 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::Ended => "ended",
         EventKind::TimeUpdate => "time_update",
         EventKind::Wake => "wake",
+        // EUI 03 §3.2. The client sends these for a node carrying `pick` or
+        // `save`, and `event_kind` above deliberately does not take their
+        // names yet: a view cannot declare the handler, so nothing can open
+        // a dialog and neither of these can arrive. They are named here
+        // because the wire has them, not because this server answers them.
+        EventKind::FilePick => "file_pick",
+        EventKind::FileSave => "file_save",
     }
 }
 

@@ -125,6 +125,14 @@ pub fn upgrade(
                 Frame::Welcome(Welcome {
                     version: PROTOCOL_VERSION,
                     session: session_bytes,
+                    // EUI 01 §4.1: a session that survives its socket. A
+                    // LiveView session is torn down with the socket under
+                    // it, so there is nothing here to pick up again and
+                    // the client is told to start clean. A socket that
+                    // breaks does now bring the window back by itself —
+                    // on a fresh session and a fresh mount, which is the
+                    // half of it that needs nothing from this side.
+                    resumed: false,
                 })
                 .encode(),
             ))
@@ -362,11 +370,26 @@ pub fn upgrade(
                     eprintln!("[EUI] client error {code}: {}", printable(&message));
                     break;
                 }
-                Frame::Hello(_) | Frame::Welcome(_) | Frame::Batch(_) => {
+                Frame::Hello(_) | Frame::Welcome(_) | Frame::Batch(_) | Frame::Blob(_) => {
                     let _ = sender.try_send(Ok(Message::Binary(
                         Frame::Error {
                             code: 301,
                             message: "server-only frame".into(),
+                        }
+                        .encode(),
+                    )));
+                    break;
+                }
+                // EUI 01 §6. A file only ever leaves a client for a node
+                // that declared `pick`, and nothing here can declare one
+                // yet (`tree::event_kind` takes neither file event), so an
+                // upload on this session did not come from a tree this
+                // server sent.
+                Frame::Upload(_) => {
+                    let _ = sender.try_send(Ok(Message::Binary(
+                        Frame::Error {
+                            code: 302,
+                            message: "this server takes no uploads".into(),
                         }
                         .encode(),
                     )));
