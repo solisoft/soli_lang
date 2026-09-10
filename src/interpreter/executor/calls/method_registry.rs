@@ -1658,6 +1658,16 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "find_each",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
+        name: "find_in_batches",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "first",
         zero_arg: true,
         ret: "",
@@ -1676,6 +1686,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         name: "includes?",
         zero_arg: false,
         ret: "bool",
+    },
+    MethodDef {
+        name: "in_batches",
+        zero_arg: false,
+        ret: "",
     },
     MethodDef {
         name: "inspect",

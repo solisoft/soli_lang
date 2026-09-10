@@ -165,6 +165,16 @@ pub struct QueryBuilder {
     /// client-wide timeout is baked into a shared singleton, so the override
     /// travels with the builder and is applied to the one request it issues.
     pub timeout_secs: Option<f64>,
+    /// Keyset cursor for `find_each` / `in_batches`: emit
+    /// `FILTER doc._key > @__soli_batch_after` so the next batch starts after
+    /// the last key already seen. Rides with the FOR-head like `sti_types` and
+    /// `through`, so it composes with every chained `.where()` and every mode.
+    /// Keyset rather than `LIMIT offset, n` because offset paging degrades on
+    /// large collections and can skip or repeat rows under concurrent writes.
+    /// Kept as a JSON value, not a String: SoliDB `_key`s are strings, but a
+    /// column-mode SQL table's primary key is an integer, and comparing those
+    /// as text would order "10" before "9" and lose rows.
+    pub keyset_after: Option<serde_json::Value>,
     /// A builder that can never match a row: the `has_many` accessor of an
     /// owner that is not persisted yet (no key to filter on). Terminal
     /// operations answer without a round-trip — `delete_all`/`update_all`
@@ -190,6 +200,10 @@ pub struct ThroughClause {
 /// Bind-var name carrying the owner `_key` for a through filter. The
 /// `__soli_` prefix makes it survive `set_filter`'s bind replacement.
 pub const THROUGH_FK_BIND: &str = "__soli_through_fk";
+
+/// Bind-var name carrying the keyset cursor for `find_each` / `in_batches`.
+/// Same `__soli_` prefix, for the same reason.
+pub const BATCH_AFTER_BIND: &str = "__soli_batch_after";
 
 impl QueryBuilder {
     pub fn new(class_name: String, collection: String) -> Self {
@@ -227,6 +241,7 @@ impl QueryBuilder {
             sti_types: None,
             connection_name: None,
             timeout_secs: None,
+            keyset_after: None,
             never_matches: false,
         }
     }
@@ -273,6 +288,7 @@ impl QueryBuilder {
             sti_types,
             connection_name,
             timeout_secs: None,
+            keyset_after: None,
             never_matches: false,
         }
     }
@@ -316,6 +332,11 @@ impl QueryBuilder {
         if let Some(types) = &self.sti_types {
             let quoted: Vec<String> = types.iter().map(|t| format!("\"{}\"", t)).collect();
             head.push_str(&format!(" FILTER doc.type IN [{}]", quoted.join(", ")));
+        }
+        // Keyset cursor. Bound, never interpolated: the value is the last
+        // `_key` of the previous batch, which is document data.
+        if self.keyset_after.is_some() {
+            head.push_str(&format!(" FILTER doc._key > @{}", BATCH_AFTER_BIND));
         }
         head
     }
@@ -387,6 +408,20 @@ impl QueryBuilder {
 
     pub fn set_offset(&mut self, offset: usize) {
         self.offset_val = Some(offset);
+    }
+
+    /// Start the next `find_each` / `in_batches` batch after `key`.
+    ///
+    /// The value is registered as a bind var here rather than at each query
+    /// site, so every path that materializes `bind_vars` -- `build_query`,
+    /// `list_query_from_qb`, count/exists -- carries it without knowing about
+    /// keyset paging.
+    pub fn set_keyset_after(&mut self, key: serde_json::Value) {
+        self.bind_vars.insert(
+            crate::interpreter::get_symbol(BATCH_AFTER_BIND),
+            key.clone(),
+        );
+        self.keyset_after = Some(key);
     }
 
     pub fn set_timeout(&mut self, secs: f64) {
@@ -2006,20 +2041,45 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
     // `hash_filter` rides in through `ListQueryParts` so the validation compile
     // inside `list_query_from_parts` judges the real filter.
     lq.exists_filters = exists_filters_from_qb(qb)?;
+    // The FOR-head filters the AQL builder emits have no SQL counterpart, so
+    // each is ANDed onto the compiled hash filter instead.
     if let Some(types) = &qb.sti_types {
-        let sti = crate::db::hash_filter::HashFilter::In {
-            field: "type".to_string(),
-            values: types
-                .iter()
-                .map(|t| serde_json::Value::String(t.clone()))
-                .collect(),
-        };
-        lq.hash_filter = Some(match lq.hash_filter.take() {
-            None => sti,
-            Some(existing) => crate::db::hash_filter::HashFilter::And(vec![existing, sti]),
-        });
+        and_hash_filter(
+            &mut lq.hash_filter,
+            crate::db::hash_filter::HashFilter::In {
+                field: "type".to_string(),
+                values: types
+                    .iter()
+                    .map(|t| serde_json::Value::String(t.clone()))
+                    .collect(),
+            },
+        );
+    }
+    // The SQL compilers already resolve `_key` to the primary-key column, so
+    // the keyset cursor needs no adapter-side change.
+    if let Some(after) = &qb.keyset_after {
+        and_hash_filter(
+            &mut lq.hash_filter,
+            crate::db::hash_filter::HashFilter::Cmp {
+                field: "_key".to_string(),
+                op: crate::db::hash_filter::CmpOp::Gt,
+                value: after.clone(),
+            },
+        );
     }
     Ok(lq)
+}
+
+/// AND `extra` onto an optional hash filter, without nesting an `And` around a
+/// filter that isn't there yet.
+fn and_hash_filter(
+    slot: &mut Option<crate::db::hash_filter::HashFilter>,
+    extra: crate::db::hash_filter::HashFilter,
+) {
+    *slot = Some(match slot.take() {
+        None => extra,
+        Some(existing) => crate::db::hash_filter::HashFilter::And(vec![existing, extra]),
+    });
 }
 
 /// Turn `.join(relation, filter?)` clauses into `EXISTS` filters.
@@ -3555,6 +3615,117 @@ mod tests {
 
     fn make_qb(class: &str, collection: &str) -> QueryBuilder {
         QueryBuilder::new(class.to_string(), collection.to_string())
+    }
+
+    #[test]
+    fn keyset_cursor_is_bound_not_interpolated() {
+        let mut qb = make_qb("User", "users");
+        assert_eq!(qb.keyset_after, None);
+        let (plain, binds) = qb.build_query();
+        assert!(!plain.contains("__soli_batch_after"), "{plain}");
+        assert!(binds.is_empty());
+
+        qb.set_keyset_after(serde_json::Value::String("k42".into()));
+        let (query, binds) = qb.build_query();
+        // The key is document data, so it rides as a bind var rather than
+        // being interpolated into the statement.
+        assert_eq!(
+            query,
+            "FOR doc IN users FILTER doc._key > @__soli_batch_after RETURN doc"
+        );
+        assert_eq!(
+            binds.get(BATCH_AFTER_BIND),
+            Some(&serde_json::Value::String("k42".into()))
+        );
+    }
+
+    #[test]
+    fn keyset_cursor_composes_with_filter_sort_and_limit() {
+        // The shape `find_each` actually builds: a user filter, forced `_key`
+        // ordering, and the batch size as the limit.
+        let mut qb = make_qb("User", "users");
+        qb.set_filter("doc.active == true".to_string(), HashMap::new());
+        qb.set_keyset_after(serde_json::Value::String("k7".into()));
+        qb.set_order("_key".to_string(), "asc".to_string());
+        qb.set_limit(2);
+
+        let (query, _) = qb.build_query();
+        // The keyset FILTER rides with the FOR-head, so it survives a chained
+        // `.where()` instead of replacing it.
+        assert!(
+            query.starts_with("FOR doc IN users FILTER doc._key > @__soli_batch_after"),
+            "{query}"
+        );
+        assert!(query.contains("doc.active == true"), "{query}");
+        assert!(query.contains("SORT doc._key ASC"), "{query}");
+        assert!(query.ends_with("LIMIT 2 RETURN doc"), "{query}");
+    }
+
+    #[test]
+    fn keyset_cursor_composes_with_sti_discriminator() {
+        let mut qb = make_qb("Admin", "users");
+        qb.sti_types = Some(vec!["Admin".to_string()]);
+        qb.set_keyset_after(serde_json::Value::String("k1".into()));
+
+        let (query, _) = qb.build_query();
+        // Both FOR-head filters are present, and neither displaces the other.
+        assert!(query.contains("FILTER doc.type IN [\"Admin\"]"), "{query}");
+        assert!(
+            query.contains("FILTER doc._key > @__soli_batch_after"),
+            "{query}"
+        );
+    }
+
+    #[test]
+    fn sql_keyset_filter_ands_onto_an_existing_filter() {
+        use crate::db::hash_filter::{CmpOp, HashFilter};
+
+        // On the SQL adapters the keyset cursor is not a FOR-head FILTER but a
+        // clause ANDed onto the compiled hash filter, the same way the STI
+        // discriminator is. It must not replace a filter that is already there.
+        let keyset = HashFilter::Cmp {
+            field: "_key".to_string(),
+            op: CmpOp::Gt,
+            value: serde_json::json!("k9"),
+        };
+
+        let mut empty = None;
+        and_hash_filter(&mut empty, keyset.clone());
+        assert!(
+            matches!(empty, Some(HashFilter::Cmp { ref field, .. }) if field == "_key"),
+            "with no existing filter the clause stands alone: {empty:?}"
+        );
+
+        let mut existing = Some(HashFilter::Cmp {
+            field: "active".to_string(),
+            op: CmpOp::Gt,
+            value: serde_json::json!(0),
+        });
+        and_hash_filter(&mut existing, keyset);
+        match existing {
+            Some(HashFilter::And(parts)) => {
+                assert_eq!(parts.len(), 2);
+                assert!(
+                    matches!(&parts[0], HashFilter::Cmp { field, .. } if field == "active"),
+                    "the user's filter is kept: {parts:?}"
+                );
+                assert!(
+                    matches!(&parts[1], HashFilter::Cmp { field, op: CmpOp::Gt, .. } if field == "_key"),
+                    "the keyset clause is ANDed on: {parts:?}"
+                );
+            }
+            other => panic!("expected an AND of both filters, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn keyset_cursor_keeps_a_numeric_key_numeric() {
+        // A column-mode SQL table's primary key is an integer. Comparing it as
+        // text would order "10" before "9" and silently drop rows.
+        let mut qb = make_qb("Event", "events");
+        qb.set_keyset_after(serde_json::json!(10));
+        let (_, binds) = qb.build_query();
+        assert_eq!(binds.get(BATCH_AFTER_BIND), Some(&serde_json::json!(10)));
     }
 
     #[test]

@@ -2199,6 +2199,8 @@ impl Interpreter {
             | "all" | "first" | "count" | "paginate" | "create" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
             | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"
+            // Batch iteration — streams the result set instead of materializing it.
+            | "find_each" | "in_batches" | "find_in_batches"
             // Enumerable-style array passthrough — materializes on call.
             | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"
             | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"

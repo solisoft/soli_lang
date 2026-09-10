@@ -537,6 +537,14 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Get all documents as instances</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.find_each(block, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Walk every document one at a time in keyset-paged batches, holding one batch in memory &mdash; see <a href="/docs/database/query-builder#batch-iteration" class="text-amber-400 hover:underline">Batch Iteration</a></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.in_batches(block, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Same paging, but the block receives each batch as an array. Alias: <code>find_in_batches</code></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Count all documents</td>
                 </tr>

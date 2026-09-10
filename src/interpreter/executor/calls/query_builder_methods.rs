@@ -13,6 +13,14 @@ use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::Value;
 use crate::span::Span;
 
+/// Rows per round-trip for `find_each` / `in_batches` when the caller does not
+/// say. Matches SoliDB's own default cursor batch size.
+const DEFAULT_BATCH_SIZE: usize = 1000;
+
+/// Ceiling on `batch_size`. The point of batching is to bound memory, and
+/// SoliDB's own cursor batch caps at 10,000 -- a larger value defeats both.
+const MAX_BATCH_SIZE: usize = 10_000;
+
 impl Interpreter {
     /// Handle QueryBuilder methods for chaining: where, order, limit, offset, all, first, count
     pub(crate) fn call_query_builder_method(
@@ -92,6 +100,13 @@ impl Interpreter {
             "group_by" => self.qb_group_by(qb, arguments, span),
             "time_bucket" => self.qb_time_bucket(qb, arguments, span),
             "to_query" => self.qb_to_query(qb, arguments, span),
+            // Batch iteration. Must sit *above* the array passthrough below:
+            // `each` and friends materialize the whole result set first, which
+            // is exactly what these exist to avoid.
+            "find_each" => self.qb_batch_iterate(qb, arguments, span, "find_each", false),
+            "in_batches" | "find_in_batches" => {
+                self.qb_batch_iterate(qb, arguments, span, method_name, true)
+            }
             // Array passthrough: materialize the QueryBuilder once, then
             // dispatch the method to the resulting array. Lets has_many
             // relations behave Enumerable-style — user.posts.each(...),
@@ -816,6 +831,268 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             }
         }
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    /// `.find_each(fn(record) { ... })` / `.in_batches(fn(batch) { ... })` --
+    /// walk the whole result set holding only one batch in memory.
+    ///
+    /// Paging is *keyset*, not `LIMIT offset, n`: each batch filters
+    /// `doc._key > <last key seen>` and sorts by `_key` ascending. Offset paging
+    /// degrades as the offset grows (the server still walks the skipped rows)
+    /// and, worse, skips or repeats rows when the collection is written to
+    /// while the scan runs -- which is exactly what a long data-correction job
+    /// does to the collection it is correcting.
+    ///
+    /// `per_batch` picks which shape the callback receives: one record at a
+    /// time (`find_each`) or the whole batch array (`in_batches`).
+    fn qb_batch_iterate(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+        method_name: &str,
+        per_batch: bool,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() || arguments.len() > 2 {
+            return Err(RuntimeError::General {
+                message: format!(
+                    "{}() expects a block and an optional options hash: \
+                     {}(fn(x) {{ ... }}, {{ \"batch_size\": 1000 }})",
+                    method_name, method_name
+                ),
+                span,
+            });
+        }
+        let block = arguments[0].clone();
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Err(RuntimeError::type_error(
+                format!("{}() expects a function as its first argument", method_name),
+                span,
+            ));
+        }
+        let batch_size = Self::batch_size_option(arguments.get(1), method_name, span)?;
+
+        Self::reject_unbatchable(&qb.borrow(), method_name, span)?;
+
+        // A relation accessor on an unpersisted owner matches nothing by
+        // construction; answer without a round-trip, like `count`/`exists?`.
+        if qb.borrow().never_matches {
+            return Ok(Value::Null);
+        }
+
+        let mut after: Option<serde_json::Value> = None;
+        loop {
+            let mut batch_qb = qb.borrow().clone();
+            batch_qb.set_order("_key".to_string(), "asc".to_string());
+            batch_qb.set_limit(batch_size);
+            batch_qb.offset_val = None;
+            if let Some(cursor) = after.take() {
+                batch_qb.set_keyset_after(cursor);
+            }
+
+            let rows = match execute_query_builder(&batch_qb) {
+                Value::Array(rows) => rows,
+                Value::String(text) => {
+                    // The query layer signals failure in-band as
+                    // "Error: ...". Raise it rather than handing the string to
+                    // the callback as if it were a record.
+                    let message = text.strip_prefix("Error: ").unwrap_or(&text).to_string();
+                    return Err(RuntimeError::General { message, span });
+                }
+                other => {
+                    return Err(RuntimeError::type_error(
+                        format!(
+                            "{}() expected rows but the query returned {}",
+                            method_name,
+                            other.type_name()
+                        ),
+                        span,
+                    ))
+                }
+            };
+
+            // Move the rows out: the array was built for this batch and nothing
+            // else holds it, so cloning every record would be pure waste.
+            let records = std::mem::take(&mut *rows.borrow_mut());
+            if records.is_empty() {
+                return Ok(Value::Null);
+            }
+            // Read the cursor before the callback runs: the block is free to
+            // delete or rewrite the record it was handed.
+            let last = Self::batch_cursor_key(
+                records.last().expect("batch checked non-empty"),
+                method_name,
+                span,
+            )?;
+            let exhausted = records.len() < batch_size;
+
+            if per_batch {
+                let batch = Value::Array(Rc::new(RefCell::new(records)));
+                self.call_value(block.clone(), vec![batch], span)?;
+            } else {
+                for record in records {
+                    self.call_value(block.clone(), vec![record], span)?;
+                }
+            }
+
+            if exhausted {
+                return Ok(Value::Null);
+            }
+            after = Some(last);
+        }
+    }
+
+    /// Read `{ "batch_size": n }` from the optional second argument.
+    fn batch_size_option(
+        options: Option<&Value>,
+        method_name: &str,
+        span: Span,
+    ) -> RuntimeResult<usize> {
+        let Some(options) = options else {
+            return Ok(DEFAULT_BATCH_SIZE);
+        };
+        let Value::Hash(pairs) = options else {
+            return Err(RuntimeError::type_error(
+                format!(
+                    "{}() expects an options hash as its second argument, e.g. \
+                     {{ \"batch_size\": 500 }}",
+                    method_name
+                ),
+                span,
+            ));
+        };
+        let found = pairs
+            .borrow()
+            .get(&crate::interpreter::value::HashKey::String(
+                "batch_size".into(),
+            ))
+            .cloned();
+        match found {
+            None => Ok(DEFAULT_BATCH_SIZE),
+            Some(Value::Int(n)) if n >= 1 && (n as usize) <= MAX_BATCH_SIZE => Ok(n as usize),
+            Some(_) => Err(RuntimeError::General {
+                message: format!(
+                    "{}(): batch_size must be an integer between 1 and {}",
+                    method_name, MAX_BATCH_SIZE
+                ),
+                span,
+            }),
+        }
+    }
+
+    /// Refuse the builder shapes keyset paging cannot serve.
+    ///
+    /// Every one of these is refused loudly rather than silently ignored:
+    /// these methods exist to drive data-correction and scoring jobs, and a
+    /// dropped `.order` or `.limit` there is a wrong run that reports success.
+    fn reject_unbatchable(
+        qb: &crate::interpreter::builtins::model::QueryBuilder,
+        method_name: &str,
+        span: Span,
+    ) -> RuntimeResult<()> {
+        // Deferred reads cannot drive the loop: the next batch's filter needs
+        // the last key of this one, so the block would enqueue a placeholder it
+        // must immediately force -- paying the round-trip `grouped` avoids,
+        // once per batch.
+        if crate::interpreter::builtins::model::batch::is_active() {
+            return Err(RuntimeError::General {
+                message: format!(
+                    "{}() cannot run inside grouped(): each batch needs the previous \
+                     batch's rows to position the next query, so the reads cannot be \
+                     coalesced. Move the iteration outside the grouped block.",
+                    method_name
+                ),
+                span,
+            });
+        }
+
+        let clause = if qb.order_by.is_some() {
+            Some((
+                ".order()",
+                "batches are ordered by `_key` so the cursor advances",
+            ))
+        } else if qb.limit_val.is_some() {
+            Some((".limit()", "the batch size sets the limit"))
+        } else if qb.offset_val.is_some() {
+            Some((".offset()", "batches are positioned by key, not by offset"))
+        } else if qb.exists_mode {
+            Some((".exists", "it returns a boolean, not records"))
+        } else if qb.aggregation.is_some() {
+            Some(("an aggregate", "it returns a single value, not records"))
+        } else if qb.group_by_info.is_some()
+            || !qb.group_fields.is_empty()
+            || !qb.aggregate_specs.is_empty()
+        {
+            Some((
+                ".group_by()",
+                "grouped rows are not records and carry no `_key`",
+            ))
+        } else if qb.time_bucket_info.is_some() {
+            Some((
+                ".time_bucket()",
+                "bucket rows are not records and carry no `_key`",
+            ))
+        } else if qb.similar_query.is_some() {
+            Some((
+                ".similar()",
+                "similarity results are ordered by score, which keyset paging would override",
+            ))
+        } else if qb.pluck_fields.is_some() {
+            Some((
+                ".pluck()",
+                "projected rows carry no `_key` to position the next batch",
+            ))
+        } else {
+            None
+        };
+
+        match clause {
+            None => Ok(()),
+            Some((what, why)) => Err(RuntimeError::General {
+                message: format!(
+                    "{}() cannot be combined with {}: {}.",
+                    method_name, what, why
+                ),
+                span,
+            }),
+        }
+    }
+
+    /// The cursor for the next batch: the key of the last record in this one.
+    ///
+    /// SoliDB and document-mode SQL tables both carry `_key`; a column-mode
+    /// table names it `id`, so both are accepted and the value keeps its JSON
+    /// type (an integer key must not be compared as text).
+    fn batch_cursor_key(
+        record: &Value,
+        method_name: &str,
+        span: Span,
+    ) -> RuntimeResult<serde_json::Value> {
+        let field = |name: &str| -> Option<Value> {
+            match record {
+                Value::Instance(instance) => instance.borrow().get(name),
+                Value::Hash(pairs) => pairs
+                    .borrow()
+                    .get(&crate::interpreter::value::HashKey::String(name.into()))
+                    .cloned(),
+                _ => None,
+            }
+        };
+        match field("_key").or_else(|| field("id")) {
+            Some(Value::String(key)) => Ok(serde_json::Value::String(key.to_string())),
+            Some(Value::Int(key)) => Ok(serde_json::Value::Number(key.into())),
+            _ => Err(RuntimeError::General {
+                message: format!(
+                    "{}(): a record came back with no `_key`, so the next batch cannot \
+                     be positioned. A `.select()` that drops `_key` is the usual cause.",
+                    method_name
+                ),
+                span,
+            }),
+        }
     }
 
     fn qb_all(

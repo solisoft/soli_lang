@@ -11523,6 +11523,87 @@
       ]
     },
     {
+      "title": "Model.find_each",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.find_each(fn(record) { ... }, { \"batch_size\": 1000 })",
+      "description": "Walk every document one at a time in keyset-paged batches, holding only one batch in memory.",
+      "keywords": [
+        "find_each",
+        "batch",
+        "iterate",
+        "each",
+        "large",
+        "memory",
+        "model",
+        "orm",
+        "batch iteration",
+        "large collection"
+      ]
+    },
+    {
+      "title": "Model.in_batches",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.in_batches(fn(batch) { ... }, { \"batch_size\": 1000 })",
+      "description": "As find_each, but the block receives each batch as an array. Alias: find_in_batches.",
+      "keywords": [
+        "in_batches",
+        "find_in_batches",
+        "batch",
+        "iterate",
+        "bulk",
+        "model",
+        "orm",
+        "batch iteration",
+        "large collection"
+      ]
+    },
+    {
+      "title": "query.find_each",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#batch-iteration",
+      "signature": "query.find_each(fn(record) { ... }, { \"batch_size\": 1000 })",
+      "description": "Terminal: iterate the whole match one record at a time, keyset-paged by _key so only one batch is in memory.",
+      "keywords": [
+        "find_each",
+        "batch",
+        "iterate",
+        "each",
+        "keyset",
+        "cursor",
+        "large",
+        "memory",
+        "query",
+        "orm",
+        "batch iteration",
+        "large collection"
+      ]
+    },
+    {
+      "title": "query.in_batches",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#batch-iteration",
+      "signature": "query.in_batches(fn(batch) { ... }, { \"batch_size\": 1000 })",
+      "description": "Terminal: as find_each, but the block receives each batch as an array. Alias: find_in_batches.",
+      "keywords": [
+        "in_batches",
+        "find_in_batches",
+        "batch",
+        "iterate",
+        "bulk",
+        "keyset",
+        "query",
+        "orm",
+        "batch iteration",
+        "large collection"
+      ]
+    },
+    {
       "title": "has_many",
       "type": "method",
       "category": "Database",

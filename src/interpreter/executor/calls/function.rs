@@ -442,6 +442,32 @@ impl Interpreter {
             }
         }
 
+        // Member-callee interceptor: `<ModelClass>.find_each(fn(r) { ... })`.
+        // Same reason as `.transaction` above — the block has to be invoked with
+        // `&mut Interpreter`, which a registered `NativeFunction` static cannot
+        // reach. The chained form (`Model.where(...).find_each(...)`) needs
+        // nothing here; it already arrives as a QueryBuilder method.
+        //
+        // Keyed on a bare-identifier receiver (`User.find_each(...)`), which is
+        // how a model class is always named. Declining re-evaluates `object`
+        // under normal dispatch, and re-evaluating a variable read is free —
+        // an arbitrary computed receiver would not be, so it is left alone.
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if matches!(object.kind, ExprKind::Variable(_))
+                && matches!(
+                    name.as_str(),
+                    "find_each" | "in_batches" | "find_in_batches"
+                )
+            {
+                if let Some(result) =
+                    self.try_evaluate_model_batch_iterate(object, name, arguments, span)?
+                {
+                    return Ok(result);
+                }
+                // Not a model class → fall through to normal dispatch.
+            }
+        }
+
         // Controller static-block DSL is declarative. `this.layout(...)`,
         // `this.before_action(...)` and `this.after_action(...)` are parsed
         // out of the source into the controller registry — they are not
@@ -1717,6 +1743,77 @@ impl Interpreter {
                 message: format!("transaction: commit failed: {}", e),
                 span,
             },
+        )
+        .map(Some)
+    }
+
+    /// `<ModelClass>.find_each(...)` / `.in_batches(...)`: build the same
+    /// unfiltered QueryBuilder the class-level statics would, then hand it to
+    /// the ordinary query-builder path so both spellings share one
+    /// implementation.
+    ///
+    /// `Ok(None)` when the receiver is not a model class, so an unrelated
+    /// `.find_each` on some other value falls through to normal dispatch.
+    fn try_evaluate_model_batch_iterate(
+        &mut self,
+        object: &Expr,
+        method_name: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let receiver = self.evaluate(object)?;
+        let Value::Class(class) = &receiver else {
+            return Ok(None);
+        };
+        if !class.is_model_subclass() {
+            return Ok(None);
+        }
+        // This path bypasses `bind_native_static_to_model_class`, which is where
+        // the columnar document-API gate normally fires, so apply it here too.
+        // A columnar store has no `_key` to page on.
+        if crate::interpreter::builtins::model::is_columnar_model(&class.name) {
+            return Err(RuntimeError::General {
+                message:
+                    crate::interpreter::builtins::model::columnar::columnar_no_document_api_error(
+                        &class.name,
+                        method_name,
+                    ),
+                span,
+            });
+        }
+
+        // `new_with_class` (not `new`) so soft-delete mode, STI discriminators
+        // and the model's named connection are picked up, exactly as they are
+        // for `Model.all` / `Model.where`.
+        let collection = crate::interpreter::builtins::model::class_name_to_collection(&class.name);
+        let qb = crate::interpreter::builtins::model::query::QueryBuilder::new_with_class(
+            class.name.clone(),
+            collection,
+            std::rc::Rc::new((**class).clone()),
+        );
+
+        // Positional and trailing-block arguments only; `find_each(x: 1)` is a
+        // usage error rather than something to forward.
+        let mut args = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            match argument {
+                Argument::Positional(expr) | Argument::Block(expr) => {
+                    args.push(self.evaluate(expr)?)
+                }
+                Argument::Named(_) => {
+                    return Err(RuntimeError::General {
+                        message: format!("{}() does not take named arguments", method_name),
+                        span,
+                    })
+                }
+            }
+        }
+
+        self.call_query_builder_method(
+            std::rc::Rc::new(std::cell::RefCell::new(qb)),
+            method_name,
+            args,
+            span,
         )
         .map(Some)
     }

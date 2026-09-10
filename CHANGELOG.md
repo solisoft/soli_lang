@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(orm):** `find_each` / `in_batches` walk a whole collection holding one batch in memory instead of materialising every row — `User.where({ "active": true }).find_each(fn(user) { ... }, { "batch_size": 500 })`. A data-correction command or a score computation over a whole scope was bounded by RAM rather than by anything the author chose, and `.each` was no escape hatch: it has no query-builder implementation and falls into the array passthrough, which materialises first and iterates after. Paging is keyset (`FILTER doc._key > <last key seen>`, sorted by `_key`), not `LIMIT offset, n` — offset paging degrades as the offset grows and skips or repeats rows under concurrent writes, which is exactly what a long correction job does to the collection it is correcting; the cursor is read before the block runs, so deleting or updating inside it is safe. Works from the class and from a chain, on SoliDB and the SQL adapters (the compilers already resolve `_key` to the primary-key column); `find_in_batches` is an alias. Clauses keyset paging cannot serve are refused rather than ignored — `.order`, `.limit`, `.offset`, `.pluck`, the aggregate/grouping/`time_bucket`/`similar` modes, columnar models, and calling one inside `grouped(...)` — because a silently dropped clause in a correction run is a wrong run that still reports success. `batch_size` defaults to 1000, capped at 10,000
+
+### Fixed
+
+* **fix(orm):** a read of more than one cursor batch no longer silently loses its tail. SoliDB returns a query result in batches of `batchSize` (1000 by default) and sets `has_more` plus a cursor id when rows remain; `exec_async_query_with_binds` took `result` from the first response and never followed the cursor. Every `Model.all`, unbounded `.where`, `grouped {}` flush, SDBQL literal and `exec_transaction_sdbql` was capped at 1000 rows with no error — measured directly: a 2500-row collection returned 1000. It presented as non-deterministic, because a query-cache hit returns the whole set with `has_more: false`, so the identical query gave 2500 rows warm and 1000 cold, and the native driver (`SOLI_DB_DRIVER=1`) never exhibited it at all. `SoliDBClient::query` has drained the cursor since the graph-build fix; the ORM path — the default transport — never did. A single-batch read never enters the loop and pays nothing
+
 ## [2.1.2] - 2026-09-10
 
 ### Security

@@ -153,3 +153,83 @@ print("got=" + str(Thing.one()))
         "`.first` must not read as a missing property either: {all}"
     );
 }
+
+/// `find_each` on a **model class** takes a different route from a chained
+/// query-builder member: it is intercepted before member dispatch (the block
+/// has to be invoked with `&mut Interpreter`, which a registered
+/// `NativeFunction` static cannot reach). The VM therefore needs its own arm,
+/// or the call dies with the same uncatchable-error bug this file exists for.
+const CLASS_FIND_EACH: &str = r#"
+class Thing < Model
+  static def walk() -> Any
+    let seen = 0
+    Thing.find_each(fn(t) { seen = seen + 1 })
+    return seen
+  end
+end
+print("seen=" + str(Thing.walk()))
+"#;
+
+/// The interpreter must *dispatch* it. Unlike `.all`, which reports a failed
+/// read in-band as an "Error: …" string, `find_each` raises — so with no
+/// database reachable this run legitimately ends in a connection error. What
+/// must never appear is a dispatch error: that would mean the method is not
+/// wired into the query-builder path at all.
+fn assert_dispatched(all: &str) {
+    for dispatch_failure in [
+        "Cannot access property",
+        "No such property",
+        "is not a function",
+        "Unknown method",
+    ] {
+        assert!(
+            !all.contains(dispatch_failure),
+            "batch iteration must be dispatched, not rejected as {dispatch_failure}: {all}"
+        );
+    }
+}
+
+#[test]
+fn the_interpreter_dispatches_class_level_find_each() {
+    let run = run_script(CLASS_FIND_EACH, false);
+    assert_dispatched(&format!("{}{}", run.stdout, run.stderr));
+}
+
+#[test]
+fn the_vm_hands_class_level_find_each_back_to_the_interpreter() {
+    let run = run_script(CLASS_FIND_EACH, true);
+    let all = format!("{}{}", run.stdout, run.stderr);
+
+    assert!(
+        all.contains("requires the interpreter"),
+        "the VM should ask for the interpreter: {all}"
+    );
+    assert_dispatched(&all);
+}
+
+/// The chained form rides the ordinary query-builder fallback, so it must
+/// demote for the same reason and with the same marker.
+#[test]
+fn the_vm_hands_chained_find_each_back_to_the_interpreter() {
+    let source = r#"
+class Thing < Model
+  static def walk() -> Any
+    let seen = 0
+    Thing.where({"a": 1}).find_each(fn(t) { seen = seen + 1 })
+    return seen
+  end
+end
+print("seen=" + str(Thing.walk()))
+"#;
+
+    let interpreted = run_script(source, false);
+    assert_dispatched(&format!("{}{}", interpreted.stdout, interpreted.stderr));
+
+    let vm = run_script(source, true);
+    let all = format!("{}{}", vm.stdout, vm.stderr);
+    assert!(
+        all.contains("requires the interpreter"),
+        "the VM should ask for the interpreter: {all}"
+    );
+    assert_dispatched(&all);
+}

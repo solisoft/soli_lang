@@ -103,6 +103,14 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                     <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.find_each(block, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Terminal: walk the whole match one record at a time, holding one batch (<code>{"batch_size": 1000}</code>) in memory &mdash; see <a href="#batch-iteration" class="text-amber-400 hover:underline">Batch Iteration</a></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.in_batches(block, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">As <code>.find_each</code>, but the block receives each batch as an array. Alias: <code>find_in_batches</code></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.first</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return the first record, or <code>null</code> when there is none</td>
                 </tr>
@@ -366,6 +374,53 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
         If case behaviour matters, use <code class="text-cyan-400">ilike</code> and get the same
         answer everywhere.
     </p>
+
+    <h2 id="batch-iteration" class="text-2xl font-bold text-white mb-6">Batch Iteration (<code>find_each</code> / <code>in_batches</code>)</h2>
+    <p class="text-gray-400 mb-6">
+        <code>.all</code> materialises every matching row as Soli values at once, so a job over a large
+        collection is bounded by RAM rather than by anything you chose &mdash; and <code>.each</code> is not an
+        escape hatch, because it materialises first and then iterates. <code class="text-cyan-400">find_each</code>
+        walks the whole result set one record at a time, holding only one batch in memory.
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm"># One batch of 1000 in memory at a time, however large the collection is
+User.find_each(fn(user) {
+  user.recompute_score()
+})
+
+# Any filter chain composes, and the batch size is yours to pick
+User.where("active == @a", { "a": true }).find_each(fn(user) {
+  user.backfill_initials()
+}, { "batch_size": 500 })
+
+# in_batches hands the block the whole batch — for work that is itself bulk
+Invoice.where("status == @s", { "s": "pending" }).in_batches(fn(batch) {
+  Mailer.deliver_reminders(batch)
+}, { "batch_size": 200 })</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Paging is by key, not by offset.</strong> Each batch adds
+        <code>FILTER doc._key &gt; &lt;last key of the previous batch&gt;</code> and sorts by <code>_key</code>
+        ascending. <code>LIMIT offset, n</code> degrades as the offset grows and &mdash; worse &mdash; skips or
+        repeats rows when the collection is written to mid-scan, which is exactly what a long correction job does
+        to the collection it is correcting. Deleting or updating records inside the block is therefore safe: the
+        cursor is read before the block runs. <code>batch_size</code> defaults to 1000 and is capped at 10,000.
+    </p>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">Refused, not silently ignored</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li>The ordering is fixed and the batch size is the limit, so <code>.order()</code>, <code>.limit()</code> and <code>.offset()</code> all raise.</li>
+            <li><code>.pluck()</code> raises &mdash; projected rows carry no <code>_key</code> to position the next batch.</li>
+            <li>Aggregates, <code>.group_by()</code>, <code>.time_bucket()</code> and <code>.exists</code> raise &mdash; they return a value or reshaped rows, not records. <code>.similar()</code> raises because its score ordering would be overridden.</li>
+            <li>Calling one inside <code>grouped(...)</code> raises: each batch needs the previous batch's rows to build the next query, so the reads cannot be coalesced.</li>
+            <li>A columnar model has no <code>_key</code>, so it has no batch iteration &mdash; use its <code>query</code> / <code>aggregate</code> surface instead.</li>
+            <li>These are errors rather than dropped clauses because these methods drive data-correction jobs, where a silently ignored <code>.order</code> is a wrong run that still reports success.</li>
+        </ul>
+    </div>
 
     <h2 id="grouped" class="text-2xl font-bold text-white mb-6">Coalescing Reads (<code>grouped</code>)</h2>
     <p class="text-gray-400 mb-6">An action that reads several unrelated things pays one network round-trip per read. Wrap the reads in <code>grouped(fn() { ... })</code> and they are deferred and combined into a <strong>single</strong> request — one <code>LET … RETURN […]</code> statement that computes every subquery server-side and returns them together.</p>

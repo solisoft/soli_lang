@@ -691,6 +691,30 @@ pub fn exec_auto_collection_as_instances_with_binds(
     }
 }
 
+/// Split one cursor response into `(rows, has_more, cursor_id)`.
+///
+/// The rows are *moved* out of the response object rather than cloned -- each
+/// document would otherwise be deep-cloned before it is converted to a Soli
+/// Value. A response that is not an object yields no rows and no continuation.
+fn split_cursor_batch(json: serde_json::Value) -> (Vec<serde_json::Value>, bool, Option<String>) {
+    let serde_json::Value::Object(mut map) = json else {
+        return (Vec::new(), false, None);
+    };
+    let rows = match map.remove("result") {
+        Some(serde_json::Value::Array(rows)) => rows,
+        _ => Vec::new(),
+    };
+    let has_more = map
+        .get("has_more")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let cursor_id = map
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    (rows, has_more, cursor_id)
+}
+
 /// Fast async query execution - uses server's tokio runtime.
 /// Uses same HTTP client as HTTP.request for consistency.
 pub fn exec_async_query_with_binds(
@@ -778,16 +802,45 @@ pub fn exec_async_query_with_binds(
             .json()
             .await
             .map_err(|e| format!("JSON error: {}", e))?;
-        // Move the `result` array out of the response object instead of
-        // cloning every row (each document would otherwise be deep-cloned
-        // before we convert it to Soli Values).
-        Ok(match json {
-            serde_json::Value::Object(mut map) => match map.remove("result") {
-                Some(serde_json::Value::Array(rows)) => rows,
-                _ => Vec::new(),
-            },
-            _ => Vec::new(),
-        })
+        let (mut rows, mut has_more, mut cursor_id) = split_cursor_batch(json);
+
+        // Drain the cursor. SoliDB caps each batch at `batchSize` (default
+        // 1000) and, when rows remain, sets `has_more` plus a cursor `id` to be
+        // followed via `PUT /_api/cursor/{id}`. Reading only the first batch
+        // silently truncated every ORM read larger than one batch --
+        // `Model.all`, an unbounded `.where`, a `grouped {}` flush, an SDBQL
+        // literal -- and did so *intermittently*, because a query-cache hit
+        // returns the whole set with `has_more: false`. `SoliDBClient::query`
+        // has drained since the graph-build fix; this is the same loop for the
+        // async ORM path, which is the default transport. A single-batch read
+        // never enters the loop, so the common case is unchanged.
+        while has_more {
+            let Some(id) = cursor_id.as_deref() else {
+                // `has_more` with no cursor id: there is nothing left to ask
+                // for, and looping on it would spin forever.
+                break;
+            };
+            let next_url = db_url(&format!("/_api/cursor/{}", urlencoding::encode(id)));
+            let resp = send_with_db_auth_retry(|| client.put(&next_url))
+                .await
+                .map_err(|e| format!("HTTP error: {}", e))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                    .await
+                    .unwrap_or_default();
+                return Err(format_query_http_failure(status, &body));
+            }
+            let batch: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| format!("JSON error: {}", e))?;
+            let (batch_rows, more, next_id) = split_cursor_batch(batch);
+            rows.extend(batch_rows);
+            has_more = more;
+            cursor_id = next_id;
+        }
+        Ok(rows)
     };
 
     let result = run_db_future(future);
@@ -1946,6 +1999,52 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cursor_batch_reports_continuation() {
+        let (rows, has_more, id) = split_cursor_batch(serde_json::json!({
+            "result": [{"_key": "a"}, {"_key": "b"}],
+            "has_more": true,
+            "id": "c-1"
+        }));
+        assert_eq!(rows.len(), 2);
+        assert!(has_more);
+        assert_eq!(id.as_deref(), Some("c-1"));
+    }
+
+    #[test]
+    fn cursor_batch_without_continuation_is_terminal() {
+        // The single-batch case -- and the query-cache hit, which returns the
+        // whole result set with no cursor at all.
+        let (rows, has_more, id) = split_cursor_batch(serde_json::json!({
+            "result": [{"_key": "a"}],
+            "has_more": false
+        }));
+        assert_eq!(rows.len(), 1);
+        assert!(!has_more);
+        assert_eq!(id, None);
+    }
+
+    #[test]
+    fn cursor_batch_claiming_more_without_an_id_terminates() {
+        // The drain loop breaks on this rather than spinning: there is no
+        // cursor to ask for the next batch.
+        let (rows, has_more, id) = split_cursor_batch(serde_json::json!({
+            "result": [{"_key": "a"}],
+            "has_more": true
+        }));
+        assert_eq!(rows.len(), 1);
+        assert!(has_more);
+        assert_eq!(id, None, "loop must break when has_more has no cursor id");
+    }
+
+    #[test]
+    fn cursor_batch_of_a_non_object_yields_nothing() {
+        let (rows, has_more, id) = split_cursor_batch(serde_json::json!("boom"));
+        assert!(rows.is_empty());
+        assert!(!has_more);
+        assert_eq!(id, None);
+    }
 
     #[test]
     fn scoped_db_timeout_sets_and_restores() {

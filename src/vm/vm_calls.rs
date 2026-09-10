@@ -1522,6 +1522,17 @@ impl Vm {
                     let span = self.current_span();
                     return self.call_model_transaction_block(receiver_idx, span);
                 }
+                // Batch iteration runs the block once per record while walking a
+                // keyset cursor, which is query-builder machinery the VM does
+                // not implement (see the `Value::QueryBuilder` arm in
+                // `vm_classes.rs`). Demote the handler rather than failing it:
+                // without this the call dies with "Cannot access property".
+                if matches!(name, "find_each" | "in_batches" | "find_in_batches") {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("model batch iteration '{}'", name),
+                        self.current_span(),
+                    ));
+                }
                 if matches!(name, "create" | "update") {
                     let span = self.current_span();
                     if self.try_call_model_class_persist(receiver_idx, argc, name, span)? {

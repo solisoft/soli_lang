@@ -354,6 +354,8 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.where(hash)` | Hash filter — safe for user input (keys validated, values bound). Returns QueryBuilder |
 | `Model.where(string, bind_vars)` | SDBQL filter string — **developer-trusted only**, never feed `req[...]` into the string. Returns QueryBuilder |
 | `Model.all` | Get all documents |
+| `Model.find_each(block, opts?)` | Walk every document one at a time in keyset-paged batches, holding one batch in memory. See [Batch Iteration](#batch-iteration-find_each--in_batches). |
+| `Model.in_batches(block, opts?)` | Same paging, but the block receives each batch as an array. Alias: `find_in_batches`. |
 | `Model.update(id, data)` | Update a document |
 | `Model.upsert(id, data)` | Insert or update document by ID |
 | `Model.delete(id)` | Delete a document |
@@ -484,6 +486,8 @@ Migrations can create the same thing with a `doc.` prefix —
 | `.includes(rel, filter, binds)` | Eager load with filter and optional `"fields"` key |
 | `.includes({ rel: [fields] })` | Eager load with field projection |
 | `.includes_count(rel, ...)` | Eager load count as `<rel>_count` (HasMany/HABTM only) |
+| `.find_each(block, opts?)` | Iterate the whole match one record at a time, one batch (`{ "batch_size": 1000 }`) in memory. Keyset-paged by `_key`, so it cannot be combined with `.order`/`.limit`/`.offset`/`.pluck`, with an aggregate or grouping mode, or with `grouped(...)` — each is refused rather than ignored. Returns `null`. See [Batch Iteration](#batch-iteration-find_each--in_batches). |
+| `.in_batches(block, opts?)` | As `.find_each`, but the block receives the batch as an array. Alias: `find_in_batches`. |
 
 **These also work on an already-loaded array.** A `has_many`/`has_one` accessor returns a
 plain array rather than a query builder, so a Rails-style chain lands on one:
@@ -2368,6 +2372,68 @@ Model.delete_all;                  # static — wipe the whole collection
 User.where("doc.active == false").update_all({ "archived": true });
 post.comments.where("draft = @d", { "d": true }).update_all({ "draft": false });
 ```
+
+### Batch Iteration (`find_each` / `in_batches`)
+
+The operations above are bulk *writes*. On the read side, `.all` materialises
+every matching row as Soli values at once, so a job over a large collection is
+bounded by RAM rather than by anything you chose. `.each` is not an escape
+hatch — it materialises first, then iterates.
+
+`find_each` walks the whole result set one record at a time, holding only one
+batch in memory:
+
+```soli
+# One batch of 1000 in memory at a time, however large the collection is.
+User.find_each(fn(user) {
+  user.recompute_score();
+});
+
+# Any filter chain composes.
+User.where("doc.active == true").find_each(fn(user) {
+  user.backfill_initials();
+}, { "batch_size": 500 });
+```
+
+`in_batches` (alias `find_in_batches`) hands the block each batch as an array,
+which is what you want when the work itself is bulk:
+
+```soli
+Invoice.where("doc.status == @s", { "s": "pending" }).in_batches(fn(batch) {
+  Mailer.deliver_reminders(batch);
+}, { "batch_size": 200 });
+```
+
+`batch_size` defaults to 1000 and is capped at 10,000 — past that the batch is
+large enough to be the memory problem it exists to avoid.
+
+**Paging is by key, not by offset.** Each batch adds
+`FILTER doc._key > <last key of the previous batch>` and sorts by `_key`
+ascending. `LIMIT offset, n` would degrade as the offset grows and — worse —
+skip or repeat rows when the collection is written to mid-scan, which is exactly
+what a long correction job does to the collection it is correcting. Deleting or
+updating records inside the block is therefore safe: the cursor is read before
+the block runs.
+
+Because the ordering is fixed and the batch size is the limit, these are
+**refused** rather than silently ignored:
+
+| Rejected | Why |
+|----------|-----|
+| `.order(...)` | Batches are ordered by `_key` so the cursor advances |
+| `.limit(...)` | The batch size *is* the limit |
+| `.offset(...)` | Batches are positioned by key, not by offset |
+| `.pluck(...)` | Projected rows carry no `_key` to position the next batch |
+| aggregates, `.group_by`, `.time_bucket`, `.exists` | They return a value or reshaped rows, not records |
+| `.similar(...)` | Results are ordered by score, which key ordering would override |
+| inside `grouped(...)` | Each batch needs the previous batch's rows to build the next query, so the reads cannot be coalesced |
+
+A columnar model has no `_key`, so it has no batch iteration either — use the
+columnar `query` / `aggregate` surface instead.
+
+Both spellings work from the class and from a chain: `User.find_each(...)` and
+`User.where(...).find_each(...)` are the same code path. Both return `null`;
+they are traversals, not projections.
 
 ## Coalescing Reads (`grouped`)
 
