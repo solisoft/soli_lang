@@ -355,7 +355,10 @@ pub struct UploadedFile {
     pub name: String,
     pub filename: String,
     pub content_type: String,
-    pub data: Vec<u8>,
+    /// `Bytes`, not `Vec<u8>`: the part is a refcounted slice of the request
+    /// body, so cloning an `UploadedFile` (the LiveView upload path does)
+    /// bumps a count instead of duplicating the upload.
+    pub data: bytes::Bytes,
 }
 
 // Import REPL session store from the dedicated module
@@ -375,9 +378,15 @@ pub(crate) struct RequestData {
     /// it builds `req["headers"]`.
     pub(crate) headers: hyper::header::HeaderMap,
     pub(crate) body: String,
-    /// Raw body bytes (for multipart parsing)
+    /// Slice of the aggregate in-flight body budget, held for as long as this
+    /// request owns its buffered body. Dropping `RequestData` returns it, on
+    /// every path including a worker panic.
+    ///
+    /// Never read: it exists for its `Drop`. Unlike the `body_bytes` field this
+    /// replaced — which was also never read and genuinely did nothing — removing
+    /// this one would leak the budget on every request.
     #[allow(dead_code)]
-    pub(crate) body_bytes: Option<Vec<u8>>,
+    pub(crate) body_reservation: Option<crate::interpreter::builtins::body_limit::BodyReservation>,
     /// Pre-parsed form fields from multipart
     pub(crate) multipart_form: Option<Vec<(String, String)>>,
     /// Pre-parsed files from multipart
@@ -3996,6 +4005,7 @@ async fn handle_hyper_request(
     // bytes are buffered; chunked uploads (no Content-Length) are caught
     // mid-stream by `Limited`.
     let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
+    let mut body_reservation = None;
     if method != "GET" && method != "HEAD" {
         if let Some(declared) = declared_content_length {
             if declared > max_body {
@@ -4006,71 +4016,90 @@ async fn handle_hyper_request(
                     .unwrap());
             }
         }
+        // Claim the memory *before* buffering, not after: the point is to stop
+        // many connections each collecting their own body. A chunked request
+        // declares no length, so it reserves the per-request cap — the most it
+        // could turn out to be.
+        let want = declared_content_length.map_or(max_body, |n| n.min(max_body));
+        match crate::interpreter::builtins::body_limit::BodyReservation::try_acquire(want) {
+            Some(reservation) => body_reservation = Some(reservation),
+            None => {
+                return Ok(Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .header("Retry-After", "1")
+                    .body(full(Bytes::from("Server busy: too many uploads in flight")))
+                    .unwrap());
+            }
+        }
     }
-    let (body, body_bytes_opt, multipart_form, multipart_files) =
-        if method == "GET" || method == "HEAD" {
-            (String::new(), None, None, None)
-        } else {
-            // Bounded in time as well as size: `Limited` caps how much can
-            // arrive, not how long it may take, so a trickled body held a
-            // connection and its buffer indefinitely.
-            let collected = match tokio::time::timeout(
-                Duration::from_secs(server_constants::body_read_timeout_secs()),
-                BodyExt::collect(Limited::new(req_body, max_body)),
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_) => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::REQUEST_TIMEOUT)
-                        .header("Content-Type", "text/plain; charset=utf-8")
-                        .body(full(Bytes::from("Request body read timed out")))
-                        .unwrap());
-                }
-            };
-            let body_bytes = match collected {
-                Ok(b) => b.to_bytes().to_vec(),
-                Err(_) => {
-                    // `Limited` returns an error once the running total
-                    // crosses `max_body`. Treat any failure here as oversize:
-                    // we can't reliably distinguish a transport error from a
-                    // length-limit hit, but in either case we don't want to
-                    // proceed with a partial body.
-                    return Ok(Response::builder()
-                        .status(StatusCode::PAYLOAD_TOO_LARGE)
-                        .header("Content-Type", "text/plain; charset=utf-8")
-                        .body(full(Bytes::from("Request body too large")))
-                        .unwrap());
-                }
-            };
-
-            // Check if this is a multipart form
-            let content_type = req_content_type.as_deref();
-            if let Some(ct) = content_type {
-                if ct.starts_with("multipart/form-data") {
-                    // Structured view only: form fields + files. Do not also
-                    // allocate a lossy UTF-8 `String` of the raw multipart
-                    // bytes (binary boundary noise) — that triple-buffered
-                    // an 8 MiB body as bytes + string + parsed parts.
-                    // CSRF / `_method` read `multipart_form`; raw body is
-                    // kept in `body_bytes` for any consumer that needs it.
-                    let (form_fields, files) = parse_multipart_body(&body_bytes, ct).await;
-                    (
-                        String::new(),
-                        Some(body_bytes),
-                        Some(form_fields),
-                        Some(files),
-                    )
-                } else {
-                    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                    (body_str, None, None, None)
-                }
-            } else {
-                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                (body_str, None, None, None)
+    let (body, multipart_form, multipart_files) = if method == "GET" || method == "HEAD" {
+        (String::new(), None, None)
+    } else {
+        // Bounded in time as well as size: `Limited` caps how much can
+        // arrive, not how long it may take, so a trickled body held a
+        // connection and its buffer indefinitely.
+        let collected = match tokio::time::timeout(
+            Duration::from_secs(server_constants::body_read_timeout_secs()),
+            BodyExt::collect(Limited::new(req_body, max_body)),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(Response::builder()
+                    .status(StatusCode::REQUEST_TIMEOUT)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(full(Bytes::from("Request body read timed out")))
+                    .unwrap());
             }
         };
+        // Keep the collected body as `Bytes`. It is refcounted, so the
+        // multipart parser can take it by value without copying, and the
+        // non-multipart branch only borrows it to build the String. The
+        // previous `.to_vec()` was a full extra copy of every request body.
+        let body_bytes = match collected {
+            Ok(b) => b.to_bytes(),
+            Err(_) => {
+                // `Limited` returns an error once the running total
+                // crosses `max_body`. Treat any failure here as oversize:
+                // we can't reliably distinguish a transport error from a
+                // length-limit hit, but in either case we don't want to
+                // proceed with a partial body.
+                return Ok(Response::builder()
+                    .status(StatusCode::PAYLOAD_TOO_LARGE)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(full(Bytes::from("Request body too large")))
+                    .unwrap());
+            }
+        };
+
+        // Check if this is a multipart form
+        let content_type = req_content_type.as_deref();
+        if let Some(ct) = content_type {
+            if ct.starts_with("multipart/form-data") {
+                // Structured view only: form fields + files. Do not also
+                // allocate a lossy UTF-8 `String` of the raw multipart
+                // bytes (binary boundary noise) — that triple-buffered
+                // an 8 MiB body as bytes + string + parsed parts.
+                // CSRF / `_method` read `multipart_form`.
+                //
+                // The raw body is moved into the parser and not retained.
+                // It used to ride along in `RequestData.body_bytes`, which
+                // nothing in the tree ever read (the field was
+                // `#[allow(dead_code)]`), so every upload carried a second
+                // full copy of itself across the worker queue.
+                let (form_fields, files) = parse_multipart_body(body_bytes, ct).await;
+                (String::new(), Some(form_fields), Some(files))
+            } else {
+                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+                (body_str, None, None)
+            }
+        } else {
+            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+            (body_str, None, None)
+        }
+    };
 
     // HTML forms can only express GET and POST. Rails-style method override:
     // a POST whose form body carries `_method=PUT|PATCH|DELETE` (the hidden
@@ -4099,7 +4128,7 @@ async fn handle_hyper_request(
         query,
         headers,
         body,
-        body_bytes: body_bytes_opt,
+        body_reservation,
         multipart_form,
         multipart_files,
         peer_ip: peer_addr.ip().to_string(),
@@ -5124,7 +5153,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
                 &file.name,
                 &file.filename,
                 &file.content_type,
-                file.data.clone(),
+                file.data.to_vec(),
             )
         } else {
             crate::live::upload::put(
@@ -5132,7 +5161,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
                 &file.name,
                 &file.filename,
                 &file.content_type,
-                file.data.clone(),
+                file.data.to_vec(),
             )
         };
         match result {
@@ -9031,9 +9060,11 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
         query: raw.query.clone(),
         headers: raw.headers.clone(),
         body: raw.body.clone(),
+        // Dev-tool replay of a stashed request: the body is already resident
+        // in the dev store, so it claims no new budget.
+        body_reservation: None,
         // Multipart re-parsing is punted for v1: a replayed multipart POST
         // carries the raw body but no pre-parsed fields/files.
-        body_bytes: None,
         multipart_form: None,
         multipart_files: None,
         peer_ip: raw.peer_ip.clone(),
@@ -10631,11 +10662,11 @@ mod tests {
         let (tx, _rx) = oneshot::channel();
         RequestData {
             method: Cow::Borrowed("POST"),
+            body_reservation: None,
             path: "/posts".to_string(),
             query: Vec::new(),
             headers: make_headers(headers),
             body: body.to_string(),
-            body_bytes: None,
             multipart_form,
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),

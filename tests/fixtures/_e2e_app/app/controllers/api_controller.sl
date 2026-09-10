@@ -240,3 +240,25 @@ def locale_read(req: Any) -> Any {
         "body": json_stringify({"locale": locale()})
     };
 }
+
+// Echo an uploaded file straight back as its own response body.
+//
+// Exercises the whole upload path — multipart parse, `find_uploaded_file`,
+// and the `body_base64` response key that `AttachmentsController#show` uses
+// — so a round trip of arbitrary binary proves the bytes survive intact.
+fn upload_echo(req: Any) -> Any {
+    let file = find_uploaded_file(req, "evidence");
+    if file.nil?
+        return { "status": 422, "body": "no file" };
+    end
+    return {
+        "status": 200,
+        "headers": {
+            "Content-Type":   file["content_type"],
+            "X-Upload-Size":  str(file["size"]),
+            "X-Upload-Name":  file["filename"]
+        },
+        // Already base64 — hand it to the response layer, which decodes once.
+        "body_base64": file["data"]
+    };
+}

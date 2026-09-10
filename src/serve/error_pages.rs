@@ -1391,11 +1391,11 @@ mod tests {
 
         RequestData {
             method: std::borrow::Cow::Borrowed("POST"),
+            body_reservation: None,
             path: "/login".to_string(),
             query,
             headers,
             body: "password=hunter2&user=alice".to_string(),
-            body_bytes: None,
             multipart_form: None,
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),
@@ -1497,7 +1497,7 @@ mod tests {
             query: Vec::new(),
             headers,
             body: r#"{"k":"v\\""}"#.to_string(),
-            body_bytes: None,
+            body_reservation: None,
             multipart_form: None,
             multipart_files: None,
             peer_ip: "127.0.0.1".to_string(),

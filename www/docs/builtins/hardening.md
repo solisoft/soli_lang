@@ -49,8 +49,33 @@ SOLI_MAX_BODY_SIZE=33554432
 
 Non-numeric or negative env values are ignored.
 
+### Aggregate in-flight limit
+
+`SOLI_MAX_BODY_SIZE` bounds **one** request. Upload bytes are held in memory
+while the request runs, so the two limits multiply: without a second bound, the
+server would buffer one body per connection (`SOLI_MAX_CONNECTIONS`, 20 000 by
+default) and each parsed request would then sit in the worker queue still
+holding its payload.
+
+`SOLI_MAX_INFLIGHT_BODY_BYTES` caps the **sum** of request-body bytes reserved
+at once. A request reserves its share before any bytes are buffered and returns
+it when the request ends — including on error paths — so a burst of large
+uploads is refused rather than swapping the box.
+
+**Default: 16 × the per-request cap** (128 MiB out of the box). Over the cap:
+`503 Service Unavailable` with `Retry-After: 1`. Set it to `0` to disable the
+budget entirely.
+
+```bash
+SOLI_MAX_INFLIGHT_BODY_BYTES=268435456   # 256 MiB across all requests
+```
+
+Raising `SOLI_MAX_BODY_SIZE` for an app that accepts big uploads raises this
+default with it, so the two stay in proportion unless you set it explicitly.
+
 ## Related env
 
-See [Configuration](/docs/getting-started/configuration) for `SOLI_CSRF_TOKENS`, `SOLI_DISABLE_CSRF`, `SOLI_FORCE_SECURE_COOKIES`, `SOLI_HTTP_MAX_RESPONSE_BYTES`, image and parallel-fan-out caps, and `SOLI_MAX_UPLOAD_FILES`.
+See [Configuration](/docs/getting-started/configuration) for `SOLI_CSRF_TOKENS`, `SOLI_DISABLE_CSRF`, `SOLI_FORCE_SECURE_COOKIES`, `SOLI_HTTP_MAX_RESPONSE_BYTES`, image and parallel-fan-out caps, `SOLI_MAX_UPLOAD_FILES`, and
+`SOLI_MAX_INFLIGHT_BODY_BYTES`.
 
 Response-side headers: [Security Headers](/docs/builtins/security-headers).

@@ -812,3 +812,65 @@ fn accept_language_never_negotiates_to_a_locale_we_lack() {
         "no locale files, so nothing to negotiate to, got {body}"
     );
 }
+
+/// Round-trip arbitrary binary through a multipart upload and back out.
+///
+/// This covers both halves of the upload-memory work:
+///
+/// * ingest — the body is now carried as `Bytes` and moved into the multipart
+///   parser instead of being copied three times, and the raw body is no longer
+///   retained in `RequestData`. `file["data"]` must still be the same base64
+///   string it always was; that contract was deliberately left alone.
+/// * egress — `AttachmentsController#show` now answers with `body_base64`
+///   rather than `Base64.decode(...)`, which built a Soli array of one 16-byte
+///   `Value::Int` per byte. The fixture handler uses the same shape, so a
+///   byte-identical round trip is what catches a mistake in that swap.
+///
+/// The payload is deliberately **not** valid UTF-8: that is the case where the
+/// old decode path produced the `Value::Int` array rather than a string.
+#[test]
+fn a_multipart_upload_round_trips_byte_for_byte() {
+    let server = shared_server();
+
+    // Invalid UTF-8 (lone surrogates, NULs, 0xFF) plus a CRLF and a run that
+    // looks like a boundary prefix, so a naive parser would truncate.
+    let mut payload: Vec<u8> = vec![0xff, 0xfe, 0x00, 0x42, 0x00, 0x0d, 0x0a, 0x2d, 0x2d];
+    payload.extend((0u16..512).map(|i| (i % 256) as u8));
+
+    let boundary = "----soli-e2e-upload";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"evidence\"; filename=\"proof.bin\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+    body.extend_from_slice(&payload);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let resp = ureq::post(&server.url("/upload_echo"))
+        .set(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={boundary}"),
+        )
+        .timeout(Duration::from_secs(5))
+        .send_bytes(&body)
+        .expect("upload request");
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.header("X-Upload-Size"),
+        Some(payload.len().to_string().as_str()),
+        "`size` must stay the raw byte count, not the base64 length"
+    );
+    assert_eq!(resp.header("X-Upload-Name"), Some("proof.bin"));
+
+    let mut echoed = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut echoed)
+        .expect("read echoed body");
+    assert_eq!(
+        echoed, payload,
+        "the uploaded bytes must survive the multipart parse and the \
+         base64 response path unchanged"
+    );
+}

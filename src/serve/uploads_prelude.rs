@@ -219,7 +219,11 @@ class AttachmentsController < Controller
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control":          "private, max-age=300"
             },
-            "body": Base64.decode(b64)
+            # `body_base64` hands the base64 straight to the response layer,
+            # which decodes it once into bytes. `Base64.decode` here would
+            # build a Soli array of one 16-byte Int per byte first -- ~16x the
+            # attachment, transient, per concurrent download.
+            "body_base64": b64
         }
     end
 
@@ -397,16 +401,17 @@ class AttachmentsController < Controller
             q = this._int_param(query, "q")
             img = img.quality(q) unless q.nil?
 
-            data = Base64.decode(img.to_buffer())
+            # Same reason as `show`: keep the encoded form and let the
+            # response layer decode it once. Content-Length is left to the
+            # server, which sets it from the decoded body.
             return {
                 "status":  200,
                 "headers": {
                     "Content-Type":           out_ct,
-                    "Content-Length":         str(data.length()),
                     "X-Content-Type-Options": "nosniff",
                     "Cache-Control":          "public, max-age=86400"
                 },
-                "body": data
+                "body_base64": img.to_buffer()
             }
         catch err
             # Transform failed — serve the original bytes so the page still
@@ -419,7 +424,7 @@ class AttachmentsController < Controller
                     "X-Content-Type-Options": "nosniff",
                     "Cache-Control":          "private, max-age=60"
                 },
-                "body": Base64.decode(b64)
+                "body_base64": b64
             }
         end
     end

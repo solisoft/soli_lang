@@ -32,8 +32,11 @@ pub(crate) fn max_upload_files() -> usize {
 }
 
 /// Parse multipart form data into form fields and files.
+///
+/// Takes the body **by value**: `Bytes` is refcounted, so handing it to the
+/// parser costs a pointer rather than a copy of the whole upload.
 pub async fn parse_multipart_body(
-    body_bytes: &[u8],
+    body: Bytes,
     content_type: &str,
 ) -> (Vec<(String, String)>, Vec<UploadedFile>) {
     // Ordered pairs: repeated bracket-array fields (tags[]) must survive
@@ -60,10 +63,10 @@ pub async fn parse_multipart_body(
         None => return (form_fields, files),
     };
 
-    // Use multer to parse the multipart data
-    let stream = futures_util::stream::once(async move {
-        Ok::<_, std::io::Error>(Bytes::copy_from_slice(body_bytes))
-    });
+    // Use multer to parse the multipart data. The body is *moved* into the
+    // stream — `Bytes::copy_from_slice` here duplicated the entire upload
+    // before a single part had been read.
+    let stream = futures_util::stream::once(async move { Ok::<_, std::io::Error>(body) });
 
     let mut multipart = multer::Multipart::new(stream, boundary);
 
@@ -88,7 +91,9 @@ pub async fn parse_multipart_body(
                     name: name.clone(),
                     filename: fname,
                     content_type,
-                    data: data.to_vec(),
+                    // `field.bytes()` already handed us `Bytes`; `to_vec()`
+                    // copied every part a second time.
+                    data,
                 });
             } else {
                 // This is a regular form field
@@ -150,7 +155,7 @@ mod tests {
             name: "f".to_string(),
             filename: "x.bin".to_string(),
             content_type: "application/octet-stream".to_string(),
-            data: data.to_vec(),
+            data: bytes::Bytes::copy_from_slice(data),
         }
     }
 

@@ -289,8 +289,21 @@ fn hash_str(hash: &HashPairs, key: &str) -> Option<String> {
         })
 }
 
+/// Borrow a string field instead of copying it.
+///
+/// [`hash_str`] hands back an owned `String`, which is fine for a filename or a
+/// service name but not for `data`: that is the whole base64 payload, so the
+/// copy cost ~1.33x the upload on every store, on top of the decode below.
+fn hash_str_ref<'a>(hash: &'a HashPairs, key: &str) -> Option<&'a str> {
+    hash.get(&HashKey::String(key.into()))
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+}
+
 fn file_bytes(file: &HashPairs) -> Result<Vec<u8>, String> {
-    let data = hash_str(file, "data").ok_or_else(|| "file is missing data".to_string())?;
+    let data = hash_str_ref(file, "data").ok_or_else(|| "file is missing data".to_string())?;
     STANDARD
         .decode(data.trim())
         .map_err(|e| format!("file data is not base64: {e}"))
